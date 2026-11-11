@@ -84,7 +84,8 @@ actor ScriptedHelperHost: HostHelperHost {
     /// the Host's current Node.js clears it.
     var serviceNodeGone = false
     /// The Node.js a session's record names has gone, which only the Helper's next
-    /// connection to that session's core rewrites.
+    /// connection to that session's core rewrites. Meanwhile the service's own
+    /// Node.js, unless ``serviceNodeGone``, runs the query.
     var recordNodeGone = false
 
     /// What the Helper's Usage query prints, per session.
@@ -351,8 +352,8 @@ actor ScriptedHelperHost: HostHelperHost {
         folders["\(directory)/sessions"] = 0o700
         folders["\(directory)/sessions/\(session)"] = 0o700
         let missing = #"{"version":1,"runtime":"missing"}"#
-        if recordNodeGone, files["\(directory)/sessions/\(session)/runtime-node"] != nil {
-            return serviceNodeGone ? "helper-node-gone" : missing
+        if recordNodeGone, files["\(directory)/sessions/\(session)/runtime-node"] != nil, serviceNodeGone {
+            return "helper-node-gone"
         }
         guard files["\(directory)/sessions/\(session)/runtime-node"] != nil, let report = usageAnswers[session]
         else { return missing }

@@ -170,9 +170,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         environmentTask = Task { [weak self, session] in
             for await _ in session.leakedEnvironmentUpdates {
                 guard !Task.isCancelled, let self else { return }
-                self.leakedEnvironmentNames = session.currentLeakedEnvironment
+                let names = session.currentLeakedEnvironment
+                // Each Terminal's creation asks again, and the same answer
+                // changes nothing a Chat checked with.
+                guard names != self.leakedEnvironmentNames else { continue }
+                self.leakedEnvironmentNames = names
                 // A Chat that checked before this answer named the wrong fix.
-                if !self.leakedEnvironmentNames.isEmpty { self.leakAnswers &+= 1 }
+                if !names.isEmpty { self.leakAnswers &+= 1 }
                 self.publish()
             }
         }
@@ -527,7 +531,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             checkouts: checkouts, home: home, doneTerminals: doneTerminals)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         // Every value comes from the rebuilt records: nothing is carried over.
-        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        let agents = builder.agentRows(liveChange: { _ in nil })
         var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         for record in records where rows[record.address] != nil {
             rows[record.address]?.isRestarting = record.isRestarting

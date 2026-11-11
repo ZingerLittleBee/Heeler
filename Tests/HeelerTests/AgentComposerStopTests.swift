@@ -213,6 +213,51 @@ struct AgentComposerStopStoreTests {
         #expect(store.notice == nil)
     }
 
+    /// What a Stop left running is said after the turn it ended left
+    /// Working, which ends every other notice, until the Agent works again.
+    @Test func whatStopLeftRunningOutlastsTheTurnItEnded() async {
+        let send = ScriptedTransportCallGate()
+        let store = AgentComposerStopStore(sleep: { _ in })
+
+        let wait = store.stop(using: {
+            await send.waitUntilOpen()
+            return .sentLeavingWork("sleep 40 still runs.")
+        })
+        await send.waitForEntry()
+        store.agentStatusChanged(to: .idle)
+        await send.open()
+        await wait?.value
+        #expect(store.phase == .ready)
+        #expect(store.notice == nil)
+        #expect(store.leftRunning == "sleep 40 still runs.")
+
+        store.agentStatusChanged(to: .done)
+        #expect(store.leftRunning == "sleep 40 still runs.")
+        store.agentStatusChanged(to: .working)
+        #expect(store.leftRunning == nil)
+    }
+
+    /// A newer tap's word wins over what an older Stop left running, and
+    /// clears what one already said.
+    @Test func aNewerTapOverridesWhatAnOlderStopLeftRunning() async {
+        let store = AgentComposerStopStore(sleep: { _ in })
+        await store.stop(using: { .sentLeavingWork("first") })?.value
+        #expect(store.leftRunning == "first")
+
+        let older = ScriptedTransportCallGate()
+        let late = store.stop(using: {
+            await older.waitUntilOpen()
+            return .sentLeavingWork("older")
+        })
+        #expect(store.leftRunning == nil)
+        await older.waitForEntry()
+        store.agentStatusChanged(to: .idle)
+        await store.stop(using: { .sent })?.value
+        await older.open()
+        await late?.value
+        #expect(store.leftRunning == nil)
+    }
+
     /// Esc keeps no gap: once a status change readies Stop, the next tap
     /// presses at once, even while the last Esc is still on its way.
     @Test func anEscTapAfterAStatusChangePressesWhileTheLastEscIsOnItsWay() async {
@@ -274,7 +319,7 @@ struct AgentComposerStopStoreTests {
         let grok = AgentComposerInterrupt.terminal(forAgentKind: "grok") { .sent }
         #expect(grok == nil)
 
-        for kind in ["claude", "codex", "pi", "omp", "opencode", "an-unknown-agent"] {
+        for kind in ["claude", "codex", "pi", "omp", "opencode", "agy", "an-unknown-agent"] {
             let interrupt = AgentComposerInterrupt.terminal(forAgentKind: kind) { .failed("The surface's own press.") }
             #expect(interrupt?.wait == .escape, "\(kind)")
             #expect(interrupt?.accessibilityHint == AgentComposerInterrupt.escapeHint, "\(kind)")
@@ -696,6 +741,39 @@ struct AgentComposerFoldHostedTests {
             #expect(
                 abs(heights[5] - heights[4] - line) < 1,
                 "the \(kind) notice should show its sixth line as it does its second: \(heights)")
+        }
+    }
+
+    /// A held Retry: the failure row keeps the message's own reason, with
+    /// Retry, and the notice under it says why the Retry waits.
+    @Test func aHeldRetryShowsItsFailureAndWhyItWaits() async throws {
+        let harness = ComposerHarness(status: .idle)
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        var policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+            preflight: nil, verify: nil)
+        harness.composer.replaceDraft(with: "Reply with the word fig")
+        #expect(await harness.composer.send(policy: policy) == .failed)
+        let failed = try #require(harness.composer.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
+        policy.preflight = { _ in hold }
+        #expect(await harness.composer.retry(failed.id, policy: policy) == .refused(hold))
+
+        let controller = UIHostingController(
+            rootView: ComposerHost(harness: harness, collapses: false, sendPolicy: policy))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: Self.phoneWidth, height: 812), rootViewController: controller
+        ) { _ in
+            let shown = await Self.eventually {
+                controller.view.layoutIfNeeded()
+                return Self.accessible(labeled: reason, in: controller.view) != nil
+                    && Self.accessible(labeled: "Retry", in: controller.view) != nil
+            }
+            #expect(shown, "the failure row should keep the message's own reason")
+            #expect(Self.accessible(labeled: hold.message, in: controller.view) != nil)
         }
     }
 

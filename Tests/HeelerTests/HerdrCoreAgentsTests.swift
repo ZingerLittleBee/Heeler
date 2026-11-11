@@ -10,11 +10,13 @@ import Testing
 struct HerdrCoreAgentsTests {
     private let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
 
-    private static func foreground(_ argv: [String], name: String? = nil, pid: Int = 40) -> JSONValue {
+    private static func foreground(
+        _ argv: [String], name: String? = nil, pid: Int = 40, cwd: String = "/work/app/src"
+    ) -> JSONValue {
         .object([
             "pid": .number(Double(pid)),
             "name": .string(name ?? argv.first.map { ($0 as NSString).lastPathComponent } ?? ""),
-            "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app/src"),
+            "argv": .array(argv.map(JSONValue.string)), "cwd": .string(cwd),
         ])
     }
 
@@ -137,7 +139,7 @@ struct HerdrCoreAgentsTests {
         #expect(row.agent.kind == "claude")
         #expect(row.agent.status == .working)
         #expect(row.agent.name == "review")
-        #expect(row.agent.cwd == "/work/app")
+        #expect(row.agent.cwd == "/work/app/src")
         #expect(row.directory == "/work/app/src")
         #expect(row.agent.terminalTitleStripped == "fix the flaky test")
         #expect(row.hostName == host.displayName)
@@ -579,7 +581,7 @@ struct HerdrCoreAgentsTests {
         let row = try #require(agent(store, "t1"))
         #expect(
             AgentRowRenderer.render(layout: layout, agent: row).map { $0.map(\.text) }
-                == [["fix the sync"], ["/work/app"]])
+                == [["fix the sync"], ["/work/app/src"]])
     }
 
     @Test func aPluginSnapshotNeverSetsACoreHostsRowsButItsSavedLayoutDoes() {
@@ -813,5 +815,50 @@ struct HerdrCoreAgentsTests {
         let row = try #require(agent(store, "t1"))
         #expect(row.agent.terminalTitle == nil)
         #expect(row.agent.terminalTitleStripped == "Claude")
+    }
+
+    /// The core keeps a Terminal's `cwd` where it started, so an agy typed after
+    /// a `cd` names its own directory only through its foreground.
+    @Test func anAgentTypedInAShellReadsTheDirectoryItsProgramRunsIn() async throws {
+        let (store, _) = try await started([
+            Self.record(
+                "t1", cwd: "/home/dev/proj-core", argv: ["/bin/bash"],
+                foreground: Self.foreground(["agy"], pid: 41, cwd: "/home/dev/proj-core2"),
+                status: Self.report("idle", app: "antigravity"))
+        ])
+        defer { store.setHosts([]) }
+
+        let row = try #require(agent(store, "t1"))
+        #expect(row.agent.kind == "agy")
+        #expect(row.agent.cwd == "/home/dev/proj-core2")
+        #expect(row.displayCwd == "~/proj-core2")
+        #expect(AgentDetailHeaderTitle(row).folder == "proj-core2")
+
+        // Its Workspace is still the one its Terminal started in, and a launch
+        // beside it still starts there.
+        #expect(row.workspaceLabel == "proj-core")
+        #expect(row.agent.workspaceID == HerdrCoreOrganization.workspaceID(directory: "/home/dev/proj-core"))
+        #expect(StartAgentStore.LaunchOrigin(beside: row, in: store).cwd == "/home/dev/proj-core")
+    }
+
+    /// Until the core samples the foreground, or when a sample names no
+    /// directory, the Terminal's launch is all there is to read.
+    @Test func anAgentReadsItsLaunchDirectoryUntilASampleNamesItsOwn() async throws {
+        let (store, transport) = try await started([
+            Self.record(
+                "t1", cwd: "/home/dev/proj", argv: ["agy"], status: Self.report("idle", app: "antigravity"))
+        ])
+        defer { store.setHosts([]) }
+        #expect(agent(store, "t1")?.agent.kind == "agy")
+        #expect(agent(store, "t1")?.agent.cwd == "/home/dev/proj")
+
+        await transport.deliver(
+            Self.event(
+                sequence: 2, type: "foreground", terminal: "t1",
+                data: Self.foreground(["agy"], pid: 41, cwd: "")))
+        await transport.deliver(
+            Self.statusEvent(sequence: 3, terminal: "t1", Self.report("working", app: "antigravity")))
+        try await waitUntil("the sample folded") { agent(store, "t1")?.agent.status == .working }
+        #expect(agent(store, "t1")?.agent.cwd == "/home/dev/proj")
     }
 }

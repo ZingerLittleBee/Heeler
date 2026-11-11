@@ -369,9 +369,9 @@ leaves the detail; a later session discovers whatever its terminal shows anew.
 _Avoid_: recent link, visible link, link history
 
 **Chat**:
-The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build or
-OpenCode Agent's detail can show in its terminal's place, read from the
-Agent's Transcript. Chat holds no Attach; its Composer and draft are the
+The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build,
+OpenCode or Antigravity CLI Agent's detail can show in its terminal's place,
+read from the Agent's Transcript. Chat holds no Attach; its Composer and draft are the
 terminal's. Send is one `agent.prompt` request, made only after a screen read
 shows the program's input box empty, and refused for text the program would
 run rather than read. Its `/` menu offers the Agent's skills and `/compact`;
@@ -400,12 +400,15 @@ _Avoid_: chat mode, conversation view, Monitor (ADR 0012's removed surface)
 What an Agent's program writes on its Host as its record of the
 conversation: Claude Code's session JSONL, with its subagents' files, or a
 Codex rollout, or a Pi/Oh My Pi v2-v3 tree JSONL, or Grok Build's
-`updates.jsonl`, or, for OpenCode, the session's rows in OpenCode's own SQLite
+`updates.jsonl`, or Antigravity CLI's `transcript_full.jsonl`, or, for
+OpenCode, the session's rows in OpenCode's own SQLite
 database, which Heeler reads with a bounded read-only query on the Host (ADR
 0025). For Pi and Oh My Pi, herdr
 normally names the exact absolute file path; a UUID can also locate a session
 under that program's default sessions directory. For Grok Build, herdr names
-the session id, whose folder Chat finds under `~/.grok/sessions`. The session
+the session id, whose folder Chat finds under `~/.grok/sessions`. For
+Antigravity CLI, herdr names the conversation id, whose folder Chat finds
+under `~/.gemini/antigravity-cli/brain`. The session
 herdr reports names it; on herdr-core, the session Chat bound (ADR 0034). Heeler only reads it: the app over SFTP, or for
 OpenCode by that query, keeping decoded entries, never tool output, in an
 on-device cache; and the Heeler plugin on the Host itself, or on herdr-core the

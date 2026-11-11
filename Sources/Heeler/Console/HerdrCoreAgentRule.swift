@@ -39,6 +39,7 @@ enum HerdrCoreAgentRule {
         "pi": "pi",
         "omp": "omp",
         "grok-build": "grok",
+        "antigravity": "agy",
     ]
 
     static func agent(in record: HerdrCoreTerminalRecord) -> HerdrCoreAgent? {

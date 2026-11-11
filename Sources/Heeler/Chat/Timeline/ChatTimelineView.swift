@@ -16,13 +16,17 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     var bottomEdge = ChatTimelineBottomEdge()
     /// Height of the Collapse Steps button over the list's bottom edge.
     var collapseControlClearance: CGFloat = 0
+    /// Room at the trailing edge rows end short of, for chrome floating
+    /// over it; the list still runs to the edge.
+    var trailingReserve: CGFloat = 0
     /// Chat's own text size; nil follows the system's.
     var textSize: DynamicTypeSize?
     var font: ChatFontOption = .system
     /// A placeholder covers the list. SwiftUI's `accessibilityHidden` on
     /// this view leaves the collection view's rows in the accessibility
-    /// tree, rows the screen doesn't show (hc-lab, a refused Send's
-    /// "Sending…" under Can't Tell the Conversation).
+    /// tree, rows the screen doesn't show. (A refused Send's "Sending…"
+    /// that stayed in UI tests' tree under the placeholder was a cell UIKit
+    /// kept for reuse: `ChatTimelineController` empties those.)
     var hidesFromAccessibility = false
     let actions: ChatTimelineActions
 
@@ -36,6 +40,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         return controller
@@ -47,6 +52,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
         controller.setCollapseControlClearance(collapseControlClearance)
+        controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
         let coordinator = context.coordinator

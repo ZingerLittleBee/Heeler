@@ -442,7 +442,9 @@ struct HerdrCoreWindowsSessionBinderTests {
 
     // MARK: Programs with no Chat here
 
-    @Test("Codex and OpenCode cost no exec and no read", arguments: [ChatProgram.codex, .opencode])
+    /// Antigravity CLI's evidence is a file it holds open, which Windows reads never
+    /// hold, so it is no candidate either.
+    @Test("Codex, OpenCode and Antigravity CLI cost no exec and no read", arguments: [ChatProgram.codex, .opencode, .agy])
     func programsOutOfScope(program: ChatProgram) async throws {
         let rig = Rig(agentImage: "\(program.rawValue).exe")
         let evidence = try await rig.binder(program).check(try Self.record())

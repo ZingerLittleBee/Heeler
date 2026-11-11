@@ -6,6 +6,10 @@ struct ChatSessionCandidate: Identifiable, Equatable, Sendable {
     enum Origin: Hashable, Sendable {
         /// The Agent's process holds its file open.
         case heldOpen
+        /// The Agent's own command line names it, as `agy --conversation <id>` does,
+        /// read from the core's record of the Terminal's foreground. It says what the
+        /// Agent opened, which `/clear` or `/fork` may have left since.
+        case commandLine
         /// A Program Status record names it, which also happens for another
         /// Terminal's session (herdr compatibility).
         case programStatus
@@ -48,7 +52,8 @@ enum ChatCandidatesAnswer: Equatable, Sendable {
 
 /// Lists what a user could confirm when a check finds no exact evidence. It runs
 /// only when asked for, and nothing it finds binds: the user reads a conversation
-/// before choosing it. One exec, as a check is, then the listings it takes.
+/// before choosing it. One exec, as a check is, then the listings it takes, or for
+/// agy one stat of each listed conversation's transcript.
 extension HerdrCoreSessionBinder {
     /// The newest Transcripts offered per directory.
     static let recentCandidateLimit = 12
@@ -82,6 +87,7 @@ extension HerdrCoreSessionBinder {
         }
 
         for held in try await heldConversations(of: process) { add(held.session, file: held.file, origin: .heldOpen) }
+        if let named = commandLineConversation(of: record, agent: pid) { add(named, origin: .commandLine) }
         for key in record.records.keys {
             if let session = statusChildConversation(key) { add(session, origin: .programStatus) }
         }
@@ -89,11 +95,19 @@ extension HerdrCoreSessionBinder {
             add(recent.session, file: recent.file, origin: .recentTranscript, modified: recent.modified)
             if let title = recent.title { found[recent.session]?.title = title }
         }
+        // agy files conversations by id, so no listing dates its rows the way one
+        // dates a recent Transcript.
+        if program == .agy, let root {
+            for session in found.keys.sorted() where found[session]?.modified == nil {
+                found[session]?.modified = await antigravityTranscriptTime(session, root: root)
+            }
+        }
 
         let ordered = found.values.sorted { lhs, rhs in
             func rank(_ candidate: ChatSessionCandidate) -> Int {
                 if candidate.origins.contains(.heldOpen) { return 0 }
-                return candidate.origins.contains(.programStatus) ? 1 : 2
+                if candidate.origins.contains(.commandLine) { return 1 }
+                return candidate.origins.contains(.programStatus) ? 2 : 3
             }
             if rank(lhs) != rank(rhs) { return rank(lhs) < rank(rhs) }
             let (left, right) = (lhs.modified ?? .distantPast, rhs.modified ?? .distantPast)
@@ -125,10 +139,37 @@ extension HerdrCoreSessionBinder {
     /// (`host-evidence/grok/s-flag-core-events.ndjson`).
     private func statusChildConversation(_ key: String) -> String? {
         switch program {
-        case .claude, .codex, .pi, .omp: ConversationReference.canonicalUUID(key)
+        case .claude, .codex, .pi, .omp, .agy: ConversationReference.canonicalUUID(key)
         case .grok: ConversationReference.lowercaseUUID(key)
         case .opencode: OpenCodeSessionID(key)?.rawValue
         }
+    }
+
+    // MARK: Named on the command line
+
+    /// The conversation `agy --conversation <id>` or `--conversation=<id>` opened,
+    /// from the argv the core reports for the Terminal's foreground, the check's own
+    /// exec reading none. It counts only while that foreground is the Agent's process,
+    /// so a shell's, launcher's or wrapper's argv never does. On Linux a second agy on
+    /// a conversation already open holds its database for about 30 s after it starts,
+    /// then none of its files (agy 1.5.3, herdr-core 0.1.18, ADR 0034), so this is
+    /// what names it there. `agy -c` names none. The last flag counts, as a later flag
+    /// replaces an earlier one.
+    private func commandLineConversation(of record: HerdrCoreTerminalRecord, agent pid: String) -> String? {
+        guard program == .agy, let foreground = record.foreground, foreground.pid.map(String.init) == pid else {
+            return nil
+        }
+        let flag = "--conversation"
+        var named: String?
+        var arguments = foreground.argv.dropFirst().makeIterator()
+        while let argument = arguments.next() {
+            if argument == flag {
+                named = arguments.next() ?? ""
+            } else if argument.hasPrefix(flag + "=") {
+                named = String(argument.dropFirst(flag.count + 1))
+            }
+        }
+        return named.flatMap(ConversationReference.canonicalUUID)
     }
 
     // MARK: Held open
@@ -166,6 +207,8 @@ extension HerdrCoreSessionBinder {
         case .pi, .omp:
             guard let session = Self.piSession(inFileName: leaf), RemoteFilePath.isAcceptable(path) else { return nil }
             return Found(session: session, file: path)
+        case .agy:
+            return Self.antigravityConversation(held: path).map { Found(session: $0) }
         case .codex:
             return nil
         }
@@ -199,7 +242,27 @@ extension HerdrCoreSessionBinder {
         case .grok: return try await recentGrokBuild(root: root, directories: directories)
         case .opencode: return try await recentOpenCode(directories: directories)
         case .pi, .omp: return try await recentPiFamily(root: root, process: process, directories: directories)
+        // agy files conversations by id, not by directory. Its `history.jsonl`
+        // names a workspace, but it is one log for every agy on the data root,
+        // with no end to its size, and a new conversation's first prompt carries
+        // no id, so the conversation just started here is the one it cannot name
+        // (agy 1.5.3, `docs/research/antigravity-cli-transcript-format.md`). The
+        // list holds what the process has open and what its command line names,
+        // each dated by one stat of its transcript.
+        case .agy: return []
         }
+    }
+
+    /// When an agy conversation last changed: its transcript's modification time, by
+    /// one stat and no read. The date only adds to a row the user previews before
+    /// choosing it, so a failed stat or a transcript not yet written leaves the row
+    /// listed without one, where a failed listing fails the whole list.
+    private func antigravityTranscriptTime(_ session: String, root: String) async -> Date? {
+        let path = AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: session))
+        guard RemoteFilePath.isAcceptable(path), let status = try? await files.status(path),
+            status.kind == nil || status.kind == .regular, let time = status.modificationTime
+        else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(time))
     }
 
     private static func newest(_ found: [Found]) -> [Found] {

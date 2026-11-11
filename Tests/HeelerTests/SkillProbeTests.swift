@@ -226,6 +226,24 @@ struct SkillProbeTests {
         #expect(skills.map(\.isUserInvocable) == [false, true])
     }
 
+    @Test func aDisabledSlashCommandRidesTheSkill() {
+        let skills = SkillProbe.skills(
+            fromProbeOutput: output(
+                """
+                \(marker(0))/repo/.claude/skills/monitor/SKILL.md
+                ---
+                disable-slash-command: true
+                ---
+                \(SkillProbe.endMarker)
+                \(marker(0))/repo/.claude/skills/review/SKILL.md
+                \(SkillProbe.endMarker)
+                """),
+            sources: claudeSources)
+        #expect(skills.map(\.name) == ["monitor", "review"])
+        #expect(skills.map(\.isSlashCommandDisabled) == [true, false])
+        #expect(skills.map(\.isUserInvocable) == [true, true])
+    }
+
     @Test func projectShadowsSameNamedGlobal() {
         let skills = SkillProbe.skills(
             fromProbeOutput: output(

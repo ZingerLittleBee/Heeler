@@ -16,6 +16,10 @@ enum ChatStopVerdict: Equatable, Sendable {
     case refuse(String)
 }
 
+/// What Chat's Stop presses after its keys went: what is still running
+/// when it is done, or nil.
+typealias ChatStopFollowThrough = @MainActor () async -> String?
+
 /// What Chat's Stop does in one program (ADR 0024).
 struct ChatStopPlan: Sendable {
     /// herdr key names, sent in one `agent.send_keys`; herdr 0.9.5 writes
@@ -35,6 +39,16 @@ struct ChatStopPlan: Sendable {
     static func standard(for program: ChatProgram) -> ChatStopPlan {
         switch program {
         case .claude, .codex, .pi, .omp: .escape
+        case .agy:
+            // Antigravity CLI's Esc stops the turn, from a dialog too, and
+            // puts a queued message back in the box. At an idle box it
+            // leaves a draft as it is, but in bash mode it drops the command
+            // typed there, so the guard reads the screen first. Ctrl+C would
+            // arm an exit at idle that a second press carries out (1.5.3,
+            // live).
+            ChatStopPlan(
+                keys: ["esc"], screenGuard: AgyStopGuard.verdict, wait: .escape,
+                accessibilityHint: AgentComposerInterrupt.escapeHint)
         case .grok:
             // Ctrl+C cancels Grok Build's turn; Esc only shows a toast. Ctrl+C
             // can also clear a draft, answer a card or quit, so the guard
@@ -88,15 +102,24 @@ struct ChatStopPlan: Sendable {
     /// then the guard (`.refuse(r)` gives `r`). `.sent` maps to `.sent`,
     /// `.withheld(r)` to `.failed(r)`, and `.failed` to
     /// `.failed(unreachableMessage)`.
+    ///
+    /// - Parameter followThrough: Called as Stop is tapped, so it sees the
+    ///   turn the keys stop. What it returns runs in the keys queue once the
+    ///   keys went, and says what they left running, which maps `.sent` to
+    ///   `.sentLeavingWork`: Antigravity CLI's background commands.
     @MainActor func composerInterrupt(
         context: @escaping @MainActor () async throws -> ChatStopContext,
-        agentKeys: ChatAgentKeysStore
+        agentKeys: ChatAgentKeysStore,
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let keys = keys
         let check = screenGuard.map { Self.check($0, context: context) }
         return AgentComposerInterrupt(wait: wait, accessibilityHint: accessibilityHint) {
+            let after = followThrough?()
             switch await agentKeys.deliver(keys, unless: check) {
-            case .sent: return .sent
+            case .sent:
+                guard let after, let left = await agentKeys.afterQueued(after) else { return .sent }
+                return .sentLeavingWork(left)
             case .withheld(let reason): return .failed(reason)
             case .failed: return .failed(Self.unreachableMessage)
             }

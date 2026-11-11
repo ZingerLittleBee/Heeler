@@ -9,6 +9,10 @@ enum AgentInterruptOutcome: Equatable, Sendable {
     /// the screen could not be read, the request failed, or the terminal had
     /// no live writer. Why.
     case failed(String)
+    /// The keys went, and what Stop pressed after them to end the work the
+    /// turn left running did not end all of it: what still runs and how to
+    /// end it. Antigravity CLI's background commands (ADR 0024).
+    case sentLeavingWork(String)
 }
 
 /// How one surface's Stop waits after a press.
@@ -137,6 +141,11 @@ final class AgentComposerStopStore {
     }
 
     private(set) var phase: Phase = .ready
+    /// What the last Stop left running (`AgentInterruptOutcome.sentLeavingWork`).
+    /// That Stop ended the turn, so this outlasts the status leaving Working,
+    /// which ends `phase`'s notice; the next tap, or the Agent working again,
+    /// ends it.
+    private(set) var leftRunning: String?
     /// Stop stays Send for a moment after a send emptied the draft.
     private(set) var isHeldAfterSend = false
     @ObservationIgnored private let sendHold: Duration
@@ -145,6 +154,9 @@ final class AgentComposerStopStore {
     /// Bumped by every tap and every status change, so a wait that was
     /// overtaken cannot overwrite the newer phase.
     @ObservationIgnored private var generation = 0
+    /// Bumped by every tap only, so a newer tap's word wins over what an
+    /// older attempt left running.
+    @ObservationIgnored private var taps = 0
     @ObservationIgnored private var holdGeneration = 0
     /// What the running stop says once its window passes.
     @ObservationIgnored private var unconfirmedNotice = AgentStopWait.escape.unconfirmedNotice
@@ -194,12 +206,15 @@ final class AgentComposerStopStore {
         unconfirmedNotice = wait.unconfirmedNotice
         generation += 1
         let generation = generation
+        taps += 1
+        let tap = taps
+        leftRunning = nil
         phase = .stopping
         attemptsOnTheirWay += 1
         let window = wait.window
         return Task { [weak self] in
             let outcome = await interrupt()
-            guard let sleep = self?.begin(after: outcome, generation: generation, window: window)
+            guard let sleep = self?.begin(after: outcome, tap: tap, generation: generation, window: window)
             else { return }
             try? await sleep()
             guard let self, self.generation == generation else { return }
@@ -223,22 +238,29 @@ final class AgentComposerStopStore {
     }
 
     /// Any status but Working ends the wait: the Agent stopped, finished,
-    /// or turned to a dialog, and Stop no longer shows.
+    /// or turned to a dialog, and Stop no longer shows. Working again means
+    /// a turn moved on from what the last Stop left running.
     func agentStatusChanged(to status: AgentStatus) {
-        guard status != .working else { return }
+        guard status != .working else {
+            leftRunning = nil
+            return
+        }
         generation += 1
         phase = .ready
     }
 
     /// Ends the attempt, whatever came of it and even when a status change
-    /// overtook it. Then records a failed press, or returns the window's wait.
+    /// overtook it, and keeps what it left running unless a newer tap came.
+    /// Then records a failed press, or returns the window's wait.
     private func begin(
         after outcome: AgentInterruptOutcome,
+        tap: Int,
         generation: Int,
         window: Duration
     ) -> (@Sendable () async throws -> Void)? {
         attemptsOnTheirWay -= 1
         lastAttemptEnded = now()
+        if case .sentLeavingWork(let message) = outcome, taps == tap { leftRunning = message }
         guard self.generation == generation else { return nil }
         if case .failed(let message) = outcome {
             phase = .failed(message)

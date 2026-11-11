@@ -1,0 +1,20 @@
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 23.2s[0m [0m[38;5;7m(Appending "date" to the file should...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mExplored[0m 1 file [0m[38;5;7m(fruits.txt)[0m
+[0m[38;5;3m●[0m [0m[1m[38;5;3mEdited[0m 1 file [0m[38;5;7m(fruits.txt)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;3mPending edit[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+
+[0m[1m[38;5;7m/Users/developer/projects/fruits/fruits.txt[0m
+[0m[38;5;7m  [0m[38;5;8m1 [0m[48;2;53;13;14m [0m[38;5;1m[48;2;53;13;14m-  [0m[48;2;53;13;14mcherry                                                [0m
+[0m[38;5;7m  [0m[38;5;8m1 [0m[48;2;14;52;15m [0m[38;5;2m[48;2;14;52;15m+  [0m[48;2;14;52;15mcherry                                                [0m
+[0m[38;5;7m  [0m[38;5;8m2 [0m[48;2;14;52;15m [0m[38;5;2m[48;2;14;52;15m+  [0m[48;2;14;52;15mdate                                                  [0m
+
+  [0m[1m[38;5;12mshift+tab[0m[38;5;8m to auto-approve file edits[0m
+[0m[1mAccept this file edit?[0m
+[0m[38;5;12m> 1. Yes, accept this change[0m
+  2. No, reject this change
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Navigate · [0m[1m[38;5;12mf[0m[38;5;8m full diff[0m
+[0m[38;5;8mesc to cancel                            [0m[2mGemini 4 Argon · high[0m

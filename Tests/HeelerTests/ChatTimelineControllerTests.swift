@@ -11,6 +11,28 @@ import UIKit
 struct ChatTimelineControllerTests {
     private static let frame = CGRect(x: 0, y: 0, width: 390, height: 640)
 
+    /// A row the list drops, as a refused Send's echo, leaves nothing of
+    /// itself in the cell UIKit keeps hidden for reuse, which UI tests'
+    /// accessibility tree still lists: a "Sending…" stayed there under
+    /// Waiting for Conversation until the next Send (live).
+    @Test func aDroppedRowLeavesNothingInTheCellUIKitKeeps() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let echo = ChatPendingEcho(id: UUID(), text: "Reply with the single word gamma.", state: .sending)
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(pending: [echo]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(controller.timeline.visibleCells.count == 1)
+
+            controller.apply(Self.state([], revision: 2))
+            await Self.settle(controller)
+
+            let view = controller.timeline
+            let kept = view.subviews.compactMap { $0 as? UICollectionViewCell }.filter { !view.visibleCells.contains($0) }
+            #expect(kept.allSatisfy { $0.contentConfiguration == nil })
+        }
+    }
+
     @Test func imageContextMenuUsesRecordedPathAndCommitsToPreviewSheet() async throws {
         let path = "/tmp/actual.png"
         let controller = ChatTimelineController(actions: ChatTimelineActions())
@@ -167,6 +189,42 @@ struct ChatTimelineControllerTests {
             await Self.settle(controller)
             #expect(controller.timeline.traitCollection.preferredContentSizeCategory
                 == controller.view.window?.traitCollection.preferredContentSizeCategory)
+        }
+    }
+
+    /// Chrome resting on the list's trailing edge, such as the Workspace
+    /// terminals handle, keeps rows short of it: they end before it and
+    /// measure at the width left, whether it is there from the start or goes
+    /// later. The list itself still runs to the edge.
+    @Test func rowsEndShortOfATrailingReserveAndMeasureAtTheWidthLeft() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<12)))
+        // A paragraph of a few lines, which a narrower row wraps onto more.
+        let answer = ChatRowID.entry(ChatEntryID("e11"))
+        let reserve: CGFloat = 120
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            let view = controller.timeline
+            @MainActor func expectRows(endingAt edge: CGFloat) {
+                #expect(!view.visibleCells.isEmpty)
+                for cell in view.visibleCells {
+                    #expect(abs(cell.frame.maxX - edge) <= 0.5)
+                    let fitted = cell.contentView.systemLayoutSizeFitting(
+                        CGSize(width: cell.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+                        withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
+                    #expect(abs(cell.bounds.height - fitted.height) <= 1)
+                }
+            }
+            controller.setTrailingReserve(reserve)
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(view.bounds.width == Self.frame.width)
+            expectRows(endingAt: Self.frame.width - reserve)
+            let narrow = try #require(controller.cellFrame(of: answer)).height
+
+            controller.setTrailingReserve(0)
+            await Self.settle(controller)
+            expectRows(endingAt: Self.frame.width)
+            #expect(try #require(controller.cellFrame(of: answer)).height < narrow)
         }
     }
 
@@ -1967,6 +2025,25 @@ struct ChatRowViewTests {
         let expanded = try await Self.labels(of: tool, isExpanded: true)
         #expect(expanded.contains { $0.contains("No output when last seen.") }, "\(expanded)")
         #expect(!expanded.contains("No output."), "\(expanded)")
+    }
+
+    /// A question the user skipped reads `Skipped` in its answer's place;
+    /// one with no answer and no skip shows nothing there.
+    @Test func anExpandedQuestionSaysWhichWasSkipped() async throws {
+        let tool = ChatToolActivity(
+            kind: .question, name: "ask_question", title: "Which color? · Which size? · Which shape?",
+            status: .succeeded,
+            questions: [
+                ChatQuestion(text: "Which color?", options: ["red", "green"], answer: "green"),
+                ChatQuestion(text: "Which size?", options: ["small", "large"], isSkipped: true),
+                ChatQuestion(text: "Which shape?", options: ["round", "square"]),
+            ])
+        let labels = try await Self.labels(of: tool, isExpanded: true)
+        // The row reads as one element, each question followed by what
+        // answered it.
+        #expect(labels.joined().components(separatedBy: "Skipped").count == 2, "\(labels)")
+        #expect(
+            labels.contains { $0.hasSuffix("Which color?, green, Which size?, Skipped, Which shape?") }, "\(labels)")
     }
 
     /// A call that never ran says nothing about output it has none of

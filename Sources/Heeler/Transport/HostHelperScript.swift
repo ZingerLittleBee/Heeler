@@ -194,6 +194,7 @@ struct HostHelperScript: Sendable, Equatable {
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
+        let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)"
         return [
             "LC_ALL=C; export LC_ALL",
             "umask 077",
@@ -210,15 +211,29 @@ struct HostHelperScript: Sendable, Equatable {
             "  mkdir -p -- \"$__h_session\" || return 1",
             "  if ! IFS= read -r __h_node < \"$__h_session/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
-            "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)",
+            "  \"$__h_node\" \(query)",
             "  __h_result=$?",
             "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
-            // A service on a Node.js that runs rewrites this record when it next
-            // reaches the core. One on the same lost Node.js never will.
+            // The record names the binary the Helper started on, while the
+            // service can name a manager's link that now leads to another one,
+            // or the Node.js a Repair chose. That one runs the query until the
+            // Helper starts on it and records it: a Repair restarts the Helper,
+            // while one still running on a removed binary records that binary
+            // again each time it reaches the core, until its next start. A
+            // service on the same lost Node.js never will. Only the query runs
+            // here: the Helper starts its background refresh on the recorded
+            // binary, so that refresh fails until then (ADR 0033).
             "  case \"$(uname -s)\" in",
             "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",
             "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",
             "     __h_service_node=$(\(programOfUnit)) ;;",
+            "  esac",
+            "  case \"$__h_service_node\" in *\\\\*) ;; /*)",
+            "    if [ \"$__h_service_node\" != \"$__h_node\" ] && [ -f \"$__h_service_node\" ] && [ -x \"$__h_service_node\" ]; then",
+            "      \"$__h_service_node\" \(query)",
+            "      __h_result=$?",
+            "      case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
+            "    fi ;;",
             "  esac",
             "  if __h_node_gone \"$__h_service_node\"; then printf '\(serviceNodeGoneLine)\\n'; else \(missing); fi",
             "  return 0",

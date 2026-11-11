@@ -129,10 +129,10 @@ enum PiInputBoxDetector {
         if !draft.isEmpty { return .text(draft) }
         // Enter while a turn runs steers it, and OMP backgrounds a running
         // bash command to take the message.
-        return isWorking
-            ? .disabled(String(localized: "Oh My Pi is working. Send once it's idle, or steer from the terminal."))
-            : .empty(placeholder: nil)
+        return isWorking ? .disabled(ompWorking) : .empty(placeholder: nil)
     }
+
+    static let ompWorking = String(localized: "Oh My Pi is working. Send once it's idle, or steer from the terminal.")
 
     /// OMP's unboxed `╰─` prompt row under the status band.
     static func isOMPPrompt(_ row: ScreenRow) -> Bool {

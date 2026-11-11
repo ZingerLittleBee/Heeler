@@ -1,9 +1,9 @@
 {
-  "version": "0.5.5",
+  "version": "0.5.6",
   "files": [
     {
       "path": "core/agent-rule.js",
-      "sha256": "7b47283f6e8e9c5d4cc525f5af9c8d68ebd4c9cae83f296e97a5f2e59fb3f57a"
+      "sha256": "41232b4e1133277a970327017bedc0d6c099aa63bcb18cc2e95158f23553f28e"
     },
     {
       "path": "core/client.js",
@@ -223,7 +223,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "c77e2b1ac8db57dafe0cedf17a49b996b8e2b71a8ae7da3c615882672d20e379"
+      "sha256": "89c058b7cfda81e2bd742130c46adb75f8b20d8443f34e3720e318c75f3e30a9"
     }
   ]
 }

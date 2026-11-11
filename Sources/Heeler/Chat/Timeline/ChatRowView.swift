@@ -1082,6 +1082,16 @@ private struct ChatQuestionsView: View {
                             Text("Queued. Codex sends it after its next tool call.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        } else if question.isSkipped {
+                            // In the answer's place, plain and secondary,
+                            // so it reads as no answer rather than one.
+                            Label {
+                                Text("Skipped", comment: "In a question's answer place under a Chat tool row: the question was skipped")
+                            } icon: {
+                                Image(systemName: "arrow.turn.down.right")
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }

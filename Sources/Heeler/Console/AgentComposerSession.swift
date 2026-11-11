@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-/// One Agent's Composer and the staging its picks and drops upload through.
+/// One Agent's Composer, the staging its picks and drops upload through, and
+/// the keys queue Chat presses its program's keys in.
 ///
 /// The Console owns one per Agent, above every view that shows it: a rebuilt
 /// detail, a retained terminal's release or eviction, a reconnect, Changes
@@ -18,25 +19,60 @@ final class AgentComposerSession {
     /// Chat's confirmed status-line switches, which every Chat showing this
     /// Agent reads, and a rebuilt one keeps.
     let settingOverrides = AgentSettingOverrides()
+    /// The keys Chat presses in this Agent's program, one queue for every
+    /// Chat and window, so work queued there holds a send from any of them.
+    let agentKeys: ChatAgentKeysStore
     /// The details showing this Agent, one key per window.
     private var presence: Set<UUID> = []
     private var leaveTask: Task<Void, Never>?
     private var leaveGeneration: UInt64 = 0
 
+    /// - Parameter sendAgentKeys: Presses keys in the Agent's program
+    ///   (`ConsoleStore.sendAgentKeys`); by default nothing is reached.
     init(
         composer: AgentComposerStore,
         stageImage: @escaping ImageStager,
         stageFile: @escaping FileStager,
         corePin: TerminalCorePin = TerminalCorePin(),
         isOnCoreHost: Bool = false,
-        filePreparer: any FilePreparing = FilePreparer()
+        filePreparer: any FilePreparing = FilePreparer(),
+        sendAgentKeys: @escaping @MainActor ([String]) async throws -> Void = { _ in throw TransportError.cancelled }
     ) {
         self.composer = composer
         self.corePin = corePin
+        agentKeys = ChatAgentKeysStore(send: sendAgentKeys)
         staging = ComposerStagingStore(
             filePreparer: filePreparer, stageImage: stageImage, stageFile: stageFile, composer: composer,
             saysTransportFailures: isOnCoreHost)
         composer.bindStaging(staging)
+    }
+
+    /// Why a Composer send waits, from Chat or the terminal page in any
+    /// window: Stop's follow-through types into the Agent's input meanwhile
+    /// (Antigravity CLI's `/tasks`), where the send's paste would land
+    /// between its keys. Nil when nothing holds it. Once the follow-through
+    /// ends, the hold's notice says to send again. Called before any await,
+    /// so a follow-through that starts later finds the send typing and stops.
+    func heldSend() -> ComposerRefusal? {
+        agentKeys.holdSend(
+            saying: AgyBackgroundTaskStop.sendHold, then: AgyBackgroundTaskStop.sendHoldEnded, in: composer)
+    }
+
+    /// The terminal page's Send. `attach` is that window's Attach, which a
+    /// herdr-core Send types into, since another window can show the same
+    /// Agent's Composer.
+    func terminalSendPolicy(attach: AgentAttachStore?) -> ComposerDeliveryPolicy {
+        var policy = ComposerDeliveryPolicy.terminal
+        policy.coreAttach = attach
+        let settings = settingOverrides
+        policy.preflight = { [weak self] _ in
+            if settings.switchingSetting != nil {
+                return .inputNotReady(
+                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
+            }
+            return self?.heldSend()
+        }
+        return policy
     }
 
     func detailDidAppear(_ key: UUID) {

@@ -29,6 +29,24 @@ enum ChatComposerEchoes {
         }
     }
 
+    /// Whether a send of Chat's may still be on its way into the transcript:
+    /// one typing, or one whose echo clock still runs. An overdue send is
+    /// not: its clock ran out with the Agent not Working, so it is no
+    /// prompt of the turn the Agent works on now, in a program whose clock
+    /// stops while it works (Antigravity CLI).
+    static func awaitsRecord(
+        _ messages: [AgentComposerStore.Message], statuses: [UUID: AgentChatStore.SendStatus]
+    ) -> Bool {
+        pending(messages, statuses: statuses).contains { echo in
+            switch echo.state {
+            case .sending, .sent: true
+            // Unanswered, it may have gone; it waits while its clock runs.
+            case .outcomeUnknown: statuses[echo.id] == .awaiting
+            default: false
+            }
+        }
+    }
+
     /// The echoes below the transcript. A message the transcript recorded
     /// gives way to its entry, and a failure shows only while it is Chat's
     /// latest message, the one the Composer offers to retry. So does a send

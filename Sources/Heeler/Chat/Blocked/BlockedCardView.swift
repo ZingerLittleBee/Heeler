@@ -32,12 +32,25 @@ struct BlockedCardView: View {
                 case .unreadable:
                     UnreadableDialogCard(store: store, openTerminal: openTerminal)
                 case .none:
-                    EmptyView()
+                    BlockedReadingCard()
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.blocked-card")
+    }
+}
+
+/// herdr reports the Agent Blocked and no read has shown its dialog yet
+/// (`BlockedCardStore.replacesComposer`). The status chip already says
+/// Blocked, so the place only shows that Chat is reading.
+private struct BlockedReadingCard: View {
+    var body: some View {
+        ProgressView()
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Reading the Agent's screen")
+            .accessibilityIdentifier("chat.blocked-reading")
     }
 }
 
@@ -67,9 +80,10 @@ private struct BlockedDialogCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: dialog.cardTitle, detail: dialog.positionLabel, isActing: store.progress == .acting,
+                title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
+                isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
-            BlockedScrollingContent(maxHeight: scrollingMaxHeight, fadesEdges: pinsChoices) {
+            BlockedScrollingContent(maxHeight: scrollingMaxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
                     if let source {
                         Label {
@@ -85,7 +99,6 @@ private struct BlockedDialogCard: View {
                 }
                 .disabled(!isReady)
             }
-            .scrollIndicatorsFlash(onAppear: pinsChoices)
             if pinsChoices {
                 trustChoices
                     .disabled(!isReady)
@@ -105,7 +118,7 @@ private struct BlockedDialogCard: View {
     /// a phone, where the folder and the program's warning fill the card's
     /// share. The text gives up their room, so the card stays as tall.
     private var pinsChoices: Bool {
-        dialog.kind == .claudeWorkspaceTrust || dialog.kind == .codexWorkspaceTrust
+        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust].contains(dialog.kind)
     }
 
     private var scrollingMaxHeight: CGFloat {
@@ -167,11 +180,13 @@ private struct BlockedDialogCard: View {
             // screen's rows leave out the question the options answer.
             let shown = dialog.body.filter { !$0.hasPrefix("Claude has written up a plan") }
             BlockedPlanBox(text: BlockedRequestMatch.claudePlanText(call: card.request?.summary, shownRows: shown))
-        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
+        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
+            .agyQuestion:
             VStack(alignment: .leading, spacing: 4) {
                 // Codex's asynchronous questions name their page by the
-                // question itself.
-                if let progress = dialog.progress, dialog.kind != .codexAsyncQuestion {
+                // question itself, and `Question i/n` shows in the header
+                // as `i of n`, so neither repeats here.
+                if let progress = dialog.progress, dialog.kind != .codexAsyncQuestion, dialog.questionPage == nil {
                     Text(verbatim: progress)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -192,7 +207,7 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust:
             BlockedCodeBox(text: subject.workspacePath ?? "")
             // Codex's note on a folder below a repository's root, then the
             // root.
@@ -246,6 +261,18 @@ private struct BlockedDialogCard: View {
             if let focused = dialog.focus.focusedOrdinal, focused != 1, let option = dialog.option(focused) {
                 BlockedCardText(String(localized: "Selected in the terminal: \(option.label)"))
             }
+        case .agyCommand:
+            if let summary = card.request?.detail {
+                BlockedCardText(summary)
+            }
+            // What the screen shows; the call fills in only what it cut.
+            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
+        case .agyFileEdit, .agyFileCreate:
+            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
+            let lines = BlockedRequestMatch.agyChanges(on: dialog, call: card.request)
+            if !lines.isEmpty {
+                BlockedChangeBox(lines: lines, marksChanges: true)
+            }
         case .codexNetwork:
             EmptyView()
         }
@@ -271,10 +298,41 @@ private struct BlockedDialogCard: View {
 
     // MARK: Choices
 
-    /// Matches the planner: only Claude asks multi-select questions here;
-    /// Oh My Pi's stay in the terminal.
-    private var isMultiSelect: Bool {
-        dialog.kind == .claudeQuestion && dialog.options.contains { $0.role == .next }
+    /// Matches the planners: Claude's page with a `Next` button, and
+    /// Antigravity CLI's answers with check boxes. Oh My Pi's stay in the
+    /// terminal.
+    private var isMultiSelect: Bool { dialog.isMultiSelect }
+
+    /// What sends a multi-select page's answers: Claude's button, or
+    /// Antigravity CLI's Enter, which turns to the next question until the
+    /// last.
+    private var selectionTitle: String {
+        if let button = dialog.options.first(where: { $0.role == .next }) { return button.label }
+        return dialog.questionPage.map { $0.index < $0.count } == true
+            ? String(localized: "Next")
+            : String(localized: "Submit", comment: "Sends the checked answers on a multi-select question's last page")
+    }
+
+    /// Antigravity CLI's `Write-in...` on a multi-select question. Enter in
+    /// its field submits the checked answers with the text, so the field
+    /// goes with Submit rather than a Send of its own.
+    private var writeInWithSelection: DialogOption? {
+        guard dialog.kind == .agyQuestion, isMultiSelect else { return nil }
+        return dialog.options.first { $0.role == .otherText && $0.input != nil }
+    }
+
+    /// Sends the checked answers, with `text` written in where given.
+    private func selectionButton(writing text: String?) -> some View {
+        Button {
+            perform(.submitSelection(selection, text: text))
+        } label: {
+            Text(verbatim: selectionTitle)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 28)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: 12))
+        .disabled((selection.isEmpty && text == nil) || dialog.answersHeldByDraft)
     }
 
     @ViewBuilder
@@ -291,16 +349,10 @@ private struct BlockedDialogCard: View {
                     }
                 }
             }
-            Button {
-                perform(.submitSelection(selection))
-            } label: {
-                Text(verbatim: dialog.options.first { $0.role == .next }?.label ?? String(localized: "Next"))
-                    .font(.body.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 28)
+            // With a field, Submit goes under it (`textEntry`).
+            if writeInWithSelection == nil {
+                selectionButton(writing: nil)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .disabled(selection.isEmpty || dialog.answersHeldByDraft)
             ForEach(dialog.options.filter { $0.role == .chat }, id: \.ordinal) { @Sendable option in
                 MainActorContent {
                     BlockedOptionButton(option: option, emphasis: .plain) { perform(.choose(ordinal: option.ordinal)) }
@@ -419,10 +471,26 @@ private struct BlockedDialogCard: View {
             if let field = dialog.options.last(where: { $0.role == .otherText && $0.input != nil }) {
                 planFeedback(field)
             }
-        case .claudeQuestion:
-            if !isMultiSelect, let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil }) {
+        case .agyCommand:
+            noteEntry
+        case .claudeQuestion, .agyQuestion:
+            // agy's `Write-in...` names a row, not what to type: its fields
+            // say what the form's pages say. Claude's card keeps the row
+            // label Claude draws.
+            if writeInWithSelection != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
+                    BlockedTextField(
+                        placeholder: String(localized: "Type your own answer"), text: $text, isFocused: $isTextFocused)
+                    selectionButton(writing: hasText ? text : nil)
+                }
+            } else if !isMultiSelect,
+                let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil })
+            {
+                VStack(alignment: .leading, spacing: 8) {
+                    BlockedTextField(
+                        placeholder: dialog.kind == .agyQuestion
+                            ? String(localized: "Type your own answer") : field.label,
+                        text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
                         .buttonStyle(.bordered)
                         .disabled(!hasText)
@@ -451,7 +519,11 @@ private struct BlockedDialogCard: View {
     private var noteEntry: some View {
         if isAddingNote {
             VStack(alignment: .leading, spacing: 8) {
-                BlockedTextField(placeholder: String(localized: "Tell Claude what to do"), text: $text, isFocused: $isTextFocused)
+                BlockedTextField(
+                    placeholder: String(
+                        localized: "Tell \(dialog.program.chatName) what to do",
+                        comment: "Placeholder of the note field on a permission card: the program's name"),
+                    text: $text, isFocused: $isTextFocused)
                 HStack(spacing: 8) {
                     if let allow = dialog.options.first(where: { $0.role == .approve }) {
                         Button("Allow with Note") { perform(.amend(ordinal: allow.ordinal, note: text)) }
@@ -613,7 +685,13 @@ extension DialogOption {
             return String(localized: "Grok Build won't ask about edits again in this session.")
         case .grok:
             return String(localized: "Grok Build saves this rule for the project and won't ask again.")
-        case .claude, .codex, .pi:
+        case .agy where folded.contains(DialogRowScanner.comparable("persist to settings.json")):
+            return String(
+                localized: "Saves a rule in Antigravity CLI's settings, so commands that start this way aren't asked about again.")
+        case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
+            return String(
+                localized: "Antigravity CLI won't ask again in this conversation for commands that start this way.")
+        case .claude, .codex, .pi, .agy:
             return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
             return String(localized: "Saves an OpenCode rule for this project that can allow more than this request.")
@@ -622,9 +700,18 @@ extension DialogOption {
 }
 
 private extension BlockedDialog {
+    /// Codex's and Antigravity CLI's `Question i/n` as the header's page
+    /// indicator, `i of n` as a question form shows it; a single question
+    /// has no pages.
+    var pageLabel: String? {
+        guard let page = questionPage, page.count > 1 else { return nil }
+        return String(localized: "\(page.index) of \(page.count)")
+    }
+
     var cardTitle: String {
         switch kind {
-        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion:
+        case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
+            .agyQuestion:
             String(localized: "Question")
         case .codexAsyncCollapsed: String(localized: "Questions")
         case .ompApproval: subject.toolName.map { String(localized: "Allow \($0)") } ?? String(localized: "Allow Tool")
@@ -649,17 +736,31 @@ private extension BlockedDialog {
     }
 
     /// Whether Stop does something a card can name: the planner refuses it
-    /// on Codex's asynchronous question, and on Grok Build's questions and
+    /// on Codex's asynchronous question, on Grok Build's questions and
     /// subagent panel, where Esc only parks the keyboard or keeps the turn
-    /// running.
-    var canStop: Bool { ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork].contains(kind) }
+    /// running, and on Antigravity CLI's trust prompt, where what Esc does
+    /// isn't known.
+    var canStop: Bool {
+        ![.codexAsyncQuestion, .grokQuestion, .grokCancelTurn, .grokFork, .agyWorkspaceTrust].contains(kind)
+    }
 
-    /// What Stop does, for the folded card and an open card whose options
-    /// don't send it: it quits Claude Code or Codex on the trust dialog
-    /// (Codex without `--no-daemon` goes back to its Agent Command Center
-    /// instead), only denies an Oh My Pi approval, presses a Grok Build
-    /// permission's reject row, rejects an OpenCode permission and
-    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says.
+    /// Whether the open card offers Esc itself: only when no option
+    /// already sends it.
+    var stopsFromCard: Bool {
+        canStop && !options.contains { [.decline, .exitProgram, .cancel].contains($0.role) }
+    }
+}
+
+extension BlockedDialog {
+    /// What Stop does, for the folded card, a question form and an open
+    /// card whose options don't send it: it quits Claude Code or Codex on
+    /// the trust dialog (Codex without `--no-daemon` goes back to its Agent
+    /// Command Center instead), only denies an Oh My Pi approval, presses a
+    /// Grok Build permission's reject row, rejects an OpenCode permission,
+    /// dismisses an OpenCode question, as OpenCode's `esc dismiss` says,
+    /// and skips an Antigravity CLI question, as its `esc Skip` says: on a
+    /// card the question on screen, on a form the page it shows, sent with
+    /// the answers (`QuestionFormDraft.skip`); the turn goes on.
     var stopTitle: String {
         switch kind {
         case .claudeWorkspaceTrust: String(localized: "Exit Claude Code")
@@ -667,14 +768,10 @@ private extension BlockedDialog {
         case .ompApproval, .grokPermission: String(localized: "Deny")
         case .openCodePermission: String(localized: "Reject")
         case .openCodeQuestion: String(localized: "Dismiss")
+        case .agyQuestion:
+            String(localized: "Skip", comment: "On an Antigravity CLI question card: skips the question shown")
         default: String(localized: "Stop")
         }
-    }
-
-    /// Whether the open card offers Esc itself: only when no option
-    /// already sends it.
-    var stopsFromCard: Bool {
-        canStop && !options.contains { [.decline, .exitProgram, .cancel].contains($0.role) }
     }
 }
 
@@ -1056,14 +1153,16 @@ private struct BlockedPlanBox: View {
 
 /// Grows with its content up to `maxHeight`, then scrolls. A smaller parent
 /// proposal, such as the room above a keyboard, also limits the viewport.
+/// A flat cut reads as the card's end, so an option cut there would hide
+/// the answers past it, a decline too. An edge fades instead while more
+/// waits past it, and the scroll indicator flashes once the content
+/// overflows, as the card shows or later. Content that fits draws as it is.
 struct BlockedScrollingContent<Content: View>: View {
     let maxHeight: CGFloat
-    /// Fades an edge's cut line while more waits past it, where answers
-    /// sit right under the content rather than the card's edge.
-    var fadesEdges = false
     @ViewBuilder let content: Content
     @State private var contentHeight: CGFloat = 0
     @State private var hidden = BlockedEdgeFade.Hidden()
+    @State private var flashes = 0
 
     var body: some View {
         let height = min(max(contentHeight, 1), maxHeight)
@@ -1074,7 +1173,16 @@ struct BlockedScrollingContent<Content: View>: View {
         }
         .frame(minHeight: 0, idealHeight: height, maxHeight: height)
         .scrollBounceBehavior(.basedOnSize)
-        .modifier(BlockedEdgeFade(isActive: fadesEdges, hidden: $hidden))
+        .scrollIndicatorsFlash(trigger: flashes)
+        .modifier(BlockedEdgeFade(hidden: $hidden))
+        // On appearing as well as on a change, and a beat later: an overflow
+        // read in the commit that inserts the card bumps the trigger before
+        // its scroll view can show the bar (live 2026-11-09). A passing
+        // overflow, such as the 1 pt first layout's, cancels before it.
+        .task(id: hidden.overflows) {
+            guard hidden.overflows, (try? await Task.sleep(for: .milliseconds(300))) != nil else { return }
+            flashes += 1
+        }
     }
 }
 
@@ -1082,32 +1190,29 @@ private struct BlockedEdgeFade: ViewModifier {
     struct Hidden: Equatable {
         var above = false
         var below = false
+
+        var overflows: Bool { above || below }
     }
 
-    let isActive: Bool
     @Binding var hidden: Hidden
 
     func body(content: Content) -> some View {
-        if isActive {
-            content
-                .onScrollGeometryChange(for: Hidden.self) { geometry in
-                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
-                    return Hidden(
-                        above: offset > 1,
-                        below: offset + geometry.containerSize.height < geometry.contentSize.height - 1)
-                } action: { _, next in
-                    hidden = next
+        content
+            .onScrollGeometryChange(for: Hidden.self) { geometry in
+                let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                return Hidden(
+                    above: offset > 1,
+                    below: offset + geometry.containerSize.height < geometry.contentSize.height - 1)
+            } action: { _, next in
+                hidden = next
+            }
+            .mask {
+                VStack(spacing: 0) {
+                    edge(hides: hidden.above, from: .bottom, to: .top)
+                    Rectangle()
+                    edge(hides: hidden.below, from: .top, to: .bottom)
                 }
-                .mask {
-                    VStack(spacing: 0) {
-                        edge(hides: hidden.above, from: .bottom, to: .top)
-                        Rectangle()
-                        edge(hides: hidden.below, from: .top, to: .bottom)
-                    }
-                }
-        } else {
-            content
-        }
+            }
     }
 
     private func edge(hides: Bool, from start: UnitPoint, to end: UnitPoint) -> some View {

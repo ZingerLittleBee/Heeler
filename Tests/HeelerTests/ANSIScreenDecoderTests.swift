@@ -149,6 +149,14 @@ struct ANSIScreenDecoderTests {
         try expectContiguousRuns(stem)
     }
 
+    @Test(
+        "Every Antigravity CLI capture decodes into contiguous runs within its columns",
+        arguments: ScreenFixture.agy
+    )
+    func everyAgyCaptureDecodesWithinItsColumns(stem: String) throws {
+        try expectContiguousRuns(stem)
+    }
+
     private func expectContiguousRuns(_ stem: String) throws {
         let text = try ScreenFixture.text(stem)
         let screen = ANSIScreenDecoder.decode(text)

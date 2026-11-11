@@ -15,6 +15,19 @@ enum LocalizationTables {
         else { return nil }
         return NSDictionary(contentsOfFile: path) as? [String: String]
     }
+
+    /// The keys a language's `.strings` and `.stringsdict` tables hold.
+    static func keys(_ name: String, localization: String) -> Set<String> {
+        var keys = Set<String>()
+        for type in ["strings", "stringsdict"] {
+            guard let path = Bundle.main.path(
+                forResource: name, ofType: type, inDirectory: nil, forLocalization: localization),
+                let table = NSDictionary(contentsOfFile: path)
+            else { continue }
+            keys.formUnion(table.allKeys.compactMap { $0 as? String })
+        }
+        return keys
+    }
 }
 
 /// The compiled String Catalogs inside the app bundle.
@@ -63,5 +76,22 @@ struct LocalizationBundleTests {
     @Test(arguments: LocalizationTables.translations)
     func everyLanguageShipsItsTable(language: String) {
         #expect(LocalizationTables.table("Localizable", localization: language)?.isEmpty == false)
+    }
+
+    /// A key English counts with a plural variation reads as its own key in
+    /// a language that has no value for it. The key is English's `other`
+    /// form, so a count of one reads "1 background commands": unlike other
+    /// text, a count key ships in every language.
+    @Test(arguments: LocalizationTables.translations)
+    func everyCountKeyIsTranslated(language: String) throws {
+        let englishCounts = try #require(
+            Bundle.main.path(
+                forResource: "Localizable", ofType: "stringsdict", inDirectory: nil, forLocalization: "en"
+            ).flatMap { NSDictionary(contentsOfFile: $0) as? [String: Any] })
+        #expect(!englishCounts.isEmpty)
+        let translated = LocalizationTables.keys("Localizable", localization: language)
+        for key in englishCounts.keys.sorted() {
+            #expect(translated.contains(key), "\(language).lproj has no value for \(key)")
+        }
     }
 }

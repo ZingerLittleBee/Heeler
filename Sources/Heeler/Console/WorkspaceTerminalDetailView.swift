@@ -15,6 +15,11 @@ struct WorkspaceTerminalDetailView: View {
     /// Keyboard state in from the screen that selected this terminal and
     /// out to an Agent the drawer routes to; see `ShellTerminalView`.
     var keyboardHandoff: TerminalKeyboardHandoff? = nil
+    /// The surface Agent details open on; nil counts as the terminal.
+    var agentSurface: AgentDetailSurfaceSettings? = nil
+    /// Where the terminal's screen hears and measures the keyboard. Nil gives
+    /// it one of its own on UIKit's center; a test passes one it drives.
+    var keyboardInset: TerminalKeyboardInset? = nil
     /// Where Back goes: the Console, or the Agent this was pushed over.
     var backTitle = String(localized: "Back to Console")
     let onBack: () -> Void
@@ -27,6 +32,12 @@ struct WorkspaceTerminalDetailView: View {
     @State private var isCreatingTerminal = false
     @State private var createFailure: String?
     @State private var retryID = 0
+    /// A departure the terminal's screen made for an Agent that opens on
+    /// Chat, while the keyboard goes down there. Held here, since that screen
+    /// can go first: the pane a shell starts its Agent in stops being a
+    /// terminal, and the pool lets it go at the next inventory change, on a
+    /// Herdr TUI Host often before UIKit reports the keyboard gone (#644).
+    @State private var departureAwaitingKeyboardHide: ShellTerminalView.AgentDeparture?
     @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     /// This window, so a remount of this screen takes its terminal over.
@@ -67,6 +78,29 @@ struct WorkspaceTerminalDetailView: View {
             && !console.terminals.contains(where: { $0.id == terminal.id && $0.terminalID == terminal.terminalID })
     }
 
+    /// The pool's entry while this screen shows its terminal.
+    private var shownEntry: TerminalConnectionPool.Entry? {
+        guard let entry, console.terminalConnections.entries[poolKey] === entry else { return nil }
+        return entry
+    }
+
+    /// The Agent this shell has started. Another core's Agent at this
+    /// address is no Agent of this Terminal's.
+    private var startedAgentID: ConsoleAgent.ID? {
+        guard let agentID = terminal.agentID, !console.hasLeftCore(corePin, on: terminal.hostID)
+        else { return nil }
+        return agentID
+    }
+
+    /// Whether `id`'s detail opens on Chat rather than its terminal. The
+    /// drawer's Agents are this Terminal's Workspace on the same Host, so the
+    /// same core pin applies to them as to a started one.
+    private func opensOnChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let agentSurface, let agent = console.detailAgent(for: id) else { return false }
+        return AgentDetailView.openingSurface(
+            for: agent, console: console, preferred: agentSurface.preferred, keepingTo: corePin) == .chat
+    }
+
     var body: some View {
         Group {
             if isMissing {
@@ -83,7 +117,7 @@ struct WorkspaceTerminalDetailView: View {
                             .buttonStyle(.terminalStatusSecondary)
                     }
                 }
-            } else if let entry, console.terminalConnections.entries[poolKey] === entry {
+            } else if let entry = shownEntry {
                 ShellTerminalView(
                     store: entry.store,
                     agentID: .init(hostID: terminal.hostID, paneID: terminal.paneID),
@@ -102,6 +136,12 @@ struct WorkspaceTerminalDetailView: View {
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff,
                     backReturnsToAgent: false,
+                    startedAgentID: startedAgentID,
+                    onAgentStarted: { onSelectAgent($0) },
+                    chatDepartures: AgentChatDepartures(
+                        opensOnChat: { opensOnChat($0) },
+                        awaitingKeyboardHide: $departureAwaitingKeyboardHide),
+                    keyboardInsetOverride: keyboardInset,
                     onBack: { onBack() })
             } else if let failure {
                 terminalSurface {
@@ -166,10 +206,20 @@ struct WorkspaceTerminalDetailView: View {
                 }
             }
         }
-        // Another core's Agent at this address is no Agent of this Terminal's.
-        .onChange(of: terminal.agentID, initial: true) { _, agentID in
-            if let agentID, !console.hasLeftCore(corePin, on: terminal.hostID) { onSelectAgent(agentID) }
+        // A shown terminal leaves for its Agent itself, once it has settled
+        // the keyboard; see `ShellTerminalView.leave(_:)`.
+        .onChange(of: startedAgentID, initial: true) { _, agentID in
+            if let agentID {
+                if shownEntry == nil { onSelectAgent(agentID) }
+            } else if case .started = departureAwaitingKeyboardHide {
+                departureAwaitingKeyboardHide = nil
+            }
         }
+        .modifier(AgentKeyboardDeparture(
+            awaitingHide: $departureAwaitingKeyboardHide,
+            // Where the terminal's screen hears the keyboard.
+            notificationCenter: keyboardInset?.notificationCenter ?? .default,
+            complete: completeDeparture))
         .alert("Couldn't Close Terminal", isPresented: Binding(
             get: { closeFailure != nil }, set: { if !$0 { closeFailure = nil } })
         ) {
@@ -183,6 +233,19 @@ struct WorkspaceTerminalDetailView: View {
             Button("OK", role: .cancel) { createFailure = nil }
         } message: {
             Text(createFailure ?? "")
+        }
+    }
+
+    /// Routes as this screen now stands, which may have changed while the
+    /// keyboard went down.
+    private func completeDeparture(_ departure: ShellTerminalView.AgentDeparture) {
+        switch departure {
+        case .started(let id):
+            // The Agent may have ended while the keyboard went down.
+            guard startedAgentID == id else { return }
+            onSelectAgent(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
         }
     }
 

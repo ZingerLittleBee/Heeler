@@ -169,7 +169,7 @@ struct AgentSceneDirectoryTests {
         ConsoleAgent(
             hostID: hostID, hostName: "mac-studio",
             agent: Agent(.fixture(paneID: paneID)),
-            workspaceLabel: nil, repositoryCheckout: nil, lastOutputSnippet: nil)
+            workspaceLabel: nil, repositoryCheckout: nil)
     }
 
     private func target(_ paneID: String) -> AgentNotificationTarget {

@@ -61,10 +61,12 @@ protocol HerdrCoreTransport: Sendable {
     /// `server.status` over the link, which it opens if it has to.
     func serverStatus() async throws -> HerdrCoreServerStatus
 
-    /// Which variables the core process inherited, by name only (ADR 0034), from
-    /// one bounded exec per link that later calls share. Empty when it could not
-    /// tell, and nil when there is no live link for the answer to describe. Opens
-    /// no link and never fails the connection.
+    /// Which variables the core's Terminals start with, from its holds and its own
+    /// process, by name only (ADR 0034). Each call asks `server.status` which
+    /// processes those are, and one bounded exec per link and set of processes
+    /// answers, which later calls share. Empty when it could not tell, and nil when
+    /// there is no live link for the answer to describe, or a later call replaced
+    /// this one's. Opens no link and never fails the connection.
     func leakedEnvironmentNames() async -> Set<String>?
 
     /// Subscribes to every Terminal's events. Each subscription has a fresh
@@ -318,7 +320,8 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     private var located: HerdrCoreLocator.Location?
     /// Answered once per connection. A failure is not kept.
     private var platform: HostPlatform?
-    private var environmentCheck: (link: HerdrCoreLink, answer: Task<Set<String>, Never>)?
+    private var environmentCheck: EnvironmentCheck?
+    private var environmentChecks = 0
     /// The core of the last subscribe. Nil before one, as on a preflight.
     private var inventoryCoreID: String?
     /// The links of calls in flight, each one call's, for `close` to end.
@@ -328,6 +331,15 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let link: HerdrCoreLink
         let info: HerdrCoreServerInfo
         let executablePath: String
+    }
+
+    /// One environment read, for the link and processes it asked about. `number`
+    /// tells a later read of the same link apart, so only the newest answers.
+    private struct EnvironmentCheck {
+        let number: Int
+        let link: HerdrCoreLink
+        let pids: [Int]
+        let answer: Task<Set<String>, Never>
     }
 
     init(
@@ -435,31 +447,41 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
 
     func leakedEnvironmentNames() async -> Set<String>? {
         guard let link = try? await opening?.value.link, await link.isOpen else { return nil }
-        let answer: Task<Set<String>, Never>
-        if let check = environmentCheck, check.link === link {
-            answer = check.answer
+        // A hold appears with the first Terminal, after the link's first read.
+        let status = try? await link.serverStatus(deadline: Self.callDeadline)
+        guard await link.isOpen else { return nil }
+        let pids = status.map { HerdrCoreEnvironmentCheck.processIDs(core: $0.pid, holders: $0.holderPIDs) }
+        let check: EnvironmentCheck
+        if let current = environmentCheck, current.link === link, pids == nil || pids == current.pids {
+            check = current
+        } else if let pids {
+            environmentChecks += 1
+            check = EnvironmentCheck(
+                number: environmentChecks, link: link, pids: pids,
+                answer: Task { await self.readLeakedEnvironment(of: pids) })
+            environmentCheck = check
         } else {
-            answer = Task { await self.readLeakedEnvironment(on: link) }
-            environmentCheck = (link, answer)
+            return []
         }
-        let names = await answer.value
-        // A core that restarted meanwhile may be a different one.
-        guard environmentCheck?.link === link, await link.isOpen else { return nil }
+        let names = await check.answer.value
+        // A core that restarted meanwhile may be a different one, and a newer
+        // read may have seen another hold.
+        guard environmentCheck?.number == check.number, await link.isOpen else { return nil }
         return names
     }
 
-    private func readLeakedEnvironment(on link: HerdrCoreLink) async -> Set<String> {
+    private func readLeakedEnvironment(of pids: [Int]) async -> Set<String> {
+        guard !pids.isEmpty else { return [] }
         do {
-            let pid = try await link.serverStatus(deadline: Self.callDeadline).pid
             let nonce = nonce()
             let result =
                 try await resolvedPlatform() == .nativeWindows
                 ? try await connection.runWindowsCommand(
-                    try HerdrCoreEnvironmentCheck.windowsCommand(pid: pid, nonce: nonce), for: .processRead)
+                    try HerdrCoreEnvironmentCheck.windowsCommand(pids: pids, nonce: nonce), for: .processRead)
                 : try await connection.runHostProcessRead(
-                    try HerdrCoreEnvironmentCheck.script(pid: pid, nonce: nonce))
+                    try HerdrCoreEnvironmentCheck.script(pids: pids, nonce: nonce))
             guard result.exitStatus == 0 else { return [] }
-            return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pid: pid)
+            return HerdrCoreEnvironmentCheck.leakedNames(stdout: result.stdout, nonce: nonce, pids: pids)
         } catch {
             return []
         }

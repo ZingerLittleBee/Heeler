@@ -816,7 +816,9 @@ struct Agent: Sendable, Equatable {
     let paneID: String
     let cwd: String
     /// The Agent process's directory in the last snapshot, separate from
-    /// the launch directory used by Open Terminal, Skills and Agent rows.
+    /// `cwd`, which Open Terminal, Skills and Agent rows use: herdr's launch
+    /// directory on a Herdr TUI Host, and on herdr-core this same sample
+    /// once there is one.
     let foregroundCwd: String?
     let revision: Int
 

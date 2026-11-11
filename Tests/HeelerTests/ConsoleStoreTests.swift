@@ -246,6 +246,47 @@ struct ConsoleStoreTests {
         #expect(cores.session(for: agent, console: store) === store.composerSession(for: agent))
     }
 
+    /// Antigravity CLI's Stop types `/tasks` and its keys after its Esc, and a
+    /// Composer send's paste would land between them. Its keys queue is the
+    /// Agent's, as the Composer is, so the terminal page's Send waits for that
+    /// work too, in any window or rebuilt Chat. Once it ends the notice says
+    /// to send again, and the next Send goes and ends it.
+    @Test func everySurfaceOfAnAgentSharesItsKeysQueue() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .idle)]))
+        let store = makeStore(transports: [host.id: transport])
+        defer { store.setHosts([]) }
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the Agent should arrive") { store.agents.count == 1 }
+        let agent = try #require(store.agents.first)
+        let session = store.composerSession(for: agent)
+        #expect(store.composerSession(for: agent).agentKeys === session.agentKeys)
+        #expect(await session.agentKeys.deliver(["esc"]) == .sent)
+        #expect(await transport.agentSendKeysParams == [AgentSendKeysParams(keys: ["esc"], target: "w1:p1")])
+
+        let panel = ScriptedTransportCallGate()
+        let followThrough = Task { await session.agentKeys.afterQueued { await panel.waitUntilOpen() } }
+        await panel.waitForEntry()
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        let terminal = session.terminalSendPolicy(attach: nil)
+        session.composer.replaceDraft(with: "and the tests")
+
+        #expect(await session.composer.send(policy: terminal) == .refused(hold))
+        #expect(session.composer.draft == "and the tests")
+        #expect(session.composer.notice == ComposerNotice(refusal: hold, route: .terminal))
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        await panel.open()
+        await followThrough.value
+        #expect(
+            session.composer.notice
+                == ComposerNotice(refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .terminal))
+        #expect(await session.composer.send(policy: terminal) == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["and the tests"])
+        #expect(session.composer.notice == nil)
+    }
+
     /// Actions only Herdr TUI can serve are offered by Server Kind, not
     /// attempted and failed (ADR 0032). Later tickets turn on each core action
     /// as they build it.
@@ -997,16 +1038,12 @@ struct ConsoleStoreTests {
         store.setHosts([host])
         await store.resume()
         try await waitUntil("the pane subscription should settle") {
-            let paneReads = await transport.paneReadParams
-            let subscriptions = await transport.capturedSubscriptions
-            return paneReads.count >= 2
-                && subscriptions.last?.contains(
-                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
+            await transport.capturedSubscriptions.last?.contains(
+                .pane(.agentStatusChanged, paneID: "w1:p1")) == true
         }
 
         let snapshotGate = ScriptedTransportCallGate()
         await transport.gateNextSnapshot(using: snapshotGate)
-        let readsBeforeRace = await transport.paneReadParams.count
         #expect(
             await transport.emit(
                 HerdrEvent(kind: GlobalEventKind.paneAgentDetected.kind, data: .object([:])))
@@ -1026,11 +1063,16 @@ struct ConsoleStoreTests {
             store.agents.first?.agent.status == .blocked
         }
 
+        // The status event asked for a follow-up snapshot; holding it proves
+        // the stale response finished applying before the check below.
+        let followUpGate = ScriptedTransportCallGate()
+        await transport.gateNextSnapshot(using: followUpGate)
         await snapshotGate.open()
         try await waitUntil("the stale snapshot response should finish applying") {
-            await transport.paneReadParams.count > readsBeforeRace
+            await followUpGate.entryCount == 1
         }
         #expect(store.agents.first?.agent.status == .blocked)
+        await followUpGate.open()
 
         store.setHosts([])
     }
@@ -1458,75 +1500,33 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
-    @Test func cardsCarryTheLastOutputSnippet() async throws {
-        let host = Host.fixture()
-        let transport = ScriptedTransport(
-            snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
-        await transport.setPaneText(
-            "\n› Allow Claude to run rm -rf?\n\n  1. Yes  2. No\n", paneID: "w1:p1")
-        let store = makeStore(transports: [host.id: transport])
-
-        store.setHosts([host])
-        await store.resume()
-        try await waitUntil("the snippet should land on the card") {
-            store.agents.first?.lastOutputSnippet == "1. Yes  2. No"
-        }
-        let params = try #require(await transport.paneReadParams.first)
-        #expect(params.source == .recent)
-        #expect(params.stripANSI == true)
-
-        store.setHosts([])
-    }
-
-    @Test func blockedStatusDuringSnippetFetchSchedulesAFollowUpRead() async throws {
+    /// A status change resyncs the Host and nothing more: no `pane.read`
+    /// competes with the Chat card's screen read for the link at a dialog.
+    @Test func aStatusChangeReadsNoPane() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(agents: [.fixture(paneID: "w1:p1", status: .working)]))
-        await transport.setPaneText("Ready", paneID: "w1:p1")
         let store = makeStore(transports: [host.id: transport])
 
         store.setHosts([host])
         await store.resume()
-        try await waitUntil("the initial snapshot cycle should settle") {
-            let reads = await transport.paneReadParams
-            let subscriptions = await transport.capturedSubscriptions
-            return reads.count >= 2
-                && subscriptions.last?.contains(
-                    .pane(.agentStatusChanged, paneID: "w1:p1")) == true
-                && store.agents.first?.lastOutputSnippet == "Ready"
+        try await waitUntil("the pane subscription should settle") {
+            await transport.capturedSubscriptions.last?.contains(
+                .pane(.agentStatusChanged, paneID: "w1:p1")) == true
         }
-
-        let staleReadGate = ScriptedTransportCallGate()
-        await transport.setPaneText("Still working", paneID: "w1:p1")
-        await transport.gateNextPaneRead(using: staleReadGate)
-        #expect(
-            await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working))
-                == true)
-        try await waitUntil("the stale snippet read should be in flight") {
-            await staleReadGate.entryCount == 1
-        }
-
-        let followUpReadGate = ScriptedTransportCallGate()
-        await transport.setPaneText("Allow this command?", paneID: "w1:p1")
-        await transport.gateNextPaneRead(using: followUpReadGate)
+        let snapshotsBefore = await transport.snapshotFetchCount
         await transport.setSnapshot(
             .fixture(agents: [.fixture(paneID: "w1:p1", status: .blocked)]))
         #expect(
             await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .blocked))
                 == true)
-        try await waitUntil("the Blocked status should land during the stale read") {
-            store.agents.first?.agent.status == .blocked
+        try await waitUntil("the status change should resync the Host") {
+            await transport.snapshotFetchCount > snapshotsBefore
+                && store.agents.first?.agent.status == .blocked
         }
+        await store.refreshSidebarLayouts()
         for _ in 0..<10 { await Task.yield() }
-
-        await staleReadGate.open()
-        try await waitUntil("the Blocked refresh should start a follow-up read") {
-            await followUpReadGate.entryCount == 1
-        }
-        await followUpReadGate.open()
-        try await waitUntil("the Blocked prompt should replace the stale snippet") {
-            store.agents.first?.lastOutputSnippet == "Allow this command?"
-        }
+        #expect(await transport.paneReadParams.isEmpty)
 
         store.setHosts([])
     }

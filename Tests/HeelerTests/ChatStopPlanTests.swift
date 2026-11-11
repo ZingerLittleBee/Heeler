@@ -9,12 +9,13 @@ import Testing
 @MainActor
 @Suite("Chat Stop plan")
 struct ChatStopPlanTests {
-    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp])
-    func claudeCodexPiAndOhMyPiPressOneEscAndWaitThreeSeconds(program: ChatProgram) {
+    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp, .agy])
+    func oneEscAndThreeSecondsForEveryProgramButGrokAndOpenCode(program: ChatProgram) {
         let plan = ChatStopPlan.standard(for: program)
 
         #expect(plan.keys == ["esc"])
-        #expect(plan.screenGuard == nil)
+        // Only Antigravity CLI's Esc reads the screen first (below).
+        #expect((plan.screenGuard == nil) == (program != .agy))
         #expect(plan.wait == AgentStopWait.escape)
         #expect(plan.wait.window == .seconds(3))
         #expect(plan.wait.unconfirmedNotice == "Esc went, but the Agent still shows Working.")
@@ -284,6 +285,280 @@ struct ChatStopPlanTests {
         #expect(!keys.isEmpty)
         #expect(keys.allSatisfy { $0 == "esc" }, "\(keys)")
         #expect(!keys.contains { $0.lowercased().hasPrefix("ctrl") || $0.lowercased().hasPrefix("c-") })
+    }
+
+    // MARK: Antigravity CLI
+
+    /// One Esc in bash mode leaves it and drops the command typed there
+    /// (agy-93), so Stop presses nothing then and says why.
+    @Test func agyStopRefusesABashCommandItWouldDrop() async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(recorder, screen: try ScreenFixture.screen("agy-93-bash-mode-with-text-62x41")),
+            agentKeys: Self.agentKeys(recorder))
+
+        let outcome = await interrupt.perform()
+
+        #expect(
+            outcome
+                == .failed(
+                    "Antigravity CLI's input box is in bash mode with a command typed, and Esc would drop it. Stop it in the terminal."
+                ))
+        #expect(recorder.contextCalls == 1)
+        #expect(recorder.sent.isEmpty, "a refused Stop presses nothing")
+    }
+
+    /// Anywhere else one Esc goes: on a running turn, with a draft or a
+    /// message queued, on a dialog, and in bash mode with nothing typed.
+    @Test(arguments: [
+        "agy-66-working-nodraft-62x41", "agy-67-working-tool-running-62x41", "agy-68-working-with-draft-62x41",
+        "agy-70-working-queued-after-approve-62x41", "agy-96-working-queued-40x30",
+        "agy-69-working-draft-entered-then-perm-dialog-62x41", "agy-91-bang-typed-62x41",
+    ])
+    func agyStopPressesOneEsc(stem: String) async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(recorder, screen: try ScreenFixture.screen(stem)),
+            agentKeys: Self.agentKeys(recorder))
+
+        let outcome = await interrupt.perform()
+
+        #expect(outcome == .sent)
+        #expect(recorder.events == ["read", "esc"])
+    }
+
+    /// What Stop presses for the commands agy sent to the background is
+    /// read as Stop is tapped, runs once the Esc went, and what it left
+    /// running is what Stop says.
+    @Test func agyStopFollowsThroughAfterItsEsc() async throws {
+        let recorder = StopRecorder()
+        let interrupt = ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(
+                recorder, screen: try ScreenFixture.screen("agy-169-plain-working-background-task-120x40")),
+            agentKeys: Self.agentKeys(recorder),
+            followThrough: {
+                recorder.events.append("tap")
+                return {
+                    recorder.events.append("panel")
+                    return "sleep 40 still runs."
+                }
+            })
+
+        let outcome = await interrupt.perform()
+
+        #expect(outcome == .sentLeavingWork("sleep 40 still runs."))
+        #expect(recorder.events == ["tap", "read", "esc", "panel"])
+    }
+
+    /// A follow-through that ended everything leaves a plain `.sent`, and a
+    /// withheld Esc runs none.
+    @Test func agyStopFollowsThroughOnlyAfterAnEscThatWent() async throws {
+        let ended = StopRecorder()
+        let sent = await ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(ended), agentKeys: Self.agentKeys(ended),
+            followThrough: { { ended.events.append("panel"); return nil } }
+        ).perform()
+        #expect(sent == .sent)
+        #expect(ended.events == ["read", "esc", "panel"])
+
+        let refused = StopRecorder()
+        let withheld = await ChatStopPlan.standard(for: .agy).composerInterrupt(
+            context: Self.context(refused, screen: try ScreenFixture.screen("agy-93-bash-mode-with-text-62x41")),
+            agentKeys: Self.agentKeys(refused),
+            followThrough: { { refused.events.append("panel"); return "unexpected" } }
+        ).perform()
+        #expect(withheld == .failed(AgyStopGuard.bashCommand))
+        #expect(refused.events == ["read"])
+    }
+
+    /// Keys pressed while a follow-through types wait for it, so a second
+    /// Stop's Esc never lands between its keys.
+    @Test func keysWaitForAFollowThroughInTheQueue() async {
+        let recorder = StopRecorder()
+        let gate = ScriptedTransportCallGate()
+        let keys = Self.agentKeys(recorder)
+        let followThrough = Task {
+            await keys.afterQueued {
+                recorder.events.append("panel")
+                await gate.waitUntilOpen()
+                recorder.events.append("closed")
+            }
+        }
+        await gate.waitForEntry()
+        let esc = Task { await keys.deliver(["esc"]) }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(recorder.events == ["panel"])
+
+        await gate.open()
+        await followThrough.value
+        #expect(await esc.value == .sent)
+        #expect(recorder.events == ["panel", "closed", "esc"])
+    }
+
+    /// A Composer send goes outside the keys queue, so Chat holds one from
+    /// the moment a follow-through is queued until it ends: typed between
+    /// two of its keys, it would land in its `/tasks`.
+    @Test func aFollowThroughHoldsSendsUntilItEnds() async {
+        let earlier = ScriptedTransportCallGate()
+        let panel = ScriptedTransportCallGate()
+        let keys = Self.agentKeys(StopRecorder(), firstRequestWaitsOn: earlier)
+        #expect(!keys.isRunningQueuedWork)
+
+        let esc = Task { await keys.deliver(["esc"]) }
+        await earlier.waitForEntry()
+        let followThrough = Task { await keys.afterQueued { await panel.waitUntilOpen() } }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(keys.isRunningQueuedWork, "queued behind the Esc")
+
+        await earlier.open()
+        _ = await esc.value
+        await panel.waitForEntry()
+        #expect(keys.isRunningQueuedWork, "typing")
+
+        await panel.open()
+        await followThrough.value
+        #expect(!keys.isRunningQueuedWork)
+    }
+
+    /// The follow-through ends in the job it returns in, not once Stop's
+    /// await resumes a job later: a Send in between would otherwise be held
+    /// for work already over, with nothing to send its draft.
+    @Test(arguments: [ComposerRoute.chat, .terminal])
+    func aSendAsTheFollowThroughReturnsGoes(route: ComposerRoute) async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { params in
+            try await transport.promptAgent(params)
+        }
+        let session = AgentComposerSession(composer: composer)
+        let policy =
+            route == .chat
+            ? ComposerDeliveryPolicy(
+                route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+                preflight: { _ in session.heldSend() }, verify: nil)
+            : session.terminalSendPolicy(attach: nil)
+        let order = StopRecorder()
+        var send: Task<AgentComposerStore.SendResult, Never>?
+        composer.replaceDraft(with: "and the tests")
+
+        await session.agentKeys.afterQueued {
+            // Queued now, so it runs once this returns and before Stop's await resumes.
+            send = Task {
+                order.events.append("send")
+                return await composer.send(policy: policy)
+            }
+        }
+        order.events.append("stop resumed")
+        let result = try #require(await send?.value)
+
+        #expect(order.events.first == "send", "the Send should come in the gap")
+        #expect(result == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["and the tests"])
+        #expect(composer.notice == nil)
+    }
+
+    /// agy is Idle while the follow-through types, so no status change
+    /// ended the held send's notice, which stayed after it until the draft
+    /// changed (live), and ending it with the work hid a send held at its
+    /// end. Once the work ends it says nothing was sent, for the same
+    /// surface and conversation, and ends as any notice does. A notice for
+    /// another reason, one already ended, or one noted once the work ended
+    /// stays as it is. The terminal page's Send waits the same way: the
+    /// Agent's keys queue is its Composer's.
+    @Test(arguments: [ComposerRoute.chat, .terminal])
+    func aSendHeldForAFollowThroughSaysToSendAgainOnceItEnds(route: ComposerRoute) async {
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
+            throw TransportError.cancelled
+        }
+        let session = AgentComposerSession(composer: composer)
+        let keys = session.agentKeys
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        let ended = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHoldEnded)
+        let other = ComposerRefusal.inputNotReady("Claude Code is switching a setting. Try again in a moment.")
+        let conversation = route == .chat ? 7 : nil
+        /// A Send from `route`'s surface, refused for `refusal` or else as
+        /// that surface holds it.
+        func send(refusedFor refusal: ComposerRefusal? = nil) async -> AgentComposerStore.SendResult {
+            var policy =
+                route == .chat
+                ? ComposerDeliveryPolicy(
+                    route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+                    preflight: { _ in session.heldSend() }, verify: nil, conversation: { 7 })
+                : session.terminalSendPolicy(attach: nil)
+            if let refusal { policy.preflight = { _ in refusal } }
+            return await composer.send(policy: policy)
+        }
+        /// A follow-through, with `meanwhile` sent as it types.
+        func followThrough(_ meanwhile: () async -> Void) async {
+            let panel = ScriptedTransportCallGate()
+            let work = Task { await keys.afterQueued { await panel.waitUntilOpen() } }
+            await panel.waitForEntry()
+            await meanwhile()
+            await panel.open()
+            await work.value
+        }
+        composer.replaceDraft(with: "and the tests")
+
+        await followThrough {
+            #expect(await send() == .refused(hold))
+            #expect(composer.notice == ComposerNotice(refusal: hold, route: route, conversation: conversation))
+        }
+        #expect(composer.notice == ComposerNotice(refusal: ended, route: route, conversation: conversation))
+        #expect(composer.draft == "and the tests")
+        composer.replaceDraft(with: "and the tests too")
+        #expect(composer.notice == nil, "an edit ends it")
+
+        await followThrough {
+            _ = await send()
+            _ = await send(refusedFor: other)
+        }
+        #expect(composer.notice?.refusal == other)
+
+        await followThrough {
+            _ = await send()
+            composer.replaceDraft(with: "and the docs")
+        }
+        #expect(composer.notice == nil, "a hold notice an edit ended stays ended")
+
+        _ = await send(refusedFor: hold)
+        await followThrough {}
+        #expect(composer.notice?.refusal == hold)
+    }
+
+    /// A Retry tapped while the follow-through types is held as a Send is.
+    /// The message keeps the failure it was retried for, so neither the
+    /// Composer's failure row nor Chat's echo says the hold once it ended;
+    /// the notice says nothing went, so retry.
+    @Test func aRetryHeldForAFollowThroughKeepsItsReason() async throws {
+        let composer = AgentComposerStore(target: "w1:p1", initialStatus: .idle) { _ in
+            throw TransportError.sshUnreachable(detail: "offline")
+        }
+        let session = AgentComposerSession(composer: composer)
+        let policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 }, validate: { _ in nil },
+            preflight: { _ in session.heldSend() }, verify: nil)
+        let hold = ComposerRefusal.inputNotReady(AgyBackgroundTaskStop.sendHold)
+        composer.replaceDraft(with: "and the tests")
+        #expect(await composer.send(policy: policy) == .failed)
+        let failed = try #require(composer.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
+        let panel = ScriptedTransportCallGate()
+        let work = Task { await session.agentKeys.afterQueued { await panel.waitUntilOpen() } }
+        await panel.waitForEntry()
+
+        #expect(await composer.retry(failed.id, policy: policy) == .refused(hold))
+        #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat))
+        #expect(composer.messages.map(\.state) == [.failed(reason)])
+        await panel.open()
+        await work.value
+
+        #expect(
+            composer.notice
+                == ComposerNotice(refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .chat))
+        #expect(composer.messages.map(\.state) == [.failed(reason)])
+        #expect(ChatComposerEchoes.pending(composer.messages, statuses: [:]).map(\.state) == [.failed(reason)])
     }
 
     // MARK: Helpers

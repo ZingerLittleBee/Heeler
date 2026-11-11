@@ -327,7 +327,6 @@
                     pluginStateHostID(index),
                     DemoHostProfile(
                         snapshot: snapshot(agents: [], workspaces: []),
-                        paneSnippets: [:],
                         terminalOutputs: [:],
                         plugin: state.plugin)
                 )
@@ -433,11 +432,6 @@
                             paneID: "mobile:p6", workspaceID: "mobile", tab: 3,
                             title: "zsh", cwd: "/Users/developer/workspace/heeler"),
                     ]),
-                paneSnippets: [
-                    "mobile:p1": "Running AttachViewTests… 24 passed",
-                    "docs:p2": "Ready when you are.",
-                    "mobile:p4": "VoiceOver audit complete. 0 blockers.",
-                ],
                 terminalOutputs: [
                     "mobile:p1": DemoPiChatSample.terminalOutput(forPane: "mobile:p1") ?? terminalOutput,
                     "docs:p2": DemoPiChatSample.terminalOutput(forPane: "docs:p2") ?? terminalOutput,
@@ -472,10 +466,6 @@
                             paneID: "api:p9", workspaceID: "api", tab: 3,
                             title: "htop", cwd: "/home/builder"),
                     ]),
-                paneSnippets: [
-                    "checkout:p3": "Run the targeted UI test before commit?",
-                    "api:p7": "Retry matrix: 12 of 16 cases passing",
-                ],
                 terminalOutputs: [
                     "checkout:p3": terminalOutput,
                     "api:p7": terminalOutput,
@@ -484,7 +474,6 @@
                 ]),
             miniHostID: DemoHostProfile(
                 snapshot: snapshot(agents: [], workspaces: []),
-                paneSnippets: [:],
                 terminalOutputs: [:],
                 snapshotFailure: .apiRejected(
                     code: "internal_error", message: "session snapshot unavailable")),
@@ -655,7 +644,6 @@
 
     struct DemoHostProfile: Sendable {
         let snapshot: SessionSnapshot
-        let paneSnippets: [String: String]
         let terminalOutputs: [String: String]
         /// Connects, then fails every snapshot: a Host out of sync.
         var snapshotFailure: TransportError?
@@ -1668,7 +1656,7 @@
                 revision: 1,
                 source: params.source,
                 tabID: agent?.tabID ?? "demo:t1",
-                text: profile.paneSnippets[params.paneID] ?? "Ready.",
+                text: "Ready.",
                 truncated: false,
                 workspaceID: agent?.workspaceID ?? "demo")
         }

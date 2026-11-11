@@ -248,6 +248,26 @@ struct HerdrCoreLaunchTests {
         #expect(params["keep"] == .bool(true))
     }
 
+    /// A launch's argv alone says which shell the Terminal's own process is until its
+    /// `exec`, and the program that process becomes, which Chat reads while the core
+    /// has sampled nothing else. No other wrapper reads as one.
+    @Test func aLaunchsArgvReadsBackItsShellAndProgram() {
+        for shell in ["/bin/bash", Self.zsh, Self.fish] {
+            let launch = HerdrCoreShellLaunch.launch(
+                in: HerdrCoreShellLaunch.argv(shell: shell, program: ["agy", "--flag"]))
+            #expect(launch?.shell == shell)
+            #expect(launch?.program == ["agy", "--flag"])
+        }
+        #expect(HerdrCoreShellLaunch.processName(of: Self.fish) == "fish")
+        let others = [
+            ["/bin/zsh"], ["/bin/bash", "-ic", Self.posixBody, "/bin/bash"],
+            ["/bin/zsh", "-ic", "\"$@\"; exec \"$0\" -i", "/bin/zsh", "claude"],
+            [Self.fish, "-ic", Self.posixBody, "fish", "codex"],
+            HerdrCoreShellLaunch.argv(shell: HerdrCoreShellLaunch.windowsShell, program: ["claude"]),
+        ]
+        for argv in others { #expect(HerdrCoreShellLaunch.launch(in: argv) == nil, "\(argv)") }
+    }
+
     @Test func noReportedShellStartsNothing() async throws {
         let fixture = try await Fixture(host: host, shell: nil)
         defer { fixture.finish() }
@@ -323,6 +343,18 @@ struct HerdrCoreLaunchTests {
         let omp = try await fixture.launch(.omp)
         #expect(Self.program(of: omp) == ["omp"])
         #expect(Self.labels(of: omp).isEmpty)
+    }
+
+    /// `agy --conversation <new id>` warns it is not found and creates nothing, so
+    /// Heeler gives it no id, and its presence lock is the evidence (ADR 0034).
+    @Test func antigravityCLIStartsWithNoConversationFlagOrHint() async throws {
+        let fixture = try await Fixture(host: host)
+        defer { fixture.finish() }
+
+        let params = try await fixture.launch(.antigravity)
+
+        #expect(Self.program(of: params) == ["agy"])
+        #expect(Self.labels(of: params).isEmpty)
     }
 
     @Test(arguments: [

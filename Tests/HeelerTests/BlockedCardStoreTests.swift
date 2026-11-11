@@ -161,7 +161,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { _ in
                     await pane.show(after)
                     throw TransportError.channelFailed(detail: "timed out")
@@ -182,7 +182,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { _ in throw TransportError.channelFailed(detail: "timed out") },
                 paste: { await pane.paste($0) }),
             clock: ManualClock().clock)
@@ -201,7 +201,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .claude,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { keys in
                     await pane.send(keys)
                     // The program records the result; the dialog still shows.
@@ -235,6 +235,47 @@ struct BlockedCardStoreTests {
         #expect(await pane.keys == [["3"]])
         #expect(store.composerFocusRequest == 1)
         #expect(store.progress == .ready)
+    }
+
+    /// herdr can report Blocked a moment after a decline removed the dialog.
+    /// The Composer comes back with the answer's read, not with herdr's next
+    /// status, so the focus the answer asks for lands on it. The next Blocked,
+    /// or another dialog on screen, takes its place again.
+    @Test func aDeclineGivesTheComposerBackWhileHerdrStillReportsBlocked() async throws {
+        let exec = try ScreenFixture.screen("codex-01-x1-exec")
+        let ready = try ScreenFixture.screen("codex-00-ready")
+        let pane = FakePane(exec)
+        await pane.react(to: ["3"], with: ready)
+        let store = Self.store(.codex, pane: pane)
+        store.update(activity: .blocked)
+        await store.refresh()
+        #expect(store.replacesComposer)
+
+        await store.perform(.choose(ordinal: 3))
+
+        #expect(store.content == .none)
+        #expect(store.composerFocusRequest == 1)
+        #expect(!store.replacesComposer)
+
+        // Another dialog while herdr never left Blocked shows its card, and
+        // once it goes the place is Chat's reading again.
+        await pane.show(exec)
+        await store.refresh()
+        #expect(store.replacesComposer)
+        await pane.show(ready)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await pane.show(exec)
+        await store.refresh()
+        await pane.react(to: ["3"], with: ready)
+        await store.perform(.choose(ordinal: 3))
+        #expect(store.composerFocusRequest == 2)
+        #expect(!store.replacesComposer)
+        store.update(activity: .working)
+        store.update(activity: .blocked)
+        #expect(store.replacesComposer)
     }
 
     @Test func answersTheTranscriptCantShowAreKeptOnceTheyTakeEffect() async throws {
@@ -861,7 +902,7 @@ struct BlockedCardStoreTests {
         let store = BlockedCardStore(
             program: .grok,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { keys in
                     await pane.send(keys)
                     await MainActor.run {
@@ -1488,6 +1529,1000 @@ struct BlockedCardStoreTests {
         #expect(await pane.keys == [["esc"]])
     }
 
+    // MARK: Antigravity CLI
+
+    /// herdr 0.9.5 reports agy idle under its file dialogs, a command's
+    /// note field and a question's answer field; an open call that asks
+    /// the user stands in for Blocked there.
+    @Test(arguments: [
+        ("agy-47-perm-file-edit-default-120x40", BlockedDialogKind.agyFileEdit, "agy:5:tool:0"),
+        ("agy-99-perm-file-create-default-62x41", .agyFileCreate, "agy:6:tool:0"),
+        ("agy-109-perm-run-command-amend-62x41", .agyCommand, "agy:7:tool:0"),
+        ("agy-104-ask-question-writein-after-digit-62x41", .agyQuestion, "agy:8:tool:0"),
+    ])
+    func anIdleAgyWithAnOpenCallThatAsksShowsItsDialog(stem: String, kind: BlockedDialogKind, callID: String)
+        async throws
+    {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = Self.store(.agy, pane: pane)
+        let requests = [
+            Self.agyCall("agy:5:tool:0", "replace_file_content", .fileEdit, "/Users/developer/projects/fruits/fruits.txt"),
+            Self.agyCall("agy:6:tool:0", "write_to_file", .fileWrite, "/Users/developer/projects/fruits2/a3note.txt"),
+            Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi"),
+            Self.agyCall("agy:8:tool:0", "ask_question", .question, "Which pet do you prefer?"),
+        ]
+        // An idle agy's command row reads `no result`, its call still open.
+        store.update(transcript: Self.agyTranscript(open: requests, status: .noResult))
+        store.update(activity: .idle)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == kind)
+        #expect(card.request?.callID == callID)
+    }
+
+    /// agy under `NO_COLOR` draws the same dialogs without colors, and with
+    /// agy read as idle the open call stands in for Blocked there as it
+    /// does in agy's colors. The file dialogs cut the path at 92 columns,
+    /// so the call's whole path matches by its start.
+    @Test(arguments: [
+        ("agy-139-nocolor-perm-file-create-92x47", BlockedDialogKind.agyFileCreate),
+        ("agy-141-nocolor-perm-file-edit-92x47", .agyFileEdit),
+        ("agy-135-nocolor-perm-run-command-92x47", .agyCommand),
+        ("agy-144-nocolor-ask-question-multi-q1-92x47", .agyQuestion),
+        ("agy-148-nocolor-ask-question-multiselect-92x47", .agyQuestion),
+    ])
+    func anIdleColorlessAgyWithAnOpenCallThatAsksShowsItsDialog(stem: String, kind: BlockedDialogKind) async throws {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = Self.store(.agy, pane: pane)
+        let call = try #require(Self.colorlessCalls[stem])
+        store.update(transcript: Self.agyTranscript(open: [call], status: .noResult))
+        store.update(activity: .idle)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == kind)
+        #expect(card.request?.callID == call.callID)
+    }
+
+    /// The open call each colorless dialog asks for.
+    private static let colorlessCalls: [String: ChatPendingRequest] = {
+        let file =
+            "/Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-"
+            + "herdr095workspaceprobefolder/agy-research/probe-b/proj2/nc.txt"
+        return [
+            "agy-139-nocolor-perm-file-create-92x47": agyCall("agy:10:tool:0", "write_to_file", .fileWrite, file),
+            "agy-141-nocolor-perm-file-edit-92x47": agyCall("agy:11:tool:0", "replace_file_content", .fileEdit, file),
+            "agy-135-nocolor-perm-run-command-92x47": agyCall(
+                "agy:12:tool:0", "run_command", .command, "echo nc-check"),
+            "agy-144-nocolor-ask-question-multi-q1-92x47": agyCall(
+                "agy:13:tool:0", "ask_question", .question, "Which color?"),
+            "agy-148-nocolor-ask-question-multiselect-92x47": agyCall(
+                "agy:14:tool:0", "ask_question", .question, "Which fruits do you like?"),
+        ]
+    }()
+
+    /// The trust prompt under `NO_COLOR` shows before agy reports a session,
+    /// which an idle agy is read for alone.
+    @Test func anIdleColorlessAgyAwaitingItsSessionShowsTheTrustPrompt() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-152-nocolor-trust-prompt-92x47"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+    }
+
+    /// Without an open call that asks, an idle agy isn't read: a read or a
+    /// command sent to the background has no dialog.
+    @Test func anIdleAgyWithoutAnOpenCallThatAsksIsNotRead() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [Self.agyCall("agy:3:tool:0", "view_file", .fileRead, "/Users/developer/projects/fruits/a.txt")],
+                status: .noResult))
+        store.update(activity: .idle)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await pane.reads == 0)
+
+        // A command in the background has its result, so the reducer offers
+        // no request for it.
+        let background = Self.agyCall("agy:4:tool:0", "run_command", .command, "sleep 40")
+        var transcript = Self.agyTranscript(open: [background], status: .started)
+        transcript.pendingRequests = []
+        store.update(transcript: transcript)
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await pane.reads == 0)
+
+        // Another program's idle open call reads nothing either.
+        let grok = Self.store(.grok, pane: pane)
+        grok.update(transcript: Self.agyTranscript(open: [background], status: .noResult))
+        grok.update(activity: .idle)
+        await grok.refresh()
+        #expect(await pane.reads == 0)
+    }
+
+    /// agy started again where an earlier agy exited: the box above
+    /// `Resume with -c` is that agy's, so the dialog under it shows as its
+    /// card, not the key pad, after the moment Blocked waits for one.
+    @Test func aBlockedAgyUnderAnExitedAgyShowsItsDialog() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-200-perm-run-command-under-exited-agy-62x46"))
+        let clock = ManualClock()
+        let store = Self.store(.agy, pane: pane, clock: clock)
+        let command = Self.agyCall("agy:9:tool:0", "run_command", .command, "sleep 54")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        clock.advance(.seconds(2))
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyCommand)
+        #expect(card.request?.callID == command.callID)
+    }
+
+    /// The card's answer waits on the call: a re-read in which the idle
+    /// command's row reads `no result` releases nothing, its result does.
+    @Test func anAgyAnswerThatShowedNoEffectWaitsForItsCallsResult() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-108-perm-run-command-62x41"))
+        let clock = ManualClock()
+        let store = Self.store(.agy, pane: pane, clock: clock)
+        let command = Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.progress == .unconfirmed)
+        store.update(activity: .idle)
+        store.update(transcript: Self.agyTranscript(open: [command], status: .noResult))
+        #expect(store.progress == .unconfirmed)
+
+        var resolved = Self.agyTranscript(open: [command], status: .succeeded)
+        resolved.pendingRequests = []
+        store.update(transcript: resolved)
+        #expect(store.progress == .ready)
+        #expect(store.content == .none)
+    }
+
+    /// Esc on a permission stops the turn and agy records nothing, so the
+    /// card keeps the stop; Esc on a question skips it, which agy records.
+    @Test func anAgyStopIsKeptAndASkipIsNot() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-108-perm-run-command-62x41"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        let command = Self.agyCall("agy:7:tool:0", "run_command", .command, "echo a3-hi")
+        store.update(transcript: Self.agyTranscript(open: [command], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.dismiss)
+
+        #expect(await pane.keys == [["esc"]])
+        #expect(store.progress == .ready)
+        #expect(store.composerFocusRequest == 1)
+        #expect(store.history.calls == ["agy:7:tool:0": .stopped])
+
+        await pane.show(try ScreenFixture.screen("agy-41-ask-question-single-120x40"))
+        let question = Self.agyCall("agy:9:tool:0", "ask_question", .question, "Which fruit do you prefer?")
+        let asker = Self.store(.agy, pane: pane)
+        asker.update(transcript: Self.agyTranscript(open: [question], status: .awaitingApproval))
+        asker.update(activity: .blocked)
+        await asker.refresh()
+
+        await asker.perform(.dismiss)
+
+        #expect(await pane.keys.suffix(1) == [["esc"]])
+        #expect(asker.progress == .ready)
+        #expect(asker.composerFocusRequest == 0)
+        #expect(asker.history.isEmpty)
+    }
+
+    /// Two questions filled in on the card: the first page's digit turns
+    /// to the second, whose digit answers both.
+    @Test func anAgyTwoQuestionFormAnswersEachPage() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "What is your favorite color?")
+        ask.questions = [
+            ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
+            ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content, QuestionForm(card: card) != nil else {
+            Issue.record("Expected a form, got \(store.content)")
+            return
+        }
+
+        await store.submit([.option(1), .option(0)])
+
+        #expect(await pane.keys == [["2"], ["1"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// A multi-select answer with a written one. The screens stand in for
+    /// the check's digit and the paste: agy drew them after Space checked
+    /// apple, `Write-in...`'s digit, `mango` typed, and Enter, which
+    /// submitted `A1: apple, mango`.
+    @Test func anAgySelectionGoesWithItsWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-155-ask-question-multiselect-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-156-ask-question-multiselect-writein-open-checked-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-157-ask-question-multiselect-writein-typed-checked-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-159-working-after-multiselect-writein-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        let ask = Self.agyCall("agy:1:tool:0", "ask_question", .question, "Which fruits do you like?")
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        await store.perform(.submitSelection([1], text: "mango"))
+
+        #expect(await pane.keys == [["1"], ["4"], ["enter"]])
+        #expect(await pane.pastes == ["mango"])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// The probe's two questions filled in on the card, apple already
+    /// checked in the terminal: the first page's written answer goes out
+    /// with that check in one Enter, which turns the page, and the second
+    /// page's Skip in its turn (`A1: apple, mango`, `A2: User Skipped`).
+    @Test func anAgyFormSendsAPagesWrittenAnswerWithItsChecks() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-163-ask-question-multiselect-q1-of-2-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-167-ask-question-q2-after-multiselect-writein-120x40"))
+        await pane.react(
+            to: ["esc"], with: try ScreenFixture.screen("agy-168-idle-after-writein-and-skipped-question-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "Which fruits do you like?")
+        ask.questions = [
+            ChatQuestion(
+                text: "Which fruits do you like?", options: ["apple", "banana", "cherry"], isMultiSelect: true),
+            ChatQuestion(text: "Which size?", options: ["small", "large"]),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content, QuestionForm(card: card) != nil else {
+            Issue.record("Expected a form, got \(store.content)")
+            return
+        }
+
+        await store.submit([.options([0], text: "mango"), .skipped])
+
+        #expect(await pane.keys == [["4"], ["enter"], ["esc"]])
+        #expect(await pane.pastes == ["mango"])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// agy writes a call's result only once it has run, and can draw the
+    /// next dialog first: a second edit of the same file. The answered call
+    /// stays out of that card's match until the transcript resolves it.
+    @Test func anAnsweredAgyCallNeverStandsInForTheNextDialog() async throws {
+        let first = try ScreenFixture.text("agy-47-perm-file-edit-default-120x40")
+        let padded = "date" + String(repeating: " ", count: 108)
+        try #require(first.contains(padded))
+        let second = first.replacingOccurrences(of: padded, with: "fig" + String(repeating: " ", count: 109))
+        let pane = FakePane(ANSIScreenDecoder.decode(first))
+        await pane.react(to: ["1"], with: ANSIScreenDecoder.decode(second))
+        let store = Self.store(.agy, pane: pane)
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let date = Self.agyCall("agy:24:tool:0", "edit_file", .fileEdit, path)
+        let fig = Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, path)
+        store.update(transcript: Self.agyTranscript(open: [date, fig], status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.request?.callID == "agy:24:tool:0")
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.dialog.body.last == "2  +  fig")
+        #expect(next.request?.callID == "agy:24:tool:1")
+        await store.refresh()
+        guard case .card(let refreshed) = store.content else { return }
+        #expect(refreshed.request?.callID == "agy:24:tool:1")
+
+        // Once the transcript resolves it, the call no longer waits at all.
+        store.update(transcript: Self.agyTranscript(open: [fig], status: .awaitingApproval))
+        await store.refresh()
+        guard case .card(let resolved) = store.content else { return }
+        #expect(resolved.request?.callID == "agy:24:tool:1")
+    }
+
+    /// A dialog answered in the terminal or another client leaves its call
+    /// open too, until agy writes the result, and agy can draw the next
+    /// dialog first: a second edit of the same file. That card takes its
+    /// own call, so its answer is kept under that call, and the line the
+    /// screen cut never shows the first call's change.
+    @Test func anAgyCallAnsweredInTheTerminalNeverStandsInForTheNextDialog() async throws {
+        let date = try BlockedRequestMatchTests.agyEditCall()
+        let fig = Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, date.summary)
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(transcript: Self.agyTranscript(open: [date, fig], status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(card.request?.callID == "agy:24:tool:0")
+
+        // Answered in the terminal: the next edit's dialog, its added line
+        // cut at the screen's edge.
+        let cut = "fig " + String(repeating: "x", count: 120)
+        await pane.show(try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: cut))
+        await store.refresh()
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.dialog.subject.changesAreCut)
+        #expect(next.request?.callID == "agy:24:tool:1")
+        #expect(BlockedRequestMatch.agyChanges(on: next.dialog, call: next.request) == Array(next.dialog.body.dropFirst()))
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.history.calls == ["agy:24:tool:1": .allowed])
+    }
+
+    /// A read can miss a dialog that still waits: it fails, or catches a
+    /// redraw without the dialog or with one Heeler can't read, or the pane
+    /// was resized and cut the dialog's changed line at its new edge. None
+    /// of these lets the next call take the dialog's card, and a call left
+    /// out of another dialog's card takes its own dialog again.
+    @Test func aWaitingAgyCallKeepsItsDialogThroughReadsThatMissIt() async throws {
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let line = "date and a line long enough to be cut at forty columns"
+        let wide = try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: line)
+        let narrow = try Self.agyEdit("agy-48-perm-file-edit-default-40x30", width: 40, adding: line)
+        let next = try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: "fig")
+        let text = try ScreenFixture.text("agy-47-perm-file-edit-default-120x40")
+        try #require(text.contains("Pending edit"))
+        let unknown = ANSIScreenDecoder.decode(text.replacingOccurrences(of: "Pending edit", with: "Pending edits"))
+        let pane = FakePane(wide)
+        let store = Self.store(.agy, pane: pane)
+        let first = "agy:24:tool:0"
+        let second = "agy:24:tool:1"
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [Self.agyCall(first, "edit_file", .fileEdit, path), Self.agyCall(second, "edit_file", .fileEdit, path)],
+                status: .awaitingApproval))
+        store.update(activity: .idle)
+        func shownCall(_ screen: ANSIScreen) async -> String? {
+            await pane.show(screen)
+            await store.refresh()
+            guard case .card(let card) = store.content else { return nil }
+            return card.request?.callID
+        }
+        #expect(await shownCall(wide) == first)
+
+        let shown = store.content
+        await pane.failReads(true)
+        await store.refresh()
+        await pane.failReads(false)
+        #expect(store.content == shown)
+        #expect(await shownCall(wide) == first)
+
+        await pane.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(await shownCall(wide) == first)
+
+        await pane.show(unknown)
+        await store.refresh()
+        guard case .generic = store.content else {
+            Issue.record("Expected the generic card, got \(store.content)")
+            return
+        }
+        #expect(await shownCall(wide) == first)
+
+        #expect(await shownCall(narrow) == first)
+        guard case .card(let resized) = store.content else { return }
+        #expect(resized.dialog.subject.changesAreCut)
+        let whole = try #require(AgyDialogParser.parse(wide).dialog)
+        #expect(resized.dialog.fingerprint != whole.fingerprint)
+        #expect(await shownCall(wide) == first)
+
+        #expect(await shownCall(next) == second)
+        #expect(await shownCall(wide) == first)
+    }
+
+    /// A call keeps the read of its dialog that cut the least: read at 40
+    /// columns and then at 62, both cutting the added line, its card keeps
+    /// the wider read. Answered in the terminal, the next edit's dialog,
+    /// whose line differs past the 40-column cut, takes its own call.
+    @Test func anAgyCallKeepsTheReadOfItsDialogThatCutTheLeast() async throws {
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let line = "date and a line long enough to be cut at forty columns and at sixty-two"
+        let narrow = try Self.agyEdit("agy-48-perm-file-edit-default-40x30", width: 40, adding: line)
+        let wider = try Self.agyEdit("agy-48-perm-file-edit-default-62x41", width: 62, adding: line)
+        let next = try Self.agyEdit(
+            "agy-48-perm-file-edit-default-62x41", width: 62,
+            adding: line.replacingOccurrences(of: "forty", with: "fifty"))
+        let pane = FakePane(narrow)
+        let store = Self.store(.agy, pane: pane)
+        let first = "agy:24:tool:0"
+        let second = "agy:24:tool:1"
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [Self.agyCall(first, "edit_file", .fileEdit, path), Self.agyCall(second, "edit_file", .fileEdit, path)],
+                status: .awaitingApproval))
+        store.update(activity: .idle)
+        func shownCall(_ screen: ANSIScreen) async -> String? {
+            await pane.show(screen)
+            await store.refresh()
+            guard case .card(let card) = store.content else { return nil }
+            return card.request?.callID
+        }
+
+        #expect(await shownCall(narrow) == first)
+        #expect(await shownCall(wider) == first)
+        guard case .card(let resized) = store.content else { return }
+        #expect(resized.dialog.subject.changesAreCut)
+
+        #expect(await shownCall(next) == second)
+        #expect(await shownCall(wider) == first)
+    }
+
+    /// An answer the card sent that showed no effect may still land, so
+    /// its call keeps the dialog's card while it stays, and the next
+    /// dialog takes its own call once it shows.
+    @Test func anAgyAnswerThatShowedNoEffectKeepsItsCallOnItsDialogAlone() async throws {
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let pane = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(
+            transcript: Self.agyTranscript(
+                open: [
+                    Self.agyCall("agy:24:tool:0", "edit_file", .fileEdit, path),
+                    Self.agyCall("agy:24:tool:1", "edit_file", .fileEdit, path),
+                ],
+                status: .awaitingApproval))
+        store.update(activity: .idle)
+        await store.refresh()
+
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.progress == .unconfirmed)
+        await store.refresh()
+        guard case .card(let waiting) = store.content else {
+            Issue.record("Expected the card, got \(store.content)")
+            return
+        }
+        #expect(waiting.request?.callID == "agy:24:tool:0")
+
+        await pane.show(try Self.agyEdit("agy-47-perm-file-edit-default-120x40", width: 120, adding: "fig"))
+        await store.refresh()
+        #expect(store.progress == .ready)
+        guard case .card(let next) = store.content else {
+            Issue.record("Expected the next card, got \(store.content)")
+            return
+        }
+        #expect(next.request?.callID == "agy:24:tool:1")
+    }
+
+    /// Skip on the form's second page goes out on the second page: the
+    /// first question gets its digit, never Esc, and Esc on the last page
+    /// submits the set (agy-46 records the season `(skipped)`).
+    @Test func anAgyFormSkipsTheLaterPageItWasTappedOn() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-46-ask-question-multi-after-esc-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+
+        await store.submit([.option(1), .skipped])
+
+        #expect(await pane.keys == [["2"], ["esc"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+        #expect(store.content == .none)
+    }
+
+    /// A skipped first page sends Esc there, checks the second page shows,
+    /// then answers it.
+    @Test func anAgyFormSkipsItsFirstPageInTurn() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+
+        await store.submit([.skipped, .option(0)])
+
+        #expect(await pane.keys == [["esc"], ["1"]])
+        #expect(store.progress == .ready)
+        #expect(store.notice == nil)
+    }
+
+    /// herdr reports agy's trust prompt idle at 40 columns, before agy
+    /// reports a session; nothing else on such a screen is read as a dialog.
+    @Test func anIdleAgyAwaitingItsSessionShowsOnlyTheTrustPrompt() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-12-trust-prompt-no-selected-40x30"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+
+        await pane.show(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        await store.refresh()
+        #expect(store.content == .none)
+
+        store.update(awaitingSession: false)
+        let reads = await pane.reads
+        await store.refresh()
+        #expect(await pane.reads == reads)
+    }
+
+    // MARK: The Composer's place
+
+    /// herdr reports Blocked a read before its card can show. The card's
+    /// place is taken at once, so the Composer never shows over agy's trust
+    /// prompt while Chat reads it.
+    @Test func aBlockedAgentsCardTakesTheComposersPlaceBeforeItsFirstRead() async throws {
+        let screen = try ScreenFixture.screen("agy-00-trust-prompt-191x49")
+        let gate = ScriptedTransportCallGate()
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: {
+                    await gate.waitUntilOpen()
+                    return screen
+                },
+                sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        #expect(!store.replacesComposer)
+
+        store.update(activity: .blocked)
+        #expect(store.replacesComposer)
+        let read = Task { await store.refresh() }
+        await gate.waitForEntry()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await gate.open()
+        await read.value
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+
+        store.update(activity: .idle)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+    }
+
+    /// An idle Agent read for its trust prompt keeps the Composer until the
+    /// card shows: most such reads find no dialog.
+    @Test func anIdleAgentAwaitingItsSessionKeepsTheComposerUntilItsTrustRead() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-12-trust-prompt-no-selected-40x30"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .idle)
+        store.update(awaitingSession: true)
+        #expect(!store.replacesComposer)
+
+        await store.refresh()
+
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        #expect(store.replacesComposer)
+    }
+
+    /// herdr 0.9.5 reports a typed agy neither idle nor Blocked for about
+    /// 3 s after it draws its trust prompt. Awaiting its session, such an
+    /// agy is read at once, and the card's place shows Chat reading until
+    /// that read decides: here the trust card, which stays as herdr reports
+    /// Blocked.
+    @Test func anAgyWithoutAStatusTakesTheComposersPlaceUntilItsFirstRead() async throws {
+        let gate = ScriptedTransportCallGate()
+        let store = Self.agyReading(try ScreenFixture.screen("agy-00-trust-prompt-191x49"), after: gate)
+        #expect(!store.replacesComposer)
+
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+        let read = Task { await store.refresh() }
+        await gate.waitForEntry()
+        #expect(store.content == .none)
+        #expect(store.replacesComposer)
+
+        await gate.open()
+        await read.value
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        #expect(store.replacesComposer)
+
+        store.update(activity: .blocked)
+        guard case .card = store.content else {
+            Issue.record("Expected the trust card to stay, got \(store.content)")
+            return
+        }
+    }
+
+    /// The first read that finds no trust prompt gives the Composer back,
+    /// as one that fails does, and an agy that stays without a status keeps
+    /// it, read on for its trust prompt.
+    @Test(arguments: [false, true])
+    func anAgyWithoutAStatusGetsTheComposerBackFromItsFirstRead(failing: Bool) async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await pane.failReads(failing)
+        let store = Self.store(.agy, pane: pane)
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+
+        await store.refresh()
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+        await store.refresh()
+        #expect(!store.replacesComposer)
+
+        await pane.failReads(false)
+        await pane.show(try ScreenFixture.screen("agy-00-trust-prompt-191x49"))
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the trust card, got \(store.content)")
+            return
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+    }
+
+    /// A first read that hangs gives the Composer back at its limit, here
+    /// with its Chat hidden while it hangs, as after switching Agents.
+    @Test func aFirstReadThatHangsGivesTheComposerBackAtItsLimit() async throws {
+        let manual = ManualClock()
+        let gate = ScriptedTransportCallGate()
+        let store = Self.agyReading(try ScreenFixture.screen("agy-02-idle-empty-120x40"), after: gate, clock: manual)
+        store.update(awaitingSession: true)
+        store.show()
+        await gate.waitForEntry()
+        let limit = BlockedCardStore.Timing().firstUnknownRead
+        await manual.untilParked(for: limit)
+        store.hide()
+        #expect(store.replacesComposer)
+
+        manual.advance(limit)
+        var budget = PollBudget(.seconds(5))
+        while store.replacesComposer, budget.hasTimeLeft {
+            await Task.yield()
+            budget.charge()
+        }
+        #expect(!store.replacesComposer)
+        await gate.open()
+    }
+
+    /// A status or a session ends the read's sign: idle keeps the Composer
+    /// until a card shows, and Blocked has its own.
+    @Test(arguments: ["idle", "working", "session"])
+    func anAgyThatGetsAStatusOrSessionEndsTheReadingSign(change: String) {
+        let store = Self.agyReading(ANSIScreen(rows: []), after: nil)
+        store.update(awaitingSession: true)
+        #expect(store.replacesComposer)
+
+        switch change {
+        case "idle": store.update(activity: .idle)
+        case "working": store.update(activity: .working)
+        default: store.update(awaitingSession: false)
+        }
+
+        #expect(!store.replacesComposer)
+    }
+
+    /// Only agy: the evidence shows no other program reported without a
+    /// status on its trust prompt.
+    @Test(arguments: [ChatProgram.codex, .claude, .grok])
+    func anotherProgramWithoutAStatusKeepsTheComposer(program: ChatProgram) async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-00-trust-prompt-191x49"))
+        let store = Self.store(program, pane: pane)
+        store.update(awaitingSession: true)
+
+        #expect(!store.replacesComposer)
+        await store.refresh()
+        #expect(await pane.reads == 0)
+    }
+
+    // MARK: The read an answer starts from
+
+    /// agy's trust prompt Blocked with No, exit focused, its card shown, and the
+    /// screen Enter brings.
+    private static func agyTrustCard(on pane: FakePane) async throws -> BlockedCardStore {
+        await pane.react(to: ["enter"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected agy's trust card, got \(store.content)")
+            return store
+        }
+        #expect(card.dialog.kind == .agyWorkspaceTrust)
+        return store
+    }
+
+    /// On a core, the read an answer starts from is an observe attach whose first
+    /// paint can miss its timeout over a slow link, as No, exit's first tap did. That
+    /// read is tried once more, and the answer goes.
+    @Test func anAnswerWhoseFirstReadFailsReadsOnceMore() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-11-trust-prompt-no-selected-62x41"))
+        let store = try await Self.agyTrustCard(on: pane)
+        let reads = await pane.reads
+        await pane.failNextReads(1)
+
+        await store.perform(.choose(ordinal: 2))
+
+        #expect(await pane.keys == [["enter"]])
+        #expect(store.notice == nil)
+        #expect(await pane.reads > reads + 1)
+    }
+
+    /// A second failed read refuses the answer as before, with no key sent.
+    @Test func anAnswerWhoseReadFailsTwiceSendsNothing() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-11-trust-prompt-no-selected-62x41"))
+        let store = try await Self.agyTrustCard(on: pane)
+        let reads = await pane.reads
+        await pane.failNextReads(2)
+
+        await store.perform(.choose(ordinal: 2))
+
+        #expect(await pane.keys.isEmpty)
+        #expect(store.notice == "Heeler couldn't read the Agent's screen, so nothing was sent.")
+        #expect(await pane.reads == reads + 2)
+        #expect(store.progress == .ready)
+        guard case .card = store.content else {
+            Issue.record("Expected the trust card to stay, got \(store.content)")
+            return
+        }
+    }
+
+    /// A form's answers start from the same read.
+    @Test func aFormWhoseFirstReadFailsReadsOnceMore() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        await pane.react(to: ["2"], with: try ScreenFixture.screen("agy-45-ask-question-multi-q2-120x40"))
+        await pane.react(to: ["esc"], with: try ScreenFixture.screen("agy-46-ask-question-multi-after-esc-120x40"))
+        let store = try await Self.agyColorAndSeasonForm(on: pane)
+        await pane.failNextReads(1)
+
+        await store.submit([.option(1), .skipped])
+
+        #expect(await pane.keys == [["2"], ["esc"]])
+        #expect(store.notice == nil)
+
+        let refused = FakePane(try ScreenFixture.screen("agy-44-ask-question-multi-120x40"))
+        let again = try await Self.agyColorAndSeasonForm(on: refused)
+        await refused.failNextReads(2)
+
+        await again.submit([.option(1), .skipped])
+
+        #expect(await refused.keys.isEmpty)
+        #expect(again.notice == "Heeler couldn't read the Agent's screen, so nothing was sent.")
+    }
+
+    /// An agy store whose reads show `screen` once `gate`, if any, opens,
+    /// with sleeps that wait for `clock` to advance.
+    private static func agyReading(
+        _ screen: ANSIScreen, after gate: ScriptedTransportCallGate?, clock: ManualClock = ManualClock()
+    ) -> BlockedCardStore {
+        BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: {
+                    await gate?.waitUntilOpen()
+                    return screen
+                },
+                sendKeys: { _ in }, paste: { _ in }),
+            clock: BlockedCardClock(now: clock.clock.now, sleep: clock.parkedSleep(for:)))
+    }
+
+    // MARK: Antigravity CLI's turn end
+
+    /// herdr reports agy idle on a multi-select page whose hint row the
+    /// screen cuts and on a file edit, and the transcript shows the call
+    /// only a poll later. The turn's end reads the screen, so the card
+    /// shows without the call, keeps showing through a transcript still
+    /// without it, and the dialog going ends the reads.
+    @Test func aDialogAgyReportsIdleShowsAtItsTurnEnd() async throws {
+        let expected: [String: BlockedDialogKind] = [
+            "agy-113-ask-question-multiselect-q1-of-2-62x41": .agyQuestion,
+            "agy-47-perm-file-edit-default-120x40": .agyFileEdit,
+        ]
+        for (stem, kind) in expected {
+            let pane = FakePane(try ScreenFixture.screen(stem))
+            let store = Self.store(.agy, pane: pane)
+            store.update(activity: .working)
+            store.update(activity: .idle)
+
+            await store.refresh()
+
+            guard case .card(let card) = store.content else {
+                Issue.record("Expected \(stem)'s card, got \(store.content)")
+                continue
+            }
+            #expect(card.dialog.kind == kind)
+            #expect(card.request == nil)
+
+            store.update(transcript: Self.agyTranscript(open: [], status: .running))
+            await store.refresh()
+            guard case .card = store.content else {
+                Issue.record("Expected \(stem)'s card to stay, got \(store.content)")
+                continue
+            }
+
+            await pane.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+            await store.refresh()
+            #expect(store.content == .none)
+            let reads = await pane.reads
+            await store.refresh()
+            #expect(await pane.reads == reads, "\(stem)")
+        }
+    }
+
+    /// A turn that ends at agy's input box costs one read.
+    @Test func aPlainAgyTurnEndReadsTheScreenOnce() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(await pane.reads == 1)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+    }
+
+    /// A turn-end read that fails is still the one read. Once its card shows,
+    /// a failed read keeps it and reads on, until a read shows the dialog gone.
+    @Test func aFailedTurnEndReadEndsTheReadsUnlessACardShows() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await pane.failReads(true)
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(await pane.reads == 1)
+        #expect(store.content == .none)
+        #expect(!store.replacesComposer)
+
+        let edit = FakePane(try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40"))
+        let shown = Self.store(.agy, pane: edit)
+        shown.update(activity: .working)
+        shown.update(activity: .idle)
+        await shown.refresh()
+        guard case .card = shown.content else {
+            Issue.record("Expected the file edit's card, got \(shown.content)")
+            return
+        }
+        await edit.failReads(true)
+        await shown.refresh()
+        guard case .card = shown.content else {
+            Issue.record("Expected the card to stay through a failed read, got \(shown.content)")
+            return
+        }
+        await edit.failReads(false)
+        await edit.show(try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        await shown.refresh()
+        #expect(shown.content == .none)
+        await shown.refresh()
+        #expect(await edit.reads == 3)
+    }
+
+    /// A dialog Heeler can't name shows no card at a turn's end: only a
+    /// Blocked agy gets the generic one.
+    @Test func anUnknownScreenAtAgysTurnEndShowsNoCard() async throws {
+        let pane = FakePane(
+            ScreenFixture.synthetic([
+                "\(SGR.reset)\(SGR.bold)\u{1B}[38;5;3mSubagent\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;8m" + String(repeating: "─", count: 62) + SGR.reset,
+                "",
+                "\(SGR.bold)Allow this subagent to start?\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;12m> 1. Yes\(SGR.reset)",
+                "  2. No",
+                "",
+                "  \(SGR.bold)\u{1B}[38;5;12m↑/↓\(SGR.reset)\u{1B}[38;5;8m Navigate\(SGR.reset)",
+                "\(SGR.reset)\u{1B}[38;5;8mesc to cancel\(SGR.reset)",
+            ]))
+        let store = Self.store(.agy, pane: pane)
+        store.update(activity: .working)
+        store.update(activity: .idle)
+
+        await store.refresh()
+        await store.refresh()
+
+        #expect(store.content == .none)
+        #expect(await pane.reads == 1)
+    }
+
+    /// Only Working to idle is a turn's end, and only agy is read there.
+    @Test func noOtherChangeReadsAtATurnEnd() async throws {
+        let edit = try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40")
+        let answered = FakePane(edit)
+        let afterBlocked = Self.store(.agy, pane: answered)
+        afterBlocked.update(activity: .blocked)
+        afterBlocked.update(activity: .idle)
+        await afterBlocked.refresh()
+        #expect(await answered.reads == 0)
+
+        let started = FakePane(edit)
+        let unknownToIdle = Self.store(.agy, pane: started)
+        unknownToIdle.update(activity: .idle)
+        await unknownToIdle.refresh()
+        #expect(await started.reads == 0)
+
+        let claude = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let claudeStore = Self.store(.claude, pane: claude)
+        claudeStore.update(activity: .working)
+        claudeStore.update(activity: .idle)
+        await claudeStore.refresh()
+        #expect(await claude.reads == 0)
+    }
+
     // MARK: Helpers
 
     private static let openCodeBlockedNote =
@@ -1540,10 +2575,63 @@ struct BlockedCardStoreTests {
         BlockedCardStore(
             program: program,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: clock.clock)
+    }
+
+    /// A store showing agy-44's two questions as a form.
+    private static func agyColorAndSeasonForm(on pane: FakePane) async throws -> BlockedCardStore {
+        let store = Self.store(.agy, pane: pane)
+        var ask = Self.agyCall("agy:9:tool:0", "ask_question", .question, "What is your favorite color?")
+        ask.questions = [
+            ChatQuestion(text: "What is your favorite color?", options: ["Red", "Blue"].map { .init(label: $0) }),
+            ChatQuestion(text: "What is your favorite season?", options: ["Summer", "Winter"].map { .init(label: $0) }),
+        ]
+        store.update(transcript: Self.agyTranscript(open: [ask], status: .awaitingApproval))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return store
+        }
+        _ = try #require(QuestionForm(card: card))
+        return store
+    }
+
+    /// agy's edit dialog captured in `stem`, a pane `width` cells wide,
+    /// adding `line` where it added `date`: padded to the dialog's edge, or
+    /// cut there as agy cuts a long line.
+    private static func agyEdit(_ stem: String, width: Int, adding line: String) throws -> ANSIScreen {
+        let text = try ScreenFixture.text(stem)
+        // `  2  +  ` leads the row.
+        let room = width - 8
+        let date = "date" + String(repeating: " ", count: room - 4)
+        try #require(text.contains(date))
+        let shown = String(line.prefix(room))
+        return ANSIScreenDecoder.decode(
+            text.replacingOccurrences(of: date, with: shown + String(repeating: " ", count: room - shown.count)))
+    }
+
+    private static func agyCall(
+        _ id: String, _ tool: String, _ kind: ChatToolActivity.Kind, _ summary: String
+    ) -> ChatPendingRequest {
+        ChatPendingRequest(entryID: ChatEntryID(id), callID: id, kind: kind, toolName: tool, summary: summary)
+    }
+
+    /// agy's calls in one open turn, every row with `status`, each offered
+    /// to the card as the reducer offers open calls.
+    private static func agyTranscript(open: [ChatPendingRequest], status: ChatToolActivity.Status) -> ChatTranscript {
+        let entries = open.enumerated().map { index, request in
+            ChatEntry(
+                id: request.entryID, sourceOffset: UInt64(index),
+                content: .tool(
+                    ChatToolActivity(
+                        kind: request.kind, name: request.toolName, title: request.summary, status: status,
+                        callID: request.callID)))
+        }
+        return ChatTranscript(entries: entries, pendingRequests: open)
     }
 
     private static func question(_ id: String) -> ChatPendingRequest {
@@ -1600,17 +2688,37 @@ private actor FakePane {
     private var screen: ANSIScreen
     private var reactions: [[String]: ANSIScreen] = [:]
     private var queuedReactions: [[String]: [ANSIScreen]] = [:]
+    private var pasteReactions: [String: ANSIScreen] = [:]
     private(set) var keys: [[String]] = []
     private(set) var pastes: [String] = []
     private(set) var reads = 0
+    private var failsReads = false
+    private var readsLeftToFail = 0
 
     init(_ screen: ANSIScreen) {
         self.screen = screen
     }
 
-    func read() -> ANSIScreen {
+    func read() throws -> ANSIScreen {
         reads += 1
+        if failsReads { throw TransportError.channelFailed(detail: "timed out") }
+        if readsLeftToFail > 0 {
+            readsLeftToFail -= 1
+            throw TransportError.channelFailed(detail: "timed out")
+        }
         return screen
+    }
+
+    /// The next `count` reads throw, as a core's first paint that missed its
+    /// timeout does.
+    func failNextReads(_ count: Int) {
+        readsLeftToFail = count
+    }
+
+    /// Every read throws, as a timed-out `agent.read` does, until called
+    /// with false.
+    func failReads(_ fails: Bool) {
+        failsReads = fails
     }
 
     func show(_ screen: ANSIScreen) {
@@ -1636,8 +2744,13 @@ private actor FakePane {
         }
     }
 
+    func react(toPaste text: String, with screen: ANSIScreen) {
+        pasteReactions[text] = screen
+    }
+
     func paste(_ text: String) {
         pastes.append(text)
+        if let next = pasteReactions[text] { screen = next }
     }
 }
 
@@ -1678,13 +2791,151 @@ struct BlockedCardHostedTests {
         }
     }
 
+    /// Antigravity CLI's multi-select card offers its `Write-in...` field
+    /// above Submit, worded as the form's page words it, and Submit waits
+    /// for a check or a written answer. Written alone, the answer goes
+    /// through agy's field: its digit, the paste, Enter (`A1: mango`).
+    @Test func anAgyMultiSelectCardTakesAWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-154-ask-question-multiselect-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-161-ask-question-multiselect-writein-open-by-enter-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-162-ask-question-multiselect-writein-alone-typed-120x40"))
+        await pane.react(to: ["enter"], with: try ScreenFixture.screen("agy-02-idle-empty-120x40"))
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            let submit = { AccessibilityProbe.elements(labeled: "Submit", in: controller.view).first }
+            #expect(
+                await Self.eventually {
+                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Submit"])
+                })
+            #expect(submit()?.accessibilityTraits.contains(.notEnabled) == true)
+
+            let field = try #require(Self.textField(in: controller.view))
+            #expect(field.placeholder == "Type your own answer")
+            field.becomeFirstResponder()
+            field.insertText("mango")
+            #expect(await Self.eventually { submit()?.accessibilityTraits.contains(.notEnabled) == false })
+            #expect(submit()?.accessibilityActivate() == true)
+
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft, await pane.keys != [["4"], ["enter"]] {
+                try? await Task.sleep(for: .milliseconds(10))
+                budget.charge()
+            }
+            #expect(await pane.keys == [["4"], ["enter"]])
+            #expect(await pane.pastes == ["mango"])
+        }
+    }
+
+    /// An Antigravity CLI form's multi-select page offers the `Write-in...`
+    /// field beside its checks. On agy-163, apple already checked in the
+    /// terminal, `mango` typed on the card goes out with that check and
+    /// the second page's Skip: `Write-in...`'s digit, the paste, Enter,
+    /// then Esc (`A1: apple, mango`, `A2: User Skipped`).
+    @Test func anAgyFormsMultiSelectPageTakesAWrittenAnswer() async throws {
+        let pane = FakePane(try ScreenFixture.screen("agy-163-ask-question-multiselect-q1-of-2-checked-120x40"))
+        await pane.react(
+            to: ["4"], with: try ScreenFixture.screen("agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40"))
+        await pane.react(
+            toPaste: "mango",
+            with: try ScreenFixture.screen("agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40"))
+        await pane.react(
+            to: ["enter"], with: try ScreenFixture.screen("agy-167-ask-question-q2-after-multiselect-writein-120x40"))
+        await pane.react(
+            to: ["esc"], with: try ScreenFixture.screen("agy-168-idle-after-writein-and-skipped-question-120x40"))
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        let ask = ChatPendingRequest(
+            entryID: ChatEntryID("agy:9:tool:0"), callID: "agy:9:tool:0", kind: .question, toolName: "ask_question",
+            summary: "Which fruits do you like?",
+            questions: [
+                ChatQuestion(
+                    text: "Which fruits do you like?", options: ["apple", "banana", "cherry"], isMultiSelect: true),
+                ChatQuestion(text: "Which size?", options: ["small", "large"]),
+            ])
+        store.update(transcript: ChatTranscript(entries: [], pendingRequests: [ask]))
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            let button = { (label: String) in AccessibilityProbe.elements(labeled: label, in: controller.view).first }
+            #expect(
+                await Self.eventually {
+                    Self.labels(in: controller).isSuperset(of: ["apple", "banana", "cherry", "Next"])
+                })
+            let field = try #require(Self.textField(in: controller.view), "\(Self.labels(in: controller))")
+            #expect(field.placeholder == "Type your own answer")
+            field.becomeFirstResponder()
+            field.insertText("mango")
+            #expect(button("Next")?.accessibilityActivate() == true)
+            #expect(await Self.eventually { Self.labels(in: controller).contains("Which size?") })
+            #expect(button("Skip")?.accessibilityActivate() == true)
+            #expect(await Self.eventually { button("Submit Answers")?.accessibilityTraits.contains(.notEnabled) == false })
+            #expect(button("Submit Answers")?.accessibilityActivate() == true)
+
+            var budget = PollBudget(.seconds(5))
+            while budget.hasTimeLeft, await pane.keys != [["4"], ["enter"], ["esc"]] {
+                try? await Task.sleep(for: .milliseconds(10))
+                budget.charge()
+            }
+            #expect(await pane.keys == [["4"], ["enter"], ["esc"]])
+            #expect(await pane.pastes == ["mango"])
+        }
+    }
+
+    /// A single-select card's own-answer field: Antigravity CLI's says what
+    /// its multi-select card and form pages say, not the terminal row's
+    /// `Write-in...`; Claude's keeps the row label Claude draws.
+    @Test(arguments: [
+        (ChatProgram.agy, "agy-41-ask-question-single-120x40", "Type your own answer"),
+        (ChatProgram.claude, "claude-39-c8-phone-question-titled-rule", "Type something."),
+    ])
+    func aSingleSelectCardWordsItsOwnAnswerField(_ program: ChatProgram, _ stem: String, placeholder: String)
+        async throws
+    {
+        let pane = FakePane(try ScreenFixture.screen(stem))
+        let store = BlockedCardStore(
+            program: program,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            #expect(await Self.eventually { Self.labels(in: controller).contains("Send") })
+            let field = try #require(Self.textField(in: controller.view), "\(Self.labels(in: controller))")
+            #expect(field.placeholder == placeholder)
+        }
+    }
+
+    private static func textField(in view: UIView) -> UITextField? {
+        if let field = view as? UITextField { return field }
+        return view.subviews.lazy.compactMap { textField(in: $0) }.first
+    }
+
     /// An OpenCode card for the dialog on `stem`, matched to `pending`.
     private static func store(_ stem: String, pending: ChatPendingRequest) async throws -> BlockedCardStore {
         let pane = FakePane(try ScreenFixture.screen(stem))
         let store = BlockedCardStore(
             program: .opencode,
             io: BlockedScreenIO(
-                readScreen: { await pane.read() },
+                readScreen: { try await pane.read() },
                 sendKeys: { await pane.send($0) },
                 paste: { await pane.paste($0) }),
             clock: ManualClock().clock)
@@ -1924,5 +3175,200 @@ struct BlockedRequestMatchTests {
         let script = request("x", "exec", "await tools.exec_command({cmd: \"touch x1.txt\"})")
         #expect(BlockedRequestMatch.request(for: try dialog("codex-01-x1-exec"), in: [script])?.callID == "x")
         #expect(BlockedRequestMatch.request(for: try dialog("codex-01-x1-exec"), in: [request("y", "exec", "ls")]) == nil)
+    }
+
+    /// A whole command or path matches only the call with that command or
+    /// path; one the screen cut matches the call it starts.
+    @Test func agyCommandsAndFilesMatchWholeOrByTheirCutStart() throws {
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        let narrow = try dialog("agy-31-perm-run-command-default-40x30")
+        let longer = request("l", "run_command", "sleep 40; echo probe-done; rm -rf build")
+        let run = request("r", "run_command", "sleep 40; echo probe-done")
+        for shown in [command, narrow] {
+            #expect(!shown.subject.isRequestCut)
+            #expect(BlockedRequestMatch.request(for: shown, in: [request("o", "run_command", "ls"), longer, run])?.callID == "r")
+            #expect(BlockedRequestMatch.request(for: shown, in: [longer]) == nil)
+        }
+        #expect(BlockedRequestMatch.request(for: command, in: [request("v", "view_file", "sleep 40; echo probe-done")]) == nil)
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(cut.subject.isRequestCut)
+        #expect(cut.subject.command == "sleep 40; echo pro")
+        #expect(BlockedRequestMatch.request(for: cut, in: [request("o", "run_command", "ls"), run])?.callID == "r")
+
+        let path = "/Users/developer/projects/fruits/fruits.txt"
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        #expect(!edit.subject.isRequestCut && !edit.subject.changesAreCut)
+        // A write over a file asks as an edit.
+        for tool in ["replace_file_content", "edit_file", "write_to_file"] {
+            #expect(BlockedRequestMatch.request(for: edit, in: [request("e", tool, path, kind: .fileEdit)])?.callID == "e")
+        }
+        let other = request("x", "replace_file_content", "/Users/developer/projects/fruits/calc.py", kind: .fileEdit)
+        #expect(BlockedRequestMatch.request(for: edit, in: [other]) == nil)
+        let backup = request("b", "edit_file", path + ".bak", kind: .fileEdit)
+        #expect(BlockedRequestMatch.request(for: edit, in: [backup]) == nil)
+
+        // At 40 columns agy cuts the path at the screen's edge.
+        let created = "/Users/developer/projects/fruits2/a3note.txt"
+        let create = try dialog("agy-99-perm-file-create-default-40x30")
+        #expect(create.subject.isRequestCut && !create.subject.changesAreCut)
+        #expect(BlockedRequestMatch.request(for: create, in: [request("w", "write_to_file", created, kind: .fileWrite)])?.callID == "w")
+        #expect(BlockedRequestMatch.request(for: create, in: [request("e", "replace_file_content", created, kind: .fileEdit)]) == nil)
+        #expect(!(try dialog("agy-99-perm-file-create-default-120x40")).subject.isRequestCut)
+    }
+
+    /// The card shows the screen's command, path and changed lines, and
+    /// takes from the call only what the screen cut: another call's
+    /// command or diff never stands in for what the screen shows whole.
+    @Test func anAgyCardShowsTheScreenAndFillsInOnlyWhatItCut() throws {
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        let other = request("t", "run_command", "sleep 40; echo probe-done; rm -rf build/tmp")
+        #expect(BlockedRequestMatch.agyRequest(on: command, call: other) == "sleep 40; echo probe-done")
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(BlockedRequestMatch.agyRequest(on: cut, call: other) == "sleep 40; echo probe-done; rm -rf build/tmp")
+        #expect(BlockedRequestMatch.agyRequest(on: cut, call: nil) == "sleep 40; echo pro…")
+
+        let created = "/Users/developer/projects/fruits2/a3note.txt"
+        let write = request("w", "write_to_file", created, kind: .fileWrite)
+        #expect(BlockedRequestMatch.agyRequest(on: try dialog("agy-99-perm-file-create-default-40x30"), call: write) == created)
+
+        // agy's dialog for approvals.jsonl step 24, with that call: the
+        // screen's rows, not the call's line diff.
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        let call = try Self.agyEditCall()
+        #expect(BlockedRequestMatch.agyChanges(on: edit, call: call) == ["1  -  cherry", "1  +  cherry", "2  +  date"])
+        #expect(BlockedRequestMatch.agyRequest(on: edit, call: call) == "/Users/developer/projects/fruits/fruits.txt")
+
+        // A changed line cut at the edge: the call's change stands in.
+        let long = try agyDialog(
+            "agy-47-perm-file-edit-default-120x40", replacing: "date" + String(repeating: " ", count: 108),
+            with: "date " + String(repeating: "x", count: 107))
+        #expect(long.subject.changesAreCut)
+        #expect(BlockedRequestMatch.agyChanges(on: long, call: call) == ["1     cherry", "2  +  date"])
+        #expect(BlockedRequestMatch.agyChanges(on: long, call: nil) == Array(long.body.dropFirst()))
+    }
+
+    /// A permission read again at another width, its path or a changed
+    /// line cut at the new edge, can be the same dialog; the next call's,
+    /// which differs in a row both reads show, can't.
+    @Test func agyReadsOfOneDialogAgreeWhereTheScreenCutThem() throws {
+        let edit = try dialog("agy-47-perm-file-edit-default-120x40")
+        for stem in [
+            "agy-48-perm-file-edit-default-40x30", "agy-48-perm-file-edit-default-62x20",
+            "agy-48-perm-file-edit-default-62x41",
+        ] {
+            #expect(BlockedRequestMatch.agyMayShowOneDialog(edit, try dialog(stem)))
+        }
+        let line = "date and a line long enough to be cut at forty columns"
+        let wide = try agyDialog(
+            "agy-47-perm-file-edit-default-120x40", replacing: "date" + String(repeating: " ", count: 108),
+            with: line.padding(toLength: 112, withPad: " ", startingAt: 0))
+        let narrow = try agyDialog(
+            "agy-48-perm-file-edit-default-40x30", replacing: "date" + String(repeating: " ", count: 28),
+            with: String(line.prefix(32)))
+        #expect(!wide.subject.changesAreCut && narrow.subject.changesAreCut)
+        #expect(wide.fingerprint != narrow.fingerprint)
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(wide, narrow))
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(narrow, wide))
+        #expect(BlockedRequestMatch.agyRead(wide, showsAsMuchAs: narrow))
+        #expect(!BlockedRequestMatch.agyRead(narrow, showsAsMuchAs: wide))
+        // The next edit of the file adds another line, and a whole line
+        // that only starts the same is another.
+        let fig = try agyDialog(
+            "agy-48-perm-file-edit-default-40x30", replacing: "date" + String(repeating: " ", count: 28),
+            with: String("fig and a line long enough to be cut at forty columns".prefix(32)))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(wide, fig))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(edit, wide))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(edit, try dialog("agy-99-perm-file-create-default-120x40")))
+
+        let command = try dialog("agy-30-perm-run-command-default-120x40")
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(command, try dialog("agy-31-perm-run-command-default-40x30")))
+        let cut = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done", with: "   sleep 40; echo pro…")
+        #expect(BlockedRequestMatch.agyMayShowOneDialog(command, cut))
+        let other = try agyDialog(
+            "agy-30-perm-run-command-default-120x40", replacing: "   sleep 40; echo probe-done",
+            with: "   sleep 40; echo probe-fail")
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(command, other))
+    }
+
+    /// Only a row a read cut agrees by its start: a changed line both
+    /// reads show whole tells the next call's dialog apart, even while
+    /// another line of each is cut at the edge (agy-141, 92 columns).
+    @Test func agyRowsAgreeByTheirStartOnlyWhereTheScreenCutThem() throws {
+        let long = "  2  +  " + String(repeating: "x", count: 84)
+        func edit(setting first: String) throws -> BlockedDialog {
+            try agyDialog(
+                "agy-141-nocolor-perm-file-edit-92x47",
+                replacing: [("  1     one", "  1  +  \(first)"), ("  2  +  two", long)])
+        }
+        let one = try edit(setting: "timeout = 1")
+        let ten = try edit(setting: "timeout = 10")
+
+        #expect(one.subject.cutChanges == [1])
+        #expect(ten.subject.cutChanges == [1])
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(one, ten))
+        #expect(!BlockedRequestMatch.agyMayShowOneDialog(ten, one))
+    }
+
+    /// The call's change in the dialog's row format, from the real
+    /// pending call: a line diff of its target and replacement, which keeps
+    /// `cherry` as context where agy draws it removed and added again.
+    @Test func agyChangeRowsAreTheCallsLineDiff() throws {
+        let call = try Self.agyEditCall()
+        let changes = try #require(call.fileChanges)
+        #expect(BlockedRequestMatch.agyChangeRows(changes) == ["1     cherry", "2  +  date"])
+        let shown = try dialog("agy-47-perm-file-edit-default-120x40")
+        #expect(BlockedRequestMatch.agyChangeRows(changes) != Array(shown.body.dropFirst()))
+
+        let write = ChatFileChanges(files: [
+            .allAdded(path: "/Users/developer/projects/fruits2/a3note.txt", content: "hello a3\n", kind: .written)
+        ])
+        let create = try dialog("agy-99-perm-file-create-default-120x40")
+        #expect(BlockedRequestMatch.agyChangeRows(write) == Array(create.body.dropFirst()))
+
+        let context = ChatFileChanges(files: [
+            ChatFileChange(
+                path: "a.txt", kind: .updated,
+                recorded: [ChatDiffHunk(oldStart: 4, oldLines: 2, newStart: 4, newLines: 2, lines: [" keep", "-old", "+new"])])
+        ])
+        #expect(BlockedRequestMatch.agyChangeRows(context) == ["4     keep", "5  -  old", "5  +  new"])
+    }
+
+    /// approvals.jsonl's edit_file call at step 24 while it waits on its
+    /// dialog (agy-47): `cherry` becomes `cherry` and `date`.
+    fileprivate static func agyEditCall() throws -> ChatPendingRequest {
+        let transcript = try AgyTranscriptReducerTests.fixture("approvals.jsonl", steps: 21...24)
+        return try #require(transcript.pendingRequests.first { $0.callID == "agy:24:tool:0" })
+    }
+
+    /// A capture with `old` replaced by `new`, which must occur in it.
+    private func agyDialog(_ stem: String, replacing old: String, with new: String) throws -> BlockedDialog {
+        try agyDialog(stem, replacing: [(old, new)])
+    }
+
+    /// A capture with each pair's old text, which must occur in it,
+    /// replaced by its new text.
+    private func agyDialog(_ stem: String, replacing pairs: [(String, String)]) throws -> BlockedDialog {
+        var text = try ScreenFixture.text(stem)
+        for (old, new) in pairs {
+            try #require(text.contains(old))
+            text = text.replacingOccurrences(of: old, with: new)
+        }
+        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(text))
+        return try #require(result.dialog, "\(stem) edited parsed as \(result)")
+    }
+
+    @Test func agyQuestionsMatchByTheirTextAndTrustByNothing() throws {
+        let question = try dialog("agy-41-ask-question-single-120x40")
+        let asked = request(
+            "q", "ask_question", "Which fruit do you prefer?", kind: .question,
+            questions: [ChatQuestion(text: "Which fruit do you prefer?", options: ["Apple", "Banana"])])
+        let other = request("o", "ask_question", "Which pet?", kind: .question, questions: [ChatQuestion(text: "Which pet?")])
+        #expect(BlockedRequestMatch.request(for: question, in: [other, asked])?.callID == "q")
+
+        let trust = try dialog("agy-00-trust-prompt-191x49")
+        #expect(BlockedRequestMatch.request(for: trust, in: [asked, request("r", "run_command", "ls")]) == nil)
     }
 }

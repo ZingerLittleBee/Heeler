@@ -56,6 +56,10 @@ struct AgentDetailView: View {
     @State private var isChoosingTerminal = false
     @State private var terminalOpenFailure: String?
     @State private var createdTerminal = CreatedWorkspaceTerminal()
+    /// A departure the Agent's terminal page made for another Agent that
+    /// opens on Chat, while the keyboard goes down there. Held here, since
+    /// this detail can put a fresh page in first (`.id` follows `attach`).
+    @State private var departureAwaitingKeyboardHide: AgentTerminalView.AgentDeparture?
     /// A Shell Terminal pushed over this Agent by Open Terminal, so Back
     /// returns here; nil beside a list, where the list selects it instead.
     /// The Console holds it, so a detail SwiftUI remounts (a size-class
@@ -105,10 +109,9 @@ struct AgentDetailView: View {
         self.terminal = terminal
         self.inputMode = inputMode
         self.detailSurface = detailSurface
-        // A saved Chat entry's Host is not connected, so its terminal cannot
-        // attach: it opens on Chat without changing the preference.
         _surface = State(
-            initialValue: console.savedChatEntries[agent.id] != nil ? .chat : detailSurface.preferred)
+            initialValue: Self.openingChoice(
+                for: agent.id, console: console, preferred: detailSurface.preferred))
         self.hosts = hosts
         self.activity = activity
         self.keyboardHandoff = keyboardHandoff
@@ -250,6 +253,35 @@ struct AgentDetailView: View {
     /// choice itself is kept, so Chat comes back once it is available again.
     private var effectiveSurface: AgentDetailSurface {
         chatProgram == nil ? .terminal : surface
+    }
+
+    /// What a detail opening on `agent` now shows first, for a screen it is
+    /// about to replace.
+    static func openingSurface(
+        for agent: ConsoleAgent, console: ConsoleStore, preferred: AgentDetailSurface,
+        keepingTo corePin: TerminalCorePin?
+    ) -> AgentDetailSurface {
+        guard console.chatProgram(for: agent, keepingTo: corePin) != nil else { return .terminal }
+        return openingChoice(for: agent.id, console: console, preferred: preferred)
+    }
+
+    /// Whether `id`'s detail, opened in place of this one, starts on Chat
+    /// rather than its terminal. An Agent on this Host keeps to this detail's
+    /// core, as the Workspace drawer's do on a Shell Terminal; another Host's
+    /// Agent has a core of its own.
+    private func opensOnChat(_ id: ConsoleAgent.ID) -> Bool {
+        guard let target = console.detailAgent(for: id) else { return false }
+        return Self.openingSurface(
+            for: target, console: console, preferred: detailSurface.preferred,
+            keepingTo: id.hostID == agent.hostID ? session.corePin : nil) == .chat
+    }
+
+    /// A saved Chat entry's Host is not connected, so its terminal cannot
+    /// attach: it opens on Chat without changing the preference.
+    private static func openingChoice(
+        for id: ConsoleAgent.ID, console: ConsoleStore, preferred: AgentDetailSurface
+    ) -> AgentDetailSurface {
+        console.savedChatEntries[id] != nil ? .chat : preferred
     }
 
     /// The terminal is on screen: no Shell Terminal, no Changes over it, and
@@ -461,6 +493,9 @@ struct AgentDetailView: View {
                         }
                     },
                     workspaceDrawer: workspaceDrawer,
+                    chatDepartures: AgentChatDepartures(
+                        opensOnChat: { opensOnChat($0) },
+                        awaitingKeyboardHide: $departureAwaitingKeyboardHide),
                     // Retention swaps `attach` on appear and rebuilds this
                     // view; the build before that swap is a placeholder and
                     // must not spend the keyboard handoff meant for the real one.
@@ -483,6 +518,10 @@ struct AgentDetailView: View {
         .navigationDestination(item: shellRouteSelection) { route in
             pushedTerminal(route)
         }
+        .modifier(AgentKeyboardDeparture(
+            awaitingHide: $departureAwaitingKeyboardHide,
+            notificationCenter: keyboardInset.notificationCenter,
+            complete: completeDeparture))
         .onAppear {
             hasAppeared = true
             // A detail mounted afresh covers nothing, whatever the last one
@@ -620,6 +659,17 @@ struct AgentDetailView: View {
                 || terminalOpenFailure != nil || isChoosingTerminal))
     }
 
+    /// Routes a departure of the Agent's terminal page once the keyboard has
+    /// gone down there.
+    private func completeDeparture(_ departure: AgentTerminalView.AgentDeparture) {
+        switch departure {
+        case .switched(let id):
+            onSwitch(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
+        }
+    }
+
     /// Nil outside a Console that can select terminals (a scene root), and
     /// while the Workspace has nothing to switch to.
     private var workspaceDrawer: WorkspaceTerminalDrawer? {
@@ -689,6 +739,7 @@ struct AgentDetailView: View {
                 shellRoute?.terminal.id == route.terminal.id && isVisible()
             },
             keyboardHandoff: keyboardHandoff,
+            agentSurface: detailSurface,
             backTitle: String(localized: "Back to Agent"),
             onBack: { shellRoute = nil })
         // A pushed screen takes the stack's environment, not this detail's,

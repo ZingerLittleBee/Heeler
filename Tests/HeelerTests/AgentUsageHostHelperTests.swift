@@ -160,12 +160,11 @@ struct AgentUsageHostHelperTests {
         #expect(AgentUsageScope.exclusion(for: store.state) == .repairHostHelper)
     }
 
-    /// Repaired while no core runs: the record is rewritten at the Helper's next
-    /// connection, so there is nothing more to repair.
-    @Test func aRepairedServiceWaitsForTheCoreToRewriteTheRecord() async throws {
-        let helper = ScriptedHelperHost()
-        await helper.installApp()
-        await helper.seedUsage(try AgentUsageFixture.data(), session: "work")
+    /// Repaired while no core runs, or on a manager's link that now leads to
+    /// another binary: the service's own Node.js answers until the Helper
+    /// rewrites the record at its next connection, so nothing waits or needs repair.
+    @Test func aServiceOnANodeThatRunsAnswersBeforeTheRecordIsRewritten() async throws {
+        let helper = try await helperWithReport(session: "work")
         await helper.configure { $0.recordNodeGone = true }
         let (console, host, _) = console(helper, session: "work")
         defer { console.setHosts([]) }
@@ -173,7 +172,7 @@ struct AgentUsageHostHelperTests {
         let store = console.agentUsageStore(for: host.id)
         await store.pullToRefresh()
 
-        #expect(store.state == .hostHelper(.waitingForCore))
+        #expect(store.state == .available(try AgentUsageFixture.report()))
     }
 
     @Test func waitingKeepsReadingWithABackoffUntilTheHelperHasARecord() async throws {

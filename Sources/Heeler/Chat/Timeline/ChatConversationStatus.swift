@@ -6,7 +6,7 @@ import SwiftUI
 extension ChatUnavailableReason {
     var title: String {
         switch self {
-        case .noSession: String(localized: "Waiting for Conversation")
+        case .noSession, .noConversationYet: String(localized: "Waiting for Conversation")
         case .unidentifiedSession: String(localized: "Conversation Not Identified")
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): String(localized: "Conversation Not Found")
         case .awaitingFirstMessage: String(localized: "No Messages Yet")
@@ -23,7 +23,7 @@ extension ChatUnavailableReason {
 
     var systemImage: String {
         switch self {
-        case .noSession, .awaitingFirstMessage: "bubble.left.and.bubble.right"
+        case .noSession, .noConversationYet, .awaitingFirstMessage: "bubble.left.and.bubble.right"
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): "doc.text.magnifyingglass"
         default: "exclamationmark.bubble"
         }
@@ -43,11 +43,15 @@ extension ChatUnavailableReason {
             String(localized: "herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal.")
         case .noSession(.opencode):
             String(localized: "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal.")
+        case .noSession(.agy):
+            String(localized: "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. If this lasts after a message, check the Antigravity CLI integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
         case .unidentifiedSession(.claude), .unidentifiedSession(.codex), .unidentifiedSession(.pi),
             .unidentifiedSession(.omp), .unidentifiedSession(.grok):
             String(localized: "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own.")
         case .unidentifiedSession(.opencode):
             String(localized: "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's.")
+        case .unidentifiedSession(.agy):
+            String(localized: "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's.")
         case .unsupportedSession:
             String(localized: "herdr reports a session Chat doesn't read.")
         case .notFound(let searchedAll):
@@ -76,6 +80,10 @@ extension ChatUnavailableReason {
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message.")
         case .cannotTellSession(let program):
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
+        case .noConversationYet(let program):
+            String(
+                localized: "\(program.chatName) starts a conversation with its first message. Send one here or in the terminal, and Chat follows it.",
+                comment: "In Chat's place before the program started a conversation: the program's name")
         case .extensionNotLoaded(let program, let turnedOff):
             // One whole text per combination, so each language joins its
             // sentences its own way.
@@ -139,6 +147,14 @@ extension ChatUnavailableReason {
         return switch self {
         case .noSession:
             String(localized: "Waiting for the Agent to report its conversation.")
+        case .noConversationYet(let program):
+            saved
+                ? String(
+                    localized: "Waiting for \(program.chatName) to start the conversation. Showing saved messages.",
+                    comment: "Chat's banner over messages saved earlier: the program's name")
+                : String(
+                    localized: "Waiting for \(program.chatName) to start the conversation.",
+                    comment: "Chat's banner: the program's name")
         case .awaitingFirstMessage(let program):
             // Whole sentences per timing, as in `explanation`.
             program.writesNewConversationWithFirstReply
@@ -197,8 +213,9 @@ extension ChatUnavailableReason {
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .cannotTellSessionOnWindows,
-            .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff, .codexSharedDaemon:
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .noConversationYet,
+            .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff,
+            .codexSharedDaemon:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
@@ -213,7 +230,7 @@ extension ChatUnavailableReason {
     /// banner shows progress and offers nothing to do.
     var isWaiting: Bool {
         switch self {
-        case .noSession, .awaitingFirstMessage: true
+        case .noSession, .noConversationYet, .awaitingFirstMessage: true
         default: false
         }
     }
@@ -479,6 +496,7 @@ extension ChatProgram {
         case .omp: "Oh My Pi"
         case .grok: "Grok Build"
         case .opencode: "OpenCode"
+        case .agy: "Antigravity CLI"
         }
     }
 
@@ -494,6 +512,8 @@ extension ChatProgram {
             String(localized: "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration.")
         case .claude, .pi, .omp:
             String(localized: "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal.")
+        case .agy:
+            String(localized: "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it.")
         }
     }
 }

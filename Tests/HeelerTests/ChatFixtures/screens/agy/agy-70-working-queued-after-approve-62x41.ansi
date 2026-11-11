@@ -1,0 +1,40 @@
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 23.2s[0m [0m[38;5;7m(Appending "date" to the file should...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mExplored[0m 1 file [0m[38;5;7m(fruits.txt)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mEdited[0m 1 file [0m[38;5;7m(fruits.txt)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  Appended [0m[38;5;12mdate[0m to [0m[4m[38;5;4mfruits.txt[0m.
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo probe-esc . If it is[0m
+[0m[1m[38;5;4m  declined, just reply "declined" and stop.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo probe-esc)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo probe-amend . If it is[0m
+[0m[1m[38;5;4m  declined, just reply "declined" and stop.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo probe-amend)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo probe-four . If it is[0m
+[0m[1m[38;5;4m  declined, just reply "declined" and stop.[0m
+
+[0m[38;5;1m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo probe-four)[0m [0m[38;5;7mfailed[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4mCommand[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command and wait for it: sleep 30;[0m
+[0m[1m[38;5;4m  echo probe-two . Then reply with its output only.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 10.8s[0m [0m[38;5;7m(Running the command as specified. Ex...)[0m
+[0m[38;5;3m○[0m [0m[1m[38;5;3mRunning[0m [0m[38;5;7m(sleep 30; echo probe-two)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+⣷  [0m[38;5;8mRunning [0m[38;5;12mcomma[0m[38;5;8mnd...[0m
+[0m[38;5;8m▸ Also reply with the word plum (alt+m to send immediately)[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;8m  Press up to edit queued messages[0m       [0m[2mGemini 4 Argon · high[0m

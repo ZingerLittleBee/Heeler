@@ -54,6 +54,9 @@ struct AgentChatSurfaceView: View {
     @State private var collapseRequest = 0
     @State private var canCollapseTrajectory = false
     @State private var collapseControlHeight: CGFloat = 0
+    /// Whether this Chat has offered the Workspace terminals drawer
+    /// (`edgeHandleReserve`).
+    @State private var hasOfferedWorkspaceDrawer = false
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
@@ -66,7 +69,6 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
-    @State private var agentKeys: ChatAgentKeysStore
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -163,10 +165,6 @@ struct AgentChatSurfaceView: View {
         let paneID = agent.agent.paneID
         let hostID = agent.hostID
         let corePin = session.corePin
-        _agentKeys = State(
-            initialValue: ChatAgentKeysStore { [console] keys in
-                try await console.sendAgentKeys(keys, to: paneID, on: hostID, keepingTo: corePin)
-            })
         _closer = State(
             initialValue: ClosePaneStore(paneTitle: AgentTerminalView.displayTitle(for: agent)) {
                 [console] in
@@ -391,7 +389,7 @@ struct AgentChatSurfaceView: View {
             guard let statuses else { return }
             composer.settleUnknownOutcomes(recorded: Set(statuses.filter { $0.value == .recorded }.keys))
         }
-        .onChange(of: chat.map { $0.blocked.content != .none } ?? false) { _, isReplaced in
+        .onChange(of: showsBlockedCard) { _, isReplaced in
             // A Blocked card takes the Composer's place, Voice Input and the
             // tools dock with it. iPad keeps `.tools` without focus, so
             // nothing else would put the dock away.
@@ -480,7 +478,7 @@ struct AgentChatSurfaceView: View {
                 },
                 snippets: terminal.snippets,
                 manageSnippets: { isManagingSnippets = true },
-                agentKeys: agentKeys,
+                agentKeys: session.agentKeys,
                 height: composerKeyboardLayout.availableToolsHeight)
             .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
             .disabled(composerKeyboardPresentation != .tools)
@@ -566,6 +564,21 @@ struct AgentChatSurfaceView: View {
             }
         }
         .chatContentColumn()
+        .padding(.trailing, edgeHandleReserve)
+        .onChange(of: workspaceDrawer != nil, initial: true) { _, offers in
+            if offers, !hasOfferedWorkspaceDrawer { hasOfferedWorkspaceDrawer = true }
+        }
+    }
+
+    /// How much further than their own margin Chat's rows and floating
+    /// buttons keep from the trailing edge, for the Workspace terminals
+    /// handle resting there. Kept while the back header is out and the
+    /// handle hides, so folding the header does not re-measure every row,
+    /// and once offered, through a reconnect that empties the Workspace's
+    /// Terminals for a moment, so the rows do not re-wrap twice.
+    private var edgeHandleReserve: CGFloat {
+        guard workspaceDrawer != nil || hasOfferedWorkspaceDrawer else { return 0 }
+        return max(0, WorkspaceTerminalDrawer.contentClearance - ChatTimelineMetrics.horizontalPadding)
     }
 
     /// The timeline runs edge to edge: under the status bar, the back
@@ -579,6 +592,7 @@ struct AgentChatSurfaceView: View {
                 topObstruction: topInset + headerObstruction + bannerHeight,
                 bottomEdge: bottomEdge,
                 collapseControlClearance: collapseControlHeight,
+                trailingReserve: edgeHandleReserve,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
                 hidesFromAccessibility: presentation != .timeline,
@@ -952,16 +966,19 @@ struct AgentChatSurfaceView: View {
     private var sendPolicy: ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.chat(
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
-            sendConcern: sendConcern, willReadScreen: registerSends,
+            heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         // A status-line switch types into the same input line.
         let preflight = policy.preflight
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
+        let session = session
         policy.preflight = { text in
             if isSwitching() {
                 return .inputNotReady(String(localized: "Claude Code is switching a setting. Try again in a moment."))
             }
+            // Stop's follow-through types there too (agy's `/tasks`).
+            if let hold = session.heldSend() { return hold }
             if let reason = await settle() { return .inputNotReady(reason) }
             return await preflight?(text)
         }
@@ -986,6 +1003,12 @@ struct AgentChatSurfaceView: View {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
             return await chat.confirmSessionBeforeSend()
         }
+    }
+
+    /// The refusal Chat already knows the check would give, before any await.
+    private var heldSession: (@MainActor () -> String?)? {
+        guard let chat else { return nil }
+        return { chat.sessionRefusalBeforeCheck() }
     }
 
     /// Hands Chat the Composer's messages as a send's check starts, ahead
@@ -1326,7 +1349,22 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt {
-        console.chatStopPlan(for: agent, program: program).composerInterrupt(context: stopContext, agentKeys: agentKeys)
+        console.chatStopPlan(for: agent, program: program).composerInterrupt(
+            context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
+    }
+
+    /// Antigravity CLI's Stop also ends the commands the turn sent to the
+    /// background, which its Esc leaves running (ADR 0024).
+    private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
+        guard program == .agy, let chat else { return nil }
+        let composer = composer
+        return {
+            AgyBackgroundTaskStop.followThrough(
+                reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
+                    ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
+                },
+                io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+        }
     }
 
     /// What a Stop guard reads: the screen, then herdr's status.
@@ -1339,9 +1377,19 @@ struct AgentChatSurfaceView: View {
         }
     }
 
-    /// A Blocked Agent's dialog, answered in the Composer's place.
+    /// Whether a Blocked card takes the Composer's place
+    /// (`BlockedCardStore.replacesComposer`), unless the Agent has left its
+    /// Terminal (ADR 0032). No program is left there to show a dialog,
+    /// though the store can keep the card it showed, or read an Antigravity
+    /// CLI for its trust prompt as the departure clears its status.
+    private var showsBlockedCard: Bool {
+        chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+    }
+
+    /// A Blocked Agent's dialog, answered in the Composer's place, or a sign
+    /// that Chat is reading it (`showsBlockedCard`).
     private var blockedCard: AnyView? {
-        guard let chat, chat.blocked.content != .none else { return nil }
+        guard let chat, showsBlockedCard else { return nil }
         return AnyView(
             BlockedCardView(
                 store: chat.blocked,
@@ -1382,7 +1430,7 @@ struct AgentChatSurfaceView: View {
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
             inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
-            hasInputReplacement: chat.map { $0.blocked.content != .none } ?? false,
+            hasInputReplacement: showsBlockedCard,
             keyboardIsLeaving: keyboardIsLeaving)
     }
 

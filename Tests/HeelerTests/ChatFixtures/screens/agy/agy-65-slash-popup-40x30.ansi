@@ -1,0 +1,30 @@
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo[0m
+[0m[1m[38;5;4m  probe-amend . If it is declined, just[0m
+[0m[1m[38;5;4m  reply "declined" and stop.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo pr...)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo[0m
+[0m[1m[38;5;4m  probe-four . If it is declined, just[0m
+[0m[1m[38;5;4m  reply "declined" and stop.[0m
+
+[0m[38;5;1m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7mfailed[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4mCommand[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m  ⎿  Interrupted · What should Antigravi[0m
+[0m[38;5;8m────────────────────────────────────────[0m
+[0m[38;5;12m>[0m /
+[0m[38;5;8m────────────────────────────────────────[0m
+[0m[38;5;12m> /add-dir           [0m  [0m[2mAdd a directo...[0m
+  /agents              [0m[2mList availabl...[0m
+  /artifact            [0m[2mView and revi...[0m
+  /btw                 [0m[2mAsk a side qu...[0m
+  /changelog           [0m[2mShow release ...[0m
+[0m[2m   ↓ 44 more[0m
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Navigate · [0m[1m[38;5;12menter[0m[38;5;8m Select · [0m[1m[38;5;12mtab[0m[38;5;8m Comp[0m
+[0m[38;5;8mesc to cancel[0m      [0m[2mGemini 4 Argon · high[0m

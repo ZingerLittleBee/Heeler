@@ -135,6 +135,12 @@ extension ChatProgram {
             ChatSessionNaming(
                 source: "herdr:grok", agent: "grok", sessionID: ConversationReference.lowercaseUUIDv7,
                 acceptsTranscriptPath: false)
+        case .agy:
+            // herdr names the program `antigravity_cli` and reports the
+            // conversation's id, the name of its folder under `brain`.
+            ChatSessionNaming(
+                source: "herdr:antigravity_cli", agent: "agy", sessionID: ConversationReference.canonicalUUID,
+                acceptsTranscriptPath: false)
         case .opencode:
             ChatSessionNaming(
                 source: "herdr:opencode", agent: "opencode", sessionID: { OpenCodeSessionID($0)?.rawValue },

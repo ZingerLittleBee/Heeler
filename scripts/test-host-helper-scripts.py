@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import plistlib
+import re
 import shutil
 import stat
 import subprocess
@@ -163,6 +164,9 @@ SYSTEM_PREFIXES = (
     "/opt/local/bin",
     "/var/lib/systemd/linger/",
 )
+# The system's own bin among them, moved only where the probe names it whole,
+# not in the /usr/bin/env it runs.
+SYSTEM_BIN = re.compile(r"(?<![\w/.-])/usr/bin(?![\w/.-])")
 
 SYSTEMCTL = """#!/bin/sh
 printf 'XDG_RUNTIME_DIR=%s args=%s\\n' "$XDG_RUNTIME_DIR" "$*" >> "$FAKE_LOG"
@@ -213,6 +217,16 @@ esac
 """
 
 NONCE = "0123456789abcdef"
+
+def node_stub(exec_path: str, version: str = "22.1.0") -> str:
+    """A `node` that says it is the binary at exec_path, as a link or shim to it would."""
+    return f"""#!/bin/sh
+case "$2" in
+process.versions.node) echo {version} ;;
+process.execPath) echo '{exec_path}' ;;
+esac
+"""
+
 
 
 def shells() -> list[str]:
@@ -270,6 +284,13 @@ class HelperScriptCase(unittest.TestCase):
         path.write_text(body)
         path.chmod(0o755)
 
+    def node_in(self, directory: Path, exec_path: str, version: str = "22.1.0") -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        node = directory / "node"
+        node.write_text(node_stub(exec_path, version))
+        node.chmod(0o755)
+        return node
+
     def script(self, **step) -> str:
         return subprocess.run(
             [str(self.binary), "script", json.dumps(step)],
@@ -283,6 +304,7 @@ class HelperScriptCase(unittest.TestCase):
         if step["step"] == "probe":
             for prefix in SYSTEM_PREFIXES:
                 text = text.replace(prefix, f"{self.root}/abs{prefix}")
+            text = SYSTEM_BIN.sub(f"{self.root}/abs/usr/bin", text)
         return subprocess.run(
             shell.split(), input=text, env=self.env, capture_output=True, text=True, timeout=60,
         )
@@ -384,6 +406,108 @@ class ProbeTests(HelperScriptCase):
         self.tool("node", NODE)
         self.env["FAKE_NODE_VERSION"] = "18.19.0"
         self.assertEqual(self.probe()["node"], "old 18.19.0")
+
+    def test_a_node_another_program_bundles_is_passed_over(self) -> None:
+        # mise's shim runs whatever active tool exposes `node`: here cursor-agent's own.
+        shims = self.home / ".local/share/mise/shims"
+        self.node_in(shims, f"{self.root}/mise/installs/cursor-agent/1/dist-package/node", "26.12.1")
+        volta = f"{self.root}/volta/tools/image/node/22.1.0/bin/node"
+        self.node_in(self.home / ".volta/bin", volta)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {volta}")
+
+    def test_only_a_bundled_node_reads_as_missing_not_too_old(self) -> None:
+        self.node_in(
+            self.home / ".local/share/mise/shims",
+            f"{self.root}/mise/installs/cursor-agent/1/dist-package/node", "18.20.0")
+        self.node_in(self.bin, f"{self.root}/.vscode-server/bin/0123abcd/node", "18.20.0")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], "missing")
+
+    def test_a_bundled_node_first_on_the_path_gives_way_to_a_later_one(self) -> None:
+        # A fish config.fish that activates mise puts cursor-agent's runtime
+        # ahead of the system's Node.js on the exec's PATH.
+        bundled = self.root / "mise/installs/cursor-agent/latest/dist-package"
+        self.node_in(bundled, f"{bundled}/node")
+        system = self.root / "system/bin"
+        self.node_in(system, "/usr/bin/node")
+        self.env["PATH"] = f"{bundled}:{system}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], "found /usr/bin/node")
+
+    def test_a_bundled_node_first_on_the_login_shells_path_gives_way_to_a_later_one(self) -> None:
+        bundled = self.root / "mise/installs/cursor-agent/latest/dist-package"
+        self.node_in(bundled, f"{bundled}/node")
+        system = self.root / "system/bin"
+        self.node_in(system, "/usr/bin/node")
+        self.tool("fish", f'#!/bin/sh\necho "PATH=/wrong"\nPATH="{bundled}:{system}:/usr/bin:/bin" exec /usr/bin/env\n')
+        self.env["SHELL"] = str(self.bin / "fish")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], "found /usr/bin/node")
+
+    def test_a_distributions_versioned_binary_is_found(self) -> None:
+        # Fedora's /usr/bin/node links to node-22; openSUSE's to node22.
+        for binary in ("/usr/bin/node-22", "/usr/bin/node22", "/usr/bin/nodejs22"):
+            self.node_in(self.bin, binary)
+            for shell in shells():
+                with self.subTest(binary=binary, shell=shell):
+                    self.assertEqual(self.probe(shell)["node"], f"found {binary}")
+        for binary in ("/opt/tool/libexec/node-22", "/usr/bin/node-gyp", "/usr/bin/node22/lib/node"):
+            self.node_in(self.bin, binary)
+            with self.subTest(binary=binary):
+                self.assertEqual(self.probe()["node"], "missing")
+
+    def test_a_managers_default_link_is_named_as_found(self) -> None:
+        alias = self.home / ".local/share/fnm/aliases/default/bin"
+        self.node_in(alias, f"{self.root}/fnm/node-versions/v22.1.0/installation/bin/node")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {alias}/node")
+
+    def test_homebrews_bin_is_named_rather_than_its_cellar(self) -> None:
+        brew = self.root / "abs/opt/homebrew/bin"
+        self.node_in(brew, f"{self.root}/abs/opt/homebrew/Cellar/node/24.1.0/bin/node", "24.1.0")
+        self.assertEqual(self.probe()["node"], f"found {brew}/node")
+
+    def test_the_systems_bin_is_named_rather_than_the_binary_it_leads_to(self) -> None:
+        # Fedora's /usr/bin/node is the alternatives link dnf keeps on its current Node.js.
+        usr_bin = self.root / "abs/usr/bin"
+        self.node_in(usr_bin, "/usr/bin/node-22")
+        self.assertEqual(self.probe()["node"], f"found {usr_bin}/node")
+        self.env["PATH"] = f"{usr_bin}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {usr_bin}/node")
+
+    def test_homebrews_bin_on_the_path_is_named_rather_than_its_cellar(self) -> None:
+        # A fish config.fish that runs `brew shellenv` puts it on the exec's PATH.
+        brew = self.root / "abs/opt/homebrew/bin"
+        self.node_in(brew, f"{self.root}/abs/opt/homebrew/Cellar/node/24.1.0/bin/node", "24.1.0")
+        self.env["PATH"] = f"{brew}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {brew}/node")
+
+    def test_another_directory_on_the_path_is_named_by_the_binary_it_runs(self) -> None:
+        # fnm's per-shell link, which goes when that shell does.
+        shell_link = self.root / "fnm_multishells/123_456/bin"
+        binary = f"{self.root}/fnm/node-versions/v22.1.0/installation/bin/node"
+        self.node_in(shell_link, binary)
+        self.env["PATH"] = f"{shell_link}:{self.env['PATH']}"
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {binary}")
+
+    def test_a_shim_is_named_by_the_binary_it_runs(self) -> None:
+        binary = f"{self.root}/mise/installs/node/24.13.1/bin/node"
+        self.node_in(self.home / ".local/share/mise/shims", binary, "24.13.1")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.probe(shell)["node"], f"found {binary}")
 
     def test_reads_the_installed_manifest_record_and_hashes(self) -> None:
         hashes = self.install_tree({"main.js": "one\n", "shared/a b.js": "two\n", "manifest.json": "{\"v\":1}\n"})
@@ -1040,15 +1164,69 @@ printf '{{}}\\n'
         self.env["FAKE_LAUNCHCTL_PRINT"] = str(printed)
         self.assertEqual(self.query(), ("helper-node-gone", "0"))
 
-    def test_a_service_repaired_onto_another_node_waits_for_its_next_record(self) -> None:
+    def service_node(self, body: str) -> Path:
+        node = self.root / "service node" / "node"
+        node.parent.mkdir(parents=True, exist_ok=True)
+        node.write_text(body)
+        node.chmod(0o755)
+        return node
+
+    def test_a_recorded_node_that_has_gone_runs_the_query_with_the_services_node(self) -> None:
+        # The service names a manager's link, the record the binary it led to then.
         self.installed()
-        node = self.record("#!/bin/sh\n")
-        node.unlink()
-        repaired = self.root / "new-node"
-        repaired.write_text("#!/bin/sh\n")
-        repaired.chmod(0o755)
-        self.unit_names(repaired)
+        self.record("#!/bin/sh\n").unlink()
+        self.unit_names(self.service_node(f"""#!/bin/sh
+printf '%s\\n' "$@" >> "{self.log}"
+printf '{{"version":1,"runtime":"service"}}\\n'
+"""))
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.log.write_text("")
+                self.assertEqual(self.query(shell), ('{"version":1,"runtime":"service"}', "0"))
+                self.assertEqual(
+                    self.log.read_text().splitlines(),
+                    [str(self.helper_dir / "app/usage-query.js"), "--tz", "Asia/Kolkata", "--session", "work"],
+                )
+
+    def test_a_mac_whose_record_has_gone_runs_the_query_with_the_agents_node(self) -> None:
+        self.env["FAKE_KERNEL"] = "Darwin"
+        self.helper_dir = self.home / "Library/Application Support/heeler/host-helper"
+        self.installed()
+        self.record("#!/bin/sh\n").unlink()
+        node = self.service_node("#!/bin/sh\nprintf '{\"version\":1,\"runtime\":\"agent\"}\\n'\n")
+        printed = self.root / "print.txt"
+        printed.write_text(
+            (LAUNCHCTL_FIXTURES / "running.txt").read_text().replace(
+                "\tprogram = /opt/homebrew/bin/node", f"\tprogram = {node}"))
+        self.env["FAKE_LAUNCHCTL_PRINT"] = str(printed)
+        self.assertEqual(self.query(), ('{"version":1,"runtime":"agent"}', "0"))
+
+    def test_the_services_node_reports_a_failed_query_like_the_records(self) -> None:
+        self.installed()
+        self.record("#!/bin/sh\n").unlink()
+        self.unit_names(self.service_node("#!/bin/sh\nexit 1\n"))
+        self.assertEqual(self.query(), ("", "1"))
+
+    def test_a_service_whose_node_cannot_run_the_query_waits_for_its_next_record(self) -> None:
+        self.installed()
+        self.record("#!/bin/sh\n").unlink()
+        self.unit_names(self.service_node("#!/bin/sh\nexit 127\n"))
         self.assertEqual(self.query(), (self.MISSING, "0"))
+
+    def test_the_services_node_runs_only_when_it_is_another_one_that_runs(self) -> None:
+        self.installed()
+        # The record's own Node.js, which the query already tried.
+        same = self.record("#!/bin/sh\nprintf ran >> \"$FAKE_LOG\"\nexit 127\n")
+        self.unit_names(same)
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+        self.assertEqual(self.log.read_text(), "ran")
+        # One the unit names that cannot be read back, or that is not executable.
+        self.unit_names(self.root / "a\\b" / "node")
+        self.assertEqual(self.query(), (self.MISSING, "0"))
+        unrunnable = self.service_node("#!/bin/sh\nprintf '{}\\n'\n")
+        unrunnable.chmod(0o644)
+        self.unit_names(unrunnable)
+        self.assertEqual(self.query(), ("helper-node-gone", "0"))
 
     def test_a_relative_node_is_never_run(self) -> None:
         self.installed()

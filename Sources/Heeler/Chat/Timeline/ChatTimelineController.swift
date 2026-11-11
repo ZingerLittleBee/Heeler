@@ -233,6 +233,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let registration = UICollectionView.CellRegistration<ChatHostingCell, ChatRowID> {
             [weak self] cell, _, id in
             guard let self, let row = rowsByID[id] else { return }
+            cell.rowID = id
             let isExpanded = expanded.contains(id)
             let files = expandedFiles[id] ?? []
             let actions = rowActions
@@ -534,6 +535,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard collapseControlClearance != height else { return }
         collapseControlClearance = height
         reserveCollapseControlRoom()
+    }
+
+    /// Keeps `width` at the trailing edge clear of rows, for chrome that
+    /// floats over it, such as the Workspace terminals handle.
+    func setTrailingReserve(_ width: CGFloat) {
+        loadViewIfNeeded()
+        guard layout.trailingReserve != width else { return }
+        layout.trailingReserve = width
+        collectionView.setNeedsLayout()
     }
 
     private func reserveCollapseControlRoom() {
@@ -1073,6 +1083,24 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    // MARK: Cells
+
+    /// UIKit keeps the cell of a row the list dropped, hidden, for reuse,
+    /// with the row still in it, and the automation tree UI tests read
+    /// still lists it: a refused Send's "Sending…" stayed there under
+    /// Waiting for Conversation until the next Send (live). Such a cell lets
+    /// its row go. One that only scrolled away keeps it, since UIKit may
+    /// show it again without configuring it.
+    func collectionView(
+        _ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath
+    ) {
+        guard let cell = cell as? ChatHostingCell, let id = cell.rowID, dataSource?.indexPath(for: id) == nil else {
+            return
+        }
+        cell.rowID = nil
+        cell.contentConfiguration = nil
+    }
+
     // MARK: Menus
 
     func collectionView(
@@ -1164,8 +1192,11 @@ final class ChatCollectionView: UICollectionView {
     }
 }
 
-/// Measures its hosted row at the column's full width.
+/// Measures its hosted row at the width the layout gives it.
 final class ChatHostingCell: UICollectionViewCell {
+    /// The row the cell was last configured with.
+    var rowID: ChatRowID?
+
     /// A hosted row pads itself by the safe area it overlaps, which for a
     /// row scrolling under the status bar or home indicator changes with
     /// every position, and so would its measured height. Rows only keep the

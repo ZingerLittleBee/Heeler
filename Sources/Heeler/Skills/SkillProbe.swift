@@ -153,7 +153,8 @@ enum SkillProbe {
                 description: safeDescription(frontmatter.description),
                 commandPrefix: source.commandPrefix,
                 path: file.path,
-                isUserInvocable: frontmatter.isUserInvocable)
+                isUserInvocable: frontmatter.isUserInvocable,
+                isSlashCommandDisabled: frontmatter.isSlashCommandDisabled)
             guard seenCommands.insert(skill.command).inserted else { continue }
             skills.append(skill)
         }

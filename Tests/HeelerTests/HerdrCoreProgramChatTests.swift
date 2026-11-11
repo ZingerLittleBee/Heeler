@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -95,6 +96,19 @@ struct HerdrCoreProgramChatTests {
         ]))) ?? Data()
     }
 
+    private static func foregroundEvent(sequence: Int, pid: Int = 40, name: String, argv: [String]) -> Data {
+        (try? JSONEncoder().encode(JSONValue.object([
+            "jsonrpc": .string("2.0"), "method": .string("event"),
+            "params": .object([
+                "seq": .number(Double(sequence)), "type": .string("foreground"), "terminal": .string("t1"),
+                "data": .object([
+                    "pid": .number(Double(pid)), "name": .string(name),
+                    "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app"),
+                ]),
+            ]),
+        ]))) ?? Data()
+    }
+
     private static func titleEvent(sequence: Int, title: String) -> Data {
         (try? JSONEncoder().encode(JSONValue.object([
             "jsonrpc": .string("2.0"), "method": .string("event"),
@@ -113,9 +127,11 @@ struct HerdrCoreProgramChatTests {
         let host: Host
         private var titleSequence = 100
 
+        /// `offering` is both kernels' list, unless `macOSOffering` gives macOS its own.
         init(
             host: Host, record: JSONValue, openCodeStore: OpenCodeStoreStub? = nil,
-            offering programs: Set<ChatProgram> = Set(ChatProgram.allCases)
+            offering programs: Set<ChatProgram> = Set(ChatProgram.allCases),
+            macOSOffering: Set<ChatProgram>? = nil
         ) {
             self.host = host
             let result = JSONValue.object([
@@ -134,7 +150,7 @@ struct HerdrCoreProgramChatTests {
                         keepalive: nil)
                 },
                 makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) },
-                coreLinuxChatPrograms: programs, coreMacOSChatPrograms: programs)
+                coreLinuxChatPrograms: programs, coreMacOSChatPrograms: macOSOffering ?? programs)
         }
 
         func start(_ rows: [ScriptedProcessTable.Process], kernel: String = "Linux") async throws {
@@ -320,6 +336,304 @@ struct HerdrCoreProgramChatTests {
         #expect(
             HostCapabilities(serverKind: .herdrTUI, coreLinuxChatPrograms: [], coreMacOSChatPrograms: []).chatPrograms
                 == nil)
+    }
+
+    // MARK: Antigravity CLI
+
+    /// agy passed the owner's check in macOS and Linux core Terminals (ADR 0034).
+    /// Windows reads hold none of the open files it binds from, so no Windows list
+    /// offers it, whatever that list says. Herdr TUI offers it.
+    @Test func theShippedMacOSAndLinuxListsOfferAntigravityCLIAndWindowsNever() {
+        #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.agy))
+        #expect(HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.confirmedWindowsCoreChatPrograms.contains(.agy))
+        #expect(!HostCapabilities.windowsCoreChatCandidates.contains(.agy))
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Darwin").offersChat(for: .agy))
+        #expect(HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "Linux").offersChat(for: .agy))
+        #expect(
+            !HostCapabilities(
+                serverKind: .herdrCore, platform: .nativeWindows, coreKernel: "Windows",
+                coreWindowsChatPrograms: Set(ChatProgram.allCases)
+            ).offersChat(for: .agy))
+        #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: .agy))
+    }
+
+    /// Through the shipped lists, an agy Agent offers Chat on a macOS core Host and
+    /// on a Linux one.
+    @Test(arguments: ["Darwin", "Linux"])
+    func theShippedListsOfferAntigravityCLIChatOnMacOSAndLinuxCoreHosts(_ kernel: String) async throws {
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"),
+            offering: HostCapabilities.confirmedLinuxCoreChatPrograms,
+            macOSOffering: HostCapabilities.confirmedMacOSCoreChatPrograms)
+        try await rig.start([Self.process(name: "agy", environment: [:], argv: ["agy"])], kernel: kernel)
+
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        #expect(rig.store.chatStore(for: agent, program: .agy) != nil)
+        rig.store.setHosts([])
+    }
+
+    private static let agyRoot = "\(home)/.gemini/antigravity-cli"
+
+    private static func agyTranscript(_ session: String) -> String {
+        AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: agyRoot, id: session))
+    }
+
+    /// Offered by this test's own list, as the shipped macOS and Linux lists offer
+    /// it: Chat follows the conversation whose presence lock agy holds, and after
+    /// `/clear`, which reports no status from idle, the check before a Send finds the
+    /// moved lock and holds that Send.
+    @Test(arguments: ["Linux", "Darwin"])
+    func anAntigravityCLIOfferedByATestsListFollowsItsHeldLock(_ kernel: String) async throws {
+        let first = "00000000-0000-4000-8000-000000000102"
+        let cleared = "00000000-0000-4000-8000-000000000101"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"],
+            files: [
+                "\(Self.agyRoot)/presence/\(first).lock", "\(Self.agyRoot)/brain/\(first)",
+                "\(Self.agyRoot)/conversations/\(first).db",
+            ])
+        let turns = try ChatFixture.data("agy/core-turns.jsonl")
+        await rig.files.write(turns, at: Self.agyTranscript(first))
+        try await rig.start([row], kernel: kernel)
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+        }
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        var moved = row
+        moved.openFiles = [
+            "\(Self.agyRoot)/presence/\(cleared).lock", "\(Self.agyRoot)/brain/\(first)",
+            "\(Self.agyRoot)/conversations/\(first).db", "\(Self.agyRoot)/brain/\(cleared)",
+        ]
+        await rig.transport.processTable.add(moved)
+        await rig.files.write(turns, at: Self.agyTranscript(cleared))
+
+        #expect(await chat.confirmSessionBeforeSend() != nil)
+        try await rig.waitUntil("Chat to move with the lock") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(cleared))
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A bare agy before its first prompt has no conversation, so Chat waits for one
+    /// as on Herdr TUI and lets the first Send go: that message makes it. agy takes
+    /// the lock with it, and the check its `working` brings binds that lock.
+    @Test(arguments: ["Linux", "Darwin"])
+    func aFreshAntigravityCLITakesItsFirstMessageFromChatAndBindsItsLock(_ kernel: String) async throws {
+        let session = "00000000-0000-4000-8000-000000000103"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"], files: ["\(Self.agyRoot)/log/cli-20261108_202934.log"])
+        try await rig.start([row], kernel: kernel)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to wait for the conversation") {
+            chat.conversation.phase == .unavailable(.noConversationYet(.agy))
+        }
+        #expect(!chat.offersCandidates)
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
+
+        var prompted = row
+        prompted.openFiles += [
+            "\(Self.agyRoot)/presence/\(session).lock", "\(Self.agyRoot)/conversations/\(session).db",
+        ]
+        await rig.transport.processTable.add(prompted)
+        await rig.files.write(try ChatFixture.data("agy/core-turns.jsonl"), at: Self.agyTranscript(session))
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "antigravity"))
+
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(session))
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// New Agent's agy while its shell still reads its startup files, which the core
+    /// lists with no foreground (herdr-core 0.1.18, 2026-11-10): Chat keeps looking
+    /// rather than saying it can't tell, and a Send waits for agy to run. The core's
+    /// sample of the agy the shell became brings Waiting for Conversation.
+    @Test func heelersLaunchOfAntigravityCLILooksUntilTheCoreSamplesIt() async throws {
+        let launch = ["/bin/bash", "-ic", "exec \"$@\"", "/bin/bash", "agy"]
+        guard case .object(var fields) = Self.record(foreground: launch, name: "bash", app: "antigravity", status: nil)
+        else { return }
+        fields["foreground"] = .null
+        let rig = Rig(host: host, record: .object(fields), offering: [.agy])
+        try await rig.start([Self.process(name: "bash", environment: [:], argv: launch)])
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .agy)
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        #expect(
+            await chat.confirmSessionBeforeSend()
+                == "Antigravity CLI is still starting, so Heeler sent nothing. Send again once it's running.")
+        #expect(chat.conversation.phase == .locating)
+        #expect(!chat.offersCandidates)
+
+        await rig.transport.processTable.add(
+            Self.process(
+                name: "agy", environment: [:], argv: ["agy"], files: ["\(Self.agyRoot)/log/cli-20261110_063048.log"]))
+        await rig.transport.deliver(Self.foregroundEvent(sequence: 2, name: "agy", argv: ["agy"]))
+
+        try await rig.waitUntil("Chat to wait for the conversation") {
+            chat.conversation.phase == .unavailable(.noConversationYet(.agy))
+        }
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// `agy -c` resumed a conversation another agy holds and, past the about 30 s it
+    /// holds that conversation's database, has nothing of it open, and its command line
+    /// names no ID. agy files conversations by ID, so the list is empty however many
+    /// the directory has, and it says why rather than that the directory has none.
+    @Test func anEmptyAntigravityCLIListSaysWhyRatherThanThatTheDirectoryHasNone() async throws {
+        let argv = ["agy", "-c"]
+        let rig = Rig(host: host, record: Self.record(foreground: argv, name: "agy", app: "antigravity"), offering: [.agy])
+        try await rig.start([
+            Self.process(name: "agy", environment: [:], argv: argv, files: ["\(Self.agyRoot)/log/cli-20261110_062102.log"])
+        ])
+        let chat = try rig.chat(.agy)
+        chat.show()
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.agy))
+        }
+        #expect(chat.offersCandidates)
+        let controller = UIHostingController(
+            rootView: ChatCandidatePickerView(chat: chat, corePin: TerminalCorePin(joined: "c1")))
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the empty list") {
+                if case .listed(let list) = chat.candidates { list.candidates.isEmpty } else { false }
+            }
+            try await rig.waitUntil("its reason") {
+                AccessibilityProbe.labels(in: controller.view).contains { $0.contains("by ID, not by directory") }
+            }
+            #expect(
+                !AccessibilityProbe.labels(in: controller.view).contains {
+                    $0.contains("directory has no recent conversations")
+                })
+        }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Linux, past the about 30 s a second agy holds the database of a conversation
+    /// another agy has open: it holds nothing of it, and only its argv says it is no
+    /// new agy. Chat still can't tell, and a Send sends nothing.
+    @Test func aSecondAntigravityCLIStillRefusesASend() async throws {
+        let argv = ["agy", "--conversation", "00000000-0000-4000-8000-000000000102"]
+        let rig = Rig(host: host, record: Self.record(foreground: argv, name: "agy", app: "antigravity"), offering: [.agy])
+        try await rig.start([
+            Self.process(name: "agy", environment: [:], argv: argv, files: ["\(Self.agyRoot)/log/cli-20261108_202934.log"])
+        ])
+        let chat = try rig.chat(.agy)
+
+        chat.show()
+
+        try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.cannotTellSession(.agy)) }
+        let refusal = "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing."
+        #expect(await chat.confirmSessionBeforeSend() == refusal)
+        // Chat follows nothing, so the check would refuse whatever it found: the
+        // Send is refused before it, and a check follows.
+        let checks = await rig.transport.processTable.requests.count
+        #expect(chat.sessionRefusalBeforeCheck() == refusal)
+        var checked = false
+        for _ in 0..<500 where !checked {
+            checked = await rig.transport.processTable.requests.count > checks
+            if !checked { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        #expect(checked)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// A new agy in a Terminal whose Chat still shows the conversation of the one
+    /// before: a Send from Chat would read as going there, so it waits for the first
+    /// message from the terminal, which binds as above.
+    @Test func aFreshAntigravityCLIUnderAnEarlierConversationRefusesASend() async throws {
+        let first = "00000000-0000-4000-8000-000000000102"
+        let rig = Rig(
+            host: host, record: Self.record(foreground: ["agy"], name: "agy", app: "antigravity"), offering: [.agy])
+        let row = Self.process(
+            name: "agy", environment: [:], argv: ["agy"],
+            files: ["\(Self.agyRoot)/presence/\(first).lock", "\(Self.agyRoot)/conversations/\(first).db"])
+        await rig.files.write(try ChatFixture.data("agy/core-turns.jsonl"), at: Self.agyTranscript(first))
+        try await rig.start([row])
+        let chat = try rig.chat(.agy)
+        chat.show()
+        try await rig.waitUntil("Chat to follow it") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+                && !chat.conversation.transcript.entries.isEmpty
+        }
+
+        var fresh = row
+        fresh.start = "222"
+        fresh.openFiles = []
+        await rig.transport.processTable.add(fresh)
+
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
+        let refusal = try #require(await chat.confirmSessionBeforeSend())
+        #expect(refusal.contains("hasn't started a conversation here yet"))
+        // Over a conversation Chat still shows, the check itself says why.
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
+        #expect(chat.conversation.phase == .unavailable(.noConversationYet(.agy)))
+        #expect(!chat.conversation.transcript.entries.isEmpty)
+        #expect(await chat.confirmSessionBeforeSend() == refusal)
+
+        // `/resume` there takes the earlier conversation's lock: Chat shows it again.
+        fresh.openFiles = row.openFiles
+        await rig.transport.processTable.add(fresh)
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "antigravity"))
+        try await rig.waitUntil("Chat to show it again") {
+            chat.conversation.phase == .following(path: Self.agyTranscript(first))
+        }
+
+        // Two locks can't be told apart, over the conversation Chat shows. A check
+        // that finds its lock alone again lets a Send go, so nothing refuses first.
+        fresh.openFiles.append("\(Self.agyRoot)/presence/00000000-0000-4000-8000-000000000101.lock")
+        await rig.transport.processTable.add(fresh)
+        await rig.transport.deliver(Self.statusEvent(sequence: 3, state: "idle", app: "antigravity"))
+        try await rig.waitUntil("Chat to say it can't tell") {
+            chat.conversation.phase == .unavailable(.cannotTellSession(.agy))
+        }
+        #expect(chat.sessionRefusalBeforeCheck() == nil)
+        chat.end()
+        rig.store.setHosts([])
+    }
+
+    /// Waiting for Conversation, as on Herdr TUI, with nothing to choose and nothing
+    /// of herdr in what it says.
+    @Test func noConversationYetWaitsAsHerdrTUIsNoSessionDoes() {
+        let reason = ChatUnavailableReason.noConversationYet(.agy)
+
+        #expect(reason.title == ChatUnavailableReason.noSession(.agy).title)
+        #expect(reason.systemImage == ChatUnavailableReason.noSession(.agy).systemImage)
+        #expect(reason.isWaiting && reason.offersRetry)
+        #expect(!reason.leavesItToAPick && !reason.hidesConversation)
+        #expect(reason.explanation.contains("first message"))
+        #expect(!reason.explanation.contains("herdr"))
+        #expect(reason.bannerText(showingSavedMessages: false) == "Waiting for Antigravity CLI to start the conversation.")
+        #expect(reason.bannerText(showingSavedMessages: true).hasSuffix("Showing saved messages."))
     }
 
     // MARK: Codex

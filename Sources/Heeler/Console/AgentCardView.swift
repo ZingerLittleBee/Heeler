@@ -616,8 +616,7 @@ struct AgentStatusBadge: View {
                     repoName: "proj",
                     repoRoot: "/work/proj",
                     checkoutPath: "/work/proj-wt",
-                    isLinkedWorktree: true),
-                lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
+                    isLinkedWorktree: true)))
         // No workspace in the snapshot: the Agent's own name takes the lead.
         AgentCardView(
             agent: ConsoleAgent(
@@ -628,7 +627,6 @@ struct AgentStatusBadge: View {
                     status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
                     cwd: "/tmp", revision: 1),
                 workspaceLabel: nil,
-                repositoryCheckout: nil,
-                lastOutputSnippet: nil))
+                repositoryCheckout: nil))
     }
 }

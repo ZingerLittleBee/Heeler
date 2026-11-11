@@ -1590,6 +1590,7 @@ struct ConsoleView: View {
                         && currentTab == tab
                 },
                 keyboardHandoff: keyboardHandoff,
+                agentSurface: detailSurface,
                 onBack: { clearSelection() })
                 .id(ConsoleDetailIdentity(shown: .terminal(selectedTerminal.id), opening: detailOpening))
         } else {

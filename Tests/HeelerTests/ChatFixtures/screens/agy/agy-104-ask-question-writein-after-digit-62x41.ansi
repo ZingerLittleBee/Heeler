@@ -1,0 +1,41 @@
+[0m[1m[38;5;4m  one line: hello a3. Nothing else.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 17.6s[0m [0m[38;5;7m(I'm thinking through how to approach...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mEdited[0m 1 file [0m[38;5;7m(a3note.txt)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  Created [0m[4m[38;5;4ma3note.txt[0m.
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Use your ask_question tool once to ask me one multi-select[0m
+[0m[1m[38;5;4m  question (set is_multi_select to true): which colors do I[0m
+[0m[1m[38;5;4m  like, with options red, green and blue. Do nothing else and[0m
+[0m[1m[38;5;4m  use no other tools.[0m
+
+[0m[1m[38;5;3m?[0m Which colors do you like?
+[0m[1m[38;5;4m> blue[0m
+
+  You selected: [0m[1mblue[0m.
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Use your ask_question tool once to ask me one single-select[0m
+[0m[1m[38;5;4m  question: which pet do I prefer, with options cat and dog.[0m
+[0m[1m[38;5;4m  Do nothing else and use no other tools.[0m
+
+[0m[1m[38;5;3m?[0m Which pet do you prefer?
+
+[0m[1m[38;5;3mQuestion[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+
+[0m[1mQuestion 1/1: Which pet do you prefer?[0m
+
+  1. cat
+  2. dog
+[0m[38;5;12m> 3. Write-in...[0m
+
+[0m[38;5;7m  Your answer:[0m
+  [0m[7m[38;5;7m [0m
+
+
+
+  [0m[1m[38;5;12menter[0m[38;5;8m Submit · [0m[1m[38;5;12mesc[0m[38;5;8m Back[0m
+[0m[38;5;8mesc to cancel                            [0m[2mGemini 4 Argon · high[0m

@@ -18,6 +18,10 @@ enum ChatSessionEvidence: Equatable, Sendable {
     case pickUnconfirmed(ChatUnavailableReason)
     /// A Chat following a pick takes this as the pick's end.
     case unavailable(ChatUnavailableReason)
+    /// Heeler's own launch has not shown the core its program yet, so there is
+    /// nothing to bind or to say about it. Chat keeps looking, and the core's sample
+    /// of the program, a foreground event, brings the next check.
+    case launching
 
     var leavesItToAPick: Bool {
         if case .unavailable(let reason) = self { reason.leavesItToAPick } else { false }
@@ -125,11 +129,18 @@ struct HerdrCoreSessionBinder: Sendable {
     /// leak check, so a reason can point at the Host notice.
     func check(_ record: HerdrCoreTerminalRecord, coreCarries: Set<String> = []) async throws -> ChatSessionEvidence {
         if isOnWindows, !HostCapabilities.windowsCoreChatCandidates.contains(program) { return cannotTell }
-        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else {
+        let bindsExactly = !isOnMacOS || macOSExactPrograms.contains(program)
+        // A Terminal's record starts with no foreground, and Heeler's launch of agy
+        // runs as the Terminal's own process until the core samples it.
+        let isUnsampledLaunch = bindsExactly && record.foreground == nil && antigravityLaunch(in: record) != nil
+        guard
+            let tree = try await readTerminalProcesses(
+                of: record, ask: processAsk, from: isUnsampledLaunch ? record.pid : nil)
+        else {
             return await evidenceWithoutProcesses(in: record)
         }
         let evidence: ChatSessionEvidence
-        if isOnMacOS, !macOSExactPrograms.contains(program) {
+        if !bindsExactly {
             evidence = try await evidenceOfAnUnconfirmedProgram(record, tree: tree)
         } else {
             evidence =
@@ -139,8 +150,11 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .grok: try await checkGrokBuild(tree)
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
+                case .agy: checkAntigravity(record, tree: tree)
                 }
         }
+        // No process of the program runs yet that a pick could be held against.
+        if evidence == .launching { return evidence }
         return await applyingPick(to: evidence, record: record, tree: tree)
     }
 
@@ -194,6 +208,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok: grokProcessAsk
         case .opencode: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
+        case .agy: antigravityProcessAsk
         }
     }
 
@@ -213,6 +228,10 @@ struct HerdrCoreSessionBinder: Sendable {
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
+        // A native binary that calls itself `agy`, with nothing of its own under
+        // it at the prompt (agy 1.5.3, `host-evidence/agy`). Windows never asks:
+        // its reads hold no open files, so `check` answers before any exec there.
+        case .agy: tree.agent(isAgent: { $0?.name == "agy" })
         }
     }
 
@@ -225,6 +244,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok: grokHome(of: process)
         case .opencode: nil
         case .pi, .omp: piFamilySessions(of: process)
+        case .agy: antigravityRoot(of: process)
         }
     }
 
@@ -271,11 +291,12 @@ struct HerdrCoreSessionBinder: Sendable {
     /// the Terminal's own process is usually `/bin/zsh`, whose environment a Mac with
     /// SIP on withholds, so the foreground's scope stands in for it. With both withheld, a
     /// walk that answered still says which processes are there, and no process is the
-    /// Agent (herdr compatibility).
+    /// Agent (herdr compatibility). `root` stands in for a foreground the core has not
+    /// sampled yet.
     func readTerminalProcesses(
-        of record: HerdrCoreTerminalRecord, ask: ProcessAsk
+        of record: HerdrCoreTerminalRecord, ask: ProcessAsk, from root: Int? = nil
     ) async throws -> HerdrCoreTerminalProcesses? {
-        guard let terminalPid = record.pid, let foreground = record.foreground?.pid else { return nil }
+        guard let terminalPid = record.pid, let foreground = record.foreground?.pid ?? root else { return nil }
         let root = String(foreground)
         let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
         let request = HostProcessReader.Request(

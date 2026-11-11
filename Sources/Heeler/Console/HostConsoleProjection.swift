@@ -1,8 +1,8 @@
 import Foundation
 
 /// One Host's Console projection. It owns snapshot-then-delta convergence,
-/// subscription changes, retry, snippet coalescing, Host RPC follow-ups and
-/// the EventsSession that supplies them. ConsoleStore only aggregates the
+/// subscription changes, retry, Host RPC follow-ups and the EventsSession
+/// that supplies them. ConsoleStore only aggregates the
 /// resulting rows and observable Host state.
 @MainActor
 final class HostConsoleProjection: ConsoleHostProjection {
@@ -95,8 +95,6 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
     ] = [:]
-    private var snippetFetchesInFlight: Set<String> = []
-    private var pendingSnippetRefreshes: Set<String> = []
     private var hasEnded = false
 
     init(
@@ -841,7 +839,6 @@ final class HostConsoleProjection: ConsoleHostProjection {
                 requestGeneration: requestGeneration)
             await session.updateSubscriptions(
                 Self.subscriptions(paneIDs: agentsByPane.keys, protocolVersion: snapshot.protocolVersion))
-            refreshSnippets()
         } catch {
             guard
                 !hasEnded,
@@ -879,7 +876,6 @@ final class HostConsoleProjection: ConsoleHostProjection {
         latestStatusChanges.removeAll(keepingCapacity: true)
         latestPaneChanges.removeAll(keepingCapacity: true)
         terminalsByPane.removeAll(keepingCapacity: true)
-        pendingSnippetRefreshes.removeAll(keepingCapacity: true)
         agentsByPane.removeAll(keepingCapacity: true)
         workspaces.removeAll(keepingCapacity: true)
         workspacesByID.removeAll(keepingCapacity: true)
@@ -898,9 +894,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
             else { return nil }
             return change.pane
         }
-        var nextAgents = builder.agentRows(
-            lastOutputSnippet: { agentsByPane[$0]?.lastOutputSnippet },
-            liveChange: liveChange)
+        var nextAgents = builder.agentRows(liveChange: liveChange)
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
             guard var row = nextAgents[paneID] else { continue }
@@ -1006,62 +1000,13 @@ final class HostConsoleProjection: ConsoleHostProjection {
         row.agent.status = status
         agentsByPane[paneID] = row
         publish()
-        Task { [weak self] in
-            self?.refreshSnippet(paneID: paneID)
-        }
         return status
-    }
-
-    private func refreshSnippets() {
-        for paneID in agentsByPane.keys {
-            refreshSnippet(paneID: paneID)
-        }
-    }
-
-    private func refreshSnippet(paneID: String) {
-        guard snippetFetchesInFlight.insert(paneID).inserted else {
-            pendingSnippetRefreshes.insert(paneID)
-            return
-        }
-        Task { [weak self] in
-            guard let self else { return }
-            let read = try? await session.withTransport { transport in
-                try await transport.readPane(
-                    PaneReadParams(
-                        paneID: paneID,
-                        source: .recent,
-                        lines: Self.snippetReadLines,
-                        stripANSI: true))
-            }
-            snippetFetchesInFlight.remove(paneID)
-            guard !hasEnded else { return }
-            if let read, var row = agentsByPane[paneID] {
-                row.lastOutputSnippet = Self.snippet(fromPaneText: read.text)
-                agentsByPane[paneID] = row
-                publish()
-            }
-            guard
-                pendingSnippetRefreshes.remove(paneID) != nil,
-                agentsByPane[paneID] != nil
-            else { return }
-            refreshSnippet(paneID: paneID)
-        }
     }
 
     private func publish() {
         guard !hasEnded else { return }
         if !isAwaitingSnapshot { lastKnownAgentsByPane = agentsByPane }
         onChange()
-    }
-
-    private static let snippetReadLines = 6
-
-    static func snippet(fromPaneText text: String) -> String? {
-        for line in text.split(separator: "\n").reversed() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return nil
     }
 
     /// Names no inventory: the one snapshot feeds both the Agents and the

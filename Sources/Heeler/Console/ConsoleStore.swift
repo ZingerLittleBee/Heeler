@@ -809,15 +809,21 @@ final class ConsoleStore {
             return try await self.promptAgent(params, on: hostID)
         }
         composer.isConnectionAvailable = isHostReadyForInput(hostID)
+        let paneID = agent.agent.paneID
         let session = AgentComposerSession(
             composer: composer,
-            stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
-            stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
+            stageImage: imageStager(for: hostID, beside: paneID, keepingTo: corePin),
+            stageFile: fileStager(for: hostID, beside: paneID, keepingTo: corePin),
             corePin: corePin,
             isOnCoreHost: coreSend != nil,
             filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
                 self?.capabilities(for: hostID).isNativeWindowsCore == true
-            }))
+            }),
+            // Weak: the store holds the session, which holds the keys.
+            sendAgentKeys: { [weak self] keys in
+                guard let self else { throw TransportError.cancelled }
+                try await self.sendAgentKeys(keys, to: paneID, on: hostID, keepingTo: corePin)
+            })
         composerSessions[agent.id] = session
         requestHostPlatforms(Array(projections.values))
         return session
@@ -1377,7 +1383,8 @@ final class ConsoleStore {
     }
 
     func offersTitleRename(for agent: ConsoleAgent) -> Bool {
-        capabilities(for: agent.hostID).renameAgent && ChatProgram(rawValue: agent.agent.kind) != nil
+        capabilities(for: agent.hostID).renameAgent
+            && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
     }
 
     func titleRenameStore(for agent: ConsoleAgent) -> AgentTitleRenameStore? {

@@ -11,6 +11,10 @@ struct SkillFrontmatter: Equatable, Sendable {
     /// keeps such a skill for the model and answers "Unknown command" when
     /// it is typed.
     var isUserInvocable = true
+    /// True only for an explicit `disable-slash-command: true`: Antigravity
+    /// CLI keeps such a skill for the model and hides it from its `/` menu
+    /// and from `/name`.
+    var isSlashCommandDisabled = false
 
     /// Parses the frontmatter block of `content`: the lines between the
     /// leading `---` fence and the next `---`/`...` fence. Handles the shapes
@@ -81,7 +85,8 @@ struct SkillFrontmatter: Equatable, Sendable {
         return SkillFrontmatter(
             name: nonEmpty(fields["name"]),
             description: nonEmpty(fields["description"]),
-            isUserInvocable: nonEmpty(fields["user-invocable"])?.lowercased() != "false")
+            isUserInvocable: nonEmpty(fields["user-invocable"])?.lowercased() != "false",
+            isSlashCommandDisabled: nonEmpty(fields["disable-slash-command"])?.lowercased() == "true")
     }
 
     private enum BlockStyle: Equatable {

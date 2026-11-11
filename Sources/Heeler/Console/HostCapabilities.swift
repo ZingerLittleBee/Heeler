@@ -129,7 +129,8 @@ extension HostCapabilities {
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
-    /// OpenCode stay without it.
+    /// OpenCode stay without it, and so does Antigravity CLI, whose only evidence is a
+    /// file it holds open, which nothing reads there.
     static let windowsCoreChatCandidates: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs whose Chat a native Windows core Host opens, each once the owner's
@@ -144,22 +145,31 @@ extension HostCapabilities {
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs whose Chat a Linux core Host opens, each once the owner's check of
-    /// it on hc-lab passed and was recorded (ADR 0034): Claude Code 2.1.288 and 2.1.316
+    /// it passed and was recorded (ADR 0034). On hc-lab: Claude Code 2.1.288 and 2.1.316
     /// against a mock API (2026-11-02), and, on herdr-core 0.1.13 (2026-11-03), Codex
     /// 0.165.0 started with `--no-daemon` and Grok Build 1.0.70 signed in, and Pi 1.4.0
     /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
     /// turns a program on for every release: 2.2.2 passed, but on the recheck
     /// (2026-11-04) a 1.19.5 Agent's last turn never ended in Chat, and every Send from
-    /// Chat found no input box on screen.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
+    /// Chat found no input box on screen. Antigravity CLI 1.5.3 passed in core
+    /// Terminals on a boxd VM, not hc-lab, with Ubuntu 24.04.5 and herdr-core 0.1.18
+    /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
+    /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
+    /// trust prompt, permissions and questions from cards, and both followed `/clear`.
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
     /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp]
+    /// Antigravity CLI 1.5.3 passed the owner's check in a core Terminal on 2026-11-08
+    /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
+    /// bound from its presence lock, sent from Chat and answered its trust prompt,
+    /// permissions and questions from cards, and the colored one followed `/clear`.
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
-    /// recordings saw it through (ADR 0034, `host-evidence/macos`). Taking one out
+    /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
+    /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
     static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
 }

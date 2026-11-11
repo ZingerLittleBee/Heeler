@@ -97,9 +97,113 @@ enum ScreenFixture {
         "opencode-41-subagent-panel-62", "opencode-42-reject-feedback-62", "opencode-43-queued-dock-62",
     ]
 
+    static let agy = [
+        "agy-00-trust-prompt-191x49", "agy-01-welcome-after-attach-120x40", "agy-02-idle-empty-120x40",
+        "agy-03-ctrlc-idle-once-120x40", "agy-04-typed-after-ctrlc-120x40", "agy-05-esc-idle-draft-120x40",
+        "agy-06-esc-esc-idle-draft-120x40", "agy-07-ctrlc-idle-draft-120x40",
+        "agy-09-welcome-after-trust-answered-elsewhere-190x49", "agy-10-trust-prompt-no-selected-190x49",
+        "agy-11-trust-prompt-no-selected-62x41", "agy-12-trust-prompt-no-selected-40x30",
+        "agy-13-first-screen-welcome-120x40", "agy-14-idle-draft-oneline-120x40",
+        "agy-15-idle-draft-wrapped-120x40", "agy-16-idle-draft-multiline-120x40",
+        "agy-17-prompt-newline-just-sent-120x40", "agy-18-idle-after-reply-120x40", "agy-19-help-shortcuts-120x40",
+        "agy-20-help-commands-tab-120x40", "agy-25-slash-popup-120x40", "agy-26-slash-popup-filtered-co-120x40",
+        "agy-27-slash-popup-after-esc-120x40", "agy-28-at-popup-120x40", "agy-29-at-popup-120x40",
+        "agy-30-perm-run-command-default-120x40", "agy-31-perm-run-command-default-40x30",
+        "agy-31-perm-run-command-default-62x20", "agy-31-perm-run-command-default-62x41",
+        "agy-32-perm-after-digit2-120x40", "agy-33-working-with-draft-120x40",
+        "agy-34-working-submitted-while-working-120x40", "agy-35-done-after-queued-120x40",
+        "agy-36-done-final-120x40", "agy-38-esc-while-working-120x40", "agy-39-ctrlc-while-working-120x40",
+        "agy-41-ask-question-single-120x40", "agy-42-ask-question-single-40x30", "agy-42-ask-question-single-62x20",
+        "agy-42-ask-question-single-62x41", "agy-43-ask-question-after-digit2-120x40",
+        "agy-44-ask-question-multi-120x40", "agy-45-ask-question-multi-q2-120x40",
+        "agy-46-ask-question-multi-after-esc-120x40", "agy-47-perm-file-edit-default-120x40",
+        "agy-48-perm-file-edit-default-40x30", "agy-48-perm-file-edit-default-62x20",
+        "agy-48-perm-file-edit-default-62x41", "agy-49-prompt-sent-into-edit-dialog-120x40",
+        "agy-50-after-edit-accepted-by-prompt-120x40", "agy-51-perm-run-command-after-esc-120x40",
+        "agy-52-perm-run-command-amend-120x40", "agy-54-idle-after-esc-amend-heeler-client-59x41",
+        "agy-55-perm-run-command-190x49", "agy-56-perm-run-command-after-digit4-190x49", "agy-57-idle-empty-62x41",
+        "agy-58-idle-draft-oneline-62x41", "agy-59-idle-draft-wrapped-62x41", "agy-60-slash-popup-62x41",
+        "agy-61-at-popup-62x41", "agy-62-help-shortcuts-62x41", "agy-63-idle-empty-40x30",
+        "agy-63-idle-empty-62x20", "agy-64-idle-draft-wrapped-40x30", "agy-64-idle-draft-wrapped-62x20",
+        "agy-65-slash-popup-40x30", "agy-65-slash-popup-62x20", "agy-66-working-nodraft-62x41",
+        "agy-67-working-tool-running-62x41", "agy-68-working-with-draft-62x41",
+        "agy-69-working-draft-entered-then-perm-dialog-62x41", "agy-70-working-queued-after-approve-62x41",
+        "agy-71-working-queued-edit-up-62x41", "agy-72-working-altm-send-now-62x41", "agy-73-done-after-altm-62x41",
+        "agy-74-compacting-or-after-62x41", "agy-75-after-compact-62x41", "agy-76-mode-cycle-1-120x40",
+        "agy-76-mode-cycle-2-120x40", "agy-76-mode-cycle-3-120x40", "agy-76-mode-cycle-4-120x40",
+        "agy-77-accept-edits-run-command-120x40", "agy-78-auto-mode-result-120x40",
+        "agy-79-plan-mode-result-120x40", "agy-80-artifact-review-ctrl-r-120x40",
+        "agy-81-artifact-review-after-y-120x40", "agy-82-plan-approved-result-120x40",
+        "agy-83-plan-edit-rejected-120x40", "agy-84-footer-modes-40x30-40x30", "agy-84-footer-modes-62x20-62x20",
+        "agy-84-footer-modes-62x41-62x41", "agy-85-model-picker-120x40", "agy-87-perm-after-ctrlc-120x40",
+        "agy-88-exit-with-conversation-120x40", "agy-89-warning-notice-bad-model-120x40",
+        "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
+        "agy-90-first-screen-welcome-62x41", "agy-91-bang-typed-62x41", "agy-92-up-on-empty-box-62x41",
+        "agy-93-bash-mode-with-text-62x41", "agy-94-working-nodraft-40x30", "agy-95-working-with-draft-40x30",
+        "agy-96-working-queued-40x30", "agy-97-esc-with-queued-40x30", "agy-98-working-nodraft-62x20",
+        "agy-99-perm-file-create-default-120x40", "agy-99-perm-file-create-default-40x30",
+        "agy-99-perm-file-create-default-62x41", "agy-100-ask-question-multiselect-62x41",
+        "agy-101-ask-question-multiselect-after-digit2-62x41", "agy-102-ask-question-multiselect-after-3-2-62x41",
+        "agy-103-ask-question-multiselect-after-enter-62x41", "agy-104-ask-question-writein-after-digit-62x41",
+        "agy-105-ask-question-writein-typed-62x41", "agy-106-ask-question-multi-q1-after-esc-62x41",
+        "agy-107-ask-question-multi-q2-after-digit2-62x41", "agy-108-perm-run-command-62x41",
+        "agy-109-perm-run-command-amend-62x41", "agy-110-perm-run-command-amend-typed-62x41",
+        "agy-111-perm-run-command-tab-on-no-62x41", "agy-113-ask-question-multiselect-q1-of-2-62x41",
+        "agy-114-ask-question-multiselect-q1-after-enter-62x41", "agy-115-ask-question-single-after-esc-62x41",
+        // agy under `NO_COLOR` (herdr 0.9.5): no color, bold, dim, italic and
+        // underline kept. Above agy in 116 to 122, fish's echo of
+        // `NO_COLOR=1 agy` is colored.
+        "agy-116-nocolor-idle-empty-45x45", "agy-117-nocolor-idle-draft-45x45", "agy-118-nocolor-draft-cleared-45x45",
+        "agy-119-nocolor-bash-mode-empty-45x45", "agy-120-nocolor-bash-mode-with-text-45x45",
+        "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",
+        "agy-123-nocolor-mode-cycle-accept-edits-92x47", "agy-124-nocolor-mode-cycle-auto-92x47",
+        "agy-125-nocolor-mode-cycle-plan-92x47", "agy-126-nocolor-mode-cycle-default-92x47",
+        "agy-127-nocolor-mode-cycle-accept-edits-again-92x47", "agy-128-nocolor-idle-accept-edits-92x47",
+        "agy-129-nocolor-idle-draft-accept-edits-92x47", "agy-130-nocolor-back-to-default-92x47",
+        "agy-131-nocolor-slash-popup-92x47", "agy-132-nocolor-help-shortcuts-93x45", "agy-133-nocolor-after-help-92x47",
+        "agy-134-nocolor-working-nodraft-92x47", "agy-135-nocolor-perm-run-command-92x47",
+        "agy-136-nocolor-working-after-run-command-92x47", "agy-137-nocolor-working-markdown-prompt-92x47",
+        "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-139-nocolor-perm-file-create-92x47",
+        "agy-140-nocolor-working-after-file-create-92x47", "agy-141-nocolor-perm-file-edit-92x47",
+        "agy-142-nocolor-perm-file-edit-no-selected-92x47", "agy-143-nocolor-idle-after-file-edit-declined-92x47",
+        "agy-144-nocolor-ask-question-multi-q1-92x47", "agy-145-nocolor-ask-question-multi-q1-down-92x47",
+        "agy-146-nocolor-ask-question-multi-q2-92x47", "agy-147-nocolor-working-after-questions-92x47",
+        "agy-148-nocolor-ask-question-multiselect-92x47", "agy-149-nocolor-ask-question-multiselect-toggled-92x47",
+        "agy-150-nocolor-idle-after-multiselect-92x47", "agy-151-nocolor-exit-with-conversation-92x47",
+        "agy-152-nocolor-trust-prompt-92x47", "agy-153-nocolor-trust-prompt-no-selected-93x45",
+        // A multi-select question's `Write-in...` field, read through tmux
+        // rather than herdr, whose 16 colors come as SGR 3x and 9x.
+        "agy-154-ask-question-multiselect-120x40", "agy-155-ask-question-multiselect-checked-120x40",
+        "agy-156-ask-question-multiselect-writein-open-checked-120x40",
+        "agy-157-ask-question-multiselect-writein-typed-checked-120x40",
+        "agy-158-ask-question-multiselect-writein-after-esc-120x40", "agy-159-working-after-multiselect-writein-120x40",
+        "agy-160-ask-question-multiselect-writein-selected-120x40",
+        "agy-161-ask-question-multiselect-writein-open-by-enter-120x40",
+        "agy-162-ask-question-multiselect-writein-alone-typed-120x40",
+        "agy-163-ask-question-multiselect-q1-of-2-checked-120x40",
+        "agy-164-ask-question-multiselect-q1-of-2-writein-open-120x40",
+        "agy-165-ask-question-q2-after-empty-writein-enter-120x40",
+        "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40",
+        "agy-167-ask-question-q2-after-multiselect-writein-120x40",
+        "agy-168-idle-after-writein-and-skipped-question-120x40",
+        // Background tasks and the `/tasks` panel, read through tmux as plain
+        // text: no styles, so they read in the colorless palette.
+        "agy-169-plain-working-background-task-120x40", "agy-170-plain-idle-background-task-after-esc-120x40",
+        "agy-171-plain-tasks-popup-120x40", "agy-172-plain-tasks-panel-running-120x40",
+        "agy-173-plain-tasks-panel-after-k-120x40", "agy-174-plain-tasks-panel-second-selected-120x40",
+        "agy-175-plain-idle-after-tasks-120x40", "agy-176-plain-tasks-popup-while-working-120x40",
+        "agy-177-plain-tasks-panel-while-working-120x40", "agy-178-plain-tasks-panel-62x41",
+        "agy-179-plain-tasks-panel-40x41", "agy-180-plain-active-task-focused-by-down-120x40",
+        // The same through herdr 0.9.5, in agy's colors.
+        "agy-181-idle-background-task-after-esc-62x46", "agy-182-tasks-popup-62x46",
+        "agy-183-tasks-panel-running-62x46", "agy-184-tasks-panel-after-k-62x46", "agy-185-idle-after-tasks-62x46",
+        // A command's dialog from an agy started again where one exited.
+        "agy-200-perm-run-command-under-exited-agy-62x46",
+    ]
+
     /// The Claude and Codex captures that the dialog and input-box suites walk.
-    /// Pi, Oh My Pi, Grok Build and OpenCode captures stay out so those
-    /// suites keep their expectations.
+    /// Pi, Oh My Pi, Grok Build, OpenCode and Antigravity CLI captures stay
+    /// out so those suites keep their expectations.
     static let all = claude + codex
 
     static func path(_ stem: String) -> String {
@@ -121,12 +225,37 @@ enum ScreenFixture {
         if stem.hasPrefix("omp-") { return .omp }
         if stem.hasPrefix("grok-") { return .grok }
         if stem.hasPrefix("opencode-") { return .opencode }
+        if stem.hasPrefix("agy-") { return .agy }
         return .claude
     }
 
     /// A screen built from raw ANSI rows, for states no capture shows yet.
     static func synthetic(_ rows: [String]) -> ANSIScreen {
         ANSIScreenDecoder.decode(rows.joined(separator: "\r\n"))
+    }
+
+    /// An agy capture under the last frame of an agy that exited in the
+    /// same terminal: its empty box, in agy's colors or without, its exit
+    /// message, and the shell's prompt that started the capture's agy, as
+    /// agy-200 shows.
+    static func underExitedAgy(_ stem: String, colorless: Bool) throws -> ANSIScreen {
+        let text = try self.text(stem)
+        let columns = ANSIScreenDecoder.decode(text).columns
+        let rule = String(repeating: "─", count: columns)
+        let grey = "\(SGR.reset)\u{1B}[38;5;8m"
+        let box =
+            colorless
+            ? [rule, ">", rule]
+            : [grey + rule + SGR.reset, "\(SGR.reset)\u{1B}[38;5;12m>\(SGR.reset)", grey + rule + SGR.reset]
+        let exit = [
+            "", "Resume with -c (or command below):", "agy --conversation=00000000-0000-4000-8000-000000000200",
+            "developer@probe-host:~/projects/fruits$ agy", "",
+        ]
+        // The terminal wraps a row wider than the screen.
+        let wrapped = exit.flatMap { line in
+            stride(from: 0, to: max(line.count, 1), by: columns).map { String(line.dropFirst($0).prefix(columns)) }
+        }
+        return synthetic(box + wrapped + text.components(separatedBy: "\r\n"))
     }
 }
 

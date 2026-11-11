@@ -33,19 +33,22 @@ extension HostProcessReader {
     static func windowsCommand(_ request: Request, nonce: String) throws -> String { "" }
 }
 
+// The pids as a comma list: the core first, then its holds.
 let arguments = CommandLine.arguments
-guard arguments.count >= 3, let pid = Int(arguments[2]) else { exit(64) }
+guard arguments.count >= 3 else { exit(64) }
+let pids = arguments[2].split(separator: ",").compactMap { Int($0) }
+guard !pids.isEmpty else { exit(64) }
 switch arguments[1] {
 case "script":
     let platform: HostProcessReader.Platform =
         arguments.count > 3 ? .linux(procRoot: arguments[3]) : .hostKernel
     guard let script = try? HerdrCoreEnvironmentCheck.script(
-        pid: pid, nonce: "%s", platform: platform)
+        pids: pids, nonce: "%s", platform: platform)
     else { exit(65) }
     FileHandle.standardOutput.write(script)
 case "parse":
     let names = HerdrCoreEnvironmentCheck.leakedNames(
-        stdout: FileHandle.standardInput.readDataToEndOfFile(), nonce: "%s", pid: pid)
+        stdout: FileHandle.standardInput.readDataToEndOfFile(), nonce: "%s", pids: pids)
     let json = try JSONSerialization.data(withJSONObject: names.sorted())
     FileHandle.standardOutput.write(json)
 default:
@@ -123,7 +126,7 @@ class CheckTestCase(unittest.TestCase):
         if entries is not None:
             (directory / "environ").write_bytes(entries)
 
-    def raw(self, shell: list[str], pid: int = 77, root: str | None = None) -> bytes:
+    def raw(self, shell: list[str], pid: int | str = 77, root: str | None = None) -> bytes:
         """The script's stdout, under an environment holding nothing a test looks for."""
         arguments = [str(self.binary), "script", str(pid), root or str(self.proc)]
         script = subprocess.run(arguments, check=True, capture_output=True).stdout
@@ -135,7 +138,7 @@ class CheckTestCase(unittest.TestCase):
         self.assertEqual(result.stderr, b"")
         return result.stdout
 
-    def parse(self, raw: bytes, pid: int = 77) -> list[str]:
+    def parse(self, raw: bytes, pid: int | str = 77) -> list[str]:
         result = subprocess.run(
             [str(self.binary), "parse", str(pid)], input=raw, capture_output=True, check=True
         )
@@ -218,6 +221,24 @@ class FakeProcTests(CheckTestCase):
                 raw = self.raw(shell, pid)
                 self.assertIn(f"E {pid} -".encode(), raw, pid)
                 self.assertEqual(self.parse(raw, pid), [], pid)
+        self.for_each_shell(check)
+
+    def test_a_hold_is_read_beside_the_core_and_each_adds_its_own_names(self) -> None:
+        # A Mac core under launchd holds none of the names; its hold, which every
+        # Terminal inherits, holds the starter's.
+        self.core(environ({"PATH": "/usr/bin", "LANG": "C"}), pid=77)
+        self.core(environ({"PATH": "/usr/bin", "TMUX": "/tmp/value-tmux,1,0", "HERDR_ENV": "1"}), pid=78)
+        self.core(None, pid=79)
+
+        def check(shell: list[str]) -> None:
+            raw = self.raw(shell, "77,78,79")
+            self.assertIn(b"E 77 ok", raw)
+            self.assertIn(b"E 78 ok", raw)
+            self.assertIn(b"E 79 -", raw)
+            self.assertEqual(raw.count(b"="), 0, raw)
+            self.assertNotIn(b"value-tmux", raw)
+            self.assertEqual(self.parse(raw, "77,78,79"), ["HERDR_ENV", "TMUX"])
+            self.assertEqual(self.parse(raw.replace(b"N 78 TMUX\n", b""), "77,78,79"), ["HERDR_ENV"])
         self.for_each_shell(check)
 
     def test_output_that_is_cut_short_or_someone_elses_names_nothing(self) -> None:

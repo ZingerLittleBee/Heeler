@@ -285,6 +285,9 @@ struct AgentComposerView: View {
     var inputReplacement: AnyView? = nil
     /// Bumped to put the caret in the input.
     var focusRequest = 0
+    /// Bumped to put the keyboard away, as the switcher row's keyboard
+    /// button does.
+    var keyboardDismissRequest = 0
     /// Chat folds the input to one line while the keyboard is down; see
     /// `AgentComposerCollapse`. The terminal keeps its height, since every
     /// fold would resize the PTY, so each surface says which it wants.
@@ -398,6 +401,9 @@ struct AgentComposerView: View {
             // A card still in the input's place keeps the keyboard down.
             if inputReplacement == nil { isInputFocused = true }
         }
+        .onChange(of: keyboardDismissRequest) { _, _ in
+            if isKeyboardPresented { hideKeyboard() }
+        }
         .onChange(of: isInputFocused) { _, isFocused in
             keyboardPresentationFollowsFocus(isFocused)
         }
@@ -481,12 +487,15 @@ struct AgentComposerView: View {
                     openVoiceInputSettings: { isVoiceSetupPresented = true },
                     dismiss: { store.voice.dismissFailure() })
             }
-            if let notice = store.notice, notice.route == sendPolicy.route, failureIsHidden {
+            if let notice = store.notice, notice.route == sendPolicy.route {
                 noticeRow(notice)
             }
             if status == .working, let stopNotice = store.stop.notice {
                 noticeLabel(stopNotice)
                     .accessibilityIdentifier("composer.stop-notice")
+            }
+            if let leftRunning = store.stop.leftRunning {
+                leftRunningRow(leftRunning)
             }
             if !isCollapsed {
                 actionRow
@@ -629,6 +638,21 @@ struct AgentComposerView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("composer.notice")
+    }
+
+    /// What a Stop that ended the turn left running, which the terminal can
+    /// end.
+    private func leftRunningRow(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            noticeLabel(text)
+            if let openAgentTerminal {
+                Button("Open in Terminal", action: openAgentTerminal)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.stop-left-running")
     }
 
     /// Why a send was refused, or why Stop pressed nothing or the Agent
@@ -915,9 +939,6 @@ struct AgentComposerView: View {
         else { return nil }
         return matches
     }
-
-    /// The notice gives way to a failure, which has its own row and Retry.
-    private var failureIsHidden: Bool { latestFailure == nil }
 
     /// Blocked delivery types into Attach without Enter; the tools keyboard
     /// is what submits or cancels. A refusal stays as the store's notice and

@@ -55,7 +55,11 @@ extension HerdrCoreSessionBinder {
         {
             return await dropped()
         }
-        guard evidence == cannotTell || evidence.leavesItToAPick else { return await dropped() }
+        // An agy that reads as having no conversation yet may have let go of one it
+        // was on, as a second agy does on Linux after about 30 s: the pick says the
+        // user saw it there (ADR 0034).
+        guard evidence == cannotTell || evidence.leavesItToAPick || evidence == .unavailable(.noConversationYet(program))
+        else { return await dropped() }
         guard let conversation = pickedConversation(hint) else { return await dropped() }
         let root = transcriptRoot(of: process)
         guard root != nil || program == .opencode else { return unconfirmed(evidence) }
@@ -75,15 +79,17 @@ extension HerdrCoreSessionBinder {
         return await launchHintStands(in: record) ? unconfirmed(evidence) : evidence
     }
 
+    /// A pick that stands unconfirmed says a conversation was seen, so it never
+    /// reads as none yet.
     private func unconfirmed(_ evidence: ChatSessionEvidence) -> ChatSessionEvidence {
         guard case .unavailable(let reason) = evidence else { return evidence }
-        return .pickUnconfirmed(reason)
+        return .pickUnconfirmed(reason == .noConversationYet(program) ? hostSystem.cannotTellSession(program) : reason)
     }
 
     /// The id or file the label names, in the form this program's Chat reads it.
     private func pickedConversation(_ hint: HerdrCoreSessionHint) -> String? {
         switch program {
-        case .claude, .codex: ConversationReference.canonicalUUID(hint.session)
+        case .claude, .codex, .agy: ConversationReference.canonicalUUID(hint.session)
         case .grok: ConversationReference.lowercaseUUID(hint.session)
         case .opencode: OpenCodeSessionID(hint.session)?.rawValue
         case .pi, .omp: hint.piSession(onWindows: isOnWindows)

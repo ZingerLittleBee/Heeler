@@ -73,11 +73,12 @@ struct HerdrCoreChatPickBinderTests {
         case .grok: "\(home)/.grok"
         case .pi: "\(home)/.pi/agent/sessions"
         case .omp: "\(home)/.omp/agent/sessions"
+        case .agy: "\(home)/.gemini/antigravity-cli"
         case .opencode: nil
         }
     }
 
-    private nonisolated static let programs: [ChatProgram] = [.claude, .codex, .grok, .opencode, .pi, .omp]
+    private nonisolated static let programs: [ChatProgram] = [.claude, .codex, .grok, .opencode, .pi, .omp, .agy]
 
     private static func conversation(_ program: ChatProgram) -> String {
         program == .opencode ? openCodeID : uuid
@@ -135,7 +136,10 @@ struct HerdrCoreChatPickBinderTests {
 
             let evidence = try await rig.binder.check(try Self.record(program, labels: ["heeler.chat": label]))
 
-            #expect(evidence == .unavailable(.cannotTellSession(program)))
+            // A bare agy holding nothing has no conversation yet.
+            #expect(
+                evidence
+                    == .unavailable(program == .agy ? .noConversationYet(.agy) : .cannotTellSession(program)))
             #expect(await rig.log.cleared == ["heeler.chat"])
         }
     }
@@ -543,6 +547,407 @@ struct HerdrCoreChatPickBinderTests {
         #expect(elsewhere.candidates.isEmpty)
         #expect(here.candidates.map(\.sessionID) == [thread])
         #expect(here.candidates.first?.origins == [.recentTranscript])
+    }
+
+    /// agy names its conversations by id and files none by directory, so the list is
+    /// what the process holds: a lock, a brain folder, a database. A project file of
+    /// agy's own config is no conversation, and nothing is listed from a folder.
+    @Test func antigravityListsTheConversationsItHoldsOpen() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.holding(rig, [
+            "\(root)/brain/\(Self.uuid)", "\(root)/brain/\(Self.uuid)/scratch",
+            "\(root)/conversations/\(Self.other).db", "\(root)/conversations/\(Self.other).db-wal",
+            "\(Self.home)/.gemini/config/projects/11111111-1111-4111-8111-111111111111.json",
+        ])
+
+        let list = try await Self.list(rig)
+
+        #expect(list.transcriptRoot == root)
+        #expect(list.candidates.map(\.sessionID) == [Self.other, Self.uuid])
+        #expect(list.candidates.allSatisfy { $0.origins == [.heldOpen] && $0.file == nil })
+        #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.files.reads.isEmpty)
+    }
+
+    /// Exact evidence takes over from a pick the moment agy holds a lock.
+    @Test func anAntigravityLockTakesOverFromAPick() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.holding(rig, ["\(root)/presence/\(Self.other).lock"])
+
+        let evidence = try await rig.binder.check(try Self.record(.agy, labels: ["heeler.chat": Self.label()]))
+
+        #expect(evidence == .bound(sessionID: Self.other, transcriptRoot: root, directory: nil))
+        #expect(await rig.log.cleared == ["heeler.chat"])
+    }
+
+    /// An agy typed in a Terminal: the Terminal's shell, with the agy the core reports
+    /// as its foreground under it. `foreground` moves the foreground to another pid.
+    private static func agyTypedRecord(argv: [String], foreground: Int = pid) throws -> HerdrCoreTerminalRecord {
+        var record = try Self.record(.agy, labels: [:])
+        record.pid = 39
+        record.foreground = HerdrCoreForeground(pid: foreground, name: "agy", argv: argv, cwd: "/work/app")
+        return record
+    }
+
+    private static func agyTyped(_ rig: Rig, holding files: [String] = []) async {
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "bash", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": home]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: pid, parent: 39, name: "agy", start: start, environment: ["HC_SCOPE": "scope", "HOME": home],
+                openFiles: files))
+    }
+
+    /// Linux, 2026-11-09 (agy 1.5.3, herdr-core 0.1.18): a second agy on a
+    /// conversation another agy had open held none of its files once about 30 s
+    /// after its start had passed, and the core's
+    /// record of the Terminal's foreground carried its argv. agy prints the `=` form
+    /// on exit. Choosing it binds as any pick does.
+    @Test(arguments: [
+        ["agy", "--conversation", uuid],
+        ["agy", "--conversation=\(uuid)"],
+        ["agy", "--conversation", uuid.uppercased()],
+        ["agy", "--conversation", other, "--conversation=\(uuid)"],
+    ])
+    func antigravityListsTheConversationItsCommandLineNames(_ argv: [String]) async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.agyTyped(rig, holding: ["\(Self.home)/.gemini/antigravity-cli/log/cli-20261108_202934.log"])
+        let written = try await Self.writeAgyTranscript(rig, Self.uuid)
+        let record = try Self.agyTypedRecord(argv: argv)
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.transcriptRoot == root)
+        #expect(list.pid == Self.pid)
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid])
+        #expect(list.candidates.map(\.origins) == [[.commandLine]])
+        #expect(list.candidates.map(\.modified) == [written])
+        #expect(list.candidates.allSatisfy { $0.file == nil })
+        #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.files.reads.isEmpty)
+        #expect(await rig.log.cleared.isEmpty)
+
+        let label = try #require(
+            HerdrCoreSessionHint.pickLabelValue(session: Self.uuid, file: nil, pid: list.pid, start: list.start))
+        var picked = record
+        picked.labels = ["heeler.chat": label]
+        #expect(try await rig.binder.check(picked) == .picked(sessionID: Self.uuid, transcriptRoot: root))
+    }
+
+    /// `agy -c` continues the newest conversation without naming it, and a flag with
+    /// no conversation id names none.
+    @Test(arguments: [
+        ["agy", "-c"],
+        ["agy"],
+        ["agy", "--conversation"],
+        ["agy", "--conversation="],
+        ["agy", "--conversation", ""],
+        ["agy", "--conversation", "df829e0c"],
+        ["agy", "--conversation", "\(uuid)x"],
+        ["agy", "--conversation", "not-a-conversation"],
+        ["agy", "--conversation", "-c"],
+        ["agy", "--conversations", uuid],
+        ["agy", "--conversation-id=\(uuid)"],
+        ["agy", uuid],
+        [uuid],
+        ["--conversation", uuid],
+    ])
+    func antigravityListsNothingFromACommandLineThatNamesNoConversation(_ argv: [String]) async throws {
+        let rig = await Rig(.agy)
+        await Self.agyTyped(rig)
+
+        let list = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv))
+        let named = try await Self.list(rig, record: try Self.agyTypedRecord(argv: ["agy", "--conversation", Self.uuid]))
+
+        #expect(list.candidates.isEmpty)
+        #expect(named.candidates.map(\.sessionID) == [Self.uuid])
+    }
+
+    /// A launcher, wrapper or shell in the foreground with the agy under it: the argv
+    /// the core reports is that process's, so it names nothing for the Agent.
+    @Test func antigravityListsNothingFromAnotherProcesssCommandLine() async throws {
+        let rig = await Rig(.agy)
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "agy-launcher", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start,
+                environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        let argv = ["agy", "--conversation", Self.uuid]
+
+        let wrapped = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv, foreground: 39))
+        let direct = try await Self.list(rig, record: try Self.agyTypedRecord(argv: argv))
+
+        #expect(wrapped.pid == Self.pid)
+        #expect(wrapped.candidates.isEmpty)
+        #expect(direct.candidates.map(\.sessionID) == [Self.uuid])
+    }
+
+    /// What the process holds open comes first, then what its command line names,
+    /// then what a Program Status record names: a status can be another Terminal's.
+    @Test func antigravityRanksItsCommandLineBetweenHeldOpenAndProgramStatus() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let named = "11111111-1111-4111-8111-111111111111"
+        await Self.agyTyped(rig, holding: ["\(root)/brain/\(Self.uuid)"])
+        var record = try Self.agyTypedRecord(argv: ["agy", "--conversation", named])
+        record.records[Self.other] = HerdrCoreTerminalStatus(
+            state: "idle", kind: nil, progress: nil, app: "antigravity", title: "", message: "")
+
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid, named, Self.other])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen], [.commandLine], [.programStatus]])
+    }
+
+    /// `<root>/brain/<id>/.system_generated/logs/transcript_full.jsonl`, written now,
+    /// and the modification time the Host reports for it.
+    private static func writeAgyTranscript(_ rig: Rig, _ session: String) async throws -> Date {
+        let root = try #require(Self.root(.agy))
+        let path = AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: session))
+        await rig.files.write("{}\n", at: path)
+        let time = try #require(try await rig.files.fileStatus(atPath: path)?.modificationTime)
+        await rig.files.clearRecords()
+        return Date(timeIntervalSince1970: TimeInterval(time))
+    }
+
+    /// agy files conversations by id, so no listing dates a row. Each takes its
+    /// transcript's time from one stat and no read, which orders the conversations
+    /// held open newest first. A conversation with no transcript yet, or whose stat
+    /// fails, is still listed, with no date.
+    @Test func antigravityDatesEachConversationByItsTranscript() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let named = "11111111-1111-4111-8111-111111111111"
+        await Self.agyTyped(rig, holding: ["\(root)/brain/\(Self.other)", "\(root)/brain/\(Self.uuid)"])
+        let older = try await Self.writeAgyTranscript(rig, Self.other)
+        let newer = try await Self.writeAgyTranscript(rig, Self.uuid)
+        let record = try Self.agyTypedRecord(argv: ["agy", "--conversation", named])
+        let transcripts = [Self.other, Self.uuid, named].map {
+            AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: $0))
+        }
+
+        let list = try await Self.list(rig, record: record)
+
+        #expect(list.candidates.map(\.sessionID) == [Self.uuid, Self.other, named])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen], [.heldOpen], [.commandLine]])
+        #expect(list.candidates.map(\.modified) == [newer, older, nil])
+        #expect(await rig.files.statuses.sorted() == transcripts.sorted())
+        #expect(await rig.files.reads.isEmpty)
+        #expect(await rig.files.listings.isEmpty)
+
+        await rig.files.failNext(.status, path: transcripts[1], with: TransportError.hostFileTimedOut)
+        let failed = try await Self.list(rig, record: record)
+
+        #expect(failed.candidates.map(\.sessionID) == [Self.other, Self.uuid, named])
+        #expect(failed.candidates.map(\.modified) == [older, nil, nil])
+    }
+
+    // MARK: Antigravity CLI before its first prompt
+
+    /// What a new agy holds at its prompt on Linux and macOS: its log, its crash log,
+    /// the data root's own folders and databases, and agy's project files, none of
+    /// them a conversation's (`host-evidence/agy`, `at-prompt`).
+    private static var agyAtItsPrompt: [String] {
+        let root = "\(home)/.gemini/antigravity-cli"
+        return [
+            "\(root)/log/cli-20261108_202934.log",
+            "\(root)/crashes/crash_40_cd22135a-fc13-4b8c-ad3a-42f16b60f602.log",
+            root, "\(root)/brain", "\(root)/conversations", "\(root)/presence", "\(root)/history.jsonl",
+            "\(root)/conversation_summaries.db", "\(root)/conversation_summaries.db-wal",
+            "\(home)/.gemini/config/projects/11111111-1111-4111-8111-111111111111.json",
+        ]
+    }
+
+    /// agy makes a new conversation only with its first prompt, so a bare `agy` that
+    /// is the Terminal's foreground and holds no conversation's file has none yet,
+    /// typed in a shell or started as the Terminal's own process (ADR 0034). The one
+    /// lock its first prompt takes binds it.
+    @Test func aBareAntigravityCLIHoldingNoConversationHasNoneYet() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.agyTyped(rig, holding: Self.agyAtItsPrompt)
+
+        #expect(try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.noConversationYet(.agy)))
+        #expect(
+            try await rig.binder.check(try Self.agyTypedRecord(argv: ["/home/dev/.local/bin/agy"]))
+                == .unavailable(.noConversationYet(.agy)))
+
+        let launched = await Rig(.agy)
+        await Self.holding(launched, Self.agyAtItsPrompt)
+        #expect(try await launched.binder.check(try Self.record(.agy, labels: [:])) == .unavailable(.noConversationYet(.agy)))
+
+        await Self.agyTyped(rig, holding: Self.agyAtItsPrompt + ["\(root)/presence/\(Self.uuid).lock"])
+        #expect(
+            try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"]))
+                == .bound(sessionID: Self.uuid, transcriptRoot: root, directory: nil))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    /// Any argument may open a conversation another agy holds, which it never locks
+    /// and on Linux holds no file of after about 30 s, as may an argv the core did
+    /// not report.
+    @Test(arguments: [
+        ["agy", "-c"],
+        ["agy", "--model", "x"],
+        ["agy", "--conversation", uuid],
+        ["agy", "--conversation=\(uuid)"],
+        ["agy", ""],
+        [],
+    ])
+    func anAntigravityCLIStartedWithAnythingAfterItsNameCannotTell(_ argv: [String]) async throws {
+        let rig = await Rig(.agy)
+        await Self.agyTyped(rig, holding: Self.agyAtItsPrompt)
+
+        #expect(try await rig.binder.check(try Self.agyTypedRecord(argv: argv)) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// A wrapper the user runs as `agy`, with the real one under it: the argv the
+    /// core reports is the wrapper's, which says nothing of what it passed on.
+    @Test func anAntigravityCLIBehindALauncherCannotTell() async throws {
+        let rig = await Rig(.agy)
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "agy-wrapper", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start,
+                environment: ["HC_SCOPE": "scope", "HOME": Self.home], openFiles: Self.agyAtItsPrompt))
+
+        #expect(
+            try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"], foreground: 39))
+                == .unavailable(.cannotTellSession(.agy)))
+        #expect(try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.noConversationYet(.agy)))
+    }
+
+    /// A launcher that itself goes by `agy` and starts the real one as its child: the
+    /// nearest `agy` is the launcher, which holds nothing, while the child may be on
+    /// a conversation it holds, or on Linux on one another agy holds and it locks
+    /// none of. Nor can a walk that did not answer say nothing is under it.
+    @Test(arguments: [true, false])
+    func anAntigravityCLIUnderALauncherOfTheSameNameCannotTell(_ childHoldsLock: Bool) async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        let environment = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await rig.table.add(ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: environment))
+        await rig.table.add(
+            ScriptedProcessTable.Process(pid: 41, parent: 39, name: "agy", start: "145520", environment: environment))
+        let childFiles = Self.agyAtItsPrompt + (childHoldsLock ? ["\(root)/presence/\(Self.uuid).lock"] : [])
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 41, name: "agy", start: Self.start, environment: environment,
+                openFiles: childFiles))
+
+        #expect(
+            try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"], foreground: 41))
+                == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    @Test func aBareAntigravityCLIWhoseDescendantsCannotBeWalkedCannotTell() async throws {
+        let table = ScriptedProcessTable()
+        let environment = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await table.add(ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: environment))
+        await table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start, environment: environment,
+                openFiles: Self.agyAtItsPrompt))
+        let binder = HerdrCoreSessionBinder(
+            program: .agy,
+            processes: { request in
+                var facts = try await table.read(request)
+                facts[String(Self.pid)]?.descendants = .unavailable
+                return facts
+            },
+            files: VirtualHostFiles(home: Self.home).hostFiles(), clearLabels: { _ in })
+
+        #expect(try await binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// After agy exits the core can keep its label on the Terminal, and with nothing
+    /// under the shell the Agent's rule takes the shell itself. It holds no lock and
+    /// no conversation, and is still no agy.
+    @Test func aShellLeftAfterAntigravityCLIExitsCannotTell() async throws {
+        let rig = await Rig(.agy)
+        await rig.table.remove(Self.pid)
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: 39, name: "bash", start: "145500", environment: ["HC_SCOPE": "scope", "HOME": Self.home]))
+        var record = try Self.record(.agy, labels: [:])
+        record.pid = 39
+        record.foreground = HerdrCoreForeground(pid: 39, name: "bash", argv: ["/bin/bash"], cwd: "/work/app")
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// Any file of a conversation: its folder, anything in it, its database, two
+    /// locks, or a lock under a root no read can take.
+    @Test(arguments: [
+        ["/home/dev/.gemini/antigravity-cli/brain/\(uuid)"],
+        ["/home/dev/.gemini/antigravity-cli/brain/\(uuid)/.system_generated/logs/transcript_full.jsonl"],
+        ["/home/dev/.gemini/antigravity-cli/conversations/\(uuid).db"],
+        ["/home/dev/.gemini/antigravity-cli/conversations/\(uuid.uppercased()).db-wal"],
+        ["/home/dev/.gemini/antigravity-cli/presence/\(uuid).lock", "/home/dev/.gemini/antigravity-cli/presence/\(other).lock"],
+        ["relative/root/presence/\(uuid).lock"],
+    ])
+    func aBareAntigravityCLIHoldingAConversationsFileCannotTell(_ files: [String]) async throws {
+        let rig = await Rig(.agy)
+        await Self.agyTyped(rig, holding: Self.agyAtItsPrompt + files)
+
+        #expect(try await rig.binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    @Test func aBareAntigravityCLIWhoseOpenFilesCannotBeReadCannotTell() async throws {
+        let table = ScriptedProcessTable()
+        let environment = ["HC_SCOPE": "scope", "HOME": Self.home]
+        await table.add(ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: environment))
+        await table.add(
+            ScriptedProcessTable.Process(pid: Self.pid, parent: 39, name: "agy", start: Self.start, environment: environment))
+        let binder = HerdrCoreSessionBinder(
+            program: .agy,
+            processes: { request in
+                var facts = try await table.read(request)
+                facts[String(Self.pid)]?.openFiles = .unavailable
+                return facts
+            },
+            files: VirtualHostFiles(home: Self.home).hostFiles(), clearLabels: { _ in })
+
+        #expect(try await binder.check(try Self.agyTypedRecord(argv: ["agy"])) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// A pick for this very process stands over a reading of none yet: the user saw
+    /// it in a conversation, which a second agy on Linux stops holding any file of.
+    @Test func aPickStandsOverABareAntigravityCLIWithNoConversationYet() async throws {
+        let rig = await Rig(.agy)
+        let root = try #require(Self.root(.agy))
+        await Self.agyTyped(rig, holding: Self.agyAtItsPrompt)
+        var record = try Self.agyTypedRecord(argv: ["agy"])
+        record.labels = ["heeler.chat": Self.label()]
+
+        #expect(try await rig.binder.check(record) == .picked(sessionID: Self.uuid, transcriptRoot: root))
+        #expect(await rig.log.cleared.isEmpty)
+    }
+
+    /// A pick that stands but cannot be confirmed says a conversation was seen, so
+    /// Chat says it cannot tell rather than that there is none yet.
+    @Test func anUnconfirmedPickOnABareAntigravityCLISaysItCannotTell() async throws {
+        let rig = await Rig(.agy)
+        await rig.table.add(
+            ScriptedProcessTable.Process(pid: 39, name: "bash", start: "145500", environment: ["HC_SCOPE": "scope"]))
+        await rig.table.add(
+            ScriptedProcessTable.Process(
+                pid: Self.pid, parent: 39, name: "agy", start: Self.start, environment: ["HC_SCOPE": "scope"]))
+        var record = try Self.agyTypedRecord(argv: ["agy"])
+        #expect(try await rig.binder.check(record) == .unavailable(.noConversationYet(.agy)))
+        record.labels = ["heeler.chat": Self.label()]
+
+        #expect(try await rig.binder.check(record) == .pickUnconfirmed(.cannotTellSession(.agy)))
+        #expect(await rig.log.cleared.isEmpty)
     }
 
     /// The Agent's process is what a confirmation binds to, so no process, no list.

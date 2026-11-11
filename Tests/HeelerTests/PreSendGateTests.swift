@@ -83,6 +83,52 @@ struct PreSendGateTests {
         }
         #expect(PreSendGate.check(screen, program: .opencode, activity: .blocked) == .holdBlocked)
     }
+
+    /// Antigravity CLI takes a message only into an empty, idle box with
+    /// nothing drawn under it. herdr 0.9.5 reports its file edit dialog and
+    /// popups idle, and a dialog can open from a running turn before
+    /// herdr's Enter, so the screen holds those and every running turn.
+    @Test(arguments: ScreenFixture.agy)
+    func agyScreensHoldOrSend(stem: String) throws {
+        let sendable: Set = [
+            "agy-01-welcome-after-attach-120x40", "agy-02-idle-empty-120x40", "agy-03-ctrlc-idle-once-120x40",
+            "agy-06-esc-esc-idle-draft-120x40",
+            "agy-09-welcome-after-trust-answered-elsewhere-190x49", "agy-13-first-screen-welcome-120x40",
+            "agy-18-idle-after-reply-120x40", "agy-36-done-final-120x40", "agy-38-esc-while-working-120x40",
+            "agy-39-ctrlc-while-working-120x40", "agy-50-after-edit-accepted-by-prompt-120x40",
+            "agy-51-perm-run-command-after-esc-120x40", "agy-54-idle-after-esc-amend-heeler-client-59x41",
+            "agy-56-perm-run-command-after-digit4-190x49", "agy-57-idle-empty-62x41", "agy-63-idle-empty-40x30",
+            "agy-63-idle-empty-62x20", "agy-73-done-after-altm-62x41", "agy-75-after-compact-62x41",
+            "agy-76-mode-cycle-1-120x40", "agy-76-mode-cycle-2-120x40", "agy-76-mode-cycle-3-120x40",
+            "agy-76-mode-cycle-4-120x40", "agy-79-plan-mode-result-120x40", "agy-83-plan-edit-rejected-120x40",
+            "agy-84-footer-modes-40x30-40x30", "agy-84-footer-modes-62x20-62x20", "agy-84-footer-modes-62x41-62x41",
+            "agy-87-perm-after-ctrlc-120x40", "agy-89-warning-notice-bad-model-120x40",
+            "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
+            "agy-90-first-screen-welcome-62x41",
+            // agy under `NO_COLOR`.
+            "agy-116-nocolor-idle-empty-45x45", "agy-118-nocolor-draft-cleared-45x45",
+            "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",
+            "agy-123-nocolor-mode-cycle-accept-edits-92x47", "agy-124-nocolor-mode-cycle-auto-92x47",
+            "agy-125-nocolor-mode-cycle-plan-92x47", "agy-126-nocolor-mode-cycle-default-92x47",
+            "agy-127-nocolor-mode-cycle-accept-edits-again-92x47", "agy-128-nocolor-idle-accept-edits-92x47",
+            "agy-130-nocolor-back-to-default-92x47", "agy-133-nocolor-after-help-92x47",
+            "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-143-nocolor-idle-after-file-edit-declined-92x47",
+            "agy-150-nocolor-idle-after-multiselect-92x47",
+            // Read through tmux.
+            "agy-168-idle-after-writein-and-skipped-question-120x40",
+            // A command still running in the background lists its task under
+            // the box; the footer under it decides.
+            "agy-170-plain-idle-background-task-after-esc-120x40", "agy-175-plain-idle-after-tasks-120x40",
+            "agy-181-idle-background-task-after-esc-62x46", "agy-185-idle-after-tasks-62x46",
+        ]
+        let screen = try ScreenFixture.screen(stem)
+        let state = InputBoxStateDetector.detect(screen, program: .agy)
+        let decision: PreSendDecision = sendable.contains(stem) ? .send : .hold(state)
+        for activity in [ChatAgentActivity.idle, .working, .unknown] {
+            #expect(PreSendGate.check(screen, program: .agy, activity: activity) == decision)
+        }
+        #expect(PreSendGate.check(screen, program: .agy, activity: .blocked) == .holdBlocked)
+    }
 }
 
 @Suite("Delivery check")

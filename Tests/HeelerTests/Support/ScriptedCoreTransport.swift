@@ -341,9 +341,12 @@ actor ScriptedCoreTransport: HerdrCoreTransport {
         while isHoldingLeakAnswers {
             await withCheckedContinuation { heldLeakAnswers.append($0) }
         }
+        leakAnswers += 1
         return leakedEnvironment
     }
 
+    /// How many times the leak check has answered.
+    private(set) var leakAnswers = 0
     private var leakedEnvironment: Set<String> = []
     private var isHoldingLeakAnswers = false
     private var heldLeakAnswers: [CheckedContinuation<Void, Never>] = []

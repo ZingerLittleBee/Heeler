@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a macOS or Linux Host running herdr, and an Agent there running Claude Code, Codex, Pi, Oh My Pi, Grok Build, or OpenCode.
+You need a macOS or Linux Host running herdr, and an Agent there running Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI.
 
 ## Set up the Host
 
@@ -20,7 +20,7 @@ If a program doesn't read `current`, install its integration, then restart that 
 herdr integration install claude
 ```
 
-Replace `claude` with `codex`, `pi`, `omp`, `grok`, or `opencode` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
+Replace `claude` with `codex`, `pi`, `omp`, `grok`, `opencode`, or `antigravity-cli` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
 
 Start Codex with `--no-daemon`, and continue a conversation with `codex --no-daemon resume`:
 
@@ -62,7 +62,7 @@ To change the font or text size, go to **Settings > Appearance**.
 
 Type in **Message Agent** and tap **Send**. Chat types the message into the Agent's terminal and presses Enter for you, and never sends a message twice.
 
-- **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi and OpenCode need the turn to finish first.
+- **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi, OpenCode, and Antigravity CLI need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
 - **Images and files.** Tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.

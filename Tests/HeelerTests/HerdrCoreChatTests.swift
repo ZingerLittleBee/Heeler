@@ -278,10 +278,10 @@ struct HerdrCoreChatTests {
         #expect(windowsPlatform.chatPrograms == HostCapabilities.confirmedWindowsCoreChatPrograms)
         #expect(!windowsPlatform.offersChat(for: .codex))
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
-        // Each kernel offers what passed its owner's check there: on hc-lab and on the
-        // owner's Mac, every program but OpenCode.
+        // Each kernel offers what passed its owner's check there: on Linux and on
+        // the owner's Mac every program but OpenCode.
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude, .codex, .grok, .pi, .omp]), ("Darwin", [.claude, .codex, .grok, .pi, .omp]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
@@ -1039,6 +1039,45 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
+    /// Each Terminal's creation asks the leak check again. The same answer
+    /// changes nothing a Chat checked with, so no Chat checks its Agent again.
+    @Test func theSameLeakAnswerAgainChecksNoChat() async throws {
+        let rig = Rig(host: host)
+        let name = ChatTranscriptOffVariable.childSession.rawValue
+        await rig.transport.setLeakedEnvironment([name])
+        try await rig.start(environment: [name: "1"])
+        try await rig.waitUntil("the notice") { rig.store.hostCoreEnvironmentNotices[self.host.id] != nil }
+        let chat = try rig.chat()
+        chat.show()
+        let reason = ChatUnavailableReason.transcriptOff(.childSession, coreCarriesIt: true)
+        try await rig.waitUntil("the reason") { chat.conversation.phase == .unavailable(reason) }
+        let checks = await rig.checks
+        let answers = await rig.transport.leakAnswers
+
+        await rig.transport.deliver(
+            Self.event(
+                sequence: 2, type: "created", terminal: "t2",
+                data: .object([
+                    "address": .string("t2"), "cwd": .string("/work"), "state": .string("live"), "pid": .number(7),
+                ])))
+        var budget = PollBudget(.seconds(5))
+        while await rig.transport.leakAnswers == answers, budget.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        #expect(await rig.transport.leakAnswers == answers + 1)
+        // Long enough for a check the answer asked for to start.
+        var extra = 0
+        for _ in 0..<30 where extra == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+            extra = await rig.checks - checks
+        }
+        #expect(extra == 0)
+        #expect(chat.conversation.phase == .unavailable(reason))
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// Between a new link and its snapshot nothing is known of any Terminal, so a
     /// check says nothing rather than that Chat cannot tell.
     @Test func aCheckBeforeTheSnapshotLeavesAFollowedConversationAlone() async throws {
@@ -1194,6 +1233,48 @@ struct HerdrCoreChatTests {
         #expect(!chat.isVisible)
         try await rig.waitUntil("the new Chat to follow it") { Self.isFollowing(next) }
         next.end()
+        rig.store.setHosts([])
+    }
+
+    /// A departed Agent has no program left to show a dialog. An Antigravity
+    /// CLI's store keeps reading for its trust prompt once the departure
+    /// clears its status, so it keeps the card it showed, but Chat gives the
+    /// Composer its place back.
+    @Test(arguments: [ChatAgentDeparture.ended, .restarting])
+    func aDepartedAgentsBlockedCardGivesTheComposerBack(_ departure: ChatAgentDeparture) async throws {
+        let record = Self.record(foreground: ["agy"], name: "agy", status: "blocked", app: "antigravity")
+        guard case .object(var fields) = record else { return }
+        fields["keep"] = .bool(departure == .restarting)
+        let rig = Rig(host: host, record: .object(fields))
+        try await rig.start()
+        let agent = try #require(rig.agent)
+        // Chat's store is keyed to the core the first link names.
+        try await rig.waitUntil("the Chat") { rig.store.chatStore(for: agent, program: .agy) != nil }
+        let chat = try #require(rig.store.chatStore(for: agent, program: .agy))
+        let suite = "core-chat-departed-card-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = UIHostingController(
+            rootView: Self.chatDetail(of: agent, console: rig.store, defaults: defaults))
+        let card = "Waiting for Input"
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            try await rig.waitUntil("the card") { chat.blocked.content == .unreadable }
+            try await rig.waitUntil("the card on screen") {
+                !AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
+            }
+
+            let end = departure == .ended ? ("finished", Self.exitedEnd) : ("lost", Self.lostEnd)
+            await rig.transport.deliver(Self.event(sequence: 2, type: end.0, data: end.1))
+            try await rig.waitUntil("the Agent to leave") { rig.store.chatDeparture(of: agent.id) == departure }
+            #expect(chat.blocked.replacesComposer)
+            try await rig.waitUntil("the card to go") {
+                AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
+            }
+        }
+        chat.end()
         rig.store.setHosts([])
     }
 

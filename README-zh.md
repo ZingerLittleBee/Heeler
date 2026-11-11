@@ -61,7 +61,7 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   供稍后打开。
 - **Chat** —— 以原生消息而不是终端画面阅读 Agent 的对话，在 Composer 里
   回复，并用按钮回答 Blocked 的 Agent；支持 Claude Code、Codex、Pi、
-  Oh My Pi、Grok Build 和 OpenCode（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
+  Oh My Pi、Grok Build、OpenCode 和 Antigravity CLI（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
 - **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
   一次 Send 投递；工具键盘另有 Agent 控制键、Agent Skills、可复用的
   Snippets 和终端外观。

@@ -1,6 +1,7 @@
 import UIKit
 
-/// The Chat timeline's single column of full-width rows.
+/// The Chat timeline's single column of rows, full width but for
+/// `trailingReserve`.
 ///
 /// Heights come from the cells themselves (self-sizing); until a row is
 /// measured it gets its last measurement, even one taken at another width or
@@ -26,6 +27,15 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// end, which throws the rows out by far more than the row changed, so
     /// rows above the reader's keep their heights until the list is back.
     var isPastEnd: () -> Bool = { false }
+    /// Room at the trailing edge that rows end short of, for chrome that
+    /// floats over it. The list itself still runs to the edge, so a drag
+    /// that starts there scrolls it and its scroll bar stays at the edge.
+    var trailingReserve: CGFloat = 0 {
+        didSet {
+            // Rows re-measure at the new width, as on a resize.
+            if trailingReserve != oldValue { invalidateLayout() }
+        }
+    }
 
     private(set) var geometry = ChatTimelineGeometry()
     private var ids: [ChatRowID] = []
@@ -68,7 +78,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         super.prepare()
         guard let collectionView else { return }
         let ids = itemIDs()
-        let width = collectionView.bounds.width
+        let width = max(0, collectionView.bounds.width - trailingReserve)
         // A row measured in another font is as stale as one in another size.
         let traits = collectionView.traitCollection
         let category = "\(traits.preferredContentSizeCategory.rawValue)|\(traits.chatFont.rawValue)"

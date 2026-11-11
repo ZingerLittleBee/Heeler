@@ -30,6 +30,9 @@ struct WorkspaceTerminalDrawer: View {
     static let handleSize = CGSize(width: TerminalEdgeTabBackground.width, height: 68)
     /// The handle's hit area reaches past its visible edge into the terminal.
     static let handleHitWidth: CGFloat = 44
+    /// How far content resting beside the handle keeps from the trailing
+    /// edge: the handle and a small gap. The terminal keeps its full width.
+    static let contentClearance: CGFloat = handleSize.width + 4
     static let panelWidth: CGFloat = 248
     static let rowHeight: CGFloat = 44
     static let headerHeight: CGFloat = 36

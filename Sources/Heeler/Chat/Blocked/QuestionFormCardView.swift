@@ -3,19 +3,15 @@ import SwiftUI
 /// Several questions at once (ADR 0024), answered on the card one at a time
 /// and sent together: the store then answers the dialog page by page,
 /// checking each page before its keys. Back changes an answer, since
-/// nothing has gone to the program yet.
+/// nothing has gone to the program yet. On Antigravity CLI, Skip skips the
+/// page the card shows and goes out with the answers, since Esc in the
+/// terminal would skip the question on screen, the first.
 struct QuestionFormCard: View {
     let card: BlockedCard
     let form: QuestionForm
     let store: BlockedCardStore
     let maxHeight: CGFloat
-    @State private var page = 0
-    /// A single-select question's option, by question.
-    @State private var choices: [Int?]
-    /// A multi-select question's checked options, by question.
-    @State private var selections: [Set<Int>]
-    /// A typed answer, by question. It wins over a chosen option.
-    @State private var texts: [String]
+    @State private var draft: QuestionFormDraft
     @FocusState private var isTextFocused: Bool
 
     init(card: BlockedCard, form: QuestionForm, store: BlockedCardStore, maxHeight: CGFloat) {
@@ -23,23 +19,28 @@ struct QuestionFormCard: View {
         self.form = form
         self.store = store
         self.maxHeight = maxHeight
-        let count = form.questions.count
         // Options already checked in the terminal stay checked.
         let shown = card.dialog.options.filter { $0.role == .answer }
         let checked = Set(shown.indices.filter { card.dialog.focus.checked.contains(shown[$0].ordinal) })
-        _choices = State(initialValue: Array(repeating: nil, count: count))
-        _selections = State(initialValue: [checked] + Array(repeating: [], count: count - 1))
-        _texts = State(initialValue: Array(repeating: "", count: count))
+        _draft = State(initialValue: QuestionFormDraft(form: form, checked: checked))
     }
 
-    private var question: ChatQuestion { form.questions[page] }
-    private var isLastPage: Bool { page == form.questions.count - 1 }
+    private var question: ChatQuestion { draft.question }
+    private var page: Int { draft.page }
     private var isReady: Bool { store.progress == .ready }
+
+    private var detail: String {
+        draft.isSkipped
+            ? String(
+                localized: "\(page + 1) of \(form.questions.count), skipped",
+                comment: "Question card header: the current question of the total, which is skipped")
+            : String(localized: "\(page + 1) of \(form.questions.count)")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: String(localized: "Question"), detail: String(localized: "\(page + 1) of \(form.questions.count)"),
+                title: String(localized: "Question"), detail: detail,
                 isActing: store.progress == .acting, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: maxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -54,10 +55,16 @@ struct QuestionFormCard: View {
             // keyboard it raises.
             controls
                 .disabled(!isReady)
-            BlockedCardFooter(
-                notice: store.notice, stopTitle: String(localized: "Stop"), isReady: isReady, canStop: store.canStop,
-                stop: stop,
-                asideTitle: chat?.label, aside: chatInstead)
+            if form.skipsPageByPage {
+                BlockedCardFooter(
+                    notice: store.notice, stopTitle: card.dialog.stopTitle, isReady: isReady,
+                    canStop: isReady && !draft.isSkipped, stop: skip)
+            } else {
+                BlockedCardFooter(
+                    notice: store.notice, stopTitle: card.dialog.stopTitle, isReady: isReady, canStop: store.canStop,
+                    stop: stop,
+                    asideTitle: chat?.label, aside: chatInstead)
+            }
         }
     }
 
@@ -81,9 +88,9 @@ struct QuestionFormCard: View {
                 ForEach(Array(question.options.enumerated()), id: \.offset) { @Sendable index, option in
                     MainActorContent {
                         BlockedToggleRow(
-                            label: option.label, detail: option.detail, isOn: selections[page].contains(index)
+                            label: option.label, detail: option.detail, isOn: draft.isChecked(index)
                         ) {
-                            selections[page].formSymmetricDifference([index])
+                            draft.toggle(index)
                         }
                     }
                 }
@@ -93,7 +100,8 @@ struct QuestionFormCard: View {
                 ForEach(Array(question.options.enumerated()), id: \.offset) { @Sendable index, option in
                     MainActorContent {
                         BlockedOptionButton(
-                            label: option.label, detail: option.detail, emphasis: isChosen(index) ? .primary : .plain
+                            label: option.label, detail: option.detail,
+                            emphasis: draft.isChosen(index) ? .primary : .plain
                         ) {
                             choose(index)
                         }
@@ -111,8 +119,12 @@ struct QuestionFormCard: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !question.isMultiSelect {
-                BlockedTextField(placeholder: String(localized: "Type your own answer"), text: $texts[page], isFocused: $isTextFocused)
+            // Antigravity CLI's multi-select page takes one too: its
+            // `Write-in...` goes with the checks.
+            if !question.isMultiSelect || form.writesInWithSelection {
+                BlockedTextField(
+                    placeholder: String(localized: "Type your own answer"),
+                    text: Binding(get: { draft.text }, set: { draft.type($0) }), isFocused: $isTextFocused)
             }
             HStack(spacing: 8) {
                 if page > 0 {
@@ -126,53 +138,29 @@ struct QuestionFormCard: View {
                     .buttonBorderShape(.roundedRectangle(radius: 12))
                 }
                 Button(action: advance) {
-                    Text(isLastPage ? "Submit Answers" : "Next")
+                    Text(draft.isLastPage ? "Submit Answers" : "Next")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 28)
                 }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 12))
-                .disabled(isLastPage ? answers == nil : answer(at: page) == nil)
+                .disabled(draft.isLastPage ? draft.answers == nil : draft.answer(at: page) == nil)
             }
         }
     }
 
     // MARK: Answers
 
-    /// Every question's answer, nil while one has none.
-    private var answers: [QuestionFormAnswer]? {
-        let answers = form.questions.indices.compactMap(answer(at:))
-        return answers.count == form.questions.count ? answers : nil
-    }
-
-    private func answer(at index: Int) -> QuestionFormAnswer? {
-        if form.questions[index].isMultiSelect {
-            return selections[index].isEmpty ? nil : .options(selections[index])
-        }
-        let text = texts[index].trimmingCharacters(in: .whitespaces)
-        if !text.isEmpty { return .text(text) }
-        return choices[index].map(QuestionFormAnswer.option)
-    }
-
-    private func isChosen(_ index: Int) -> Bool {
-        choices[page] == index && texts[page].trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
     /// An option answers a single-select question and moves on, as a digit
     /// does in the terminal; the last page waits for Submit.
     private func choose(_ index: Int) {
-        choices[page] = index
-        texts[page] = ""
-        if isLastPage {
-            isTextFocused = false
-        } else {
-            go(to: page + 1)
-        }
+        isTextFocused = false
+        draft.choose(index)
     }
 
     private func advance() {
-        if isLastPage {
-            guard let answers else { return }
+        if draft.isLastPage {
+            guard let answers = draft.answers else { return }
             isTextFocused = false
             Task { await store.submit(answers) }
         } else {
@@ -182,7 +170,14 @@ struct QuestionFormCard: View {
 
     private func go(to target: Int) {
         isTextFocused = false
-        page = target
+        draft.go(to: target)
+    }
+
+    /// Antigravity CLI's Skip: the page the card shows goes out skipped
+    /// with the answers (`QuestionFormDraft.skip`).
+    private func skip() {
+        isTextFocused = false
+        draft.skip()
     }
 
     private func stop() {

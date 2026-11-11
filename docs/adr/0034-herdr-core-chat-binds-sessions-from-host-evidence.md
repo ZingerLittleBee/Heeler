@@ -13,8 +13,9 @@ never show or send into a conversation it has guessed.
 ## Decision
 
 - The app binds a herdr-core Agent's session itself, lazily: when Chat opens,
-  before each Send, and on the Terminal's status, turn and foreground events
-  and a change to its `heeler.session` or `heeler.chat` label: OpenCode 1.x
+  before each Send Chat does not hold on its status or refuse at once (below),
+  and on the Terminal's status, turn and foreground events and a change to its
+  `heeler.session` or `heeler.chat` label: OpenCode 1.x
   reports no status, so its plugin's label is the only thing that says the
   conversation moved, and a label is the only sign of a choice made on another
   device or of a `/new` with no turn yet.
@@ -63,7 +64,10 @@ never show or send into a conversation it has guessed.
   named `codex`, `grok` or `opencode`, or the foreground itself with nothing under
   it, and Grok Build's leader and OpenCode's service stay below it. Two equally near
   bind nothing. Codex's and Grok Build's config roots follow Claude Code's rule, with
-  `CODEX_HOME` and `GROK_HOME`.
+  `CODEX_HOME` and `GROK_HOME`. Antigravity CLI's agent is found the same way by the
+  name `agy`; a binding's root is the one its lock's path names, and a pick's and the
+  candidate list's is `.gemini/antigravity-cli` under its `HOME`, since no variable is
+  known to move it.
 - Evidence by program, without installing anything:
 
   | Program | Evidence |
@@ -74,6 +78,7 @@ never show or send into a conversation it has guessed.
   | Grok Build | the one `active_sessions.json` row whose pid and process start match |
   | OpenCode | from 2.1, the `ses` id Heeler started it with; otherwise none, and the plugin on the user's word (ADR 0033) |
   | Pi | none; Heeler's extension (ADR 0033) |
+  | Antigravity CLI | the one `<data root>/presence/<id>.lock` the process holds open; before its first prompt none, below |
 
 - Claude Code's registry entry appears only at its prompt. Before that, during
   sign-in or the trust dialog, its sessions folder holds a `<pid>.<hash>.key`
@@ -86,7 +91,9 @@ never show or send into a conversation it has guessed.
 - An Agent Heeler starts, other than from a Template (ADR 0032), carries its
   session from the start: `--session-id` for Claude Code and Pi, `-s` for
   Grok Build, `-s ses…` for OpenCode from 2.1, and `--no-daemon` for Codex,
-  which cannot be given an id. Oh My Pi relies on its extension. OpenCode 1.x's
+  which cannot be given an id. Oh My Pi relies on its extension, and Antigravity
+  CLI on its lock, since agy 1.5.3 warns that `--conversation <new id>` is not found
+  and creates nothing under it. OpenCode 1.x's
   `-s` only continues an existing session, so an OpenCode Agent older than 2.1,
   or whose version does not read, starts without one, as does a Template Agent,
   which binds from evidence alone. Arguments that already pick a session or the
@@ -142,12 +149,53 @@ never show or send into a conversation it has guessed.
   A confirmed candidate differs from that guess: the user saw the
   conversation before choosing it, and the guard drops it the first time it
   proves wrong.
+- One state has no conversation to guess: an Antigravity CLI that has made none
+  yet. agy makes a new conversation (its folder, database and lock) only with its
+  first prompt. So an agy that is the Terminal's own foreground, was started with
+  no argument after its name, and holds no lock and no file of a conversation's
+  folder or database shows Waiting for Conversation, as on Herdr TUI. A Send goes
+  in, since that message is what starts the conversation, and the check that
+  agy's `working` brings binds the lock it then holds. Chat sends this way only
+  while it shows no conversation; under an earlier one a Send is refused, and
+  the first message goes in from the terminal. Any argument, a launcher in front (one that
+  goes by `agy` too, which shows as another `agy` under it), a process walk that
+  did not answer, open files that cannot be read, a conversation's file held
+  without its lock, or a pick for that process still reads as before, and a pick
+  that stands unconfirmed says it cannot tell. The arguments are the core's
+  record of the Terminal's foreground, which the candidate list reads for
+  `--conversation` too; the check's exec still learns nothing of an argv.
+  agy 1.5.3's `--conversation` and `-c` can open a conversation another agy
+  holds; such an agy never takes the lock and, on Linux, holds none of its files
+  about 30 s after it starts. Decided on 2026-11-10 (#644), before a live run.
+  The live run that followed showed a state before this one: until the core
+  samples the agy from Heeler's own launch of a bare `agy`, the record has no
+  foreground ([herdr compatibility](../agents/herdr-compatibility.md)), and
+  that read as cannot tell for about 1.5 s. The record's argv is that launch, and the launch's `exec`
+  keeps the Terminal's own process, so a walk from it reads as still starting
+  while that process goes by the launch's shell's name, or is an agy holding no
+  conversation's file, with no other `agy` under it. Chat keeps looking, a Send
+  is refused with its text left in the Composer and a notice to send again once
+  agy runs, nothing resent by itself, and the core's sample brings the next
+  check. A launch with arguments
+  and a launcher still read as above (#644). On agy 1.5.4, live, `--conversation`
+  with a held id still did as 1.5.3's, but `-c` passed over a held conversation,
+  continued one no agy held and took its lock at start, which Chat bound
+  ([herdr compatibility](../agents/herdr-compatibility.md)).
+- While Chat shows no conversation, the check before a Send refuses whatever it
+  finds other than an agy with no conversation yet (above), since a conversation
+  it newly binds is not one the user saw. So a Chat that shows none and says it
+  cannot tell refuses the Send before any await and asks again after it, and
+  the message no longer shows as Sending through the check's exec, as a held
+  Send's recording on a core showed (#644).
 - Candidates serve every program whose Chat binds on core, and only a Chat that
   already says it cannot tell offers them, on request. A list costs one exec, as
   a check does, then the listings it takes: a directory's folder, or for OpenCode
   a read-only query of its roots there, whose store problem replaces the list, and for Codex the heads of its newest
-  rollouts, up to 24, since Codex files by day. A process walk past its cap lists
-  nothing, because a launcher would pass for the Agent and a daemon under it would
+  rollouts, up to 24, since Codex files by day. Antigravity CLI files by id and
+  lists no folder, so its empty list says why rather than that the folder has
+  none (#644); it takes one stat of each listed conversation's transcript,
+  for the row's date, and a failed stat leaves that row undated. A process walk
+  past its cap lists nothing, because a launcher would pass for the Agent and a daemon under it would
   go unseen. A Status child is listed only when
   its key reads as this program's session id, and such a record may name another
   Terminal's session (herdr compatibility), which is why the user reads it first.
@@ -184,9 +232,18 @@ never show or send into a conversation it has guessed.
   title-prefix match rejected in
   [herdr compatibility](../agents/herdr-compatibility.md) stays rejected, and
   only reopening with `--no-daemon` offers Chat.
-- When the core's own environment carries such leaked variables, the Host
-  says what they break and that restarting the core from the user's own
-  terminal fixes it. Heeler does not restart it. A Claude Code Agent started
+- When the environment the core's Terminals start with carries such leaked
+  variables, the Host says what they break and that restarting the core from
+  the user's own terminal fixes it. Heeler does not restart it. Terminals
+  inherit the environment of the core's `herdr-core hold`, which on a Mac can
+  differ from the core's own, so the check reads every hold `server.status`
+  names beside the core, and reads again when a Terminal starts one. Whether a
+  restart clears a variable only a hold carries is unverified: on Linux a hold
+  restarts a dead core with the environment of whoever first started it
+  ([herdr compatibility](../agents/herdr-compatibility.md)), so the hold may
+  have to stop too. The testing guide's
+  [Leaked environment](../guides/herdr-core-testing.md#leaked-environment) row
+  for a hold would settle it. A Claude Code Agent started
   with `CLAUDE_CODE_CHILD_SESSION=1` keeps neither a registry entry nor a
   Transcript, and one with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` keeps an entry and
   no Transcript; Chat says so instead of waiting for a file. Claude Code reads
@@ -199,13 +256,15 @@ never show or send into a conversation it has guessed.
   ([herdr compatibility](../agents/herdr-compatibility.md)). A
   Terminal that has reported but holds no state, as Claude Code leaves it
   before sign-in, has none. No status is inferred from the screen.
-- Chat covers the six programs it reads today. Codex, Grok Build, OpenCode from
+- Chat covers the seven programs it reads today. Codex, Grok Build, OpenCode from
   2.x, Pi and Oh My Pi are built for Linux and macOS core Hosts from the
   recordings below, made with no sign-in. On native Windows herdr-core Hosts the
   candidates are Claude Code and Grok Build (session registry plus the Windows
   process tree and creation times) and Pi and Oh My Pi (their extensions' labels,
   adopted only on a pid and creation-time match); Codex and OpenCode follow
-  later. Native Windows Herdr TUI Hosts stay without Chat. Each kernel keeps its
+  later. Antigravity CLI binds on Linux and macOS from its lock and is on both
+  their lists, and never a Windows candidate, since Windows reads no open file.
+  Native Windows Herdr TUI Hosts stay without Chat. Each kernel keeps its
   own list, `HostCapabilities.confirmedLinuxCoreChatPrograms`,
   `confirmedMacOSCoreChatPrograms` and `confirmedWindowsCoreChatPrograms`, and a
   program joins one only once its check with a harness the owner signs in to
@@ -244,6 +303,10 @@ never show or send into a conversation it has guessed.
   recheck there passed Grok Build 1.0.70 and Oh My Pi 18.13.3, with a profile
   and without, so the Windows list holds Claude Code, Grok Build, Pi and Oh My
   Pi. Codex and OpenCode were not run on Windows.
+  On 2026-11-08 the owner's Mac passed Antigravity CLI 1.5.3, started with colors
+  and with `NO_COLOR` in herdr-core 0.1.18 Terminals, and the owner turned it on
+  for macOS. On 2026-11-09 a Linux VM passed it in herdr-core 0.1.18 Terminals,
+  and it joined Linux's list (below).
 
 This amends ADR 0024, and ADR 0025's source of the OpenCode session id, its
 start-screen watch, what its confirmation makes of the title `OpenCode` and its
@@ -341,6 +404,106 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   the old conversation until the send guard drops it, and the user guide says so.
   OpenCode's terminal title still refuses a Send while it names another
   conversation, and a refused Send arms no guard.
+- Antigravity CLI 1.5.3 holds `<data root>/presence/<id>.lock` under an exclusive
+  lock for the conversation on its screen: from the first prompt of a new one, which
+  is when the conversation first exists, and from about 0.2 s after start for one
+  resumed by id. `/clear` and `/fork` move it at once and keep the folder and database
+  of the conversation left behind open, so only a held lock binds and those never do;
+  `/exit` releases it. Lock files stay after their process, so one on disk proves
+  nothing. A second agy opened on a conversation already open never holds the lock,
+  so it says it cannot tell; on macOS it holds that conversation's folder and
+  database, and lists those for one confirmation. Its list also holds the
+  conversation that the Terminal foreground's argv names with `--conversation <id>`
+  or `--conversation=<id>`, read from the core's record and counted only while that
+  foreground is the agy the check found: on Linux (2026-11-09, Ubuntu 24.04.5,
+  herdr-core 0.1.18, agy 1.5.3), read through `/proc/<pid>/fd`, no agy held that
+  conversation's folder open. A second and a third agy on it held its database,
+  never the lock, for about 30 s after they started (one let it go between 23 s and
+  53 s, the other at 31 s), then none of its files, so without the argv a list
+  opened after that named nothing. The first, itself started with `--conversation`,
+  held the database 27 s after its start, and 9 min after it only its lock. The
+  check's exec still
+  learns nothing of agy's argv. Its list has nothing from a directory: agy files
+  conversations by id, and `history.jsonl`, which names a workspace, is one log for
+  every agy on the data root and names no id for a fresh launch's first prompt.
+  `/clear` from idle reports no status, so Chat keeps showing the conversation before
+  it until the next status or the check before a Send, which moves Chat and holds
+  that Send once. An agy that reaches a conversation another agy holds through its
+  own `/resume`, `/conversation` or `/conv-switch` is not recorded. If it then holds
+  nothing, as a second agy started with `--conversation` does on Linux after about
+  30 s, it reads as having no conversation yet, and each Send from Chat goes into
+  that conversation while that reading holds, not only the first, since nothing is
+  kept from a Send that went in that way. Chat stays bound to none, waiting for a
+  lock that never comes.
+  That is still the Agent on screen and binds nothing wrong; on macOS the folder and
+  database such an agy holds rule it out. This was accepted on 2026-11-10, pending a
+  live check, rather than hold a Send on agy's `Conversation already open` notice,
+  which scrolls away.
+  Seen on 2026-11-07 on one signed-in Mac, macOS 27.0.1, in a plain PTY outside herdr
+  and herdr-core, the open files through `HostProcessReader`'s own macOS read
+  (`host-evidence/agy`). In herdr-core 0.1.18 Terminals on macOS 27.0.1, with the
+  Herdr desktop app 0.1.13 (2026-11-08), the same held: a fresh agy, from New Agent
+  or typed in a Terminal, held no lock before its first prompt and exactly one from
+  it, `/clear` moved the lock at once, and a second agy opened with `--conversation`
+  on a conversation another agy had open held its folder and database but not the
+  lock, and its Chat listed that one conversation for one confirmation. A `/clear`
+  after a finished turn had Chat on the new conversation before any Send, so the
+  check before a Send went unexercised, again on a second run that day, where the
+  Send that followed went in unheld. agy's environment there carries the Terminal's
+  `HC_SCOPE` and whatever the core's `herdr-core hold` process carries
+  ([herdr compatibility](../agents/herdr-compatibility.md)): on the first run a
+  `NO_COLOR` among them, under which agy draws no colors (ADR 0024). On the second
+  run the hold carried none and agy drew in color, and a `NO_COLOR=1 agy` typed in
+  a Terminal drew none. With each, Chat answered the trust prompt, a command, a file
+  creation and edit, a two-question form with Skip and a multi-select question from
+  cards, sent from Chat with no hold for the input box, held a message while agy
+  worked, and stopped a turn. An agy typed in a Terminal lists as an Agent titled
+  with the Terminal's title, where New Agent's reads `Antigravity`.
+  agy reports Program Status from 1.4.0 as `app=antigravity`, which the Agent rule
+  now reads as agy's, and at every start sends `blocked` with `kind=auth` about
+  50 ms before `idle`, signed in. On a core it reports each dialog as `blocked`:
+  `kind=permission` for the trust prompt, a command and a file creation or edit
+  (herdr 0.9.5 reads the file dialogs from the screen as done), and `kind=question`
+  for a question. A start at the trust prompt sent `kind=auth`, then the prompt's
+  `kind=permission`, with no `idle` between: 4.8 s apart on the second run's start
+  in color, and 0.03 s apart under `NO_COLOR`. Through the 4.8 s Heeler showed
+  Blocked, for about 2 s of it with an unreadable Waiting for Input card, since
+  nothing in Heeler debounces the report.
+  On a Linux VM, Ubuntu 24.04.5 on x86_64, with herdr-core 0.1.18 started from
+  Heeler's **Start herdr-core** under user systemd and no desktop app, and agy 1.5.3
+  signed in (2026-11-09), the owner's check passed, and Antigravity CLI joined
+  Linux's list. The hold carried no `NO_COLOR`. The lock read through
+  `/proc/<pid>/fd` bound an agy from New Agent, drawn in color, a typed `agy` and a
+  typed `NO_COLOR=1 agy`, which drew none, each from its first prompt sent in the
+  terminal, since Chat then held a first message sent from it, which it has let
+  through since 2026-11-10 (Decision), and `/clear` moved Chat to the new
+  conversation before any Send, in color and under `NO_COLOR`. No agy there held a
+  conversation's folder open. The agy from New Agent held its new conversation's
+  database (with `-wal` and `-shm`) when read within 30 s of its first prompt, and only its lock 42 min after it; the
+  typed `NO_COLOR=1 agy` held no database 41 s or 2 min after its first prompt. An
+  agy started with `--conversation` held its database 27 s after its start, and
+  9 min after it only its lock; a second and a third on that conversation held
+  its database for about 30 s after they started, then none of its files. A second
+  agy on a conversation already open listed it from the argv, above, in both forms,
+  and choosing it showed that conversation. A start at the trust prompt, from New
+  Agent or typed, sent no `kind=auth`: the core's first status was the prompt's
+  `blocked` `kind=permission`, for New Agent 0.4 s after its Terminal's creation, so
+  there was no auth report behind an unreadable card. Heeler had opened New Agent's
+  Terminal page, not Chat, so its start went unseen in Chat; the typed `agy`, whose
+  Chat Heeler opened as it started, showed the native trust card in Chat's first
+  capture. A trusted start with `--conversation` sent `kind=auth` and `idle` 0.8 s
+  later, and the second and third agy on that conversation sent `idle` alone. In
+  color and
+  under `NO_COLOR`, Chat answered the trust prompt, a command, a file creation and
+  edit, a two-question form with Skip and a multi-select question from cards, sent
+  from Chat with no hold for the input box, held a message while agy worked and
+  stopped a turn. That held message showed **Sending** for about 1.5 to 2.5 s before
+  the hold replaced it, and nothing reached agy. Chat has since held such a
+  message on the reported Working before the session check and the read (ADR
+  0024), without the echo. Stop ended the turn but not a
+  command agy had moved to the background, which ran to its end. Not seen: `/resume`
+  and `/rewind`, whether `--remote-control` leaves a second process named `agy` in
+  the Terminal, and whether the Host Helper notifies on the auth report.
 - A Transcript locator takes the config root from the Agent's own process
   environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and the like),
   not from the Host's Default Account, which follows the core's environment.
@@ -472,9 +635,13 @@ list's query of a directory's roots is not, for herdr-core Hosts only.
   trailing spaces trimmed, started from New Agent and by hand under `/bin/zsh -l`,
   as it had in a macOS 26.5 VM with SIP off.
 - Chat on a macOS core Host binds as on Linux, through the macOS forms of the same
-  reads, for the programs in `confirmedMacOSCoreChatPrograms`. Each of the six was
-  seen through those reads in a macOS 26.5 VM with SIP off and no sign-in
-  (`host-evidence/macos`, [herdr compatibility](../agents/herdr-compatibility.md)).
+  reads, for the programs in `confirmedMacOSCoreChatPrograms`. Claude Code, Codex,
+  Grok Build, OpenCode, Pi and Oh My Pi were each seen through those reads in a
+  macOS 26.5 VM with SIP off and no sign-in (`host-evidence/macos`,
+  [herdr compatibility](../agents/herdr-compatibility.md)). Antigravity CLI was not
+  in that VM: its lock was seen through the open-file read on a signed-in Mac
+  outside a core (`host-evidence/agy`) and in the owner's herdr-core runs of
+  2026-11-08, above.
   On the owner's Mac, macOS 27.0.1 with SIP on and signed-in harnesses, Claude
   Code, Codex with `--no-daemon`, Grok Build, Pi and Oh My Pi through Heeler's
   extension, and OpenCode 2.0.32 through Heeler's plugin each bound exactly. A

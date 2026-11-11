@@ -1,0 +1,40 @@
+  [0m[38;5;8mdeveloper (Google AI Ultra)[0m
+  [0m[38;5;8mGemini 4 Argon (High)[0m
+  [0m[38;5;8m/Users/developer/projects/fruits[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Reply with only the word pear.[0m
+[0m[1m[38;5;4m  Do not use any tools.[0m
+
+  pear
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command in the current directory: sleep 40; echo probe-done . Then reply with its output only.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 6.8s[0m [0m[38;5;7m(Initial hypothesis: Execute the provided shell command directly. The command involves a sleep a...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 40; echo probe-done)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;7m▸ Thought for 9s, 155 tokens[0m
+
+  The command has been launched and is running in the background; I will reply with its output once it finishes.
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Also reply with the word kiwi[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 2m 0s[0m [0m[38;5;7m(The probe should have completed, but the task status might confirm this. The log file should p...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mChecked[0m 1 task [0m[38;5;7m(task-4)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  probe-done
+  kiwi
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Write a numbered list of 60 different fruit names, one per line, no tools.[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Write a numbered list of 60 different vegetable names, one per line, no tools.[0m
+
+[0m[38;5;8m  ⎿  Interrupted · What should Antigravity CLI do instead?[0m
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;8m? for shortcuts                                                                                    [0m[2mGemini 4 Argon · high[0m
