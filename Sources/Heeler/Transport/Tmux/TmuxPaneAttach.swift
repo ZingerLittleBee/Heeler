@@ -18,8 +18,9 @@ import Synchronization
 ///
 /// The output ends with `TransportError.tmuxPaneGone` once the Pane is gone or
 /// Heeler's session no longer holds it, and with the client's own failure when
-/// its exec failed. Ending the session closes the exec: tmux reads the end of
-/// its input, detaches the client, and the session ends with it.
+/// its exec failed. Ending the session detaches the client and keeps reading
+/// until it exits, then closes the exec. Under `destroy-unattached` the session
+/// ends with that client. What was typed before the end is written first.
 ///
 /// What the user types and the view's resizes go through the same client, in
 /// order (`type(_:)`, `resize(columns:rows:)`).
@@ -46,6 +47,7 @@ actor TmuxPaneAttach {
     private var pending = Data()
     private var reader: CheckedContinuation<Data?, any Error>?
     private var outcome: Result<Void, any Error>?
+    private var isClosing = false
     private var typed = TmuxInputStream()
 
     /// The tag of the barrier. `TmuxPaneFeed` tags its commands from 1.
@@ -122,8 +124,10 @@ actor TmuxPaneAttach {
         ) {
             input.finish()
             presence.finish()
-            pump.cancel()
             presencePump.cancel()
+            // Cancelling the pump would drop keystrokes still queued ahead of
+            // the detach. Let it write them, then close.
+            await pump.value
             await attach.close()
         }
     }
@@ -199,8 +203,11 @@ actor TmuxPaneAttach {
         starting = nil
     }
 
-    /// Ends the Attach: the client's exec closes, and the output ends.
+    /// Ends the Attach. The client's `%exit` or a channel that ends while this
+    /// is in progress is the close itself, so the output finishes without the
+    /// Pane-gone failure those ends mean at any other time.
     func close() async {
+        isClosing = true
         await client.close()
         finishOutput(.success(()))
     }
@@ -213,7 +220,7 @@ actor TmuxPaneAttach {
             return
         }
         if case .ended(let end) = event {
-            finishOutput(Self.outcome(of: end))
+            finishOutput(isClosing ? .success(()) : Self.outcome(of: end))
             return
         }
         let actions = feed.receive(event)
@@ -318,11 +325,17 @@ actor TmuxPaneAttach {
             case .write(let bytes):
                 deliver(bytes)
             case .end(.paneGone), .end(.sessionLeft):
-                finishOutput(.failure(TransportError.tmuxPaneGone))
+                // Detach ends the session, and tmux may say so before `%exit`.
+                // That is the close the user asked for, not the Pane going away.
+                finishOutput(isClosing ? .success(()) : .failure(TransportError.tmuxPaneGone))
                 await client.close()
             case .end(.paintFailed):
                 finishOutput(
-                    .failure(TransportError.malformedResponse(String(localized: "tmux: The Pane's screen could not be read."))))
+                    isClosing
+                        ? .success(())
+                        : .failure(
+                            TransportError.malformedResponse(
+                                String(localized: "tmux: The Pane's screen could not be read."))))
                 await client.close()
             }
         }

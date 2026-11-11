@@ -15,28 +15,33 @@ struct TmuxAttachScriptTests {
             TmuxAttachScript.script(paths: paths, session: "heeler-attach-0a1b2c3d", pane: pane, pauseAfter: 10))
     }
 
-    @Test func theScriptExecsOneControlClientAsOneGroup() throws {
+    /// One group, so the shell reads the `exit` before it runs the pipeline.
+    /// tmux's output is drained until tmux exits; nothing here execs, which
+    /// would drop the drain.
+    @Test func theScriptDrainsStdoutAndExitsInTheGroup() throws {
         let text = try script()
         #expect(text.hasPrefix("{\n"))
         #expect(text.hasSuffix("\n}\n"))
+        #expect(!text.contains("\nexec "))
         #expect(text.contains("t='/opt/home brew/bin/tmux'\n"))
         #expect(text.contains("s='/private/tmp/tmux-501/a $b'\n"))
-        #expect(text.contains("exec \"$t\" -u -N -S \"$s\" -C "))
+        #expect(text.contains("\"$t\" -u -N -S \"$s\" -C "))
+        #expect(text.contains("| { cat; cat >/dev/null; }\nexit\n}"))
     }
 
     /// The commands the client starts with, one block each: a failed one stops
     /// the rest, and once the third ran the session ends with its client.
     @Test func theClientStartsTheSessionMarksItAndLinksThePanesWindow() throws {
-        let exec = try #require(try script().split(separator: "\n").first { $0.hasPrefix("exec ") })
+        let line = try #require(try script().split(separator: "\n").first { $0.contains(" -C ") })
         let expected: [String] = [
-            "exec \"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-0a1b2c3d -f 'pause-after=10'",
+            "\"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-0a1b2c3d -f 'pause-after=10'",
             "sleep 2147483647",
             "';' set-option -t '=heeler-attach-0a1b2c3d:' @heeler-attach '%12'",
             "';' set-option -t '=heeler-attach-0a1b2c3d:' destroy-unattached on",
             "';' link-window -s '%12' -t '=heeler-attach-0a1b2c3d:'",
-            "';' kill-window -t '=heeler-attach-0a1b2c3d:^'",
+            "';' kill-window -t '=heeler-attach-0a1b2c3d:^' | { cat; cat >/dev/null; }",
         ]
-        #expect(String(exec) == expected.joined(separator: " "))
+        #expect(String(line) == expected.joined(separator: " "))
     }
 
     @Test func onlyAPaneIDIsAttached() throws {

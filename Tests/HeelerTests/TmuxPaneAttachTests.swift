@@ -76,13 +76,33 @@ struct TmuxPaneAttachTests {
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
         let script = try #require(await tmux.controlScripts.first)
-        #expect(script.contains("exec \"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-"))
+        #expect(script.contains("\"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-"))
+        #expect(script.contains("| { cat; cat >/dev/null; }"))
+        #expect(script.contains("\nexit\n}"))
         #expect(script.contains("@heeler-attach '%0'"))
         #expect(script.contains("link-window -s '%0'"))
         #expect(await tmux.openControlClients == 1)
         let first = try #require(await commands(on: tmux).first)
         #expect(first.prefix(3) == ["list-panes", "-s", "-t"])
         #expect(first.dropFirst(3).first?.hasPrefix("=heeler-attach-") == true)
+    }
+
+    /// What was typed is written, then detach, and the output ends without the
+    /// Pane-gone failure a detach's `%exit` would otherwise be.
+    @Test func closingDetachesAfterQueuedInputAndTheOutputEndsCleanly() async throws {
+        let tmux = await host()
+        let session = try await attach(on: tmux)
+        var output = session.output.makeAsyncIterator()
+        _ = try await output.next()
+        session.send(Data("ab".utf8))
+        try await waitUntil("the text") { await commands(on: tmux).contains(Self.text("ab")) }
+        await session.end()
+        let written = await commands(on: tmux)
+        let textAt = try #require(written.firstIndex(of: Self.text("ab")))
+        let detachAt = try #require(written.lastIndex(of: ["detach-client"]))
+        #expect(textAt < detachAt)
+        #expect(await tmux.openControlClients == 0)
+        #expect(await ending(of: &output) == nil)
     }
 
     @Test func theFirstPaintComesFirstThenThePanesOutput() async throws {

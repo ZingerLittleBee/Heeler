@@ -48,7 +48,13 @@ for any size it takes part in sizing every window of that session.
   when the user ends its session, Heeler closes the window, which would
   otherwise live on in Heeler's session. The client runs with `pause-after`, so
   a slow link pauses the Pane rather than growing tmux's buffer, and a paused
-  Pane resumes with a new first paint.
+  Pane resumes with a new first paint. Closing an Attach writes `detach-client`
+  (it is the session's only client, so under `destroy-unattached` the session
+  ends with it) and keeps reading until `%exit` or the channel ends, then
+  closes the channel; what was already queued is written first. The client's
+  standard output is piped through a drain that keeps reading until tmux exits,
+  and the shell that starts it exits in that same group, so a channel that
+  drops still lets the client leave and later input is never a shell command.
 - Everything for one Attach goes through its control client, in order: first
   paint, keys, text, pastes, Send's steps and Stop. First paint is built from
   `capture-pane -e -p` with history, of both screens when the Pane is on the
@@ -241,6 +247,12 @@ servers that were killed afterwards:
   0, and the client got `%sessions-changed` and `%unlinked-window-close`.
 - `destroy-unattached` set on a session before its client attached ended the
   session at once; set after, it ended the session when the client left.
+- On tmux 3.3a and 3.7b, closing a control client's channel while it still had
+  output queued left that client in the server after its session was gone, and
+  the next command that looked up a client's pane crashed the server
+  (`server_client_get_pane`). The repro is
+  `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering` and
+  `aDroppedAttachChannelLeavesTheServerAnswering`.
 
 Input, live on 2026-11-10 on the same Mac with tmux 3.7b and with 3.3a built
 from its release tarball. A probe in a pane asked for each keyboard mode in

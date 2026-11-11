@@ -742,7 +742,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return channel
         }
         let socket = Self.assigned("s", in: body)
-        let words = body.split(separator: "\n").first { $0.hasPrefix("exec ") }?.split(separator: " ").map(String.init) ?? []
+        let words = Self.controlClientLine(in: body)?.split(separator: " ").map(String.init) ?? []
         let sessionName = words.firstIndex(of: "-s").map { words[$0 + 1] } ?? ""
         let paneID = words.firstIndex(of: "@heeler-attach").map { words[$0 + 1].replacingOccurrences(of: "'", with: "") } ?? ""
         // With `-N` and no server, tmux says so on standard error and exits.
@@ -923,7 +923,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                 changed.append(window)
             }
             return (block([]), changed)
-        case "kill-window", "kill-session":
+        case "kill-window", "kill-session", "detach-client":
             return (block([]), [])
         case "send-keys":
             if sendKeysBeforeFailure > 0 {
@@ -1049,9 +1049,25 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         return words[index + 1]
     }
 
+    /// The line that starts the control client: an exec of tmux, or tmux with
+    /// its output drained and an `exit` in the same group.
+    private static func controlClientLine(in body: String) -> String? {
+        for line in body.split(separator: "\n") {
+            if line.hasPrefix("exec ") || (line.hasPrefix("\"$t\" ") && line.contains(" -C ")) {
+                return String(line)
+            }
+        }
+        return nil
+    }
+
     /// The clients a command ended: a killed window takes the sessions that
-    /// held only it, and a killed session its client.
+    /// held only it, a killed session its client, and detaching this client
+    /// the session it is the only client of.
     private func ending(after words: [String], from client: ControlClient) -> [UInt64]? {
+        if words.first == "detach-client" {
+            let session = client.sessionID
+            return controlClients.filter { $0.value.sessionID == session }.map(\.key)
+        }
         guard let target = words.firstIndex(of: "-t").map({ words[$0 + 1] }) else { return nil }
         switch words.first {
         case "kill-window":

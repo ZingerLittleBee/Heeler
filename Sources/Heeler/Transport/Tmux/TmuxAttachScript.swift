@@ -1,12 +1,19 @@
 import Foundation
 
 /// How an Attach starts on a tmux Host (ADR 0043). One exec runs a script for
-/// `/bin/sh -s` that execs a control-mode client with commands to start with:
+/// `/bin/sh -s` that starts a control-mode client with commands to start with:
 /// a session of Heeler's own around a placeholder window, marked
 /// `@heeler-attach`, set to end with its client, holding a link to the Pane's
 /// window, with the placeholder closed. tmux runs them in order and stops at
 /// the first that fails, so once the third ran the session ends with its
 /// client whatever fails after it. The client never starts a server (`-N`).
+///
+/// tmux's standard output goes through a drain that keeps reading until tmux
+/// exits. A channel that drops then still lets tmux finish writing and leave:
+/// a control client exits only once its queued output is written, and one left
+/// behind crashes the server on the next command that looks up a client's pane.
+/// The shell exits in the same group, which it reads whole before running, so
+/// what Heeler writes next is tmux's and is never a shell command.
 ///
 /// The client's first reply to a command it wrote answers the barrier, after
 /// every block of the start: it says whether the session came out as meant,
@@ -27,9 +34,10 @@ enum TmuxAttachScript {
     /// sessions with their mark, and the Console shows none of them.
     static let sessionPrefix = "heeler-attach-"
 
-    /// A script for `/bin/sh -s`, which must be its whole standard input until
-    /// tmux prints: it is one group, so the shell has read all of it before it
-    /// execs tmux, and tmux reads what follows. Nil for anything but a pane id.
+    /// A script for `/bin/sh -s`. It is one group, so the shell reads all of
+    /// it, including the `exit` after the pipeline, before it runs anything.
+    /// The pipeline does not redirect tmux's standard input. Nil for anything
+    /// but a pane id.
     static func script(paths: TmuxPaths, session: String, pane: String, pauseAfter: Int) -> String? {
         guard isPaneID(pane) else { return nil }
         let target = "=\(session):"
@@ -41,11 +49,15 @@ enum TmuxAttachScript {
             ["kill-window", "-t", "\(target)^"],
         ]
         let words = commands.map { $0.map(shellWord).joined(separator: " ") }.joined(separator: " ';' ")
+        // The second cat keeps reading after the channel stops, so tmux can
+        // finish writing and exit. `exit` is already parsed with the group:
+        // without it the shell would run the next control line as a command.
         return [
             "{",
             "t=\(quoted(paths.executable))",
             "s=\(quoted(paths.socket))",
-            "exec \"$t\" -u -N -S \"$s\" -C \(words)",
+            "\"$t\" -u -N -S \"$s\" -C \(words) | { cat; cat >/dev/null; }",
+            "exit",
             "}",
             "",
         ].joined(separator: "\n")

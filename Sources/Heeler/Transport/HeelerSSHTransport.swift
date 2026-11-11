@@ -3840,7 +3840,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
         return channel
     }
 
-    /// One long exec of `/bin/sh -s` that execs a control-mode client. Its
+    /// One long exec of `/bin/sh -s` that starts a control-mode client. Its
     /// script goes first; the client reads what follows (ADR 0043). It holds an
     /// attach slot until the channel closes, and its reads and writes throw
     /// `TransportError`, a lost connection among them.

@@ -1177,4 +1177,134 @@ extension TmuxTransportE2ETests {
             throw error
         }
     }
+
+    /// A Pane streaming output, so a close that stops reading leaves tmux with
+    /// output it can never write.
+    private func streamingPane(on fixture: TmuxSSHFixture) async throws -> String {
+        let pane = try await fixture.require(
+            fixture.tmuxLine([
+                "new-window", "-d", "-t", "main:", "-P", "-F", "#{pane_id}",
+                "/bin/sh", "-c", "while :; do cat /usr/share/dict/words; done",
+            ]))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(TmuxAttachScript.isPaneID(pane))
+        return pane
+    }
+
+    /// The server still answers, and no Attach session or client is left.
+    private func serverStillAnswersWithoutAnAttach(on fixture: TmuxSSHFixture) async throws {
+        try await fixture.eventually {
+            let names = try await fixture.sessionNames()
+            let attached = try await clients(on: fixture)
+            return names == ["main"] && attached.allSatisfy { !$0.hasPrefix(TmuxAttachScript.sessionPrefix) }
+        }
+        #expect(try await fixture.sessionNames() == ["main"])
+    }
+
+    @Test("closing an Attach while its Pane streams leaves the server answering")
+    func closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let pane = try await streamingPane(on: fixture)
+            let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+            do {
+                let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                var output = session.output.makeAsyncIterator()
+                _ = try await read(from: &output) { $0.utf8.count >= 8_192 }
+                await session.end()
+                try await serverStillAnswersWithoutAnAttach(on: fixture)
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+        }
+    }
+
+    /// Dropping the channel, without the app-side detach, is what a killed app
+    /// or a lost connection does. The remote drain has to let the client leave.
+    @Test("a dropped Attach channel leaves the server answering")
+    func aDroppedAttachChannelLeavesTheServerAnswering() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let pane = try await streamingPane(on: fixture)
+            let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+            do {
+                let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                var output = session.output.makeAsyncIterator()
+                _ = try await read(from: &output) { $0.utf8.count >= 8_192 }
+                try await transport.close()
+                try await serverStillAnswersWithoutAnAttach(on: fixture)
+                // The session's output ends because its connection did. Nothing
+                // here calls `end()`, which would detach first.
+                _ = session
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+        }
+    }
+
+    /// Text written after the client has exited must not run. The group,
+    /// including `exit`, is parsed before the pipeline, so the shell is gone
+    /// and cannot treat that text as commands.
+    @Test("text written after the client exits is not run by the shell")
+    func textAfterTheClientExitsIsNotRunByTheShell() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            let home = fixture.configuration.homePath
+            let token = UUID().uuidString.prefix(8)
+            let program = "\(home)/stand-in-\(token)"
+            let stamp = "\(home)/stamp-\(token)"
+            let marker = "\(home)/ran-\(token)"
+            let scriptPath = "\(home)/attach-\(token).sh"
+            let proofPath = "\(home)/proof-\(token).sh"
+            try await fixture.writeProgram(
+                at: program,
+                """
+                #!/bin/sh
+                touch \(GitProbe.singleQuoted(stamp))
+                exit 0
+                """)
+            let paths = try #require(TmuxPaths(executable: program, socket: "\(home)/sock-\(token)"))
+            let script = try #require(
+                TmuxAttachScript.script(paths: paths, session: "heeler-attach-0", pane: "%1", pauseAfter: 10))
+            try await fixture.writeFile(at: scriptPath, script)
+            try await fixture.writeFile(
+                at: proofPath,
+                """
+                #!/bin/sh
+                set -eu
+                trap '' PIPE
+                marker=\(GitProbe.singleQuoted(marker))
+                stamp=\(GitProbe.singleQuoted(stamp))
+                fifo=\(GitProbe.singleQuoted("\(home)/fifo-\(token)"))
+                pid=0
+                trap 'if [ "$pid" -ne 0 ]; then kill "$pid" 2>/dev/null || true; fi; rm -f "$fifo"' EXIT
+                rm -f "$marker" "$stamp"
+                mkfifo "$fifo"
+                /bin/sh -s < "$fifo" &
+                pid=$!
+                exec 3>"$fifo"
+                cat \(GitProbe.singleQuoted(scriptPath)) >&3
+                i=0
+                while [ ! -f "$stamp" ]; do
+                  i=$((i + 1))
+                  [ "$i" -lt 200 ] || exit 1
+                  sleep 0.05
+                done
+                printf '%s\\n' "echo RAN > $marker" >&3 || true
+                exec 3>&-
+                sleep 0.3
+                if kill -0 "$pid" 2>/dev/null; then
+                  exit 1
+                fi
+                wait "$pid" || true
+                pid=0
+                [ ! -e "$marker" ]
+                """)
+            try await fixture.require("/bin/sh " + GitProbe.singleQuoted(proofPath))
+            #expect(try await fixture.exists(stamp))
+            #expect(try await !fixture.exists(marker))
+        }
+    }
 }

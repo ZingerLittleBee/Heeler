@@ -6,9 +6,11 @@ import Foundation
 /// pane output and notifications between replies are delivered in between,
 /// in the order tmux printed them.
 ///
-/// The exec runs a shell that execs tmux, so nothing is written until tmux has
-/// printed: a line written earlier could be read by the shell instead. The
-/// client ends once, for every command still waiting and every event reader.
+/// The exec runs a shell that starts tmux, so nothing is written until tmux
+/// has printed: a line written earlier could be read by the shell instead.
+/// Closing is the exception, and the shell has already read its `exit`, so
+/// that line cannot become a shell command. The client ends once, for every
+/// command still waiting and every event reader.
 actor TmuxControlClient {
     enum Event: Equatable, Sendable {
         case output(pane: String, bytes: Data)
@@ -50,12 +52,15 @@ actor TmuxControlClient {
     private let channel: any WindowsTerminalExecChannel
     private let readTimeout: Duration
     private let writeTimeout: Duration
+    private let closeTimeout: Duration
     private var reader: TmuxControlReader
     private var waiters: [Waiter] = []
     private var runs: [UInt64: CheckedContinuation<TmuxControlReply, any Error>] = [:]
     private var nextRun: UInt64 = 0
     private var repliedToClient = false
     private var writer: Task<Void, Never>?
+    private var isClosing = false
+    private var closeWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// The replies of the commands the client was started with, one block each
     /// with no client flag, as far as they ran before the first reply to a
@@ -67,11 +72,13 @@ actor TmuxControlClient {
         channel: any WindowsTerminalExecChannel,
         readTimeout: Duration = .seconds(30),
         writeTimeout: Duration = .seconds(10),
+        closeTimeout: Duration = .seconds(2),
         reader: TmuxControlReader = TmuxControlReader()
     ) {
         self.channel = channel
         self.readTimeout = readTimeout
         self.writeTimeout = writeTimeout
+        self.closeTimeout = closeTimeout
         self.reader = reader
         (events, eventSink) = AsyncStream.makeStream(of: Event.self)
         (lines, lineSink) = AsyncStream.makeStream(of: Data.self)
@@ -168,11 +175,52 @@ actor TmuxControlClient {
         }
     }
 
-    /// Ends the client and closes its exec: tmux reads the end of its input
-    /// and detaches the client.
+    /// Asks tmux to detach this client, keeps reading until `%exit` or the
+    /// channel ends, then closes the exec.
+    ///
+    /// Under `destroy-unattached on` this client is the session's only one, so
+    /// detaching ends the session with it. A target would name a session the
+    /// client may not have yet; `kill-session` stays for one that started
+    /// wrong. Lines already queued are written first. A client that never ends
+    /// still closes once `closeTimeout` passes: stopping the read earlier, while
+    /// tmux still has output queued, leaves the client in the server and the
+    /// next pane lookup crashes it.
     func close() async {
-        finish(.closed, closingChannel: false)
-        try? await channel.close(timeout: Self.closeTimeout)
+        if !isClosing, end == nil {
+            isClosing = true
+            try? post(TmuxControlCommand(["detach-client"]))
+            startWriting()
+        } else {
+            isClosing = true
+        }
+        await waitForEnd(within: closeTimeout)
+        if end == nil {
+            finish(.closed, closingChannel: false)
+        }
+        try? await channel.close(timeout: closeTimeout)
+    }
+
+    /// Resumes once the client has ended, or once `timeout` has passed.
+    private func waitForEnd(within timeout: Duration) async {
+        if end != nil { return }
+        let timeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            await self?.resumeCloseWaiters()
+        }
+        defer { timeoutTask.cancel() }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if self.end != nil {
+                continuation.resume()
+            } else {
+                self.closeWaiters.append(continuation)
+            }
+        }
+    }
+
+    private func resumeCloseWaiters() {
+        let waiting = closeWaiters
+        closeWaiters.removeAll()
+        for waiter in waiting { waiter.resume() }
     }
 
     private static func line(_ command: TmuxControlCommand) -> Data {
@@ -265,6 +313,7 @@ actor TmuxControlClient {
     private func finish(_ end: End, closingChannel: Bool = true) {
         guard self.end == nil else { return }
         self.end = end
+        resumeCloseWaiters()
         waiters = []
         let waiting = runs
         runs = [:]
@@ -273,13 +322,12 @@ actor TmuxControlClient {
         eventSink.yield(.ended(end))
         eventSink.finish()
         if closingChannel {
-            Task { [channel] in try? await channel.close(timeout: Self.closeTimeout) }
+            let timeout = closeTimeout
+            Task { [channel] in try? await channel.close(timeout: timeout) }
         }
     }
 
     private static func transportError(_ error: any Error) -> TransportError {
         error as? TransportError ?? .channelFailed(detail: String(describing: error))
     }
-
-    private static let closeTimeout = Duration.seconds(2)
 }

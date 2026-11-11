@@ -376,7 +376,7 @@ run_shard_case() (
     start_password_sshd() { echo start-password >> "$fixture_dir/events"; }
     stop_privileged_sshd() { echo stop-password >> "$fixture_dir/events"; }
     run_core_fixture_suite() { run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests; }
-    run_tmux_fixture_suite() { run_suite TmuxTransportE2ETests 30 1 0 TmuxTransportE2ETests; }
+    run_tmux_fixture_suite() { run_suite TmuxTransportE2ETests 33 1 0 TmuxTransportE2ETests; }
     run_app_fixture_suites
     case "$shard" in
         session-weak)
@@ -393,7 +393,7 @@ EXPECTED
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 126 6 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
-suite TmuxTransportE2ETests 30 1 0 TmuxTransportE2ETests
+suite TmuxTransportE2ETests 33 1 0 TmuxTransportE2ETests
 EXPECTED
             [[ ! -e "$fixture_dir/WeakNetworkE2ETests.log" ]] || fail 'transport included Weak'
             ;;
@@ -405,7 +405,7 @@ stop-password
 suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 HeelerSSHDirectStreamLocalE2ETests
 suite SharedFixtureE2ETests 137 7 0 HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
 suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests
-suite TmuxTransportE2ETests 30 1 0 TmuxTransportE2ETests
+suite TmuxTransportE2ETests 33 1 0 TmuxTransportE2ETests
 EXPECTED
             ;;
         ordinary)
@@ -609,7 +609,7 @@ for result in pass fail; do (
     cat > "$fixture_dir/expected" <<'EXPECTED'
 start
 config tmux-config HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
-suite TmuxTransportE2ETests 30 1 0 TmuxTransportE2ETests
+suite TmuxTransportE2ETests 33 1 0 TmuxTransportE2ETests
 EXPECTED
     if [[ "$result" == pass ]]; then
         [[ "$status" == 0 && -z "$tmux_fixture_dir" ]] || fail 'tmux success retained fixture ownership'
