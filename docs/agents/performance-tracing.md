@@ -37,7 +37,8 @@ Stacks come from [PerfMainThreadSampler](../../Sources/Heeler/Support/PerfMainTh
 a watchdog thread signals the main thread (`SIGUSR2`) once a frame is half a
 frame overdue, and the handler walks its own frame pointers. Symbols stay
 mangled in the file. A stack therefore shows code no span covers, and a hitch
-with no stack was shorter than the sampler's first look.
+with no stack was shorter than the sampler's first look. A stack deeper than
+220 frames keeps both ends and a `… N frames` line where the middle was.
 
 The clock is the app's display link, so it sees the main thread holding a
 frame. It does not see the render server: a frame the app committed on time

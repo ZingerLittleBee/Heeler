@@ -28,6 +28,10 @@ enum PerfMainThreadSampler {
     private static let denseSpacing: UInt64 = 8_000_000
     private static let sparseSpacing: UInt64 = 50_000_000
     private static let pollMicroseconds: UInt32 = 4_000
+    /// How far into a stack the handler's own frames can reach.
+    private static let handlerDepth = 8
+    static let innermostKept = 160
+    static let outermostKept = 60
 
     private static let samples = Mutex<[Sample]>([])
 
@@ -123,12 +127,22 @@ enum PerfMainThreadSampler {
     }
 
     /// The stack as text, innermost first, without the handler's own frames.
+    /// A SwiftUI update under a collection view layout runs hundreds of
+    /// frames deep: such a stack keeps both ends, where the thread was and
+    /// what led there, and says how many frames it left out between them.
     static func symbolicated(_ sample: Sample, resolve: (UInt) -> String) -> [String] {
-        var frames = sample.frames.map(resolve)
-        if let trampoline = frames.lastIndex(where: { $0.contains(" _sigtramp+") }) {
-            frames.removeSubrange(...trampoline)
+        var addresses = sample.frames[...]
+        // The handler's frames end at the signal trampoline, a few frames in.
+        let handler = addresses.prefix(handlerDepth)
+        if let trampoline = handler.lastIndex(where: { resolve($0).contains(" _sigtramp+") }) {
+            addresses = addresses[(trampoline + 1)...]
         }
-        if sample.pc != 0 { frames.insert(resolve(sample.pc), at: 0) }
+        var frames: [String] = sample.pc != 0 ? [resolve(sample.pc)] : []
+        let omitted = addresses.count - innermostKept - outermostKept
+        guard omitted > 0 else { return frames + addresses.map(resolve) }
+        frames += addresses.prefix(innermostKept).map(resolve)
+        frames.append("… \(omitted) frames")
+        frames += addresses.suffix(outermostKept).map(resolve)
         return frames
     }
 
@@ -151,9 +165,9 @@ enum PerfMainThreadSampler {
 
 // What the signal handler reads and writes. Globals, so the handler captures
 // nothing, and each written by one side at a time: the watchdog waits for
-// `perfSampleReady` before it reads what the handler wrote. A SwiftUI update
-// under a collection view layout runs well past a hundred frames deep.
-private let perfSampleCapacity: Int32 = 224
+// `perfSampleReady` before it reads what the handler wrote. The buffer holds
+// a whole stack, so that what is kept of a deep one can be both of its ends.
+private let perfSampleCapacity: Int32 = 1024
 private nonisolated(unsafe) let perfSampleBuffer =
     UnsafeMutablePointer<UnsafeMutableRawPointer?>.allocate(capacity: Int(perfSampleCapacity))
 private nonisolated(unsafe) var perfSampleCount: Int32 = 0

@@ -80,6 +80,20 @@ struct PerfTraceTests {
             ])
     }
 
+    @Test("a deep stack keeps both ends and says what it left out")
+    func deepStackKeepsBothEnds() {
+        let kept = PerfMainThreadSampler.innermostKept + PerfMainThreadSampler.outermostKept
+        let sample = PerfMainThreadSampler.Sample(overdue: 0.05, pc: 0, frames: Array(1...UInt(kept + 180)))
+        let stack = PerfMainThreadSampler.symbolicated(sample) { String($0) }
+        #expect(stack.count == kept + 1)
+        #expect(stack.first == "1")
+        #expect(stack[PerfMainThreadSampler.innermostKept] == "… 180 frames")
+        #expect(stack.last == String(kept + 180))
+
+        let whole = PerfMainThreadSampler.Sample(overdue: 0.05, pc: 0, frames: Array(1...UInt(kept)))
+        #expect(PerfMainThreadSampler.symbolicated(whole) { String($0) }.count == kept)
+    }
+
     @Test("a record encodes only the fields it set")
     func recordEncoding() throws {
         var record = PerfRecord(time: 0, kind: "hitch")
