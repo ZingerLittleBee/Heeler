@@ -3033,10 +3033,11 @@ actor SessionDriver {
 
     /// Holds the next channel teardown right after libssh2's close returned
     /// with the channel's CLOSE on the wire and the server's CLOSE read, before
-    /// the teardown takes its next step. sshd frees the channel as soon as it
-    /// has both, so whatever the client sends for it after this point names a
-    /// channel the server no longer has. Cancelling the owning task here
-    /// reproduces an interruption that reaches a teardown that late.
+    /// the teardown takes its next step. sshd frees a channel once CLOSE has
+    /// crossed both ways (for a session, once its process has also exited),
+    /// so whatever the client sends for it after this point names a channel
+    /// the server no longer has. Cancelling the owning task here reproduces
+    /// an interruption that reaches a teardown that late.
     func holdNextChannelCloseSentForTesting(
         _ hold: @escaping @Sendable () async -> Void
     ) {

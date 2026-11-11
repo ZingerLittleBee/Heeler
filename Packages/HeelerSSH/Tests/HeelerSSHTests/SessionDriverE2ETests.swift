@@ -989,9 +989,9 @@ struct SessionDriverE2ETests {
     ///
     /// The pause between the hold and the retry stands in for the link: on a
     /// real one whatever follows the CLOSE reaches sshd at least a round trip
-    /// later, after it has freed the channel. On loopback without the pause,
-    /// the two packets can land in one read and the EOF finds the channel
-    /// still allocated.
+    /// later, after it has freed the channel. Loopback separates them too, but
+    /// sshd handles every packet of one read before it frees anything, so an
+    /// EOF that arrived with the CLOSE would still find the channel.
     @Test(
         "a teardown interrupted after its close went out spares the session",
         arguments: InterruptedCloseSite.allCases)
