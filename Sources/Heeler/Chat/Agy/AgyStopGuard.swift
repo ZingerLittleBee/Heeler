@@ -14,6 +14,7 @@ enum AgyStopGuard {
         return .press
     }
 
-    static let bashCommand =
-        "Antigravity CLI's input box is in bash mode with a command typed, and Esc would drop it. Stop it in the terminal."
+    static let bashCommand = String(
+        localized: "Antigravity CLI's input box is in bash mode with a command typed, and Esc would drop it. Stop it in the terminal.",
+        comment: "Why Chat's Stop pressed nothing in Antigravity CLI")
 }

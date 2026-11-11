@@ -21,13 +21,13 @@ enum AgyInputBoxDetector {
     static func detect(_ screen: ANSIScreen) -> InputBoxState {
         let agy = AgyScreen(screen)
         if agy.hasExited {
-            return .noComposer("Antigravity CLI has exited. Start it again in the terminal first.")
+            return .noComposer(String(localized: "Antigravity CLI has exited. Start it again in the terminal first."))
         }
         if let below = agy.below { return .overlay(below) }
         guard let composer = agy.composer else {
             return agy.showsDialog
                 ? .dialog(title: nil)
-                : .unknown("Heeler can't find Antigravity CLI's input box on screen.")
+                : .unknown(String(localized: "Heeler can't find Antigravity CLI's input box on screen."))
         }
         if composer.mode == .bash { return .shellMode(composer.draft) }
         if !composer.draft.isEmpty { return .text(composer.draft) }
@@ -35,8 +35,9 @@ enum AgyInputBoxDetector {
             // What a paste does to a second press other than an exit's is
             // not known.
             return .disabled(
-                "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first."
-            )
+                String(
+                    localized: "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first.",
+                    comment: "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+c again to exit"))
         }
         if agy.showsRunningTurn { return .disabled(working) }
         // A footer Chat doesn't know may change what Enter does, such as
@@ -50,5 +51,5 @@ enum AgyInputBoxDetector {
 
     /// agy queues a message sent while a turn runs, but herdr's Enter could
     /// answer a dialog that opens first.
-    static let working = "Antigravity CLI is working. Send once it's idle, or steer from the terminal."
+    static let working = String(localized: "Antigravity CLI is working. Send once it's idle, or steer from the terminal.")
 }

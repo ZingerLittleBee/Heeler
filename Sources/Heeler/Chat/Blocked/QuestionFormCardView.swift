@@ -30,8 +30,11 @@ struct QuestionFormCard: View {
     private var isReady: Bool { store.progress == .ready }
 
     private var detail: String {
-        let position = String(localized: "\(page + 1) of \(form.questions.count)")
-        return draft.isSkipped ? "\(position), skipped" : position
+        draft.isSkipped
+            ? String(
+                localized: "\(page + 1) of \(form.questions.count), skipped",
+                comment: "Question card header: the current question of the total, which is skipped")
+            : String(localized: "\(page + 1) of \(form.questions.count)")
     }
 
     var body: some View {

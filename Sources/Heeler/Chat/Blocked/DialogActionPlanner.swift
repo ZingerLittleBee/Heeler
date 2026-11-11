@@ -282,7 +282,9 @@ private struct ClaudeDialogPlanner {
         guard isMultiSelect, let button = dialog.options.first(where: { $0.role == .next }) else {
             throw .unsupported(String(localized: "Only a multi-select question takes a set of answers."))
         }
-        guard text == nil else { throw .unsupported("Heeler does not type into a multi-select question's Other row.") }
+        guard text == nil else {
+            throw .unsupported(String(localized: "Heeler does not type into a multi-select question's Other row."))
+        }
         guard !ordinals.isEmpty else { throw .emptySelection }
         for ordinal in ordinals.sorted() {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }

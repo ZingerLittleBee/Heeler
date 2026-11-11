@@ -478,7 +478,8 @@ private struct BlockedDialogCard: View {
             // label Claude draws.
             if writeInWithSelection != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    BlockedTextField(placeholder: "Type your own answer", text: $text, isFocused: $isTextFocused)
+                    BlockedTextField(
+                        placeholder: String(localized: "Type your own answer"), text: $text, isFocused: $isTextFocused)
                     selectionButton(writing: hasText ? text : nil)
                 }
             } else if !isMultiSelect,
@@ -486,8 +487,9 @@ private struct BlockedDialogCard: View {
             {
                 VStack(alignment: .leading, spacing: 8) {
                     BlockedTextField(
-                        placeholder: dialog.kind == .agyQuestion ? "Type your own answer" : field.label, text: $text,
-                        isFocused: $isTextFocused)
+                        placeholder: dialog.kind == .agyQuestion
+                            ? String(localized: "Type your own answer") : field.label,
+                        text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
                         .buttonStyle(.bordered)
                         .disabled(!hasText)
@@ -681,10 +683,11 @@ extension DialogOption {
         case .grok:
             return String(localized: "Grok Build saves this rule for the project and won't ask again.")
         case .agy where folded.contains(DialogRowScanner.comparable("persist to settings.json")):
-            return
-                "Saves a rule in Antigravity CLI's settings, so commands that start this way aren't asked about again."
+            return String(
+                localized: "Saves a rule in Antigravity CLI's settings, so commands that start this way aren't asked about again.")
         case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
-            return "Antigravity CLI won't ask again in this conversation for commands that start this way."
+            return String(
+                localized: "Antigravity CLI won't ask again in this conversation for commands that start this way.")
         case .claude, .codex, .pi, .agy:
             return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
@@ -699,7 +702,7 @@ private extension BlockedDialog {
     /// has no pages.
     var pageLabel: String? {
         guard let page = questionPage, page.count > 1 else { return nil }
-        return "\(page.index) of \(page.count)"
+        return String(localized: "\(page.index) of \(page.count)")
     }
 
     var cardTitle: String {
@@ -762,7 +765,8 @@ extension BlockedDialog {
         case .ompApproval, .grokPermission: String(localized: "Deny")
         case .openCodePermission: String(localized: "Reject")
         case .openCodeQuestion: String(localized: "Dismiss")
-        case .agyQuestion: "Skip"
+        case .agyQuestion:
+            String(localized: "Skip", comment: "On an Antigravity CLI question card: skips the question shown")
         default: String(localized: "Stop")
         }
     }

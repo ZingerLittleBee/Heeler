@@ -44,14 +44,14 @@ extension ChatUnavailableReason {
         case .noSession(.opencode):
             String(localized: "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal.")
         case .noSession(.agy):
-            "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. If this lasts after a message, check the Antigravity CLI integration on the Host. Chat will keep checking, and you can continue in the Agent terminal."
+            String(localized: "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. If this lasts after a message, check the Antigravity CLI integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
         case .unidentifiedSession(.claude), .unidentifiedSession(.codex), .unidentifiedSession(.pi),
             .unidentifiedSession(.omp), .unidentifiedSession(.grok):
             String(localized: "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own.")
         case .unidentifiedSession(.opencode):
             String(localized: "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's.")
         case .unidentifiedSession(.agy):
-            "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's."
+            String(localized: "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's.")
         case .unsupportedSession:
             String(localized: "herdr reports a session Chat doesn't read.")
         case .notFound(let searchedAll):
@@ -81,7 +81,9 @@ extension ChatUnavailableReason {
         case .cannotTellSession(let program):
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
         case .noConversationYet(let program):
-            "\(program.chatName) starts a conversation with its first message. Send one here or in the terminal, and Chat follows it."
+            String(
+                localized: "\(program.chatName) starts a conversation with its first message. Send one here or in the terminal, and Chat follows it.",
+                comment: "In Chat's place before the program started a conversation: the program's name")
         case .extensionNotLoaded(let program, let turnedOff):
             // One whole text per combination, so each language joins its
             // sentences its own way.
@@ -147,8 +149,12 @@ extension ChatUnavailableReason {
             String(localized: "Waiting for the Agent to report its conversation.")
         case .noConversationYet(let program):
             saved
-                ? "Waiting for \(program.chatName) to start the conversation. Showing saved messages."
-                : "Waiting for \(program.chatName) to start the conversation."
+                ? String(
+                    localized: "Waiting for \(program.chatName) to start the conversation. Showing saved messages.",
+                    comment: "Chat's banner over messages saved earlier: the program's name")
+                : String(
+                    localized: "Waiting for \(program.chatName) to start the conversation.",
+                    comment: "Chat's banner: the program's name")
         case .awaitingFirstMessage(let program):
             // Whole sentences per timing, as in `explanation`.
             program.writesNewConversationWithFirstReply
@@ -507,7 +513,7 @@ extension ChatProgram {
         case .claude, .pi, .omp:
             String(localized: "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal.")
         case .agy:
-            "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it."
+            String(localized: "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it.")
         }
     }
 }

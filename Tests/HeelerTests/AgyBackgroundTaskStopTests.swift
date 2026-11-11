@@ -604,12 +604,27 @@ struct AgyBackgroundTaskStopTests {
 
         #expect(
             AgyBackgroundTaskStop.notice(for: [Self.command("sleep 40", id: 6), Self.command("sleep 50", id: 7)])
-                == "Stop ended the turn, but \u{201C}sleep 40\u{201D} and \u{201C}sleep 50\u{201D} still run in the "
-                + "background. Stop them in the terminal: /tasks, then k.")
+                == "Stop ended the turn, but 2 background commands still run: \u{201C}sleep 40\u{201D}, "
+                + "\u{201C}sleep 50\u{201D}. Stop them in the terminal: /tasks, then k.")
         #expect(
             AgyBackgroundTaskStop.notice(for: [Self.command(long, id: 6)])
                 == "Stop ended the turn, but \u{201C}python3 -m http.server 8000 --bind 127.\u{2026}\u{201D} still "
                 + "runs in the background. Stop it in the terminal: /tasks, then k.")
+    }
+
+    /// The count picks the sentence, and a command without its line still
+    /// counts in the list.
+    @Test func theUnreadNoticeNamesWhatMayStillRun() {
+        let unnamed = ChatBackgroundCommand(callID: "agy:8:tool:0", command: nil, isRunning: true, isDaemon: false)
+
+        #expect(
+            AgyBackgroundTaskStop.unreadNotice(for: [Self.command("sleep 40", id: 6)])
+                == "Heeler couldn't read the Agent's screen after Stop, so \u{201C}sleep 40\u{201D} may still run in "
+                + "the background. Stop it in the terminal: /tasks, then k.")
+        #expect(
+            AgyBackgroundTaskStop.unreadNotice(for: [Self.command("sleep 40", id: 6), unnamed])
+                == "Heeler couldn't read the Agent's screen after Stop, so 2 background commands may still run: "
+                + "\u{201C}sleep 40\u{201D}, a command. Stop them in the terminal: /tasks, then k.")
     }
 
     // MARK: Built as Stop is tapped

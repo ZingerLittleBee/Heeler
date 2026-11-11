@@ -40,7 +40,8 @@ enum AgyDialogParser {
         guard agy.composer == nil, agy.showsDialog else { return .none }
         let rows = screen.rows
         guard let frame = AgyDialogFrame(rows, columns: screen.columns) else {
-            return unrecognized(rows, from: nil, "Heeler can't find the top of Antigravity CLI's dialog.")
+            return unrecognized(
+                rows, from: nil, String(localized: "Heeler can't find the top of Antigravity CLI's dialog."))
         }
         let parsed: BlockedDialog?
         switch frame.title {
@@ -55,8 +56,9 @@ enum AgyDialogParser {
         return unrecognized(rows, from: frame.titleRow, unknownReason)
     }
 
-    private static let unknownReason =
-        "Heeler doesn't know this Antigravity CLI dialog. Answer it with these keys or in the terminal."
+    private static let unknownReason = String(
+        localized: "Heeler doesn't know this Antigravity CLI dialog. Answer it with these keys or in the terminal.",
+        comment: "On a Blocked card that shows an excerpt of the screen with keys to press")
 
     static let trustTitle = "Accessing workspace:"
 
@@ -143,7 +145,8 @@ enum AgyDialogParser {
             options.append(
                 DialogOption(
                     ordinal: options.count + 1, number: number, label: row.label,
-                    detail: role == .decline ? "Ends the turn" : nil, role: role, isFocused: row.isFocused))
+                    detail: role == .decline ? String(localized: "Ends the turn") : nil, role: role,
+                    isFocused: row.isFocused))
         }
         let roles = Set(options.map(\.role))
         guard roles.contains(.approve), roles.contains(.decline) else { return nil }
@@ -193,7 +196,8 @@ enum AgyDialogParser {
             var detail: String?
             if label.hasPrefix(recommended) {
                 label = String(label.dropFirst(recommended.count))
-                detail = "Recommended"
+                detail = String(
+                    localized: "Recommended", comment: "Under the answer the agent recommends on a question card")
             }
             options.append(
                 DialogOption(

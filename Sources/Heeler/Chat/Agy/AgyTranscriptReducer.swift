@@ -151,7 +151,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                     content: .divider(
                         ChatDivider(
                             kind: .historyUnavailable,
-                            detail: "Earlier messages are in the conversation this one was forked from."))))
+                            detail: String(
+                                localized: "Earlier messages are in the conversation this one was forked from.",
+                                comment: "Under the divider atop a forked Antigravity CLI conversation in Chat")))))
         }
 
         mutating func read(_ step: AgyStep) {
@@ -205,7 +207,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             let id = Self.id(step)
             let content: ChatEntry.Content =
                 text.isEmpty && images == 0
-                ? .notice(ChatNotice(kind: .system, title: "Message exceeds the preview limit"))
+                ? .notice(ChatNotice(kind: .system, title: String(localized: "Message exceeds the preview limit")))
                 : .user(ChatUserMessage(text: text, imageCount: images))
             place(content, id: id, step)
             transcript.latestPromptOffset = step.offset
@@ -236,7 +238,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 transcript.entries.append(
                     ChatEntry(
                         id: ChatEntryID("agy:\(last.stepIndex ?? 0):interrupted"), sourceOffset: last.offset,
-                        content: .notice(ChatNotice(kind: .interrupted, title: "Interrupted"))))
+                        content: .notice(ChatNotice(kind: .interrupted, title: String(localized: "Interrupted")))))
             }
             if let index = turn.turn {
                 transcript.turns[index].ending = ending
@@ -312,8 +314,11 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             note(step)
             addNotice(
                 ChatNotice(
-                    kind: .system, title: stopped.count == 1 ? "Background task stopped" : "Background tasks stopped",
-                    detail: "Antigravity CLI restarted."), step)
+                    kind: .system,
+                    title: String(
+                        localized: "\(stopped.count) background tasks stopped",
+                        comment: "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted"),
+                    detail: String(localized: "Antigravity CLI restarted.")), step)
         }
 
         /// A background task ended. Its end comes as a system message, and
@@ -330,11 +335,12 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             }
             var detail = command.map { [$0] } ?? []
             if !end.wasCanceled, let code = AgyToolCall.exitCode(in: end.result) {
-                detail.append("Exit code \(code)")
+                detail.append(String(localized: "Exit code \(code)"))
             }
             let notice = ChatNotice(
                 kind: .taskNotification,
-                title: end.wasCanceled ? "Background command canceled" : "Background command finished",
+                title: end.wasCanceled
+                    ? String(localized: "Background command canceled") : String(localized: "Background command finished"),
                 detail: detail.isEmpty ? nil : detail.joined(separator: " · "))
             // agy holds a task's end until the next prompt and writes a
             // cancel from `/tasks` just after it (1.5.3), though the task
@@ -375,7 +381,8 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             ensureOpen()
             note(step)
             let text = step.error ?? step.content.map { $0.hasPrefix("Error: ") ? String($0.dropFirst(7)) : $0 }
-            addNotice(Self.notice(kind: .error, title: "Antigravity CLI hit an error", text: text), step)
+            addNotice(
+                Self.notice(kind: .error, title: String(localized: "Antigravity CLI hit an error"), text: text), step)
             // agy carries on after one (1.5.1): only a later reply ends the
             // turn.
             open?.hasReply = false

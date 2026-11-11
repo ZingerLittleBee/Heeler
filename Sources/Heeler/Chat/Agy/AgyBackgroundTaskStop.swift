@@ -371,42 +371,56 @@ struct AgyBackgroundTaskStop {
     // MARK: Notices
 
     /// Why a Composer send waits while this types.
-    static let sendHold =
-        "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment."
+    static let sendHold = String(
+        localized: "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment.",
+        comment: "Why a Chat or terminal send waits while Stop types into Antigravity CLI's task list")
 
     /// What a held send's notice says once this ended: nothing sends the
     /// draft by itself.
-    static let sendHoldEnded = "Stop has finished in Antigravity CLI, but nothing was sent, so send again."
+    static let sendHoldEnded = String(
+        localized: "Stop has finished in Antigravity CLI, but nothing was sent, so send again.",
+        comment: "Replaces the held send's notice once Stop's typing in Antigravity CLI ended")
 
-    static let panelLeftOpen =
-        "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc."
+    static let panelLeftOpen = String(
+        localized: "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc.",
+        comment: "Under the Composer after Stop in Antigravity CLI")
 
-    /// What still runs once the turn ended, and how to end it in the terminal.
+    /// What still runs once the turn ended, and how to end it in the
+    /// terminal. The count picks the wording; the catalog's English
+    /// singular names the one command without it.
     static func notice(for commands: [ChatBackgroundCommand]) -> String {
-        let one = commands.count == 1
-        return "Stop ended the turn, but \(list(commands)) still \(one ? "runs" : "run") in the background. "
-            + "Stop \(one ? "it" : "them") in the terminal: /tasks, then k."
+        String(
+            localized: "Stop ended the turn, but \(commands.count) background commands still run: \(list(commands)). Stop them in the terminal: /tasks, then k.",
+            comment: "Under the Composer after Stop in Antigravity CLI: how many commands still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI")
     }
 
     /// What may still run when no command of the turn was known at the tap
     /// and no transcript read placed the turn by the wait's end.
-    static let unplacedNotice =
-        "Heeler couldn't tell after Stop which background commands the turn started, so one may still run. "
-        + "Check in the terminal: /tasks, then k."
+    static let unplacedNotice = String(
+        localized: "Heeler couldn't tell after Stop which background commands the turn started, so one may still run. Check in the terminal: /tasks, then k.",
+        comment: "Under the Composer after Stop in Antigravity CLI: /tasks and k are typed in Antigravity CLI")
 
     /// What may still run when no screen showed the turn's end.
     static func unreadNotice(for commands: [ChatBackgroundCommand]) -> String {
-        "Heeler couldn't read the Agent's screen after Stop, so \(list(commands)) may still run in the background. "
-            + "Stop \(commands.count == 1 ? "it" : "them") in the terminal: /tasks, then k."
+        String(
+            localized: "Heeler couldn't read the Agent's screen after Stop, so \(commands.count) background commands may still run: \(list(commands)). Stop them in the terminal: /tasks, then k.",
+            comment: "Under the Composer after Stop in Antigravity CLI: how many commands may still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI")
     }
 
-    /// `“a”`, `“a” and “b”`, `“a”, “b” and “c”`.
+    /// `“a”` or `“a”, “b”`: each command quoted, joined as the user's
+    /// language lists phrases.
     private static func list(_ commands: [ChatBackgroundCommand]) -> String {
-        let names = commands.map { command in
-            command.command.map { "\u{201C}\(short($0))\u{201D}" } ?? "a command"
+        commands.map { command in
+            command.command.map { command in
+                String(
+                    localized: "\u{201C}\(short(command))\u{201D}",
+                    comment: "A command line in quotes, in the list of background commands Stop left running")
+            }
+                ?? String(
+                    localized: "a command",
+                    comment: "Stands for a background command whose command line Heeler doesn't know, in the list of commands Stop left running")
         }
-        guard let last = names.last, names.count > 1 else { return names.first ?? "" }
-        return names.dropLast().joined(separator: ", ") + " and " + last
+        .joinedAsPhrases()
     }
 
     /// A command short enough to read in a notice.

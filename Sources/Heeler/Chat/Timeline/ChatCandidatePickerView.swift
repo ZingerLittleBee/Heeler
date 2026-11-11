@@ -12,9 +12,9 @@ struct ChatCandidatePickerView: View {
     static func emptyListDescription(for program: ChatProgram) -> String {
         switch program {
         case .agy:
-            "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither."
+            String(localized: "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither.")
         case .claude, .codex, .pi, .omp, .grok, .opencode:
-            "This Agent's directory has no recent conversations, and its process holds none open."
+            String(localized: "This Agent's directory has no recent conversations, and its process holds none open.")
         }
     }
 
@@ -105,7 +105,7 @@ extension ChatSessionCandidate {
         if origins.contains(.heldOpen) {
             parts.append(String(localized: "Open in the program"))
         } else if origins.contains(.commandLine) {
-            parts.append("Named on the program's command line")
+            parts.append(String(localized: "Named on the program's command line"))
         } else if origins.contains(.programStatus) {
             parts.append(String(localized: "Named by the program's status"))
         } else {

@@ -105,25 +105,27 @@ struct AgyToolCall: Sendable {
     /// open, a call without a result follows what herdr reports.
     func outcome(activity: ChatAgentActivity) -> (status: ChatToolActivity.Status, note: String?) {
         if let taskEnd {
-            if taskEnd.wasCanceled { return (.interrupted, "Canceled in the background") }
+            if taskEnd.wasCanceled { return (.interrupted, String(localized: "Canceled in the background")) }
             let code = Self.exitCode(in: taskEnd.result)
-            return ((code ?? 0) == 0 ? .succeeded : .failed, "Finished in the background")
+            return ((code ?? 0) == 0 ? .succeeded : .failed, String(localized: "Finished in the background"))
         }
-        if stoppedByRestart { return (.interrupted, "Stopped when Antigravity CLI restarted") }
+        if stoppedByRestart { return (.interrupted, String(localized: "Stopped when Antigravity CLI restarted")) }
         if let result {
             switch result.status {
             case .error:
                 // A declined call ends the turn; agy then shows the turn
                 // interrupted, which the row says.
-                if isDeclined { return (.declined, turnEnd == .interrupted ? "Declining ended the turn" : nil) }
+                if isDeclined {
+                    return (.declined, turnEnd == .interrupted ? String(localized: "Declining ended the turn") : nil)
+                }
                 return (.failed, nil)
             case .running:
                 // A wait's call is done once agy goes on past it: nothing
                 // will end it.
                 if Self.waitTools.contains(name), isFollowed || turnEnd != nil {
-                    return (.succeeded, "Sent to the background")
+                    return (.succeeded, String(localized: "Sent to the background"))
                 }
-                return (.started, "Sent to the background")
+                return (.started, String(localized: "Sent to the background"))
             case .done, .other:
                 if kind == .command, let code = Self.exitCode(in: result.resultBody), code != 0 { return (.failed, nil) }
                 // A skipped question reads `Skipped` under itself, so a
@@ -188,7 +190,7 @@ struct AgyToolCall: Sendable {
             tool.output = ChatOutputReference(offset: result.offset, length: result.length)
             if result.isTruncated {
                 tool.preview?.isTruncated = true
-                if tool.note == nil { tool.note = "Output exceeds the preview limit." }
+                if tool.note == nil { tool.note = String(localized: "Output exceeds the preview limit.") }
             }
         }
         if kind == .fileRead, status == .succeeded { tool.imagePath = imagePath }
@@ -319,11 +321,20 @@ struct AgyToolCall: Sendable {
             title = string("Role") ?? string("TypeName")
             subtitle = string("TypeName")
         case "send_message":
-            title = string("Recipient").map { "Message to \($0)" }
+            title = string("Recipient").map { recipient in
+                String(
+                    localized: "Message to \(recipient)",
+                    comment: "Title of an Antigravity CLI tool row that sends a message to another agent: its name")
+            }
         case "manage_subagents", "manage_task":
             title = [string("Action"), string("TaskId")].compactMap { $0 }.joined(separator: " ")
         case "schedule":
-            title = integer("DurationSeconds").map { "Wait up to \($0)s" }
+            title = integer("DurationSeconds").map { seconds in
+                let duration = Duration.seconds(seconds).formatted(.units(allowed: [.seconds], width: .narrow))
+                return String(
+                    localized: "Wait up to \(duration)",
+                    comment: "Title of an Antigravity CLI tool row that waits: the longest wait, such as 30s")
+            }
         case "ask_question":
             let texts = questions.map(\.text)
             title = texts.isEmpty ? nil : texts.joined(separator: " · ")

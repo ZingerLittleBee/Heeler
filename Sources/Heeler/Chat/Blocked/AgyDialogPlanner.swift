@@ -32,7 +32,7 @@ struct AgyDialogPlanner {
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
             .openCodeQuestion:
-            throw .unsupported("Not an Antigravity CLI dialog.")
+            throw .unsupported(String(localized: "Not an Antigravity CLI dialog."))
         }
     }
 
@@ -47,7 +47,7 @@ struct AgyDialogPlanner {
             guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
             guard dialog.focus.feedbackOrdinal == nil else { throw Self.noteFieldOpen }
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Option \(ordinal) has no digit key. Answer it in the terminal."))
             }
             return Self.plan([.keys([digit])], focusesComposer: option.role == .decline)
         case .dismiss:
@@ -57,9 +57,9 @@ struct AgyDialogPlanner {
         case .amend(let ordinal, let note):
             return try amend(ordinal, note: note)
         case .respond, .approvePlan:
-            throw .unsupported("Antigravity CLI takes a note only with a command's Yes or No.")
+            throw .unsupported(String(localized: "Antigravity CLI takes a note only with a command's Yes or No."))
         case .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The permission has no such action.")
+            throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
 
@@ -69,11 +69,11 @@ struct AgyDialogPlanner {
     /// skips the Tab.
     private func amend(_ ordinal: Int, note: String) throws(DialogPlanError) -> DialogActionPlan {
         guard dialog.kind == .agyCommand else {
-            throw .unsupported("Antigravity CLI takes a note only with a command's Yes or No.")
+            throw .unsupported(String(localized: "Antigravity CLI takes a note only with a command's Yes or No."))
         }
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         guard option.role == .approve || option.role == .decline else {
-            throw .unsupported("Only the Yes and No rows take a note.")
+            throw .unsupported(String(localized: "Only the Yes and No rows take a note."))
         }
         let text = try DialogActionPlanner.fieldText(note)
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
@@ -86,7 +86,8 @@ struct AgyDialogPlanner {
             builder.keys("tab")
             builder.expect(.feedbackMode(ordinal: ordinal))
         default:
-            throw .unsupported("Antigravity CLI's note field is open on another row. Finish it in the terminal.")
+            throw .unsupported(
+                String(localized: "Antigravity CLI's note field is open on another row. Finish it in the terminal."))
         }
         builder.paste(text)
         builder.expect(.inputText(text))
@@ -105,11 +106,11 @@ struct AgyDialogPlanner {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else { throw .needsText }
             guard !dialog.isMultiSelect else {
-                throw .unsupported("A multi-select question takes its answers as a set.")
+                throw .unsupported(String(localized: "A multi-select question takes its answers as a set."))
             }
             try answerFieldClosed()
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Option \(ordinal) has no digit key. Answer it in the terminal."))
             }
             return Self.plan([.keys([digit])] + nextPage())
         case .submitSelection(let ordinals, let text):
@@ -120,7 +121,7 @@ struct AgyDialogPlanner {
             try answerFieldClosed()
             return Self.plan([.keys(["esc"])] + nextPage())
         case .amend, .approvePlan, .expandQuestions:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
@@ -135,7 +136,7 @@ struct AgyDialogPlanner {
         _ ordinals: Set<Int>, writeIn text: String?
     ) throws(DialogPlanError) -> DialogActionPlan {
         guard dialog.isMultiSelect else {
-            throw .unsupported("Only a multi-select question takes a set of answers.")
+            throw .unsupported(String(localized: "Only a multi-select question takes a set of answers."))
         }
         var written: String?
         if let text { written = try DialogActionPlanner.fieldText(text) }
@@ -143,7 +144,7 @@ struct AgyDialogPlanner {
         for ordinal in ordinals.sorted() {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else {
-                throw .unsupported("Option \(ordinal) is not an answer Heeler can check.")
+                throw .unsupported(String(localized: "Option \(ordinal) is not an answer Heeler can check."))
             }
         }
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
@@ -157,7 +158,7 @@ struct AgyDialogPlanner {
         var checked = dialog.focus.checked
         for option in toggles {
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(option.ordinal) has no digit key.")
+                throw .unsupported(String(localized: "Option \(option.ordinal) has no digit key."))
             }
             checked.formSymmetricDifference([option.ordinal])
             builder.keys(digit)
@@ -165,11 +166,12 @@ struct AgyDialogPlanner {
         }
         if let written {
             guard let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil }) else {
-                throw .unsupported("The question has no Write-in row.")
+                throw .unsupported(String(localized: "The question has no Write-in row."))
             }
             if dialog.focus.feedbackOrdinal != field.ordinal {
                 guard let digit = DialogActionPlanner.digitKey(field.number) else {
-                    throw .unsupported("Option \(field.ordinal) has no digit key. Answer it in the terminal.")
+                    throw .unsupported(
+                        String(localized: "Option \(field.ordinal) has no digit key. Answer it in the terminal."))
                 }
                 builder.keys(digit)
                 builder.expect(.feedbackMode(ordinal: field.ordinal))
@@ -196,17 +198,17 @@ struct AgyDialogPlanner {
     private func writeIn(_ ordinal: Int, text: String) throws(DialogPlanError) -> DialogActionPlan {
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
         guard option.role == .otherText, option.input != nil else {
-            throw .unsupported("Option \(ordinal) is not a text field.")
+            throw .unsupported(String(localized: "Option \(ordinal) is not a text field."))
         }
         guard !dialog.isMultiSelect else {
-            throw .unsupported("A multi-select question takes its written answer with Submit.")
+            throw .unsupported(String(localized: "A multi-select question takes its written answer with Submit."))
         }
         let text = try DialogActionPlanner.fieldText(text)
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
         var steps: [DialogStep] = []
         if dialog.focus.feedbackOrdinal != ordinal {
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Option \(ordinal) has no digit key. Answer it in the terminal."))
             }
             steps += [.keys([digit]), .expect(.feedbackMode(ordinal: ordinal))]
         }
@@ -219,7 +221,8 @@ struct AgyDialogPlanner {
     private func answerFieldClosed() throws(DialogPlanError) {
         if dialog.hasTypedText { throw .textFieldNotEmpty }
         if dialog.focus.feedbackOrdinal != nil {
-            throw .unsupported("Antigravity CLI's answer field is open, so keys would be typed into it.")
+            throw .unsupported(
+                String(localized: "Antigravity CLI's answer field is open, so keys would be typed into it."))
         }
     }
 
@@ -243,7 +246,7 @@ struct AgyDialogPlanner {
             builder.keys("enter")
             return Self.plan(builder.steps)
         case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The trust prompt has no such action.")
+            throw .unsupported(String(localized: "The trust prompt has no such action."))
         }
     }
 
@@ -254,5 +257,6 @@ struct AgyDialogPlanner {
     }
 
     private static let noteFieldOpen = DialogPlanError.unsupported(
-        "Antigravity CLI's note field is open, so a digit would be typed into it. Answer in the terminal.")
+        String(
+            localized: "Antigravity CLI's note field is open, so a digit would be typed into it. Answer in the terminal."))
 }

@@ -1796,11 +1796,15 @@ final class AgentChatStore {
         case .unavailable(.noConversationYet) where shown == nil:
             return nil
         case .unavailable(.noConversationYet):
-            return "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal."
+            return String(
+                localized: "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal.",
+                comment: "Why a Chat send went nowhere: the program's name")
         case .unavailable, .pickUnconfirmed:
             return Self.cannotTellSessionReason(program)
         case .launching:
-            return "\(name) is still starting, so Heeler sent nothing. Send again once it's running."
+            return String(
+                localized: "\(name) is still starting, so Heeler sent nothing. Send again once it's running.",
+                comment: "Why a Chat send went nowhere: the program's name")
         case .bound, .picked:
             break
         }

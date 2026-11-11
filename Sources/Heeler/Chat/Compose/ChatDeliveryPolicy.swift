@@ -123,7 +123,7 @@ extension InputBoxState {
             case .agy:
                 // Esc puts a message queued during the turn back in the box
                 // (Antigravity CLI 1.5.3).
-                "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first."
+                String(localized: "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first.")
             }
         case .shellMode:
             String(localized: "The Agent's input box is in shell mode. Leave it in the terminal first.")
