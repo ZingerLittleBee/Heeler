@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import GhosttyTerminal
 import SwiftUI
@@ -942,6 +943,152 @@ extension TmuxTransportE2ETests {
             store.setHosts([])
         } catch {
             await attach.stop()
+            store.setHosts([])
+            throw error
+        }
+    }
+
+    // MARK: Composer Send
+
+    private struct CaptureSummary: Equatable, Sendable {
+        let length: Int
+        let headHex: String
+        let tailHex: String
+        let sha256: String
+    }
+
+    private static func captureSummary(
+        of path: String, from offset: Int, on fixture: TmuxSSHFixture
+    ) async throws -> CaptureSummary? {
+        let script = [
+            "/usr/bin/python3", "-c",
+            "import hashlib, sys; p, off = sys.argv[1], int(sys.argv[2]); "
+                + "f = open(p, 'rb'); f.seek(off); b = f.read(); "
+                + "print(len(b), b[:16].hex(), b[-16:].hex(), hashlib.sha256(b).hexdigest())",
+            path, "\(offset)",
+        ].map(GitProbe.singleQuoted).joined(separator: " ")
+        let output = try await fixture.require(script).trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = output.split(separator: " ", omittingEmptySubsequences: false)
+        guard parts.count == 4, let length = Int(parts[0]) else { return nil }
+        return CaptureSummary(
+            length: length, headHex: String(parts[1]), tailHex: String(parts[2]), sha256: String(parts[3]))
+    }
+
+    @Test("Composer Send pastes CRLF, CJK and tmux syntax between bracketed paste markers, and pastes a 1 MB message")
+    func composerSendPastesExactBytesAndOneMegabyte() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let home = fixture.configuration.homePath
+            let program = "\(home)/bin/claude.py"
+            try await fixture.writeProgram(
+                at: program,
+                """
+                #!/usr/bin/python3
+                import os, sys, tty
+                capture_path, ready_path = sys.argv[1:3]
+                tty.setraw(0)
+                os.write(1, b"\\x1b[?2004h")
+                with open(capture_path, "wb"):
+                    pass
+                with open(ready_path, "w") as handle:
+                    handle.write("ready\\n")
+                with open(capture_path, "ab", buffering=0) as sink:
+                    while True:
+                        chunk = os.read(0, 65536)
+                        if not chunk:
+                            break
+                        sink.write(chunk)
+                """)
+            let token = UUID().uuidString.prefix(8)
+            let captureFile = "\(home)/send-\(token).bin"
+            let readyFile = "\(home)/send-\(token).ready"
+            let pane = try await fixture.require(
+                fixture.tmuxLine([
+                    "new-window", "-d", "-t", "main:", "-P", "-F", "#{pane_id}",
+                    "/usr/bin/python3", program, captureFile, readyFile,
+                ]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(TmuxAttachScript.isPaneID(pane))
+            try await fixture.eventually { try await fixture.exists(readyFile) }
+            try await exerciseComposerSend(pane, captureFile: captureFile, on: fixture)
+        }
+    }
+
+    @MainActor
+    private func exerciseComposerSend(
+        _ pane: String, captureFile: String, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+
+        var attachToLeave: AgentAttachStore?
+        do {
+            try await fixture.eventually { await store.agents.contains { $0.agent.paneID == pane } }
+            let row = try #require(store.agents.first { $0.agent.paneID == pane })
+            #expect(row.agent.kind == "claude")
+            #expect(store.capabilities(for: host.id).composerSend)
+
+            let session = store.composerSession(for: row)
+            session.composer.open()
+            let attach = AgentAttachStore(
+                target: pane, paneTitle: "", transportGeneration: nil, isOnStage: { true },
+                runTerminal: store.terminalRunner(for: host.id, keepingTo: session.corePin), closePane: {})
+            attachToLeave = attach
+            attach.viewDidResize(cols: 80, rows: 24)
+            try await fixture.eventually { await attach.input.readySession != nil }
+
+            var policy = ComposerDeliveryPolicy.terminal
+            policy.coreAttach = attach
+
+            let first = "SEND1 alpha\r\nbeta\n中文テスト $HOME ~ #{pane_id} ; 'q' \"dq\" \\ \\;"
+            session.composer.replaceDraft(with: first)
+            #expect(await session.composer.send(policy: policy) == .submittedViaAttach)
+            #expect(session.composer.draft.isEmpty)
+
+            let expectedFirst = Data(("\u{1B}[200~" + first + "\u{1B}[201~\r").utf8)
+            try await fixture.eventually {
+                try await Self.captureSummary(of: captureFile, from: 0, on: fixture)?.length == expectedFirst.count
+            }
+            let firstHex = try await fixture.require(
+                "od -An -tx1 -v \(GitProbe.singleQuoted(captureFile)) | tr -d ' \\n'")
+            #expect(firstHex == Self.hex(expectedFirst))
+            #expect(try await fixture.tmux(nil, "list-buffers", "-F", "#{buffer_name}").isEmpty)
+
+            var megabyte = ""
+            megabyte.reserveCapacity(1_048_576)
+            for line in 0..<16_384 {
+                megabyte += String(format: "%08x:", line) + String(repeating: "m", count: 54) + "\n"
+            }
+            #expect(megabyte.utf8.count == 1_048_576)
+            let expectedSecond = Data(("\u{1B}[200~" + megabyte + "\u{1B}[201~\r").utf8)
+            let expectedSecondDigest = SHA256.hash(data: expectedSecond)
+                .map { String(format: "%02x", $0) }.joined()
+
+            session.composer.replaceDraft(with: megabyte)
+            #expect(await session.composer.send(policy: policy) == .submittedViaAttach)
+            #expect(session.composer.draft.isEmpty)
+
+            try await fixture.eventually {
+                try await Self.captureSummary(of: captureFile, from: expectedFirst.count, on: fixture)?.length
+                    == expectedSecond.count
+            }
+            let summary = try #require(
+                try await Self.captureSummary(of: captureFile, from: expectedFirst.count, on: fixture))
+            #expect(summary.length == expectedSecond.count)
+            #expect(summary.headHex == Self.hex(Data(expectedSecond.prefix(16))))
+            #expect(summary.tailHex == Self.hex(Data(expectedSecond.suffix(16))))
+            #expect(summary.sha256 == expectedSecondDigest)
+            #expect(try await fixture.tmux(nil, "list-buffers", "-F", "#{buffer_name}").isEmpty)
+
+            await attach.leave().value
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            store.setHosts([])
+        } catch {
+            if let attachToLeave { await attachToLeave.leave().value }
             store.setHosts([])
             throw error
         }
