@@ -626,6 +626,81 @@ struct ChatMarkdownTests {
         #expect(closed.runs.filter { $0.backgroundColor != nil }.count == 2)
     }
 
+    @Test("A fenced block of absolute image paths marks every line, without its indent")
+    func codeBlockOfImagePaths() throws {
+        let source = """
+            ```
+            /Users/dev/Desktop/Screenshot 2026-11-11 at 10.00.00.png
+              /tmp/shots/b.PNG
+            ~/shots/c.webp
+            ```
+            """
+        let block = try #require(ChatMarkdown.blocks(from: source).first)
+        #expect(block.kind == .code(language: nil))
+        #expect(String(block.content.characters) == block.text)
+        let paths = ["/Users/dev/Desktop/Screenshot 2026-11-11 at 10.00.00.png", "/tmp/shots/b.PNG", "~/shots/c.webp"]
+        #expect(ChatImageLink.paths(in: block.content) == paths)
+        #expect(marked(in: block.content).map(\.text) == paths)
+        #expect(block.content.runs.allSatisfy { $0.inlinePresentationIntent == nil && $0.link == nil })
+    }
+
+    @Test("A code block marks only the lines that are image paths on their own, in any language")
+    func codeBlockMixingPathsAndCode() throws {
+        let source = """
+            ```sh
+            # screenshots
+            /tmp/a.png
+            cp a.png b.png
+            UIImage(named: "a.png")
+            shots/relative.png
+            /tmp/report.pdf
+            /tmp/a.png
+            ```
+            """
+        let block = try #require(ChatMarkdown.blocks(from: source).first)
+        #expect(block.kind == .code(language: "sh"))
+        #expect(String(block.content.characters) == block.text)
+        #expect(marked(in: block.content).map(\.text) == ["/tmp/a.png", "shots/relative.png", "/tmp/a.png"])
+        #expect(ChatImageLink.paths(in: block.content) == ["/tmp/a.png", "shots/relative.png"])
+    }
+
+    @Test("Code that mentions images in statements, and other files' paths, stays plain")
+    func codeBlockWithoutImagePaths() throws {
+        let source = """
+            ```swift
+            let image = UIImage(named: "a.png")
+            ```
+
+            ```
+            cp a.png b.png
+            /tmp/report.pdf
+            docs/README.md
+            ```
+            """
+        let blocks = ChatMarkdown.blocks(from: source)
+        #expect(blocks.count == 2)
+        for block in blocks {
+            #expect(block.content == AttributedString(block.text))
+        }
+    }
+
+    @Test("A code block's image path lines are links only where Chat can open images")
+    func styledCodeBlock() throws {
+        let block = try #require(ChatMarkdown.blocks(from: "```\nls shots\n/tmp/a.png\n```").first)
+        let opening = ChatMarkdownView.codeText(block.content, opensImages: true)
+        let linked = opening.runs.filter { $0.link != nil }
+        #expect(linked.map { String(opening[$0.range].characters) } == ["/tmp/a.png"])
+        #expect(linked.first?.link.flatMap(ChatImageLink.path(opening:)) == "/tmp/a.png")
+        // The block keeps its face and background: no run font, code intent
+        // or background of its own.
+        #expect(opening.runs.allSatisfy { $0.font == nil && $0.backgroundColor == nil })
+        #expect(opening.runs.allSatisfy { $0.inlinePresentationIntent == nil })
+
+        let closed = ChatMarkdownView.codeText(block.content, opensImages: false)
+        #expect(closed.runs.allSatisfy { $0.link == nil })
+        #expect(String(closed.characters) == block.text)
+    }
+
     @Test("A footnote reference keeps its text and loses its relative link")
     func footnote() throws {
         let blocks = ChatMarkdown.blocks(from: "text[^1]\n\n[^1]: note")
@@ -708,6 +783,13 @@ struct ChatMarkdownTests {
 
     private func intents(in content: AttributedString) -> [Styled] {
         content.runs.map { Styled(String(content[$0.range].characters), $0.inlinePresentationIntent) }
+    }
+
+    /// The text of every run marked as an image's path, and its path.
+    private func marked(in content: AttributedString) -> [(text: String, path: String)] {
+        content.runs.compactMap { run in
+            run[ChatImageLink.PathAttribute.self].map { (String(content[run.range].characters), $0) }
+        }
     }
 
     /// The text of every linked run and its URL.
