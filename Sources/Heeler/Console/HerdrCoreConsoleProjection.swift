@@ -1286,6 +1286,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     /// Checked Composer Send (ADR 0035). `live` follows a projection replaced
     /// after the Composer was opened.
+    var stagingSaysTransportFailures: Bool { true }
+
     func checkedComposerSend(
         for paneID: String,
         keepingTo corePin: TerminalCorePin,

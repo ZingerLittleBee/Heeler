@@ -115,6 +115,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// `paneID` and `corePin` are for a Host whose files go through the Terminal.
     func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager
     func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager
+    /// Whether staging shows `TransportError`s in their own words, as a Host
+    /// whose uploads ride its own RPC link does.
+    var stagingSaysTransportFailures: Bool { get }
     func sessionFileReader() -> SessionFileReader
     func modelContextWindowResolver() -> ModelContextWindowResolver
     func chatHostFiles() -> ChatHostFiles
@@ -221,6 +224,8 @@ extension ConsoleHostProjection {
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }
 
     var heldTerminalNames: Set<String> { [] }
+
+    var stagingSaysTransportFailures: Bool { false }
 
     func checkedComposerSend(
         for _: String,

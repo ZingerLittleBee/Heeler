@@ -845,9 +845,7 @@ final class ConsoleStore {
             stageImage: imageStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             stageFile: fileStager(for: hostID, beside: agent.agent.paneID, keepingTo: corePin),
             corePin: corePin,
-            // Staging names transport failures where Send is the projection's
-            // checked Send. Today that is a herdr-core Host.
-            isOnCoreHost: checkedSend != nil,
+            saysTransportFailures: projections[hostID]?.stagingSaysTransportFailures == true,
             filePreparer: WindowsCoreFilePreparer(isOnWindows: { [weak self] in
                 self?.capabilities(for: hostID).isNativeWindowsCore == true
             }))

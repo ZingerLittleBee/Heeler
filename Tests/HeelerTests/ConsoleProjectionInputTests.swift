@@ -157,6 +157,50 @@ struct ConsoleProjectionInputTests {
         #expect(screen.rows.first?.text == "host")
         #expect(rig.projection.screenReads == 1)
     }
+
+    @Test func checkedSendDoesNotTurnTransportErrorsIntoStagingMessages() async throws {
+        let rig = makeRig(offersSend: true)
+        defer { rig.store.setHosts([]) }
+        rig.projection.fileStagingError = .timedOut
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("projection-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("notes.txt")
+        try Data("notes".utf8).write(to: file)
+        let staging = rig.store.composerSession(for: rig.agent).staging
+
+        await staging.beginAll([.file(file)])
+
+        #expect(
+            staging.state
+                == .failed(
+                    ComposerStagingStore.Failure(
+                        medium: .file, message: "File preparation failed.", isRetryable: false)))
+    }
+
+    @Test func aProjectionMaySayTransportErrorsInStaging() async throws {
+        let rig = makeRig(offersSend: false)
+        defer { rig.store.setHosts([]) }
+        rig.projection.stagingSaysTransportFailures = true
+        rig.projection.fileStagingError = .timedOut
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("projection-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("notes.txt")
+        try Data("notes".utf8).write(to: file)
+        let staging = rig.store.composerSession(for: rig.agent).staging
+
+        await staging.beginAll([.file(file)])
+
+        #expect(
+            staging.state
+                == .failed(
+                    ComposerStagingStore.Failure(
+                        medium: .file, message: TransportError.timedOut.presentation.message,
+                        isRetryable: true)))
+    }
 }
 
 // MARK: - Rig
@@ -222,6 +266,8 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     var stopped = false
     var liveAtStop: (any ConsoleHostProjection)?
     var screenReads = 0
+    var fileStagingError: TransportError = .cancelled
+    var stagingSaysTransportFailures = false
 
     var status: EventsSessionStatus? = .connected
     var standingFailure: TransportError?
@@ -344,7 +390,8 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
         { _, _ in throw TransportError.cancelled }
     }
     func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
-        { _, _ in throw TransportError.cancelled }
+        let error = fileStagingError
+        return { _, _ in throw error }
     }
     func sessionFileReader() -> SessionFileReader { { _ in throw TransportError.cancelled } }
     func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in throw TransportError.cancelled } }
