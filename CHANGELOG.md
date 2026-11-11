@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Decode amux Core pairing v3 into a distinct native-helper endpoint, preserve its Core identity across saved Hosts, and reject a replacement Core before discovery or terminal actions. TUI pairing and ordinary Core Hosts keep their existing routes. (zinger-labs/amux#160)
 - Browse an amux Core Host's shared Spaces, Worktrees and Tabs in Console, including empty checkouts and unassigned terminals. Start an Agent or Terminal in a selected Host directory without changing amux organization; new terminals remain unassigned until placed from amux. Missing or incompatible organization keeps ordinary Core discovery available. (zinger-labs/amux#161)
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)
 - Read Heeler in Traditional Chinese (Taiwan). On a Traditional Chinese device, or with Traditional Chinese chosen as Heeler's language, everything Japanese and Simplified Chinese cover presents in Traditional Chinese, permission prompts included. (PR #668)

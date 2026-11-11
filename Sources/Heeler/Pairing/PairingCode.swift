@@ -35,10 +35,11 @@ struct PairingCode: Sendable, Equatable {
     /// The Host's own herdr: required by version 2, never read from version 1
     /// (a v1 code carrying `sock`/`herdr` still decodes without one).
     var endpoint: HerdrEndpoint? = nil
+    var coreEndpoint: AmuxCoreEndpoint? = nil
 
     /// Whether pairing waits for a Pair tap: a launcher code without a
     /// Bootstrap Key (ADR 0023).
-    var needsConfirmation: Bool { endpoint != nil && bootstrap == nil }
+    var needsConfirmation: Bool { (endpoint != nil || coreEndpoint != nil) && bootstrap == nil }
 
     /// The single-use Enrollment credential carried inside a Pairing Code.
     /// Lives in memory only; never enters the Keychain (ADR 0007).
@@ -62,6 +63,11 @@ struct PairingCode: Sendable, Equatable {
         let encodedBody = String(rest[rest.index(after: separator)...])
         if foundVersion == String(version) {
             return try validated(decodedPayload(WirePayload.self, from: encodedBody))
+        }
+        if foundVersion == "3" {
+            var code = try validated(decodedPayload(WirePayload.self, from: encodedBody))
+            code.coreEndpoint = try decodedPayload(AmuxCoreEndpoint.self, from: encodedBody)
+            return code
         }
         guard foundVersion == String(endpointVersion) else {
             throw .unsupportedVersion(found: foundVersion)

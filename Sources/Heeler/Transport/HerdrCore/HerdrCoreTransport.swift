@@ -312,6 +312,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     nonisolated var hostHelperHost: any HostHelperHost { connection }
     private nonisolated let connection: any HerdrCoreHostConnection
     private let session: String
+    private let amuxEndpoint: AmuxCoreEndpoint?
     private let nonce: @Sendable () -> String
     private let sleep: HerdrCoreLink.Sleep
     /// Callers that race share one opening. A failed one is not kept, so the
@@ -345,12 +346,14 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     init(
         connection: any HerdrCoreHostConnection,
         session: String,
+        amuxEndpoint: AmuxCoreEndpoint? = nil,
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         sleep: @escaping HerdrCoreLink.Sleep = { try await Task.sleep(for: $0) }
     ) {
         routeID = connection.routeID
         self.connection = connection
         self.session = session
+        self.amuxEndpoint = amuxEndpoint
         self.nonce = nonce
         self.sleep = sleep
     }
@@ -367,6 +370,13 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         }
         do {
             let location = try HerdrCoreLocator.parse(stdout: result.stdout, nonce: nonce)
+            if let amuxEndpoint {
+                guard location.socketPath == amuxEndpoint.socketPath,
+                      location.executablePath == nil || location.executablePath == amuxEndpoint.executablePath,
+                      !location.isNativeWindows else {
+                    throw TransportError.malformedResponse(String(localized: "The amux Core endpoint changed. Pair again from amux."))
+                }
+            }
             located = location
             return location
         } catch {
@@ -376,6 +386,9 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     }
 
     private func runLocator(nonce: String) async throws -> GitExecResult {
+        if let amuxEndpoint {
+            return try await connection.runCoreLocator(amuxEndpoint.locatorScript(nonce: nonce))
+        }
         if try await resolvedPlatform() == .nativeWindows {
             do {
                 return try await connection.runWindowsCommand(
@@ -418,6 +431,9 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
     /// The core's own clock says how long it has been up, so the elapsed time is
     /// measured here and needs no agreement between the two machines' clocks.
     func startCore() async throws -> HerdrCoreStart.Outcome {
+        guard amuxEndpoint == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Starting an amux-managed Core from Heeler"))
+        }
         let location = try await locate()
         let executablePath = try Self.installedExecutable(at: location)
         guard location.appMayStartCore else {
@@ -734,6 +750,11 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         do {
             let (link, info) = try await HerdrCoreLink.connect(
                 over: channel, helloDeadline: Self.callDeadline, sleep: sleep)
+            if let amuxEndpoint,
+               info.coreID != amuxEndpoint.core.id || info.generation != amuxEndpoint.core.generation {
+                await link.close()
+                throw TransportError.malformedResponse(String(localized: "The paired amux Core identity changed. Pair again from amux."))
+            }
             return Opened(link: link, info: info, executablePath: executablePath)
         } catch is HerdrCoreUpdateRequired {
             throw TransportError.herdrCoreUpdateRequired(command: Self.updateCommand(executablePath))

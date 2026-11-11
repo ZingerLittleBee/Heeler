@@ -25,6 +25,28 @@ struct PairingCodeTests {
         #expect(Self.v2Vectors.invalid.count >= 13)
     }
 
+    @Test func coreV3KeepsItsEndpointAndNativeHelperAcrossHostPersistence() throws {
+        struct Fixture: Decodable { let code: String }
+        let url = try #require(Bundle(for: CoreFixtureBundle.self)
+            .url(forResource: "amux-pairing-helper-v1", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        let code = try PairingCode.decode(fixture.code)
+        #expect(code.endpoint == nil)
+        let endpoint = try #require(code.coreEndpoint)
+        #expect(endpoint.core.id == "core-a")
+        #expect(endpoint.session == "amux-release")
+        #expect(endpoint.socketPath == "/Users/ada/.amux/core/run/c.sock")
+        #expect(endpoint.helper.kind == "amux-native")
+        let host = Host(address: "192.0.2.42", username: "ada", coreEndpoint: endpoint)
+        #expect(host.serverKind == .herdrCore)
+        #expect(host.herdrEndpoint == nil)
+        let saved = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(host))
+        #expect(saved == host)
+        #expect(saved.coreEndpoint == endpoint)
+    }
+
+    private final class CoreFixtureBundle {}
+
     @Test(arguments: vectors.valid)
     func decodesValidVector(vector: PairingCodeVectorFile.Valid) throws {
         let code = try PairingCode.decode(vector.code)

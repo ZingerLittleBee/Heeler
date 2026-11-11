@@ -94,6 +94,7 @@ struct SSHTransportSettings: Sendable {
     var serverKind: ServerKind = .herdrTUI
     /// Core's session name; its default session is named "default".
     var coreSessionName = "default"
+    var amuxCoreEndpoint: AmuxCoreEndpoint? = nil
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir
     /// commands are its builders, and the wake and attach execs run it in

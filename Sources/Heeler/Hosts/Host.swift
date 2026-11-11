@@ -149,6 +149,9 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// every herdr exec its launcher. nil keeps the home-relative session
     /// socket and the `herdr` on the SSH PATH.
     var herdrEndpoint: HerdrEndpoint?
+    /// Exact Core identity and native helper from pairing v3. Never inferred
+    /// from a socket path or used to manage an independent Node installation.
+    var coreEndpoint: AmuxCoreEndpoint?
     /// The ways to reach this Host, in the user's order: never empty. The
     /// first is the primary route, which names the Host where one address
     /// is shown and is what builds without Routes connect to.
@@ -158,7 +161,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// still carry it on disk, and leaving it out of the keys both ignores it
     /// on decode and drops it on the Host's next save.
     private enum CodingKeys: String, CodingKey {
-        case herdrEndpoint
+        case herdrEndpoint, coreEndpoint
         case id, name, username, authMethod, serverKind, sessionName
         // An unconfirmed Host's name when herdr would refuse it. Builds before
         // Server Kinds ignore the kind and fail their whole catalog on such a
@@ -179,6 +182,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         serverKind: ServerKind = .herdrTUI,
         sessionName: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
+        coreEndpoint: AmuxCoreEndpoint? = nil,
         routes: [HostRoute]
     ) {
         precondition(!routes.isEmpty, "A Host needs at least one route")
@@ -186,9 +190,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.name = name
         self.username = username
         self.authMethod = authMethod
-        self.serverKind = herdrEndpoint == nil ? serverKind : .herdrTUI
-        self.sessionName = sessionName
-        self.herdrEndpoint = herdrEndpoint
+        self.serverKind = coreEndpoint != nil ? .herdrCore : (herdrEndpoint == nil ? serverKind : .herdrTUI)
+        self.sessionName = coreEndpoint?.session ?? sessionName
+        self.herdrEndpoint = coreEndpoint == nil ? herdrEndpoint : nil
+        self.coreEndpoint = coreEndpoint
         self.routes = routes
     }
 
@@ -206,6 +211,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         jumpPort: Int = 22,
         jumpUsername: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
+        coreEndpoint: AmuxCoreEndpoint? = nil,
         overlayNetworkID: UUID? = nil
     ) {
         self.init(
@@ -216,6 +222,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             serverKind: serverKind,
             sessionName: sessionName,
             herdrEndpoint: herdrEndpoint,
+            coreEndpoint: coreEndpoint,
             routes: [
                 HostRoute(
                     id: id,
@@ -246,6 +253,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         // Absent in Hosts saved before Pairing Code v2, and in every Host not
         // paired from one. The encoder omits nil for those Hosts.
         herdrEndpoint = try container.decodeIfPresent(HerdrEndpoint.self, forKey: .herdrEndpoint)
+        coreEndpoint = try container.decodeIfPresent(AmuxCoreEndpoint.self, forKey: .coreEndpoint)
+        guard coreEndpoint == nil || (herdrEndpoint == nil && decodedKind == .herdrCore && sessionName == coreEndpoint?.session) else {
+            throw DecodingError.dataCorruptedError(forKey: .coreEndpoint, in: container,
+                                                  debugDescription: "Core endpoint conflicts with the saved Host route")
+        }
         // A Host saved without a kind is a Herdr TUI Host, and so is any Host
         // with a Herdr Endpoint, which only a Pairing Code gives it.
         serverKind = herdrEndpoint == nil ? decodedKind ?? .herdrTUI : .herdrTUI
@@ -301,6 +313,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             try container.encode(sessionName, forKey: .sessionName)
         }
         try container.encodeIfPresent(herdrEndpoint, forKey: .herdrEndpoint)
+        try container.encodeIfPresent(coreEndpoint, forKey: .coreEndpoint)
         try container.encode(routes, forKey: .routes)
         let primary = primaryRoute
         try container.encode(primary.address, forKey: .address)

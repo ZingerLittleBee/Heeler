@@ -166,6 +166,7 @@ final class PairingScanStore {
             username: result.username,
             authMethod: .deviceKey,
             herdrEndpoint: code.endpoint,
+            coreEndpoint: code.coreEndpoint,
             routes: addresses.enumerated().map { index, address in
                 // The first route takes the Host's id, as a Host saved
                 // before routes does.
@@ -284,6 +285,6 @@ extension PairingCode {
     fileprivate var withoutBootstrap: PairingCode {
         PairingCode(
             addresses: addresses, port: port, username: username,
-            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint)
+            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint, coreEndpoint: coreEndpoint)
     }
 }

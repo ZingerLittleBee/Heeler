@@ -103,6 +103,7 @@
 		186BB574380986639ECC67CB /* ConsoleChatCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337A54231F17D1D7B2B81CD7 /* ConsoleChatCache.swift */; };
 		1881DE90266966B3C081DA97 /* HeelerPluginViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855761259C91663F64F7218C /* HeelerPluginViews.swift */; };
 		18F9E6FBC1261B716C854A7C /* HerdrCoreSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FD3074F9C4733F0CC056E62 /* HerdrCoreSessionBinderTests.swift */; };
+		19778553970C26EE514A6751 /* amux-pairing-helper-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = AEE1A9B1885C5C6E75582854 /* amux-pairing-helper-v1.json */; };
 		19E4B497AFAD439F4BC78884 /* PreSendGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 704EA74EEA72112672BCF9A6 /* PreSendGate.swift */; };
 		1A160820CAA7EC1D8F987602 /* AgentWindowDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996FEB63446D29BFF498378F /* AgentWindowDrag.swift */; };
 		1A21DFD3B8459A602196C5FE /* OpenCodeScreenReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F323FC15B0188C5A8193093 /* OpenCodeScreenReader.swift */; };
@@ -697,6 +698,7 @@
 		A4F4E69A83004B52C56C67A2 /* HerdrCoreAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6BF7D35D794A652042DED1 /* HerdrCoreAgentsTests.swift */; };
 		A555F2DD86EC81E37D3A9323 /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */; };
 		A596FBD3017D51653EC3B1E9 /* AgentTitleRenameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */; };
+		A5F4A77E101CB3A1BABEA3F2 /* AmuxCoreEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA3FB9885B32E8E7D73F090 /* AmuxCoreEndpoint.swift */; };
 		A643E2BC7BBDD0B7AE75E3DE /* GrokPromptHistoryWitnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B92065BE7F11009B4284CD /* GrokPromptHistoryWitnessTests.swift */; };
 		A65D5B9E1A885A8287AD762C /* SolvingOrbRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F979754410821940D0C4DEC /* SolvingOrbRendererTests.swift */; };
 		A6747734905576A8861C945A /* AgentFocusCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 370A6461E16FB281B88126B4 /* AgentFocusCoordinator.swift */; };
@@ -1791,6 +1793,7 @@
 		9D57CB49BF5791E638EE8537 /* GrokTranscriptReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokTranscriptReducer.swift; sourceTree = "<group>"; };
 		9D5CBA3E14F186170A2EF2CA /* AgentNotificationRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRendererTests.swift; sourceTree = "<group>"; };
 		9D5D0749EAEEF354B7939E72 /* TranscriptFollowerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptFollowerTests.swift; sourceTree = "<group>"; };
+		9DA3FB9885B32E8E7D73F090 /* AmuxCoreEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmuxCoreEndpoint.swift; sourceTree = "<group>"; };
 		9DA84C4B51C260DD5CE80ECE /* TerminalBackspaceButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBackspaceButton.swift; sourceTree = "<group>"; };
 		9E259928779DCA9972AFB6CC /* HostHelperInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostHelperInstaller.swift; sourceTree = "<group>"; };
 		9E52DB55A8FC580D49A8D28A /* HostAccountsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostAccountsStore.swift; sourceTree = "<group>"; };
@@ -1856,6 +1859,7 @@
 		AE5F8CBFC8C7F1B9B1A1F657 /* ScreenFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenFixture.swift; sourceTree = "<group>"; };
 		AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndexTests.swift; sourceTree = "<group>"; };
 		AED1F486D6B44C92C51C34A6 /* FileDiffLayoutViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDiffLayoutViewTests.swift; sourceTree = "<group>"; };
+		AEE1A9B1885C5C6E75582854 /* amux-pairing-helper-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "amux-pairing-helper-v1.json"; sourceTree = "<group>"; };
 		AF3756F9860317B60E0D573A /* RemoteFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesTests.swift; sourceTree = "<group>"; };
 		AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellablePhaseGate.swift; sourceTree = "<group>"; };
 		B156B1E015D9241895BF0798 /* ChatTimelineGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineGeometryTests.swift; sourceTree = "<group>"; };
@@ -3302,6 +3306,7 @@
 			isa = PBXGroup;
 			children = (
 				DA665727F448CC94C7ECF106 /* amux-organization-v1.json */,
+				AEE1A9B1885C5C6E75582854 /* amux-pairing-helper-v1.json */,
 				4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */,
 				5D6754A072F62FD9FFF3046F /* herdr-core-frames-v1.json */,
 				D7986AEFB2416F8754FE42B3 /* herdr-core-frames-windows-v1.json */,
@@ -3518,6 +3523,7 @@
 		BB42FDF9C83E2413627BFF62 /* Pairing */ = {
 			isa = PBXGroup;
 			children = (
+				9DA3FB9885B32E8E7D73F090 /* AmuxCoreEndpoint.swift */,
 				D4CA687285B470E3968D1DB6 /* PairingCeremony.swift */,
 				61DA61C2FD4220803AE6D533 /* PairingCode.swift */,
 				4EEAD52089A35D4B2D47AF25 /* PairingConnector.swift */,
@@ -3915,6 +3921,7 @@
 			files = (
 				32FD10D6802D96EF929E544E /* ChatFixtures in Resources */,
 				326B9566CEE0054B589F07FC /* amux-organization-v1.json in Resources */,
+				19778553970C26EE514A6751 /* amux-pairing-helper-v1.json in Resources */,
 				31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */,
 				6AD416CB3368D0FC31312F27 /* herdr-core-frames-v1.json in Resources */,
 				1347F0DDEC91CE9EFBD4C963 /* herdr-core-frames-windows-v1.json in Resources */,
@@ -4108,6 +4115,7 @@
 				30EA29136C0C9819C05F71DB /* AgyToolCall.swift in Sources */,
 				1FC4B28A843BD222861D3951 /* AgyTranscriptLocator.swift in Sources */,
 				C5A35948E9981DAB28D10102 /* AgyTranscriptReducer.swift in Sources */,
+				A5F4A77E101CB3A1BABEA3F2 /* AmuxCoreEndpoint.swift in Sources */,
 				1A6D6C8A44FDEDD8A9B6C6B4 /* AmuxOrganizationDocument.swift in Sources */,
 				C9B619FFFE9526ADF161EC6A /* AmuxOrganizationView.swift in Sources */,
 				54D3A4F4FBF8F3F6C154BACE /* AppActivityCoordinator.swift in Sources */,
