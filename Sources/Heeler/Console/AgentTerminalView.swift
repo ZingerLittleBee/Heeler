@@ -1067,7 +1067,7 @@ struct AgentTerminalView: View {
                 }
             },
             showChanges: openWorktreeChanges,
-            readRemovalRisk: host?.serverKind == .herdrCore
+            readRemovalRisk: host?.serverKind == .herdrCore || host?.serverKind == .tmux
                 ? { [console] request in
                     try await console.worktreeRemovalRisk(request, on: hostID)
                 }

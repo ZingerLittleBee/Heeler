@@ -360,11 +360,11 @@ final class StartAgentStore {
                 || selectedHostID.map(offersConnectedWorktrees) == true)
     }
 
-    /// A herdr-core Host has no generated branch or base: Heeler makes the
-    /// Worktree as the Herdr desktop app does, on the branch the user names, from
-    /// the Workspace's HEAD (ADR 0032).
+    /// A herdr-core Host, and a tmux Host, have no generated branch: Heeler makes
+    /// the Worktree on the branch the user names, from the Workspace's HEAD
+    /// (ADR 0032, ADR 0043).
     var worktreeNeedsBranch: Bool {
-        selectedHost?.serverKind == .herdrCore
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
     }
 
     /// Whether the form asks for Workspace and tab names. Its Agent name is

@@ -100,13 +100,13 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A tmux Host starts Agents and Terminals, renames a Workspace and closes
-        // a Pane or a Tab. It does not rename an Agent, take over a Terminal, or
-        // name Tabs. Chat, Send, Worktrees and uploads are later tickets.
+        // A tmux Host starts Agents and Terminals, renames a Workspace, closes
+        // a Pane or a Tab, and opens a Worktree. It does not rename an Agent,
+        // take over a Terminal, or name Tabs. Chat, Send and uploads are later tickets.
         guard serverKind != .tmux else {
             self.init(
                 startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
-                worktrees: false, uploads: false, composerSend: false, chat: false, tabNames: false,
+                worktrees: true, uploads: false, composerSend: false, chat: false, tabNames: false,
                 closeTab: true, syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
                 hostScripts: false, namesCreatedWorkspaces: true)
             return

@@ -16,9 +16,10 @@ import Foundation
 /// server instance, beside it, with no Helper to hold them.
 ///
 /// A Pane opens live, through `terminalRunner`. New Agent, New Terminal, New
-/// Workspace, Rename Workspace and Close run through `TmuxLaunch`. Nothing can
-/// be typed into a Pane yet, an Agent is not renamed, and a Terminal is not
-/// taken over.
+/// Workspace, Rename Workspace and Close run through `TmuxLaunch`. A Worktree
+/// is the same git as a herdr-core Host, under `~/.heeler`, and its session
+/// opens through `TmuxLaunch` too. Nothing can be typed into a Pane yet, an
+/// Agent is not renamed, and a Terminal is not taken over.
 @MainActor
 final class TmuxConsoleProjection: ConsoleHostProjection {
     /// The catalog's Host, with the paths a connection last resolved.
@@ -40,7 +41,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     let syncError: String? = nil
     private(set) var leakedEnvironmentNames: Set<String> = []
     private(set) var workspaces: [ConsoleWorkspace] = []
-    let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
+    private(set) var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
@@ -64,6 +65,13 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var shownAgents: Set<String> = []
     /// Where Heeler's Claude Code hook script goes, read once per connection's projection.
     private var hookLocations: HostHelperProbe.Locations?
+    /// The Host's one git turn at a time, shared with every other git read.
+    private let gitGate: GitExecGate
+    /// Checkouts git has named, by the directory that was asked and by the checkout root.
+    private var knownCheckouts: [String: HostCheckout] = [:]
+    /// A newer inventory supersedes a checkout read still on its way.
+    private var checkoutRefresh = 0
+    private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -72,6 +80,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         session: TmuxHostSession,
         memory: HerdrCoreHostMemory,
         pins: PinnedAgentsStore,
+        gitGate: GitExecGate,
         onPathsResolved: @escaping @MainActor (TmuxPaths) -> Void,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -79,6 +88,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.session = session
         self.memory = memory
         self.pins = pins
+        self.gitGate = gitGate
         self.onPathsResolved = onPathsResolved
         self.onChange = onChange
     }
@@ -249,6 +259,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         noteTurns(in: inventory)
         self.inventory = inventory
         rebuildRows()
+        refreshMissingCheckouts(in: inventory)
     }
 
     /// One look at each Pane's `@heeler-status`. A Pane with no Agent is
@@ -272,7 +283,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private func rebuildRows() {
         guard let inventory else { return }
         let statuses = memory.tmuxTurnStates(for: host.id).mapValues(\.agentStatus)
-        let organization = TmuxOrganization.build(inventory, statuses: statuses)
+        let organization = TmuxOrganization.build(inventory, statuses: statuses, checkouts: knownCheckouts)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
         let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
         var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
@@ -365,7 +376,42 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
-    ) async throws -> Agent { throw unavailable }
+    ) async throws -> Agent {
+        let directory = try sourceDirectory(for: request)
+        let server = try await launchServer()
+        let hooks = await hookSettings(for: request)
+        let created = try await worktreeGit().create(branch: worktree.branch ?? "", from: directory)
+        // Before the session's first row, so it already reads as the Worktree it is.
+        knownCheckouts[created.path] = HostCheckout(
+            root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
+        knownCheckouts[created.mainCheckout] = HostCheckout(
+            root: created.mainCheckout, mainCheckout: created.mainCheckout, isLinkedWorktree: false)
+        let made: TmuxLaunch.Created
+        do {
+            made = try await openWorktreeSession(
+                request, directory: created.path, branch: worktree.branch ?? "", on: server, hookSettings: hooks)
+        } catch {
+            throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
+        }
+        guard let sessionID = made.sessionID else {
+            await endOpened(made)
+            throw WorktreeAgentStartFailure(
+                checkoutPath: created.path,
+                underlying: TransportError.malformedResponse(
+                    String(localized: "tmux: The command printed no session.")))
+        }
+        do {
+            _ = try await perform(
+                TmuxLaunch.setWorktree(session: sessionID, path: created.path, paths: server.paths))
+        } catch {
+            await endOpened(made)
+            throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
+        }
+        return Agent(
+            terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
+            workspaceID: sessionID, tabID: made.windowID, paneID: made.paneID,
+            cwd: created.path, revision: 0, name: request.name)
+    }
 
     func startAgentInNewWorkspace(
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
@@ -405,15 +451,216 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
-        throw unavailable
-    }
-
-    func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
-        throw unavailable
+        guard let path = workspaces.first(where: { $0.id == workspaceID })?.checkoutPath,
+            let checkout = knownCheckouts[path], let main = checkout.mainCheckout
+        else { throw WorktreeRemovalError.staleIdentity }
+        let entries = try await worktreeGit().list(in: path)
+        let panes = inventory?.panes ?? []
+        return WorktreeListResponse(
+            source: WorktreeSourceInfo(
+                repoKey: main, repoName: HerdrCoreWorktrees.repositoryName(mainCheckout: main),
+                repoRoot: main, sourceCheckoutPath: path, sourceWorkspaceID: workspaceID),
+            worktrees: entries.map { entry in
+                let open = workspaces.first { $0.checkoutPath == entry.path }?.id
+                    ?? panes.first { $0.worktree == entry.path }?.sessionID
+                return WorktreeInfo(
+                    isBare: entry.isBare, isDetached: entry.isDetached,
+                    isLinkedWorktree: entry.isLinkedWorktree, isPrunable: entry.isPrunable,
+                    label: entry.label, path: entry.path, branch: entry.branch, openWorkspaceID: open)
+            })
     }
 
     func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
-        throw unavailable
+        try await worktreeGit().removalRisk(ofCheckout: request.identity.checkoutPath)
+    }
+
+    /// Every Pane of each session carrying this checkout ends first, found by
+    /// `@heeler-worktree`, never by the session's name. git then removes the
+    /// checkout. What the checkout would lose is checked against the confirmation
+    /// before anything ends, and again once the Panes have ended.
+    func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
+        let identity = request.identity
+        guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
+        guard !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        guard worktreesBeingRemoved.insert(identity).inserted else {
+            throw WorktreeRemovalError.alreadyInProgress
+        }
+        defer { worktreesBeingRemoved.remove(identity) }
+
+        let git = try await beforeEnding { try await worktreeGit() }
+        if let workspace = workspaces.first(where: { $0.id == identity.workspaceID }),
+            workspace.checkoutPath != identity.checkoutPath
+        {
+            throw WorktreeRemovalError.staleIdentity
+        }
+        let mainCheckout = try await beforeEnding { try await git.verifiedMainCheckout(of: identity) }
+        let risk = try await beforeEnding { try await git.removalRisk(ofCheckout: identity.checkoutPath) }
+        guard risk.isCovered(by: request.toldRisk) else {
+            throw WorktreeRemovalError.changedSinceConfirmation
+        }
+
+        let sessions = sessionsCarrying(identity.checkoutPath)
+        let affected = Set(
+            agentsByPane.values.filter { sessions.contains($0.agent.workspaceID) }.map(\.id))
+        try await endPanes(ofCheckout: identity.checkoutPath)
+        let settled = try await git.riskOnceTerminalsEnded(ofCheckout: identity.checkoutPath)
+        guard settled.isCovered(by: request.toldRisk) else {
+            throw WorktreeRemovalError.changedWhileTerminalsEnded
+        }
+        try await git.remove(
+            path: identity.checkoutPath, mainCheckout: mainCheckout, force: settled.requiresForce)
+
+        let receipt = WorktreeRemovalReceipt(request: request, affectedAgentIDs: affected)
+        knownCheckouts[identity.checkoutPath] = nil
+        for agent in affected { removedWorktreesByAgent[agent] = receipt }
+        rebuildRows()
+        onChange()
+        return receipt
+    }
+
+    /// The directory the Worktree is branched from: the launch's own, else the
+    /// session's checkout, else its first Pane's path.
+    private func sourceDirectory(for request: AgentLaunchRequest) throws -> String {
+        if let cwd = request.cwd?.trimmingCharacters(in: .whitespacesAndNewlines), !cwd.isEmpty {
+            return cwd
+        }
+        guard let workspaceID = request.workspaceID, let inventory else {
+            throw HerdrCoreWorktreeError.notInGitRepository
+        }
+        if let marked = inventory.panes.first(where: { $0.sessionID == workspaceID && !$0.worktree.isEmpty }) {
+            return marked.worktree
+        }
+        if let path = inventory.panes.first(where: { $0.sessionID == workspaceID && !$0.path.isEmpty })?.path {
+            return path
+        }
+        throw HerdrCoreWorktreeError.notInGitRepository
+    }
+
+    /// Up to eight names. A session created between the read and `new-session`
+    /// comes back as a duplicate, and the next number is tried.
+    private func openWorktreeSession(
+        _ request: AgentLaunchRequest, directory: String, branch: String, on server: TmuxLaunch.Server,
+        hookSettings: String?
+    ) async throws -> TmuxLaunch.Created {
+        var taken = Set(inventory?.panes.map(\.sessionName) ?? [])
+        var name = TmuxLaunch.sessionName(forBranch: branch, taken: taken)
+        var lastDuplicate: TransportError?
+        for _ in 0..<8 {
+            do {
+                return try await created(
+                    try command {
+                        try TmuxLaunch.agentSession(
+                            request, workspace: NewWorkspaceSpec(directory: directory, label: name),
+                            on: server, hookSettings: hookSettings)
+                    })
+            } catch let error as TransportError {
+                guard case .malformedResponse(let message) = error, message.contains("duplicate session") else {
+                    throw error
+                }
+                taken.insert(name)
+                name = TmuxLaunch.sessionName(forBranch: branch, taken: taken)
+                lastDuplicate = error
+            }
+        }
+        throw lastDuplicate
+            ?? TransportError.malformedResponse(String(localized: "tmux: The session name is already taken."))
+    }
+
+    /// The session Heeler opened and could not mark. The checkout stays.
+    private func endOpened(_ made: TmuxLaunch.Created) async {
+        guard let paths = try? runningPaths() else { return }
+        _ = try? await perform(TmuxLaunch.killPane(made.paneID, paths: paths))
+    }
+
+    private func worktreeGit() async throws -> HerdrCoreWorktreeGit {
+        let services = try await session.withTransport { $0.hostServices }
+        return HerdrCoreWorktreeGit(services: services, gate: gitGate, checkoutRoot: ".heeler")
+    }
+
+    /// A link lost while the checkout is read has ended nothing yet.
+    private func beforeEnding<T>(_ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch let error as TransportError where error.isRetryable && error != .cancelled {
+            throw WorktreeRemovalError.connectionFailedBeforeEnding
+        }
+    }
+
+    private func sessionsCarrying(_ path: String) -> Set<String> {
+        Set(inventory?.panes.filter { $0.worktree == path }.map(\.sessionID) ?? [])
+    }
+
+    /// A Pane that joined while the kills were on their way ends too. One that
+    /// tmux has already dropped is already ended. After a few rounds of new
+    /// Panes, this stops and says so.
+    private func endPanes(ofCheckout path: String) async throws {
+        var ended: Set<String> = []
+        for _ in 0..<Self.paneEndingRounds {
+            guard !isAwaitingSnapshot, let inventory else { throw WorktreeRemovalError.terminalsNotEnded }
+            let sessions = Set(inventory.panes.filter { $0.worktree == path }.map(\.sessionID))
+            var left: [String] = []
+            var seen: Set<String> = []
+            for pane in inventory.panes where sessions.contains(pane.sessionID) {
+                guard seen.insert(pane.paneID).inserted, !ended.contains(pane.paneID) else { continue }
+                left.append(pane.paneID)
+            }
+            guard !left.isEmpty else { return }
+            let paths: TmuxPaths
+            do {
+                paths = try runningPaths()
+            } catch {
+                throw WorktreeRemovalError.terminalsNotEnded
+            }
+            for paneID in left {
+                do {
+                    _ = try await perform(TmuxLaunch.killPane(paneID, paths: paths))
+                } catch let error as TransportError {
+                    guard case .malformedResponse(let message) = error, message.contains("can't find pane") else {
+                        throw WorktreeRemovalError.terminalsNotEnded
+                    }
+                } catch {
+                    throw WorktreeRemovalError.terminalsNotEnded
+                }
+                ended.insert(paneID)
+            }
+        }
+        throw WorktreeRemovalError.terminalsNotEnded
+    }
+
+    private static let paneEndingRounds = 4
+
+    /// Paths an inventory names and git has not. One read, then the rows; it does
+    /// not ask again from the rows it just built.
+    private func refreshMissingCheckouts(in inventory: TmuxInventory) {
+        let missing = Array(Set(inventory.panes.compactMap { pane -> String? in
+            let path = pane.worktree
+            guard !path.isEmpty, knownCheckouts[path] == nil else { return nil }
+            return path
+        })).sorted()
+        guard !missing.isEmpty else { return }
+        checkoutRefresh &+= 1
+        let generation = checkoutRefresh
+        Task { [weak self] in
+            await self?.fetchCheckouts(missing, generation: generation)
+        }
+    }
+
+    private func fetchCheckouts(_ directories: [String], generation: Int) async {
+        guard !hasEnded else { return }
+        guard let services = try? await session.withTransport({ $0.hostServices }) else { return }
+        let answers = try? await gitGate.run { try await services.checkouts(for: directories) }
+        guard let answers, generation == checkoutRefresh, !hasEnded else { return }
+        var noted = false
+        for (asked, checkout) in answers {
+            knownCheckouts[asked] = checkout
+            knownCheckouts[checkout.root] = checkout
+            noted = true
+        }
+        guard noted else { return }
+        rebuildRows()
+        onChange()
     }
 
     func focusAgent(_ paneID: String) async throws {}

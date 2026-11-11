@@ -11,8 +11,8 @@ import Foundation
 /// with a pane's arguments only when its command or the program its status
 /// names changed. The loop speaks the script's own text (`TmuxLoopText`), so
 /// the app's reader is the one under test. A `runTmuxCommand` applies
-/// `new-window`, `new-session`, `rename-session`, `kill-pane` and
-/// `kill-window` to those panes, and a discovery script lists
+/// `new-window`, `new-session`, `rename-session`, `kill-pane`,
+/// `kill-window` and `set-option` to those panes, and a discovery script lists
 /// `installedExecutables`. `show-environment -g` prints the global lines a
 /// test planted, and `show-environment -t` prints a session delta only when
 /// the target is a session id (`$n`). The Helper's `locate` script prints the
@@ -945,6 +945,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             } else if quote == nil, scalar == "'" || scalar == "\"" {
                 quote = scalar
                 inWord = true
+            } else if quote == nil, scalar == "\\", let escaped = scalars.next() {
+                // `'it'\''s'` is a single quote written outside the quotes.
+                word.append(escaped)
+                inWord = true
             } else if quote == nil, scalar == " " {
                 if inWord { words.append(String(word)) }
                 word = String.UnicodeScalarView()
@@ -1099,6 +1103,16 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.hostHomeDirectory()
         }
 
+        func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+            try await requireConnected()
+            return try await host.checkouts(for: directories)
+        }
+
+        func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+            try await requireConnected()
+            return try await host.runGitCommand(command)
+        }
+
         func hostPlatform() async throws -> HostPlatform {
             try await requireConnected()
             return try await host.hostPlatform()
@@ -1185,6 +1199,143 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     func hostHomeDirectory() async throws -> String {
         Self.home
+    }
+
+    /// One repository a test planted, so a Worktree's git has something to ask.
+    private struct PlantedRepository {
+        var mainBranch = "main"
+        var branches: Set<String> = []
+        var linked: [String: String] = [:]
+        var dirty: Set<String> = []
+        var submodules: Set<String> = []
+    }
+
+    private var repositories: [String: PlantedRepository] = [:]
+    /// Paths that become dirty once a pane ends, as an Agent can write on its way out.
+    private var dirtyAfterKill: Set<String> = []
+    /// Every git command the Host was given, in order.
+    private(set) var gitCommands: [GitCommand] = []
+
+    func plantRepository(_ main: String, branches: [String] = []) {
+        repositories[main] = PlantedRepository(branches: Set(branches))
+    }
+
+    func setWorktreeDirty(_ path: String, _ dirty: Bool = true) {
+        mutateRepository(containing: path) { repo in
+            if dirty { repo.dirty.insert(path) } else { repo.dirty.remove(path) }
+        }
+    }
+
+    func setWorktreeSubmodule(_ path: String, _ present: Bool = true) {
+        mutateRepository(containing: path) { repo in
+            if present { repo.submodules.insert(path) } else { repo.submodules.remove(path) }
+        }
+    }
+
+    /// The next pane that ends leaves this checkout dirty.
+    func markDirtyAfterAPaneEnds(_ path: String) {
+        dirtyAfterKill.insert(path)
+    }
+
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
+        var answers: [String: HostCheckout] = [:]
+        for directory in directories {
+            guard let found = located(directory) else { continue }
+            answers[directory] = HostCheckout(
+                root: found.root, mainCheckout: found.main, isLinkedWorktree: found.root != found.main)
+        }
+        return answers
+    }
+
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult {
+        gitCommands.append(command)
+        guard var located = located(command.directory) else {
+            return GitCommandResult(status: 128, output: "", message: "fatal: not a git repository")
+        }
+        let arguments = command.arguments
+        switch arguments.first {
+        case "show-ref":
+            let branch = arguments.last.map { $0.hasPrefix("refs/heads/") ? String($0.dropFirst(11)) : $0 } ?? ""
+            let exists = located.repo.branches.contains(branch) || located.repo.linked.values.contains(branch)
+            return GitCommandResult(status: exists ? 0 : 1, output: "", message: nil)
+        case "worktree" where arguments.dropFirst().first == "add":
+            let added = addedWorktree(arguments)
+            located.repo.branches.insert(added.branch)
+            located.repo.linked[added.path] = added.branch
+            repositories[located.main] = located.repo
+            return GitCommandResult(status: 0, output: "", message: nil)
+        case "worktree" where arguments.dropFirst().first == "remove":
+            let path = arguments.last ?? ""
+            let forced = arguments.contains("--force")
+            if !forced, located.repo.dirty.contains(path) || located.repo.submodules.contains(path) {
+                return GitCommandResult(
+                    status: 128, output: "",
+                    message: "fatal: '\(path)' contains modified or untracked files, use --force to delete it")
+            }
+            located.repo.linked[path] = nil
+            located.repo.dirty.remove(path)
+            located.repo.submodules.remove(path)
+            repositories[located.main] = located.repo
+            return GitCommandResult(status: 0, output: "", message: nil)
+        case "worktree" where arguments.contains("--porcelain"):
+            return GitCommandResult(status: 0, output: porcelain(located.repo, main: located.main), message: nil)
+        case "status":
+            let output = located.repo.dirty.contains(command.directory) ? " M file\n" : ""
+            return GitCommandResult(status: 0, output: output, message: nil)
+        case "submodule":
+            let output = located.repo.submodules.contains(command.directory) ? " 160000 submodule\n" : ""
+            return GitCommandResult(status: 0, output: output, message: nil)
+        default:
+            return GitCommandResult(status: 1, output: "", message: "fatal: unsupported")
+        }
+    }
+
+    private func markDirty(_ path: String) {
+        mutateRepository(containing: path) { $0.dirty.insert(path) }
+    }
+
+    private func mutateRepository(containing directory: String, _ body: (inout PlantedRepository) -> Void) {
+        guard var located = located(directory) else { return }
+        body(&located.repo)
+        repositories[located.main] = located.repo
+    }
+
+    /// The longest planted checkout that is `directory` or contains it.
+    /// `/work/my` does not contain `/work/my app`.
+    private func located(_ directory: String) -> (main: String, root: String, repo: PlantedRepository)? {
+        var best: (main: String, root: String, repo: PlantedRepository)?
+        for (main, repo) in repositories {
+            let roots = [main] + repo.linked.keys
+            for root in roots {
+                guard directory == root || directory.hasPrefix(root + "/") else { continue }
+                if best == nil || root.count > best?.root.count ?? 0 {
+                    best = (main, root, repo)
+                }
+            }
+        }
+        return best
+    }
+
+    private func addedWorktree(_ arguments: [String]) -> (path: String, branch: String) {
+        if let flag = arguments.firstIndex(of: "-b"), flag + 2 < arguments.count {
+            return (arguments[flag + 2], arguments[flag + 1])
+        }
+        return (arguments.dropFirst(2).first ?? "", arguments.last ?? "")
+    }
+
+    private func porcelain(_ repo: PlantedRepository, main: String) -> String {
+        var blocks = [
+            "worktree \(main)",
+            "HEAD 1111111111111111111111111111111111111111",
+            "branch refs/heads/\(repo.mainBranch)",
+        ]
+        for (path, branch) in repo.linked.sorted(by: { $0.key < $1.key }) {
+            blocks.append("")
+            blocks.append("worktree \(path)")
+            blocks.append("HEAD 2222222222222222222222222222222222222222")
+            blocks.append("branch refs/heads/\(branch)")
+        }
+        return blocks.joined(separator: "\n") + "\n"
     }
 
     func hostPlatform() async throws -> HostPlatform {
@@ -1394,14 +1545,22 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             guard let target = invocation.target,
                 let session = listed.first(where: { $0.sessionID == target || $0.sessionName == target })
             else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
-            let pane = makePane(
+            var pane = makePane(
                 sessionID: session.sessionID, sessionName: session.sessionName,
                 windowIndex: (listed.filter { $0.sessionID == session.sessionID }.map(\.windowIndex).max() ?? -1) + 1,
                 directory: invocation.directory, program: invocation.program, in: listed)
+            // A session option shows on every pane the session gains.
+            if let mark = listed.first(where: { $0.sessionID == session.sessionID && !$0.worktree.isEmpty })?.worktree {
+                pane.worktree = mark
+            }
             listed.append(pane)
             return Self.succeeded("\(pane.paneID) \(pane.windowID)\n")
         case "new-session":
-            let sessionName = invocation.name.flatMap { $0.isEmpty ? nil : $0 } ?? Self.numberedSessionName(in: listed)
+            let explicit = invocation.name.flatMap { $0.isEmpty ? nil : $0 }
+            let sessionName = explicit ?? Self.numberedSessionName(in: listed)
+            if explicit != nil, listed.contains(where: { $0.sessionName == sessionName }) {
+                return Self.failed("duplicate session: \(sessionName)\n")
+            }
             let pane = makePane(
                 sessionID: "$\(Self.nextNumber(prefix: "$", in: listed))", sessionName: sessionName,
                 windowIndex: 0, directory: invocation.directory, program: invocation.program, in: listed)
@@ -1426,6 +1585,22 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let before = listed.count
             listed.removeAll { $0.paneID == target }
             guard listed.count < before else { return Self.failed("can't find pane: \(target)\n") }
+            for path in dirtyAfterKill {
+                markDirty(path)
+            }
+            return Self.succeeded("")
+        case "set-option":
+            guard let target = invocation.target, target.hasPrefix("$"),
+                invocation.arguments.first == "@heeler-worktree",
+                invocation.arguments.count >= 2
+            else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
+            let value = invocation.arguments[1]
+            var marked = false
+            for index in listed.indices where listed[index].sessionID == target {
+                listed[index].worktree = value
+                marked = true
+            }
+            guard marked else { return Self.failed("can't find session: \(target)\n") }
             return Self.succeeded("")
         case "kill-window":
             guard let target = invocation.target else { return Self.failed("tmux: The command failed.\n") }
@@ -1465,6 +1640,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         var directory: String?
         var name: String?
         var program: [String] = []
+        var arguments: [String] = []
     }
 
     /// The exec line's tmux command. `-N` counts only before the subcommand.
@@ -1474,6 +1650,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private static func invocation(of words: [String]) -> Invocation? {
         let commands = [
             "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "show-environment",
+            "set-option",
         ]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
         var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])
@@ -1509,6 +1686,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                     cursor += 1
                 }
             default:
+                if !word.hasPrefix("-") { parsed.arguments.append(word) }
                 cursor += 1
             }
         }

@@ -9,7 +9,8 @@ import Foundation
 /// Heeler's own sessions, marked `@heeler-attach`, never show, and neither
 /// does the copy of a window they link. A session left with no window of its
 /// own to show is not listed. An Agent reads the status `statuses` holds for
-/// its Pane, and Unknown without one.
+/// its Pane, and Unknown without one. A session marked `@heeler-worktree` is
+/// that checkout when `checkouts` has named the path.
 enum TmuxOrganization {
     struct Result: Sendable {
         let snapshot: SessionSnapshot
@@ -17,7 +18,10 @@ enum TmuxOrganization {
         let panes: [TmuxInventory.Pane]
     }
 
-    static func build(_ inventory: TmuxInventory, statuses: [String: AgentStatus] = [:]) -> Result {
+    static func build(
+        _ inventory: TmuxInventory, statuses: [String: AgentStatus] = [:],
+        checkouts: [String: HostCheckout] = [:]
+    ) -> Result {
         let shown = shownPanes(inventory.panes)
 
         var workspaceOrder: [String] = []
@@ -41,12 +45,14 @@ enum TmuxOrganization {
         var tabs: [TabInfo] = []
         for (position, sessionID) in workspaceOrder.enumerated() {
             let windows = tabOrder[sessionID] ?? []
+            let marked = shown.first { $0.sessionID == sessionID && !$0.worktree.isEmpty }?.worktree
+            let checkout = marked.flatMap { checkouts[$0] }
             workspaces.append(
                 WorkspaceInfo(
                     activeTabID: windows.first ?? "", agentStatus: .unknown, focused: false,
                     label: workspaceNames[sessionID] ?? "", number: position + 1,
                     paneCount: windows.reduce(0) { $0 + (paneCounts[$1] ?? 0) }, tabCount: windows.count,
-                    workspaceID: sessionID, worktree: nil))
+                    workspaceID: sessionID, worktree: checkout.flatMap(Self.workspaceInfo)))
             for windowID in windows {
                 guard let window = tabOf[windowID] else { continue }
                 tabs.append(
@@ -85,6 +91,17 @@ enum TmuxOrganization {
                 agents: agents, layouts: [], panes: panes, protocolVersion: 0, tabs: tabs, version: "",
                 workspaces: workspaces),
             panes: shown)
+    }
+
+    /// The main checkout is the repository's identity, as a tmux server has no other.
+    private static func workspaceInfo(_ checkout: HostCheckout) -> WorkspaceWorktreeInfo? {
+        checkout.mainCheckout.map { mainCheckout in
+            WorkspaceWorktreeInfo(
+                checkoutPath: checkout.root, isLinkedWorktree: checkout.isLinkedWorktree,
+                repoKey: mainCheckout,
+                repoName: HerdrCoreWorktrees.repositoryName(mainCheckout: mainCheckout),
+                repoRoot: mainCheckout)
+        }
     }
 
     /// The rows the Console shows: none of Heeler's own sessions, each window

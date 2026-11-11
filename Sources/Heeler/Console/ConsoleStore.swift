@@ -1489,6 +1489,7 @@ final class ConsoleStore {
                 case .tmux:
                     TmuxConsoleProjection(
                         host: host, session: makeTmuxSession(host), memory: coreHostMemory, pins: pins,
+                        gitGate: gitExecGate(for: host.id),
                         onPathsResolved: { [weak self, id = host.id] paths in
                             self?.onTmuxPathsResolved?(id, paths)
                         },
