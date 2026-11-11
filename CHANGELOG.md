@@ -55,7 +55,7 @@ Entries reference the pull request that made the change.
   the keyboard. (PR #705)
 - Say what the Host Helper is before it is installed: its sheet now reads as
   a background service for Agent Notifications, Live Activity, Usage, and Pi
-  and Oh My Pi Chat, rather than naming only the first three.
+  and Oh My Pi Chat, rather than naming only the first three. (PR #709)
 
 ### Fixed
 
