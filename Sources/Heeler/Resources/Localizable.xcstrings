@@ -40599,6 +40599,29 @@
         }
       }
     },
+    "Queued" : {
+      "comment" : "Chat: on a message the Agent's program holds in its queue and has not received yet.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キュー済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排队中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排隊中"
+          }
+        }
+      }
+    },
     "Queued. Codex sends it after its next tool call." : {
       "localizations" : {
         "ja" : {
@@ -45662,28 +45685,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已送到背景"
-          }
-        }
-      }
-    },
-    "Sent while working" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業中に送信済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在工作中发送"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在工作時傳送"
           }
         }
       }

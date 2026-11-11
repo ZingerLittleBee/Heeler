@@ -133,7 +133,7 @@ enum CodexTimelineProjector {
         for entry in timeline.leading {
             output.entries.append(
                 project(
-                    entry, wasQueued: false, open: .noResult, answers: answers, context: context,
+                    entry, delivery: .direct, open: .noResult, answers: answers, context: context,
                     liveRolloutID: liveRolloutID, output: &output))
         }
         // Only the newest turn can still be running: Codex runs one turn at
@@ -147,14 +147,14 @@ enum CodexTimelineProjector {
             var entryIDs: [ChatEntryID] = []
             for (position, entry) in turn.entries.enumerated() {
                 let chatEntry = project(
-                    entry, wasQueued: position > 0, open: open, answers: answers, context: context,
+                    entry, delivery: position > 0 ? .steered : .direct, open: open, answers: answers, context: context,
                     liveRolloutID: liveRolloutID, output: &output)
                 output.entries.append(chatEntry)
                 entryIDs.append(chatEntry.id)
             }
             if let ending = turn.ending {
                 let chatEntry = project(
-                    ending, wasQueued: false, open: open, answers: answers, context: context,
+                    ending, delivery: .direct, open: open, answers: answers, context: context,
                     liveRolloutID: liveRolloutID, output: &output)
                 output.entries.append(chatEntry)
                 entryIDs.append(chatEntry.id)
@@ -201,14 +201,14 @@ enum CodexTimelineProjector {
     }
 
     private static func project(
-        _ entry: CodexTimelineEntry, wasQueued: Bool, open: ChatToolActivity.Status, answers: Answers,
+        _ entry: CodexTimelineEntry, delivery: ChatUserMessage.Delivery, open: ChatToolActivity.Status, answers: Answers,
         context: ChatProjectionContext, liveRolloutID: String, output: inout Output
     ) -> ChatEntry {
         let isLive = entry.rolloutID == liveRolloutID
         let content: ChatEntry.Content
         switch entry.content {
         case .item(.user(let user)):
-            switch CodexMessageFormatter.display(user, skillNames: context.skillNames, wasQueued: wasQueued) {
+            switch CodexMessageFormatter.display(user, skillNames: context.skillNames, delivery: delivery) {
             case .reply(let replies):
                 content = .notice(
                     ChatNotice(

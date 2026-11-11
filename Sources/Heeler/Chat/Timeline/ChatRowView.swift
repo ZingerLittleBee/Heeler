@@ -185,7 +185,7 @@ private struct ChatUserBubble: View {
                         .font(.body)
                         .chatMessageLinks(opener: imageOpener)
                 }
-                if message.imageCount > 0 || !message.attachmentLabels.isEmpty || message.wasQueued {
+                if message.imageCount > 0 || !message.attachmentLabels.isEmpty || message.delivery == .queued {
                     ChatAttachmentChips(message: message)
                 }
             }
@@ -203,7 +203,7 @@ private struct ChatUserBubble: View {
             parts.append(message.imageCount == 1 ? String(localized: "1 image") : String(localized: "\(message.imageCount) images"))
         }
         parts += message.attachmentLabels
-        if message.wasQueued { parts.append(String(localized: "Sent while working")) }
+        if message.delivery == .queued { parts.append(ChatAttachmentChips.queuedText) }
         return parts.joined(separator: ", ")
     }
 }
@@ -224,12 +224,20 @@ private struct ChatAttachmentChips: View {
                         .lineLimit(1)
                 }
             }
-            if message.wasQueued {
-                Label("Sent while working", systemImage: "clock")
+            // Only while the program holds it: once delivered, the bubble
+            // reads like any other, as in the program's own terminal.
+            if message.delivery == .queued {
+                Label(Self.queuedText, systemImage: "clock")
             }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+
+    static var queuedText: String {
+        String(
+            localized: "Queued",
+            comment: "Chat: on a message the Agent's program holds in its queue and has not received yet.")
     }
 }
 

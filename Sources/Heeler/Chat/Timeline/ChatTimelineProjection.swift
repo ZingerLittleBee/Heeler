@@ -90,8 +90,9 @@ enum ChatTimelineProjection {
                 pending.append(row)
             } else if let record = records[row.id] {
                 segments.append(Segment(head: holdsHead(row) ? row : nil, body: holdsHead(row) ? [] : [row], record: record))
-            } else if turns.isEmpty, case .user(let message) = row.content, !message.wasQueued {
-                // Without the program's turns, a prompt opens one.
+            } else if turns.isEmpty, case .user(let message) = row.content, message.delivery == .direct {
+                // Without the program's turns, a prompt opens one, unless it
+                // joined the running turn or still waits for it.
                 segments.append(Segment(head: row))
             } else if segments.isEmpty {
                 // Rows above the first loaded opener belong to a turn whose

@@ -309,7 +309,7 @@ struct GrokTranscriptReducerTests {
         // A message sent while Grok works, in steer mode: no prompt index.
         let steered = try Self.fixture("agent-turns-and-errors.jsonl", lines: 11...16)
         #expect(Self.ids(Self.users(steered)) == ["grok:4056", "grok:5323"])
-        #expect(Self.users(steered).last?.content == .user(ChatUserMessage(text: "Also say ready.", wasQueued: true)))
+        #expect(Self.users(steered).last?.content == .user(ChatUserMessage(text: "Also say ready.", delivery: .steered)))
         #expect(steered.turns.map(\.firstEntryID) == [ChatEntryID("grok:4056")])
         #expect(steered.turns.map(\.ending) == [.completed])
         #expect(

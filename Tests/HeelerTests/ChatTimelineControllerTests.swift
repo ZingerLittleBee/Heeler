@@ -1958,9 +1958,11 @@ struct ChatRowViewTests {
 
     /// VoiceOver reads a user bubble once, chips included. A label set on the
     /// bubble's stack alone once went to each of its children, so a bubble
-    /// with a chip read "You: …, You: …" and never named the chip.
+    /// with a chip read "You: …, You: …" and never named the chip. A queued
+    /// prompt says so; once delivered it reads like any other.
     @Test(arguments: [
-        (ChatUserMessage(text: "also say PINEAPPLE", wasQueued: true), "You: also say PINEAPPLE, Sent while working"),
+        (ChatUserMessage(text: "also say PINEAPPLE", delivery: .queued), "You: also say PINEAPPLE, Queued"),
+        (ChatUserMessage(text: "also say PINEAPPLE", delivery: .steered), "You: also say PINEAPPLE"),
         (
             ChatUserMessage(text: "look", imageCount: 2, attachmentLabels: ["notes.md"]),
             "You: look, 2 images, notes.md"
@@ -1982,6 +1984,16 @@ struct ChatRowViewTests {
         controller.view.layoutIfNeeded()
         let labels = AccessibilityProbe.labels(in: controller.view).filter { $0.contains("You") }
         #expect(labels == [expected])
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            controller.view.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds).image { _ in
+                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(
+                image, named: "user-bubble-\(message.delivery.rawValue)-\(message.imageCount)-\(style.rawValue)",
+                as: .png)
+        }
     }
 
     private static let connectedActions = ChatRowActions(

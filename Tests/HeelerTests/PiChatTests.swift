@@ -936,7 +936,7 @@ struct PiChatTests {
         #expect(running.turns.first?.ending == nil)
         #expect(
             running.entries.first { $0.id == ChatEntryID("pi:s") }?.content
-                == .user(ChatUserMessage(text: "steer", wasQueued: true)))
+                == .user(ChatUserMessage(text: "steer", delivery: .steered)))
         #expect(running.recordedPrompts.map(\.text) == ["start", "steer"])
         #expect(running.latestPromptOffset == running.entries.first?.sourceOffset)
         #expect(Self.tool("c2", in: running)?.status == .running)
@@ -1010,7 +1010,7 @@ struct PiChatTests {
     @Test func ompSteeringFlagStaysInTurn() throws {
         let denied = try Self.ompTranscript(through: 18)
         let steer = try #require(denied.entries.first { $0.id == ChatEntryID("pi:9fb8c963") })
-        #expect(steer.content == .user(ChatUserMessage(text: "abc", wasQueued: true)))
+        #expect(steer.content == .user(ChatUserMessage(text: "abc", delivery: .steered)))
         #expect(denied.turns.last?.firstEntryID == ChatEntryID("pi:e95de799"))
         #expect(denied.turns.last?.ending == .completed)
         #expect(denied.recordedPrompts.last?.text == "abc")
@@ -1018,7 +1018,7 @@ struct PiChatTests {
         let full = try Self.ompTranscript()
         #expect(
             full.entries.first { $0.id == ChatEntryID("pi:62cc28b8") }?.content
-                == .user(ChatUserMessage(text: "my draft text", wasQueued: true)))
+                == .user(ChatUserMessage(text: "my draft text", delivery: .steered)))
         #expect(!full.turns.contains { $0.firstEntryID == ChatEntryID("pi:62cc28b8") })
         #expect(full.turns.first { $0.firstEntryID == ChatEntryID("pi:ceec44cf") }?.ending == .completed)
 
