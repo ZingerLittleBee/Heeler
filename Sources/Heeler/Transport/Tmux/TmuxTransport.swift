@@ -70,6 +70,10 @@ protocol TmuxTransport: HostHelperConnection {
     /// one of the connection's attach slots (ADR 0017) until it ends.
     func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
+    /// Reads one Pane's current status and the process leading its terminal's
+    /// foreground process group, in one bounded exec (ADR 0043).
+    func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground
+
     /// Closes the connection.
     func close() async throws
 }
@@ -88,6 +92,9 @@ protocol TmuxHostConnection: HostServices, HostHelperHost {
     /// Runs one command script the same way. `throughLoginShell` only lengthens
     /// the deadline: `TmuxLaunch` has already wrapped a Linux server start.
     func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
+
+    /// Runs a `TmuxPaneForeground` script in one bounded exec.
+    func runTmuxForeground(_ script: Data) async throws -> GitExecResult
 
     /// Opens one long exec of a `TmuxInventoryLoop` script, which runs until
     /// the channel is closed or its server stops answering. The exec holds one
@@ -299,6 +306,23 @@ actor TmuxSSHTransport: TmuxTransport {
         let channel = try await connection.openTmuxControlClient(Data(script.utf8))
         return try await TmuxPaneAttach.open(
             channel: channel, session: session, pane: pane, request: request, startLimit: attachStartLimit)
+    }
+
+    func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground {
+        guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
+        let nonce = nonce()
+        guard
+            let script = TmuxPaneForeground.script(
+                executable: paths.executable, socket: paths.socket, pane: pane, nonce: nonce)
+        else { throw TransportError.tmuxPaneGone }
+        let result = try await connection.runTmuxForeground(Data(script.utf8))
+        guard result.exitStatus == 0,
+            let reading = TmuxPaneForeground.parse(stdout: result.stdout, pane: pane, nonce: nonce)
+        else {
+            throw TransportError.malformedResponse(
+                String(localized: "tmux: The Pane's foreground could not be read."))
+        }
+        return reading
     }
 
     func close() async throws {

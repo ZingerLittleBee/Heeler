@@ -271,4 +271,73 @@ struct TmuxInventoryLoopTests {
         #expect(instance.id == "tmux-4100-1794000000")
         #expect(TmuxServerInstance(pid: 4100, startTime: 1_794_000_001).id != instance.id)
     }
+
+    // MARK: One Pane's foreground
+
+    @Test func paneForegroundScriptSharesTheLoopsPsReaderAndRefusesBadPaneIDs() throws {
+        #expect(TmuxPaneForeground.script(executable: "/usr/bin/tmux", socket: "/tmp/s", pane: "0", nonce: nonce) == nil)
+        #expect(TmuxPaneForeground.script(executable: "/usr/bin/tmux", socket: "/tmp/s", pane: "%", nonce: nonce) == nil)
+        #expect(
+            TmuxPaneForeground.script(executable: "/usr/bin/tmux", socket: "/tmp/s", pane: "%0;id", nonce: nonce) == nil
+        )
+        let foreground = try #require(
+            TmuxPaneForeground.script(
+                executable: "/usr/bin/tmux", socket: "/tmp/tmux-501/default", pane: "%0", nonce: nonce))
+        let loop = script()
+        let psInLoop = loop.split(separator: "\n").filter { $0.contains("/bin/ps") }
+        let psInForeground = foreground.split(separator: "\n").filter { $0.contains("/bin/ps") }
+        #expect(!psInLoop.isEmpty)
+        #expect(psInForeground == psInLoop)
+        #expect(foreground.contains("a 1"))
+        #expect(!foreground.contains(" -L "))
+    }
+
+    @Test func paneForegroundParsesLiveDeadMissingAndStoppedPanes() {
+        let pane = TmuxInventory.Pane.make(
+            pane: 2, processID: 4200, command: "node", status: "state=blocked:app=claude-code")
+        var live = Data("\(nonce) server 4100 1794000000\n\(nonce) begin\n".utf8)
+        live.append(TmuxLoopText.row(pane, instance: instance))
+        live.append(Data("\(nonce) argv\nA %2 6e6f646500636c61756465 4501\n\(nonce) end\n".utf8))
+        var expected = pane
+        expected.foregroundArguments = ["node", "claude"]
+        #expect(
+            TmuxPaneForeground.parse(stdout: live, pane: "%2", nonce: nonce)
+                == .live(.init(instance: instance, pane: expected, foregroundPID: 4501)))
+
+        var dead = Data("\(nonce) server 4100 1794000000\n\(nonce) begin\n".utf8)
+        dead.append(TmuxLoopText.row(.make(pane: 2, isDead: true), instance: instance))
+        dead.append(Data("\(nonce) argv\n\(nonce) end\n".utf8))
+        #expect(TmuxPaneForeground.parse(stdout: dead, pane: "%2", nonce: nonce) == .dead(instance: instance))
+
+        let missing = Data("\(nonce) server 4100 1794000000\n\(nonce) begin\n\n\(nonce) argv\n\(nonce) end\n".utf8)
+        #expect(TmuxPaneForeground.parse(stdout: missing, pane: "%2", nonce: nonce) == .paneGone(instance: instance))
+
+        #expect(TmuxPaneForeground.parse(stdout: TmuxLoopText.gone(), pane: "%2", nonce: nonce) == .serverNotRunning)
+        #expect(TmuxPaneForeground.parse(stdout: Data("cut short\n".utf8), pane: "%2", nonce: nonce) == nil)
+    }
+
+    @Test func transportReadsAPanesForegroundOverScriptedHost() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, processID: 4000, command: "claude", status: "state=idle:app=claude-code", arguments: ["claude"]),
+            .make(pane: 1, processID: 4010, command: "zsh", isDead: true),
+        ])
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        _ = try await transport.status()
+
+        let live = try await transport.readPaneForeground("%0")
+        #expect(
+            live
+                == .live(
+                    .init(
+                        instance: ScriptedTmuxHost.instance,
+                        pane: .make(
+                            pane: 0, processID: 4000, command: "claude", status: "state=idle:app=claude-code",
+                            arguments: ["claude"]),
+                        foregroundPID: 4000)))
+        #expect(try await transport.readPaneForeground("%1") == .dead(instance: ScriptedTmuxHost.instance))
+        #expect(try await transport.readPaneForeground("%9") == .paneGone(instance: ScriptedTmuxHost.instance))
+        await tmux.stopServer()
+        #expect(try await transport.readPaneForeground("%0") == .serverNotRunning)
+    }
 }

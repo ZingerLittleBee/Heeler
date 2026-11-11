@@ -73,6 +73,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private(set) var loopScripts: [String] = []
     private var failures: [TransportError] = []
     private var nextAnswers: [GitExecResult] = []
+    private var foregroundFailures: [TransportError] = []
+    private var nextForegroundAnswers: [GitExecResult] = []
+    private var foregroundPIDs: [String: [String: Int?]] = [:]
+    private(set) var foregroundScripts: [String] = []
+    private var onNextPaste: (@Sendable () async -> Void)?
     private var connected = true
     /// The Host Helper seam on the same scripted file tree, rooted at `Self.home`.
     nonisolated let helper: ScriptedHelperHost
@@ -207,10 +212,31 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         nextAnswers.append(GitExecResult(stdout: Data(stdout.utf8), stderr: Data(), exitStatus: exitStatus))
     }
 
+    func failNextForeground(_ error: TransportError) {
+        foregroundFailures.append(error)
+    }
+
+    func answerNextForeground(stdout: String, exitStatus: Int32 = 0) {
+        nextForegroundAnswers.append(GitExecResult(stdout: Data(stdout.utf8), stderr: Data(), exitStatus: exitStatus))
+    }
+
+    /// Overrides the foreground process-group leader pid (`tpgid`) `readPaneForeground`
+    /// reports for `pane`; `.some(nil)` simulates no readable live leader.
+    func setForegroundPID(_ pid: Int?, of pane: String, on name: String = "default") {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        foregroundPIDs[socket, default: [:]][pane] = .some(pid)
+    }
+
+    /// Runs right after the next `paste-buffer` executes, before its reply leaves.
+    func afterNextPaste(_ hook: @escaping @Sendable () async -> Void) {
+        onNextPaste = hook
+    }
+
     func clearLog() {
         log = []
         scripts = []
         commands = []
+        foregroundScripts = []
     }
 
     /// What discovery reports, and the OpenCode version a later launch may name.
@@ -659,6 +685,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             guard let client = controlClients[id] else { return }
             let words = Self.words(of: String(line))
             let (reply, changedWindows) = answer(words, from: client, id: id)
+            if words.first == "paste-buffer", reply.contains("\n%end "), let hook = onNextPaste {
+                onNextPaste = nil
+                await hook()
+            }
             let replyBytes = Data(reply.utf8)
             if holdingControlReplies {
                 heldControlReplies.append(
@@ -1068,6 +1098,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.runTmuxCommand(script, throughLoginShell: throughLoginShell)
         }
 
+        func runTmuxForeground(_ script: Data) async throws -> GitExecResult {
+            if await host.isDropped(id) { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+            return try await host.runTmuxForeground(script)
+        }
+
         func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
             try await requireConnected()
             return try await host.openLoop(script, dial: id)
@@ -1153,6 +1188,48 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return GitExecResult(stdout: Data(discovery.utf8), stderr: Data(), exitStatus: 0)
         }
         return await apply(text)
+    }
+
+    func runTmuxForeground(_ script: Data) async throws -> GitExecResult {
+        let text = String(decoding: script, as: UTF8.self)
+        log.append("foreground")
+        foregroundScripts.append(text)
+        if !foregroundFailures.isEmpty { throw foregroundFailures.removeFirst() }
+        if !nextForegroundAnswers.isEmpty { return nextForegroundAnswers.removeFirst() }
+
+        let executable = Self.assigned("t", in: text)
+        let socket = Self.assigned("s", in: text)
+        let nonce = Self.assigned("n", in: text)
+        let paneID = Self.assigned("q", in: text)
+        guard executables[executable] != nil, let instance = servers[socket] else {
+            return GitExecResult(stdout: TmuxLoopText.gone(nonce: nonce), stderr: Data(), exitStatus: 0)
+        }
+        var output = Data("\(nonce) server \(instance.pid) \(instance.startTime)\n\(nonce) begin\n".utf8)
+        let matching = (panes[socket] ?? []).filter { $0.paneID == paneID }
+        for pane in matching { output.append(TmuxLoopText.row(pane, instance: instance)) }
+        if !matching.isEmpty { output.removeLast() }
+        output.append(Data("\n\(nonce) argv\n".utf8))
+        if let first = matching.first, !first.isDead {
+            let pidOverride = foregroundPIDs[socket]?[paneID]
+            let pid: Int? =
+                if let pidOverride {
+                    pidOverride
+                } else {
+                    first.processID > 0 ? first.processID : nil
+                }
+            let pidWord = pid.map(String.init) ?? "-"
+            let line: Data
+            if let arguments = first.foregroundArguments {
+                var base = TmuxLoopText.argumentLine(pane: paneID, .list(arguments))
+                base.removeLast()
+                line = base + Data(" \(pidWord)\n".utf8)
+            } else {
+                line = Data("A \(paneID) - \(pidWord)\n".utf8)
+            }
+            output.append(line)
+        }
+        output.append(Data("\(nonce) end\n".utf8))
+        return GitExecResult(stdout: output, stderr: Data(), exitStatus: 0)
     }
 
     // MARK: The Host's files

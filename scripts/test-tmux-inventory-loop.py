@@ -70,6 +70,36 @@ case "parse":
         }
     }
     FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: events, options: [.sortedKeys]))
+case "foreground-script":
+    guard let script = TmuxPaneForeground.script(
+        executable: arguments[2], socket: arguments[3], pane: arguments[4], nonce: nonce)
+    else { exit(65) }
+    FileHandle.standardOutput.write(Data(script.utf8))
+case "foreground-parse":
+    let stdout = FileHandle.standardInput.readDataToEndOfFile()
+    guard let parsed = TmuxPaneForeground.parse(stdout: stdout, pane: arguments[2], nonce: nonce) else {
+        exit(66)
+    }
+    let body: [String: Any]
+    switch parsed {
+    case .serverNotRunning:
+        body = ["kind": "serverNotRunning"]
+    case .paneGone(let instance):
+        body = ["kind": "paneGone", "pid": instance.pid, "startTime": instance.startTime]
+    case .dead(let instance):
+        body = ["kind": "dead", "pid": instance.pid, "startTime": instance.startTime]
+    case .live(let sample):
+        body = [
+            "kind": "live",
+            "pid": sample.instance.pid,
+            "startTime": sample.instance.startTime,
+            "foregroundPID": sample.foregroundPID as Any? ?? NSNull(),
+            "command": sample.pane.command,
+            "status": sample.pane.status,
+            "arguments": sample.pane.foregroundArguments as Any? ?? NSNull(),
+        ]
+    }
+    FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]))
 default:
     exit(64)
 }
@@ -476,6 +506,64 @@ class LifetimeTests(LoopTestCase):
         self.assertEqual([pane["paneID"] for pane in second["panes"]], [pane["paneID"] for pane in first["panes"]])
         self.assertNotEqual((second["pid"], second["startTime"]), (first["pid"], first["startTime"]))
         self.assertEqual((second["pid"], second["startTime"]), self.instance())
+
+
+class ForegroundTests(LoopTestCase):
+    def foreground_script(self, pane: str = "%0", without_perl: bool = False) -> bytes:
+        script = subprocess.run(
+            [str(self.binary), "foreground-script", self.tmux_path, str(self.socket), pane],
+            capture_output=True, check=True,
+        ).stdout
+        if without_perl:
+            script = script.replace(b"\nP=/usr/bin/perl\n", b"\nP=/nonexistent/perl\n")
+        return script
+
+    def run_foreground(self, pane: str = "%0", shell: str = "/bin/sh", without_perl: bool = False) -> dict:
+        result = subprocess.run(
+            [shell, "-s"], input=self.foreground_script(pane=pane, without_perl=without_perl),
+            capture_output=True, env=self.env, check=True,
+        )
+        parsed = subprocess.run(
+            [str(self.binary), "foreground-parse", pane], input=result.stdout,
+            capture_output=True, check=True,
+        ).stdout
+        return json.loads(parsed.decode())
+
+    def test_reads_foreground_leader_dead_pane_missing_pane_and_stopped_server_across_shells(self) -> None:
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.run_foreground(shell=shell), {"kind": "serverNotRunning"})
+
+        self.start_server("exec /bin/sleep 600")
+        self.tmux("set-option", "-p", "-t", "%0", "@heeler-status", "state=idle:app=claude-code")
+        pane_pid = int(self.tmux("display-message", "-p", "-t", "%0", "#{pane_pid}").strip())
+        server_pid, start_time = self.instance()
+
+        for shell in shells():
+            with self.subTest(shell=shell):
+                live = self.run_foreground("%0", shell=shell)
+                self.assertEqual(live["kind"], "live")
+                self.assertEqual((live["pid"], live["startTime"]), (server_pid, start_time))
+                self.assertEqual(live["foregroundPID"], pane_pid)
+                self.assertEqual(live["status"], "state=idle:app=claude-code")
+                self.assertEqual(live["arguments"], ["/bin/sleep", "600"])
+                self.assertEqual(
+                    self.run_foreground("%9", shell=shell),
+                    {"kind": "paneGone", "pid": server_pid, "startTime": start_time},
+                )
+
+        if sys.platform == "darwin":
+            no_perl = self.run_foreground("%0", without_perl=True)
+            self.assertEqual(no_perl["foregroundPID"], pane_pid)
+            self.assertEqual(no_perl["arguments"], ["/bin/sleep", "600"])
+
+        self.tmux("new-window", "-t", "main", "exec /bin/sh -c 'exit 0'")
+        self.tmux("set-option", "-w", "-t", "main:1", "remain-on-exit", "on")
+        self.tmux("respawn-pane", "-k", "-t", "%1", "exec /bin/sh -c 'exit 0'")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and self.tmux("display-message", "-p", "-t", "%1", "#{pane_dead}").strip() != "1":
+            time.sleep(0.05)
+        self.assertEqual(self.run_foreground("%1"), {"kind": "dead", "pid": server_pid, "startTime": start_time})
 
 
 if __name__ == "__main__":
