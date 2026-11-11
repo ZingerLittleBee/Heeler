@@ -30,6 +30,14 @@ struct TmuxPaneFeed: Sendable {
         case paintFailed
     }
 
+    enum BracketedPaste: Equatable, Sendable {
+        case enabled
+        case disabled
+        /// tmux before 3.7 reports no `bracket_paste_flag`, and the Pane's
+        /// `%output` on this Attach has not turned DECSET 2004 off.
+        case unreportedAndNotTurnedOff
+    }
+
     private enum Purpose: Equatable, Sendable {
         case paint(generation: UInt64, step: TmuxPanePaint.Step)
         case resume
@@ -64,6 +72,8 @@ struct TmuxPaneFeed: Sendable {
     private var checkAgain = false
     /// A paint stopped at a failed reply; the check says whether to try again.
     private var paintWaitsOnCheck = false
+    private var paintBracketedPaste: Bool?
+    private var outputModes = TerminalModeTracker()
     private var ended = false
 
     /// `includingHistory` when the terminal has no history of the Pane yet.
@@ -89,6 +99,14 @@ struct TmuxPaneFeed: Sendable {
         beginPaint()
     }
 
+    var bracketedPaste: BracketedPaste {
+        switch outputModes.bracketedPasteSetting ?? paintBracketedPaste {
+        case true: .enabled
+        case false: .disabled
+        case nil: .unreportedAndNotTurnedOff
+        }
+    }
+
     mutating func updateViewRows(_ rows: Int) {
         guard rows > 0 else { return }
         viewRows = rows
@@ -107,6 +125,7 @@ struct TmuxPaneFeed: Sendable {
         switch event {
         case .output(let from, let bytes):
             guard from == pane else { return [] }
+            outputModes.receive(bytes)
             guard let paint else { return painted ? [.write(bytes)] : [] }
             if paint.replies[.modes] != nil { self.paint?.disturbed = true }
             return []
@@ -139,6 +158,10 @@ struct TmuxPaneFeed: Sendable {
                 self.paint = nil
                 paintWaitsOnCheck = true
                 return check()
+            }
+            if step == .modes, let flag = reply.lines.first.flatMap(TmuxPaneModes.init)?.bracketedPaste {
+                paintBracketedPaste = flag
+                outputModes = TerminalModeTracker()
             }
             paint.replies[step] = reply
             self.paint = paint

@@ -516,6 +516,23 @@ enum TerminalAttachInputError: Error, Equatable {
     case sessionEnded
 }
 
+enum TmuxSendWriteOutcome: Equatable, Sendable {
+    /// tmux answered `%end`.
+    case left
+    /// Nothing reached the Pane: the client had already ended, or tmux answered
+    /// `%error` and any buffer was deleted.
+    case notLeft
+    /// The command left this side and tmux never answered `%end` or `%error`.
+    case unknown
+}
+
+/// Checked Send's control-client operations on one tmux Attach (ADR 0043).
+struct TmuxAttachSend: Sendable {
+    let bracketedPaste: @Sendable () async -> TmuxPaneFeed.BracketedPaste
+    let paste: @Sendable (String, @escaping @Sendable (Duration) async throws -> Void) async -> TmuxSendWriteOutcome
+    let sendKey: @Sendable (String, @escaping @Sendable (Duration) async throws -> Void) async -> TmuxSendWriteOutcome
+}
+
 /// The live PTY's mixed-reliability input queue.
 ///
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
@@ -538,8 +555,13 @@ final class TerminalAttachInputQueue: Sendable {
 
     private typealias Acknowledgement = CheckedContinuation<Void, any Error>
 
+    private enum ReliablePayload: Sendable {
+        case input(TerminalAttachInput)
+        case action(@Sendable () async -> Void)
+    }
+
     private struct ReliableItem: Sendable {
-        let input: TerminalAttachInput
+        let payload: ReliablePayload
         var acknowledgement: Acknowledgement?
     }
 
@@ -556,7 +578,7 @@ final class TerminalAttachInputQueue: Sendable {
 
     private enum NextDecision {
         case wait
-        case resume(TerminalAttachInput?)
+        case resume(ReliablePayload?)
     }
 
     private let state = Mutex(State())
@@ -568,7 +590,7 @@ final class TerminalAttachInputQueue: Sendable {
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
-        enqueueReliable(ReliableItem(input: .keystrokes(keystrokes)), discardingPendingScroll: true)
+        enqueueReliable(ReliableItem(payload: .input(.keystrokes(keystrokes))), discardingPendingScroll: true)
     }
 
     /// `send` that returns once the writer has written the bytes, in the same
@@ -583,7 +605,22 @@ final class TerminalAttachInputQueue: Sendable {
                 return
             }
             enqueueReliable(
-                ReliableItem(input: .keystrokes(keystrokes), acknowledgement: continuation),
+                ReliableItem(payload: .input(.keystrokes(keystrokes)), acknowledgement: continuation),
+                discardingPendingScroll: true)
+        }
+    }
+
+    /// Runs `action` in FIFO order with queued keystrokes and resizes, throwing
+    /// `TerminalAttachInputError.sessionEnded` if the queue ended before `action` ran.
+    func performAcknowledged(_ action: @escaping @Sendable () async -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: Acknowledgement) in
+            let isOpen = state.withLock { !$0.isFinished && !$0.hasStoppedPumping }
+            guard isOpen else {
+                continuation.resume(throwing: TerminalAttachInputError.sessionEnded)
+                return
+            }
+            enqueueReliable(
+                ReliableItem(payload: .action(action), acknowledgement: continuation),
                 discardingPendingScroll: true)
         }
     }
@@ -624,21 +661,34 @@ final class TerminalAttachInputQueue: Sendable {
     /// tell a write cut short from one that ends where it ends.
     var hasQueuedKeystrokes: Bool {
         state.withLock { state in
-            if case .keystrokes? = state.reliable.first?.input { true } else { false }
+            if case .input(.keystrokes)? = state.reliable.first?.payload { true } else { false }
         }
     }
 
     func resize(cols: Int, rows: Int) {
-        enqueueReliable(ReliableItem(input: .resize(cols: cols, rows: rows)), discardingPendingScroll: false)
+        enqueueReliable(ReliableItem(payload: .input(.resize(cols: cols, rows: rows))), discardingPendingScroll: false)
     }
 
     func next() async -> TerminalAttachInput? {
+        while let payload = await nextPayload() {
+            switch payload {
+            case .input(let input):
+                return input
+            case .action(let action):
+                await action()
+                finishInFlight(.success(()))
+            }
+        }
+        return nil
+    }
+
+    private func nextPayload() async -> ReliablePayload? {
         while true {
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
                     let item = state.reliable.removeFirst()
                     state.inFlightAcknowledgement = item.acknowledgement
-                    return .resume(item.input)
+                    return .resume(item.payload)
                 }
                 if let scroll = state.pendingScroll, scroll.expiresAt <= now() {
                     state.pendingScroll = nil
@@ -652,7 +702,7 @@ final class TerminalAttachInputQueue: Sendable {
                             sequence: scroll.sequence, rows: remainingRows, expiresAt: scroll.expiresAt)
                         : nil
                     return .resume(
-                        .scroll(Self.repeated(scroll.sequence, count: deliveredRows)))
+                        .input(.scroll(Self.repeated(scroll.sequence, count: deliveredRows))))
                 }
                 if state.isFinished {
                     return .resume(nil)
@@ -660,7 +710,7 @@ final class TerminalAttachInputQueue: Sendable {
                 return .wait
             }
 
-            if case .resume(let input) = decision { return input }
+            if case .resume(let payload) = decision { return payload }
             // Wake the writer, rather than handing it bytes here. A suspended
             // writer must recheck expiry and recovery cancellation when it runs.
             await withCheckedContinuation { continuation in
@@ -743,10 +793,10 @@ final class TerminalAttachInputQueue: Sendable {
         resize: (Int, Int) async throws -> Void
     ) async throws {
         defer { stopPumping() }
-        while let item = await next() {
+        while let payload = await nextPayload() {
             guard !Task.isCancelled else { return }
-            switch item {
-            case .keystrokes(let data):
+            switch payload {
+            case .input(.keystrokes(let data)):
                 do {
                     try await write(data)
                     finishInFlight(.success(()))
@@ -754,11 +804,14 @@ final class TerminalAttachInputQueue: Sendable {
                     finishInFlight(.failure(error))
                     throw error
                 }
-            case .scroll(let data):
+            case .input(.scroll(let data)):
                 try await write(data)
                 try await Task.sleep(for: Self.scrollPacingInterval)
-            case .resize(let cols, let rows):
+            case .input(.resize(let cols, let rows)):
                 try await resize(cols, rows)
+            case .action(let action):
+                await action()
+                finishInFlight(.success(()))
             }
         }
     }
@@ -800,6 +853,7 @@ final class TerminalAttachSession: Sendable {
     private let onEndStarted: @Sendable () -> Void
     private let onConsumed: (@Sendable (Int) -> Void)?
     private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
+    let tmuxSend: TmuxAttachSend?
     private let ender: @Sendable () async -> Void
 
     init(
@@ -808,6 +862,7 @@ final class TerminalAttachSession: Sendable {
         onEndStarted: @escaping @Sendable () -> Void = {},
         onConsumed: (@Sendable (Int) -> Void)? = nil,
         onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
+        tmuxSend: TmuxAttachSend? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
         self.makeOutput = makeOutput
@@ -815,6 +870,7 @@ final class TerminalAttachSession: Sendable {
         self.onEndStarted = onEndStarted
         self.onConsumed = onConsumed
         self.onPresence = onPresence
+        self.tmuxSend = tmuxSend
         self.ender = ender
     }
 

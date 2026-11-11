@@ -103,7 +103,11 @@ actor TmuxControlClient {
     /// Sends `command` and waits for its reply. A run that times out or is
     /// cancelled still has its reply coming, and keeps its place in line. A
     /// run whose task was cancelled before it began sends nothing.
-    func run(_ command: TmuxControlCommand, timeout: Duration) async throws -> TmuxControlReply {
+    func run(
+        _ command: TmuxControlCommand,
+        timeout: Duration,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) async throws -> TmuxControlReply {
         if let end { throw Ended(end: end) }
         try Task.checkCancellation()
         nextRun += 1
@@ -111,7 +115,7 @@ actor TmuxControlClient {
         waiters.append(.run(id))
         lineSink.yield(Self.line(command))
         let timer = Task { [weak self] in
-            try await Task.sleep(for: timeout)
+            try await sleep(timeout)
             await self?.stopWaiting(id, with: TransportError.timedOut)
         }
         defer { timer.cancel() }

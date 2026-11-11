@@ -132,6 +132,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         windowSizes[socket] = nil
         windowLayouts[socket] = nil
         desktopClients[socket] = nil
+        bracketedPasteFlags[socket] = nil
+        paneOutputModes[socket] = nil
+        foregroundPIDs[socket] = nil
         await printChanges(on: socket)
     }
 
@@ -143,6 +146,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         windowSizes[socket] = nil
         windowLayouts[socket] = nil
         desktopClients[socket] = nil
+        bracketedPasteFlags[socket] = nil
+        paneOutputModes[socket] = nil
+        foregroundPIDs[socket] = nil
         await endControlClients(on: socket)
         await printChanges(on: socket)
     }
@@ -431,6 +437,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// One Attach's control client, in its session of Heeler's own.
     private struct ControlClient {
         let dial: UInt64
+        let executable: String
         let socket: String
         let channel: ScriptedTmuxLoopChannel
         let sessionName: String
@@ -461,9 +468,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// What `#{pane_key_mode}` reads for a pane, by pane id: `VT10x`, as under
     /// tmux's default `extended-keys off`, unless set.
     private var keyModes: [String: String] = [:]
+    private var bracketedPasteFlags: [String: [String: Bool]] = [:]
+    private var paneOutputModes: [String: [String: TerminalModeTracker]] = [:]
     /// The server's paste buffers, by name, and pastes still to fail.
     private(set) var buffers: [String: String] = [:]
     private var failingPastes = 0
+    private var failingSendKeys = 0
     /// When true, outgoing control-mode replies wait in FIFO order while
     /// incoming commands still arrive in `controlCommands`.
     private var holdingControlReplies = false
@@ -583,6 +593,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         keyModes[pane] = mode
     }
 
+    /// What `#{bracket_paste_flag}` reads for `pane` on tmux 3.7 and later.
+    func setBracketedPaste(_ enabled: Bool, of pane: String, on name: String = "default") {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        bracketedPasteFlags[socket, default: [:]][pane] = enabled
+    }
+
     /// A buffer of the user's own, which no paste of Heeler's may touch.
     func setBuffer(_ text: String, named name: String) {
         buffers[name] = text
@@ -594,6 +610,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         failingPastes += 1
     }
 
+    /// The next `send-keys` fails, as it does when its pane went away.
+    func failNextSendKeys() {
+        failingSendKeys += 1
+    }
+
     func silenceNextControlClient() {
         silentControlClients += 1
     }
@@ -601,6 +622,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// The pane prints `text`, which every client whose session links its window reads.
     func paneOutput(_ text: String, in pane: String, on name: String = "default") async {
         let socket = Self.socketPath(name, in: loginDirectory)
+        var tracker = paneOutputModes[socket]?[pane] ?? TerminalModeTracker()
+        tracker.receive(Data(text.utf8))
+        paneOutputModes[socket, default: [:]][pane] = tracker
+        if let setting = tracker.bracketedPasteSetting {
+            bracketedPasteFlags[socket, default: [:]][pane] = setting
+        }
         for client in controlClients.values where client.socket == socket && client.window == window(of: pane, client) {
             await client.channel.send(Data("%output \(pane) \(Self.escaped(text))\n".utf8))
         }
@@ -651,7 +678,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let sessionName = words.firstIndex(of: "-s").map { words[$0 + 1] } ?? ""
         let paneID = words.firstIndex(of: "@heeler-attach").map { words[$0 + 1].replacingOccurrences(of: "'", with: "") } ?? ""
         // With `-N` and no server, tmux says so on standard error and exits.
-        guard servers[socket] != nil, executables[Self.assigned("t", in: body)] != nil else {
+        let executable = Self.assigned("t", in: body)
+        guard servers[socket] != nil, executables[executable] != nil else {
             await channel.finish()
             return channel
         }
@@ -659,7 +687,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let sessionID = "$\(nextSessionID)"
         let pane = panes[socket]?.first { $0.paneID == paneID }
         controlClients[id] = ControlClient(
-            dial: dial, socket: socket, channel: channel, sessionName: sessionName, sessionID: sessionID,
+            dial: dial, executable: executable, socket: socket, channel: channel, sessionName: sessionName,
+            sessionID: sessionID,
             pane: pane ?? .make(pane: Int(paneID.dropFirst()) ?? 0, command: "sleep"), window: pane?.windowID)
         // One block for each start command, up to the first that fails.
         var start = (0..<3).map { _ in block([], fromClient: false) }
@@ -747,9 +776,17 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             )
         case "display-message":
             let width = pane.width, height = pane.height
+            let reportsFlag =
+                executables[client.executable].flatMap(TmuxVersion.init(versionLine:))?.reportsBracketedPaste ?? true
+            let bracketFlag: String
+            if reportsFlag {
+                bracketFlag = bracketedPasteFlags[client.socket]?[pane.paneID] == true ? "1" : "0"
+            } else {
+                bracketFlag = ""
+            }
             return (
                 block([
-                    "\(pane.paneID) \(client.window ?? "@99") \(width) \(height) 0 0 0 1 0 0 0 0 \(height - 1) 0 0 0 0 0 0 0 0 1 0 0"
+                    "\(pane.paneID) \(client.window ?? "@99") \(width) \(height) 0 0 0 1 0 0 0 0 \(height - 1) 0 0 0 0 0 0 0 0 1 0 \(bracketFlag)"
                 ]), []
             )
         case "capture-pane":
@@ -792,6 +829,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         case "kill-window", "kill-session":
             return (block([]), [])
         case "send-keys":
+            if failingSendKeys > 0 {
+                failingSendKeys -= 1
+                return (block(["can't find pane: \(Self.value(of: "-t", in: words) ?? "")"], succeeded: false), [])
+            }
             return (block([]), [])
         case "set-buffer":
             guard let name = Self.value(of: "-b", in: words), let text = Self.value(of: "--", in: words) else {

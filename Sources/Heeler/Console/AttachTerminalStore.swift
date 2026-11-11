@@ -610,7 +610,8 @@ final class AttachTerminalStore {
                     session.scroll(sequence, rows: rows)
                 },
                 discardPendingScroll: { session.discardPendingScroll() },
-                acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
+                acknowledgedWriter: { data in try await session.sendAcknowledged(data) },
+                tmuxSend: session.tmuxSend)
             self.inputGeneration = generation
             return generation
         }

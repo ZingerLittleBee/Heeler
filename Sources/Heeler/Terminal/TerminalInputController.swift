@@ -47,6 +47,7 @@ final class TerminalInputController {
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
     private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
+    private var tmuxSend: TmuxAttachSend?
     private var scroller: ((Data, Int) -> Void)?
     private var discardPendingScroll: (() -> Void)?
     private var pendingPasteText: String?
@@ -86,7 +87,8 @@ final class TerminalInputController {
         writer: @escaping (Data) -> Void,
         scroller: ((Data, Int) -> Void)? = nil,
         discardPendingScroll: (() -> Void)? = nil,
-        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil
+        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil,
+        tmuxSend: TmuxAttachSend? = nil
     ) -> SessionGeneration {
         self.discardPendingScroll?()
         nextGeneration &+= 1
@@ -97,6 +99,7 @@ final class TerminalInputController {
         userMessageIndex.reset()
         self.writer = writer
         self.acknowledgedWriter = acknowledgedWriter
+        self.tmuxSend = tmuxSend
         self.scroller = scroller
         self.discardPendingScroll = discardPendingScroll
         return generation
@@ -111,6 +114,7 @@ final class TerminalInputController {
         paintedGeneration = nil
         writer = nil
         acknowledgedWriter = nil
+        tmuxSend = nil
         scroller = nil
         userMessageIndex.reset()
         if !preservingPendingPaste {
@@ -129,6 +133,7 @@ final class TerminalInputController {
         paintedGeneration = nil
         writer = nil
         acknowledgedWriter = nil
+        tmuxSend = nil
         scroller = nil
         userMessageIndex.reset()
     }
@@ -178,6 +183,12 @@ final class TerminalInputController {
             throw TerminalAttachInputError.sessionEnded
         }
         try await acknowledgedWriter(data)
+    }
+
+    /// Checked Send's control-client surface on `generation`'s tmux Attach, or nil
+    /// once that session is gone or on another Server Kind.
+    func tmuxSend(for generation: SessionGeneration) -> TmuxAttachSend? {
+        generation == liveGeneration ? tmuxSend : nil
     }
 
     /// Sends ordinary terminal bytes if a live Attach session exists.

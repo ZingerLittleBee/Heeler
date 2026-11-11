@@ -204,6 +204,41 @@ struct TmuxPanePaintTests {
         #expect(!tracker.usesBracketedPaste)
     }
 
+    @Test func feedReadsBracketedPasteFrom37FlagAndTracksOutputBefore37AcrossRepaints() {
+        func completePaint(_ feed: inout TmuxPaneFeed, actions: [TmuxPaneFeed.Action], bracketedPaste: String) {
+            for case .send(let command, let tag) in actions {
+                let words = ScriptedTmuxHost.words(of: command.line)
+                let lines =
+                    words.first == "display-message"
+                    ? [modesLine(bracketedPaste: bracketedPaste)]
+                    : [Data()]
+                _ = feed.receive(.replied(tag: tag, TmuxControlReply(number: tag, fromClient: true, succeeded: true, lines: lines)))
+            }
+        }
+
+        var modern = TmuxPaneFeed(pane: "%3", window: "@2", session: "$9", viewRows: 4, includingHistory: false)
+        completePaint(&modern, actions: modern.start(), bracketedPaste: "0")
+        #expect(modern.bracketedPaste == .disabled)
+        _ = modern.receive(.output(pane: "%3", bytes: Data("\(escape)[?2004h".utf8)))
+        #expect(modern.bracketedPaste == .enabled)
+        _ = modern.receive(.output(pane: "%3", bytes: Data("\(escape)[?2004l".utf8)))
+        #expect(modern.bracketedPaste == .disabled)
+
+        var older = TmuxPaneFeed(pane: "%3", window: "@2", session: "$9", viewRows: 4, includingHistory: false)
+        completePaint(&older, actions: older.start(), bracketedPaste: "")
+        #expect(older.bracketedPaste == .unreportedAndNotTurnedOff)
+        // Another pane's output in the same window says nothing about `%3`.
+        _ = older.receive(.output(pane: "%9", bytes: Data("\(escape)[?2004l".utf8)))
+        #expect(older.bracketedPaste == .unreportedAndNotTurnedOff)
+        _ = older.receive(.output(pane: "%3", bytes: Data("\(escape)[?2004l".utf8)))
+        #expect(older.bracketedPaste == .disabled)
+        // A repaint whose modes line still omits bracket_paste_flag keeps what %output said.
+        completePaint(&older, actions: older.repaint(), bracketedPaste: "")
+        #expect(older.bracketedPaste == .disabled)
+        _ = older.receive(.output(pane: "%3", bytes: Data("\(escape)[?2004h".utf8)))
+        #expect(older.bracketedPaste == .enabled)
+    }
+
     @MainActor
     @Test func aSmallerPaneConfinesScrollingAndLeavesTheRestOfTheViewBlank() async throws {
         var grid: (cols: Int, rows: Int)?

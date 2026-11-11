@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// One Attach on a tmux Pane (ADR 0043): a control client in a session of
 /// Heeler's own, whose events `TmuxPaneFeed` turns into the bytes of a
@@ -86,10 +87,23 @@ actor TmuxPaneAttach {
                 await attach.applyPresence(change)
             }
         }
+        let tmuxSend = TmuxAttachSend(
+            bracketedPaste: { await attach.bracketedPaste() },
+            paste: { text, sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.sendPaste(text, sleep: sleep)
+                }
+            },
+            sendKey: { name, sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.sendKey(name, sleep: sleep)
+                }
+            })
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
             input: input,
-            onPresence: { presence.yield($0) }
+            onPresence: { presence.yield($0) },
+            tmuxSend: tmuxSend
         ) {
             input.finish()
             presence.finish()
@@ -97,6 +111,22 @@ actor TmuxPaneAttach {
             presencePump.cancel()
             await attach.close()
         }
+    }
+
+    private static func runOrdered(
+        on input: TerminalAttachInputQueue,
+        _ operation: @escaping @Sendable () async -> TmuxSendWriteOutcome
+    ) async -> TmuxSendWriteOutcome {
+        let outcome = Mutex(TmuxSendWriteOutcome.notLeft)
+        do {
+            try await input.performAcknowledged {
+                let result = await operation()
+                outcome.withLock { $0 = result }
+            }
+        } catch {
+            return outcome.withLock { $0 }
+        }
+        return outcome.withLock { $0 }
     }
 
     private func start(within limit: Duration) async throws {
@@ -483,22 +513,86 @@ actor TmuxPaneAttach {
         }
     }
 
+    private enum PasteReply {
+        case pasted
+        case refused
+        case timedOut
+    }
+
     /// Pastes `text` from the buffer named for this Attach, which `-d`
     /// deletes once pasted. A paste that failed, or that tmux did not answer
     /// in time, leaves the buffer to be deleted by that name.
     private func paste(_ text: String) async throws {
-        guard !text.isEmpty else { return }
+        _ = try await pasteFromNamedBuffer(text)
+    }
+
+    private func pasteFromNamedBuffer(
+        _ text: String,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) async throws -> PasteReply {
+        guard !text.isEmpty else { return .pasted }
         try await client.post(TmuxControlCommand(["set-buffer", "-b", session, "--", text]))
-        let pasted: Bool
+        let reply: PasteReply
         do {
-            pasted = try await client.run(
+            let pasted = try await client.run(
                 TmuxControlCommand(["paste-buffer", "-p", "-r", "-d", "-b", session, "-t", pane]),
-                timeout: Self.answerTimeout
+                timeout: Self.answerTimeout,
+                sleep: sleep
             ).succeeded
+            reply = pasted ? .pasted : .refused
         } catch TransportError.timedOut {
-            pasted = false
+            reply = .timedOut
         }
-        if !pasted { try await client.post(TmuxControlCommand(["delete-buffer", "-b", session])) }
+        if reply != .pasted {
+            try await client.post(TmuxControlCommand(["delete-buffer", "-b", session]))
+        }
+        return reply
+    }
+
+    func bracketedPaste() -> TmuxPaneFeed.BracketedPaste {
+        feed?.bracketedPaste ?? .disabled
+    }
+
+    func sendPaste(
+        _ text: String,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
+        guard !text.isEmpty else { return .left }
+        guard await client.end == nil else { return .notLeft }
+        do {
+            switch try await pasteFromNamedBuffer(text, sleep: sleep) {
+            case .pasted: return .left
+            case .refused: return .notLeft
+            case .timedOut: return .unknown
+            }
+        } catch let ended as TmuxControlClient.Ended {
+            if case .exited = ended.end { return .notLeft }
+            return .unknown
+        } catch {
+            return .unknown
+        }
+    }
+
+    func sendKey(
+        _ name: String,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
+        guard await client.end == nil else { return .notLeft }
+        do {
+            let succeeded = try await client.run(
+                TmuxControlCommand(["send-keys", "-t", pane, name]),
+                timeout: Self.answerTimeout,
+                sleep: sleep
+            ).succeeded
+            return succeeded ? .left : .notLeft
+        } catch TransportError.timedOut {
+            return .unknown
+        } catch let ended as TmuxControlClient.Ended {
+            if case .exited = ended.end { return .notLeft }
+            return .unknown
+        } catch {
+            return .unknown
+        }
     }
 
     /// Whether tmux can encode `key` for the Pane's program now: a key with no

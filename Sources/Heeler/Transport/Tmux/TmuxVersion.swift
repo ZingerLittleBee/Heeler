@@ -5,6 +5,7 @@ struct TmuxVersion: Equatable, Sendable {
     /// The oldest tmux Heeler drives, as the user reads it.
     static let minimum = "3.3"
     private static let minimumNumber = (major: 3, minor: 3)
+    private static let bracketedPasteNumber = (major: 3, minor: 7)
 
     /// The version as tmux names it: `3.7b`, `next-3.8`, `master`.
     let text: String
@@ -32,6 +33,12 @@ struct TmuxVersion: Equatable, Sendable {
     var isSupported: Bool {
         guard let major, let minor else { return true }
         return (major, minor) >= Self.minimumNumber
+    }
+
+    /// tmux 3.7 added `#{bracket_paste_flag}`.
+    var reportsBracketedPaste: Bool {
+        guard let major, let minor else { return true }
+        return (major, minor) >= Self.bracketedPasteNumber
     }
 }
 

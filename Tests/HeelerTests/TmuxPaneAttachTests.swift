@@ -595,4 +595,60 @@ struct TmuxPaneAttachTests {
         try await waitUntil("ignore-size on") { await tmux.controlClientsIgnoringSize() == [true] }
         #expect(await tmux.windowSize("@0") == (80, 24))
     }
+
+    @Test func checkedSendSurfaceSharesTheNamedBufferOrdersAfterTypingAndReportsOutcomes() async throws {
+        let tmux = await host()
+        await tmux.setBracketedPaste(true, of: "%0")
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        var output = session.output.makeAsyncIterator()
+        _ = try await output.next()
+
+        let send = try #require(session.tmuxSend)
+        #expect(await send.bracketedPaste() == .enabled)
+
+        let sessionName = try #require(await tmux.attachSessions.first)
+        session.send(Data("a".utf8))
+        let pasted = await send.paste("line 1\nline 2", { try await Task.sleep(for: $0) })
+        let submitted = await send.sendKey("Enter", { try await Task.sleep(for: $0) })
+        #expect(pasted == .left)
+        #expect(submitted == .left)
+        #expect(await tmux.buffers.isEmpty)
+        #expect(
+            await input(on: tmux) == [
+                Self.text("a"),
+                ["set-buffer", "-b", sessionName, "--", "line 1\nline 2"],
+                ["paste-buffer", "-p", "-r", "-d", "-b", sessionName, "-t", "%0"],
+                Self.key("Enter"),
+            ])
+
+        await tmux.failNextPaste()
+        let refusedPaste = await send.paste("gone", { try await Task.sleep(for: $0) })
+        #expect(refusedPaste == .notLeft)
+        try await waitUntil("the failed paste's buffer is deleted") { await tmux.buffers.isEmpty }
+
+        await tmux.holdControlReplies(true)
+        let unansweredPaste = await send.paste("held", { _ in })
+        #expect(unansweredPaste == .unknown)
+        try await waitUntil("delete-buffer queued after timeout") {
+            await commands(on: tmux).contains(["delete-buffer", "-b", sessionName])
+        }
+        await tmux.holdControlReplies(false)
+        try await waitUntil("held paste cleaned up") { await tmux.buffers.isEmpty }
+    }
+
+    @Test func olderTmuxAttachReportsUnreportedBracketedPasteUntilOutputTurnsItOff() async throws {
+        let tmux = ScriptedTmuxHost(version: "tmux 3.3a")
+        await tmux.setPanes([.make(pane: 0, command: "claude", height: 4)])
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        var output = session.output.makeAsyncIterator()
+        _ = try await output.next()
+
+        let send = try #require(session.tmuxSend)
+        #expect(await send.bracketedPaste() == .unreportedAndNotTurnedOff)
+        await tmux.paneOutput("\u{1B}[?2004lprompt", in: "%0")
+        _ = try await read(until: "prompt", from: &output)
+        #expect(await send.bracketedPaste() == .disabled)
+    }
 }
