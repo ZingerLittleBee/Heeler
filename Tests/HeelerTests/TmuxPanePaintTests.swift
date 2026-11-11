@@ -207,18 +207,23 @@ struct TmuxPanePaintTests {
     @MainActor
     @Test func aSmallerPaneConfinesScrollingAndLeavesTheRestOfTheViewBlank() async throws {
         var grid: (cols: Int, rows: Int)?
-        let terminal = TerminalScreenView.makeConfiguredTerminal(onSizeChanged: { grid = ($0, $1) })
+        let terminal = TerminalScreenView.makeConfiguredTerminal(
+            onSizeChanged: { grid = ($0, $1) },
+            notificationCenter: NotificationCenter())
         let controller = UIViewController()
         controller.view = terminal
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 520, height: 420))
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 520, height: 420),
+            rootViewController: controller)
         defer {
             window.isHidden = true
             window.rootViewController = nil
         }
         terminal.layoutIfNeeded()
-        for _ in 0..<200 where grid == nil {
+        for _ in 0..<200
+        where terminal.viewportRows == nil || grid?.rows != terminal.viewportRows
+            || terminal.terminalSession.readViewportText() == nil
+        {
             try await Task.sleep(for: .milliseconds(10))
         }
         let viewGrid = try #require(grid)

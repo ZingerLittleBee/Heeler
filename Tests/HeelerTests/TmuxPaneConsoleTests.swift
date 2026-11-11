@@ -295,7 +295,7 @@ struct TmuxPaneConsoleTests {
         let tmux = ScriptedTmuxHost()
         await tmux.setPanes([.make(command: "claude", width: 160, height: 48, arguments: Self.claude)])
         await tmux.setWindow("@0", width: 160, height: 48)
-        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 49)])
         let console = try await launch(over: tmux)
         defer { console.setHosts([]) }
 
@@ -322,7 +322,7 @@ struct TmuxPaneConsoleTests {
         let tmux = ScriptedTmuxHost()
         await tmux.setPanes([.make(command: "claude", width: 160, height: 48, arguments: Self.claude)])
         await tmux.setWindow("@0", width: 160, height: 48)
-        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 49)])
         let console = try await launch(over: tmux)
         defer { console.setHosts([]) }
 
