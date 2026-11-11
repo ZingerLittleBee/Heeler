@@ -16,6 +16,18 @@ import Testing
 struct AgentNotificationRoutingTests {
     private static let vectors = NotificationVectorFile.shared
 
+    @Test func authenticatedCoreIdentitySurvivesDecryptionAndRouting() throws {
+        let key = Data(repeating: 73, count: 32)
+        let host = UUID()
+        let record = NotificationKeyRecord(hostID: host, hostName: "Core fixture", key: key)
+        let envelope = try SealedEnvelopeCodec.seal(
+            Data(#"{"pane":"t3","kind":"fixture","status":"done","ts":1753305600,"core":"core-a"}"#.utf8),
+            using: key, authenticating: Data("HERDR-NOTIFY:1".utf8))
+        let target = AgentNotificationRouting.target(
+            userInfo: ["envelope": String(decoding: envelope, as: UTF8.self)], keys: [record])
+        #expect(target == AgentNotificationTarget(hostID: host, paneID: "t3", coreID: "core-a"))
+    }
+
     private static func vector(named name: String) throws -> NotificationVectorFile.Valid {
         try #require(vectors.valid.first { $0.name == name })
     }

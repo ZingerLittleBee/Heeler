@@ -107,6 +107,12 @@ struct ContentView: View {
             notificationRouter.agentsDidChange(app.console.agents)
             app.sceneDirectory.sceneRouteDidChange(sceneID: sceneID)
         }
+        .onChange(of: app.console.hostStatuses) {
+            // Re-admission may preserve identical rows. Pending Core-pinned
+            // actions must also be reconsidered when live identity arrives.
+            notificationRouter.agentsDidChange(app.console.agents)
+            app.sceneDirectory.sceneRouteDidChange(sceneID: sceneID)
+        }
         // Every navigation is written back, so a relaunch restores the Agent
         // this window was last on.
         .onChange(of: notificationRouter.path) { _, path in

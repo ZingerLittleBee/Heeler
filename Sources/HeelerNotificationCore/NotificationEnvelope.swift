@@ -19,10 +19,13 @@ struct NotificationPayload: Sendable, Equatable {
     /// The Agent's terminal title, stripped of status glyphs: what the agent
     /// is working on. Nil under the same conditions as `project`.
     let title: String?
+    /// Authenticated permanent identity for amux-managed Core notifications.
+    /// Legacy TUI/ordinary Helper envelopes omit it.
+    let coreID: String?
 
     init(
         paneID: String, agentKind: String, status: AgentStatus, timestamp: Date,
-        project: String? = nil, title: String? = nil
+        project: String? = nil, title: String? = nil, coreID: String? = nil
     ) {
         self.paneID = paneID
         self.agentKind = agentKind
@@ -30,6 +33,7 @@ struct NotificationPayload: Sendable, Equatable {
         self.timestamp = timestamp
         self.project = project
         self.title = title
+        self.coreID = coreID
     }
 }
 
@@ -130,13 +134,16 @@ enum NotificationEnvelope {
         else {
             throw .badPayload(reason: "ts must be a positive unix-seconds integer")
         }
+        if let core = wire.core, core.isEmpty || core.utf8.count > 256 {
+            throw .badPayload(reason: "core must be a non-empty bounded identity")
+        }
         // Display-only and additive: a payload without them still renders,
         // one step less specific. Empty strings mean "the Host had nothing",
         // which is the same thing as absent.
         return NotificationPayload(
             paneID: pane, agentKind: kind, status: AgentStatus(rawValue: status),
             timestamp: Date(timeIntervalSince1970: TimeInterval(timestamp)),
-            project: nonEmpty(wire.project), title: nonEmpty(wire.title))
+            project: nonEmpty(wire.project), title: nonEmpty(wire.title), coreID: wire.core)
     }
 
     private static func nonEmpty(_ text: String?) -> String? {
@@ -154,6 +161,7 @@ enum NotificationEnvelope {
         var ts: Double?
         var project: String?
         var title: String?
+        var core: String?
     }
 }
 
