@@ -526,6 +526,16 @@ enum TmuxSendWriteOutcome: Equatable, Sendable {
     case unknown
 }
 
+/// One `capture-pane` on the Attach's control client.
+enum TmuxPaneCapture: Equatable, Sendable {
+    /// The Pane's screen, lines joined the way `capture-pane -p` prints them.
+    case text(String)
+    /// The client had ended, or tmux answered `%error`.
+    case notLeft
+    /// The command left this side and tmux never answered.
+    case unknown
+}
+
 /// Checked Send's control-client operations on one tmux Attach (ADR 0043).
 struct TmuxAttachSend: Sendable {
     typealias Sleep = @Sendable (Duration) async throws -> Void
@@ -534,6 +544,8 @@ struct TmuxAttachSend: Sendable {
     let paste: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
     let sendKey: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
     let sendHexByte: @Sendable (UInt8, @escaping Sleep) async -> TmuxSendWriteOutcome
+    /// The Pane's screen, after anything already queued on this Attach.
+    let capturePane: @Sendable (@escaping Sleep) async -> TmuxPaneCapture
     let settle: @Sendable (@escaping Sleep) async -> TmuxSendWriteOutcome
 }
 

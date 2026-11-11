@@ -22,7 +22,7 @@ enum TmuxStatusWrite {
         pane: String,
         clearAsk: Bool,
         paths: TmuxPaths,
-        run: (TmuxLaunch.Command) async throws -> GitExecResult
+        run: @Sendable (TmuxLaunch.Command) async throws -> GitExecResult
     ) async -> Outcome {
         let next = TmuxProgramStatus.continued(current, by: report)
         let command = TmuxLaunch.compareAndSetStatus(

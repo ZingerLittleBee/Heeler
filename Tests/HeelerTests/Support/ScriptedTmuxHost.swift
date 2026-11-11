@@ -495,6 +495,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private(set) var buffers: [String: String] = [:]
     private var failingPastes = 0
     private var failingSendKeys = 0
+    /// Successful `send-keys` to let through before `failingSendKeys` applies.
+    private var sendKeysBeforeFailure = 0
+    private var failingCaptures = 0
     /// When true, outgoing control-mode replies wait in FIFO order while
     /// incoming commands still arrive in `controlCommands`.
     private var holdingControlReplies = false
@@ -634,7 +637,28 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     /// The next `send-keys` fails, as it does when its pane went away.
     func failNextSendKeys() {
-        failingSendKeys += 1
+        failSendKeys(1)
+    }
+
+    /// `count` `send-keys` fail, after `skip` of them succeed. A Stop that
+    /// sends two keys uses `skip` so only the later one fails.
+    func failSendKeys(_ count: Int, after skip: Int = 0) {
+        sendKeysBeforeFailure = skip
+        failingSendKeys = count
+    }
+
+    /// The next `capture-pane` fails, as it does when its pane went away.
+    func failNextCapture() {
+        failingCaptures += 1
+    }
+
+    /// Sets `@heeler-status` without telling an inventory loop, as another
+    /// writer does between two of Heeler's looks.
+    func setStatusQuietly(_ status: String, of pane: String, on name: String = "default") {
+        let socket = Self.socketPath(name, in: loginDirectory)
+        guard var listed = panes[socket], let index = listed.firstIndex(where: { $0.paneID == pane }) else { return }
+        listed[index].status = status
+        panes[socket] = listed
     }
 
     func silenceNextControlClient() {
@@ -859,6 +883,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                 ]), []
             )
         case "capture-pane":
+            if failingCaptures > 0 {
+                failingCaptures -= 1
+                return (block(["can't find pane: \(pane.paneID)"], succeeded: false), [])
+            }
             if words.contains("-a") { return (block([]), []) }
             let rows: [String]
             if let explicit = screens[client.socket]?[pane.paneID] {
@@ -898,6 +926,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         case "kill-window", "kill-session":
             return (block([]), [])
         case "send-keys":
+            if sendKeysBeforeFailure > 0 {
+                sendKeysBeforeFailure -= 1
+                return (block([]), [])
+            }
             if failingSendKeys > 0 {
                 failingSendKeys -= 1
                 return (block(["can't find pane: \(Self.value(of: "-t", in: words) ?? "")"], succeeded: false), [])

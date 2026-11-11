@@ -104,6 +104,11 @@ actor TmuxPaneAttach {
                     await attach.sendHexByte(byte, sleep: sleep)
                 }
             },
+            capturePane: { sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.capturePane(sleep: sleep)
+                }
+            },
             settle: { sleep in
                 await Self.runOrdered(on: input) {
                     await attach.settleSend(sleep: sleep)
@@ -121,6 +126,23 @@ actor TmuxPaneAttach {
             presencePump.cancel()
             await attach.close()
         }
+    }
+
+    static func runOrdered(
+        on input: TerminalAttachInputQueue,
+        _ operation: @escaping @Sendable () async throws -> TmuxPaneCapture
+    ) async -> TmuxPaneCapture {
+        let outcome = Mutex(TmuxPaneCapture.notLeft)
+        do {
+            try await input.performAcknowledged {
+                outcome.withLock { $0 = .unknown }
+                let result = try await operation()
+                outcome.withLock { $0 = result }
+            }
+        } catch {
+            return outcome.withLock { $0 }
+        }
+        return outcome.withLock { $0 }
     }
 
     static func runOrdered(
@@ -602,6 +624,26 @@ actor TmuxPaneAttach {
         sleep: @escaping @Sendable (Duration) async throws -> Void
     ) async -> TmuxSendWriteOutcome {
         await runSendCommand(["send-keys", "-t", pane, name], sleep: sleep)
+    }
+
+    /// `capture-pane -e -p`: the screen a Stop guard reads, escape sequences kept.
+    func capturePane(
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxPaneCapture {
+        guard await client.end == nil else { return .notLeft }
+        let sent = Mutex(false)
+        do {
+            let reply = try await client.run(
+                TmuxControlCommand(["capture-pane", "-p", "-e", "-t", pane]),
+                timeout: Self.answerTimeout,
+                sleep: sleep,
+                onSent: { sent.withLock { $0 = true } })
+            guard reply.succeeded else { return .notLeft }
+            let text = reply.lines.map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n")
+            return .text(text)
+        } catch {
+            return sent.withLock { $0 } ? .unknown : .notLeft
+        }
     }
 
     func sendHexByte(

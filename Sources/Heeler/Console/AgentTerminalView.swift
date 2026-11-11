@@ -1405,7 +1405,7 @@ struct AgentTerminalView: View {
     /// The Composer's Stop: one Esc over the Attach PTY, or on a core Host the
     /// core's own interrupt, or nil to keep Send (`ConsoleStore.terminalInterrupt`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        console.terminalInterrupt(for: agent, keepingTo: session.corePin) { interruptAgent() }
+        console.terminalInterrupt(for: agent, keepingTo: session.corePin, attach: attach) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the

@@ -241,6 +241,29 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         inventoryCore.map(pin.admits) ?? true
     }
 
+    /// The listed Pane, for a check that must see the process still there.
+    func inventoryPane(_ paneID: String) -> TmuxInventory.Pane? {
+        inventory?.panes.first { $0.paneID == paneID }
+    }
+
+    /// Heeler's own write of this Pane's `@heeler-status` (ADR 0044). Idle and
+    /// working for Claude Code also clear `@heeler-ask`. One compare: a value
+    /// that changed first is left as it is.
+    func writeHeelerStatus(_ report: TmuxStatusReport, on paneID: String) async -> TmuxStatusWrite.Outcome {
+        guard let pane = inventoryPane(paneID), let paths = server?.paths else {
+            return .failed
+        }
+        let clearAsk = report.app == "claude-code" && (report.state == "idle" || report.state == "working")
+        let session = session
+        return await TmuxStatusWrite.apply(
+            report, expecting: pane.status, pane: paneID, clearAsk: clearAsk, paths: paths
+        ) { command in
+            try await session.withTransport { transport in
+                try await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+            }
+        }
+    }
+
     /// Whether the last inventory snapshot already shows `paneID` gone or dead.
     func hasPaneEnded(_ paneID: String) -> Bool {
         guard !isAwaitingSnapshot else { return false }
@@ -872,6 +895,29 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     /// Checked Composer Send (ADRs 0035 and 0043). `live` follows a projection
     /// replaced after the Composer was opened.
+    /// Terminal Stop for a known Agent: Chat's keys for that program, including
+    /// Grok Build's Ctrl+C. An unlisted program keeps Send.
+    func terminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        attach: AgentAttachStore?,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt? {
+        guard let kind = agentsByPane[paneID]?.agent.kind, let program = ChatProgram(rawValue: kind) else {
+            return nil
+        }
+        let plan = ChatStopPlan.standard(for: program)
+        let stop = TmuxComposerStop(
+            paneID: paneID, program: program, plan: plan,
+            projection: { live() as? TmuxConsoleProjection },
+            corePin: corePin, clock: sendClock, attach: attach)
+        return AgentComposerInterrupt(
+            wait: plan.wait, accessibilityHint: plan.accessibilityHint
+        ) {
+            await stop.perform()
+        }
+    }
+
     func checkedComposerSend(
         for paneID: String,
         keepingTo corePin: TerminalCorePin,

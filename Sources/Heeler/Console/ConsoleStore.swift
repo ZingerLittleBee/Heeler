@@ -860,11 +860,17 @@ final class ConsoleStore {
     func terminalInterrupt(
         for agent: ConsoleAgent,
         keepingTo corePin: TerminalCorePin? = nil,
+        attach: AgentAttachStore? = nil,
         pressEsc: @escaping @MainActor () async -> AgentInterruptOutcome
     ) -> AgentComposerInterrupt? {
         guard capabilities(for: agent.hostID).composerStop else { return nil }
         let hostID = agent.hostID
         let pin = corePin ?? TerminalCorePin()
+        if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            return tmux.terminalStop(
+                for: agent.agent.paneID, keepingTo: pin, attach: attach,
+                live: { [weak self] in self?.projections[hostID] })
+        }
         switch projections[hostID]?.checkedTerminalStop(
             for: agent.agent.paneID, keepingTo: pin,
             live: { [weak self] in self?.projections[hostID] }
