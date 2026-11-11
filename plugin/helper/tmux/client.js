@@ -11,7 +11,7 @@ export function runStoredTmux(target, args, { timeoutMs = DEFAULT_TIMEOUT_MS, si
   return new Promise((resolve) => {
     execFile(
       target.tmux,
-      ["-N", "-S", target.socket, ...args],
+      ["-N", "-S", target.socket, "-u", ...args],
       {
         timeout: timeoutMs,
         killSignal: "SIGKILL",

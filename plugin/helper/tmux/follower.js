@@ -210,7 +210,7 @@ export function followTmuxServer(
   };
 
   const sample = async () => {
-    const listed = await runStoredTmux(target, ["-u", "list-panes", "-a", "-F", LIST_PANES_FORMAT], {
+    const listed = await runStoredTmux(target, ["list-panes", "-a", "-F", LIST_PANES_FORMAT], {
       signal,
       buffer: true,
     });
