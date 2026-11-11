@@ -35,7 +35,7 @@ enum AgentNotificationRouting {
     ) -> AgentNotificationTarget? {
         guard let (record, payload) = NotificationEnvelope.open(userInfo: userInfo, keys: keys)
         else { return nil }
-        return AgentNotificationTarget(hostID: record.hostID, paneID: payload.paneID)
+        return AgentNotificationTarget(hostID: record.hostID, paneID: payload.paneID, coreID: payload.coreID)
     }
 
     /// The presentation-time rule (spec #68, user story 8), applied by the
