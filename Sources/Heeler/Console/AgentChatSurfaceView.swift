@@ -460,7 +460,11 @@ struct AgentChatSurfaceView: View {
             // its bottom inset, as resizing it each frame is slow and leaves it
             // out of step with the edge it measures against. The tools dock is
             // not a keyboard that moves.
-            composerChrome
+            //
+            // In a body of its own: its switcher lists every Agent, and read
+            // in the surface's body each one's status change would
+            // re-evaluate the conversation with the Composer.
+            MainActorContent { composerChrome }
                 .keyboardLiftPadding(
                     keyboardInset, restingInset: composerKeyboardLayout.contentInset,
                     isEnabled: composerKeyboardPresentation != .tools)

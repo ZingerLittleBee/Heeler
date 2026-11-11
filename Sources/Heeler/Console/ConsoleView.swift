@@ -168,7 +168,7 @@ struct ConsoleView: View {
     @State private var tabBarRequest = ConsoleTabBarBridge.Request()
     /// Which pass of `body` built the rows and the detail now showing; see
     /// `KeyedContent`.
-    @State private var contentPass = ConsoleContentPass()
+    @State private var contentPass = ContentPass()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -1589,6 +1589,7 @@ struct ConsoleView: View {
                     // would reuse the old view's state.
                     .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
                 }
+                .equatable()
             } else {
                 // The Agent is gone from the list, but not necessarily
                 // because its pane went: a failed Host empties the list the

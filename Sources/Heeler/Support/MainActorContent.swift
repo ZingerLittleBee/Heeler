@@ -24,12 +24,16 @@ struct MainActorContent<Content: View>: View {
 ///
 /// The closure a skipped pass leaves in place captured its builder as it was
 /// then, environment values included, so the key must also change whenever
-/// the builder itself is rebuilt. `ConsoleContentPass` is that part of a key.
+/// the builder itself is rebuilt. `ContentPass` is that part of a key.
 ///
-/// Equatable, and not wrapped in `EquatableView`: SwiftUI compares a view
-/// that holds a reference with its own `==`, while a List takes an
-/// `EquatableView` for one opaque row and misses the separator, insets and
-/// swipe actions the content sets on itself.
+/// A List's row is used as it is: the List compares it with `==`, while it
+/// takes an `EquatableView` for one opaque row and misses the separator,
+/// insets and swipe actions the content sets on itself. Anywhere else the
+/// site adds `.equatable()`.
+///
+/// What the content's own initializers read counts as read here: a detail
+/// whose initializer looked through every Agent was rebuilt with each one's
+/// status change, whatever its key said.
 struct KeyedContent<Key: Equatable & Sendable, Content: View>: View, Equatable {
     let key: Key
     @ViewBuilder let content: @MainActor () -> Content
@@ -46,7 +50,7 @@ struct KeyedContent<Key: Equatable & Sendable, Content: View>: View, Equatable {
 /// Counts a view's body passes, as the part of a `KeyedContent` key that
 /// says the view which built the content has not been rebuilt since.
 @MainActor
-final class ConsoleContentPass {
+final class ContentPass {
     private(set) var number = 0
 
     /// Called from the view's `body`.

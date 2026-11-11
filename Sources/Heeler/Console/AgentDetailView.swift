@@ -53,6 +53,9 @@ struct AgentDetailView: View {
     @State private var attachReference: AgentDetailAttachReference
     private let permitsRetention: Bool
     @State private var isResolvingTerminal = false
+    /// Which pass of `body` built the Chat surface now showing; see
+    /// `KeyedContent`.
+    @State private var contentPass = ContentPass()
     @State private var isChoosingTerminal = false
     @State private var terminalOpenFailure: String?
     @State private var createdTerminal = CreatedWorkspaceTerminal()
@@ -281,7 +284,10 @@ struct AgentDetailView: View {
     private static func openingChoice(
         for id: ConsoleAgent.ID, console: ConsoleStore, preferred: AgentDetailSurface
     ) -> AgentDetailSurface {
-        console.savedChatEntries[id] != nil ? .chat : preferred
+        // Asked while the Console builds this detail, so it must not read
+        // every Agent: the Console would build the detail again with each
+        // one's status change.
+        console.isSavedChat(id) ? .chat : preferred
     }
 
     /// The terminal is on screen: no Shell Terminal, no Changes over it, and
@@ -417,6 +423,8 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentDetailView.body")
+        let _ = contentPass.advance()
         Group {
             if let shell = openTerminal.shell {
                 ShellTerminalView(
@@ -435,26 +443,39 @@ struct AgentDetailView: View {
                 }
                 .id(openTerminal.destination)
             } else if effectiveSurface == .chat, let chatProgram {
-                AgentChatSurfaceView(
-                    agent: agent,
-                    program: chatProgram,
-                    console: console,
-                    terminal: terminal,
-                    hosts: hosts,
-                    session: session,
-                    keyboardHandoff: keyboardHandoff,
-                    keyboardInset: keyboardInset,
-                    // Chat holds no terminal channel, so a detail that lost
-                    // it to another window still shows Chat.
-                    isOnStage: { isVisible() && showsChatSurface },
-                    onSwitch: onSwitch,
-                    onClosed: onClosed,
-                    canOpenTerminal: canOpenTerminal,
-                    isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
-                    openTerminal: { openWorkspaceTerminal() },
-                    showChanges: offersChanges ? { changes.open() } : nil,
-                    workspaceDrawer: workspaceDrawer,
-                    selectSurface: { selectSurface($0) })
+                // In a body of its own: the Workspace's terminals are read
+                // from the Console's, which change with every Agent's
+                // status. Chat is rebuilt only when its own Workspace's did.
+                MainActorContent {
+                    let drawer = workspaceDrawer
+                    let canOpenTerminal = canOpenTerminal
+                    KeyedContent(
+                        key: AgentChatSurfaceKey(
+                            pass: contentPass.number, drawer: drawer, canOpenTerminal: canOpenTerminal)
+                    ) {
+                        AgentChatSurfaceView(
+                            agent: agent,
+                            program: chatProgram,
+                            console: console,
+                            terminal: terminal,
+                            hosts: hosts,
+                            session: session,
+                            keyboardHandoff: keyboardHandoff,
+                            keyboardInset: keyboardInset,
+                            // Chat holds no terminal channel, so a detail that lost
+                            // it to another window still shows Chat.
+                            isOnStage: { isVisible() && showsChatSurface },
+                            onSwitch: onSwitch,
+                            onClosed: onClosed,
+                            canOpenTerminal: canOpenTerminal,
+                            isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
+                            openTerminal: { openWorkspaceTerminal() },
+                            showChanges: offersChanges ? { changes.open() } : nil,
+                            workspaceDrawer: drawer,
+                            selectSurface: { selectSurface($0) })
+                    }
+                    .equatable()
+                }
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -531,9 +552,7 @@ struct AgentDetailView: View {
             prepareRetainedAgent()
             updateFocus()
         }
-        .onChange(of: focusViewingState) {
-            updateFocus()
-        }
+        .modifier(AgentFocusFeed(state: { focusViewingState }, update: { updateFocus() }))
         .onDisappear {
             hasAppeared = false
             focus.leave()
@@ -553,17 +572,15 @@ struct AgentDetailView: View {
             openTerminal.transportGenerationDidChange(generation)
         }
         .onChange(of: activity.activationCount) { prepareRetainedAgent() }
-        .confirmationDialog("Open Terminal", isPresented: $isChoosingTerminal, titleVisibility: .visible) {
-            ForEach(workspaceShells) { @Sendable target in
-                Button(target.displayTitle + " · " + (target.tabLabel ?? String(localized: "Terminal"))) {
-                    showWorkspaceTerminal(target)
-                }
-            }
-            if agent.shellTerminalCreationRequest != nil, console.capabilities(for: agent.hostID).startsTerminals {
-                Button("New Terminal") { createWorkspaceTerminal() }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
+        .modifier(AgentTerminalChoice(
+            isPresented: $isChoosingTerminal,
+            shells: { workspaceShells },
+            offersNewTerminal: {
+                agent.shellTerminalCreationRequest != nil
+                    && console.capabilities(for: agent.hostID).startsTerminals
+            },
+            show: { showWorkspaceTerminal($0) },
+            create: { createWorkspaceTerminal() }))
         .modifier(AgentStatusExplanationPresenter(console: console, agentID: agent.id))
         .alert("Couldn't Open Terminal", isPresented: Binding(
             get: { terminalOpenFailure != nil }, set: { if !$0 { terminalOpenFailure = nil } })
@@ -795,6 +812,67 @@ struct AgentDetailView: View {
                 terminalOpenFailure = AgentOpenTerminalStore.presentation(for: error).message
             }
         }
+    }
+}
+
+/// Follows what the detail tells the focus coordinator, from a body of its
+/// own.
+///
+/// The state looks its Agent up among all of them. Read in the detail's
+/// body it re-evaluated the detail, and the surface the detail builds, with
+/// every Agent's status change.
+private struct AgentFocusFeed: ViewModifier {
+    let state: @MainActor () -> AgentFocusCoordinator.ViewingState
+    let update: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: state()) { update() }
+    }
+}
+
+/// Open Terminal's choice among the Workspace's Shell Terminals, in a body of
+/// its own for the reason `AgentFocusFeed` has one: the choices are read from
+/// the Console's terminals, which change with every Agent's status.
+private struct AgentTerminalChoice: ViewModifier {
+    @Binding var isPresented: Bool
+    let shells: @MainActor () -> [ConsoleTerminal]
+    let offersNewTerminal: @MainActor () -> Bool
+    let show: @MainActor (ConsoleTerminal) -> Void
+    let create: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Open Terminal", isPresented: $isPresented, titleVisibility: .visible) {
+            ForEach(shells()) { @Sendable target in
+                Button(target.displayTitle + " · " + (target.tabLabel ?? String(localized: "Terminal"))) {
+                    show(target)
+                }
+            }
+            if offersNewTerminal() {
+                Button("New Terminal") { create() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+/// What the detail hands Chat from the Console's terminals; see
+/// `KeyedContent`.
+private struct AgentChatSurfaceKey: Equatable, Sendable {
+    let pass: Int
+    let terminals: [ConsoleTerminal]?
+    let selectedPaneID: String?
+    let offersNewTerminal: Bool
+    let isCreatingTerminal: Bool
+    let canOpenTerminal: Bool
+
+    @MainActor
+    init(pass: Int, drawer: WorkspaceTerminalDrawer?, canOpenTerminal: Bool) {
+        self.pass = pass
+        terminals = drawer?.terminals
+        selectedPaneID = drawer?.selectedPaneID
+        offersNewTerminal = drawer?.onNewTerminal != nil
+        isCreatingTerminal = drawer?.isCreatingTerminal ?? false
+        self.canOpenTerminal = canOpenTerminal
     }
 }
 

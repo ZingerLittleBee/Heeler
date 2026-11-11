@@ -1984,10 +1984,12 @@ final class ConsoleStore {
     }
 
     /// One row's answer to `savedChatEntries`, cheap enough for a detail
-    /// screen to ask on every render.
+    /// screen to ask on every render. It asks who is listed, not what they
+    /// are doing, so a detail that asks is left alone by other Agents'
+    /// status changes.
     func isSavedChat(_ id: ConsoleAgent.ID) -> Bool {
         guard let projection = projections[id.hostID], projection.showsSavedChats,
-            !agents.contains(where: { $0.id == id })
+            !listedAgentIDs.contains(id)
         else { return false }
         return cachedChats.agents(on: projection.host).contains { $0.id == id }
     }
