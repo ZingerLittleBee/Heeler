@@ -53,6 +53,9 @@ Entries reference the pull request that made the change.
   Agent on an Agent's terminal, takes over once the keyboard has gone down,
   so Chat's own buttons, such as Choose a Conversation, are not left under
   the keyboard. (PR #705)
+- Say what the Host Helper is before it is installed: its sheet now reads as
+  a background service for Agent Notifications, Live Activity, Usage, and Pi
+  and Oh My Pi Chat, rather than naming only the first three.
 
 ### Fixed
 

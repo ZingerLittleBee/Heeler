@@ -445,7 +445,7 @@ struct HostHelperPresentation: Sendable, Equatable {
     let needsAttention: Bool
 
     static let featuresSentence =
-        String(localized: "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper.")
+        String(localized: "A background service for Agent Notifications, Live Activity, Usage, and Pi and Oh My Pi Chat.")
 
     /// `canRepair` is false when this device offers no Repair for that status,
     /// so the copy names what does change it.
