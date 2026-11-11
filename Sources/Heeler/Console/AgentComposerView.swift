@@ -797,7 +797,8 @@ struct AgentComposerView: View {
     private var primaryControl: AgentComposerPrimaryControl {
         AgentComposerPrimaryControl(
             status: status, draft: store.draft,
-            canStop: store.isConnectionAvailable && interrupt != nil && !store.stop.isHeldAfterSend)
+            canStop: store.isConnectionAvailable && interrupt != nil && !store.stop.isHeldAfterSend,
+            alsoWhileBlocked: store.offersStopWhileBlocked)
     }
 
     private var inputAreaInsets: EdgeInsets {

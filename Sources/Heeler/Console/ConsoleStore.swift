@@ -839,6 +839,7 @@ final class ConsoleStore {
             guard let self else { throw TransportError.cancelled }
             return try await self.promptAgent(params, on: hostID)
         }
+        composer.offersStopWhileBlocked = catalog.first(where: { $0.id == hostID })?.serverKind == .tmux
         composer.isConnectionAvailable = isHostReadyForInput(hostID)
         let session = AgentComposerSession(
             composer: composer,

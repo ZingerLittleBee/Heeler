@@ -33,6 +33,23 @@ struct AgentComposerPrimaryControlTests {
     @Test func aSurfaceWithoutAnInterruptKeepsSend() {
         #expect(AgentComposerPrimaryControl(status: .working, draft: "", canStop: false) == .send)
     }
+
+    @Test func blockedOffersStopOnlyWhenTheHostKeepsItThere() {
+        #expect(
+            AgentComposerPrimaryControl(status: .blocked, draft: "", canStop: true, alsoWhileBlocked: true)
+                == .stop)
+        #expect(
+            AgentComposerPrimaryControl(
+                status: .blocked, draft: "and the tests", canStop: true, alsoWhileBlocked: true)
+                == .send)
+        for status in [AgentStatus.idle, .done, .unknown] {
+            #expect(
+                AgentComposerPrimaryControl(
+                    status: status, draft: "", canStop: true, alsoWhileBlocked: true)
+                    == .send,
+                "status \(status.rawValue)")
+        }
+    }
 }
 
 @Suite("Agent Composer collapse")
@@ -130,6 +147,29 @@ struct AgentComposerStopStoreTests {
         await wait?.value
         #expect(store.phase == .ready, "a wait the status overtook must not come back")
         #expect(esc.count == 1)
+    }
+
+    @Test func blockedEndsTheWaitUnlessStopStaysOffered() async {
+        let ending = ScriptedTransportCallGate()
+        let endingStore = AgentComposerStopStore(sleep: { _ in await ending.waitUntilOpen() })
+        let endingWait = endingStore.stop(using: { .sent })
+        await ending.waitForEntry()
+        endingStore.agentStatusChanged(to: .blocked)
+        #expect(endingStore.phase == .ready)
+        await ending.open()
+        await endingWait?.value
+
+        let keeping = ScriptedTransportCallGate()
+        let keepingStore = AgentComposerStopStore(sleep: { _ in await keeping.waitUntilOpen() })
+        let keepingWait = keepingStore.stop(using: { .sent })
+        await keeping.waitForEntry()
+        keepingStore.agentStatusChanged(to: .blocked, keepWaitingWhileBlocked: true)
+        #expect(keepingStore.isStopping)
+        keepingStore.agentStatusChanged(to: .idle, keepWaitingWhileBlocked: true)
+        #expect(keepingStore.phase == .ready)
+        await keeping.open()
+        await keepingWait?.value
+        #expect(keepingStore.phase == .ready)
     }
 
     @Test func workingUpdatesKeepWaiting() async {

@@ -77,6 +77,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
     /// Recovery keeps the draft editable, but never queues it for delivery.
     var isConnectionAvailable = true
+    /// tmux offers Stop while the Agent is Blocked as well as Working.
+    var offersStopWhileBlocked = false
     /// Why the last Send or Retry was refused. Changing the draft ends it,
     /// as does the next Send that goes; a transient refusal also ends when
     /// Agent Status changes, since the Agent it described has moved on.
@@ -488,7 +490,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard agentStatus != status else { return }
         agentStatus = status
         statusRevision &+= 1
-        stop.agentStatusChanged(to: status)
+        stop.agentStatusChanged(to: status, keepWaitingWhileBlocked: offersStopWhileBlocked)
         if notice?.refusal.endsWhenStatusBecomes(status) == true { notice = nil }
         for index in messages.indices {
             guard messages[index].tracksAgentProgress else { continue }

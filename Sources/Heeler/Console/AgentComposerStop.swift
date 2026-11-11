@@ -69,7 +69,8 @@ struct AgentComposerInterrupt {
 
 /// The Composer's trailing button. While the Agent is Working and the draft
 /// is blank it is Stop, which presses Esc in the Agent's program; with text
-/// it stays Send, so a prompt can still reach the running turn. Claude Code
+/// it stays Send, so a prompt can still reach the running turn. A Host that
+/// offers Stop while Blocked does so on a blank draft there too. Claude Code
 /// and Codex queue it behind the turn; Pi steers the turn with it, and Chat
 /// holds it for Oh My Pi, whose steer can background a running command.
 /// Esc in Pi or Oh My Pi puts a steer the turn has not taken yet, Chat's or
@@ -79,9 +80,10 @@ enum AgentComposerPrimaryControl: Equatable {
     case send
     case stop
 
-    init(status: AgentStatus, draft: String, canStop: Bool) {
+    init(status: AgentStatus, draft: String, canStop: Bool, alsoWhileBlocked: Bool = false) {
         let isBlank = !draft.contains(where: { !$0.isWhitespace })
-        self = canStop && status == .working && isBlank ? .stop : .send
+        let offered = status == .working || (alsoWhileBlocked && status == .blocked)
+        self = canStop && offered && isBlank ? .stop : .send
     }
 }
 
@@ -223,9 +225,11 @@ final class AgentComposerStopStore {
     }
 
     /// Any status but Working ends the wait: the Agent stopped, finished,
-    /// or turned to a dialog, and Stop no longer shows.
-    func agentStatusChanged(to status: AgentStatus) {
+    /// or turned to a dialog, and Stop no longer shows. A Host that still
+    /// offers Stop while Blocked keeps the wait through that status.
+    func agentStatusChanged(to status: AgentStatus, keepWaitingWhileBlocked: Bool = false) {
         guard status != .working else { return }
+        if keepWaitingWhileBlocked, status == .blocked { return }
         generation += 1
         phase = .ready
     }

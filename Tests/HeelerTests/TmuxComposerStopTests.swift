@@ -145,6 +145,35 @@ struct TmuxComposerStopTests {
         await fixture.finish()
     }
 
+    @Test func stopStaysOfferedWhileTheAgentIsBlocked() async throws {
+        let fixture = try await Fixture(command: "claude", app: "claude-code")
+        let composer = fixture.console.composerSession(for: fixture.agent).composer
+        #expect(composer.offersStopWhileBlocked)
+        #expect(
+            AgentComposerPrimaryControl(
+                status: .blocked, draft: "", canStop: true, alsoWhileBlocked: composer.offersStopWhileBlocked)
+                == .stop)
+        #expect(
+            AgentComposerPrimaryControl(
+                status: .idle, draft: "", canStop: true, alsoWhileBlocked: composer.offersStopWhileBlocked)
+                == .send)
+
+        let gate = ScriptedTransportCallGate()
+        let wait = composer.stop.stop {
+            await gate.waitUntilOpen()
+            return .sent
+        }
+        await gate.waitForEntry()
+        composer.agentStatusDidChange(.blocked)
+        #expect(composer.stop.isStopping)
+        composer.agentStatusDidChange(.idle)
+        #expect(composer.stop.phase == .ready)
+        await gate.open()
+        await wait?.value
+        #expect(composer.stop.phase == .ready)
+        await fixture.finish()
+    }
+
     @Test func aBlockedClaudeCodeStopStillSendsEscapeAndWritesIdle() async throws {
         let fixture = try await Fixture(command: "claude", app: "claude-code", state: "blocked", turn: 1, blocked: 2)
         try await fixture.live()
