@@ -16,9 +16,9 @@ final class TerminalRetentionBudget {
         var errorDescription: String? {
             switch self {
             case .alreadyVisible:
-                "This terminal is already open in another window."
+                String(localized: "This terminal is already open in another window.")
             case .allConnectionsVisible:
-                "Close another terminal view on this Host before opening this terminal."
+                String(localized: "Close another terminal view on this Host before opening this terminal.")
             }
         }
     }

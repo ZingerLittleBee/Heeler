@@ -15,11 +15,11 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .agents: "Agents"
-        case .terminals: "Terminals"
-        case .usage: "Usage"
-        case .hosts: "Hosts"
-        case .settings: "Settings"
+        case .agents: String(localized: "Agents")
+        case .terminals: String(localized: "Terminals")
+        case .usage: String(localized: "Usage")
+        case .hosts: String(localized: "Hosts")
+        case .settings: String(localized: "Settings")
         }
     }
 
@@ -39,8 +39,8 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
 
     var title: String {
         switch self {
-        case .byWorkspace: "By Workspace"
-        case .byHost: "By Host"
+        case .byWorkspace: String(localized: "By Workspace")
+        case .byHost: String(localized: "By Host")
         }
     }
 
@@ -79,14 +79,15 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
 
     /// What VoiceOver hears for the card's header.
     var headerAccessibilityValue: String {
-        "\(TerminalCount.text(terminals.count)), \(isCollapsed ? "Collapsed" : "Expanded")"
+        let state = isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded")
+        return [TerminalCount.text(terminals.count), state].joined(separator: ", ")
     }
 }
 
 /// A count of shells as the Terminals list words it.
 enum TerminalCount {
     static func text(_ count: Int) -> String {
-        count == 1 ? "1 terminal" : "\(count) terminals"
+        count == 1 ? String(localized: "1 terminal") : String(localized: "\(count) terminals")
     }
 }
 
@@ -125,29 +126,57 @@ struct TerminalRowPresentation: Equatable {
         var parts: [String] = []
         if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
         if showsTab, let tab { parts.append(tab) }
-        if terminal.isRestarting { parts.append("Restarting") }
-        parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
+        if terminal.isRestarting { parts.append(String(localized: "Restarting")) }
+        parts.append(terminal.displayCwd.isEmpty ? String(localized: "Path unavailable") : terminal.displayCwd)
         subtitle = parts.joined(separator: " · ")
     }
 }
 
-/// How far closing one shell reaches, widest first.
-enum TerminalCloseScope: String, Equatable {
-    case workspace = "Workspace"
-    case tab = "Tab"
-    case pane = "Pane"
+/// How far closing one shell, or an Agent's pane, reaches, widest first.
+enum TerminalCloseScope: Equatable {
+    case workspace
+    case tab
+    case pane
+
+    /// The close action: a menu item or the confirmation's button.
+    var actionTitle: String {
+        switch self {
+        case .workspace: String(localized: "Close Workspace")
+        case .tab: String(localized: "Close Tab")
+        case .pane: String(localized: "Close Pane")
+        }
+    }
+
+    /// The confirmation's title.
+    var confirmationTitle: String {
+        switch self {
+        case .workspace: String(localized: "Close Workspace?")
+        case .tab: String(localized: "Close Tab?")
+        case .pane: String(localized: "Close Pane?")
+        }
+    }
 
     /// Names the Tab and Workspace being closed, since rows in one directory
     /// can share a title.
     func message(for terminal: ConsoleTerminal) -> String {
-        let workspace = terminal.workspaceLabel ?? "this Workspace"
+        let tab = terminal.displayTabTitle
+        guard let workspace = terminal.workspaceLabel else {
+            switch self {
+            case .workspace:
+                return String(localized: "Are you sure you want to also close this workspace? It is the workspace's last tab.")
+            case .tab:
+                return String(localized: "Closes \(tab) in this Workspace.")
+            case .pane:
+                return String(localized: "Closes this pane of \(tab) in this Workspace. The tab's other panes stay open.")
+            }
+        }
         switch self {
         case .workspace:
-            return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
+            return String(localized: "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab.")
         case .tab:
-            return "Closes \(terminal.displayTabTitle) in \(workspace)."
+            return String(localized: "Closes \(tab) in \(workspace).")
         case .pane:
-            return "Closes this pane of \(terminal.displayTabTitle) in \(workspace). The tab's other panes stay open."
+            return String(localized: "Closes this pane of \(tab) in \(workspace). The tab's other panes stay open.")
         }
     }
 }
@@ -238,7 +267,7 @@ struct TerminalListProjection {
                 hostID: host.id,
                 hostName: host.displayName,
                 workspaceID: id,
-                title: label.flatMap { $0.isEmpty ? nil : $0 } ?? "Workspace \(id)",
+                title: label.flatMap { $0.isEmpty ? nil : $0 } ?? String(localized: "Workspace \(id)"),
                 terminals: matching,
                 directory: directory(of: workspace, host: host, workspaceID: id, shells: all),
                 // A search result is never hidden behind a collapsed card.

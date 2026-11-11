@@ -53,7 +53,7 @@ final class TerminalTextSelectionViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Select Text"
+        title = String(localized: "Select Text")
         view.backgroundColor = .systemBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,

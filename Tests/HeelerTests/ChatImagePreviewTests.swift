@@ -100,6 +100,24 @@ struct ChatImageLinkTests {
         #expect(ChatImageLink.path(opening: try #require(URL(string: "https://x.test/?path=/a.png"))) == nil)
     }
 
+    @Test func aSentImagesPlaceholdersOpenTheFilesItCameFrom() {
+        let text = "[Image #2]compare with [Image #3] and /tmp/c.png"
+        let marked = ChatImageLink.marking(text, imagePaths: ["/tmp/a.png", "/tmp/b.png"])
+        let linked = marked.runs.filter { $0[ChatImageLink.PathAttribute.self] != nil }
+        #expect(linked.map { String(marked[$0.range].characters) } == ["[Image #2]", "[Image #3]", "/tmp/c.png"])
+        #expect(ChatImageLink.paths(in: marked) == ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"])
+        // Without one file for every placeholder, no placeholder links.
+        #expect(ChatImageLink.paths(in: ChatImageLink.marking(text, imagePaths: ["/tmp/a.png"])) == ["/tmp/c.png"])
+    }
+
+    @Test func aSentImageIsPreviewedFromItsRowWithoutAPlaceholder() async {
+        let message = ChatUserMessage(text: "look", imageCount: 1, imagePaths: ["/tmp/a.png"])
+        let entry = ChatEntry(id: ChatEntryID("user"), sourceOffset: 0, content: .user(message))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        #expect(rows.first?.messageImagePaths == ["/tmp/a.png"])
+        #expect(rows.first?.hasInnerControls == false)
+    }
+
     @Test func aHomePathResolvesOnlyWithTheHome() {
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w", home: "/home/dev") == "/home/dev/a/b.png")
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w") == nil)
@@ -438,12 +456,13 @@ struct ChatToolTitleLayoutTests {
             kind: .search, name: "search", title: "cat Sources/Heeler/Images/ImagePreparer.swift | head -160; search files",
             subtitle: "ChatHostFiles", status: .succeeded)
         let row = ChatRow(id: .entry(ChatEntryID("search")), content: .tool(tool), revision: 1, topSpacing: 0)
-        let renderer = ImageRenderer(content: ChatRowView(row: row, isExpanded: false, actions: .init(
-            toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: ""))
-            .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
-            .environment(\.colorScheme, .dark))
-        renderer.scale = 2
-        Attachment.record(try #require(renderer.uiImage), named: "chat-search-title-alignment", as: .png)
+        let rendered = try RenderedBitmap(
+            ChatRowView(row: row, isExpanded: false, actions: .init(
+                toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: ""))
+                .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
+                .environment(\.colorScheme, .dark),
+            proposedSize: .unspecified, scale: 2)
+        Attachment.record(try rendered.image(), named: "chat-search-title-alignment", as: .png)
     }
 
     /// Image rows in each state their thumbnail can show, for review.
@@ -478,15 +497,15 @@ struct ChatToolTitleLayoutTests {
             await row("deleted.png", files: [:]),
             await row("offline.png", files: [:], connected: false),
         ]
-        let renderer = ImageRenderer(
-            content: VStack(spacing: 0) {
+        let rendered = try RenderedBitmap(
+            VStack(spacing: 0) {
                 ForEach(rows.indices, id: \.self) { index in
                     ChatRowView(row: rows[index].0, isExpanded: false, actions: rows[index].1)
                 }
             }
             .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
-            .environment(\.colorScheme, scheme))
-        renderer.scale = 3
-        Attachment.record(try #require(renderer.uiImage), named: "chat-image-rows-\(scheme)", as: .png)
+            .environment(\.colorScheme, scheme),
+            proposedSize: .unspecified, scale: 3)
+        Attachment.record(try rendered.image(), named: "chat-image-rows-\(scheme)", as: .png)
     }
 }

@@ -14,7 +14,7 @@ struct HostHelperFiles: HostNotificationFiles {
     /// when no Helper here can answer.
     func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
-            throw TransportError.malformedResponse("The Usage query arguments are invalid.")
+            throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
         let script = HostHelperScript(
             .usageQuery(

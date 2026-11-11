@@ -39,7 +39,7 @@ enum PiInputBoxDetector {
                 // completion list draws between the editor and the footer.
                 guard let stats = rows.indices.dropFirst(bottom + 2).first(where: { piStats(rows[$0].trimmedText) })
                 else {
-                    return .unknown("Pi's footer is not recognized. Continue in the Agent terminal.")
+                    return .unknown(String(localized: "Pi's footer is not recognized. Continue in the Agent terminal."))
                 }
                 if stats != bottom + 2 { return .overlay(rows[bottom + 1].trimmedText) }
             } else {
@@ -60,7 +60,7 @@ enum PiInputBoxDetector {
                 if isBox {
                     let trimmed = value.trimmingCharacters(in: .whitespaces)
                     guard trimmed.hasPrefix("│") || trimmed.hasPrefix("╰") else {
-                        return .unknown("The OMP editor is not recognized.")
+                        return .unknown(String(localized: "The OMP editor is not recognized."))
                     }
                     value = String(trimmed.dropFirst())
                     if value.last == "│" || value.last == "╯" { value.removeLast() }
@@ -80,7 +80,7 @@ enum PiInputBoxDetector {
             return draft.isEmpty ? .empty(placeholder: nil) : .text(draft)
         }
         return .unknown(
-            "The \(program == .pi ? "Pi" : "Oh My Pi") input box is not recognized. Continue in the Agent terminal.")
+            String(localized: "The \(program == .pi ? "Pi" : "Oh My Pi") input box is not recognized. Continue in the Agent terminal."))
     }
 
     /// OMP draws its default composer as a filled status band followed by
@@ -132,7 +132,7 @@ enum PiInputBoxDetector {
         return isWorking ? .disabled(ompWorking) : .empty(placeholder: nil)
     }
 
-    static let ompWorking = "Oh My Pi is working. Send once it's idle, or steer from the terminal."
+    static let ompWorking = String(localized: "Oh My Pi is working. Send once it's idle, or steer from the terminal.")
 
     /// OMP's unboxed `╰─` prompt row under the status band.
     static func isOMPPrompt(_ row: ScreenRow) -> Bool {

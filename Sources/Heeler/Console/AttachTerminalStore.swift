@@ -519,12 +519,13 @@ final class AttachTerminalStore {
                 return
             }
             guard !stopRequested else { return }
-            status = .ended("The session ended.")
+            status = .ended(String(localized: "The session ended."))
             return
         }
     }
 
     private func attach(cols: Int, rows: Int) async throws {
+        let wasViewed = isViewed
         let viewer = isViewed ? nextViewer : .resumed
         // A viewer back from a dropped line takes the size only once someone
         // acts on it. One attached hidden that came into view while it was
@@ -540,7 +541,8 @@ final class AttachTerminalStore {
                 return
             }
             try await self.consume(
-                session, reportsOnceOpen: reportsOnceOpen, initialCols: cols, initialRows: rows)
+                session, wasViewed: wasViewed, reportsOnceOpen: reportsOnceOpen,
+                initialCols: cols, initialRows: rows)
         }
         let transportReady: @MainActor @Sendable (UInt64) -> Void = { [weak self] generation in
             guard let self else { return }
@@ -588,6 +590,7 @@ final class AttachTerminalStore {
 
     private func consume(
         _ session: TerminalAttachSession,
+        wasViewed: Bool,
         reportsOnceOpen: Bool,
         initialCols: Int,
         initialRows: Int
@@ -626,6 +629,10 @@ final class AttachTerminalStore {
         }
         if isViewed, reportsOnceOpen {
             session.setPresence(.viewed(feed.displayFacts))
+        } else if !isViewed, wasViewed {
+            // The window left while the attach was opening, before there was
+            // a session to receive setViewed(false). Retain it without focus.
+            session.setPresence(.hidden)
         }
 
         do {
@@ -672,15 +679,15 @@ final class AttachTerminalStore {
     static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.terminalChannelAlreadyOpen:
-            "Another terminal is already open on this Host."
+            String(localized: "Another terminal is already open on this Host.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.cancelled:
             // Attach is cancelled under the user when the Host's connection
             // is replaced or wound down, not when the user cancels.
-            "The Host's connection was reset."
+            String(localized: "The Host's connection was reset.")
         case let error as TransportError:
             // Includes `attachExited`, which quotes herdr's own last line
             // (#431), and `herdrBinaryNotFound`.
@@ -688,7 +695,7 @@ final class AttachTerminalStore {
         default:
             // A non-Transport error has no user-facing words of its own;
             // interpolating it would show a debug description.
-            "The session failed."
+            String(localized: "The session failed.")
         }
     }
 }

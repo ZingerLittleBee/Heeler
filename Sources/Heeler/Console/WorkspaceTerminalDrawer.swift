@@ -192,7 +192,9 @@ struct WorkspaceTerminalDrawer: View {
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel("Workspace terminals")
-            .accessibilityValue("\(terminals.count) terminals")
+            .accessibilityValue(
+                terminals.count == 1
+                    ? String(localized: "1 terminal") : String(localized: "\(terminals.count) terminals"))
             .accessibilityHint("Shows the terminals in this Workspace")
             .accessibilityAction { setExpanded(true) }
             .accessibilityAction(named: "Move up") {
@@ -295,7 +297,9 @@ struct WorkspaceTerminalDrawer: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityLabel("\(item.isAgent ? "Agent" : "Terminal"), \(name.title)")
+        .accessibilityLabel(
+            item.isAgent
+                ? String(localized: "Agent, \(name.title)") : String(localized: "Terminal, \(name.title)"))
         .accessibilityValue(name.tab ?? "")
         .accessibilityHint(selected ? "" : item.displayCwd)
         .accessibilityAddTraits(selected ? [.isSelected] : [])

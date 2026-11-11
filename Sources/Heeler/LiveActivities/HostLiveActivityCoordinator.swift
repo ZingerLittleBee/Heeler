@@ -329,25 +329,25 @@ final class HostLiveActivityCoordinator {
         if isUnchanged(hostID: hostID, desired: desired) { return }
 
         guard let desired else {
-            reconcileNotes[hostID] = "idle — \(desireBlocker(for: hostID))"
+            reconcileNotes[hostID] = idleNote(for: hostID)
             endNow(hostID)
             return
         }
         guard let key = notificationKey(for: hostID),
             let content = AgentActivityContentBuilder.content(for: desired, key: key)
         else {
-            reconcileNotes[hostID] = "sealing the update failed"
+            reconcileNotes[hostID] = String(localized: "sealing the update failed")
             return
         }
 
         if let session = sessions[hostID] {
             controller.update(id: session.id, content: content)
             applied[hostID] = desired
-            reconcileNotes[hostID] = "active — updated"
+            reconcileNotes[hostID] = String(localized: "active — updated")
             return
         }
         guard controller.areEnabled else {
-            reconcileNotes[hostID] = "idle — iOS has Live Activities disabled for Heeler"
+            reconcileNotes[hostID] = String(localized: "idle — iOS has Live Activities disabled for Heeler")
             return
         }
         do {
@@ -356,23 +356,26 @@ final class HostLiveActivityCoordinator {
                 content: content)
             beginSession(handle, awaitingFirstSnapshot: false)
             applied[hostID] = desired
-            reconcileNotes[hostID] = "active — started"
+            reconcileNotes[hostID] = String(localized: "active — started")
         } catch {
             // Stay idle otherwise: a later change, reconnect, or foreground
             // reconcile is the retry. The note carries ActivityKit's reason.
-            reconcileNotes[hostID] = "start failed — \(requestFailureReason(error))"
+            reconcileNotes[hostID] = String(localized: "start failed — \(requestFailureReason(error))")
         }
     }
 
     /// The gate that kept `computeDesired` from producing content, in the
-    /// order the gates run — surfaced by the Settings diagnostic row.
-    private func desireBlocker(for hostID: Host.ID) -> String {
-        if !controller.areEnabled { return "iOS has Live Activities disabled for Heeler" }
-        if !preferences.isEnabled(for: hostID) { return "the per-Host toggle is off" }
-        if registrationGate(hostID) != .open { return "this device is not registered with the Host Helper" }
-        if deviceToken() == nil { return "no push device token yet" }
-        if notificationKey(for: hostID) == nil { return "no Notification Key for this Host" }
-        return "no working, blocked, or done agents"
+    /// order the gates run. Settings shows the note under the Host's Live
+    /// Activity toggle, so each reads as one phrase in the app's language.
+    private func idleNote(for hostID: Host.ID) -> String {
+        if !controller.areEnabled { return String(localized: "idle — iOS has Live Activities disabled for Heeler") }
+        if !preferences.isEnabled(for: hostID) { return String(localized: "idle — the per-Host toggle is off") }
+        if registrationGate(hostID) != .open {
+            return String(localized: "idle — this device is not registered with the Host Helper")
+        }
+        if deviceToken() == nil { return String(localized: "idle — no push device token yet") }
+        if notificationKey(for: hostID) == nil { return String(localized: "idle — no Notification Key for this Host") }
+        return String(localized: "idle — no working, blocked, or done agents")
     }
 
     private func requestFailureReason(_ error: any Error) -> String {

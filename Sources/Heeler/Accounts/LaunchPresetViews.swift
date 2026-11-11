@@ -12,8 +12,8 @@ struct LaunchPresetSummary: View {
         if !arguments.isEmpty { detail.append(arguments) }
         switch preset.environment.count {
         case 0: break
-        case 1: detail.append("1 variable")
-        case let count: detail.append("\(count) variables")
+        case 1: detail.append(String(localized: "1 variable"))
+        case let count: detail.append(String(localized: "\(count) variables"))
         }
         if !detail.isEmpty { lines.append(detail.joined(separator: " · ")) }
         return lines
@@ -60,7 +60,7 @@ struct LaunchPresetEditor: View {
     /// The store's check, plus one only the form knows: Other Folder… chosen
     /// with no folder typed, which would otherwise save as the Default.
     static func problem(with draft: LaunchPreset, usesOtherFolder: Bool, store: LaunchPresetStore) -> String? {
-        if usesOtherFolder, draft.accountDirectory == nil { return "Enter the Account’s folder, or choose Default." }
+        if usesOtherFolder, draft.accountDirectory == nil { return String(localized: "Enter the Account’s folder, or choose Default.") }
         return store.problem(with: draft)
     }
 
@@ -124,7 +124,7 @@ struct LaunchPresetEditor: View {
                 }
             }
         }
-        .navigationTitle(isNew ? "New Preset" : draft.name)
+        .navigationTitle(isNew ? String(localized: "New Preset") : draft.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

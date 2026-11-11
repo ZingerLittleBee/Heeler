@@ -15,7 +15,7 @@ struct HostTelemetryPresentation: Equatable {
     let title: String
     let accessibilityValue: String
 
-    var accessibilityLabel: String { "Host API connection latency" }
+    var accessibilityLabel: String { String(localized: "Host API connection latency") }
 
     init?(status: EventsSessionStatus?, latency: Duration?) {
         guard status == .connected, let latency else { return nil }
@@ -23,6 +23,6 @@ struct HostTelemetryPresentation: Equatable {
         // visually the trailing corner plus the Hosts sheet's identical figure
         // are the context. A "Host" prefix read as noise in practice.
         title = HostLatencyFormatting.formatted(latency)
-        accessibilityValue = "\(HostLatencyFormatting.spoken(latency)) over SSH"
+        accessibilityValue = String(localized: "\(HostLatencyFormatting.spoken(latency)) over SSH")
     }
 }

@@ -14,9 +14,7 @@ struct SideBySideRow: Sendable, Equatable, Identifiable {
         case let (left?, right?) where left.id == right.id:
             left.accessibilityLabel
         case let (left?, right?):
-            left.accessibilityLabel
-                + (left.accessibilityLabel.hasSuffix(".") ? " " : ". ")
-                + right.accessibilityLabel
+            left.accessibilityLabel.asSentence + " " + right.accessibilityLabel
         case let (left?, nil):
             left.accessibilityLabel
         case let (nil, right?):

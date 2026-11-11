@@ -47,14 +47,78 @@ final class ComposerStagingStore {
         case image
         case file
 
-        fileprivate var displayName: String {
-            switch self {
-            case .image: "Image"
-            case .file: "File"
-            }
+        // Each message is one whole sentence per medium, so a translation
+        // can place and inflect the noun as its language needs.
+
+        fileprivate var preparing: String {
+            self == .image ? String(localized: "Preparing Image…") : String(localized: "Preparing File…")
         }
 
-        fileprivate var noun: String { displayName.lowercased() }
+        fileprivate var preparingAccessibilityLabel: String {
+            self == .image ? String(localized: "Preparing Image") : String(localized: "Preparing File")
+        }
+
+        /// `percent` is already formatted, as "40%".
+        fileprivate func uploading(_ percent: String) -> String {
+            self == .image
+                ? String(localized: "Uploading Image… \(percent)")
+                : String(localized: "Uploading File… \(percent)")
+        }
+
+        fileprivate func uploadingAccessibilityLabel(_ percentage: Int) -> String {
+            self == .image
+                ? String(localized: "Uploading Image, \(percentage) percent")
+                : String(localized: "Uploading File, \(percentage) percent")
+        }
+
+        fileprivate var uploadPaused: String {
+            self == .image
+                ? String(localized: "Image upload paused when Heeler moved to the background.")
+                : String(localized: "File upload paused when Heeler moved to the background.")
+        }
+
+        fileprivate var overCoreFileLimit: String {
+            self == .image
+                ? String(localized: "This image is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+                : String(localized: "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent.")
+        }
+
+        fileprivate var unconfirmed: String {
+            self == .image
+                ? String(localized: "The Host did not confirm the image. Retry sends another copy.")
+                : String(localized: "The Host did not confirm the file. Retry sends another copy.")
+        }
+
+        fileprivate var terminalEnded: String {
+            self == .image
+                ? String(localized: "This Terminal has ended, so the image was not sent.")
+                : String(localized: "This Terminal has ended, so the file was not sent.")
+        }
+
+        /// `reason` is the Host's refusal message, as it sent it.
+        fileprivate func refused(_ reason: String) -> String {
+            self == .image
+                ? String(localized: "The Host refused the image: \(reason)")
+                : String(localized: "The Host refused the file: \(reason)")
+        }
+
+        fileprivate var uploadFailed: String {
+            self == .image ? String(localized: "Image upload failed.") : String(localized: "File upload failed.")
+        }
+
+        fileprivate var preparationFailed: String {
+            self == .image
+                ? String(localized: "Image preparation failed.") : String(localized: "File preparation failed.")
+        }
+
+        fileprivate func inserted(copied: Bool) -> String {
+            switch (self, copied) {
+            case (.image, true): String(localized: "Image path inserted and copied.")
+            case (.image, false): String(localized: "Image path inserted, but couldn't be copied.")
+            case (.file, true): String(localized: "File path inserted and copied.")
+            case (.file, false): String(localized: "File path inserted, but couldn't be copied.")
+            }
+        }
 
         fileprivate var preparationIcon: String {
             switch self {
@@ -470,8 +534,7 @@ final class ComposerStagingStore {
             case .background:
                 let failure = Failure(
                     medium: medium,
-                    message:
-                        "\(medium.displayName) upload paused when Heeler moved to the background.",
+                    message: medium.uploadPaused,
                     isRetryable: preparedSource != nil)
                 state = .backgroundInterrupted(failure)
                 publish(.failed(id: operationID, retryable: failure.isRetryable))
@@ -518,27 +581,27 @@ final class ComposerStagingStore {
         case TransportError.sshUnreachable:
             Failure(
                 medium: medium,
-                message: "The Host is not connected. Reconnect, then retry the upload.",
+                message: String(localized: "The Host is not connected. Reconnect, then retry the upload."),
                 isRetryable: true)
         case AttachmentStagingError.exceedsCoreFileLimit:
             Failure(
                 medium: medium,
-                message: "This \(medium.noun) is over the 8 MiB limit on a native Windows Host. Nothing was sent.",
+                message: medium.overCoreFileLimit,
                 isRetryable: false)
         case TransportError.coreMutationOutcomeUnknown:
             Failure(
                 medium: medium,
-                message: "The Host did not confirm the \(medium.noun). Retry sends another copy.",
+                message: medium.unconfirmed,
                 isRetryable: true)
         case let refusal as HerdrAPIError where refusal.code == "finished" || refusal.code == "not_found":
             Failure(
                 medium: medium,
-                message: "This Terminal has ended, so the \(medium.noun) was not sent.",
+                message: medium.terminalEnded,
                 isRetryable: false)
         case let refusal as HerdrAPIError:
             Failure(
                 medium: medium,
-                message: "The Host refused the \(medium.noun): \(refusal.message)",
+                message: medium.refused(refusal.message),
                 isRetryable: false)
         case let transportError as TransportError where saysTransportFailures && !isSSHUnreachable(transportError):
             Failure(
@@ -548,68 +611,68 @@ final class ComposerStagingStore {
         case AttachmentStagingError.sftpUnavailable:
             Failure(
                 medium: medium,
-                message: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem.",
+                message: String(localized: "SFTP is unavailable on this Host. Enable its SSH SFTP subsystem."),
                 isRetryable: false)
         case let staging as AttachmentStagingError:
             Failure(
                 medium: medium,
-                message: "\(medium.displayName) upload failed.",
+                message: medium.uploadFailed,
                 isRetryable: staging.isRetryable)
         case ImagePreparationError.clipboardHasNoImage:
             Failure(
                 medium: medium,
-                message: "The clipboard has no image. Copy one, then tap Paste Image.",
+                message: String(localized: "The clipboard has no image. Copy one, then tap Paste Image."),
                 isRetryable: false)
         case ImagePreparationError.clipboardUnreadable:
             Failure(
                 medium: medium,
                 message:
-                    "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings.",
+                    String(localized: "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings."),
                 isRetryable: false)
         case ImagePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,
-                message: "The selected photo is no longer available.",
+                message: String(localized: "The selected photo is no longer available."),
                 isRetryable: false)
         case ImagePreparationError.sourceTooLarge:
             Failure(
                 medium: medium,
-                message: "The selected image is too large to decode safely.",
+                message: String(localized: "The selected image is too large to decode safely."),
                 isRetryable: false)
         case ImagePreparationError.invalidImage:
             Failure(
                 medium: medium,
-                message: "The selected item is not a readable image.",
+                message: String(localized: "The selected item is not a readable image."),
                 isRetryable: false)
         case ImagePreparationError.unableToProduceBoundedOutput:
             Failure(
                 medium: medium,
-                message: "The image could not be reduced below the 16 MiB upload limit.",
+                message: String(localized: "The image could not be reduced below the 16 MiB upload limit."),
                 isRetryable: false)
         case ImagePreparationError.localStorageFailed:
             Failure(
                 medium: medium,
-                message: "Heeler couldn't prepare the image in protected local storage.",
+                message: String(localized: "Heeler couldn't prepare the image in protected local storage."),
                 isRetryable: false)
         case FilePreparationError.selectionUnavailable:
             Failure(
                 medium: medium,
-                message: "The selected file is no longer available.",
+                message: String(localized: "The selected file is no longer available."),
                 isRetryable: false)
         case FilePreparationError.sourceTooLarge:
             Failure(
                 medium: medium,
-                message: "The selected file exceeds the 64 MiB upload limit.",
+                message: String(localized: "The selected file exceeds the 64 MiB upload limit."),
                 isRetryable: false)
         case FilePreparationError.localStorageFailed:
             Failure(
                 medium: medium,
-                message: "Heeler couldn't prepare the file in protected local storage.",
+                message: String(localized: "Heeler couldn't prepare the file in protected local storage."),
                 isRetryable: false)
         default:
             Failure(
                 medium: medium,
-                message: "\(medium.displayName) preparation failed.",
+                message: medium.preparationFailed,
                 isRetryable: false)
         }
     }
@@ -626,15 +689,16 @@ final class ComposerStagingStore {
         case .preparing(let medium):
             return Presentation(
                 icon: medium.preparationIcon,
-                title: "Preparing \(medium.displayName)…",
-                accessibilityLabel: "Preparing \(medium.displayName)",
+                title: medium.preparing,
+                accessibilityLabel: medium.preparingAccessibilityLabel,
                 commands: [.cancel])
         case .uploading(let medium, let progress):
             let percentage = Int(progress.fractionCompleted * 100)
             return Presentation(
                 icon: "arrow.up.circle",
-                title: "Uploading \(medium.displayName)… \(percentage)%",
-                accessibilityLabel: "Uploading \(medium.displayName), \(percentage) percent",
+                title: medium.uploading(
+                    (Double(percentage) / 100).formatted(.percent.precision(.fractionLength(0)))),
+                accessibilityLabel: medium.uploadingAccessibilityLabel(percentage),
                 commands: [.cancel])
         case .failed(let failure), .backgroundInterrupted(let failure):
             return Presentation(
@@ -643,10 +707,7 @@ final class ComposerStagingStore {
                 accessibilityLabel: failure.message,
                 commands: failure.isRetryable ? [.retry, .dismiss] : [.dismiss])
         case .completed(let outcome):
-            let title =
-                outcome.copied
-                ? "\(outcome.medium.displayName) path inserted and copied."
-                : "\(outcome.medium.displayName) path inserted, but couldn't be copied."
+            let title = outcome.medium.inserted(copied: outcome.copied)
             return Presentation(
                 icon: outcome.copied ? "checkmark.circle" : "info.circle",
                 title: title,

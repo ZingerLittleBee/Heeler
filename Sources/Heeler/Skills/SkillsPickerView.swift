@@ -22,7 +22,7 @@ struct SkillsPickerView: View {
             content
                 .navigationTitle("Skills")
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $query, prompt: "Search Skills")
+                .searchable(text: $query, prompt: String(localized: "Search Skills"))
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
@@ -80,8 +80,8 @@ struct SkillsPickerView: View {
             ContentUnavailableView.search(text: query)
         } else {
             List {
-                section(titled: "Project", skills: results.filter { $0.scope == .project })
-                section(titled: "Global", skills: results.filter { $0.scope == .global })
+                section(titled: String(localized: "Project"), skills: results.filter { $0.scope == .project })
+                section(titled: String(localized: "Global"), skills: results.filter { $0.scope == .global })
             }
             .refreshable { await store.refresh() }
         }

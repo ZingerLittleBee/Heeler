@@ -2,19 +2,33 @@ import SwiftUI
 
 /// Words and checks the Accounts screen shares with Usage (#621).
 enum AccountsListing {
+    /// One whole paragraph per case, so a translation never joins sentences
+    /// localized apart.
     static func footer(for kind: SupportedAgentKind, variable: String?) -> String {
-        let defaultLine =
-            HostAccountsStore.usageKinds.contains(kind)
-            ? "Default is the folder \(kind.displayName) uses in herdr’s environment. It can be renamed, not removed."
-            : "Default is the folder \(kind.displayName) picks itself."
-        guard let variable else {
-            return defaultLine + " Name the variable \(kind.displayName) reads its folder from to launch an Account."
+        let name = kind.displayName
+        switch (HostAccountsStore.usageKinds.contains(kind), variable) {
+        case (true, let variable?):
+            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets \(variable) to its folder.")
+        case (true, nil):
+            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. Name the variable \(name) reads its folder from to launch an Account.")
+        case (false, let variable?):
+            return String(localized: "Default is the folder \(name) picks itself. A Launch Preset with an Account sets \(variable) to its folder.")
+        case (false, nil):
+            return String(localized: "Default is the folder \(name) picks itself. Name the variable \(name) reads its folder from to launch an Account.")
         }
-        return defaultLine + " A Launch Preset with an Account sets \(variable) to its folder."
+    }
+
+    /// The Folder Variable alert's message: what the variable is, and what
+    /// leaving it empty does.
+    static func variableMessage(for kind: SupportedAgentKind) -> String {
+        if let fallback = kind.configDirectoryVariable {
+            return String(localized: "The environment variable \(kind.displayName) reads its settings folder from. Left empty, Heeler uses \(fallback).")
+        }
+        return String(localized: "The environment variable \(kind.displayName) reads its settings folder from. Launch Presets set it to an Account’s folder.")
     }
 
     static let suggestionsFooter =
-        "Folders that hold a sign-in or Transcripts. None counts until you add it."
+        String(localized: "Folders that hold a sign-in or Transcripts. None counts until you add it.")
     static var fullFooter: String { AgentAccountError.limitReached.message }
 
     /// The Usage view's notice while the Host suggests directories; nil
@@ -24,8 +38,8 @@ enum AccountsListing {
         let count = (report.programs ?? []).reduce(0) { $0 + ($1.accountSuggestions?.count ?? 0) }
         switch count {
         case 0: return nil
-        case 1: return "Found 1 Account folder"
-        default: return "Found \(count.formatted()) Account folders"
+        case 1: return String(localized: "Found 1 Account folder")
+        default: return String(localized: "Found \(count.formatted()) Account folders")
         }
     }
 
@@ -34,17 +48,17 @@ enum AccountsListing {
     static func stateLine(_ state: AgentUsageReport.Account.State?) -> String? {
         switch state {
         case .ok?, nil: nil
-        case .missing?: "Directory not found"
-        case .duplicate?: "Same directory as another Account"
-        case .overLimit?, .other?: "Not counted"
+        case .missing?: String(localized: "Directory not found")
+        case .duplicate?: String(localized: "Same directory as another Account")
+        case .overLimit?, .other?: String(localized: "Not counted")
         }
     }
 
     /// Where a suggestion was found, with its symbol.
     static func sourceLine(_ source: AgentUsageReport.AccountSuggestion.Source) -> (text: String, symbol: String)? {
         switch source {
-        case .agent: ("Used by a running Agent", "sparkles")
-        case .home: ("In your home folder", "house")
+        case .agent: (String(localized: "Used by a running Agent"), "sparkles")
+        case .home: (String(localized: "In your home folder"), "house")
         case .other: nil
         }
     }
@@ -66,10 +80,10 @@ enum AccountsListing {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if isTaken {
             let shown = trimmed.isEmpty ? AgentUsageReport.Account.defaultDisplayName : trimmed
-            return ("Another Account on \(hostName) is named \(shown).", false)
+            return (String(localized: "Another Account on \(hostName) is named \(shown)."), false)
         }
         return (
-            "Names appear in Usage, widgets and Launch Presets. Each Account of a harness on \(hostName) needs its own.",
+            String(localized: "Names appear in Usage, widgets and Launch Presets. Each Account of a harness on \(hostName) needs its own."),
             row.isDefault || !trimmed.isEmpty
         )
     }
@@ -263,7 +277,7 @@ struct HostAccountsView: View {
             .disabled(isChanging)
         }
         .confirmationDialog(
-            "Remove \(row.displayName)?",
+            String(localized: "Remove \(row.displayName)?"),
             isPresented: Binding(
                 get: { removing == Renaming(kind: kind, row: row) },
                 set: { if !$0, removing == Renaming(kind: kind, row: row) { removing = nil } }),
@@ -275,8 +289,7 @@ struct HostAccountsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Usage and Chat stop using it. Launch Presets that name its folder still set it. "
-                    + "The folder and its sign-in stay on \(hostName).")
+                String(localized: "Usage and Chat stop using it. Launch Presets that name its folder still set it. The folder and its sign-in stay on \(hostName)."))
         }
     }
 
@@ -296,7 +309,7 @@ struct HostAccountsView: View {
                 if store.isChanging(.variable(kind)) {
                     ProgressView()
                 } else {
-                    Text(variable ?? "Not Set")
+                    Text(variable ?? String(localized: "Not Set"))
                         .font(variable == nil ? .body : .body.monospaced())
                         .foregroundStyle(variable == nil ? .orange : .secondary)
                 }
@@ -423,7 +436,8 @@ private struct HostAccountsDialogs: ViewModifier {
             .alert("Rename Account", isPresented: isPresent($renaming), presenting: renaming) { renaming in
                 // Left empty, the Default Account is "Default" again.
                 TextField(
-                    renaming.row.isDefault ? AgentUsageReport.Account.defaultDisplayName : "Name", text: $draftName
+                    renaming.row.isDefault ? AgentUsageReport.Account.defaultDisplayName : String(localized: "Name"),
+                    text: $draftName
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -446,10 +460,7 @@ private struct HostAccountsDialogs: ViewModifier {
                 }
                 .keyboardShortcut(.defaultAction)
             } message: { kind in
-                Text(
-                    "The environment variable \(kind.displayName) reads its settings folder from. "
-                        + (kind.configDirectoryVariable.map { "Left empty, Heeler uses \($0)." }
-                            ?? "Launch Presets set it to an Account’s folder."))
+                Text(AccountsListing.variableMessage(for: kind))
             }
             .modifier(AccountChangeFailureAlert(store: store, isActive: isAlertActive))
     }

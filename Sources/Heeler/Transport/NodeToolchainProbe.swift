@@ -27,8 +27,7 @@ enum NodeToolchainProbe {
 
     /// Where the probe looks, for the failure message.
     static let searchedPlaces =
-        "mise, Volta, fnm, nvm, asdf, nodenv, nvs, nodebrew, n, proto, pnpm, Homebrew, "
-        + "the SSH PATH, Nix, snap, MacPorts and the login shell"
+        String(localized: "mise, Volta, fnm, nvm, asdf, nodenv, nvs, nodebrew, n, proto, pnpm, Homebrew, the SSH PATH, Nix, snap, MacPorts and the login shell")
 
     /// A bare `herdr …` (``HerdrCommandLine/render(session:endpoint:arguments:)``
     /// without an endpoint) under `/bin/sh` with the app's PATH prefixes, as

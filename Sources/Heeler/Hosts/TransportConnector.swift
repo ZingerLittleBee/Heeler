@@ -21,12 +21,12 @@ extension TransportConnector {
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
-        throw TransportError.hostFeatureUnavailable(feature: "Server Kind detection")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Server Kind detection"))
     }
 
     /// A connector that serves only Herdr TUI Hosts says so.
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
-        throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "herdr-core Hosts"))
     }
 }
 
@@ -41,7 +41,7 @@ struct SSHTransportConnector: TransportConnector {
         // not confirmed yet.
         guard settings.serverKind == .herdrTUI else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "Herdr TUI on a \(settings.serverKind.displayName) Host")
+                feature: String(localized: "Herdr TUI on a \(settings.serverKind.displayName) Host"))
         }
         return try await HeelerSSHTransport.connect(settings: settings)
     }

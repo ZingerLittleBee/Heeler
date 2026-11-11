@@ -11,7 +11,8 @@ extension ChatTranscriptAdapter {
             ChatTranscriptAdapter(
                 revision: ClaudeTranscriptReducer.revision,
                 makeReducer: { ClaudeTranscriptReducer(role: .main, transcriptPath: $0.path) },
-                echoKey: { ClaudeTranscriptReducer.echoKey($0) })
+                echoKey: { ClaudeTranscriptReducer.echoKey($0) },
+                pastedImageEcho: { ClaudeImagePaste.recordedText($0) })
         case .codex:
             // Line 1's `session_meta` names the rollout's dialect, so a tail
             // window that starts past it still needs it.

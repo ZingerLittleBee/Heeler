@@ -32,25 +32,25 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
         case .invalidSettings(let detail):
             detail
         case .unauthorized(let detail):
-            Self.joined("The speech service rejected the API key.", detail)
+            Self.joined(String(localized: "The speech service rejected the API key."), detail)
         case .rejected(let status, let detail):
-            Self.joined("The speech service refused the recording (HTTP \(status)).", detail)
+            Self.joined(String(localized: "The speech service refused the recording (HTTP \(status))."), detail)
         case .unavailable(let status, let detail):
-            Self.joined("The speech service is unavailable (HTTP \(status)).", detail)
+            Self.joined(String(localized: "The speech service is unavailable (HTTP \(status))."), detail)
         case .redirected(let host):
             if let host {
-                "The speech service redirected to \(host). Voice Input does not follow redirects; check the URL."
+                String(localized: "The speech service redirected to \(host). Voice Input does not follow redirects; check the URL.")
             } else {
-                "The speech service redirected the request. Voice Input does not follow redirects; check the URL."
+                String(localized: "The speech service redirected the request. Voice Input does not follow redirects; check the URL.")
             }
         case .emptyTranscript:
-            "No speech was recognized."
+            String(localized: "No speech was recognized.")
         case .unreadableResponse:
-            "The speech service sent a response Voice Input could not read."
+            String(localized: "The speech service sent a response Voice Input could not read.")
         case .timedOut:
-            "The speech service took too long to answer."
+            String(localized: "The speech service took too long to answer.")
         case .network(let detail):
-            Self.joined("Couldn't reach the speech service.", detail)
+            Self.joined(String(localized: "Couldn't reach the speech service."), detail)
         }
     }
 

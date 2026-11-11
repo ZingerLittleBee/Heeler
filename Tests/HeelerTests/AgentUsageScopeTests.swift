@@ -59,6 +59,10 @@ struct AgentUsageScopeTests {
         ])
 
         #expect(scope.excluded.map(\.name) == ["Office PC", "Desktop core", "Windows core", "Pi Lab", "Lab"])
+        // Icons and widgets act on the token; the line names it.
+        #expect(scope.excluded.map(\.exclusion) == [
+            .unsupportedPlatform, .needsHostHelper, .hostHelperNotOnWindows, .readFailed, .notConnected,
+        ])
         #expect(scope.excluded.map(\.reason) == [
             "Not supported on Windows", "Needs the Host Helper", "Comes with the Host Helper, not available yet",
             "Could not read Usage", "Not connected",

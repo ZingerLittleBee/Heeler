@@ -21,16 +21,24 @@ struct HerdrCoreLaunchTests {
 
     private let host = Host(address: "box.example", username: "dev", serverKind: .herdrCore)
 
+    /// `cwd` is where the Terminal started; `shellIn` is where its shell is now.
     private static func record(
         _ address: String, cwd: String = "/work/app", labels: [String: String] = [:],
-        keep: Bool = false, name: String? = nil
+        keep: Bool = false, name: String? = nil, shellIn: String? = nil
     ) -> JSONValue {
-        .object([
+        var fields: [String: JSONValue] = [
             "address": .string(address), "cwd": .string(cwd), "state": .string("live"),
             "name": name.map(JSONValue.string) ?? .null,
             "argv": .array([.string("/bin/zsh")]), "cols": .number(80), "rows": .number(24),
             "pid": .number(7), "keep": .bool(keep), "labels": .object(labels.mapValues(JSONValue.string)),
-        ])
+        ]
+        if let shellIn {
+            fields["foreground"] = .object([
+                "pid": .number(7), "name": .string("zsh"), "argv": .array([.string("/bin/zsh")]),
+                "cwd": .string(shellIn),
+            ])
+        }
+        return .object(fields)
     }
 
     private static func subscribeResult(_ terminals: [JSONValue]) -> JSONValue {
@@ -67,6 +75,7 @@ struct HerdrCoreLaunchTests {
                 HerdrCoreLaunchTests.record("t1"),
                 HerdrCoreLaunchTests.record("t2", cwd: "/work/alpha/sub", labels: ["herdr.space": "s1", "herdr.tab": "tb1"]),
             ],
+            document: JSONValue = HerdrCoreLaunchTests.desktopSpace,
             listings: [String: RemoteDirectoryListing] = [:]
         ) async throws {
             self.host = host
@@ -74,7 +83,7 @@ struct HerdrCoreLaunchTests {
             let transport = ScriptedCoreTransport(
                 subscribeResults: [HerdrCoreLaunchTests.subscribeResult(terminals)], services: services)
             await transport.setShell(shell)
-            await transport.setDocument(HerdrCoreLaunchTests.desktopSpace, version: 1)
+            await transport.setDocument(document, version: 1)
             self.services = services
             self.transport = transport
             store = ConsoleStore(
@@ -505,7 +514,8 @@ struct HerdrCoreLaunchTests {
         #expect(tab != "tb1")
         #expect(!tab.isEmpty)
         #expect(Self.labels(of: second)["herdr.tab"] != tab)
-        #expect(first["cwd"]?.stringValue == "/work/alpha")
+        // Where the space's Terminal is, not the folder the space was made in.
+        #expect(first["cwd"]?.stringValue == "/work/alpha/sub")
     }
 
     @Test func aDesktopSpaceLaunchFromAnAgentStartsInThatAgentsDirectory() async throws {
@@ -516,6 +526,71 @@ struct HerdrCoreLaunchTests {
 
         let params = try #require(await fixture.transport.runs.last)
         #expect(params["cwd"]?.stringValue == "/work/alpha/sub")
+    }
+
+    /// The desktop app keeps the folder a space was made in, which is where the
+    /// space shown then was, and starts its own new Terminals where the space's
+    /// shell is now (#675).
+    @Test func aDesktopSpaceLaunchStartsWhereItsShellIsNotInTheFolderTheSpaceWasMadeIn() async throws {
+        let fixture = try await Fixture(
+            host: host,
+            terminals: [
+                Self.record(
+                    "t2", cwd: "/work/bravo", labels: ["herdr.space": "s1", "herdr.tab": "tb1"],
+                    shellIn: "/work/charlie")
+            ],
+            document: CoreDesktopJSON.document([
+                CoreDesktopJSON.space(
+                    "s1", name: "Charlie", folder: "/work/bravo",
+                    tabs: [CoreDesktopJSON.tab("tb1", terminals: ["t2"])])
+            ]))
+        defer { fixture.finish() }
+
+        let agent = try await fixture.launch(.claude, workspaceID: "space-s1")
+        _ = try await fixture.store.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: "space-s1", cwd: ""), on: host.id)
+        let shell = try #require(await fixture.transport.runs.last)
+
+        #expect(agent["cwd"]?.stringValue == "/work/charlie")
+        #expect(shell["cwd"]?.stringValue == "/work/charlie")
+    }
+
+    /// The first Terminal in the document's Tab order and each Tab's tree order,
+    /// whatever order the core lists them in, which also names the space.
+    @Test func aDesktopSpaceLaunchStartsBesideTheTerminalTheSpaceIsNamedAfter() async throws {
+        let inTab = { (tab: String) in ["herdr.space": "s1", "herdr.tab": tab] }
+        let fixture = try await Fixture(
+            host: host,
+            terminals: [
+                Self.record("t3", cwd: "/work/third", labels: inTab("tb2")),
+                Self.record("t4", cwd: "/work/fourth", labels: inTab("tb1")),
+                Self.record("t5", cwd: "/work/fifth", labels: inTab("tb1")),
+            ],
+            document: CoreDesktopJSON.document([
+                CoreDesktopJSON.space(
+                    "s1", folder: "/work/made",
+                    tabs: [
+                        CoreDesktopJSON.tab("tb1", terminals: ["t5", "t4"]),
+                        CoreDesktopJSON.tab("tb2", terminals: ["t3"]),
+                    ])
+            ]))
+        defer { fixture.finish() }
+
+        let params = try await fixture.launch(.claude, workspaceID: "space-s1")
+
+        #expect(fixture.store.workspaces(for: host.id).first { $0.id == "space-s1" }?.label == "fifth")
+        #expect(params["cwd"]?.stringValue == "/work/fifth")
+    }
+
+    @Test func aDesktopSpaceWhoseTerminalReportsNoDirectoryStartsInItsFolder() async throws {
+        let fixture = try await Fixture(
+            host: host,
+            terminals: [Self.record("t2", cwd: "", labels: ["herdr.space": "s1", "herdr.tab": "tb1"])])
+        defer { fixture.finish() }
+
+        let params = try await fixture.launch(.claude, workspaceID: "space-s1")
+
+        #expect(params["cwd"]?.stringValue == "/work/alpha")
     }
 
     @Test func aDerivedWorkspaceTargetHasNoDesktopLabelsAndStartsInItsKeyDirectory() async throws {
@@ -960,7 +1035,7 @@ struct HerdrCoreLaunchTests {
 
         let params = try #require(await fixture.transport.runs.last)
         #expect(Self.strings(params["argv"]) == ["reviewer"])
-        #expect(params["cwd"]?.stringValue == "/work/alpha")
+        #expect(params["cwd"]?.stringValue == "/work/alpha/sub")
         #expect(params["env"] == nil)
         let labels = Self.labels(of: params)
         #expect(Set(labels.keys) == ["herdr.space", "herdr.tab"])

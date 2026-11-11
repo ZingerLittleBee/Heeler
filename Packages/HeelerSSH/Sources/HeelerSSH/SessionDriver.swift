@@ -202,8 +202,17 @@ actor SessionDriver {
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
     private var nextExchangeStderrOwnerForTesting: Bool?
     private var nextExchangeOwnedReadHoldForTesting: (@Sendable () async -> Void)?
-    private var nextExchangeStderrReadWaitsForInboundForTesting = false
-    private var nextExecStdoutReadWaitsForInboundForTesting = false
+    /// Where a hook that holds one read round until it has taken a command's
+    /// whole reply off the socket stands (#523).
+    private enum ReplyDrainForTesting {
+        case off
+        case armed
+        /// The held reads took the server's channel close off the socket and
+        /// left the other stream's reply queued behind it.
+        case tookReply
+    }
+    private var exchangeStderrReadDrainForTesting = ReplyDrainForTesting.off
+    private var execStdoutReadDrainForTesting = ReplyDrainForTesting.off
     private var nextStreamLocalTimeoutHookForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
@@ -842,17 +851,24 @@ actor SessionDriver {
                                 transportSendOwner = stdoutOwner
                                 throw error
                             }
-                            if nextExecStdoutReadWaitsForInboundForTesting, !madeProgress {
-                                nextExecStdoutReadWaitsForInboundForTesting = false
-                                // Outlast the command, so its whole reply has
-                                // reached the socket before this read.
-                                usleep(600_000)
+                            if execStdoutReadDrainForTesting == .armed, !madeProgress {
+                                execStdoutReadDrainForTesting = .off
+                                let held = try await readThroughServerCloseForTesting(
+                                    identity: .pty(id),
+                                    stream: 0,
+                                    owner: stdoutOwner,
+                                    capacity: maximumBytes,
+                                    deadline: deadline)
+                                output = held.data
+                                if held.leftReplyQueued { execStdoutReadDrainForTesting = .tookReply }
                             }
                             #endif
-                            var buffer = [UInt8](repeating: 0, count: maximumBytes)
-                            output = try readAvailableNoting(
-                                channel: channel, stream: 0, buffer: &buffer,
-                                owner: stdoutOwner, session: session)
+                            if output.isEmpty {
+                                var buffer = [UInt8](repeating: 0, count: maximumBytes)
+                                output = try readAvailableNoting(
+                                    channel: channel, stream: 0, buffer: &buffer,
+                                    owner: stdoutOwner, session: session)
+                            }
                         }
                         madeProgress = madeProgress || !output.isEmpty
                     }
@@ -2888,18 +2904,72 @@ actor SessionDriver {
     }
 
     /// Makes the next one-shot exec round that reaches its stderr read with no
-    /// progress, after some stderr has arrived, wait until the rest of the
-    /// reply has reached the socket, so that read is the one that takes the
-    /// stdout reply off it (#523).
+    /// progress, after some stderr has arrived and before any stdout has,
+    /// repeat that read across socket edges until it has taken the server's
+    /// channel close off the socket, so it is the read that takes the stdout
+    /// reply (#523).
     func waitForInboundBeforeNextExchangeStderrReadForTesting() {
-        nextExchangeStderrReadWaitsForInboundForTesting = true
+        exchangeStderrReadDrainForTesting = .armed
     }
 
-    /// Makes the next exec stream round whose stderr read found nothing wait
-    /// until the command's remaining output has reached the socket, so the
-    /// stdout read is the one that takes the trailing stderr off it (#523).
+    /// Whether the held stderr read took the server's close and left the
+    /// stdout reply queued, the interleaving its hook exists to create.
+    func exchangeStderrReadTookReplyForTesting() -> Bool {
+        exchangeStderrReadDrainForTesting == .tookReply
+    }
+
+    /// Makes the next exec stream round whose stderr read found nothing
+    /// repeat its stdout read across socket edges until it has taken the
+    /// server's channel close off the socket, so it is the read that takes the
+    /// trailing stderr (#523).
     func waitForInboundBeforeNextExecStdoutReadForTesting() {
-        nextExecStdoutReadWaitsForInboundForTesting = true
+        execStdoutReadDrainForTesting = .armed
+    }
+
+    /// Whether the held stdout read took the server's close and left the
+    /// trailing stderr queued, the interleaving its hook exists to create.
+    func execStdoutReadTookReplyForTesting() -> Bool {
+        execStdoutReadDrainForTesting == .tookReply
+    }
+
+    /// Repeats one stream's read, waiting on the socket between reads, until
+    /// the server has closed the channel. Nothing arrives on a connection
+    /// after its last channel closes, so a round that then misses the reply
+    /// these reads queued for the other stream has no edge left to wake it.
+    /// Waiting for the close rather than for a fixed time keeps that true
+    /// however slowly a loaded Host runs the command.
+    ///
+    /// Returns any data the reads found on their own stream, which is the
+    /// round's progress, and whether the close left the other stream's reply
+    /// queued.
+    private func readThroughServerCloseForTesting(
+        identity: ChannelIdentity,
+        stream: Int32,
+        owner: UInt64,
+        capacity: Int,
+        deadline: ContinuousClock.Instant
+    ) async throws -> (data: Data, leftReplyQueued: Bool) {
+        var buffer = [UInt8](repeating: 0, count: capacity)
+        while true {
+            let channel = try resolveChannel(identity)
+            let session = try requireSession()
+            let data = try readAvailableNoting(
+                channel: channel, stream: stream, buffer: &buffer,
+                owner: owner, session: session)
+            if !data.isEmpty || transportSendOwner == owner { return (data, false) }
+            // Close implies EOF, and wait_closed refuses a channel without it.
+            // Both return EAGAIN until the server's message has been read.
+            if libssh2_channel_wait_eof(channel) == 0,
+               libssh2_channel_wait_closed(channel) == 0 {
+                // libssh2 masks EOF while either stream still has data queued.
+                return (data, libssh2_channel_eof(channel) == 0)
+            }
+            try await SocketReadiness.wait(
+                descriptor: descriptor,
+                directions: .read,
+                until: deadline,
+                watching: activity.watch())
+        }
     }
 
     private func runStreamLocalTimeoutHookForTestingIfNeeded(_ error: any Error) async throws {
@@ -4396,11 +4466,20 @@ actor SessionDriver {
                             deadline: deadline,
                             cancellable: true)
                         #if DEBUG
-                        if nextExchangeStderrReadWaitsForInboundForTesting, sentEOF, !madeProgress, !stderr.isEmpty {
-                            nextExchangeStderrReadWaitsForInboundForTesting = false
-                            // Outlast the command, so its whole reply has
-                            // reached the socket before this read.
-                            usleep(600_000)
+                        if exchangeStderrReadDrainForTesting == .armed, sentEOF, !madeProgress,
+                           stdout.isEmpty, !stderr.isEmpty {
+                            exchangeStderrReadDrainForTesting = .off
+                            let held = try await readThroughServerCloseForTesting(
+                                identity: identity,
+                                stream: Int32(SSH_EXTENDED_DATA_STDERR),
+                                owner: stderrOwner,
+                                capacity: buffer.count,
+                                deadline: deadline)
+                            if !held.data.isEmpty {
+                                stderr.append(held.data)
+                                madeProgress = true
+                            }
+                            if held.leftReplyQueued { exchangeStderrReadDrainForTesting = .tookReply }
                         }
                         #endif
                         let stderrChannel = try resolveChannel(identity)

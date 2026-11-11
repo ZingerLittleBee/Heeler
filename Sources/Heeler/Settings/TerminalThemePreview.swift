@@ -20,6 +20,7 @@ struct TerminalThemePreview: UIViewRepresentable {
 
 @MainActor
 final class TerminalThemePreviewView: UITerminalView {
+    /// Terminal bytes, escape sequences included: sample output, not copy.
     private static let previewLines: [String] = [
         "\u{1B}[2J\u{1B}[H\u{1B}[1;36mheeler\u{1B}[0m",
         "\u{1B}[32m● connected\u{1B}[0m  mac-studio",
@@ -49,7 +50,7 @@ final class TerminalThemePreviewView: UITerminalView {
         delegate = self
         isUserInteractionEnabled = false
         isAccessibilityElement = true
-        accessibilityLabel = "Terminal theme preview"
+        accessibilityLabel = String(localized: "Terminal theme preview")
     }
 
     @available(*, unavailable)

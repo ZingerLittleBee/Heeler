@@ -759,7 +759,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         guard
             let installed = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
         else {
-            throw TransportError.malformedResponse("The Host's shell did not finish looking for Agents.")
+            throw TransportError.malformedResponse(String(localized: "The Host's shell did not finish looking for Agents."))
         }
         openCodeVersion = installed.openCodeVersion
         return installed.kinds
@@ -777,7 +777,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             .posixScript(
                 HerdrCoreShellLaunch.versionScript(program: program, path: path, directory: directory, nonce: nonce)))
         guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: result.stdout, nonce: nonce) else {
-            throw TransportError.malformedResponse("The Host's shell did not finish reading OpenCode's version.")
+            throw TransportError.malformedResponse(String(localized: "The Host's shell did not finish reading OpenCode's version."))
         }
         return found.version
     }
@@ -896,7 +896,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         _ request: AgentLaunchRequest, placement: HerdrCoreLaunch.Placement
     ) async throws -> Agent {
         guard let kind = SupportedAgentKind(rawValue: request.kind) else {
-            throw unavailable("Starting \(request.kind)")
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Starting \(request.kind) on a herdr-core Host"))
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
@@ -980,7 +981,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 firstSeenDirectories: memory.firstSeenDirectories(for: host.id))
         else {
             throw TransportError.hostFeatureUnavailable(
-                feature: "This Workspace has no Terminals left")
+                feature: String(localized: "This Workspace has no Terminals left"))
         }
         return HerdrCoreLaunch.Placement(cwd: try await directoryOrHome(key.isEmpty ? nil : key))
     }
@@ -1000,7 +1001,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// With no inventory, as across a reconnect, nothing says what the Tab holds.
     func closeTab(_ tabID: String) async throws {
         guard !isAwaitingSnapshot else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         do {
             try await endTerminals(
@@ -1072,7 +1073,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// Off on native Windows until one passes a test there (ADR 0032).
     private func worktreeGit() async throws -> HerdrCoreWorktreeGit {
         let services = try await session.withTransport { $0.hostServices }
-        guard try await services.hostPlatform() == .posix else { throw unavailable("Worktrees") }
+        guard try await services.hostPlatform() == .posix else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Worktrees on a herdr-core Host"))
+        }
         return HerdrCoreWorktreeGit(services: services, gate: gitGate)
     }
 
@@ -1144,7 +1148,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let identity = request.identity
         guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
         guard !isAwaitingSnapshot else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         guard worktreesBeingRemoved.insert(identity).inserted else {
             throw WorktreeRemovalError.alreadyInProgress
@@ -1220,16 +1224,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     // MARK: Actions not built yet
 
-    private func unavailable(_ feature: String) -> TransportError {
-        .hostFeatureUnavailable(feature: "\(feature) on a herdr-core Host")
-    }
+    // Each unavailable action names itself and the herdr-core Host in one
+    // whole phrase, so it translates as one.
 
     /// A core has no focused Agent to report: each attach says whether it is
     /// seen on its own channel.
     func focusAgent(_ paneID: String) async throws {}
 
     func renameAgent(_ paneID: String, name: String?) async throws {
-        throw unavailable("Rename Agent")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Rename Agent on a herdr-core Host"))
     }
 
     /// One `do`, whatever comes of it. A failure asks whether the app still runs,
@@ -1237,7 +1241,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
         guard desktopAppNaming?.workspaceIDs.contains(workspaceID) == true,
             let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID)
-        else { throw unavailable("Rename Workspace") }
+        else {
+            throw TransportError.hostFeatureUnavailable(
+                feature: String(localized: "Rename Workspace on a herdr-core Host"))
+        }
         let transport = try await session.withTransport { $0 }
         do {
             try await transport.renameDesktopSpace(space, name: label)
@@ -1248,15 +1255,18 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func agentInfo(paneID: String) async throws -> Agent {
-        throw unavailable("Agents")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Agents on a herdr-core Host"))
     }
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {
-        throw unavailable("Agents")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "Agents on a herdr-core Host"))
     }
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
-        throw unavailable("The Composer")
+        throw TransportError.hostFeatureUnavailable(
+            feature: String(localized: "The Composer on a herdr-core Host"))
     }
 
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
@@ -1754,7 +1764,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func windowsExtensionFolders() async throws -> [String] {
         let transport = try await session.withTransport { $0 }
         guard let home = await transport.locatedWindowsHome() else {
-            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension on this Host")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Heeler's extension on this Host"))
         }
         let services = transport.hostServices
         let profiles = RemoteFilePath.join(RemoteFilePath.windowsForSFTP(home), ".omp", "profiles")
@@ -1777,7 +1787,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let params = HerdrCoreWindowsExtensions.writeParams(folder: folder, contents: contents)
         let result = try await transport.call("file.write", params: params, isMutation: true)
         guard result["bytes"] == .number(Double(contents.count)) else {
-            throw TransportError.hostFeatureUnavailable(feature: "Heeler's extension in \(folder)")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Heeler's extension in \(folder)"))
         }
     }
 

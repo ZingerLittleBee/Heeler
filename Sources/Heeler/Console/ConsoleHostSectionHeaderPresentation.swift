@@ -57,13 +57,14 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
         statusText = Self.statusText(items: projectedStatusItems)
         disclosureSystemImage = isCollapsed ? "chevron.right" : "chevron.down"
         accessibilityValue =
-            opensConnectionDetail ? "" : section.isCollapsed ? "Collapsed" : "Expanded"
+            opensConnectionDetail
+            ? "" : section.isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded")
         accessibilityHint =
             opensConnectionDetail
-            ? "Shows why this Host can't connect."
+            ? String(localized: "Shows why this Host can't connect.")
             : section.isCollapsed
-                ? "Expands this Host."
-                : "Collapses this Host."
+                ? String(localized: "Expands this Host.")
+                : String(localized: "Collapses this Host.")
 
         var labelParts = [section.hostDisplayName, readiness.text]
         if let statusText {
@@ -84,7 +85,8 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     }
 
     /// The same readiness for any Host-scoped inventory; the Terminals tab
-    /// passes its own noun.
+    /// passes its own noun. The noun is a token, "Agents" or "Terminals",
+    /// never shown as it is: each one has its own localized sentences.
     static func readiness(
         connectionStatus: EventsSessionStatus?,
         isAwaitingSnapshot: Bool,
@@ -99,34 +101,55 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
             // Host's issue row never give one state two looks. A connected
             // Host's only quieter condition is that wait itself.
             if let statusSeverity, statusSeverity != .informational {
-                return HostReadiness(text: "Sync issue", tone: .warning)
+                return HostReadiness(text: String(localized: "Sync issue"), tone: .warning)
             }
             if isAwaitingSnapshot {
-                return HostReadiness(text: "Loading \(inventoryNoun)…", tone: .pending)
+                return HostReadiness(text: loadingText(inventoryNoun: inventoryNoun), tone: .pending)
             }
             return HostReadiness(
-                text: isEmpty ? "No \(inventoryNoun)" : "Connected", tone: .connected)
+                text: isEmpty ? emptyText(inventoryNoun: inventoryNoun) : String(localized: "Connected"),
+                tone: .connected)
         case .reconnecting:
-            return HostReadiness(text: "Reconnecting…", tone: .reconnecting)
+            return HostReadiness(text: String(localized: "Reconnecting…"), tone: .reconnecting)
         case .connecting:
             if let statusSeverity, statusSeverity != .informational {
-                return HostReadiness(text: "Unavailable", tone: .unavailable)
+                return HostReadiness(text: String(localized: "Unavailable"), tone: .unavailable)
             }
-            return HostReadiness(text: "Connecting…", tone: .pending)
+            return HostReadiness(text: String(localized: "Connecting…"), tone: .pending)
         case .failed, .ended:
-            return HostReadiness(text: "Unavailable", tone: .unavailable)
+            return HostReadiness(text: String(localized: "Unavailable"), tone: .unavailable)
         case .suspended:
-            return HostReadiness(text: "Paused", tone: .paused)
+            return HostReadiness(text: String(localized: "Paused"), tone: .paused)
         case nil:
             if statusSeverity != nil {
-                return HostReadiness(text: "Unavailable", tone: .unavailable)
+                return HostReadiness(text: String(localized: "Unavailable"), tone: .unavailable)
             }
-            return HostReadiness(text: "Connecting…", tone: .pending)
+            return HostReadiness(text: String(localized: "Connecting…"), tone: .pending)
         }
+    }
+
+    private static func loadingText(inventoryNoun: String) -> String {
+        inventoryNoun == "Terminals"
+            ? String(localized: "Loading Terminals…") : String(localized: "Loading Agents…")
+    }
+
+    private static func emptyText(inventoryNoun: String) -> String {
+        inventoryNoun == "Terminals" ? String(localized: "No Terminals") : String(localized: "No Agents")
     }
 
     static func statusText(items: [ConsoleHostAgentStatusCount]) -> String? {
         guard !items.isEmpty else { return nil }
-        return items.map { "\($0.count) \($0.status.rawValue)" }.joined(separator: ", ")
+        return items.map(countText).joinedAsPhrases()
+    }
+
+    private static func countText(_ item: ConsoleHostAgentStatusCount) -> String {
+        let count = item.count
+        switch item.status {
+        case .blocked: return String(localized: "\(count) blocked")
+        case .working: return String(localized: "\(count) working")
+        case .done: return String(localized: "\(count) done")
+        case .error: return count == 1 ? String(localized: "1 error") : String(localized: "\(count) errors")
+        default: return "\(count) \(item.status.displayTitle ?? item.status.rawValue)"
+        }
     }
 }

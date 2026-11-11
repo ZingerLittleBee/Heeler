@@ -14,7 +14,7 @@ enum AgentUsageProbe {
                     || (97...122).contains($0) || $0 == 45
             })
         else {
-            throw TransportError.malformedResponse("The Usage query arguments are invalid.")
+            throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
         let configCommand: String
         let environment: String
@@ -104,7 +104,7 @@ enum AgentUsageProbe {
             let statusEnd = stdout[end.upperBound...].firstIndex(of: 10),
             String(decoding: stdout[end.upperBound..<statusEnd], as: UTF8.self) == "0"
         else {
-            throw TransportError.malformedResponse("The Host did not finish its Usage response.")
+            throw TransportError.malformedResponse(String(localized: "The Host did not finish its Usage response."))
         }
         return Data(stdout[begin.upperBound..<end.lowerBound])
     }

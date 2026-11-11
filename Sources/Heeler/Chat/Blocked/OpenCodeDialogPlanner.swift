@@ -22,7 +22,7 @@ struct OpenCodeDialogPlanner {
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .agyCommand, .agyFileEdit,
             .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
-            throw .unsupported("Not an OpenCode dialog.")
+            throw .unsupported(String(localized: "Not an OpenCode dialog."))
         }
     }
 
@@ -46,15 +46,16 @@ struct OpenCodeDialogPlanner {
         case .dismiss:
             return try rejection()
         case .amend, .respond, .approvePlan:
-            throw .unsupported("OpenCode takes no note with a permission; reject, then tell OpenCode in the composer.")
+            throw .unsupported(
+                String(localized: "OpenCode takes no note with a permission; reject, then tell OpenCode in the composer."))
         case .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The permission has no such action.")
+            throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
 
     private func rejection() throws(DialogPlanError) -> DialogActionPlan {
         guard toolUseID != nil else {
-            throw .unsupported("Reject this in the terminal: OpenCode asks why when a subagent's request is rejected.")
+            throw .unsupported(String(localized: "Reject this in the terminal: OpenCode asks why when a subagent's request is rejected."))
         }
         return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
     }
@@ -67,20 +68,20 @@ struct OpenCodeDialogPlanner {
             guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
             guard option.role == .answer else { throw Self.ownAnswer }
             guard let digit = DialogActionPlanner.digitKey(option.number) else {
-                throw .unsupported("Option \(ordinal) has no digit key. Answer it in the terminal.")
+                throw .unsupported(String(localized: "Option \(ordinal) has no digit key. Answer it in the terminal."))
             }
             return DialogActionPlan(steps: [.keys([digit])], confirmation: .fingerprintChangeOrUnblocked)
         case .dismiss:
             guard toolUseID != nil else {
-                throw .unsupported("Dismiss this question in the terminal: Heeler can't match it to OpenCode's call.")
+                throw .unsupported(String(localized: "Dismiss this question in the terminal: Heeler can't match it to OpenCode's call."))
             }
             return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
         case .respond, .amend:
             throw Self.ownAnswer
         case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
-            throw .unsupported("The question has no such action.")
+            throw .unsupported(String(localized: "The question has no such action."))
         }
     }
 
-    private static let ownAnswer = DialogPlanError.unsupported("Type your own answer in the terminal.")
+    private static let ownAnswer = DialogPlanError.unsupported(String(localized: "Type your own answer in the terminal."))
 }

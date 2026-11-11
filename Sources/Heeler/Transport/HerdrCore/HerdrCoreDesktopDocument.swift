@@ -72,7 +72,7 @@ extension HerdrCoreTransport {
             "doc.get", params: .object(["name": .string(HerdrCoreDesktopDocument.name)]),
             isMutation: false)
         guard let version = HerdrCoreWire.integer(result["version"]) else {
-            throw TransportError.malformedResponse("herdr-core: A document read has no version.")
+            throw TransportError.malformedResponse(String(localized: "herdr-core: A document read has no version."))
         }
         return HerdrCoreDesktopDocumentRead(
             document: result["value"].flatMap(HerdrCoreDesktopDocument.init(value:)),

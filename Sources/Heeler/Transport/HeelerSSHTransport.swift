@@ -530,7 +530,7 @@ actor HeelerSSHTransport: Transport {
                 throw TransportError.jumpHostFailed(.tcpForwardingUnavailable)
             case SSHError.targetUnreachable:
                 throw TransportError.sshUnreachable(
-                    detail: "The Host is unreachable from the Jump Host.")
+                    detail: String(localized: "The Host is unreachable from the Jump Host."))
             default:
                 throw mapConnect(error)
             }
@@ -688,7 +688,7 @@ actor HeelerSSHTransport: Transport {
 
     private static func endpoint(host: String, port: Int) throws -> SSHEndpoint {
         guard let port = UInt16(exactly: port), !host.isEmpty else {
-            throw TransportError.sshUnreachable(detail: "Invalid SSH endpoint.")
+            throw TransportError.sshUnreachable(detail: String(localized: "Invalid SSH endpoint."))
         }
         return SSHEndpoint(host: host, port: port)
     }
@@ -749,11 +749,11 @@ actor HeelerSSHTransport: Transport {
                 from: output).sessions
         } catch {
             throw TransportError.malformedResponse(
-                "herdr session list returned invalid JSON: \(Self.preview(output))")
+                String(localized: "herdr session list returned invalid JSON: \(Self.preview(output))"))
         }
         guard sessions.allSatisfy({ HerdrSessionName.isValid($0.name) }) else {
             throw TransportError.malformedResponse(
-                "herdr session list returned an invalid session name")
+                String(localized: "herdr session list returned an invalid session name"))
         }
         return sessions
     }
@@ -765,7 +765,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
-        try await requirePOSIXHost(feature: "Skills")
+        try await requirePOSIXHost(feature: String(localized: "Skills"))
         let sources = SkillSourceCatalog.sources(for: query.kind)
         guard !sources.isEmpty else { return [] }
         let home = try await remoteHomeDirectory()
@@ -793,15 +793,15 @@ actor HeelerSSHTransport: Transport {
     }
 
     func readSkillFile(atPath path: String) async throws -> String {
-        try await requirePOSIXHost(feature: "Skills")
+        try await requirePOSIXHost(feature: String(localized: "Skills"))
         guard let quoted = RemoteShellPath.quotedAbsolute(path) else {
-            throw TransportError.channelFailed(detail: "skill path is not quotable")
+            throw TransportError.channelFailed(detail: String(localized: "skill path is not quotable"))
         }
         let output = try await runHostCommand(
             SkillProbe.readFileCommand(quotedPath: quoted))
         guard let content = SkillProbe.documentContent(in: output) else {
             throw TransportError.malformedResponse(
-                "The skill file is gone or unreadable on the Host.")
+                String(localized: "The skill file is gone or unreadable on the Host."))
         }
         return content
     }
@@ -887,7 +887,7 @@ actor HeelerSSHTransport: Transport {
                 // drained the holders, so this channel would be unowned.
                 try? await client.close(timeout: .seconds(2))
                 await lease.release()
-                throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+                throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
             }
             sessionFileClient = client
             sessionFileClientLease = lease
@@ -968,7 +968,7 @@ actor HeelerSSHTransport: Transport {
 
     func hostHomeDirectory() async throws -> String {
         let home = try await hostFileEnvironment().home
-        try await requirePOSIXHost(feature: "Chat")
+        try await requirePOSIXHost(feature: String(localized: "Chat"))
         return home
     }
 
@@ -1005,7 +1005,7 @@ actor HeelerSSHTransport: Transport {
         _ = try await hostFileEnvironment()
         try await requireChatFileHost()
         if hostFileSFTPUnavailable {
-            throw TransportError.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat needs SFTP on the Host"))
         }
         sessionFileClientIdleRelease?.cancel()
         sessionFileClientIdleRelease = nil
@@ -1030,7 +1030,7 @@ actor HeelerSSHTransport: Transport {
 
     /// A core's Chat reads Transcripts over SFTP on native Windows too (ADR 0034).
     func requireChatFileHost() async throws {
-        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: "Chat") }
+        if !readsChatFilesOnWindows { try await requirePOSIXHost(feature: String(localized: "Chat")) }
     }
 
     /// The remote environment, resolved at most once per connection. A Host
@@ -1067,7 +1067,7 @@ actor HeelerSSHTransport: Transport {
         case SSHError.sftpFailure(let status):
             (.hostFileUnreadable(status: status), false)
         case SSHError.sftpUnavailable:
-            (.hostFeatureUnavailable(feature: "Chat needs SFTP on the Host"), true)
+            (.hostFeatureUnavailable(feature: String(localized: "Chat needs SFTP on the Host")), true)
         case is CancellationError, SSHError.cancelled, TransportError.cancelled:
             (.cancelled, false)
         case let error as TransportError:
@@ -1426,7 +1426,7 @@ actor HeelerSSHTransport: Transport {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.readFailed(
-                    detail: "The SSH connection is unavailable.")
+                    detail: String(localized: "The SSH connection is unavailable."))
             }
             let directory = try await self.notificationPluginConfigDirectory()
             let path = "\(directory)/\(name)"
@@ -1444,7 +1444,7 @@ actor HeelerSSHTransport: Transport {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The SSH connection is unavailable.")
+                    detail: String(localized: "The SSH connection is unavailable."))
             }
             let directory = try await self.notificationPluginConfigDirectory()
             let path = "\(directory)/\(name)"
@@ -1526,7 +1526,7 @@ actor HeelerSSHTransport: Transport {
             }
             guard let currentTemporaryPath = temporaryPath else {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The private temporary file is unavailable.")
+                    detail: String(localized: "The private temporary file is unavailable."))
             }
             let file = try await sftp.openFileForWriting(
                 at: currentTemporaryPath,
@@ -1554,7 +1554,7 @@ actor HeelerSSHTransport: Transport {
                 temporaryAttributes.permissions == 0o600
             else {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The private temporary file failed verification.")
+                    detail: String(localized: "The private temporary file failed verification."))
             }
             try Task.checkCancellation()
             try await sftp.renameFileAtomically(
@@ -1583,7 +1583,7 @@ actor HeelerSSHTransport: Transport {
             if !(await connection.isConnected) { connected = false }
             if compensationFailed {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The incomplete temporary file could not be removed safely.")
+                    detail: String(localized: "The incomplete temporary file could not be removed safely."))
             }
             try Self.notificationWriteError(operationError)
         }
@@ -1600,11 +1600,11 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.invalidDirectoryPath(path: path)
         }
         _ = try await hostFileEnvironment()
-        try await requirePOSIXHost(feature: "Editing Host files")
+        try await requirePOSIXHost(feature: String(localized: "Editing Host files"))
         do {
             try await withNotificationFileRequestDeadline {
                 guard await self.notificationConnectionIsAvailable() else {
-                    throw TransportError.sshUnreachable(detail: "The SSH connection is unavailable.")
+                    throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is unavailable."))
                 }
                 let operationID = UUID()
                 try await self.channelAdmission.withChannel(.ordinarySession) {
@@ -1633,10 +1633,10 @@ actor HeelerSSHTransport: Transport {
         guard RemoteFilePath.isAcceptable(path) else {
             throw TransportError.invalidDirectoryPath(path: path)
         }
-        try await requirePOSIXHost(feature: "Editing Host files")
+        try await requirePOSIXHost(feature: String(localized: "Editing Host files"))
         let result = try await runHostHelperScript(HostHelperScript(step, nonce: HostProcessReader.makeNonce()))
         guard result.exitStatus == 0 else {
-            throw TransportError.malformedResponse("The Host refused to change the folder \(path).")
+            throw TransportError.malformedResponse(String(localized: "The Host refused to change the folder \(path)."))
         }
     }
 
@@ -1675,7 +1675,7 @@ actor HeelerSSHTransport: Transport {
                 try await sftp.setPermissions(permissions, at: temporary, timeout: requestTimeout)
                 let written = try await sftp.attributes(at: temporary, timeout: requestTimeout)
                 guard written.size == UInt64(contents.count) else {
-                    throw TransportError.malformedResponse("The written file failed verification.")
+                    throw TransportError.malformedResponse(String(localized: "The written file failed verification."))
                 }
                 try await requireFile(at: target, holds: expected, over: sftp)
                 try Task.checkCancellation()
@@ -1854,7 +1854,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     private func notificationPluginConfigDirectory() async throws -> String {
-        try await requirePOSIXHost(feature: "Plugin configuration and notification registration")
+        try await requirePOSIXHost(feature: String(localized: "Plugin configuration and notification registration"))
         return try await notificationConfigDirectory.value {
             try await self.resolveNotificationConfigDirectory()
         }
@@ -1885,7 +1885,7 @@ actor HeelerSSHTransport: Transport {
             RemoteShellPath.isQuotableAbsolute(directory)
         else {
             throw NotificationRegistrationError.pluginProbeFailed(
-                detail: "The plugin config directory response was invalid.")
+                detail: String(localized: "The plugin config directory response was invalid."))
         }
         return directory
     }
@@ -1899,7 +1899,7 @@ actor HeelerSSHTransport: Transport {
             list = try JSONDecoder().decode(NotificationPluginListEnvelope.self, from: listOutput)
         } catch {
             throw NotificationRegistrationError.pluginProbeFailed(
-                detail: "The plugin list response was invalid.")
+                detail: String(localized: "The plugin list response was invalid."))
         }
         guard let pluginID = list.result.heelerEntry(enabledOnly: true)?.pluginID else {
             throw NotificationRegistrationError.pluginNotInstalled
@@ -1908,7 +1908,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
-        try await requirePOSIXHost(feature: "The Heeler plugin")
+        try await requirePOSIXHost(feature: String(localized: "The Heeler plugin"))
         // No `plugin_id` filter: one listing covers the current and legacy ids.
         let result = try await request(
             method: "plugin.list",
@@ -1927,13 +1927,13 @@ actor HeelerSSHTransport: Transport {
             pluginRoot: pluginRoot, timeZone: timeZone, claudeLimits: claudeLimits,
             nonce: nonce, launcher: herdrLauncher)
         let result = try await runBoundedScript(
-            script, feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+            script, feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
         return try AgentUsageProbe.parse(stdout: result.stdout, nonce: nonce)
     }
 
     func runHeelerPluginStep(_ step: HeelerPluginStep) async throws {
-        try await requirePOSIXHost(feature: "Changing the Heeler plugin")
+        try await requirePOSIXHost(feature: String(localized: "Changing the Heeler plugin"))
         guard let arguments = step.herdrArguments else {
             if case .enable(let pluginID) = step {
                 _ = try await request(
@@ -1956,7 +1956,7 @@ actor HeelerSSHTransport: Transport {
     }
 
     func readPluginBranchVersion() async throws -> PluginVersion {
-        try await requirePOSIXHost(feature: "The Heeler plugin")
+        try await requirePOSIXHost(feature: String(localized: "The Heeler plugin"))
         let result = try await runExec(
             Self.cLocaleCommand(Self.pluginBranchManifestCommand), timeout: pluginInstallTimeout)
         guard result.exitStatus == 0, result.reachedEOF,
@@ -2058,7 +2058,7 @@ actor HeelerSSHTransport: Transport {
             }
             guard result.exitStatus == 0, result.reachedEOF else {
                 throw NotificationRegistrationError.pluginProbeFailed(
-                    detail: "The Host plugin probe failed.")
+                    detail: String(localized: "The Host plugin probe failed."))
             }
             return result.stdout
         } catch TransportError.cancelled {
@@ -2073,7 +2073,7 @@ actor HeelerSSHTransport: Transport {
             throw error
         } catch {
             throw NotificationRegistrationError.pluginProbeFailed(
-                detail: "The Host plugin probe failed.")
+                detail: String(localized: "The Host plugin probe failed."))
         }
     }
 
@@ -2115,12 +2115,12 @@ actor HeelerSSHTransport: Transport {
         if let error = error as? SSHError,
             case .sftpFailure(let status) = error
         {
-            return "SFTP failed with status \(status)."
+            return String(localized: "SFTP failed with status \(status).")
         }
         if error as? SSHError == .sftpUnavailable {
-            return "SFTP is unavailable."
+            return String(localized: "SFTP is unavailable.")
         }
-        return "The SSH file operation failed."
+        return String(localized: "The SSH file operation failed.")
     }
 
     // MARK: Attachment staging
@@ -2179,7 +2179,7 @@ actor HeelerSSHTransport: Transport {
         _ source: StagingSource,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
-        try await requirePOSIXHost(feature: "File and image uploads")
+        try await requirePOSIXHost(feature: String(localized: "File and image uploads"))
         guard connected, await connection.isConnected else {
             throw AttachmentStagingError.transferFailed
         }
@@ -2498,7 +2498,7 @@ actor HeelerSSHTransport: Transport {
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
-                detail: "The SSH connection is closed.")
+                detail: String(localized: "The SSH connection is closed."))
         }
         let timeout = timeout ?? requestTimeout
         let requestID = UUID().uuidString
@@ -2542,7 +2542,7 @@ actor HeelerSSHTransport: Transport {
                             }
                         }
                         throw TransportError.channelFailed(
-                            detail: "The Windows herdr API bridge closed before a reply. Start the selected herdr session on the Host.")
+                            detail: String(localized: "The Windows herdr API bridge closed before a reply. Start the selected herdr session on the Host."))
                     } catch {
                         try? await channel.close(timeout: .seconds(2))
                         if error is SSHError { throw await self.mapOperationError(error) }
@@ -2610,7 +2610,7 @@ actor HeelerSSHTransport: Transport {
                 let result = try await self.runExec(command)
                 guard result.exitStatus == 0, result.reachedEOF else {
                     throw TransportError.channelFailed(
-                        detail: "herdr wake command failed: \(Self.preview(result.stderr))")
+                        detail: String(localized: "herdr wake command failed: \(Self.preview(result.stderr))"))
                 }
             }
         }
@@ -2662,7 +2662,7 @@ actor HeelerSSHTransport: Transport {
     private func refuseHerdrEndpointOnWindows() throws {
         guard herdrLauncher != nil else { return }
         throw TransportError.hostFeatureUnavailable(
-            feature: "A herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts")
+            feature: String(localized: "A herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts"))
     }
 
     func remoteHomeDirectory() async throws -> String {
@@ -2688,7 +2688,7 @@ actor HeelerSSHTransport: Transport {
                     let environment = RemoteHostEnvironment.windows(from: windows.stdout)
                 else {
                     throw TransportError.homeDirectoryUnresolvable(
-                        detail: "Neither the POSIX home probe nor the native Windows USERPROFILE probe returned an absolute path.")
+                        detail: String(localized: "Neither the POSIX home probe nor the native Windows USERPROFILE probe returned an absolute path."))
                 }
                 await self.configureWindowsHost()
                 return environment
@@ -2722,7 +2722,7 @@ actor HeelerSSHTransport: Transport {
                     .split(whereSeparator: \.isNewline).contains("herdr-api-bridge-v1")
             else {
                 throw TransportError.hostFeatureUnavailable(
-                    feature: "Native Windows connections require herdr 0.9.3 or newer with remote-api-bridge")
+                    feature: String(localized: "Native Windows connections require herdr 0.9.3 or newer with remote-api-bridge"))
             }
         }
     }
@@ -2730,7 +2730,7 @@ actor HeelerSSHTransport: Transport {
     private func requirePOSIXHost(feature: String) async throws {
         if isWindowsHost {
             throw TransportError.hostFeatureUnavailable(
-                feature: "\(feature) is not yet supported on native Windows")
+                feature: String(localized: "\(feature) is not yet supported on native Windows"))
         }
     }
 
@@ -2746,7 +2746,8 @@ actor HeelerSSHTransport: Transport {
                     } else if command == self.agentDiscoveryCommand {
                         invocation = PowerShellCommand.discovery
                     } else {
-                        throw TransportError.hostFeatureUnavailable(feature: "This Host command is unavailable on native Windows")
+                        throw TransportError.hostFeatureUnavailable(
+                            feature: String(localized: "This Host command is unavailable on native Windows"))
                     }
                 } else {
                     invocation = Self.cLocaleCommand(HerdrHostPath.wrappingBareHerdr(command))
@@ -2763,11 +2764,12 @@ actor HeelerSSHTransport: Transport {
                 }
                 guard result.reachedEOF else {
                     throw TransportError.channelFailed(
-                        detail: "Host command closed before EOF")
+                        detail: String(localized: "Host command closed before EOF"))
                 }
                 if environment.isWindows {
                     guard let output = PowerShellCommand.outputAfterMarker(result.stdout) else {
-                        throw TransportError.channelFailed(detail: "The Windows Host command did not start")
+                        throw TransportError.channelFailed(
+                            detail: String(localized: "The Windows Host command did not start"))
                     }
                     return output
                 }
@@ -2831,7 +2833,7 @@ actor HeelerSSHTransport: Transport {
         if command.isMutation {
             let deadline = SSHTransportSettings.defaultGitMutationTimeout
             result = try await runBoundedScript(
-                script, feature: "Worktrees", deadline: deadline,
+                script, feature: String(localized: "Worktrees"), deadline: deadline,
                 remoteSeconds: max(1, deadline.components.seconds),
                 timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
         } else {
@@ -2852,7 +2854,7 @@ actor HeelerSSHTransport: Transport {
     ) async throws -> OpenCodeQueryResponse {
         let nonce = OpenCodeProbe.makeNonce()
         let result = try await runBoundedScript(
-            OpenCodeProbe.script(query, nonce: nonce, reader: reader), feature: "Chat",
+            OpenCodeProbe.script(query, nonce: nonce, reader: reader), feature: String(localized: "Chat"),
             deadline: chatQueryTimeout,
             remoteSeconds: max(1, chatQueryTimeout.components.seconds - 2),
             timeoutMarkerPrefix: "__HEELER_OC_TIMEOUT_", timedOut: .hostFileTimedOut,
@@ -2868,7 +2870,7 @@ actor HeelerSSHTransport: Transport {
         // POSIX sleep accepts whole seconds. Round down, with a one-second
         // minimum for short injected deadlines; the local timer stays exact.
         try await runBoundedScript(
-            script, feature: "Changes", deadline: gitExecTimeout,
+            script, feature: String(localized: "Changes"), deadline: gitExecTimeout,
             remoteSeconds: max(1, gitExecTimeout.components.seconds),
             timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
     }
@@ -3047,11 +3049,11 @@ actor HeelerSSHTransport: Transport {
             // A delayed channel-open acknowledgement can outlast the server's
             // request timeout. Without a complete line, this is a channel loss,
             // not evidence of an incompatible protocol.
-            return .channelFailed(detail: "stream-local channel closed before a response line")
+            return .channelFailed(detail: String(localized: "stream-local channel closed before a response line"))
         case .responseTooLarge(let limit):
-            return .malformedResponse("response line exceeds \(limit) bytes")
+            return .malformedResponse(String(localized: "response line exceeds \(limit) bytes"))
         case .connectionInvalidated:
-            return .sshUnreachable(detail: "The SSH connection is no longer reusable.")
+            return .sshUnreachable(detail: String(localized: "The SSH connection is no longer reusable."))
         // `.streamLocalOpenFailed` falls here on purpose. Only
         // `classifyStreamLocalOpenFailure` may produce the path-bearing
         // `TransportError` of the same name, because only it knows the socket
@@ -3138,7 +3140,7 @@ actor HeelerSSHTransport: Transport {
     ) throws -> String {
         guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
             throw TransportError.channelFailed(
-                detail: "The remote socket path cannot be quoted safely.")
+                detail: String(localized: "The remote socket path cannot be quoted safely."))
         }
         if let launcher {
             return cLocaleCommand(launcher.wakeCommand(quotedSocketPath: quotedSocketPath))
@@ -3148,7 +3150,7 @@ actor HeelerSSHTransport: Transport {
         case .namedSession(let sessionName):
             guard HerdrSessionName.isValid(sessionName) else {
                 throw TransportError.channelFailed(
-                    detail: "The herdr session name is invalid.")
+                    detail: String(localized: "The herdr session name is invalid."))
             }
             command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
                 + "export HERDR_SOCKET_PATH=\"$1\"; "
@@ -3196,7 +3198,7 @@ actor HeelerSSHTransport: Transport {
         admissionLease: SSHChannelAdmissionLease
     ) async throws -> (HerdrEventStream, readerID: UInt64) {
         guard connected else {
-            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
         }
         let socketPath = try await resolvedSocketPath()
         let requestID = UUID().uuidString
@@ -3253,7 +3255,7 @@ actor HeelerSSHTransport: Transport {
                 var iterator = ackLines.makeAsyncIterator()
                 guard let line = try await iterator.next() else {
                     throw TransportError.channelFailed(
-                        detail: "events channel ended before ack")
+                        detail: String(localized: "events channel ended before ack"))
                 }
                 return line
             }
@@ -3301,10 +3303,10 @@ actor HeelerSSHTransport: Transport {
                 guard let chunk else {
                     if sawAck {
                         streamFailure = .channelFailed(
-                            detail: "events channel closed by remote")
+                            detail: String(localized: "events channel closed by remote"))
                     } else {
                         ackFailure = .channelFailed(
-                            detail: "events channel ended before ack")
+                            detail: String(localized: "events channel ended before ack"))
                         streamFailure = ackFailure
                     }
                     break
@@ -3312,7 +3314,7 @@ actor HeelerSSHTransport: Transport {
                 pending.append(chunk)
                 guard pending.count <= Self.maximumResponseBytes else {
                     throw TransportError.malformedResponse(
-                        "events line exceeds \(Self.maximumResponseBytes) bytes")
+                        String(localized: "events line exceeds \(Self.maximumResponseBytes) bytes"))
                 }
                 while let line = Self.takeLine(from: &pending) {
                     if !sawAck {
@@ -3401,7 +3403,8 @@ actor HeelerSSHTransport: Transport {
                         (1...Int(UInt16.max)).contains(request.rows),
                         !request.target.identifier.isEmpty
                     else {
-                        throw TransportError.channelFailed(detail: "Invalid terminal controller target or geometry")
+                        throw TransportError.channelFailed(
+                            detail: String(localized: "Invalid terminal controller target or geometry"))
                     }
                     var arguments = ["terminal", "session", "control", request.target.identifier,
                         "--cols", String(request.cols), "--rows", String(request.rows)]
@@ -3499,11 +3502,11 @@ actor HeelerSSHTransport: Transport {
             !target.contains(where: unquotable)
         else {
             throw TransportError.channelFailed(
-                detail: "attach target cannot be quoted for the remote command")
+                detail: String(localized: "attach target cannot be quoted for the remote command"))
         }
         guard let quotedSocketPath = RemoteShellPath.quotedAbsolute(socketPath) else {
             throw TransportError.channelFailed(
-                detail: "The remote socket path cannot be quoted safely.")
+                detail: String(localized: "The remote socket path cannot be quoted safely."))
         }
         if let launcher {
             return launcher.attachCommand(
@@ -3577,26 +3580,33 @@ actor HeelerSSHTransport: Transport {
         _ error: any Error, attachCommand: String, launcher: HerdrLauncher? = nil
     ) -> TransportError {
         let underlying: any Error
-        let prefix: String
+        // Which side failed, named by whole localized phrases below.
+        let isInput: Bool
         switch error as? HeelerSSHAttachPumpError {
         case .remoteExit(let status, let output):
             return attachChannelFailure(
                 exitStatus: status, output: output, attachCommand: attachCommand,
                 launcher: launcher)
         case .input(let inputError):
-            (underlying, prefix) = (inputError, "attach input")
+            (underlying, isInput) = (inputError, true)
         case .output(let outputError):
-            (underlying, prefix) = (outputError, "attach channel")
+            (underlying, isInput) = (outputError, false)
         case nil:
-            (underlying, prefix) = (error, "attach channel")
+            (underlying, isInput) = (error, false)
         }
         if let underlying = underlying as? TransportError { return underlying }
         guard underlying is SSHError else {
-            return .channelFailed(detail: "\(prefix): \(String(describing: underlying))")
+            let described = String(describing: underlying)
+            return .channelFailed(
+                detail: isInput
+                    ? String(localized: "attach input: \(described)")
+                    : String(localized: "attach channel: \(described)"))
         }
         let mapped = map(underlying)
         if case .channelFailed = mapped {
-            return .channelFailed(detail: "\(prefix) failed")
+            return .channelFailed(
+                detail: isInput
+                    ? String(localized: "attach input failed") : String(localized: "attach channel failed"))
         }
         return mapped
     }
@@ -3763,7 +3773,7 @@ extension HeelerSSHTransport: ServerKindDetectionConnection {
     /// not go to native Windows, which runs `runWindowsCommand` instead.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "Server Kind detection", deadline: .seconds(16), remoteSeconds: 12,
+            script, feature: String(localized: "Server Kind detection"), deadline: .seconds(16), remoteSeconds: 12,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
     }
 }
@@ -3775,11 +3785,11 @@ extension HeelerSSHTransport: HostHelperHost {
         // A Usage read searches for nothing, and a screen is waiting on it.
         if case .usageQuery = script.step {
             return try await runBoundedScript(
-                Data(script.text.utf8), feature: "Usage", deadline: .seconds(10), remoteSeconds: 8,
+                Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
         }
         return try await runBoundedScript(
-            Data(script.text.utf8), feature: "The Host Helper", deadline: .seconds(40), remoteSeconds: 30,
+            Data(script.text.utf8), feature: String(localized: "The Host Helper"), deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_HOST_HELPER_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -3787,7 +3797,7 @@ extension HeelerSSHTransport: HostHelperHost {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.readFailed(
-                    detail: "The SSH connection is unavailable.")
+                    detail: String(localized: "The SSH connection is unavailable."))
             }
             let operationID = UUID()
             return try await self.channelAdmission.withChannel(.ordinarySession) {
@@ -3801,7 +3811,7 @@ extension HeelerSSHTransport: HostHelperHost {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.writeFailed(
-                    detail: "The SSH connection is unavailable.")
+                    detail: String(localized: "The SSH connection is unavailable."))
             }
             let operationID = UUID()
             try await self.channelAdmission.withChannel(.ordinarySession) {
@@ -3819,7 +3829,8 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// which stops it for good, so its probe gets another try.
     static func platformWithUnreadableHome(isWindowsHost: Bool) throws -> HostPlatform {
         guard isWindowsHost else { return .posix }
-        throw TransportError.channelFailed(detail: "herdr-core: This Windows Host's home folder could not be read.")
+        throw TransportError.channelFailed(
+            detail: String(localized: "herdr-core: This Windows Host's home folder could not be read."))
     }
 
     /// The same answer the Herdr TUI path acts on (ADR 0018), and reading it turns on
@@ -3844,7 +3855,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
 
     func openCoreLinkExec(command: String) async throws -> any WindowsTerminalExecChannel {
         guard connected else {
-            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
         }
         return try await channelAdmission.admitCoreExec {
             try await self.openCoreExec(command: command)
@@ -3853,7 +3864,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
 
     func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel {
         guard connected else {
-            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
         }
         return try await channelAdmission.admitCoreCallExec {
             try await self.openCoreExec(command: command)
@@ -3871,7 +3882,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// One bounded exec, cut off on the Host if a `--version` hangs.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_CORE_LOCATOR_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -3879,7 +3890,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// if one of them waits for input the exec never gives it.
     func runCoreStart(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "herdr-core Hosts", deadline: .seconds(40), remoteSeconds: 30,
+            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -3888,7 +3899,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         guard try await hostPlatform() == .posix else { return [:] }
         let nonce = HostProcessReader.makeNonce()
         let result = try await runBoundedScript(
-            HostProcessReader.script(request, nonce: nonce), feature: "Agent permission modes",
+            HostProcessReader.script(request, nonce: nonce), feature: String(localized: "Agent permission modes"),
             deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .hostFileTimedOut)
         guard result.exitStatus == 0 else { return [:] }
@@ -3898,7 +3909,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -3906,13 +3917,13 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// or a program's `--version` hangs.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "herdr-core Hosts", deadline: .seconds(25), remoteSeconds: 20,
+            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(25), remoteSeconds: 20,
             timeoutMarkerPrefix: "__HEELER_AGENT_DISCOVERY_TIMEOUT_", timedOut: .timedOut)
     }
 
     func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: "herdr-core Hosts", deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_HERDR_APP_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -3920,7 +3931,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// socket, a refused one and a forbidden path with the same error.
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         guard connected else {
-            throw TransportError.sshUnreachable(detail: "The SSH connection is closed.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
         }
         return try await channelAdmission.admitCoreLink {
             do {

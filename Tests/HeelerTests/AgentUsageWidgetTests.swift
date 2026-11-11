@@ -47,24 +47,27 @@ struct AgentUsageWidgetTests {
         // A Host that answered it cannot report drops its figures.
         let unsupported = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", .unsupportedPlatform)], previous: first, now: Self.now)
-        #expect(unsupported.hosts.first?.excludedReason == "Not supported on Windows")
+        #expect(unsupported.hosts.first?.excludedReason == .unsupportedPlatform)
+        #expect(unsupported.hosts.first?.excludedReason?.reason == "Not supported on Windows")
         #expect(unsupported.hosts.first?.programs.isEmpty == true)
     }
 
     @Test(arguments: [
-        (AgentUsageHostHelperNeed.notInstalled, "Needs the Host Helper"),
-        (AgentUsageHostHelperNeed.outdated, "Update the Host Helper"),
-        (AgentUsageHostHelperNeed.waitingForCore, "Waiting for the core"),
-        (AgentUsageHostHelperNeed.nodeGone, "Repair the Host Helper"),
-        (AgentUsageHostHelperNeed.notOnWindows, "Comes with the Host Helper, not available yet"),
+        (AgentUsageHostHelperNeed.notInstalled, AgentUsageExclusion.needsHostHelper),
+        (AgentUsageHostHelperNeed.outdated, AgentUsageExclusion.updateHostHelper),
+        (AgentUsageHostHelperNeed.waitingForCore, AgentUsageExclusion.waitingForCore),
+        (AgentUsageHostHelperNeed.nodeGone, AgentUsageExclusion.repairHostHelper),
+        (AgentUsageHostHelperNeed.notOnWindows, AgentUsageExclusion.hostHelperNotOnWindows),
     ])
-    func aCoreHostDropsOldFiguresAndSaysWhatItsHelperNeeds(need: AgentUsageHostHelperNeed, reason: String) throws {
+    func aCoreHostDropsOldFiguresAndSaysWhatItsHelperNeeds(
+        need: AgentUsageHostHelperNeed, exclusion: AgentUsageExclusion
+    ) throws {
         let first = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", .available(try Self.report()), readAt: Self.now)],
             previous: nil, now: Self.now)
         let core = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", .hostHelper(need))], previous: first, now: Self.now)
-        #expect(core.hosts.first?.excludedReason == reason)
+        #expect(core.hosts.first?.excludedReason == exclusion)
         #expect(core.hosts.first?.programs.isEmpty == true)
         #expect(core.hosts.first?.limits.isEmpty == true)
         #expect(core.hosts.first?.reports == false)
@@ -74,7 +77,7 @@ struct AgentUsageWidgetTests {
     /// nothing new about it.
     @Test(arguments: [AgentUsageStore.State.idle, .loading])
     func aCoreHostKeepsItsLastAnswerUntilItsNextRead(state: AgentUsageStore.State) throws {
-        let reason = "Comes with the Host Helper, not available yet"
+        let reason = AgentUsageExclusion.hostHelperNotOnWindows
         let answered = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", .hostHelper(.notOnWindows))], previous: nil, now: Self.now)
 
@@ -86,12 +89,12 @@ struct AgentUsageWidgetTests {
 
         // With nothing to keep it has simply not been read.
         let first = UsageWidgetSnapshot(readings: [core], previous: nil, now: Self.now)
-        #expect(first.hosts.first?.excludedReason == "Not read yet")
+        #expect(first.hosts.first?.excludedReason == .notReadYet)
 
         // A Herdr TUI Host's connection decides what it says.
         let borrowed = UsageWidgetSnapshot(
             readings: [reading(studio, "Studio Mac", state, isConnected: false)], previous: answered, now: Self.now)
-        #expect(borrowed.hosts.first?.excludedReason == "Not connected")
+        #expect(borrowed.hosts.first?.excludedReason == .notConnected)
     }
 
     @Test func aCoreHostsFailedReadReplacesItsLastAnswer() throws {
@@ -103,7 +106,7 @@ struct AgentUsageWidgetTests {
             readAt: nil, isConnected: false, keepsLastAnswerUntilRead: true)
 
         let next = UsageWidgetSnapshot(readings: [failed], previous: answered, now: Self.now)
-        #expect(next.hosts.first?.excludedReason == "Not connected")
+        #expect(next.hosts.first?.excludedReason == .notConnected)
     }
 
     @Test func aHostNeverReadSaysWhy() {
@@ -115,7 +118,9 @@ struct AgentUsageWidgetTests {
             ],
             previous: nil, now: Self.now)
 
-        #expect(snapshot.hosts.map(\.excludedReason) == ["Not connected", "Not read yet", "Could not read Usage"])
+        #expect(snapshot.hosts.map(\.excludedReason) == [.notConnected, .notReadYet, .readFailed])
+        #expect(snapshot.hosts.map { $0.excludedReason?.reason }
+            == ["Not connected", "Not read yet", "Could not read Usage"])
         #expect(snapshot.hosts.allSatisfy { !$0.reports })
     }
 
@@ -135,11 +140,11 @@ struct AgentUsageWidgetTests {
         #expect(all.programs.first?.days["2026-10-25"] == .init(cost: 4, tokens: 400))
         #expect(all.updatedAt == Self.now.addingTimeInterval(-60))
         #expect(all.coverage == "2 of 3 Hosts")
-        #expect(all.excludedNote == "Not included: Pi Lab")
+        #expect(all.excluded.map(\.name) == ["Pi Lab"])
         #expect(all.chartDates(.today) == ["2026-10-25", "2026-10-26"])
 
         let one = try #require(UsageWidgetScope(snapshot: snapshot, hostID: pi))
-        #expect(one.isEmpty && one.coverage == nil && one.excludedNote == nil)
+        #expect(one.isEmpty && one.coverage == nil)
         #expect(UsageWidgetScope(snapshot: snapshot, hostID: UUID()) == nil)
         // Unpriced throughout stays unpriced rather than reading $0.
         #expect(UsageWidgetSnapshot.Summary.sum([.init(cost: nil, tokens: 5)]).cost == nil)
@@ -201,6 +206,14 @@ struct AgentUsageWidgetTests {
         #expect(changes == 2)
         store.invalidate()
         #expect(store.readAt == nil && changes == 3)
+    }
+
+    @Test func aCostThatDoesNotFitDropsItsCentsThenReadsInMillions() {
+        let english = Locale(identifier: "en_US")
+        #expect(UsageWidgetText.costVariants(1_234_567.89, locale: english)
+            == ["$1,234,567.89", "$1,234,568", "$1.23M"])
+        #expect(UsageWidgetText.costVariants(1_234_567.89, cents: false, locale: english) == ["$1,234,568", "$1.23M"])
+        #expect(UsageWidgetText.costVariants(nil, locale: english) == ["Unpriced"])
     }
 
     @Test func widgetLinksRoundTrip() throws {

@@ -199,7 +199,7 @@ struct UsageScopeEntity: AppEntity {
     var hostID: UUID? { UUID(uuidString: id) }
     var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
 
-    static let allHosts = UsageScopeEntity(id: allHostsID, name: "All Hosts")
+    static let allHosts = UsageScopeEntity(id: allHostsID, name: String(localized: "All Hosts"))
 }
 
 struct UsageScopeQuery: EntityQuery {

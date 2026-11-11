@@ -5,8 +5,6 @@ import Foundation
 /// reading, keeping a Host's last report while it cannot read a newer one.
 struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
     static let currentVersion = 1
-    /// What a Host's widget says while Usage is off in the app.
-    static let usageOffReason = "Usage is off in Settings."
 
     var version = Self.currentVersion
     /// In catalog order.
@@ -18,7 +16,7 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         /// When the app read this Host's report; nil while it never has.
         var readAt: Date?
         /// Why All Hosts leaves this Host out; nil while it reports.
-        var excludedReason: String?
+        var excludedReason: AgentUsageExclusion?
         /// The zone the Host's days are counted in.
         var timeZone: String?
         /// The programs whose Token Usage read ok.
@@ -134,8 +132,99 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
     func host(_ id: UUID) -> Host? { hosts.first { $0.id == id } }
 }
 
+/// Why a Host's Usage is left out of the totals. The widgets' snapshot keeps
+/// the token, not the words, so the app and the widgets each name it in the
+/// language they render in.
+enum AgentUsageExclusion: Equatable, Sendable {
+    case notConnected
+    case notReadYet
+    /// Usage is off in the app's Settings.
+    case usageOff
+    case needsPlugin
+    case unsupportedPlatform
+    case needsHostHelper
+    case updateHostHelper
+    case waitingForCore
+    case repairHostHelper
+    case hostHelperNotOnWindows
+    case noAgentActivity
+    case updateRequired
+    case readFailed
+    /// A reason a build from before these tokens wrote, or a token this build
+    /// does not know: shown as written.
+    case written(String)
+
+    private static let known: [Self] = [
+        .notConnected, .notReadYet, .usageOff, .needsPlugin, .unsupportedPlatform, .needsHostHelper,
+        .updateHostHelper, .waitingForCore, .repairHostHelper, .hostHelperNotOnWindows, .noAgentActivity,
+        .updateRequired, .readFailed,
+    ]
+
+    /// The words builds before the tokens wrote for the reasons widgets act on.
+    private static let legacy: [String: Self] = [
+        "Not connected": .notConnected,
+        "Not read yet": .notReadYet,
+        "Usage is off in Settings.": .usageOff,
+    ]
+
+    /// The short line a Host left out shows, in the current language.
+    var reason: String {
+        switch self {
+        case .notConnected: String(localized: "Not connected")
+        case .notReadYet: String(localized: "Not read yet")
+        case .usageOff: String(localized: "Usage is off in Settings.")
+        case .needsPlugin: String(localized: "Needs the Heeler plugin")
+        case .unsupportedPlatform: String(localized: "Not supported on Windows")
+        case .needsHostHelper: String(localized: "Needs the Host Helper")
+        case .updateHostHelper: String(localized: "Update the Host Helper")
+        case .waitingForCore: String(localized: "Waiting for the core")
+        case .repairHostHelper: String(localized: "Repair the Host Helper")
+        case .hostHelperNotOnWindows: String(localized: "Comes with the Host Helper, not available yet")
+        case .noAgentActivity: String(localized: "No Agent activity yet")
+        case .updateRequired: String(localized: "Update Heeler")
+        case .readFailed: String(localized: "Could not read Usage")
+        case .written(let text): text
+        }
+    }
+
+    /// The snapshot's spelling; nil for a reason kept as written.
+    var token: String? {
+        switch self {
+        case .notConnected: "notConnected"
+        case .notReadYet: "notReadYet"
+        case .usageOff: "usageOff"
+        case .needsPlugin: "needsPlugin"
+        case .unsupportedPlatform: "unsupportedPlatform"
+        case .needsHostHelper: "needsHostHelper"
+        case .updateHostHelper: "updateHostHelper"
+        case .waitingForCore: "waitingForCore"
+        case .repairHostHelper: "repairHostHelper"
+        case .hostHelperNotOnWindows: "hostHelperNotOnWindows"
+        case .noAgentActivity: "noAgentActivity"
+        case .updateRequired: "updateRequired"
+        case .readFailed: "readFailed"
+        case .written: nil
+        }
+    }
+
+    init(token: String) {
+        self = Self.known.first { $0.token == token } ?? Self.legacy[token] ?? .written(token)
+    }
+}
+
+extension AgentUsageExclusion: Codable {
+    init(from decoder: any Decoder) throws {
+        self.init(token: try decoder.singleValueContainer().decode(String.self))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(token ?? reason)
+    }
+}
+
 /// One Usage widget's reading of the snapshot: All Hosts, or one Host.
-/// Token Usage adds up across the Hosts that report; the others are listed.
+/// Token Usage adds up across the Hosts that report; the others are left out.
 struct UsageWidgetScope: Equatable, Sendable {
     struct Program: Equatable, Sendable, Identifiable {
         let program: String
@@ -175,7 +264,7 @@ struct UsageWidgetScope: Equatable, Sendable {
             title = host.name
         } else {
             hosts = snapshot.hosts
-            title = "All Hosts"
+            title = String(localized: "All Hosts")
         }
         self.hostID = hostID
         included = hosts.filter(\.reports)
@@ -206,13 +295,9 @@ struct UsageWidgetScope: Equatable, Sendable {
     var coverage: String? {
         guard hostID == nil else { return nil }
         let count = included.count + excluded.count
-        return "\(included.count) of \(count) \(count == 1 ? "Host" : "Hosts")"
-    }
-
-    /// The Hosts left out, as All Hosts' large widget names them.
-    var excludedNote: String? {
-        guard hostID == nil, !excluded.isEmpty else { return nil }
-        return "Not included: \(excluded.map(\.name).formatted(.list(type: .and)))"
+        return count == 1
+            ? String(localized: "\(included.count) of \(count) Host")
+            : String(localized: "\(included.count) of \(count) Hosts")
     }
 
     private static func programs(in hosts: [UsageWidgetSnapshot.Host]) -> [Program] {

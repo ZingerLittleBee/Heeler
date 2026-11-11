@@ -29,18 +29,18 @@ struct AgentStopWait: Equatable, Sendable {
     /// One Esc's wait: the terminal's Stop, and Chat's in Claude Code, Codex,
     /// Pi and Oh My Pi.
     static let escape = AgentStopWait(
-        window: .seconds(3), unconfirmedNotice: "Esc went, but the Agent still shows Working.")
+        window: .seconds(3), unconfirmedNotice: String(localized: "Esc went, but the Agent still shows Working."))
 
     /// A core Stop's wait: what Esc's window leaves after the core's own watch
     /// (`HerdrCoreComposerStop.interruptTimeout`). The key may not be Esc.
     static let coreInterrupt = AgentStopWait(
-        window: .seconds(1), unconfirmedNotice: "Stop went, but the Agent still shows Working.")
+        window: .seconds(1), unconfirmedNotice: String(localized: "Stop went, but the Agent still shows Working."))
 }
 
 /// One surface's Stop: what a tap does, the wait after it, and its hint.
 struct AgentComposerInterrupt {
-    static let escapeHint = "Presses Esc to interrupt the Agent"
-    static let coreHint = "Presses the Terminal's stop key to interrupt the Agent"
+    static let escapeHint = String(localized: "Presses Esc to interrupt the Agent")
+    static let coreHint = String(localized: "Presses the Terminal's stop key to interrupt the Agent")
     var wait: AgentStopWait
     var accessibilityHint: String
     var perform: @MainActor () async -> AgentInterruptOutcome

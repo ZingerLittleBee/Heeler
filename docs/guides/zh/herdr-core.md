@@ -124,12 +124,14 @@ Heeler 会在不启动任何服务的情况下检查一次，随后请你确认 
 
 连接和日常使用不需要 Host Helper。如需 **Agent Notifications**、应用内横幅、**Live Activity**、**Usage**，以及准确的 **Pi** 与 **Oh My Pi** Chat，请在 macOS 或 Linux 上安装它。
 
-Host Helper 在 Host 的 Node.js 上运行，在 Linux 上作为 `systemd` 用户服务，在 macOS 上作为 `launchd` LaunchAgent，跟随 herdr-core 而不主动启动 core。
+Host Helper 在 Host 上的 Node.js 20 或更新版本上运行，在 Linux 上作为 `systemd` 用户服务，在 macOS 上作为 `launchd` LaunchAgent，跟随 herdr-core 而不主动启动 core。
 
 ### 1. 查看将写入的文件
 
 1. 在 **Hosts** 中打开该 Host，轻点 **Host Helper**。
-2. 查看 **Files This Writes**：Linux 上的 `~/.local/share/heeler/host-helper` 或 macOS 上的 `~/Library/Application Support/heeler/host-helper`、服务文件，以及 Pi 和 Oh My Pi 的 `agent/extensions` 文件夹。
+2. 在 **Files This Writes** 下依次轻点 **Helper**、**systemd Unit**（Linux）或 **LaunchAgent**（macOS）以及 **Pi & Oh My Pi**，浏览它们的文件夹：Linux 上的 `~/.local/share/heeler/host-helper` 或 macOS 上的 `~/Library/Application Support/heeler/host-helper`、服务文件，以及 Pi 和 Oh My Pi 的 `agent/extensions` 文件夹。
+
+<a href="../images/herdr-core/host-helper-sheet.png"><img src="../images/herdr-core/host-helper-sheet.png" width="300" alt="安装前的 Host Helper 面板：显示 Not Installed 和 Install 按钮，Files This Writes 下列出 Helper、LaunchAgent 和 Pi & Oh My Pi 及其文件数"></a>
 
 ### 2. 安装 Helper
 
@@ -151,7 +153,22 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 | **Service Failed** | 已停止或无法持续运行。轻点 **Repair**。 |
 | **Not Available** | 原生 Windows 与无 `systemd` 的 Linux 不提供 Host Helper。 |
 
-如需卸载，打开 **Host Helper** 并轻点 **Remove**，即可停止服务并删除其文件、扩展与目录。
+### 3. 开启通知
+
+1. 前往 **Settings > Notifications**。如果出现 **Enable Notifications**，请轻点它，再轻点 **Continue**，并在 iOS 询问时允许通知。
+2. 在 **Hosts** 下打开该 Host 的开关。轻点该 Host 可设置 **Done Notifications** 和 **Live Activity**。
+
+| Notifications | 该 Host 的页面 |
+| --- | --- |
+| <a href="../images/herdr-core/notifications-hosts.png"><img src="../images/herdr-core/notifications-hosts.png" width="260" alt="Notifications 页面的 Hosts 下列出该 Host，开关已开启，名称下方显示 Blocked, Done · Live Activity"></a> | <a href="../images/herdr-core/notifications-host.png"><img src="../images/herdr-core/notifications-host.png" width="260" alt="该 Host 的通知页面：Notifications、Done Notifications 和 Live Activity 均已开启，下方的 Host Helper 行显示版本号"></a> |
+
+**成功的标志是**开关保持开启，且该 Host 的行中没有 **Host Helper:** 提示。此后即使关闭 Heeler，这台设备也会收到 **Blocked**、**Error** 和 **Done** 通知，轻点通知即可打开对应的 Agent。
+
+如果出现 **Host Helper:** 提示，请轻点该 Host，再轻点 **Host Helper**，并对照上表处理对应状态。
+
+### 移除 Helper
+
+打开 **Host Helper** 并轻点 **Remove**，即可停止服务并删除其文件、扩展与目录。
 
 ## Native Windows
 
@@ -167,6 +184,7 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 - **OpenCode Chat 已关闭：** OpenCode Agent 仅提供终端视图。
 - **使用 `/new` 开始新对话：** 在 Codex 中执行 `/new` 后，请先使用终端，直到退出并运行 `codex resume --no-daemon`。在未安装 Host Helper 的 Pi 中，只有在从 Chat 发送的消息未出现在旧对话中之后，才会察觉到 `/new`。
 - **Federated Terminals：** 不显示。请将另一台机器作为单独的 Host 添加。
+- **包装脚本：** 以子进程方式运行 Agent 的脚本会留在 **Terminals** 中。请用 `exec` 启动 Agent（例如 `exec claude "$@"`），它才会显示在 **Agents** 中。
 - **首次使用无 `~/.zshrc` 的 `zsh`：** `zsh` 会打开其配置向导，新启动的 Agent 会一直等待，直到你完成向导或创建 `~/.zshrc`。
 
 最后核对于 2026-11-06，核对依据为 herdr-core 0.1.18 与 Herdr 桌面端 0.1.13。

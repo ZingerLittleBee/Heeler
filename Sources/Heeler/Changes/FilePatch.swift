@@ -132,15 +132,14 @@ struct DiffLine: Sendable, Equatable, Identifiable {
     }
 
     var accessibilityLabel: String {
-        let action: String
-        let number: Int?
-        switch kind {
-        case .added: action = "Added"; number = newNumber
-        case .removed: action = "Removed"; number = oldNumber
-        case .context: action = "Unchanged"; number = newNumber
+        let label = switch (kind, kind == .removed ? oldNumber : newNumber) {
+        case (.added, let line?): String(localized: "Added, line \(line): \(text)")
+        case (.added, nil): String(localized: "Added: \(text)")
+        case (.removed, let line?): String(localized: "Removed, line \(line): \(text)")
+        case (.removed, nil): String(localized: "Removed: \(text)")
+        case (.context, let line?): String(localized: "Unchanged, line \(line): \(text)")
+        case (.context, nil): String(localized: "Unchanged: \(text)")
         }
-        let location = number.map { ", line \($0)" } ?? ""
-        let suffix = missingNewline ? ". No newline at end of file." : ""
-        return "\(action)\(location): \(text)\(suffix)"
+        return missingNewline ? String(localized: "\(label). No newline at end of file.") : label
     }
 }

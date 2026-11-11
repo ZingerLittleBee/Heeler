@@ -832,12 +832,16 @@ struct AgentSurfaceReplacementTests {
 
     /// Every accessibility label reachable from `root`, through both the view
     /// tree and the accessibility element tree that SwiftUI hosts publish.
+    /// Only `root`'s own elements count: views under it, and elements whose
+    /// container chain leads to one. A hierarchy an earlier test only hid can
+    /// still publish elements, and its labels are not the view's under test.
     static func accessibilityLabels(in root: UIView) -> Set<String> {
         var visited = Set<ObjectIdentifier>()
         var labels = Set<String>()
         func visit(_ node: NSObject) {
             guard visited.insert(ObjectIdentifier(node)).inserted,
-                  !node.accessibilityElementsHidden else { return }
+                  !node.accessibilityElementsHidden,
+                  isOwned(node, by: root) else { return }
             if let label = node.accessibilityLabel { labels.insert(label) }
             for object in node.accessibilityElements ?? [] {
                 if let object = object as? NSObject { visit(object) }
@@ -852,6 +856,20 @@ struct AgentSurfaceReplacementTests {
         }
         visit(root)
         return labels
+    }
+
+    /// Whether `node` is a view under `root`, or an element whose container
+    /// chain reaches one. SwiftUI's accessibility nodes are not
+    /// `UIAccessibilityElement`s but answer `accessibilityContainer` too.
+    private static func isOwned(_ node: NSObject, by root: UIView) -> Bool {
+        var current: AnyObject = node
+        for _ in 0..<64 {
+            if let view = current as? UIView { return view.isDescendant(of: root) }
+            let container: Any?? = current.accessibilityContainer
+            guard case let next?? = container else { return false }
+            current = next as AnyObject
+        }
+        return false
     }
 
     static func terminals(in root: UIView) -> [HeelerTerminalView] {

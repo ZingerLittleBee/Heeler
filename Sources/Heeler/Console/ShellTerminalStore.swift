@@ -205,7 +205,7 @@ final class AgentOpenTerminalStore {
                 return
             } catch {
                 self.closeFailureMessage =
-                    "The Host couldn't be reached. The tab is still open there."
+                    String(localized: "The Host couldn't be reached. The tab is still open there.")
                 return
             }
             self.forgetTerminal()
@@ -253,18 +253,18 @@ final class AgentOpenTerminalStore {
         case let api as HerdrAPIError:
             OpenTerminalFailure(
                 kind: .rejected,
-                message: "herdr couldn't create the terminal: \(api.message)")
+                message: String(localized: "herdr couldn't create the terminal: \(api.message)"))
         case TransportError.apiRejected(_, let message):
             OpenTerminalFailure(
                 kind: .rejected,
-                message: "herdr couldn't create the terminal: \(message)")
+                message: String(localized: "herdr couldn't create the terminal: \(message)"))
         case TransportError.hostFeatureUnavailable(let feature):
             OpenTerminalFailure(kind: .rejected, message: feature)
         default:
             OpenTerminalFailure(
                 kind: .ambiguous,
                 message:
-                    "The request did not finish clearly. A new tab may already exist on the Host. Check the Host before trying again."
+                    String(localized: "The request did not finish clearly. A new tab may already exist on the Host. Check the Host before trying again.")
             )
         }
     }

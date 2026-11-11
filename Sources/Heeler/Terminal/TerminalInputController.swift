@@ -281,7 +281,7 @@ final class TerminalInputController {
         guard isEnabled, writer != nil else { return .blocked }
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             cancelPaste()
-            pasteErrorMessage = "The clipboard contains unsafe terminal control characters."
+            pasteErrorMessage = String(localized: "The clipboard contains unsafe terminal control characters.")
             return .rejected
         }
         guard TerminalTextSafety.isMultiline(text) else {

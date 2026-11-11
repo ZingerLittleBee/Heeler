@@ -117,8 +117,7 @@ final class PairingScanStore {
         } catch {
             failure = PairingFailure(
                 step: .parse,
-                message: "This device's Device Key could not be loaded. "
-                    + "Open the manual Add Host form to inspect or replace it.",
+                message: String(localized: "This device's Device Key could not be loaded. Open the manual Add Host form to inspect or replace it."),
                 canRetry: false)
             return
         }
@@ -147,7 +146,7 @@ final class PairingScanStore {
         } catch {
             failure = PairingFailure(
                 step: .reach,
-                message: "Pairing failed unexpectedly. Try again with the same code. (\(error))",
+                message: String(localized: "Pairing failed unexpectedly. Try again with the same code. (\(String(describing: error)))"),
                 canRetry: true)
             return
         }
@@ -177,9 +176,7 @@ final class PairingScanStore {
         } catch {
             failure = PairingFailure(
                 step: .verify,
-                message: "Pairing succeeded, but the Host could not be saved because the Host "
-                    + "catalog on this device is unreadable. Resolve that first, then pair again "
-                    + "with a fresh code.",
+                message: String(localized: "Pairing succeeded, but the Host could not be saved because the Host catalog on this device is unreadable. Resolve that first, then pair again with a fresh code."),
                 canRetry: false)
             return
         }
@@ -203,7 +200,7 @@ final class PairingScanStore {
     // MARK: Failure copy
 
     private static let expiredCopy =
-        "This Pairing Code has expired. Generate a new one on the computer and scan it."
+        String(localized: "This Pairing Code has expired. Generate a new one on the computer and scan it.")
 
     private static func failure(
         for error: PairingCeremonyError, isConfigOnly: Bool
@@ -212,77 +209,59 @@ final class PairingScanStore {
         case .hostUnreachable:
             PairingFailure(
                 step: .reach,
-                message: "The Host did not answer at any of its addresses. Check that this "
-                    + "device is on the same network or VPN as the computer, then try again "
-                    + "with the same code.",
+                message: String(localized: "The Host did not answer at any of its addresses. Check that this device is on the same network or VPN as the computer, then try again with the same code."),
                 canRetry: true)
         case .tailscaleSSH(let addresses, let port):
             PairingFailure(
                 step: .reach,
-                message: "Tailscale SSH answers port \(port) at "
-                    + "\(addresses.joined(separator: ", ")), not OpenSSH, so this device "
-                    + "cannot be enrolled there. On the computer, set ssh_port in the pairing "
-                    + "plugin's pair.json to a port OpenSSH listens on, then generate a new "
-                    + "Pairing Code.",
+                message: String(localized: "Tailscale SSH answers port \(port) at \(addresses.joined(separator: ", ")), not OpenSSH, so this device cannot be enrolled there. On the computer, set ssh_port in the pairing plugin's pair.json to a port OpenSSH listens on, then generate a new Pairing Code."),
                 canRetry: false)
         case .bootstrapRejected:
             PairingFailure(
                 step: .authenticate,
-                message: "The Host rejected this Pairing Code. It may have been used already, "
-                    + "expired, or its popup was closed. Generate a new Pairing Code on the "
-                    + "computer and scan it.",
+                message: String(localized: "The Host rejected this Pairing Code. It may have been used already, expired, or its popup was closed. Generate a new Pairing Code on the computer and scan it."),
                 canRetry: false)
         case .enrollmentRefused(.expired):
             PairingFailure(step: .enroll, message: expiredCopy, canRetry: false)
         case .enrollmentRefused(.unknownPairing):
             PairingFailure(
                 step: .enroll,
-                message: "The Host has no pairing in progress for this code. Generate a new "
-                    + "Pairing Code on the computer and scan it.",
+                message: String(localized: "The Host has no pairing in progress for this code. Generate a new Pairing Code on the computer and scan it."),
                 canRetry: false)
         case .enrollmentRefused(.invalidKey):
             PairingFailure(
                 step: .enroll,
-                message: "The Host did not accept this device's key. Try again; if it keeps "
-                    + "failing, update the app and the pairing plugin so they match.",
+                message: String(localized: "The Host did not accept this device's key. Try again; if it keeps failing, update the app and the pairing plugin so they match."),
                 canRetry: true)
         case .enrollmentRefused(.noInput):
             PairingFailure(
                 step: .enroll,
-                message: "This device's key never reached the Host. Try again with the same code.",
+                message: String(localized: "This device's key never reached the Host. Try again with the same code."),
                 canRetry: true)
         case .enrollmentRefused(.unrecognized(let code)):
             PairingFailure(
                 step: .enroll,
-                message: "The Host refused Enrollment (\(code)). Update the app and the pairing "
-                    + "plugin so they match, then generate a new Pairing Code.",
+                message: String(localized: "The Host refused Enrollment (\(code)). Update the app and the pairing plugin so they match, then generate a new Pairing Code."),
                 canRetry: false)
         case .enrollmentUnanswered:
             PairingFailure(
                 step: .enroll,
-                message: "The Host accepted this Pairing Code, but its pairing command ended "
-                    + "without answering. Check that the pairing plugin is installed and that "
-                    + "OpenSSH, not another SSH server, answers this port, then generate a new "
-                    + "Pairing Code.",
+                message: String(localized: "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that the pairing plugin is installed and that OpenSSH, not another SSH server, answers this port, then generate a new Pairing Code."),
                 canRetry: false)
         case .enrollmentFailed:
             PairingFailure(
                 step: .enroll,
-                message: "Enrollment did not complete, likely a network hiccup. "
-                    + "Try again with the same code.",
+                message: String(localized: "Enrollment did not complete, likely a network hiccup. Try again with the same code."),
                 canRetry: true)
         case .verificationFailed where isConfigOnly:
             PairingFailure(
                 step: .verify,
-                message: "The Host did not accept the Device Key, so it is not authorized there "
-                    + "yet. Add this device's authorized_keys line on the Host, or generate a "
-                    + "Pairing Code in herdr instead.",
+                message: String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in herdr instead."),
                 canRetry: false)
         case .verificationFailed:
             PairingFailure(
                 step: .verify,
-                message: "This device was enrolled, but the verifying reconnect did not get "
-                    + "through. Try again to finish with the enrolled key.",
+                message: String(localized: "This device was enrolled, but the verifying reconnect did not get through. Try again to finish with the enrolled key."),
                 canRetry: true)
         }
     }
@@ -290,12 +269,11 @@ final class PairingScanStore {
     private static func message(for error: PairingCodeError) -> String {
         switch error {
         case .badPrefix:
-            "That QR code is not a herdr Pairing Code."
+            String(localized: "That QR code is not a herdr Pairing Code.")
         case .unsupportedVersion(let found):
-            "This Pairing Code uses version \(found), which this app does not "
-                + "understand. Update Heeler, then scan it again."
+            String(localized: "This Pairing Code uses version \(found), which this app does not understand. Update Heeler, then scan it again.")
         case .badEncoding, .badPayload:
-            "The Pairing Code could not be read. Regenerate it in herdr and scan again."
+            String(localized: "The Pairing Code could not be read. Regenerate it in herdr and scan again.")
         }
     }
 }

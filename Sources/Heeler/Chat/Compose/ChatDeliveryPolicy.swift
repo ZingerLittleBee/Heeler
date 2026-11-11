@@ -85,9 +85,11 @@ extension ComposerDeliveryPolicy {
     }
 
     private static func unreadableScreenReason(_ error: any Error) -> String {
-        let prefix = "Heeler couldn't check the Agent's input box."
-        guard let error = error as? TransportError else { return prefix }
-        return "\(prefix) \(error.presentation.explanation)"
+        guard let error = error as? TransportError else {
+            return String(localized: "Heeler couldn't check the Agent's input box.")
+        }
+        // The explanation follows as each language joins sentences.
+        return String(localized: "Heeler couldn't check the Agent's input box. \(error.presentation.explanation)")
     }
 }
 
@@ -97,48 +99,48 @@ extension InputBoxState {
     func holdReason(for program: ChatProgram) -> String {
         switch self {
         case .empty:
-            "The Agent's input box is ready."
+            String(localized: "The Agent's input box is ready.")
         case .text:
             switch program {
             case .claude:
-                "The Agent's input box already has text. Send or clear it in the terminal first."
+                String(localized: "The Agent's input box already has text. Send or clear it in the terminal first.")
             case .codex:
                 // Codex 0.162.1's Esc puts follow-ups queued with Tab back
                 // in the box.
-                "The Agent's input box already has text, such as a draft or a message Stop returned. Send or clear it in the terminal first."
+                String(localized: "The Agent's input box already has text, such as a draft or a message Stop returned. Send or clear it in the terminal first.")
             case .pi, .omp:
                 // Their Esc returns steers the turn has not taken to the
                 // box, but the text may as well be a draft typed there.
-                "The Agent's input box already has text, such as a draft or a steer that Stop returned. Send or clear it in the terminal first."
+                String(localized: "The Agent's input box already has text, such as a draft or a steer that Stop returned. Send or clear it in the terminal first.")
             case .grok:
                 // Ctrl+C before the first output puts the turn's prompt back
                 // in the box.
-                "Grok Build's input box already has text, such as a draft or a message Stop put back. Send or clear it in the terminal first."
+                String(localized: "Grok Build's input box already has text, such as a draft or a message Stop put back. Send or clear it in the terminal first.")
             case .opencode:
                 // OpenCode's `/undo` puts the undone prompt back in the box,
                 // and Up recalls an earlier one.
-                "The Agent's input box already has text, such as a draft, a prompt /undo put back, or one recalled with Up. Send or clear it in the terminal first."
+                String(localized: "The Agent's input box already has text, such as a draft, a prompt /undo put back, or one recalled with Up. Send or clear it in the terminal first.")
             case .agy:
                 // Esc puts a message queued during the turn back in the box
                 // (Antigravity CLI 1.5.3).
                 "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first."
             }
         case .shellMode:
-            "The Agent's input box is in shell mode. Leave it in the terminal first."
+            String(localized: "The Agent's input box is in shell mode. Leave it in the terminal first.")
         case .disabled(let explanation):
-            "The Agent isn't taking messages: \(explanation)"
+            String(localized: "The Agent isn't taking messages: \(explanation)")
         case .overlay:
-            "A menu is open over the Agent's input box. Close it in the terminal first."
+            String(localized: "A menu is open over the Agent's input box. Close it in the terminal first.")
         case .dialog(let title):
             if program == .codex, title == CodexPlanPrompt.title {
-                "Codex is asking whether to implement the plan. Answer it in the terminal first."
+                String(localized: "Codex is asking whether to implement the plan. Answer it in the terminal first.")
             } else {
-                "The Agent is showing a dialog. Answer it in the terminal first."
+                String(localized: "The Agent is showing a dialog. Answer it in the terminal first.")
             }
         case .noComposer(let reason):
             reason
         case .unknown:
-            "Heeler can't find the Agent's input box on screen."
+            String(localized: "Heeler can't find the Agent's input box on screen.")
         }
     }
 }

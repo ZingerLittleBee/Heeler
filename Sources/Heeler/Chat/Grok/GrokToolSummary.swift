@@ -39,7 +39,7 @@ struct GrokToolSummary: Equatable, Sendable {
             let texts = input?.questions.map(\.text) ?? []
             title = texts.isEmpty ? nil : texts.joined(separator: " · ")
         case .todo:
-            title = "Update todos"
+            title = String(localized: "Update todos")
         case .image, .other:
             title = nil
         }
@@ -248,7 +248,7 @@ struct GrokToolCall: Sendable {
     func outcome(turnEnd: TurnEnd?, activity: ChatAgentActivity) -> (status: ChatToolActivity.Status, note: String?) {
         if let notRun {
             switch notRun {
-            case "rejected": return (.declined, turnEnd == .rejected ? "Rejecting ended the turn" : nil)
+            case "rejected": return (.declined, turnEnd == .rejected ? String(localized: "Rejecting ended the turn") : nil)
             case "cancelled": return (.interrupted, nil)
             default: return (.notCompleted, nil)
             }
@@ -264,16 +264,16 @@ struct GrokToolCall: Sendable {
             return (status, end.error ?? Self.stats(end))
         }
         if let end = taskEnd {
-            if end.wasKilled || end.signal != nil { return (.interrupted, "Stopped in the background") }
-            return ((end.exitCode ?? 0) == 0 ? .succeeded : .failed, "Finished in the background")
+            if end.wasKilled || end.signal != nil { return (.interrupted, String(localized: "Stopped in the background")) }
+            return ((end.exitCode ?? 0) == 0 ? .succeeded : .failed, String(localized: "Finished in the background"))
         }
         if status == "failed" { return (.failed, nil) }
         if sentToBackground || (isSpawn && input?.isBackground == true && output != nil) {
-            return (.started, "Sent to the background")
+            return (.started, String(localized: "Sent to the background"))
         }
         if let output {
             if let code = output.exitCode, code != 0 { return (.failed, nil) }
-            return (.succeeded, output.isUnanswered ? "Not answered" : nil)
+            return (.succeeded, output.isUnanswered ? String(localized: "Not answered") : nil)
         }
         switch turnEnd {
         case nil:
@@ -332,7 +332,7 @@ struct GrokToolCall: Sendable {
         }
         if outputIsTruncated, tool.output != nil, tool.output == outputLine {
             tool.preview?.isTruncated = true
-            if tool.note == nil { tool.note = "Output exceeds the preview limit." }
+            if tool.note == nil { tool.note = String(localized: "Output exceeds the preview limit.") }
         }
         if summary.kind == .fileRead, status == .succeeded { tool.imagePath = imagePath(directory: directory) }
         return tool
@@ -411,21 +411,20 @@ struct GrokToolCall: Sendable {
     /// A finished subagent's work: `2 tool calls · 1 turn · 7s`.
     static func stats(_ end: GrokUpdateRecord.SubagentFinished) -> String? {
         var parts: [String] = []
-        if let calls = end.toolCalls { parts.append("\(calls) tool \(calls == 1 ? "call" : "calls")") }
-        if let turns = end.turns { parts.append("\(turns) \(turns == 1 ? "turn" : "turns")") }
+        if let calls = end.toolCalls {
+            parts.append(String(localized: "\(calls) tool calls", comment: "How many tools a finished Grok Build subagent called"))
+        }
+        if let turns = end.turns {
+            parts.append(String(localized: "\(turns) turns", comment: "How many turns a finished Grok Build subagent took"))
+        }
         if let milliseconds = end.durationMilliseconds { parts.append(duration(milliseconds)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// `38s`, `2m 18s` or `1h 5m`, rounded down.
+    /// `38s`, `2m 18s` or `1h 5m` in the user's language, rounded down.
     static func duration(_ milliseconds: Int64) -> String {
-        let seconds = max(milliseconds, 0) / 1_000
-        if seconds < 60 { return "\(seconds)s" }
-        if seconds < 3_600 {
-            return seconds % 60 == 0 ? "\(seconds / 60)m" : "\(seconds / 60)m \(seconds % 60)s"
-        }
-        let minutes = seconds / 60 % 60
-        return minutes == 0 ? "\(seconds / 3_600)h" : "\(seconds / 3_600)h \(minutes)m"
+        ChatBackgroundWorkPresentation.duration(
+            TimeInterval(milliseconds) / 1_000, width: .narrow, locale: .autoupdatingCurrent)
     }
 
     /// The answer to `question` in Grok's `"<question>"="<answer>", …`

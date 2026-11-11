@@ -84,13 +84,13 @@ final class StartAgentStore {
         var message: String {
             switch self {
             case .danglingEscape:
-                "Arguments end with an unfinished escape."
+                String(localized: "Arguments end with an unfinished escape.")
             case .unclosedSingleQuote:
-                "Arguments contain an unclosed single quote."
+                String(localized: "Arguments contain an unclosed single quote.")
             case .unclosedDoubleQuote:
-                "Arguments contain an unclosed double quote."
+                String(localized: "Arguments contain an unclosed double quote.")
             case .controlCharacter:
-                "Arguments contain an unsupported control character."
+                String(localized: "Arguments contain an unsupported control character.")
             }
         }
     }
@@ -311,7 +311,7 @@ final class StartAgentStore {
         discoverAgentKinds: @escaping (Host.ID) async throws -> [SupportedAgentKind],
         discoverTemplates: @escaping (Host.ID) async throws -> [AgentTemplate] = { _ in [] },
         startTemplate: @escaping (TemplateLaunchRequest, Host.ID) async throws -> Agent = { _, _ in
-            throw TransportError.hostFeatureUnavailable(feature: "Templates")
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Templates"))
         },
         remoteHome: @escaping (Host.ID) async throws -> String,
         start: @escaping (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent,
@@ -592,7 +592,7 @@ final class StartAgentStore {
                 }
                 guard RemoteHostPath.isAbsolute(home) else {
                     state = .failed(
-                        "The Host's home directory is not a usable path: \(home)")
+                        String(localized: "The Host's home directory is not a usable path: \(home)"))
                     return
                 }
                 newWorkspaceDirectory = home
@@ -905,16 +905,16 @@ final class StartAgentStore {
     private static func discoveryMessage(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "Agent detection timed out."
+            String(localized: "Agent detection timed out.")
         case TransportError.hostFeatureUnavailable(let feature):
             feature
         case TransportError.malformedResponse(let detail):
             detail
         default:
             TransportError.herdrCoreLinkMessage(for: error)
-                ?? "Detecting Agents failed: \(error)"
+                ?? String(localized: "Detecting Agents failed: \(String(describing: error))")
         }
     }
 
@@ -923,11 +923,11 @@ final class StartAgentStore {
     static func homeProbeMessage(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected, so its home directory could not be resolved."
+            String(localized: "The Host is not connected, so its home directory could not be resolved.")
         case TransportError.timedOut:
-            "Resolving the Host's home directory timed out."
+            String(localized: "Resolving the Host's home directory timed out.")
         default:
-            "Could not determine the Host's home directory: \(error)"
+            String(localized: "Could not determine the Host's home directory: \(String(describing: error))")
         }
     }
 
@@ -935,15 +935,14 @@ final class StartAgentStore {
     private static func message(forTemplate template: String, endedWith exit: ProgramExit) -> String {
         message(
             for: template, endedWith: exit,
-            commandNotFound: "That code means its command was not found: a Template runs without your shell, "
-                + "so it needs a full path or a PATH of its own.")
+            commandNotFound: String(localized: "That code means its command was not found: a Template runs without your shell, so it needs a full path or a PATH of its own."))
     }
 
     /// A kind goes through the Host's login shell, so its 127 is that shell's.
     private static func message(forKind kind: SupportedAgentKind, endedWith exit: ProgramExit) -> String {
         message(
             for: kind.displayName, endedWith: exit,
-            commandNotFound: "That code means the Host's shell could not find its command.")
+            commandNotFound: String(localized: "That code means the Host's shell could not find its command."))
     }
 
     private static func message(
@@ -951,14 +950,13 @@ final class StartAgentStore {
     ) -> String {
         switch exit.code {
         case 0:
-            "\(program) finished right after it started, so no Agent is running."
+            String(localized: "\(program) finished right after it started, so no Agent is running.")
         case 127:
-            "\(program) ended right after it started, with exit code 127, so no Agent is running. "
-                + commandNotFound
+            String(localized: "\(program) ended right after it started, with exit code 127, so no Agent is running. \(commandNotFound)")
         case let code?:
-            "\(program) ended right after it started, with exit code \(code), so no Agent is running."
+            String(localized: "\(program) ended right after it started, with exit code \(code), so no Agent is running.")
         case nil:
-            "\(program) ended right after it started, so no Agent is running."
+            String(localized: "\(program) ended right after it started, so no Agent is running.")
         }
     }
 
@@ -967,14 +965,13 @@ final class StartAgentStore {
     ) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.gitTimedOut:
-            "The Host's git did not answer in time."
+            String(localized: "The Host's git did not answer in time.")
         case TransportError.coreMutationOutcomeUnknown:
-            "The Host did not confirm the launch. The Agent may still have started, "
-                + "so check the Host before trying again."
+            String(localized: "The Host did not confirm the launch. The Agent may still have started, so check the Host before trying again.")
         case TransportError.hostFeatureUnavailable(let feature):
             feature
         case let worktree as HerdrCoreWorktreeError:
@@ -982,36 +979,30 @@ final class StartAgentStore {
         case let template as HerdrCoreTemplateError:
             template.message
         case let failure as WorktreeAgentStartFailure:
-            "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. "
-                + message(for: failure.underlying, launchedKind: launchedKind)
+            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launchedKind: launchedKind))")
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
             // which the passthrough below surfaces as-is.
-            "This workspace is not inside a Git repository, so no worktree can be created from it."
+            String(localized: "This workspace is not inside a Git repository, so no worktree can be created from it.")
         case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
-            "Creating the worktree failed: \(apiError.message)"
+            String(localized: "Creating the worktree failed: \(apiError.message)")
         case let apiError as HerdrAPIError
             where apiError.code == "unsupported_agent_kind" && launchedKind == .muse:
             // Kind captured at submit, not the picker after await. Discovery
             // does not prove herdr supports Muse (#289); keep the server
             // reason and tell the user how to recover.
-            "herdr rejected the command: \(apiError.message). "
-                + "Update herdr on this Host to v0.9.0 or later for Muse support, "
-                + "or choose another supported Agent."
+            String(localized: "herdr rejected the command: \(apiError.message). Update herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent.")
         case let apiError as HerdrAPIError where apiError.isCanonicalModeRefusal:
             // The Transport resends this refusal for its whole shell-readiness
             // wait, so it lands here only once that wait ran out; "10 seconds"
             // mirrors `HeelerSSHTransport.shellReadinessBudget`.
-            "The Host's shell didn't accept a launch command this long within 10 seconds. "
-                + "On a Mac, herdr accepts at most 1,024 bytes until the shell's line "
-                + "editor starts, and some shells, such as dash, never start one. "
-                + "Shorten the arguments and try again."
+            String(localized: "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again.")
         case let apiError as HerdrAPIError:
-            "herdr rejected the command: \(apiError.message)"
+            String(localized: "herdr rejected the command: \(apiError.message)")
         default:
             TransportError.herdrCoreLinkMessage(for: error)
-                ?? "Starting the agent failed: \(error)"
+                ?? String(localized: "Starting the agent failed: \(String(describing: error))")
         }
     }
 }

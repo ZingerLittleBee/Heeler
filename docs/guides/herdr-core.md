@@ -123,12 +123,14 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 
 Connecting and everyday use do not need the Host Helper. Install it on macOS or Linux for **Agent Notifications**, in-app banners, **Live Activity**, **Usage**, and exact **Pi** and **Oh My Pi** Chat.
 
-The Host Helper runs on the Host's Node.js as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS, following herdr-core without starting a core.
+The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS, following herdr-core without starting a core.
 
 ### 1. Review the files
 
 1. Open the Host in **Hosts** and tap **Host Helper**.
-2. Review **Files This Writes**: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
+2. Under **Files This Writes**, tap **Helper**, **systemd Unit** on Linux or **LaunchAgent** on macOS, and **Pi & Oh My Pi** to browse their folders: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
+
+<a href="images/herdr-core/host-helper-sheet.png"><img src="images/herdr-core/host-helper-sheet.png" width="300" alt="Host Helper sheet before install: Not Installed, an Install button, and Files This Writes listing Helper, LaunchAgent, and Pi & Oh My Pi with file counts"></a>
 
 ### 2. Install the Helper
 
@@ -150,7 +152,22 @@ macOS may notify that `node` can run in the background and list it under Login I
 | **Service Failed** | Stopped or not staying up. Tap **Repair**. |
 | **Not Available** | Native Windows and Linux without `systemd` have no Host Helper. |
 
-To uninstall, open **Host Helper** and tap **Remove** to stop the service and delete its files, extensions, and directory.
+### 3. Turn on notifications
+
+1. Go to **Settings > Notifications**. If **Enable Notifications** appears, tap it, tap **Continue**, and allow notifications when iOS asks.
+2. Under **Hosts**, turn on the Host's switch. Tap the Host for **Done Notifications** and **Live Activity**.
+
+| Notifications | The Host's page |
+| --- | --- |
+| <a href="images/herdr-core/notifications-hosts.png"><img src="images/herdr-core/notifications-hosts.png" width="260" alt="Notifications with the Host under Hosts, its switch on and Blocked, Done · Live Activity below its name"></a> | <a href="images/herdr-core/notifications-host.png"><img src="images/herdr-core/notifications-host.png" width="260" alt="The Host's notification page with Notifications, Done Notifications, and Live Activity on, and a Host Helper row showing its version"></a> |
+
+**It worked if** the switch stays on and the Host's row shows no **Host Helper:** note. **Blocked**, **Error**, and **Done** then reach this device with Heeler closed, and a tap opens the Agent.
+
+When a **Host Helper:** note shows, tap the Host, then **Host Helper**, and fix that status using the table above.
+
+### Remove the Helper
+
+Open **Host Helper** and tap **Remove** to stop the service and delete its files, extensions, and directory.
 
 ## Native Windows
 
@@ -166,6 +183,7 @@ Add a Windows machine over OpenSSH:
 - **OpenCode Chat is off:** OpenCode Agents offer the terminal only.
 - **Starting a new conversation with `/new`:** After `/new` in Codex, use the terminal until you exit and run `codex resume --no-daemon`. In Pi without the Host Helper, `/new` is noticed only after a Chat message fails to appear in the old conversation.
 - **Federated Terminals:** Omitted. Add the other machine as its own Host.
+- **Wrapper scripts:** A script that runs an Agent as its child stays in **Terminals**. Start the Agent with `exec`, as in `exec claude "$@"`, to list it in **Agents**.
 - **First-time `zsh` without `~/.zshrc`:** `zsh` opens its wizard and a new Agent waits until you finish it or create `~/.zshrc`.
 
 Last checked on 2026-11-06 against herdr-core 0.1.18 and the Herdr desktop app 0.1.13.

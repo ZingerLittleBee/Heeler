@@ -1309,6 +1309,11 @@ struct AgentRowChangesTests {
 @MainActor
 enum AccessibilityProbe {
     static func elements(labeled label: String, in root: UIView) -> [NSObject] {
+        elements(in: root) { $0 == label }
+    }
+
+    /// Every visible element whose label passes `matches`.
+    static func elements(in root: UIView, whoseLabel matches: (String) -> Bool) -> [NSObject] {
         root.layoutIfNeeded()
         var visited = Set<ObjectIdentifier>()
         var found: [NSObject] = []
@@ -1316,7 +1321,7 @@ enum AccessibilityProbe {
             guard visited.insert(ObjectIdentifier(node)).inserted,
                 !node.accessibilityElementsHidden
             else { return }
-            if node.accessibilityLabel == label, frame(of: node, in: root).width > 0 {
+            if let label = node.accessibilityLabel, matches(label), frame(of: node, in: root).width > 0 {
                 found.append(node)
             }
             for object in node.accessibilityElements ?? [] {

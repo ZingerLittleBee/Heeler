@@ -137,11 +137,42 @@ struct ChatTranscriptCacheTests {
         #expect(await fixture.cache.load(Self.key()) == .hit(document))
     }
 
+    @Test func documentsSavedBeforeChatRecordedALanguageLoadAsEnglish() async throws {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        var document = Self.document(Self.key())
+        document.localization = "ja"
+        await fixture.cache.save(document)
+        #expect(await fixture.cache.load(Self.key()) == .hit(document))
+
+        // The file as an earlier version wrote it, with no localization.
+        let url = fixture.fileURL(Self.key())
+        var json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect(json["localization"] as? String == "ja")
+        json["localization"] = nil
+        try JSONSerialization.data(withJSONObject: json).write(to: url)
+
+        guard case .hit(let loaded) = await fixture.cache.load(Self.key()) else {
+            Issue.record("A document without a localization should still load")
+            return
+        }
+        #expect(loaded.localization == nil)
+        #expect(loaded.entries == document.entries)
+        #expect(loaded.isWorded(in: "en"))
+        #expect(!loaded.isWorded(in: "ja"))
+    }
+
     @Test func olderCachedToolsDecodeWithoutSubagentMetadata() throws {
         let json = #"{"kind":"agent","name":"Agent","title":"Task","status":"succeeded","questions":[]}"#
         let tool = try JSONDecoder().decode(ChatToolActivity.self, from: Data(json.utf8))
         #expect(tool.subagentActivity == nil)
         #expect(tool.imagePath == nil)
+    }
+
+    @Test func olderCachedUserMessagesDecodeWithoutImagePaths() throws {
+        let json = #"{"text":"[Image #1]look","imageCount":1,"attachmentLabels":[],"wasQueued":false}"#
+        let message = try JSONDecoder().decode(ChatUserMessage.self, from: Data(json.utf8))
+        #expect(message == ChatUserMessage(text: "[Image #1]look", imageCount: 1))
     }
 
     @Test func fileNamesRevealNoIdentifiers() {

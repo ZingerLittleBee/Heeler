@@ -12,6 +12,7 @@ struct ChangesView: View {
     /// leave the screen rather than running on for a store nobody shows.
     @State private var retry: Task<Void, Never>?
     @Environment(\.changesScreenPresence) private var presence
+    @Environment(\.fileDiffTheme) private var fileDiffTheme
 
     var body: some View {
         list
@@ -33,6 +34,7 @@ struct ChangesView: View {
                     // covers it, as one screen.
                     .task { await store.followAgentStatus() }
                     .modifier(ChangesScreenAppearance(presence: presence))
+                    .wearsTheme(fileDiffTheme ?? .system)
             }
             .task { await store.appear() }
             .task { await store.followAgentStatus() }
@@ -256,9 +258,15 @@ private struct ChangesSectionHeader: View {
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.group.title)
-        .accessibilityValue(
-            "\(section.files.count.formatted()) \(section.files.count == 1 ? "file" : "files")")
+        .accessibilityValue(fileCount)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private var fileCount: String {
+        let count = section.files.count.formatted()
+        return section.files.count == 1
+            ? String(localized: "\(count) file")
+            : String(localized: "\(count) files")
     }
 }
 
@@ -353,6 +361,9 @@ struct ChangesScreenPresence {
 
 extension EnvironmentValues {
     @Entry var changesScreenPresence: ChangesScreenPresence? = nil
+    /// What an open file diff wears; Chat sets its own theme, other ways in
+    /// leave the system's.
+    @Entry var fileDiffTheme: ThemeColors? = nil
 }
 
 private struct ChangesScreenAppearance: ViewModifier {

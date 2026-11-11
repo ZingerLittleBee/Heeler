@@ -50,8 +50,8 @@ struct TerminalListView: View {
             case .byHost: byHost
             }
         }
-        .alert(closeTitle, isPresented: isPresented($pendingClose)) {
-            Button(closeTitle.replacingOccurrences(of: "?", with: ""), role: .destructive) {
+        .alert(pendingCloseScope.confirmationTitle, isPresented: isPresented($pendingClose)) {
+            Button(pendingCloseScope.actionTitle, role: .destructive) {
                 confirmClose()
             }
             Button("Cancel", role: .cancel) { pendingClose = nil }
@@ -99,6 +99,9 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            // The sidebar's own fill behind the cards, as By Host shows.
+            .scrollContentBackground(.hidden)
+            .background(isSidebarColumn ? .clear : Color(uiColor: .systemGroupedBackground))
             .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
@@ -267,7 +270,7 @@ struct TerminalListView: View {
         .modifier(
             ConsoleRowContextMenu(liftsCard: liftsCard) {
                 Section(
-                    "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
+                    "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? String(localized: "Workspace")) · \(terminal.hostName)"
                 ) {
                     if capabilities(of: terminal).startsIn(terminal.cwd) {
                         if capabilities(of: terminal).startsTerminals {
@@ -385,7 +388,7 @@ struct TerminalListView: View {
                 guard let terminal = await console.waitForTerminal(identity, on: id.hostID)
                 else {
                     createFailure =
-                        "The terminal was created, but its Workspace hasn't refreshed yet."
+                        String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return
                 }
                 onOpen(terminal)
@@ -403,11 +406,12 @@ struct TerminalListView: View {
     }
 
     private func closeLabel(for terminal: ConsoleTerminal) -> String {
-        "Close \(closeScope(for: terminal).rawValue)"
+        closeScope(for: terminal).actionTitle
     }
 
-    private var closeTitle: String {
-        pendingClose.map { "\(closeLabel(for: $0))?" } ?? "Close Tab?"
+    /// The pending close's reach; a Tab's while the alert dismisses.
+    private var pendingCloseScope: TerminalCloseScope {
+        pendingClose.map(closeScope(for:)) ?? .tab
     }
 
     private func closeMessage(for terminal: ConsoleTerminal) -> String {
@@ -466,9 +470,16 @@ struct TerminalRowView: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.title)
-        .accessibilityValue(
-            "\(terminal.isRestarting ? "Restarting, " : "")\(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd), \(terminal.displayTabTitle)"
-        )
+        .accessibilityValue(spokenValue)
+    }
+
+    /// The path and Tab, after "Restarting" while the shell restarts.
+    private var spokenValue: String {
+        let path = terminal.displayCwd.isEmpty ? String(localized: "Path unavailable") : terminal.displayCwd
+        let tab = terminal.displayTabTitle
+        return terminal.isRestarting
+            ? String(localized: "Restarting, \(path), \(tab)")
+            : "\(path), \(tab)"
     }
 }
 
@@ -499,17 +510,10 @@ enum ListCard {
                 : UIColor.white.withAlphaComponent(0.65)
         })
 
-    /// On the sidebar's glass rather than the grouped background, dark mode
-    /// lifts the cards a step: the system card sinks into the dark glass.
-    private static let sidebarFill = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? .tertiarySystemGroupedBackground
-                : UIColor.white.withAlphaComponent(0.65)
-        })
-
+    /// The sidebar wears the terminal's theme beside a detail, so its cards
+    /// are a veil over it rather than a colour of their own.
     static func fill(inSidebar: Bool) -> Color {
-        inSidebar ? sidebarFill : fill
+        inSidebar ? ThemeVeil.card : fill
     }
 }
 
@@ -665,8 +669,8 @@ private struct TerminalHostHeader: View {
             group.opensConnectionDetail ? "" : group.isCollapsed ? "Collapsed" : "Expanded")
         .accessibilityHint(
             group.opensConnectionDetail
-                ? "Shows why this Host can't connect."
-                : group.isCollapsed ? "Expands this Host." : "Collapses this Host.")
+                ? String(localized: "Shows why this Host can't connect.")
+                : group.isCollapsed ? String(localized: "Expands this Host.") : String(localized: "Collapses this Host."))
         .accessibilityAddTraits(.isHeader)
     }
 

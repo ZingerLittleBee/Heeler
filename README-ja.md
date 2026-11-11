@@ -18,7 +18,7 @@
 
 <a href="https://trendshift.io/repositories/151670?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/151670" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
-[English](./README.md) | [简体中文](./README-zh.md) | 日本語
+[English](./README.md) | [简体中文](./README-zh.md) | [繁體中文](./README-zh-TW.md) | 日本語
 
 </div>
 
@@ -61,7 +61,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 - **通知 + ライブアクティビティ** — Agent が Blocked または Done になったときのエンドツーエンド暗号化されたプッシュ通知と、Agent をリアルタイムで追跡するロック画面 / Dynamic Island のバナーです。リレーが内容を読むことは決してできません（[PRIVACY.md](PRIVACY.md)）。
 - **Usage** — Claude Code と Codex の Usage Limits とそのリセット時刻、および最大 30 日分の Token Usage とその推定 API コストを、すべての Host の合計または 1 台ごとに表示します。ホーム画面とロック画面のウィジェットで、いつでも確認できます（[詳しくはこちら](https://docs.heeler.bybee.dev/usage)）。
 - **Worktrees** — Workspace のリポジトリのクリーンなチェックアウトで Agent を起動します。
-- **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定できる 30 種類のターミナルテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
+- **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定でき、ターミナル、Chat、アプリ全体に適用される 30 種類のテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
 - **Jump Host** — SSH のジャンプを経由して直接到達できないマシンにアクセスし、両方のホップで鍵を検証します。
 
 ## 接続のしくみ

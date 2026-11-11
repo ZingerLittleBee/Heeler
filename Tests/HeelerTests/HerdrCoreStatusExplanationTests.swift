@@ -64,6 +64,17 @@ import Testing
         #expect(!explanation.offersGrokBuildEdit)
     }
 
+    /// The unknown program's own sentence, not a known program's with a
+    /// placeholder name in it.
+    @Test func anUnknownProgramThatNeverReportedHasItsOwnSentence() throws {
+        let explanation = try #require(
+            HerdrCoreStatusExplanation(
+                record: try Self.record(
+                    foreground: ["mybot"], reported: false, status: ("thinking", "mybot"))))
+        #expect(explanation.text == "This program hasn't reported a status.")
+        #expect(!explanation.offersGrokBuildEdit)
+    }
+
     /// Claude Code before sign-in: the core saw a report, and holds no state.
     @Test func aTerminalThatReportedAndHoldsNoStateHasNotReportedAStateYet() throws {
         let explanation = try #require(

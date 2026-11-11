@@ -82,7 +82,7 @@ final class RenameStore {
     /// The clear-semantics hint for the agent form; nil for workspaces.
     var clearHint: String? {
         guard case .agent(let detectedKind) = subject else { return nil }
-        return "Leave empty to fall back to the detected kind (\(detectedKind))."
+        return String(localized: "Leave empty to fall back to the detected kind (\(detectedKind)).")
     }
 
     var canSubmit: Bool {
@@ -136,18 +136,18 @@ final class RenameStore {
     private static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.coreMutationOutcomeUnknown:
-            "The Host did not confirm the rename. It may still apply, so check the desktop app before trying again."
+            String(localized: "The Host did not confirm the rename. It may still apply, so check the desktop app before trying again.")
         case let refused as HerdrAppControl.Refused:
-            refused.reason.map { "The desktop app refused the rename: \($0)" }
-                ?? "The desktop app could not be reached."
+            refused.reason.map { String(localized: "The desktop app refused the rename: \($0)") }
+                ?? String(localized: "The desktop app could not be reached.")
         case let apiError as HerdrAPIError:
-            "herdr rejected the rename: \(apiError.message)"
+            String(localized: "herdr rejected the rename: \(apiError.message)")
         default:
-            "The rename failed: \(error)"
+            String(localized: "The rename failed: \(String(describing: error))")
         }
     }
 }

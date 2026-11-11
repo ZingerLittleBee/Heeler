@@ -32,26 +32,26 @@ final class ChangesStore {
             case .loading, .loaded:
                 nil
             case .notAGitWorkingTree:
-                ("Not a Git Working Tree", ChangesReadError.notAGitWorkingTree.message, "folder.badge.questionmark")
+                (String(localized: "Not a Git Working Tree"), ChangesReadError.notAGitWorkingTree.message, "folder.badge.questionmark")
             case .failed(let message):
-                ("Couldn't Read Changes", message, "exclamationmark.triangle")
+                (String(localized: "Couldn't Read Changes"), message, "exclamationmark.triangle")
             case .gitMissing:
-                ("Git Not Found", ChangesReadError.gitMissing.message, "folder.badge.questionmark")
+                (String(localized: "Git Not Found"), ChangesReadError.gitMissing.message, "folder.badge.questionmark")
             case .gitTooOld(let version):
-                ("Git Version Too Old", ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
+                (String(localized: "Git Version Too Old"), ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
             case .notOwnedByAccount:
-                ("Checkout Ownership Protected", ChangesReadError.notOwnedByAccount.message, "lock.shield")
+                (String(localized: "Checkout Ownership Protected"), ChangesReadError.notOwnedByAccount.message, "lock.shield")
             case .directoryMissing:
-                ("Directory No Longer Exists", ChangesReadError.directoryMissing.message, "folder.badge.questionmark")
+                (String(localized: "Directory No Longer Exists"), ChangesReadError.directoryMissing.message, "folder.badge.questionmark")
             case .incomplete:
-                ("Incomplete Changes", ChangesReadError.incomplete.message, "exclamationmark.triangle")
+                (String(localized: "Incomplete Changes"), ChangesReadError.incomplete.message, "exclamationmark.triangle")
             case .timedOut:
-                ("Reading Changes Timed Out", "The Host took too long to read Changes. Pull to try again.", "clock")
+                (String(localized: "Reading Changes Timed Out"), String(localized:"The Host took too long to read Changes. Pull to try again."), "clock")
             }
         }
     }
 
-    static let cleanMessage = "No uncommitted changes"
+    static let cleanMessage = String(localized: "No uncommitted changes")
 
     private(set) var phase: Phase = .loading
     /// A read is running while content from an earlier read stays on screen.
@@ -175,7 +175,7 @@ final class ChangesStore {
     func startRead(automatic: Bool = false) -> Task<Void, Never>? {
         guard activeRead == nil, !Task.isCancelled else { return nil }
         guard let directory = directory() ?? lastDirectory else {
-            phase = .failed("This Agent has no working directory.")
+            phase = .failed(String(localized: "This Agent has no working directory."))
             return nil
         }
         lastDirectory = directory
@@ -230,7 +230,7 @@ final class ChangesStore {
             if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
-                if previousFiles != result.changes.files { announce("Checkout Changes updated.") }
+                if previousFiles != result.changes.files { announce(String(localized: "Checkout Changes updated.")) }
             }
         } catch is CancellationError, TransportError.cancelled {
             // Left mid-read: nothing from it is shown, and the next

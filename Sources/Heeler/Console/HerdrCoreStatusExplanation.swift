@@ -28,21 +28,27 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
             return nil
         }
         let noted = Self.firstReportingReleases[agent.kind]
-        let program =
+        // Nil for a program Heeler does not know, which its own sentences name.
+        let program: String? =
             agent.isKnownProgram
             ? noted?.program ?? SupportedAgentKind(rawValue: agent.kind)?.displayName ?? agent.kind
-            : "This program"
+            : nil
         agentProcess = record.foreground?.pid ?? record.pid
         if Self.reportedForItself(record, kind: agent.kind) {
-            text = "\(program) has not reported a state yet."
+            text = program.map { String(localized: "\($0) has not reported a state yet.") }
+                ?? String(localized: "This program has not reported a state yet.")
             offersGrokBuildEdit = false
             return
         }
         offersGrokBuildEdit = agent.kind == "grok"
         if let noted {
-            text = "\(program) hasn't reported a status. It reports one from version \(noted.release), so an older version stays Unknown."
+            let release = noted.release
+            text = program.map {
+                String(localized: "\($0) hasn't reported a status. It reports one from version \(release), so an older version stays Unknown.")
+            } ?? String(localized: "This program hasn't reported a status. It reports one from version \(release), so an older version stays Unknown.")
         } else {
-            text = "\(program) hasn't reported a status."
+            text = program.map { String(localized: "\($0) hasn't reported a status.") }
+                ?? String(localized: "This program hasn't reported a status.")
         }
     }
 

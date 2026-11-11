@@ -4,7 +4,7 @@ import SwiftUI
 /// (ADR 0034). The user reads a candidate's conversation before choosing it, which
 /// is what sets this apart from a guess.
 struct ChatCandidatePickerView: View {
-    static let title = "Choose a Conversation"
+    static let title = String(localized: "Choose a Conversation")
 
     /// Why a list is empty. Antigravity CLI's list never holds its directory's
     /// conversations, since agy files them by ID (ADR 0034), so it cannot say the
@@ -97,22 +97,22 @@ private struct CandidateRow: View {
 extension ChatSessionCandidate {
     fileprivate var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        return "Conversation \(sessionID.prefix(8))"
+        return String(localized: "Conversation \(String(sessionID.prefix(8)))")
     }
 
     fileprivate var detail: String {
         var parts: [String] = []
         if origins.contains(.heldOpen) {
-            parts.append("Open in the program")
+            parts.append(String(localized: "Open in the program"))
         } else if origins.contains(.commandLine) {
             parts.append("Named on the program's command line")
         } else if origins.contains(.programStatus) {
-            parts.append("Named by the program's status")
+            parts.append(String(localized: "Named by the program's status"))
         } else {
-            parts.append("In this directory")
+            parts.append(String(localized: "In this directory"))
         }
         if let modified { parts.append(modified.formatted(.relative(presentation: .named))) }
-        return parts.joined(separator: ", ")
+        return parts.joined(separator: String(localized: ", ", comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
     }
 }
 
@@ -155,7 +155,7 @@ private struct ChatCandidatePreviewView: View {
 
     private var previewTitle: String {
         if case .conversation(let title?, _) = preview, !title.isEmpty { return title }
-        return "Conversation \(candidate.sessionID.prefix(8))"
+        return String(localized: "Conversation \(String(candidate.sessionID.prefix(8)))")
     }
 
     @ViewBuilder

@@ -94,7 +94,7 @@ struct QuestionForm: Equatable, Sendable {
         _ answer: QuestionFormAnswer, forQuestion index: Int, on dialog: BlockedDialog
     ) throws(DialogPlanError) -> DialogAction {
         guard page(dialog, shows: index) else {
-            throw .unsupported("Question \(index + 1) on screen isn't the one the card showed.")
+            throw .unsupported(String(localized: "Question \(index + 1) on screen isn't the one the card showed."))
         }
         let answers = dialog.options.filter { $0.role == .answer }
         let isMultiSelect = dialog.isMultiSelect
@@ -112,7 +112,7 @@ struct QuestionForm: Equatable, Sendable {
         default:
             break
         }
-        throw .unsupported("Question \(index + 1) doesn't take that answer.")
+        throw .unsupported(String(localized: "Question \(index + 1) doesn't take that answer."))
     }
 
     /// Whether Claude's review page lists exactly `answers`.

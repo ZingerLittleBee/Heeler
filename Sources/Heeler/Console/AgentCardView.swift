@@ -70,7 +70,10 @@ struct AgentCardView: View {
                 // A card of its own: its checkout's symbol on the heading's
                 // line, and the mark beside the Agent's own lines below it.
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: cardColumn.spacing) {
+                    // Centered on the heading's line, not on its baseline:
+                    // the line's baseline can come from the pin beside the
+                    // title, which lifts the symbol above the title.
+                    HStack(alignment: .center, spacing: cardColumn.spacing) {
                         ConsoleWorkspaceCardIcon(systemName: heading.systemImage)
                         titleLine(presentation, trailing: lines.title)
                     }
@@ -357,7 +360,7 @@ struct AgentCardPresentation: Equatable, Sendable {
     /// Agent as its kind word would.
     let isMarked: Bool
 
-    var headline: String { rows.first?.map(\.text).joined() ?? "Agent" }
+    var headline: String { rows.first?.map(\.text).joined() ?? String(localized: "Agent") }
     var additionalRows: [String] { rows.dropFirst().map { $0.map(\.text).joined() } }
 
     /// `leadsWithMark` for an Agents list row, which leads with the
@@ -381,7 +384,7 @@ struct AgentCardPresentation: Equatable, Sendable {
             let name = agent.agent.displayName
             rows = [[RenderedToken(
                 token: .agent,
-                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Agent" : name,
+                text: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? String(localized: "Agent") : name,
                 fg: nil, bold: nil, dim: nil)]]
             slots = [0]
         } else {

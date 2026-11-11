@@ -97,20 +97,31 @@ struct ChatBackgroundWorkPresentation: Equatable {
         let running = rows.filter { $0.status == .running }
         // A Workflow's fraction says the most in one line.
         if let first = running.first(where: { $0.kind == .workflow }) ?? running.first {
-            let fraction = first.fraction
+            let count = running.count
+            let title = first.title
+            // One whole line with and without the fraction, so each
+            // language orders the count, name and fraction itself.
+            if let fraction = first.fraction {
+                return Summary(
+                    status: .running,
+                    text: String(localized: "\(count) running · \(title) \(fraction.done)/\(fraction.total)"),
+                    accessibilityValue: String(
+                        localized: "\(count) running, \(title), \(fraction.done) of \(fraction.total) agents done"))
+            }
             return Summary(
-                status: .running,
-                text: "\(running.count) running · \(first.title)" + (fraction.map { " \($0.done)/\($0.total)" } ?? ""),
-                accessibilityValue: "\(running.count) running, \(first.title)"
-                    + (fraction.map { ", \($0.done) of \($0.total) agents done" } ?? ""))
+                status: .running, text: String(localized: "\(count) running · \(title)"),
+                accessibilityValue: String(localized: "\(count) running, \(title)"))
         }
         let notUpdating = rows.count { $0.status == .unconfirmed || $0.status == .quiet }
         let completed = rows.count { $0.status == .completed }
         let failed = rows.count { $0.status == .failed }
         let stopped = rows.count { $0.status == .stopped }
-        let parts = [
-            (notUpdating, "not updating"), (completed, "done"), (failed, "failed"), (stopped, "stopped"),
-        ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
+        // Each count with its own word, whole, as "2 failed".
+        var parts: [String] = []
+        if notUpdating > 0 { parts.append(String(localized: "\(notUpdating) not updating")) }
+        if completed > 0 { parts.append(String(localized: "\(completed) done")) }
+        if failed > 0 { parts.append(String(localized: "\(failed) failed")) }
+        if stopped > 0 { parts.append(String(localized: "\(stopped) stopped")) }
         let status: Status =
             notUpdating > 0 ? .unconfirmed : failed > 0 ? .failed : completed > 0 ? .completed : .stopped
         return Summary(
@@ -140,25 +151,28 @@ struct ChatBackgroundWorkPresentation: Equatable {
             let lastSeen = row.lastActivity.map(time(of:))
             let note: String? =
                 switch status {
-                case .unconfirmed: "Not updating"
-                case .quiet: lastSeen.map { "No updates since \($0)" } ?? "No recent updates"
+                case .unconfirmed: String(localized: "Not updating")
+                case .quiet:
+                    lastSeen.map { String(localized: "No updates since \($0)") }
+                        ?? String(localized: "No recent updates")
                 default: nil
                 }
             let shortNote: String? =
                 switch status {
-                case .quiet: row.lastActivity.map { "Last seen \(day(of: $0))" } ?? note
+                case .quiet: row.lastActivity.map { String(localized: "Last seen \(day(of: $0))") } ?? note
                 default: note
                 }
             let started = row.progress?.agents ?? []
             let caption =
                 switch item.kind {
-                case .subagent: item.subtitle ?? "Subagent"
+                case .subagent: item.subtitle ?? String(localized: "Subagent")
                 // The phase it is in: its last running agent's, or with none
                 // running, its last agent's.
-                case .workflow: (started.last { $0.state == .running } ?? started.last)?.phase ?? "Workflow"
+                case .workflow:
+                    (started.last { $0.state == .running } ?? started.last)?.phase ?? String(localized: "Workflow")
                 }
             var spoken = [item.title, kindPhrase(item), statePhrase(status, lastSeen: lastSeen)]
-            if let fraction { spoken.append("\(fraction.done) of \(fraction.total) agents done") }
+            if let fraction { spoken.append(String(localized: "\(fraction.done) of \(fraction.total) agents done")) }
             if let seconds { spoken.append(ChatBackgroundWorkPresentation.duration(seconds, width: .wide, locale: locale)) }
             return Row(
                 id: item.id, kind: item.kind, status: status, title: item.title, caption: caption,
@@ -212,7 +226,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
                     // Work that ended took its running agents with it.
                     case .running: status.isFinished ? .stopped : status == .running ? .running : .unconfirmed
                     }
-                let label = agent.label.flatMap { $0.isEmpty ? nil : $0 } ?? "Agent \(index + 1)"
+                let label = agent.label.flatMap { $0.isEmpty ? nil : $0 } ?? String(localized: "Agent \(index + 1)")
                 let spoken = [label, agent.phase, statePhrase(agentStatus, lastSeen: nil)].compactMap(\.self)
                 return Agent(
                     id: agent.id, status: agentStatus, label: label, phase: agent.phase,
@@ -225,29 +239,31 @@ struct ChatBackgroundWorkPresentation: Equatable {
             var parts: [String] = []
             if let tokens = usage.tokens {
                 let count = tokens.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)).locale(locale))
-                parts.append("\(count) tokens")
+                parts.append(String(localized: "\(count) tokens"))
             }
             if let toolUses = usage.toolUses {
-                parts.append(toolUses == 1 ? "1 tool use" : "\(toolUses) tool uses")
+                parts.append(toolUses == 1 ? String(localized: "1 tool use") : String(localized: "\(toolUses) tool uses"))
             }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
 
         private func kindPhrase(_ item: ChatBackgroundWorkItem) -> String {
             switch item.kind {
-            case .subagent: item.subtitle.map { "\($0) subagent" } ?? "Subagent"
-            case .workflow: "Workflow"
+            case .subagent: item.subtitle.map { String(localized: "\($0) subagent") } ?? String(localized: "Subagent")
+            case .workflow: String(localized: "Workflow")
             }
         }
 
+        /// The state as one item of a spoken list, after the name.
         private func statePhrase(_ status: Status, lastSeen: String?) -> String {
             switch status {
-            case .running: "running"
-            case .unconfirmed: "not updating"
-            case .quiet: lastSeen.map { "no updates since \($0)" } ?? "no recent updates"
-            case .completed: "done"
-            case .failed: "failed"
-            case .stopped: "stopped"
+            case .running: String(localized: "running")
+            case .unconfirmed: String(localized: "not updating")
+            case .quiet:
+                lastSeen.map { String(localized: "no updates since \($0)") } ?? String(localized: "no recent updates")
+            case .completed: String(localized: "done")
+            case .failed: String(localized: "failed")
+            case .stopped: String(localized: "stopped")
             }
         }
 

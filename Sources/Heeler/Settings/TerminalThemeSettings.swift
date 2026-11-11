@@ -42,23 +42,23 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .followSystem: "Default"
+        case .followSystem: String(localized: "Default")
         case .vesper: "Vesper"
-        case .appleSystemColors: "Apple System Colors"
+        case .appleSystemColors: String(localized: "Apple System Colors")
         case .dracula: "Dracula"
         case .solarized: "Solarized"
         case .catppuccin: "Catppuccin"
-        case .tokyoNight: "Tokyo Night"
+        case .tokyoNight: String(localized: "Tokyo Night")
         case .gruvbox: "Gruvbox"
         case .nord: "Nord"
-        case .monokaiPro: "Monokai Pro"
-        case .rosePine: "Rosé Pine"
+        case .monokaiPro: String(localized: "Monokai Pro")
+        case .rosePine: String(localized: "Rosé Pine")
         case .ayu: "Ayu"
-        case .oneHalf: "One Half"
+        case .oneHalf: String(localized: "One Half")
         case .kanagawa: "Kanagawa"
         case .everforest: "Everforest"
         case .github: "GitHub"
-        case .nightOwl: "Night Owl"
+        case .nightOwl: String(localized: "Night Owl")
         case .iceberg: "Iceberg"
         case .flexoki: "Flexoki"
         case .selenized: "Selenized"
@@ -66,9 +66,9 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         case .tomorrow: "Tomorrow"
         case .melange: "Melange"
         case .zenbones: "Zenbones"
-        case .atomOneDark: "One Dark"
+        case .atomOneDark: String(localized: "One Dark")
         case .snazzy: "Snazzy"
-        case .oceanicNext: "Oceanic Next"
+        case .oceanicNext: String(localized: "Oceanic Next")
         case .poimandres: "Poimandres"
         case .horizon: "Horizon"
         case .zenburn: "Zenburn"
@@ -77,42 +77,43 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .followSystem: "Alabaster in Light Mode, Afterglow in Dark Mode"
-        case .vesper: "A warm, low-contrast dark theme"
-        case .appleSystemColors: "Apple's terminal palette for each appearance"
-        case .dracula: "The classic high-contrast dark palette"
-        case .solarized: "Paired iTerm2 Solarized light and dark themes"
-        case .catppuccin: "Latte in Light Mode, Mocha in Dark Mode"
-        case .tokyoNight: "Day in Light Mode, Night in Dark Mode"
-        case .gruvbox: "A warm retro palette for both appearances"
-        case .nord: "A calm arctic palette for both appearances"
-        case .monokaiPro: "The popular editor palette for both appearances"
-        case .rosePine: "Dawn in Light Mode, the classic in Dark Mode"
-        case .ayu: "Light and dark halves of the Ayu palette"
-        case .oneHalf: "One Half Light and One Half Dark"
-        case .kanagawa: "Lotus in Light Mode, Wave in Dark Mode"
-        case .everforest: "Forest greens for each appearance"
-        case .github: "GitHub's default palettes for each appearance"
-        case .nightOwl: "Owlish Light in Light Mode, Night Owl in Dark Mode"
-        case .iceberg: "Paired Iceberg light and dark themes"
-        case .flexoki: "Paired inky light and dark themes"
-        case .selenized: "A Solarized descendant for each appearance"
-        case .modus: "Operandi in Light Mode, Vivendi in Dark Mode"
-        case .tomorrow: "Tomorrow in Light Mode, Tomorrow Night in Dark Mode"
-        case .melange: "Warm paired light and dark themes"
-        case .zenbones: "Paired low-contrast light and dark themes"
-        case .atomOneDark: "Atom's One Dark for both appearances"
-        case .snazzy: "A vivid dark theme for both appearances"
-        case .oceanicNext: "A deep sea-blue dark theme for both appearances"
-        case .poimandres: "A cool minimal dark theme for both appearances"
-        case .horizon: "A warm dusk dark theme for both appearances"
-        case .zenburn: "The classic low-contrast dark theme for both appearances"
+        case .followSystem: String(localized: "Alabaster in Light Mode, Afterglow in Dark Mode")
+        case .vesper: String(localized: "A warm, low-contrast dark theme")
+        case .appleSystemColors: String(localized: "Apple's terminal palette for each appearance")
+        case .dracula: String(localized: "The classic high-contrast dark palette")
+        case .solarized: String(localized: "Paired iTerm2 Solarized light and dark themes")
+        case .catppuccin: String(localized: "Latte in Light Mode, Mocha in Dark Mode")
+        case .tokyoNight: String(localized: "Day in Light Mode, Night in Dark Mode")
+        case .gruvbox: String(localized: "A warm retro palette for both appearances")
+        case .nord: String(localized: "A calm arctic palette for both appearances")
+        case .monokaiPro: String(localized: "The popular editor palette for both appearances")
+        case .rosePine: String(localized: "Dawn in Light Mode, the classic in Dark Mode")
+        case .ayu: String(localized: "Light and dark halves of the Ayu palette")
+        case .oneHalf: String(localized: "One Half Light and One Half Dark")
+        case .kanagawa: String(localized: "Lotus in Light Mode, Wave in Dark Mode")
+        case .everforest: String(localized: "Forest greens for each appearance")
+        case .github: String(localized: "GitHub's default palettes for each appearance")
+        case .nightOwl: String(localized: "Owlish Light in Light Mode, Night Owl in Dark Mode")
+        case .iceberg: String(localized: "Paired Iceberg light and dark themes")
+        case .flexoki: String(localized: "Paired inky light and dark themes")
+        case .selenized: String(localized: "A Solarized descendant for each appearance")
+        case .modus: String(localized: "Operandi in Light Mode, Vivendi in Dark Mode")
+        case .tomorrow: String(localized: "Tomorrow in Light Mode, Tomorrow Night in Dark Mode")
+        case .melange: String(localized: "Warm paired light and dark themes")
+        case .zenbones: String(localized: "Paired low-contrast light and dark themes")
+        case .atomOneDark: String(localized: "Atom's One Dark for both appearances")
+        case .snazzy: String(localized: "A vivid dark theme for both appearances")
+        case .oceanicNext: String(localized: "A deep sea-blue dark theme for both appearances")
+        case .poimandres: String(localized: "A cool minimal dark theme for both appearances")
+        case .horizon: String(localized: "A warm dusk dark theme for both appearances")
+        case .zenburn: String(localized: "The classic low-contrast dark theme for both appearances")
         }
     }
 
     /// The single source of the option → catalog-theme mapping. Everything
     /// else — rendering configurations, swatches, chrome colours — derives
     /// from this, so an option cannot render one theme and preview another.
+    /// The names are catalog keys, never localized; `title` is what shows.
     func catalogName(isDark: Bool) -> String {
         switch self {
         // libghostty's built-in default pair; the catalog carries themes of
@@ -163,12 +164,6 @@ enum TerminalThemeOption: String, CaseIterable, Identifiable, Sendable {
         }
         return Self.definitions[catalogName(isDark: isDark)]?
             .toTerminalConfiguration() ?? .default
-    }
-
-    var terminalTheme: TerminalTheme {
-        TerminalTheme(
-            light: configuration(isDark: false),
-            dark: configuration(isDark: true))
     }
 
     func colors(isDark: Bool) -> TerminalThemeColors? {
@@ -223,6 +218,10 @@ final class TerminalThemeSettings {
     private static let legacyDefaultsKey = "terminal-theme"
     private static let lightDefaultsKey = "terminal-theme-light"
     private static let darkDefaultsKey = "terminal-theme-dark"
+    /// A slot nobody chose shows a theme as light or dark as its appearance,
+    /// so an untouched app is lit as the system is (ADR 0042).
+    static let defaultLightSelection = TerminalThemeOption.followSystem
+    static let defaultDarkSelection = TerminalThemeOption.vesper
 
     private(set) var lightSelection: TerminalThemeOption
     private(set) var darkSelection: TerminalThemeOption
@@ -235,16 +234,18 @@ final class TerminalThemeSettings {
             .flatMap(TerminalThemeOption.init(rawValue:))
         lightSelection =
             defaults.string(forKey: Self.lightDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultLightSelection
         darkSelection =
             defaults.string(forKey: Self.darkDefaultsKey)
-            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? .vesper
+            .flatMap(TerminalThemeOption.init(rawValue:)) ?? legacy ?? Self.defaultDarkSelection
     }
 
-    var theme: TerminalTheme {
-        TerminalTheme(
-            light: lightSelection.configuration(isDark: false),
-            dark: darkSelection.configuration(isDark: true))
+    /// What a terminal shows: `appearance`'s slot in both halves, so a
+    /// terminal drawn in the other appearance (a dark theme for Light Mode
+    /// darkens the app) still shows that slot's theme.
+    func terminalTheme(for appearance: ColorScheme) -> TerminalTheme {
+        let configuration = selection(for: appearance).configuration(isDark: appearance == .dark)
+        return TerminalTheme(light: configuration, dark: configuration)
     }
 
     func selection(for colorScheme: ColorScheme) -> TerminalThemeOption {

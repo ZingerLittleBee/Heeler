@@ -177,9 +177,11 @@ private struct ChatUserBubble: View {
                         + Text(command.arguments.isEmpty ? "" : " \(command.arguments)"))
                         .font(.body)
                 } else {
-                    // Image paths open as in the Agent's messages.
+                    // Image paths open as in the Agent's messages, and so do
+                    // the placeholders of images pasted from a file.
                     ChatMarkdownView.text(
-                        ChatImageLink.marking(message.text), in: .body, opensImages: imageOpener != nil)
+                        ChatImageLink.marking(message.text, imagePaths: message.imagePaths), in: .body,
+                        opensImages: imageOpener != nil)
                         .font(.body)
                         .chatMessageLinks(opener: imageOpener)
                 }
@@ -196,12 +198,12 @@ private struct ChatUserBubble: View {
 
     /// "You: text", then what the chips say.
     private var accessibilityLabel: String {
-        var parts = ["You: \(message.displayText)"]
+        var parts = [String(localized: "You: \(message.displayText)")]
         if message.imageCount > 0 {
-            parts.append(message.imageCount == 1 ? "1 image" : "\(message.imageCount) images")
+            parts.append(message.imageCount == 1 ? String(localized: "1 image") : String(localized: "\(message.imageCount) images"))
         }
         parts += message.attachmentLabels
-        if message.wasQueued { parts.append("Sent while working") }
+        if message.wasQueued { parts.append(String(localized: "Sent while working")) }
         return parts.joined(separator: ", ")
     }
 }
@@ -255,23 +257,23 @@ private struct ChatPendingBubble: View {
     private var status: (text: String, symbol: String, color: Color)? {
         switch echo.state {
         case .sending:
-            ("Sending…", "arrow.up.circle", .secondary)
+            (String(localized: "Sending…"), "arrow.up.circle", .secondary)
         case .sent:
             nil
         case .unconfirmed:
-            ("Sent. It hasn't appeared in the conversation yet.", "clock", .secondary)
+            (String(localized: "Sent. It hasn't appeared in the conversation yet."), "clock", .secondary)
         case .outcomeUnknown:
-            ("May or may not have reached the Agent. Check the terminal.", "exclamationmark.triangle", .orange)
+            (String(localized: "May or may not have reached the Agent. Check the terminal."), "exclamationmark.triangle", .orange)
         case .failed(let reason):
-            ("Not sent. \(reason)", "exclamationmark.triangle", .red)
+            (String(localized: "Not sent. \(reason)"), "exclamationmark.triangle", .red)
         case .notDelivered:
-            ("Not delivered. The text is still in the Agent's input box.", "exclamationmark.triangle", .orange)
+            (String(localized: "Not delivered. The text is still in the Agent's input box."), "exclamationmark.triangle", .orange)
         case .discarded:
-            ("Not delivered. It's no longer in the Agent's input box.", "exclamationmark.triangle", .orange)
+            (String(localized: "Not delivered. It's no longer in the Agent's input box."), "exclamationmark.triangle", .orange)
         case .refused(let refusal):
             (refusal, "info.circle", .secondary)
         case .misdirected:
-            ("Sent, but the Agent recorded it in another session.", "exclamationmark.triangle", .orange)
+            (String(localized: "Sent, but the Agent recorded it in another session."), "exclamationmark.triangle", .orange)
         }
     }
 }
@@ -312,10 +314,10 @@ private struct ChatReasoningRow: View {
 
     private var title: String {
         guard let milliseconds = reasoning.durationMilliseconds, milliseconds >= 1_000 else {
-            return "Reasoning"
+            return String(localized: "Reasoning")
         }
         let duration = Duration.milliseconds(milliseconds)
-        return "Thought for \(duration.formatted(.units(allowed: [.minutes, .seconds], width: .narrow)))"
+        return String(localized: "Thought for \(duration.formatted(.units(allowed: [.minutes, .seconds], width: .narrow)))")
     }
 }
 
@@ -359,10 +361,9 @@ private struct ChatTurnHeaderRow: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(duration.map { "Worked for \(Self.spoken($0))" } ?? "Details")
-                .accessibilityValue(header.isOpen ? "Expanded" : "Collapsed")
-                .accessibilityHint(
-                    "\(header.isOpen ? "Hides" : "Shows") \(header.stepCount == 1 ? "1 step" : "\(header.stepCount) steps")")
+                .accessibilityLabel(duration.map { String(localized: "Worked for \(Self.spoken($0))") } ?? String(localized: "Details"))
+                .accessibilityValue(header.isOpen ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                .accessibilityHint(Self.hint(isOpen: header.isOpen, steps: header.stepCount))
             }
             Rectangle()
                 .fill(Color(uiColor: .separator))
@@ -371,12 +372,23 @@ private struct ChatTurnHeaderRow: View {
         }
     }
 
+    /// "Shows 3 steps": one whole phrase per state and count, so each
+    /// language orders its verb and count.
+    static func hint(isOpen: Bool, steps: Int) -> String {
+        switch (isOpen, steps == 1) {
+        case (true, true): String(localized: "Hides 1 step")
+        case (true, false): String(localized: "Hides \(steps) steps")
+        case (false, true): String(localized: "Shows 1 step")
+        case (false, false): String(localized: "Shows \(steps) steps")
+        }
+    }
+
     /// "Worked for 35s", or "Details" when the records give no duration.
     static func title(_ duration: TimeInterval?) -> String {
-        guard let duration else { return "Details" }
+        guard let duration else { return String(localized: "Details") }
         let seconds = max(1, Int(duration.rounded()))
         let formatted = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
-        return "Worked for \(formatted)"
+        return String(localized: "Worked for \(formatted)")
     }
 
     /// "1 minute, 5 seconds": what VoiceOver reads for a duration.
@@ -399,6 +411,7 @@ private struct ChatTurnHeaderRow: View {
 /// lines changed, and whether any is running or failed. Opening it shows
 /// each call's own card below it.
 private struct ChatToolGroupRow: View {
+    @Environment(\.themeColors) private var themeColors
     let group: ChatToolGroup
     let toggle: () -> Void
 
@@ -435,24 +448,36 @@ private struct ChatToolGroupRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .background(themeColors.raised, in: .rect(cornerRadius: 12))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(group.isOpen ? "Expanded" : "Collapsed")
-        .accessibilityHint("\(group.isOpen ? "Hides" : "Shows") \(group.calls == 1 ? "1 call" : "\(group.calls) calls")")
+        .accessibilityValue(group.isOpen ? String(localized: "Expanded") : String(localized: "Collapsed"))
+        .accessibilityHint(hint)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// "Shows 3 calls": one whole phrase per state and count.
+    private var hint: String {
+        switch (group.isOpen, group.calls == 1) {
+        case (true, true): String(localized: "Hides 1 call")
+        case (true, false): String(localized: "Hides \(group.calls) calls")
+        case (false, true): String(localized: "Shows 1 call")
+        case (false, false): String(localized: "Shows \(group.calls) calls")
+        }
     }
 
     private var accessibilityLabel: String {
         var parts = [group.summary]
-        if let added = group.added, let removed = group.removed { parts.append("\(added) added, \(removed) removed") }
+        if let added = group.added, let removed = group.removed {
+            parts.append(String(localized: "\(added) added, \(removed) removed"))
+        }
         if group.isRunning {
-            parts.append("Running")
+            parts.append(String(localized: "Running"))
         } else if group.failed > 0 {
-            parts.append("\(group.failed) failed")
+            parts.append(String(localized: "\(group.failed) failed"))
         }
         return parts.joined(separator: ", ")
     }
@@ -464,14 +489,17 @@ struct ChatSubagentPresentation {
     let activity: ChatSubagentActivity
 
     var name: String {
-        activity.agentPath?.split(separator: "/").last.map(String.init) ?? "Unnamed subagent"
+        activity.agentPath?.split(separator: "/").last.map(String.init) ?? String(localized: "Unnamed subagent")
     }
 
     var status: String { Self.label(for: activity.events.last ?? "unknown") }
-    var eventCount: String { activity.events.count == 1 ? "1 event" : "\(activity.events.count) events" }
+    var eventCount: String {
+        activity.events.count == 1
+            ? String(localized: "1 event") : String(localized: "\(activity.events.count) events")
+    }
 
     var copyText: String {
-        (["Subagent: \(name)", activity.agentPath].compactMap { $0 }
+        ([String(localized: "Subagent: \(name)"), activity.agentPath].compactMap { $0 }
             + history.map(\.label)).joined(separator: "\n")
     }
 
@@ -499,13 +527,15 @@ struct ChatSubagentPresentation {
         return runs
     }
 
+    /// What a recorded event says. `kind` is the record's own word, matched
+    /// as written; only the label is in the app's language.
     static func label(for kind: String) -> String {
         switch kind {
-        case "started": "Started"
-        case "interacted": "Message exchanged"
-        case "completed": "Completed"
-        case "interrupted": "Interrupted"
-        default: "Activity recorded"
+        case "started": String(localized: "Started")
+        case "interacted": String(localized: "Message exchanged")
+        case "completed": String(localized: "Completed")
+        case "interrupted": String(localized: "Interrupted")
+        default: String(localized: "Activity recorded")
         }
     }
 
@@ -521,6 +551,7 @@ struct ChatSubagentPresentation {
 }
 
 private struct ChatSubagentActivityRow: View {
+    @Environment(\.themeColors) private var themeColors
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title3) private var iconWidth = 24
     @ScaledMetric(relativeTo: .subheadline) private var titleCapHeight = UIFont.systemFont(ofSize: 15).capHeight
@@ -556,8 +587,12 @@ private struct ChatSubagentActivityRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Subagent, \(presentation.name)")
-            .accessibilityValue("\(presentation.status), \(presentation.eventCount), \(isExpanded ? "Expanded" : "Collapsed")")
-            .accessibilityHint(isExpanded ? "Hides activity history" : "Shows activity history")
+            .accessibilityValue(
+                [
+                    presentation.status, presentation.eventCount,
+                    isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"),
+                ].joined(separator: ", "))
+            .accessibilityHint(isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     if let path = activity.agentPath, !path.isEmpty {
@@ -578,7 +613,7 @@ private struct ChatSubagentActivityRow: View {
             }
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 
     private var agentIcon: some View {
@@ -607,6 +642,7 @@ private struct ChatSubagentActivityRow: View {
 }
 
 private struct ChatToolRow: View {
+    @Environment(\.themeColors) private var themeColors
     struct TextActions {
         var copy: () -> Void
         var selectText: () -> Void
@@ -681,7 +717,7 @@ private struct ChatToolRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 
     /// What an open diff says while its lines were never read; nil for a
@@ -694,12 +730,12 @@ private struct ChatToolRow: View {
     /// call and any note or questions.
     private var hint: String {
         switch (isExpanded, tool.showsDiffAsOutput, tool.ran) {
-        case (true, true, _): "Hides the diff"
-        case (false, true, _): "Shows the diff"
-        case (true, false, true): "Hides the output"
-        case (false, false, true): "Shows the output"
-        case (true, false, false): "Hides the details"
-        case (false, false, false): "Shows the details"
+        case (true, true, _): String(localized: "Hides the diff")
+        case (false, true, _): String(localized: "Shows the diff")
+        case (true, false, true): String(localized: "Hides the output")
+        case (false, false, true): String(localized: "Shows the output")
+        case (true, false, false): String(localized: "Hides the details")
+        case (false, false, false): String(localized: "Shows the details")
         }
     }
 
@@ -794,25 +830,25 @@ private struct ChatToolRow: View {
     /// or where it goes on. A read starts only for a preview cut short.
     private static func continuation(of preview: ChatToolPreview, read: ChatToolActivity.OutputRead?) -> String? {
         switch read {
-        case .loading?: "Loading the full output…"
+        case .loading?: String(localized: "Loading the full output…")
         case .failed(let message)?, .unavailable(let message)?: message
-        case .read?, nil: preview.isTruncated ? "Output continues in the terminal." : nil
+        case .read?, nil: preview.isTruncated ? String(localized: "Output continues in the terminal.") : nil
         }
     }
 
     /// What a row with nothing to read says: a call running when last seen
     /// may have printed since.
     private static func noOutputText(for tool: ChatToolActivity) -> String {
-        guard tool.status == .running else { return "No output." }
-        return tool.isNotUpdating ? "No output when last seen." : "Running…"
+        guard tool.status == .running else { return String(localized: "No output.") }
+        return tool.isNotUpdating ? String(localized: "No output when last seen.") : String(localized: "Running…")
     }
 
     /// What a row with no preview says about its read; nil when the read
     /// found nothing for a call that never ran.
     private static func missingPreview(_ read: ChatToolActivity.OutputRead, didRun: Bool) -> String? {
         switch read {
-        case .loading: "Loading output…"
-        case .read: didRun ? "No output." : nil
+        case .loading: String(localized: "Loading output…")
+        case .read: didRun ? String(localized: "No output.") : nil
         case .failed(let message), .unavailable(let message): message
         }
     }
@@ -860,6 +896,7 @@ private struct ChatToolKindIcon: View {
 /// A tool's output text: as tall as the text up to a limit, then scrolling
 /// inside, so a long output never makes the row a screen tall.
 private struct ChatToolOutputText: View {
+    @Environment(\.themeColors) private var themeColors
     let text: String
     @ScaledMetric(relativeTo: .caption) private var maximumHeight: CGFloat = 240
 
@@ -873,7 +910,7 @@ private struct ChatToolOutputText: View {
         .scrollBounceBehavior(.basedOnSize)
         .frame(maxHeight: maximumHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Color(uiColor: .tertiarySystemBackground), in: .rect(cornerRadius: 8))
+        .background(themeColors.background, in: .rect(cornerRadius: 8))
     }
 }
 
@@ -941,17 +978,17 @@ private struct ChatToolStatusBadge: View {
     /// A plain success shows only its checkmark, so `succeeded` gets here
     /// only when it was allowed in Chat.
     private var label: String {
-        if cardAnswer == .stopped { return "Stopped" }
+        if cardAnswer == .stopped { return String(localized: "Stopped") }
         switch status {
-        case .awaitingApproval: return "Waiting"
-        case .succeeded: return "Allowed"
-        case .failed: return exitCode.map { "Exit \($0)" } ?? "Failed"
-        case .declined: return "Declined"
-        case .interrupted: return "Interrupted"
-        case .notCompleted: return "Not completed"
-        case .noResult: return "No result"
-        case .started: return "Started"
-        case .chatInstead: return "Chat Instead"
+        case .awaitingApproval: return String(localized: "Waiting")
+        case .succeeded: return String(localized: "Allowed")
+        case .failed: return exitCode.map { String(localized: "Exit \($0)") } ?? String(localized: "Failed")
+        case .declined: return String(localized: "Declined")
+        case .interrupted: return String(localized: "Interrupted")
+        case .notCompleted: return String(localized: "Not completed")
+        case .noResult: return String(localized: "No result")
+        case .started: return String(localized: "Started")
+        case .chatInstead: return String(localized: "Chat Instead")
         case .running: return ""
         }
     }
@@ -982,6 +1019,7 @@ private struct ChatToolStatusBadge: View {
 }
 
 private struct ChatPlanRow: View {
+    @Environment(\.themeColors) private var themeColors
     let plan: ChatPlan
     let blocks: [ChatMarkdownBlock]
 
@@ -1007,7 +1045,7 @@ private struct ChatPlanRow: View {
             }
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 }
 
@@ -1151,8 +1189,8 @@ private struct ChatDividerRow: View {
 
     private var title: String {
         switch divider.kind {
-        case .compaction: "Context compacted"
-        case .historyUnavailable: "Earlier messages couldn't be read"
+        case .compaction: String(localized: "Context compacted")
+        case .historyUnavailable: String(localized: "Earlier messages couldn't be read")
         }
     }
 }
@@ -1174,7 +1212,7 @@ private struct ChatOlderHistoryRow: View {
             case .available where pull != .idle:
                 // Pulling flips the arrow once letting go would load.
                 Label {
-                    Text(pull == .armed ? "Release to load earlier messages" : "Pull to load earlier messages")
+                    Text(pull == .armed ? String(localized: "Release to load earlier messages") : String(localized: "Pull to load earlier messages"))
                 } icon: {
                     Image(systemName: "arrow.down")
                         .rotationEffect(.degrees(pull == .armed ? 180 : 0))

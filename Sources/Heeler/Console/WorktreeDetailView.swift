@@ -70,7 +70,7 @@ struct WorktreeDetailView: View {
                 }
             }
             .confirmationDialog(
-                store.confirmation?.title ?? "Remove worktree?",
+                store.confirmation?.title ?? String(localized: "Remove worktree?"),
                 isPresented: confirmationPresented,
                 titleVisibility: .visible
             ) {
@@ -134,8 +134,8 @@ struct WorktreeDetailView: View {
 
     private var feedbackTitle: String {
         switch store.removalPhase {
-        case .unconfirmed: "Removal Unconfirmed"
-        default: "Couldn't Remove Worktree"
+        case .unconfirmed: String(localized: "Removal Unconfirmed")
+        default: String(localized: "Couldn't Remove Worktree")
         }
     }
 

@@ -90,18 +90,18 @@ final class ClosePaneStore {
     private static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.coreMutationOutcomeUnknown:
             ConsoleStore.closeUnconfirmedMessage
         case let refusal as HerdrCoreCloseRefusal:
-            "herdr-core rejected the close: \(refusal.message)"
+            String(localized: "herdr-core rejected the close: \(refusal.message)")
         case let apiError as HerdrAPIError:
-            "herdr rejected the close: \(apiError.message)"
+            String(localized: "herdr rejected the close: \(apiError.message)")
         default:
             TransportError.herdrCoreLinkMessage(for: error)
-                ?? "Closing the pane failed: \(error)"
+                ?? String(localized: "Closing the pane failed: \(String(describing: error))")
         }
     }
 }

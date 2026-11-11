@@ -217,7 +217,7 @@ struct AgentUsageDashboard: View {
 
     private func hero(_ scope: AgentUsageScope) -> some View {
         let summary = selectedDay.map(scope.day) ?? scope.total(range)
-        let metricName = metric == .cost ? "Estimated API cost" : "Token Usage"
+        let metricName = metric == .cost ? String(localized: "Estimated API cost") : String(localized: "Token Usage")
         let label: Text
         if let selectedDay {
             label = Text(AgentUsageCalendarDay.text(selectedDay, locale: locale, calendar: calendar,
@@ -227,7 +227,6 @@ struct AgentUsageDashboard: View {
         } else {
             label = Text("\(metricName) · \(rangeName)")
         }
-        let place = Self.place(scope)
         return VStack(alignment: .leading, spacing: 0) {
             label
                 .font(.subheadline)
@@ -244,9 +243,7 @@ struct AgentUsageDashboard: View {
                     Text("tokens").font(.title3)
                 }
             }
-            Text(metric == .cost
-                ? "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens \(place)"
-                : "Estimated API cost \(AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)) \(place)")
+            Text(otherFigure(summary, hostCount: scope.included.count))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -269,11 +266,27 @@ struct AgentUsageDashboard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// "211M tokens on these 2 Hosts": the figure the hero does not lead with.
+    private func otherFigure(_ summary: AgentUsageReport.Summary, hostCount: Int) -> String {
+        switch metric {
+        case .cost:
+            let tokens = AgentUsageStyle.tokens(summary.tokens.total, locale: locale)
+            return hostCount == 1
+                ? String(localized: "\(tokens) tokens on this Host")
+                : String(localized: "\(tokens) tokens on these \(hostCount.formatted()) Hosts")
+        case .tokens:
+            let cost = AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)
+            return hostCount == 1
+                ? String(localized: "Estimated API cost \(cost) on this Host")
+                : String(localized: "Estimated API cost \(cost) on these \(hostCount.formatted()) Hosts")
+        }
+    }
+
     private var rangeName: String {
         switch range {
-        case .today: "Today"
-        case .last7Days: "Last 7 days"
-        case .last30Days: "Last 30 days"
+        case .today: String(localized: "Today")
+        case .last7Days: String(localized: "Last 7 days")
+        case .last30Days: String(localized: "Last 30 days")
         }
     }
 
@@ -281,7 +294,7 @@ struct AgentUsageDashboard: View {
 
     private func limitsSection(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Usage Limits", detail: scope.included.count > 1 ? "per Host" : nil) {
+            sectionHeader(String(localized: "Usage Limits"), detail: scope.included.count > 1 ? String(localized: "per Host") : nil) {
                 Button("Details") { isShowingLimits = true }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -327,7 +340,7 @@ struct AgentUsageDashboard: View {
                         .font(.headline)
                     Spacer(minLength: 8)
                     ViewThatFits(in: .horizontal) {
-                        Text(metric == .cost ? "Estimated API cost per day" : "Tokens per day")
+                        Text(metric == .cost ? String(localized: "Estimated API cost per day") : String(localized: "Tokens per day"))
                         Text("Per day")
                     }
                     .font(.footnote)
@@ -361,20 +374,20 @@ struct AgentUsageDashboard: View {
     private func hostsSection(_ scope: AgentUsageScope) -> some View {
         let total = scope.included.reduce(0) { $0 + metric.value(of: $1.last30Days) }
         return VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Hosts", detail: "Last 30 days")
+            sectionHeader(String(localized: "Hosts"), detail: String(localized: "Last 30 days"))
             VStack(spacing: 0) {
                 ForEach(Array(scope.included.enumerated()), id: \.element.id) { index, host in
                     if index > 0 { Divider().padding(.leading, 42) }
                     Button { scopeHostID = host.id } label: {
                         hostRow(name: host.name, symbol: "desktopcomputer", tint: .accentColor,
-                            subtitle: "\(AgentUsageStyle.share(metric.value(of: host.last30Days), of: total, locale: locale)) · \(AgentUsageStyle.tokens(host.last30Days.tokens.total, locale: locale)) tokens",
+                            subtitle: String(localized: "\(AgentUsageStyle.share(metric.value(of: host.last30Days), of: total, locale: locale)) · \(AgentUsageStyle.tokens(host.last30Days.tokens.total, locale: locale)) tokens"),
                             value: AgentUsageStyle.value(host.last30Days, metric: metric, locale: locale))
                     }
                     .buttonStyle(.plain)
                 }
                 ForEach(scope.excluded) { host in
                     Divider().padding(.leading, 42)
-                    hostRow(name: host.name, symbol: host.reason == "Not connected" ? "wifi.slash" : "desktopcomputer",
+                    hostRow(name: host.name, symbol: host.exclusion == .notConnected ? "wifi.slash" : "desktopcomputer",
                         tint: Color(uiColor: .systemGray3), subtitle: host.reason, value: nil)
                         .foregroundStyle(.secondary)
                 }
@@ -415,7 +428,7 @@ struct AgentUsageDashboard: View {
         let summaries = scope.programs.map { (program: $0, summary: range.summary(in: $0.totals)) }
         let total = summaries.reduce(0) { $0 + metric.value(of: $1.summary) }
         return VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Programs", detail: rangeName)
+            sectionHeader(String(localized: "Programs"), detail: rangeName)
             VStack(alignment: .leading, spacing: 0) {
                 GeometryReader { proxy in
                     HStack(spacing: 2) {
@@ -458,7 +471,7 @@ struct AgentUsageDashboard: View {
                     .monospacedDigit()
             }
             .font(isWide ? .title3 : .body)
-            Text("\(AgentUsageStyle.share(metric.value(of: summary), of: total, locale: locale)) \(metric == .cost ? "of est. cost" : "of tokens") · \(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens")
+            Text(programDetail(summary, total: total))
                 .font(isWide ? .subheadline : .footnote)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -472,6 +485,15 @@ struct AgentUsageDashboard: View {
         }
         .padding(.vertical, isWide ? 8 : 12)
         .accessibilityElement(children: .combine)
+    }
+
+    /// "64% of est. cost · 211M tokens".
+    private func programDetail(_ summary: AgentUsageReport.Summary, total: Double) -> String {
+        let share = AgentUsageStyle.share(metric.value(of: summary), of: total, locale: locale)
+        let tokens = AgentUsageStyle.tokens(summary.tokens.total, locale: locale)
+        return metric == .cost
+            ? String(localized: "\(share) of est. cost · \(tokens) tokens")
+            : String(localized: "\(share) of tokens · \(tokens) tokens")
     }
 
     /// The program's readable Accounts for the range, when its Host has
@@ -502,7 +524,7 @@ struct AgentUsageDashboard: View {
                     .minimumScaleFactor(0.5)
                 if metric == .tokens { Text("tokens").font(.title2) }
             }
-            Text("\(metric == .cost ? "Estimated API cost" : "Token Usage") \(Self.place(scope)) · \(rangeName)")
+            Text("\(Self.metricPlace(metric, hostCount: scope.included.count)) · \(rangeName)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -525,11 +547,11 @@ struct AgentUsageDashboard: View {
     private func wideChart(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(metric == .cost ? "Daily estimated API cost" : "Daily tokens")
+                Text(metric == .cost ? String(localized: "Daily estimated API cost") : String(localized: "Daily tokens"))
                     .font(.title3.bold())
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
-                Text(range == .today ? "Last 7 days" : rangeName)
+                Text(range == .today ? String(localized: "Last 7 days") : rangeName)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -550,7 +572,7 @@ struct AgentUsageDashboard: View {
                 Text("\(dayText(first)) – \(dayText(today))")
                     .font(.title3.bold())
                     .accessibilityAddTraits(.isHeader)
-                Text(metric == .cost ? "Estimated API cost per day" : "Tokens per day")
+                Text(metric == .cost ? String(localized: "Estimated API cost per day") : String(localized: "Tokens per day"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -591,7 +613,7 @@ struct AgentUsageDashboard: View {
 
     private func breakdownSection(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Breakdown", detail: "Last 30 days")
+            sectionHeader(String(localized: "Breakdown"), detail: String(localized: "Last 30 days"))
             Picker("Breakdown", selection: $breakdown) {
                 ForEach(AgentUsageBreakdown.Kind.allCases) { Text($0.title).tag($0) }
             }
@@ -627,13 +649,21 @@ struct AgentUsageDashboard: View {
     }
 
     private func notIncluded(_ scope: AgentUsageScope) -> String {
-        "Not included: \(scope.excluded.map(\.name).formatted(.list(type: .and).locale(locale)))"
+        String(localized: "Not included: \(scope.excluded.map(\.name).formatted(.list(type: .and).locale(locale)))")
     }
 
-    /// "on this Host" or "on these 2 Hosts".
-    static func place(_ scope: AgentUsageScope) -> String {
-        let count = scope.included.count
-        return count == 1 ? "on this Host" : "on these \(count.formatted()) Hosts"
+    /// "Token Usage on this Host" or "Estimated API cost on these 2 Hosts".
+    static func metricPlace(_ metric: AgentUsageMetric, hostCount: Int) -> String {
+        switch metric {
+        case .cost:
+            hostCount == 1
+                ? String(localized: "Estimated API cost on this Host")
+                : String(localized: "Estimated API cost on these \(hostCount.formatted()) Hosts")
+        case .tokens:
+            hostCount == 1
+                ? String(localized: "Token Usage on this Host")
+                : String(localized: "Token Usage on these \(hostCount.formatted()) Hosts")
+        }
     }
 
     /// What the scope's reports cover: since when, what each Host skipped,
@@ -641,29 +671,43 @@ struct AgentUsageDashboard: View {
     static func coverage(
         hosts: [(name: String, report: AgentUsageReport)], locale: Locale, calendar: Calendar
     ) -> String {
-        let place = hosts.count == 1 ? "this Host" : "these \(hosts.count.formatted()) Hosts"
+        let count = hosts.count
         var parts: [String] = []
         if let from = hosts.compactMap(\.report.scan?.coveredFrom).min() {
-            parts.append("Recorded on \(place) since \(AgentUsageCalendarDay.text(from, locale: locale, calendar: calendar, includesYear: true)).")
+            let day = AgentUsageCalendarDay.text(from, locale: locale, calendar: calendar, includesYear: true)
+            parts.append(count == 1
+                ? String(localized: "Recorded on this Host since \(day).")
+                : String(localized: "Recorded on these \(count.formatted()) Hosts since \(day)."))
         } else {
-            parts.append("No Transcript coverage recorded on \(place) yet.")
+            parts.append(count == 1
+                ? String(localized: "No Transcript coverage recorded on this Host yet.")
+                : String(localized: "No Transcript coverage recorded on these \(count.formatted()) Hosts yet."))
         }
         for host in hosts {
-            let name = hosts.count == 1 ? "" : "\(host.name): "
+            // Several Hosts name the one each note is about.
+            func note(_ text: String) -> String {
+                count == 1
+                    ? text
+                    : String(
+                        localized: "Usage note about one Host", defaultValue: "\(host.name): \(text)",
+                        comment: "A note about one of several Hosts: the Host's name, then the note")
+            }
             let scan = host.report.scan
-            if scan?.state == "partial" { parts.append("\(name)Token Usage is still being summarized.") }
+            if scan?.state == "partial" { parts.append(note(String(localized: "Token Usage is still being summarized."))) }
             if let skipped = scan?.skippedArchives, skipped > 0 {
-                parts.append("\(name)\(skipped.formatted()) compressed \(skipped == 1 ? "archive" : "archives") skipped.")
+                parts.append(note(skipped == 1
+                    ? String(localized: "\(skipped.formatted()) compressed archive skipped.")
+                    : String(localized: "\(skipped.formatted()) compressed archives skipped.")))
             }
             if let unreadable = scan?.unreadableFiles, unreadable > 0 {
-                parts.append(unreadable == 1
-                    ? "\(name)\(unreadable.formatted()) Transcript or folder could not be read. It is retried on the next refresh."
-                    : "\(name)\(unreadable.formatted()) Transcripts or folders could not be read. They are retried on the next refresh.")
+                parts.append(note(unreadable == 1
+                    ? String(localized: "\(unreadable.formatted()) Transcript or folder could not be read. It is retried on the next refresh.")
+                    : String(localized: "\(unreadable.formatted()) Transcripts or folders could not be read. They are retried on the next refresh.")))
             }
         }
         let versions = Set(hosts.compactMap(\.report.pricingVersion))
         if !versions.isEmpty {
-            parts.append("Price table: \(versions.sorted().joined(separator: ", ")).")
+            parts.append(String(localized: "Price table: \(versions.sorted().joined(separator: ", "))."))
         }
         return parts.joined(separator: " ")
     }
@@ -777,10 +821,10 @@ private struct AgentUsageSubtitle: ViewModifier {
     @Environment(\.locale) private var locale
 
     private var text: String? {
-        if scope.refreshing { return "Refreshing" }
+        if scope.refreshing { return String(localized: "Refreshing") }
         let formatter = ISO8601DateFormatter()
         let oldest = scope.included.compactMap { $0.report.generatedAt.flatMap(formatter.date(from:)) }.min()
-        return oldest.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" }
+        return oldest.map { String(localized: "Updated \($0.formatted(date: .omitted, time: .shortened))") }
     }
 
     func body(content: Content) -> some View {
@@ -851,13 +895,13 @@ struct AgentUsageAccountRow: View {
         _ account: AgentUsageScope.AccountUsage, programName: String, programSummary: AgentUsageReport.Summary,
         metric: AgentUsageMetric, locale: Locale
     ) -> String {
-        guard let summary = account.summary else { return "Token Usage could not be read." }
+        guard let summary = account.summary else { return String(localized: "Token Usage could not be read.") }
         let share = AgentUsageStyle.share(metric.value(of: summary), of: metric.value(of: programSummary),
             locale: locale)
         let other = metric == .cost
-            ? "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens"
+            ? String(localized: "\(AgentUsageStyle.tokens(summary.tokens.total, locale: locale)) tokens")
             : AgentUsageStyle.cost(summary.estimatedCostUSD, locale: locale)
-        return "\(share) of \(programName) · \(other)"
+        return String(localized: "\(share) of \(programName) · \(other)")
     }
 }
 

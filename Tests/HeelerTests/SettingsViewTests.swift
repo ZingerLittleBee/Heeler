@@ -20,6 +20,12 @@ struct SettingsViewTests {
                 == String(reflecting: OverlayNetworksSettingsView.self))
     }
 
+    /// The Language row names the language Heeler shows in that language;
+    /// the tests run in English.
+    @Test func languageRowNamesTheShownLanguage() {
+        #expect(SettingsView.languageName == "English")
+    }
+
     @Test func repositoryLinkTargetsTheProject() throws {
         let repositoryURL = try #require(SettingsView.repositoryURL)
 

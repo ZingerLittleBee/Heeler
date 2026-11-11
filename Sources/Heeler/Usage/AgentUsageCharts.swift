@@ -141,7 +141,7 @@ struct AgentUsageDailyChart: View {
             }
         }
         .frame(height: pinsSelection ? 230 : 150)
-        .accessibilityLabel("Daily \(metric == .cost ? "estimated API cost" : "tokens")")
+        .accessibilityLabel(metric == .cost ? String(localized: "Daily estimated API cost") : String(localized: "Daily tokens"))
     }
 
     private var selectedDate: Date? { selection.flatMap(AgentUsageCalendarDay.date) }
@@ -239,7 +239,7 @@ struct AgentUsageDayReadout: View {
             }
             if showsTotal {
                 Divider().padding(.vertical, 2)
-                row("Total", summary: scope.day(day)) { EmptyView() }
+                row(String(localized: "Total"), summary: scope.day(day)) { EmptyView() }
                     .fontWeight(.semibold)
             }
             if scope.included.count > 1 {
@@ -483,7 +483,7 @@ struct AgentUsageTokenSplit: View {
             let total = max(Double(AgentUsageStyle.tokenTypes.reduce(Int64(0)) { $0 + tokens[keyPath: $1.keyPath] }), 1)
             let gaps = CGFloat(AgentUsageStyle.tokenTypes.count - 1) * 1.5
             HStack(spacing: 1.5) {
-                ForEach(AgentUsageStyle.tokenTypes, id: \.label) { type in
+                ForEach(AgentUsageStyle.tokenTypes, id: \.id) { type in
                     type.color.frame(width: max((proxy.size.width - gaps)
                         * Double(tokens[keyPath: type.keyPath]) / total, 0))
                 }
@@ -498,10 +498,10 @@ struct AgentUsageTokenSplit: View {
 struct AgentUsageTokenLegend: View {
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(AgentUsageStyle.tokenTypes, id: \.label) { type in
+            ForEach(AgentUsageStyle.tokenTypes, id: \.id) { type in
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2.5).fill(type.color).frame(width: 10, height: 10)
-                    Text(type.label)
+                    Text(type.title)
                 }
             }
         }

@@ -191,7 +191,7 @@ actor HerdrCoreHostSession {
         _ operation: @Sendable (any HerdrCoreTransport) async throws -> Value
     ) async throws -> Value {
         guard let currentTransport else {
-            throw TransportError.sshUnreachable(detail: "The Host is not connected.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         return try await operation(currentTransport)
     }
@@ -465,7 +465,7 @@ actor HerdrCoreHostSession {
                 await emitReconnectingAndBackOff(attempt: attempt, failure: keepaliveFailure, generation: generation)
                 continue
             }
-            let failure = streamFailure ?? .channelFailed(detail: "The herdr-core link closed.")
+            let failure = streamFailure ?? .channelFailed(detail: HerdrCoreLink.closedDetail)
             guard failure.isRetryable else {
                 stopRun(with: failure)
                 return

@@ -67,7 +67,8 @@ final class AgentComposerSession {
         let settings = settingOverrides
         policy.preflight = { [weak self] _ in
             if settings.switchingSetting != nil {
-                return .inputNotReady("Claude Code is reading or changing a setting. Try again in a moment.")
+                return .inputNotReady(
+                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
             }
             return self?.heldSend()
         }

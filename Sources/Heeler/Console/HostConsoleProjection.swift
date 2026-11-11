@@ -389,7 +389,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         try await session.withTransport { transport in
             guard let ssh = transport as? HeelerSSHTransport else {
                 throw TransportError.sshUnreachable(
-                    detail: "This Host cannot list remote directories.")
+                    detail: String(localized: "This Host cannot list remote directories."))
             }
             return try await ssh.remoteHomeDirectory()
         }
@@ -400,7 +400,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         try await session.withTransport { transport in
             guard let ssh = transport as? HeelerSSHTransport else {
                 throw TransportError.sshUnreachable(
-                    detail: "This Host cannot list remote directories.")
+                    detail: String(localized: "This Host cannot list remote directories."))
             }
             return try await ssh.listDirectories(at: path)
         }
@@ -684,11 +684,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
     func focusAgent(_ paneID: String) async throws {
         try Task.checkCancellation()
         guard !hasEnded, status == .connected, !isAwaitingSnapshot else {
-            throw TransportError.sshUnreachable(detail: "The Host is not ready.")
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not ready."))
         }
         guard let agent = agentsByPane[paneID] else {
             throw TransportError.apiRejected(
-                code: "agent_not_found", message: "The Agent is no longer listed.")
+                code: "agent_not_found", message: String(localized: "The Agent is no longer listed."))
         }
         guard agent.agent.status == .done else { throw CancellationError() }
         let epoch = snapshotEpoch
@@ -1014,11 +1014,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private static func snapshotErrorMessage(_ error: any Error) -> String {
         switch error {
         case TransportError.timedOut:
-            "The Host did not answer while syncing. Retrying…"
+            String(localized: "The Host did not answer while syncing. Retrying…")
         case let apiError as HerdrAPIError:
-            "herdr rejected the Console sync: \(apiError.message). Retrying…"
+            String(localized: "herdr rejected the Console sync: \(apiError.message). Retrying…")
         default:
-            "Could not sync this Host. Retrying…"
+            String(localized: "Could not sync this Host. Retrying…")
         }
     }
 

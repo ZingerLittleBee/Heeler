@@ -297,7 +297,7 @@ struct GitProbeUntrackedDirectoryTests {
         #expect(
             listing.limitNotice
                 == CheckoutChanges.limitNotice(
-                    shown: 2_000, total: 2_001, isLowerBound: false, noun: "files"))
+                    shown: 2_000, total: 2_001, isLowerBound: false, noun: .files))
     }
 
     @Test(arguments: [141, 0])

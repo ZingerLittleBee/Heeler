@@ -60,7 +60,7 @@ struct ServerKindDetection: Equatable, Sendable {
             : try await connection.runServerKindDetection(script(session: session, nonce: nonce))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
-                "Server Kind detection exited with status \(result.exitStatus).")
+                String(localized: "Server Kind detection exited with status \(result.exitStatus)."))
         }
         do {
             return ServerKindDetection(
@@ -68,7 +68,7 @@ struct ServerKindDetection: Equatable, Sendable {
                     stdout: result.stdout, session: session, nonce: nonce, platform: platform),
                 session: session, isNativeWindows: platform == .nativeWindows)
         } catch {
-            throw TransportError.malformedResponse("Server Kind detection's output is unreadable.")
+            throw TransportError.malformedResponse(String(localized: "Server Kind detection's output is unreadable."))
         }
     }
 
@@ -132,8 +132,8 @@ struct ServerKindDetection: Equatable, Sendable {
 extension ServerKindDetection.HerdrTUIFinding {
     var summary: String {
         switch self {
-        case .found: "Found"
-        case .notFound: "Not found"
+        case .found: String(localized: "Found")
+        case .notFound: String(localized: "Not found")
         }
     }
 }
@@ -141,12 +141,13 @@ extension ServerKindDetection.HerdrTUIFinding {
 extension ServerKindDetection.CoreFinding {
     var summary: String {
         switch self {
-        case .sessionRefused: "Session name refused"
-        case .notInstalled: "Not installed"
-        case .notRunning(let version, _): "\(version), not running"
+        case .sessionRefused: String(localized: "Session name refused")
+        case .notInstalled: String(localized: "Not installed")
+        case .notRunning(let version, _): String(localized: "\(version), not running")
         case .socketFilePresent(let version, let path):
-            "\(version), \(HerdrCoreLocator.isWindowsPipe(path) ? "running" : "socket found")"
-        case .socketPathTooLong(let version, _, _): "\(version), socket path too long"
+            HerdrCoreLocator.isWindowsPipe(path)
+                ? String(localized: "\(version), running") : String(localized: "\(version), socket found")
+        case .socketPathTooLong(let version, _, _): String(localized: "\(version), socket path too long")
         }
     }
 }

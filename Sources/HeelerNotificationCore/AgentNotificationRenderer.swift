@@ -17,7 +17,7 @@ struct AgentNotificationAlert: Sendable, Equatable {
 /// attacker-chosen text (spec #68, user story 20).
 enum AgentNotificationRenderer {
     /// Mirrors the relay's generic wrap copy; deliberately unalarming.
-    static let fallback = AgentNotificationAlert(title: "Heeler", body: "Agent update")
+    static let fallback = AgentNotificationAlert(title: "Heeler", body: String(localized: "Agent update"))
 
     static func alert(
         userInfo: [AnyHashable: Any], keys: [NotificationKeyRecord]
@@ -67,14 +67,14 @@ enum AgentNotificationRenderer {
 
     private static func body(for status: AgentStatus) -> String {
         switch status {
-        case .blocked: "Blocked — waiting for input"
-        case .done: "Done"
+        case .blocked: String(localized: "Blocked — waiting for input")
+        case .done: String(localized: "Agent status Done", defaultValue: "Done", comment: "Agent status, not the button that closes a sheet")
         // Only a herdr-core Host sends it, under the Blocked trigger. Nothing is
         // waiting for an answer, so it reads as what it is.
-        case AgentStatus(rawValue: "error"): "Error"
+        case AgentStatus(rawValue: "error"): String(localized: "Error")
         // The status set is open on the wire; render unrecognized values
         // factually instead of guessing at their meaning.
-        default: "Status: \(status.rawValue)"
+        default: String(localized: "Status: \(status.rawValue)")
         }
     }
 }

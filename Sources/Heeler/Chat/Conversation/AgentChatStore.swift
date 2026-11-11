@@ -1507,7 +1507,7 @@ final class AgentChatStore {
                 candidates = .unavailable(ChatUnavailableReason.codexSharedDaemon.explanation)
             case .noProcess:
                 candidates = .unavailable(
-                    "Heeler can't read this Agent's process, and a choice needs it. Check that the program still runs in its terminal. On a Mac, a program started through a script that Apple's /bin/sh or /bin/zsh keeps running can't be read, so start it directly instead.")
+                    String(localized: "Heeler can't read this Agent's process, and a choice needs it. Check that the program still runs in its terminal. On a Mac, a program started through a script that Apple's /bin/sh or /bin/zsh keeps running can't be read, so start it directly instead."))
             }
         } catch {
             candidates = .unavailable(Self.message(for: error))
@@ -1517,7 +1517,7 @@ final class AgentChatStore {
     /// Reads a candidate's conversation, for the user to read before choosing it.
     /// It touches nothing Chat follows, and its read is kept nowhere.
     func previewCandidate(_ candidate: ChatSessionCandidate) async -> ChatCandidatePreview {
-        guard case .listed(let list) = candidates else { return .unreadable("This list is out of date.") }
+        guard case .listed(let list) = candidates else { return .unreadable(String(localized: "This list is out of date.")) }
         let reference = ConversationReference(program: program, sessionID: candidate.conversationID)
         let engine = ChatConversationEngine(
             reference: reference,
@@ -1535,7 +1535,7 @@ final class AgentChatStore {
             default: false
             }
         }
-        guard !entries.isEmpty else { return .unreadable("This conversation has no messages to show yet.") }
+        guard !entries.isEmpty else { return .unreadable(String(localized: "This conversation has no messages to show yet.")) }
         previewedCandidates.insert(candidate.id)
         return .conversation(title: snapshot.transcript.title, entries: Array(entries.suffix(Self.previewEntryLimit)))
     }
@@ -1569,7 +1569,7 @@ final class AgentChatStore {
         if let refusal = error as? HerdrAPIError { return refusal.message }
         if let failure = error as? TransportError { return failure.presentation.message }
         if let failure = error as? ChatSourceUnavailable { return failure.reason.explanation }
-        return "Heeler couldn't reach this Host. Try again."
+        return String(localized: "Heeler couldn't reach this Host. Try again.")
     }
 
     private func forgetPick() {
@@ -1731,10 +1731,11 @@ final class AgentChatStore {
         if resolution != before { wake() }
         let name = program.chatName
         if followed != shown {
-            return "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again."
+            return String(
+                localized: "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again.")
         }
         if staleSession != nil {
-            return "\(name) is on its home screen, so this conversation isn't open there. Open it in the terminal first."
+            return String(localized: "\(name) is on its home screen, so this conversation isn't open there. Open it in the terminal first.")
         }
         let verdict = OpenCodeTerminalTitle.verdict(
             terminalTitle: fresh.terminalTitleStripped, sessionTitle: conversation.transcript.title)
@@ -1743,7 +1744,7 @@ final class AgentChatStore {
     }
 
     private func otherConversationReason(_ title: String) -> String {
-        "\(program.chatName)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again."
+        String(localized: "\(program.chatName)'s terminal shows another conversation (\(title)). Open this one in the terminal, then send again.")
     }
 
     /// Whether each send first checks the conversation. No server reports a move
@@ -1810,11 +1811,11 @@ final class AgentChatStore {
             }
         if !isSameConversation {
             movedSinceDraft = false
-            return "\(name) now shows another conversation. Chat is switching to it; check it, then send again."
+            return String(localized: "\(name) now shows another conversation. Chat is switching to it; check it, then send again.")
         }
         if movedUnseen, movedSinceDraft {
             movedSinceDraft = false
-            return "\(name) moved to another conversation, which Chat now shows. Check it, then send again."
+            return String(localized: "\(name) moved to another conversation, which Chat now shows. Check it, then send again.")
         }
         return program.confirmsSessionBeforeSend ? coreTitleConcern : nil
     }
@@ -1842,18 +1843,18 @@ final class AgentChatStore {
         guard title == OpenCodeTerminalTitle.untitled,
             OpenCodeTerminalTitle.expected(sessionTitle: sessionTitle) != OpenCodeTerminalTitle.untitled
         else { return nil }
-        return "\(program.chatName)'s terminal isn't showing this conversation. Open it in the terminal, then send again."
+        return String(localized: "\(program.chatName)'s terminal isn't showing this conversation. Open it in the terminal, then send again.")
     }
 
     /// Why a send that couldn't be checked sent nothing: the Agent's record
     /// couldn't be read, or there is no Chat to check with.
     static func uncheckedSessionReason(_ program: ChatProgram) -> String {
-        "Heeler couldn't check which conversation \(program.chatName) shows, so it sent nothing. Try again."
+        String(localized: "Heeler couldn't check which conversation \(program.chatName) shows, so it sent nothing. Try again.")
     }
 
     /// Why a send that nothing on the Host could place sent nothing.
     static func cannotTellSessionReason(_ program: ChatProgram) -> String {
-        "Heeler can't tell which conversation \(program.chatName) shows, so it sent nothing."
+        String(localized: "Heeler can't tell which conversation \(program.chatName) shows, so it sent nothing.")
     }
 
     // MARK: Snapshots
@@ -2012,7 +2013,7 @@ final class AgentChatStore {
             candidate(offset: prompt.offset, entryID: prompt.entryID).map {
                 (
                     candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
-                    imagePaths: prompt.pastedImagePaths, written: prompt.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    imagePaths: prompt.pastedImagePaths
                 )
             }
         }
@@ -2081,11 +2082,12 @@ final class AgentChatStore {
                     return paths.isEmpty || paths.contains(path)
                 }?.candidate
             }
-            // Claude Code drops the space after a pasted image path
-            // (`[Image #1]what…`), so the text restored from the record
-            // differs from the send only there. Other whitespace counts.
-            if match == nil, let text = Self.withoutSpaceAfterImagePaths(send.text) {
-                match = recorded.first { $0.written == text && isOpen($0.candidate) }?.candidate
+            // The program may move image paths on lines of their own ahead
+            // of the text and drop the line breaks after them
+            // (`[Image #1]what…`), so the restored record differs from the send.
+            if match == nil, let text = source.adapter.pastedImageEcho(send.text) {
+                let key = source.adapter.echoKey(text)
+                match = recorded.first { $0.key == key && isOpen($0.candidate) }?.candidate
             }
             if match == nil, extendedSends.contains(send.id) {
                 let text = String(Self.squeezed(send.text))
@@ -2257,8 +2259,8 @@ final class AgentChatStore {
             case .elsewhere:
                 misdirectedSends.insert(send.id)
                 sessionConcern = ChatSessionConcern(
-                    reason:
-                        "Your last message went to another \(program.chatName) session. Switch back to this conversation in the terminal, so its newest message shows there, or send from the terminal; then send again here.",
+                    reason: String(
+                        localized: "Your last message went to another \(program.chatName) session. Switch back to this conversation in the terminal, so its newest message shows there, or send from the terminal; then send again here."),
                     raisedBy: send.id, promptFloor: conversation.readOffset, generation: generation)
             case .unknown:
                 break
@@ -2353,11 +2355,11 @@ final class AgentChatStore {
         guard let failure = Self.latestCompactionFailure(in: screen, program: program) else { return }
         let refusal =
             if failure.text.contains(Self.grokCompactionCancelled) {
-                "The compaction was cancelled."
+                String(localized: "The compaction was cancelled.")
             } else if failure.text.contains("Nothing to compact") {
-                "\(program.chatName) had nothing to compact."
+                String(localized: "\(program.chatName) had nothing to compact.")
             } else {
-                "\(program.chatName) couldn't compact."
+                String(localized: "\(program.chatName) couldn't compact.")
             }
         for send in candidates {
             refusedSends[send.id] = refusal
@@ -2374,8 +2376,10 @@ final class AgentChatStore {
             || row.contains(/Retrying \(\d+\/\d+\) in \d+s\.\.\./)
     }
 
+    /// Pi's and Oh My Pi's English row text; it is matched, never shown.
     private static let compactingSpinner = "Compacting context..."
     private static let grokCompactingStatus = "Compacting…"
+    /// Grok Build's own English text; it is matched, never shown.
     private static let grokCompactionCancelled = "Compaction cancelled."
 
     /// The last "Compaction failed:" row (Grok Build's "Compaction
@@ -2480,16 +2484,6 @@ final class AgentChatStore {
                 let text = String(squeezed(send.text))
                 return !text.isEmpty && target.contains(text)
             }.map(\.id))
-    }
-
-    /// `text` trimmed, with the spaces right after its image paths gone, as
-    /// Claude Code records it; nil when it names no image path to change.
-    static func withoutSpaceAfterImagePaths(_ text: String) -> String? {
-        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        for path in ChatImageLink.paths(in: ChatImageLink.marking(result)) {
-            result = result.replacingOccurrences(of: path + " ", with: path)
-        }
-        return result == text.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : result
     }
 
     /// `text` without its whitespace, which the editor's wrapping changes.

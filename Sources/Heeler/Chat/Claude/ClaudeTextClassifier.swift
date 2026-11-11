@@ -45,7 +45,9 @@ enum ClaudeUserText: Sendable, Equatable {
     ]
 
     /// The texts an interrupted or cut-short call is recorded with (CLI
-    /// `the`, SDK `LI`), plus the expired-approval texts.
+    /// `the`, SDK `LI`), plus the expired-approval texts. All of them are
+    /// Claude Code's own English, matched against its transcript, so they
+    /// stay untranslated.
     static let markers = [
         "[Request interrupted by user]",
         "[Request interrupted by user for tool use]",
@@ -64,6 +66,8 @@ enum ClaudeUserText: Sendable, Equatable {
     /// The lines Claude Code 2.1.301 puts before a message from a teammate
     /// or another session (the binary's chunk-e666gr8q.js; the first was
     /// captured live). The tagged blocks follow, then advice to the model.
+    /// Matched against Claude Code's own English transcript, so they stay
+    /// untranslated.
     static let peerMessageHeaders = [
         "Another Claude session sent a message:",
         "Another Claude session sent a message while you were working:",
@@ -142,10 +146,11 @@ enum ClaudeUserText: Sendable, Equatable {
             let sender = ClaudeText.attribute("teammate_id", in: block.openingTag)
             if let idle = idleNotification(content) {
                 let name = idle.from ?? sender
-                let title = name.map { "Teammate @\($0) finished" } ?? "Teammate finished"
+                let title =
+                    name.map { String(localized: "Teammate @\($0) finished") } ?? String(localized: "Teammate finished")
                 return [title, idle.result].compactMap(\.self).joined(separator: "\n")
             }
-            let title = sender.map { "Message from @\($0)" } ?? "Message"
+            let title = sender.map { String(localized: "Message from @\($0)") } ?? String(localized: "Message")
             return content.isEmpty ? title : title + "\n" + content
         }
     }
@@ -269,10 +274,20 @@ struct ClaudeTaskNotification: Sendable, Equatable {
             agentsDone: count("agents_done"), agentsFailed: count("agents_error"))
     }
 
-    /// The notice's title: the summary Claude Code wrote, or the status.
+    /// The notice's title: the summary Claude Code wrote, or the status in
+    /// the user's words.
     var title: String {
         if let summary, !summary.isEmpty { return summary }
-        return "Background task \(status ?? "finished")"
+        switch status ?? "finished" {
+        case "finished": return String(localized: "Background task finished")
+        case "completed": return String(localized: "Background task completed")
+        case "failed": return String(localized: "Background task failed")
+        case "killed": return String(localized: "Background task killed")
+        case "stopped": return String(localized: "Background task stopped")
+        // Still running: the projection reads it as awaiting approval.
+        case "blocked": return String(localized: "Background task blocked")
+        default: return String(localized: "Background task ended")
+        }
     }
 }
 

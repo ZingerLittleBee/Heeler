@@ -81,7 +81,7 @@ extension HostNotificationFiles {
     func readAgentUsage(
         timeZone: String, claudeLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport {
-        throw TransportError.hostFeatureUnavailable(feature: "Usage")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Usage"))
     }
 
     func readUsageAccountFile() async throws -> Data? {

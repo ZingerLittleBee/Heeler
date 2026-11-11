@@ -66,8 +66,8 @@ struct RenameSheetView: View {
 
     private var fieldPrompt: String {
         switch store.subject {
-        case .agent: "e.g. reviewer"
-        case .workspace: "Workspace label"
+        case .agent: String(localized: "e.g. reviewer")
+        case .workspace: String(localized: "Workspace label")
         }
     }
 }

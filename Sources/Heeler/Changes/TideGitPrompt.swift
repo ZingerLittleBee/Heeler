@@ -31,7 +31,7 @@ struct TideGitItem: Equatable {
         case .named(let name):
             location = Self.shortened(name)
             isDetached = false
-            spoken.append("Branch \(name)")
+            spoken.append(String(localized: "Branch \(name)"))
         case .detached:
             location = changes.head.commit.map { String($0.prefix(7)) } ?? "HEAD"
             isDetached = true
@@ -47,29 +47,51 @@ struct TideGitItem: Equatable {
         let files = Self.fileCounts(changes)
 
         var counts: [String] = []
-        func add(_ value: Int, _ symbol: String, _ phrase: String) {
+        /// `spokenCount` is what VoiceOver says for the count, number included.
+        func add(_ value: Int, _ symbol: String, _ spokenCount: String) {
             guard value > 0 else { return }
             counts.append(symbol + value.formatted())
-            spoken.append("\(value.formatted()) \(phrase)")
+            spoken.append(spokenCount)
         }
-        add(behind, "⇣", behind == 1 ? "commit behind" : "commits behind")
-        add(ahead, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
-        for file in files { add(file.count, file.symbol, file.phrase) }
+        let behindText = behind.formatted()
+        let aheadText = ahead.formatted()
+        add(behind, "⇣", behind == 1
+            ? String(localized: "\(behindText) commit behind") : String(localized: "\(behindText) commits behind"))
+        add(ahead, "⇡", ahead == 1
+            ? String(localized: "\(aheadText) commit ahead") : String(localized: "\(aheadText) commits ahead"))
+        for file in files { add(file.count, file.symbol, file.spokenCount) }
         self.counts = counts
         // The Host capped its status output, so the file counts are lower
         // bounds; Tide has no mark for that, so only VoiceOver says so.
         if changes.isStatusTruncated, !files.isEmpty {
-            spoken.append("file counts incomplete")
+            spoken.append(String(localized: "file counts incomplete"))
         }
         accessibilityValue = spoken.joined(separator: ", ")
     }
 
     /// One of Tide's file counts: conflicted, staged, modified, or untracked.
     struct FileCount: Equatable {
+        enum Kind: Equatable {
+            case conflicted
+            case staged
+            case modified
+            case untracked
+        }
+
         let symbol: String
         let count: Int
-        /// What VoiceOver says after the count.
-        let phrase: String
+        let kind: Kind
+
+        /// What VoiceOver says for the count, as "2 staged".
+        var spokenCount: String {
+            let text = count.formatted()
+            return switch kind {
+            case .conflicted: String(localized: "\(text) conflicted")
+            case .staged: String(localized: "\(text) staged")
+            case .modified: String(localized: "\(text) modified")
+            case .untracked: String(localized: "\(text) untracked")
+            }
+        }
     }
 
     /// Tide's nonzero file counts, in its order, as "~1 +3 !4 ?2". A file
@@ -93,10 +115,10 @@ struct TideGitItem: Equatable {
             }
         }
         return [
-            FileCount(symbol: "~", count: conflicted, phrase: "conflicted"),
-            FileCount(symbol: "+", count: staged, phrase: "staged"),
-            FileCount(symbol: "!", count: dirty, phrase: "modified"),
-            FileCount(symbol: "?", count: changes.totals.untrackedItems, phrase: "untracked"),
+            FileCount(symbol: "~", count: conflicted, kind: .conflicted),
+            FileCount(symbol: "+", count: staged, kind: .staged),
+            FileCount(symbol: "!", count: dirty, kind: .modified),
+            FileCount(symbol: "?", count: changes.totals.untrackedItems, kind: .untracked),
         ].filter { $0.count > 0 }
     }
 

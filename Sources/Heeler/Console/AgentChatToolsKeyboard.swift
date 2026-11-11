@@ -74,7 +74,7 @@ private struct ChatAgentKeysPage: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                Text(store.failure ?? "Keys go straight to the Agent")
+                Text(store.failure ?? String(localized: "Keys go straight to the Agent"))
                     .font(.caption)
                     .foregroundStyle(store.failure == nil ? Color.secondary : Color.red)
                     .lineLimit(2)

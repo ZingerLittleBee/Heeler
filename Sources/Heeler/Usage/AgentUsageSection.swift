@@ -86,8 +86,8 @@ struct AgentUsageRefreshFailureNote: View {
                 .font(.subheadline.weight(.semibold))
             Text(message)
             Text(isRetrying
-                ? "Showing the last report while Heeler retries."
-                : "Showing the last report. Pull to try again.")
+                ? String(localized: "Showing the last report while Heeler retries.")
+                : String(localized: "Showing the last report. Pull to try again."))
         }
         .font(.subheadline)
         .foregroundStyle(.secondary)
@@ -101,7 +101,7 @@ struct AgentUsageEstimatedCost: View {
     @Environment(\.locale) private var locale
 
     private var amount: String {
-        guard let value = summary.estimatedCostUSD else { return "Unpriced" }
+        guard let value = summary.estimatedCostUSD else { return String(localized: "Unpriced") }
         let style = FloatingPointFormatStyle<Double>.Currency(code: "USD").locale(locale)
         if value > 0 && value < 0.01 {
             return "< \(0.01.formatted(style))"
@@ -170,15 +170,15 @@ struct AgentUsageSection: View {
             Text("Estimated API cost · Last 30 days")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(AgentUsageStyle.cost(total.estimatedCostUSD, locale: locale))
-                    .font(.system(size: 28, weight: .semibold))
-                    .monospacedDigit()
-                Text("\(AgentUsageStyle.tokens(total.tokens.total, locale: locale)) tokens on this Host")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+            Text(AgentUsageStyle.cost(total.estimatedCostUSD, locale: locale))
+                .font(.system(size: 28, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text("\(AgentUsageStyle.tokens(total.tokens.total, locale: locale)) tokens on this Host")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
             if !scope.dates.isEmpty {
                 AgentUsageDayStrip(scope: scope).padding(.top, 10)
             }
@@ -249,7 +249,7 @@ struct AgentUsageLimitRow: View {
     private func subtitle(now: Date) -> String {
         let name = AgentUsageReport.Program.displayName(for: chip.program)
         guard let reset = chip.resetsAt, reset > now else { return name }
-        return "\(name) · resets in \(AgentUsageStyle.countdown(to: reset, now: now, locale: locale))"
+        return String(localized: "\(name) · resets in \(AgentUsageStyle.countdown(to: reset, now: now, locale: locale))")
     }
 
     var body: some View {
@@ -307,8 +307,8 @@ struct ClaudeUsageLimitsNote: View {
 
     var body: some View {
         Text(readsOverHostHelper
-            ? "The Host Helper asks Claude Code on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in. This automated use is not officially supported."
-            : "The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported.")
+            ? String(localized: "The Host Helper asks Claude Code on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in. This automated use is not officially supported.")
+            : String(localized: "The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported."))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

@@ -810,9 +810,16 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     var keyboardLayoutFrameProvider: ((UIWindow) -> CGRect)?
     /// How long an unsettled handoff may keep the grid frozen before the
     /// freeze force-ends anyway — a leash for production, where the settle
-    /// signal can fail to arrive. Tests stretch it so a loaded runner cannot
-    /// end a handoff out from under them (#225).
-    var keyboardTransitionFallbackDelay: TimeInterval = 0.5
+    /// signal can fail to arrive. The Agent's keyboard inset guards an
+    /// accepted handoff for longer than this, read when the terminal
+    /// accepts; see `TerminalKeyboardInset.acceptResponderHandoff`.
+    nonisolated static let keyboardTransitionFallbackDelay = Duration.milliseconds(500)
+    /// Waits out ``keyboardTransitionFallbackDelay``. Tests pass a
+    /// `ManualClock` sleeper so a loaded runner cannot end a handoff out
+    /// from under them (#225), and a test that wants the leash passes it.
+    var keyboardTransitionSleep: @Sendable (Duration) async throws -> Void = {
+        try await Task.sleep(for: $0)
+    }
     private var keyboardGridReportTask: Task<Void, Never>?
     /// How long Ghostty gets to answer a settled layout before its grid is
     /// forwarded to the Host — long enough to coalesce one layout pass's
@@ -1941,9 +1948,9 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         keyboardTransitionCycleID = UUID()
         callbackBridge.beginSizeReportDeferral()
         keyboardTransitionFallbackTask?.cancel()
-        let fallbackDelay = keyboardTransitionFallbackDelay
+        let sleep = keyboardTransitionSleep
         keyboardTransitionFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(fallbackDelay))
+            try? await sleep(Self.keyboardTransitionFallbackDelay)
             guard !Task.isCancelled else { return }
             self?.finishKeyboardTransitionLayout(handoffOutcome: .timedOut)
         }

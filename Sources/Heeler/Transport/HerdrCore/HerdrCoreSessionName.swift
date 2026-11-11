@@ -19,8 +19,7 @@ enum HerdrCoreSessionName {
     /// Why herdr-core refuses this name, nil when it takes it.
     static func refusal(_ value: String) -> String? {
         guard !isValid(value) else { return nil }
-        return "herdr-core refuses the session name \"\(normalized(value))\". A name cannot be \".\" or "
-            + "\"..\", or contain control characters or any of / \\ : * ? \" < > |."
+        return String(localized: "herdr-core refuses the session name \"\(normalized(value))\". A name cannot be \".\" or \"..\", or contain control characters or any of / \\ : * ? \" < > |.")
     }
 
     /// Why a native Windows Host cannot carry this name, which the core may accept.
@@ -34,7 +33,6 @@ enum HerdrCoreSessionName {
                 && (CharacterSet.alphanumerics.contains(scalar) || "-_.".unicodeScalars.contains(scalar))
         }
         guard !plain || name.hasPrefix("-") || !isValid(name) else { return nil }
-        return "Heeler cannot use the session name \"\(name)\" on native Windows. A name there uses "
-            + "letters, digits, \"-\", \"_\" and \".\", and does not start with \"-\"."
+        return String(localized: "Heeler cannot use the session name \"\(name)\" on native Windows. A name there uses letters, digits, \"-\", \"_\" and \".\", and does not start with \"-\".")
     }
 }

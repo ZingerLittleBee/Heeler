@@ -192,12 +192,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// disable Send.
     var sendAccessibilityHint: String {
         !isConnectionAvailable
-            ? "Waiting for the Host connection"
+            ? String(localized: "Waiting for the Host connection")
             : hasPendingDroppedImages
-            ? "Waiting for image…"
+            ? String(localized: "Waiting for image…")
             : voice.blocksSend
-            ? "Waiting for Voice Input…"
-            : "Delivers the complete draft to the Agent"
+            ? String(localized: "Waiting for Voice Input…")
+            : String(localized: "Delivers the complete draft to the Agent")
     }
 
     var pendingDropPlaceholders: [String] {
@@ -719,9 +719,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private static let missingAttachMessage =
-        "The message could not be sent. Check the connection and retry."
+        String(localized: "The message could not be sent. Check the connection and retry.")
     private static let unsafeTextMessage =
-        "The message contains unsafe terminal control characters."
+        String(localized: "The message contains unsafe terminal control characters.")
 
     private var containsPendingPlaceholderInDraft: Bool {
         pendingDroppedImages.contains { draft.contains($0.placeholder) }
@@ -864,11 +864,11 @@ final class AgentComposerStore: ComposerDraftOperations {
     static func message(for error: any Error) -> String {
         switch error {
         case TransportError.sshUnreachable:
-            "The Host is not connected. Check the connection and retry."
+            String(localized: "The Host is not connected. Check the connection and retry.")
         case TransportError.timedOut:
-            "The Host did not answer. Check the connection and retry."
+            String(localized: "The Host did not answer. Check the connection and retry.")
         case let error as HerdrAPIError:
-            "herdr rejected the message: \(error.message)"
+            String(localized: "herdr rejected the message: \(error.message)")
         case let error as TransportError:
             error.presentation.message
         default:

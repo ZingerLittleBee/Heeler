@@ -37,10 +37,10 @@ struct LaunchPreset: Codable, Equatable, Identifiable, Sendable {
         var message: String {
             switch self {
             case .noFolderVariable(let kind):
-                "Name \(kind.displayName)’s folder variable in this Host’s Accounts to launch one of its Accounts."
+                String(localized: "Name \(kind.displayName)’s folder variable in this Host’s Accounts to launch one of its Accounts.")
             case .arguments(let error): error.message
-            case .invalidVariableName(let name): "\(name) is not a variable name."
-            case .homeUnknown: "Heeler could not find this Host’s home folder."
+            case .invalidVariableName(let name): String(localized: "\(name) is not a variable name.")
+            case .homeUnknown: String(localized: "Heeler could not find this Host’s home folder.")
             }
         }
     }

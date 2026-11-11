@@ -121,7 +121,7 @@ final class ChatAgentKeysStore {
             } catch let refusal as HerdrCoreChatTyping.Refusal {
                 return .withheld(refusal.message)
             } catch {
-                self?.failure = "Couldn't reach the Agent, so the key may not have gone."
+                self?.failure = String(localized: "Couldn't reach the Agent, so the key may not have gone.")
                 return .failed
             }
         }

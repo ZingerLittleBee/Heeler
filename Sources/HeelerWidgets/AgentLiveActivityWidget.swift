@@ -361,7 +361,7 @@ struct AgentActivityCompactLeading: View {
         if let top = items.first {
             AgentActivityStatusToken(status: top.status, count: items.count > 1 ? top.count : nil)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(top.count) \(top.status)")
+                .accessibilityLabel(AgentActivityCopy.count(top.count, status: top.status))
         }
     }
 }
@@ -427,7 +427,7 @@ struct AgentActivityIslandHeadline: View {
             HStack(spacing: AgentActivityIslandMetrics.markerSpacing) {
                 AgentActivityStatusGlyph(
                     status: top.status, size: AgentActivityIslandMetrics.markerColumn)
-                Text("\(top.count) \(top.status)")
+                Text(AgentActivityCopy.count(top.count, status: top.status))
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -438,7 +438,7 @@ struct AgentActivityIslandHeadline: View {
                 alignment: .leading
             )
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(top.count) \(top.status)")
+            .accessibilityLabel(AgentActivityCopy.count(top.count, status: top.status))
             .islandTypeSize()
         }
     }
@@ -476,11 +476,11 @@ struct AgentActivityIslandRows: View {
 enum AgentActivityNarration {
     static func rowLabel(for agent: AgentActivityDetails.AgentDetail) -> String {
         let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
-        return (rows.filter { !$0.isEmpty } + [agent.status]).joined(separator: ", ")
+        return (rows.filter { !$0.isEmpty } + [AgentActivityCopy.status(agent.status)]).joined(separator: ", ")
     }
 
     static func countsLabel(_ items: [(status: String, count: Int)]) -> String {
-        items.map { "\($0.count) \($0.status)" }.joined(separator: ", ")
+        items.map { AgentActivityCopy.count($0.count, status: $0.status) }.joined(separator: ", ")
     }
 }
 
@@ -567,7 +567,7 @@ private struct AgentActivityCountChips: View {
     var body: some View {
         HStack(spacing: 5) {
             ForEach(counts.chipItems, id: \.status) { @Sendable item in
-                Text("\(item.count) \(item.status)")
+                Text(AgentActivityCopy.count(item.count, status: item.status))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AgentActivityStatusStyle.ink(for: item.status, on: surface))
                     // Chips never compress or wrap; the row title truncates
@@ -581,8 +581,7 @@ private struct AgentActivityCountChips: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            counts.chipItems.map { "\($0.count) \($0.status)" }.joined(separator: ", "))
+        .accessibilityLabel(AgentActivityNarration.countsLabel(counts.chipItems))
     }
 }
 

@@ -171,8 +171,7 @@ struct HerdrLauncher: Sendable, Equatable {
         let sessionExport = session.isEmpty ? "" : "export HERDR_SESSION=\"$3\"; "
         let sessionArgument = session.isEmpty ? "" : " \(session)"
         return "/bin/sh -c 'export HERDR_SOCKET_PATH=\"$1\"; \(sessionExport)"
-            + "\"$2\" remote-client-bridge < /dev/null' wake "
-            + "\(socket) \(quotedExecutablePath)\(sessionArgument)"
+            + "\"$2\" remote-client-bridge < /dev/null' wake \(socket) \(quotedExecutablePath)\(sessionArgument)"
     }
 
     /// Attaches the already validated `target` (`$1`) with `subcommand`,

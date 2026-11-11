@@ -199,7 +199,7 @@ struct ConsoleHostIssuesSheet<Detail: View & SendableMetatype>: View {
             // Rows start under the title, not a section header's gap below.
             .contentMargins(.top, 4, for: .scrollContent)
             .consoleSheetPage()
-            .navigationTitle(ConsoleHostIssueSummary(issues: issues)?.title ?? "Hosts")
+            .navigationTitle(ConsoleHostIssueSummary(issues: issues)?.title ?? String(localized: "Hosts"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // A form sheet has no grabber to pull down.

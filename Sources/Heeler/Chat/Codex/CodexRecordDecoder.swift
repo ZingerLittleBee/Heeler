@@ -192,7 +192,7 @@ enum CodexRecordDecoder {
             if CodexMessageFormatter.isContextualLegacyMessage(text, kind: event.kind) {
                 return .nothing
             }
-            let audio = Array(repeating: "Audio", count: event.audioCount)
+            let audio = Array(repeating: String(localized: "Audio"), count: event.audioCount)
             return .record(
                 .userMessage(
                     CodexUserContent(
@@ -222,7 +222,7 @@ enum CodexRecordDecoder {
                 diff = nil
             }
             let snapshot = CodexToolSnapshot(
-                kind: summary.kind, name: "apply_patch", title: summary.title.isEmpty ? "Patch" : summary.title,
+                kind: summary.kind, name: "apply_patch", title: summary.title.isEmpty ? String(localized: "Patch") : summary.title,
                 status: status, diff: diff, callID: callID, preview: CodexToolSummary.preview(output),
                 output: reference(line))
             let turn = event.turnID.flatMap { $0.isEmpty ? nil : $0 }
@@ -258,8 +258,8 @@ enum CodexRecordDecoder {
             let entered = type == "entered_review_mode"
             let id = event.itemID ?? "review@\(line.offset)"
             let content = CodexItem.Content.review(
-                title: entered ? "Review started" : "Review finished",
-                detail: entered ? (event.userFacingHint ?? "Review requested.") : event.reviewExplanation)
+                title: entered ? String(localized: "Review started") : String(localized: "Review finished"),
+                detail: entered ? (event.userFacingHint ?? String(localized: "Review requested.")) : event.reviewExplanation)
             return .record(.legacyItem(CodexItem(id: id, content: content), .review(event.turnID)))
         default:
             return .nothing
@@ -339,7 +339,7 @@ enum CodexRecordDecoder {
             return .tool(
                 CodexToolSnapshot(
                     kind: kind, name: raw.source == "user_shell" ? "user_shell" : "CommandExecution",
-                    title: argv.isEmpty || (!complete && raw.cwd == nil) ? "Command" : CodexToolSummary.commandTitle(argv),
+                    title: argv.isEmpty || (!complete && raw.cwd == nil) ? String(localized: "Command") : CodexToolSummary.commandTitle(argv),
                     subtitle: subtitle,
                     status: status, exitCode: raw.exitCode, callID: raw.id,
                     preview: complete ? CodexToolSummary.preview(raw.aggregatedOutput) : nil,
@@ -357,7 +357,7 @@ enum CodexRecordDecoder {
             }
             return .tool(
                 CodexToolSnapshot(
-                    kind: summary.kind, name: "FileChange", title: summary.title.isEmpty ? "Patch" : summary.title,
+                    kind: summary.kind, name: "FileChange", title: summary.title.isEmpty ? String(localized: "Patch") : summary.title,
                     status: status, diff: diff, callID: raw.id,
                     preview: CodexToolSummary.preview(output), output: reference(line)))
         case .mcpToolCall:
@@ -424,7 +424,7 @@ enum CodexRecordDecoder {
                 CodexToolSnapshot(
                     kind: .image, name: "ImageView",
                     title: raw.path.map { CodexToolSummary.relativePath(fileURLPath($0), cwd: context.cwd) }
-                        ?? "Image",
+                        ?? String(localized: "Image"),
                     status: .succeeded, callID: raw.id, output: reference(line),
                     imagePath: ChatImagePath.resolve(raw.path, cwd: context.cwd)))
         case .imageGeneration:
@@ -439,7 +439,7 @@ enum CodexRecordDecoder {
             if tool == "wait" {
                 return .tool(
                     CodexToolSnapshot(
-                        kind: .other, name: tool, title: "Waited for subagents", status: raw.status?.chatStatus,
+                        kind: .other, name: tool, title: String(localized: "Waited for subagents"), status: raw.status?.chatStatus,
                         callID: raw.id, output: reference(line)))
             }
             let prompt = raw.prompt.flatMap { firstLine($0) }
@@ -451,9 +451,9 @@ enum CodexRecordDecoder {
         case .subAgentActivity:
             return .tool(subAgentActivity(path: raw.agentPath, kind: raw.kind))
         case .enteredReviewMode:
-            return .review(title: "Review started", detail: raw.userFacingHint ?? "Review requested.")
+            return .review(title: String(localized: "Review started"), detail: raw.userFacingHint ?? String(localized: "Review requested."))
         case .exitedReviewMode:
-            return .review(title: "Review finished", detail: raw.reviewExplanation)
+            return .review(title: String(localized: "Review finished"), detail: raw.reviewExplanation)
         default:
             unknownType = "item_completed/\(type.rawValue)"
             return nil
@@ -659,7 +659,7 @@ enum CodexRecordDecoder {
             }
         case "update_plan":
             snapshot.kind = .todo
-            snapshot.title = "Update plan"
+            snapshot.title = String(localized: "Update plan")
         case "view_image":
             snapshot.kind = .image
             snapshot.title = arguments?.path.map { CodexToolSummary.relativePath(fileURLPath($0), cwd: context.cwd) } ?? name
@@ -711,9 +711,9 @@ enum CodexRecordDecoder {
             case .mention:
                 break
             case .audio, .localAudio:
-                content.attachmentLabels.append("Audio")
+                content.attachmentLabels.append(String(localized: "Audio"))
             default:
-                content.attachmentLabels.append("Attachment")
+                content.attachmentLabels.append(String(localized: "Attachment"))
             }
         }
         content.text = texts.joined()
@@ -779,7 +779,7 @@ enum CodexRecordDecoder {
         }
         return CodexToolSnapshot(
             kind: .image, name: "image_generation",
-            title: revisedPrompt.flatMap { firstLine($0) } ?? "Image generation",
+            title: revisedPrompt.flatMap { firstLine($0) } ?? String(localized: "Image generation"),
             subtitle: savedPath.map { CodexToolSummary.relativePath($0, cwd: context.cwd) }, status: state,
             callID: id, output: reference(line), imagePath: ChatImagePath.resolve(savedPath, cwd: context.cwd))
     }
@@ -791,18 +791,18 @@ enum CodexRecordDecoder {
         default: .noResult
         }
         let name = path?.split(separator: "/").last.map(String.init)
-        let title = name.map { "Subagent: \($0)" } ?? "Subagent"
+        let title = name.map { String(localized: "Subagent: \($0)") } ?? String(localized: "Subagent")
         return CodexToolSnapshot(
             kind: .agent, name: "SubAgentActivity", title: title, status: status,
             subagentActivity: ChatSubagentActivity(agentPath: path, events: [kind ?? "unknown"]))
     }
 
     private static func sleepTitle(_ milliseconds: Int?) -> String {
-        guard let milliseconds else { return "Sleep" }
+        guard let milliseconds else { return String(localized: "Sleep") }
         if milliseconds % 1_000 == 0 {
-            return "Sleep \(milliseconds / 1_000)s"
+            return String(localized: "Sleep \(milliseconds / 1_000)s")
         }
-        return "Sleep \(milliseconds)ms"
+        return String(localized: "Sleep \(milliseconds)ms")
     }
 
     private static func mcpName(_ server: String?, _ tool: String?) -> String {

@@ -54,7 +54,7 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
         guard (1...Int(UInt16.max)).contains(columns),
             (1...Int(UInt16.max)).contains(rows)
         else {
-            throw TransportError.channelFailed(detail: "invalid terminal controller geometry")
+            throw TransportError.channelFailed(detail: String(localized: "invalid terminal controller geometry"))
         }
         try await channel.write(
             try WindowsTerminalCommandCodec.record(
@@ -80,13 +80,13 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
                 let line = Data(pending[..<newline])
                 pending.removeSubrange(...newline)
                 guard line.count <= maximumRecordBytes else {
-                    throw recordFailure("terminal controller record exceeded its size limit")
+                    throw recordFailure(String(localized: "terminal controller record exceeded its size limit"))
                 }
                 try decode(line)
                 continue
             }
             guard pending.count <= maximumRecordBytes else {
-                throw recordFailure("terminal controller record exceeded its size limit")
+                throw recordFailure(String(localized: "terminal controller record exceeded its size limit"))
             }
             let remaining = clock.now.duration(to: deadline)
             guard remaining > .zero else { throw SSHError.timedOut }
@@ -97,7 +97,7 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
                 timeout: remaining)
             else {
                 guard pending.isEmpty else {
-                    throw recordFailure("terminal controller ended inside a JSON record")
+                    throw recordFailure(String(localized: "terminal controller ended inside a JSON record"))
                 }
                 ended = true
                 reachedEOF = true
@@ -145,12 +145,12 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
         do {
             header = try JSONDecoder().decode(TerminalRecordHeader.self, from: line)
         } catch {
-            throw recordFailure("invalid terminal controller JSON record")
+            throw recordFailure(String(localized: "invalid terminal controller JSON record"))
         }
         switch header.type {
         case "terminal.frame":
             guard let record = try? JSONDecoder().decode(TerminalFrameRecord.self, from: line) else {
-                throw recordFailure("invalid terminal controller frame")
+                throw recordFailure(String(localized: "invalid terminal controller frame"))
             }
             guard record.encoding == "ansi", let sequence = record.seq, sequence > 0,
                 let width = record.width, (1...Int(UInt16.max)).contains(width),
@@ -158,15 +158,15 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
                 let full = record.full, let encoded = record.bytes,
                 let bytes = Data(base64Encoded: encoded)
             else {
-                throw recordFailure("invalid terminal controller frame")
+                throw recordFailure(String(localized: "invalid terminal controller frame"))
             }
             if let previous = lastSequence {
                 guard sequence > previous, full || sequence - previous == 1 else {
-                    throw recordFailure("terminal controller frame sequence is incomplete")
+                    throw recordFailure(String(localized: "terminal controller frame sequence is incomplete"))
                 }
             } else {
                 guard full else {
-                    throw recordFailure("terminal controller started with a partial frame")
+                    throw recordFailure(String(localized: "terminal controller started with a partial frame"))
                 }
                 decoded.append(AttachBootstrapHandshake.marker)
                 decoded.append(Self.screenStart)
@@ -175,14 +175,14 @@ actor WindowsTerminalChannel: HeelerSSHAttachChannel {
             decoded.append(bytes)
         case "terminal.closed":
             guard let record = try? JSONDecoder().decode(TerminalClosedRecord.self, from: line) else {
-                throw recordFailure("invalid terminal controller close record")
+                throw recordFailure(String(localized: "invalid terminal controller close record"))
             }
             ended = true
             let reason = record.reason?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let reason, !reason.isEmpty, reason != "detached" {
-                failure = .channelFailed(detail: "terminal controller: \(reason)")
+                failure = .channelFailed(detail: String(localized: "terminal controller: \(reason)"))
             } else if lastSequence == nil {
-                failure = .channelFailed(detail: "terminal controller closed before its first frame")
+                failure = .channelFailed(detail: String(localized: "terminal controller closed before its first frame"))
             }
             if lastSequence != nil { decoded.append(Self.screenEnd) }
         default:

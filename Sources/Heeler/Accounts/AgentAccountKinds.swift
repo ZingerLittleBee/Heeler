@@ -21,7 +21,9 @@ extension SupportedAgentKind {
         let name: String
         let kind: RemoteFileKind
 
-        var label: String { kind == .directory ? "a \(name) folder" : name }
+        /// How a refusal lists the marker: a folder as "a … folder", a file
+        /// by its name alone.
+        var label: String { kind == .directory ? String(localized: "a \(name) folder") : name }
     }
 
     /// What tells a harness's config directory apart from any folder: one

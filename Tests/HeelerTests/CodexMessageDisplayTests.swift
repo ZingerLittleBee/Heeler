@@ -265,7 +265,8 @@ struct CodexMessageDisplayTests {
             projection.transcript.entries.map(\.content) == [
                 .user(
                     ChatUserMessage(
-                        text: "compare [Image #1] with this", imageCount: 2, attachmentLabels: ["Audio", "Attachment"]))
+                        text: "compare [Image #1] with this", imageCount: 2, imagePaths: ["/tmp/shot.png"],
+                        attachmentLabels: ["Audio", "Attachment"]))
             ])
         #expect(
             projection.echoCandidates.map(\.kind) == [
@@ -293,7 +294,8 @@ struct CodexMessageDisplayTests {
             ])
 
         let transcript = builder.reducer().transcript(idle)
-        #expect(transcript.entries.map(\.content) == [.user(ChatUserMessage(text: "[Image #1]", imageCount: 1))])
+        #expect(
+            transcript.entries.map(\.content) == [.user(ChatUserMessage(text: "[Image #1]", imageCount: 1, imagePaths: [path]))])
         let prompt = transcript.recordedPrompts.first
         // Heeler sends the staged path with a trailing space.
         #expect(prompt.map { codexEchoKey($0.text) } == codexEchoKey(path + " "))

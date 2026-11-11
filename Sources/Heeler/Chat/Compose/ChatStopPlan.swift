@@ -59,9 +59,9 @@ struct ChatStopPlan: Sendable {
                 wait: AgentStopWait(
                     window: .seconds(3),
                     unconfirmedNotice:
-                        "Ctrl+C went, but the Agent still shows Working. A queued message may have started.",
+                        String(localized: "Ctrl+C went, but the Agent still shows Working. A queued message may have started."),
                     minimumGap: .milliseconds(1500)),
-                accessibilityHint: "Presses Ctrl+C to cancel the turn")
+                accessibilityHint: String(localized: "Presses Ctrl+C to cancel the turn"))
         case .opencode:
             // OpenCode 2.0.32 interrupts at a second Esc within 5 s of the
             // first; herdr writes both in one PTY write. Ctrl+C would exit
@@ -69,7 +69,7 @@ struct ChatStopPlan: Sendable {
             ChatStopPlan(
                 keys: ["esc", "esc"], screenGuard: OpenCodeStopGuard.verdict,
                 wait: AgentStopWait(window: .seconds(3), unconfirmedNotice: openCodeUnconfirmedNotice),
-                accessibilityHint: "Presses Esc twice to interrupt OpenCode")
+                accessibilityHint: String(localized: "Presses Esc twice to interrupt OpenCode"))
         }
     }
 
@@ -88,14 +88,12 @@ struct ChatStopPlan: Sendable {
     /// OpenCode's interrupt resumes: a message waiting during the turn
     /// runs after it.
     private static let openCodeUnconfirmedNotice =
-        "Esc went twice, but OpenCode still shows Working. If a message was waiting during this turn, OpenCode runs "
-        + "it after a stop; tap Stop again to stop that too. In the terminal, use Esc, not Ctrl+C, which exits "
-        + "OpenCode when its input is empty."
+        String(localized: "Esc went twice, but OpenCode still shows Working. If a message was waiting during this turn, OpenCode runs it after a stop; tap Stop again to stop that too. In the terminal, use Esc, not Ctrl+C, which exits OpenCode when its input is empty.")
 
     /// The request failed, so the keys may not have arrived.
-    static let unreachableMessage = "Couldn't reach the Agent, so it may still be working."
+    static let unreachableMessage = String(localized: "Couldn't reach the Agent, so it may still be working.")
     /// A guard had no screen to decide on, so nothing was pressed.
-    static let unreadableScreenMessage = "Heeler couldn't check the Agent's screen, so Stop pressed nothing."
+    static let unreadableScreenMessage = String(localized: "Heeler couldn't check the Agent's screen, so Stop pressed nothing.")
 
     /// The Composer's Stop for this plan, in line with the Agent page's keys.
     /// A tap calls `agentKeys.deliver(keys, unless: check)`. Without a guard

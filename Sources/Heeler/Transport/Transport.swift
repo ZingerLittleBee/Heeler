@@ -277,15 +277,15 @@ extension Transport {
     func modelContextWindow(selector: String) async throws -> Int? { nil }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func paneProcessInfo(paneID: String) async throws -> PaneProcessInfo {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func sendPaneInput(_ params: PaneSendInputParams) async throws {
-        throw TransportError.hostFeatureUnavailable(feature: "Chat")
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     /// Test doubles and alternative transports without a Host-side plugin
@@ -357,6 +357,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
 
     var id: String { rawValue }
 
+    /// Product names, the same in every language.
     var displayName: String {
         switch self {
         case .pi: "Pi"

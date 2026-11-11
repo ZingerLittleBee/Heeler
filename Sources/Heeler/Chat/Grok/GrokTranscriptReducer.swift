@@ -165,7 +165,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             if !text.isEmpty || images > 0 {
                 return .user(ChatUserMessage(text: text, imageCount: images, command: command, wasQueued: wasQueued))
             }
-            return lostText ? .notice(ChatNotice(kind: .system, title: "Message exceeds the preview limit")) : nil
+            return lostText ? .notice(ChatNotice(kind: .system, title: String(localized: "Message exceeds the preview limit"))) : nil
         }
 
         /// Whether `chunk` continues this prompt: Grok writes a prompt of
@@ -257,20 +257,22 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
                 let id = ChatEntryID("grok:\(record.offset):compaction")
                 place(.divider(.compaction(summary: nil)), id: id, record)
             case .compactionCancelled:
-                addNotice(ChatNotice(kind: .system, title: "Compaction was cancelled"), record)
+                addNotice(ChatNotice(kind: .system, title: String(localized: "Compaction was cancelled")), record)
             case .compactionFailed(let error):
-                addNotice(Self.notice(kind: .system, title: "Compaction failed", text: error), record)
+                addNotice(Self.notice(kind: .system, title: String(localized: "Compaction failed"), text: error), record)
             case .retry(.retrying):
                 break
             case .retry(.exhausted(let attempts, let reason)):
-                let title = attempts.map { "Grok Build gave up after \($0) \($0 == 1 ? "attempt" : "attempts")" }
-                addNotice(Self.notice(kind: .error, title: title ?? "Grok Build gave up", text: reason), record)
+                let title = attempts.map { $0 == 1
+                    ? String(localized: "Grok Build gave up after \($0) attempt")
+                    : String(localized: "Grok Build gave up after \($0) attempts") }
+                addNotice(Self.notice(kind: .error, title: title ?? String(localized: "Grok Build gave up"), text: reason), record)
             case .retry(.failed(let message)):
-                addNotice(Self.notice(kind: .error, title: "Grok Build gave up", text: message), record)
+                addNotice(Self.notice(kind: .error, title: String(localized: "Grok Build gave up"), text: message), record)
             case .imageDropped(let notes):
                 // Grok drops an image that fails its checks before sending.
                 let notice = ChatNotice(
-                    kind: .system, title: notes.count > 1 ? "Images not sent" : "Image not sent",
+                    kind: .system, title: notes.count > 1 ? String(localized: "Images not sent") : String(localized: "Image not sent"),
                     detail: notes.isEmpty ? nil : notes.joined(separator: "\n"))
                 addNotice(notice, record)
             case .rewind, .skipped:
@@ -292,8 +294,8 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
                         id: ChatEntryID("\(opener.rawValue):notice"), sourceOffset: open.openerOffset,
                         content: .notice(
                             ChatNotice(
-                                kind: .stopped, title: "Stopped before a reply",
-                                detail: "Grok Build put the message back in its input box."))))
+                                kind: .stopped, title: String(localized: "Stopped before a reply"),
+                                detail: String(localized: "Grok Build put the message back in its input box.")))))
             }
             return transcript
         }
@@ -449,7 +451,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             case "error":
                 ending = .failed
                 addNotice(
-                    Self.notice(kind: .error, title: "Grok Build stopped with an error", text: end.agentResult), record)
+                    Self.notice(kind: .error, title: String(localized: "Grok Build stopped with an error"), text: end.agentResult), record)
             default:
                 ending = .completed
                 transcript.diagnostics.unknownRecordTypes.insert("stop_reason:\(end.stopReason ?? "none")")
@@ -508,17 +510,17 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             }
             var detail = end.command.map { [$0] } ?? []
             if end.wasKilled || end.signal == "killed" {
-                detail.append("Killed")
+                detail.append(String(localized: "Killed"))
             } else if let signal = end.signal {
-                detail.append("Signal \(signal)")
+                detail.append(String(localized: "Signal \(signal)"))
             } else if let code = end.exitCode {
-                detail.append("Exit code \(code)")
+                detail.append(String(localized: "Exit code \(code)"))
             }
             let isCommand = end.taskKind == nil || end.taskKind == "bash"
             addNotice(
                 ChatNotice(
                     kind: .taskNotification,
-                    title: isCommand ? "Background command finished" : "Background task finished",
+                    title: isCommand ? String(localized: "Background command finished") : String(localized: "Background task finished"),
                     detail: detail.isEmpty ? nil : detail.joined(separator: " · ")), record)
         }
 
@@ -604,18 +606,18 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             case "PermissionRejected":
                 return nil
             case "PermissionCancelled":
-                return ChatNotice(kind: .stopped, title: "Stopped at the permission prompt")
+                return ChatNotice(kind: .stopped, title: String(localized: "Stopped at the permission prompt"))
             // Grok 1.0.62 holds both spellings.
             case "HookDenied", "HookStopped":
-                return ChatNotice(kind: .hook, title: "A hook stopped the turn")
+                return ChatNotice(kind: .hook, title: String(localized: "A hook stopped the turn"))
             case "MidTurnAbort", nil:
                 switch trigger {
-                case "send_now": return ChatNotice(kind: .interrupted, title: "Interrupted to send the next message")
-                case "shutdown": return ChatNotice(kind: .stopped, title: "Grok Build exited")
-                default: return ChatNotice(kind: .stopped, title: "Stopped")
+                case "send_now": return ChatNotice(kind: .interrupted, title: String(localized: "Interrupted to send the next message"))
+                case "shutdown": return ChatNotice(kind: .stopped, title: String(localized: "Grok Build exited"))
+                default: return ChatNotice(kind: .stopped, title: String(localized: "Stopped"))
                 }
             default:
-                return ChatNotice(kind: .stopped, title: "Stopped")
+                return ChatNotice(kind: .stopped, title: String(localized: "Stopped"))
             }
         }
 

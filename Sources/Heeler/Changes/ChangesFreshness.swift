@@ -8,12 +8,14 @@ struct ChangesFreshness: Equatable {
         relativeTo now: Date, locale: Locale = .current,
         calendar: Calendar = .current, timeZone: TimeZone = .current
     ) -> String {
-        "Possibly incomplete · " + Self.readTime(
+        let readTime = Self.readTime(
             readAt, relativeTo: now, locale: locale, calendar: calendar, timeZone: timeZone)
+        return String(localized: "Possibly incomplete · \(readTime)")
     }
 
     func accessibilitySummary(relativeTo now: Date, locale: Locale = .current) -> String {
-        "Possibly incomplete. " + Self.readTime(readAt, relativeTo: now, locale: locale) + "."
+        let readTime = Self.readTime(readAt, relativeTo: now, locale: locale)
+        return String(localized: "Possibly incomplete. \(readTime).")
     }
 
     static func readTime(
@@ -28,9 +30,9 @@ struct ChangesFreshness: Equatable {
         formatter.timeZone = timeZone
         formatter.timeStyle = .short
         let time = formatter.string(from: readAt)
-        if calendar.isDate(readAt, inSameDayAs: now) { return "Read at \(time)" }
+        if calendar.isDate(readAt, inSameDayAs: now) { return String(localized: "Read at \(time)") }
         formatter.timeStyle = .none
         formatter.dateStyle = .medium
-        return "Read \(formatter.string(from: readAt)) at \(time)"
+        return String(localized: "Read \(formatter.string(from: readAt)) at \(time)")
     }
 }

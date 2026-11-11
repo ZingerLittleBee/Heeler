@@ -199,15 +199,18 @@ struct SessionDriverE2ETests {
         let connection = try await environment.connect()
         do {
             // Nothing else uses this connection, so no other operation's
-            // receive can wake the exec once it has drained the socket itself.
+            // receive can wake the exec once it has drained the socket itself:
+            // an exec that misses the reply it queued sleeps until its
+            // deadline and throws SSHError.timedOut.
             await connection.waitForInboundBeforeNextExchangeStderrReadForTesting()
-            let start = ContinuousClock.now
             // The early stderr is read first, so the held round is the one
-            // that finds nothing left but the stdout reply.
+            // that finds nothing left but the stdout reply. The pause keeps
+            // that reply from arriving before the held round even when the
+            // client is slow to read the early stderr.
             let result = try await connection.execute(
-                "printf early >&2; /bin/sleep 0.3; printf drained; exit 3",
-                timeout: .seconds(5))
-            #expect(ContinuousClock.now - start < .seconds(3))
+                "printf early >&2; /bin/sleep 1; printf drained; exit 3",
+                timeout: .seconds(10))
+            #expect(await connection.exchangeStderrReadTookReplyForTesting())
             #expect(result.stdout == Data("drained".utf8))
             #expect(String(decoding: result.stderr, as: UTF8.self).hasSuffix("early"))
             #expect(result.exitStatus == 3)
@@ -296,15 +299,18 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await environment.connect()
         do {
+            // The pause keeps the trailing stderr from arriving before the
+            // first read round even when the client is slow to start it.
             let channel = try await connection.openExec(
-                command: "/bin/sleep 0.3; printf trailing >&2; exit 4",
+                command: "/bin/sleep 1; printf trailing >&2; exit 4",
                 timeout: .seconds(5))
             // Nothing else uses this connection, so no other operation's
-            // receive can wake the read once it has drained the socket itself.
+            // receive can wake the read once it has drained the socket itself:
+            // a read that misses the stderr it queued sleeps until its
+            // deadline and throws SSHError.timedOut.
             await connection.waitForInboundBeforeNextExecStdoutReadForTesting()
-            let start = ContinuousClock.now
-            #expect(try await channel.read(timeout: .seconds(5)) == nil)
-            #expect(ContinuousClock.now - start < .seconds(3))
+            #expect(try await channel.read(timeout: .seconds(10)) == nil)
+            #expect(await connection.execStdoutReadTookReplyForTesting())
             #expect(try await channel.exitStatus(timeout: .seconds(5)) == 4)
             try await channel.close(timeout: .seconds(5))
             try await connection.close(timeout: .seconds(2))
@@ -2918,7 +2924,10 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
 
     var command: String {
         switch self {
-        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat"
+        // The PTY echoes the readiness line. Do not echo it a second time from
+        // cat: cutting while that reply is in flight can strand a macOS peer
+        // behind a challenged, then suppressed TCP reset (refs #630).
+        case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize: "cat >/dev/null"
         // ForceCommand execs this shell, so its parent is the session's sshd.
         case .serverKilledSeenByRead: "sleep 1; kill -KILL $PPID; sleep 30"
         }
@@ -2932,7 +2941,14 @@ enum PTYSeverance: String, CaseIterable, CustomTestStringConvertible, Sendable {
         switch self {
         case .resetSeenByRead, .resetSeenByWrite, .resetSeenByResize:
             try await channel.write(Data("up\n".utf8), timeout: .seconds(5))
-            _ = try await channel.read(timeout: .seconds(5))
+            let readyDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var ready = Data()
+            while !ready.contains(UInt8(ascii: "\n")) {
+                guard let bytes = try await channel.read(
+                    timeout: ContinuousClock.now.duration(to: readyDeadline)) else { return nil }
+                ready.append(bytes)
+            }
+            try #require(ready == Data("up\r\n".utf8))
             guard try await proxy.cut() > 0 else { return nil }
         case .serverKilledSeenByRead:
             break

@@ -161,6 +161,8 @@ run_case() (
         requested_simulator_udid=""
         simulator_environment_variables=()
         ci_simulator_name='iPhone 17'
+        ci_simulator_os=''
+        ci_simulator_label='iPhone 17'
         xcodebuild_test_timeout_seconds=10
         pinned_lane_logs=()
     }
@@ -322,6 +324,42 @@ for scenario in same pinned-other-name replacement occupied package suite no-dev
     run_case "$scenario"
 done
 echo 'Passed 21 simulator recovery scenarios.'
+
+# An image can carry the same device name on several runtimes (xcode-27 has
+# an iPhone 17 on iOS 27.0 and on 27.2), and a version can head two groups
+# when two builds share it. A pinned runtime selects only its own groups;
+# an explicit device pin still wins over it.
+(
+    export SCENARIO=runtime-pin CASE_DIR="$work/runtime-pin"
+    mkdir -p "$CASE_DIR"
+    cat > "$CASE_DIR/devices" <<DEVICES
+== Devices ==
+-- iOS 27.2 --
+    iPhone 17 ($REPLACEMENT) (Shutdown)
+    iPhone 17 Pro ($OCCUPIED) (Shutdown)
+-- iOS 27.2 --
+    iPhone Duo (DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD) (Shutdown)
+-- iOS 27.0 --
+    iPhone 17 ($ORIGINAL) (Shutdown)
+-- Unavailable: com.apple.CoreSimulator.SimRuntime.iOS-26-0 --
+DEVICES
+    ci_simulator_name='iPhone 17'
+    requested_simulator_udid=''
+    expect_candidates() {
+        ci_simulator_os=$1
+        list_simulator_candidates || fail "listing failed for runtime '$1'"
+        [[ "${simulator_candidates[*]-}" == "$2" ]] \
+            || fail "runtime '$1' selected '${simulator_candidates[*]-}', expected '$2'"
+    }
+    expect_candidates '' "$ORIGINAL $REPLACEMENT"
+    expect_candidates 27.2 "$REPLACEMENT"
+    expect_candidates 27.0 "$ORIGINAL"
+    # A major version alone names no runtime heading.
+    expect_candidates 27 ''
+    requested_simulator_udid=$ORIGINAL
+    expect_candidates 27.2 "$ORIGINAL $REPLACEMENT"
+    printf 'PASS %s\n' "$SCENARIO"
+)
 
 # Exercise the shipped shard dispatcher with fake test/process boundaries.
 # This proves invocation order and ownership, including failure before Weak.

@@ -76,10 +76,16 @@ final class NotificationPreferencesStore {
     /// Whether a core Host's Helper can drive a Live Activity, from its last read.
     /// Nil on a read that failed, and on any other Host.
     private var helperDrivesLiveActivity: [Host.ID: Bool] = [:]
+    /// How a core Host's Helper reads on its Host page, from its last read. Nil
+    /// on a read that failed, and on any other Host.
+    private var helperPresentations: [Host.ID: HostHelperPresentation] = [:]
     /// What a core Host last confirmed, held for its banner gate while it is read
     /// again. Reads repeat with the connection and a Helper's takes seconds; Herdr
     /// TUI's gate still fails closed for its read.
     private var settingsDuringReRead: [Host.ID: HostSettings] = [:]
+    /// What each Host last settled on, shown while it is read again so Settings
+    /// keeps its rows steady. Display only: no gate reads it.
+    private var settledBeforeReRead: [Host.ID: HostState] = [:]
     /// A catalog edit/removal invalidates every result captured for that Host.
     private var operations: [Host.ID: UUID] = [:]
     /// Seen marks waiting for a core Host's registration to be known, or for the
@@ -122,7 +128,9 @@ final class NotificationPreferencesStore {
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
         helperDrivesLiveActivity = helperDrivesLiveActivity.filter { unchanged.contains($0.key) }
+        helperPresentations = helperPresentations.filter { unchanged.contains($0.key) }
         settingsDuringReRead = settingsDuringReRead.filter { unchanged.contains($0.key) }
+        settledBeforeReRead = settledBeforeReRead.filter { unchanged.contains($0.key) }
         operations = operations.filter { unchanged.contains($0.key) }
         pendingSeenMarks = pendingSeenMarks.filter { unchanged.contains($0.key) }
     }
@@ -133,21 +141,47 @@ final class NotificationPreferencesStore {
 
     /// A note beside a core Host's toggles: what its Helper still needs while they
     /// work without it. With no toggles to show, the unavailable state says it.
+    /// Like the toggles, it stays as last read while the Host is read again.
     func helperRequirement(for hostID: Host.ID) -> String? {
-        switch states[hostID] {
+        switch shownState(for: hostID) {
         case .idle, .updating, .failed: helperRequirements[hostID]
         case .loading, .unavailable, nil: nil
         }
     }
 
+    /// A core Host's Helper as its Host page shows it, kept while the Host is
+    /// read again. Nil on any other Host, and after a read that failed.
+    func helperPresentation(for hostID: Host.ID) -> HostHelperPresentation? {
+        helperPresentations[hostID]
+    }
+
     /// Re-reads every Host's registration file so the toggles reflect what
     /// each Host actually holds.
     func refresh() async {
+        await refresh(hosts.map(\.id))
+    }
+
+    /// Re-reads only these Hosts', as their connections change.
+    func refresh(_ hostIDs: some Collection<Host.ID>) async {
+        let ids = Set(hostIDs)
         await withTaskGroup { group in
-            for host in hosts {
+            for host in hosts where ids.contains(host.id) {
                 group.addTask { await self.load(host) }
             }
         }
+    }
+
+    /// What Settings shows for a Host: its state, or while it is read again what
+    /// it last settled on. Nil until a first read settles.
+    func shownState(for hostID: Host.ID) -> HostState? {
+        let state = states[hostID]
+        guard state == .loading else { return state }
+        return settledBeforeReRead[hostID]
+    }
+
+    /// Whether a Host is being read, so its switches cannot act yet.
+    func isReading(_ hostID: Host.ID) -> Bool {
+        states[hostID] == .loading
     }
 
     /// The per-Host on/off (registration add/remove). Enabling registers
@@ -257,6 +291,7 @@ final class NotificationPreferencesStore {
     /// updating is left for its own read or write to settle.
     private func markUnregistered(_ hostID: Host.ID) {
         settingsDuringReRead[hostID] = nil
+        settledBeforeReRead[hostID] = nil
         guard confirmedSettings(for: hostID) != nil else { return }
         states[hostID] = .idle(
             HostSettings(isRegistered: false, notify: NotificationTriggerPreferences()))
@@ -267,13 +302,14 @@ final class NotificationPreferencesStore {
         if case .updating = states[host.id] { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
-                message: "Waiting for push registration on this device.")
+                message: String(localized: "Waiting for push registration on this device."))
             return
         }
         let operation = UUID()
         operations[host.id] = operation
         if states[host.id] != .loading {
             settingsDuringReRead[host.id] = host.serverKind == .herdrCore ? confirmedSettings(for: host.id) : nil
+            settledBeforeReRead[host.id] = states[host.id]
         }
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }
@@ -283,6 +319,7 @@ final class NotificationPreferencesStore {
             var file = try NotificationRegistrationFile.decode(read.registration)
             helperRequirements[host.id] = read.standing?.requirement
             helperDrivesLiveActivity[host.id] = read.standing?.drivesLiveActivity
+            helperPresentations[host.id] = read.helper
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
             let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
@@ -303,6 +340,7 @@ final class NotificationPreferencesStore {
         } catch {
             guard isCurrent(operation, for: host) else { return }
             helperDrivesLiveActivity[host.id] = nil
+            helperPresentations[host.id] = nil
             states[host.id] = .unavailable(message: Self.message(for: error))
         }
     }
@@ -314,11 +352,11 @@ final class NotificationPreferencesStore {
         try await transports.withNotificationFiles(for: hostID) { files in
             guard let reading = try await files.readHostHelper() else {
                 return RegistrationRead(
-                    registration: try await files.readNotificationRegistration(), standing: nil)
+                    registration: try await files.readNotificationRegistration(), standing: nil, helper: nil)
             }
             return RegistrationRead(
                 registration: reading.offersRemoval ? try await files.readNotificationRegistration() : nil,
-                standing: reading.notificationStanding)
+                standing: reading.notificationStanding, helper: reading.presentation)
         }
     }
 
@@ -349,7 +387,7 @@ final class NotificationPreferencesStore {
         guard hosts.contains(host) else { return }
         guard let token = deviceToken() else {
             states[host.id] = .unavailable(
-                message: "Waiting for push registration on this device.")
+                message: String(localized: "Waiting for push registration on this device."))
             return
         }
         let operationID = UUID()
@@ -528,33 +566,29 @@ final class NotificationPreferencesStore {
         case let error as HostHelperError:
             error.message
         case NotificationRegistrationError.pluginNotInstalled:
-            "The Heeler plugin is missing or turned off on this Host. "
-                + "See this Host's page in Hosts, then check again."
+            String(localized: "The Heeler plugin is missing or turned off on this Host. See this Host's page in Hosts, then check again.")
         case NotificationRegistrationError.pluginProbeFailed:
-            "Could not check the Heeler plugin on this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not check the Heeler plugin on this Host. Check the connection and try again.")
         case NotificationRegistrationError.readFailed:
-            "Could not read notification settings from this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not read notification settings from this Host. Check the connection and try again.")
         case NotificationRegistrationError.writeFailed:
-            "Could not update notification settings on this Host. "
-                + "Check the connection and try again."
+            String(localized: "Could not update notification settings on this Host. Check the connection and try again.")
         case NotificationRegistrationError.unsupportedFileVersion:
-            "This Host was registered by a newer app version. Update the app."
+            String(localized: "This Host was registered by a newer app version. Update the app.")
         case NotificationRegistrationError.deviceNotRegistered:
-            "Register this device for notifications on this Host first."
+            String(localized: "Register this device for notifications on this Host first.")
         case TransportError.sshUnreachable:
-            "The Host is not connected."
+            String(localized: "The Host is not connected.")
         case TransportError.timedOut:
-            "The Host did not answer in time."
+            String(localized: "The Host did not answer in time.")
         case TransportError.herdrBinaryNotFound:
             TransportError.herdrBinaryNotFound.presentation.message
         case TransportError.herdrLauncherNotFound(let path):
             TransportError.herdrLauncherNotFound(path: path).presentation.message
         case is TransportError:
-            "The connection to the Host failed."
+            String(localized: "The connection to the Host failed.")
         default:
-            "Could not update notification settings. Try again."
+            String(localized: "Could not update notification settings. Try again.")
         }
     }
 }
@@ -564,6 +598,7 @@ private struct RegistrationRead: Sendable {
     let registration: Data?
     /// Nil on a Host whose notifications come from the plugin.
     let standing: HostHelperNotificationStanding?
+    let helper: HostHelperPresentation?
 }
 
 private struct PendingSeenMarks: Sendable {

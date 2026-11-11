@@ -3,6 +3,12 @@
 Study date: 2026-10-03. Source baseline:
 `eefba7d46efe91668a4b5b0f05588732875225a7`.
 
+> **Superseded in part, 2026-11-08.** Every macOS workflow now runs on the
+> `xcode-27` runner with Xcode 27.2, and the Simulator lanes pin an iOS 27.2
+> iPhone 17 (#634). The `macos-26`, Xcode 26.6 and iOS 26.5 setup and
+> measurements below are the record of that toolchain and were not repeated
+> on Xcode 27.
+
 The app CI can be shortened without removing tests, but the useful changes
 are execution and build reuse, rather than deleting suites. Three independent
 reviews covered historical timing, coverage and isolation, and execution

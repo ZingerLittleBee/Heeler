@@ -11,7 +11,7 @@ struct TerminalAppearancePane: View {
     let themes: TerminalThemeSettings
     let zoom: TerminalZoomSettings
     let fonts: TerminalFontSettings
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
 
     private let columns = [GridItem(.adaptive(minimum: 104), spacing: 10)]
 
@@ -29,9 +29,9 @@ struct TerminalAppearancePane: View {
     private var controlsRow: some View {
         HStack(spacing: 10) {
             HStack(spacing: 0) {
-                sizeButton(symbol: "textformat.size.smaller", delta: -1, label: "Smaller")
+                sizeButton(symbol: "textformat.size.smaller", delta: -1, label: String(localized: "Smaller"))
                 Divider().frame(height: 20)
-                sizeButton(symbol: "textformat.size.larger", delta: 1, label: "Larger")
+                sizeButton(symbol: "textformat.size.larger", delta: 1, label: String(localized: "Larger"))
             }
             .background(.quaternary, in: .rect(cornerRadius: 10))
 
@@ -89,16 +89,16 @@ struct TerminalAppearancePane: View {
             ForEach(TerminalThemeOption.allCases) { @Sendable option in
                 MainActorContent {
                     Button {
-                        themes.select(option, for: colorScheme)
+                        themes.select(option, for: themeAppearance)
                     } label: {
                         TerminalThemeSwatch(
                             option: option,
-                            isSelected: themes.selection(for: colorScheme) == option)
+                            isSelected: themes.selection(for: themeAppearance) == option)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(option.title)
                     .accessibilityValue(
-                        themes.selection(for: colorScheme) == option ? "Selected" : "")
+                        themes.selection(for: themeAppearance) == option ? "Selected" : "")
                 }
             }
         }
@@ -111,12 +111,12 @@ struct TerminalAppearancePane: View {
 struct TerminalThemeSwatch: View {
     let option: TerminalThemeOption
     let isSelected: Bool
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
 
     var body: some View {
         VStack(spacing: 6) {
             TerminalThemeSwatchCard(
-                option: option, scheme: colorScheme, isSelected: isSelected
+                option: option, scheme: themeAppearance, isSelected: isSelected
             )
             .frame(height: 62)
             Text(option.title)

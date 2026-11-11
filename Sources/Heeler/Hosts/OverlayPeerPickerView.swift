@@ -103,7 +103,7 @@ struct OverlayPeerPickerView: View {
             }
             Section {
                 if candidates.isEmpty {
-                    Text(query.isEmpty ? "No peers with an address" : "No matching peers")
+                    Text(query.isEmpty ? String(localized: "No peers with an address") : String(localized: "No matching peers"))
                         .foregroundStyle(.secondary)
                 } else {
                     let chosen = OverlayPeerList.chosen(
@@ -125,27 +125,26 @@ struct OverlayPeerPickerView: View {
                     }
                 }
             } header: {
-                Text(target == .jumpHost ? "Choose the Jump Host" : "Choose the Host")
+                Text(target == .jumpHost ? String(localized: "Choose the Jump Host") : String(localized: "Choose the Host"))
             }
         }
-        .searchable(text: $query, prompt: "Name or address")
+        .searchable(text: $query, prompt: String(localized: "Name or address"))
         .refreshable { await model.load() }
     }
 
     private var styleFooter: String {
         switch style {
         case .ipAddress:
-            "The IP address stays the same while the machine is in the tailnet."
+            String(localized: "The IP address stays the same while the machine is in the tailnet.")
         case .machineName:
-            "The machine name is resolved through MagicDNS and follows the machine if its "
-                + "address changes."
+            String(localized: "The machine name is resolved through MagicDNS and follows the machine if its address changes.")
         }
     }
 
     private var cancelledView: some View {
         List {
             Section {
-                LabeledContent("Status", value: "Cancelled")
+                LabeledContent("Status", value: String(localized: "Cancelled"))
                 Button {
                     Task { await model.load() }
                 } label: {
@@ -153,8 +152,7 @@ struct OverlayPeerPickerView: View {
                 }
             } footer: {
                 Text(
-                    "Heeler stopped waiting for \(network.displayName). Choose again to connect "
-                        + "it, or type the address yourself.")
+                    String(localized: "Heeler stopped waiting for \(network.displayName). Choose again to connect it, or type the address yourself."))
             }
         }
     }
@@ -182,8 +180,7 @@ struct OverlayPeerPickerView: View {
                 }
             } footer: {
                 Text(
-                    "Connect or fix \(network.displayName) in Settings › Overlay Networks, "
-                        + "or type the address yourself.")
+                    String(localized: "Connect or fix \(network.displayName) in Settings › Overlay Networks, or type the address yourself."))
             }
         }
     }
@@ -247,9 +244,14 @@ private struct OverlayPeerChoiceRow: View {
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isChosen ? .isSelected : [])
-        .accessibilityHint(
-            isHost
-                ? "A Host already uses this machine"
-                : "Uses \(candidate.address(style) ?? "this peer") as the address")
+        .accessibilityHint(hint)
+    }
+
+    private var hint: String {
+        if isHost { return String(localized: "A Host already uses this machine") }
+        guard let address = candidate.address(style) else {
+            return String(localized: "Uses this peer as the address")
+        }
+        return String(localized: "Uses \(address) as the address")
     }
 }

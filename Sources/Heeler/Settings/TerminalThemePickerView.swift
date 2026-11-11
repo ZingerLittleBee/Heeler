@@ -30,7 +30,7 @@ struct TerminalThemePickerView: View {
                 .accessibilityLabel("Terminal theme preview")
             } footer: {
                 Text(
-                    "Changes apply instantly to current and future Attach terminals without reconnecting."
+                    "Changes apply instantly to terminals, Chat and the app, without reconnecting."
                 )
             }
 
@@ -41,7 +41,7 @@ struct TerminalThemePickerView: View {
             }
         }
         .readableColumnPage()
-        .navigationTitle(scheme == .dark ? "Dark Mode Theme" : "Light Mode Theme")
+        .navigationTitle(scheme == .dark ? String(localized: "Dark Mode Theme") : String(localized: "Light Mode Theme"))
         .navigationBarTitleDisplayMode(.inline)
     }
 

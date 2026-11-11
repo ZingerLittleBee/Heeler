@@ -78,17 +78,17 @@ enum LicenseNoticeCatalogError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .inventoryMissing:
-            "Notices/inventory.json is missing from the app bundle"
+            String(localized: "Notices/inventory.json is missing from the app bundle")
         case .inventoryUnreadable(let detail):
-            "Notices/inventory.json could not be read: \(detail)"
+            String(localized: "Notices/inventory.json could not be read: \(detail)")
         case .inventoryMalformed(let detail):
-            "Notices/inventory.json is malformed: \(detail)"
+            String(localized: "Notices/inventory.json is malformed: \(detail)")
         case .noticeMissing(let componentID, let fileName):
-            "Notice for \(componentID) is missing: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is missing: Notices/\(fileName)")
         case .noticeNotUTF8(let componentID, let fileName):
-            "Notice for \(componentID) is not valid UTF-8: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is not valid UTF-8: Notices/\(fileName)")
         case .noticeEmpty(let componentID, let fileName):
-            "Notice for \(componentID) is empty: Notices/\(fileName)"
+            String(localized: "Notice for \(componentID) is empty: Notices/\(fileName)")
         }
     }
 }

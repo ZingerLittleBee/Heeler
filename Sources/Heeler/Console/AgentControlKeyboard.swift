@@ -23,14 +23,14 @@ struct AgentControlKeyboard: View {
             let contentWidth = min(geometry.size.width, InputChromeLayout.maxKeyboardContentWidth)
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    pageButton(.agent, title: "Agent", label: "Agent controls page")
+                    pageButton(.agent, title: String(localized: "Agent"), label: String(localized: "Agent controls page"))
                     HStack(spacing: 5) {
                         Circle().fill(page == .agent ? Color.accentColor : .secondary.opacity(0.4))
                         Circle().fill(page == .terminal ? Color.accentColor : .secondary.opacity(0.4))
                     }
                     .frame(width: InputChromeLayout.keyboardPageIndicatorWidth, height: 5)
                     .accessibilityHidden(true)
-                    pageButton(.terminal, title: "Terminal", label: "Terminal keyboard page")
+                    pageButton(.terminal, title: String(localized: "Terminal"), label: String(localized: "Terminal keyboard page"))
                 }
                 .frame(height: 26)
                 .frame(maxWidth: contentWidth)

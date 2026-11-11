@@ -1049,10 +1049,10 @@ struct TerminalAgentSwitcherTests {
             window.isHidden = true
         }
 
-        // This test thaws the freeze explicitly below, so the wall-clock
-        // fallback must stay out of it: the sleeps inside the handoff window
-        // can stretch past its 500ms on a loaded runner (#225).
-        terminal.keyboardTransitionFallbackDelay = 60
+        // This test thaws the freeze explicitly below, so the fallback waits
+        // on a clock the test never moves: the sleeps inside the handoff
+        // window can stretch past its 500ms on a loaded runner (#225).
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         let localKeyboardFrame = CGRect(x: 0, y: 400, width: 390, height: 300)
         terminal.keyboardLayoutFrameProvider = { _ in localKeyboardFrame }
         terminal.raisesKeyboardWhenReady = true
@@ -1153,10 +1153,10 @@ struct TerminalAgentSwitcherTests {
         }
 
         // Local input is what UIKit asks about in `canBecomeFirstResponder`,
-        // so this is a claim that cannot be granted. The leash is stretched
-        // past any plausible test: only the refusal itself can thaw this.
+        // so this is a claim that cannot be granted. The leash waits on a
+        // clock the test never moves: only the refusal itself can thaw this.
         terminal.setLocalInputEnabled(false)
-        terminal.keyboardTransitionFallbackDelay = 60
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         terminal.raisesKeyboardWhenReady = true
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
         host.view.addSubview(terminal)
@@ -1186,7 +1186,7 @@ struct TerminalAgentSwitcherTests {
             window.isHidden = true
         }
 
-        terminal.keyboardTransitionFallbackDelay = 60
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         let localKeyboardFrame = CGRect(x: 0, y: 400, width: 390, height: 300)
         terminal.keyboardLayoutFrameProvider = { _ in localKeyboardFrame }
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
@@ -1237,7 +1237,13 @@ struct TerminalAgentSwitcherTests {
     @Test(.timeLimit(.minutes(1)))
     func aTerminalTimeoutPreservesItsDestinationOwnedInset() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        // The inset's own guards wait on a clock this test never moves, so
+        // only the terminal's timeout, which the test passes, can end the
+        // handoff. The presentation below still coalesces in real time.
+        let guards = ManualClock()
+        let inset = TerminalKeyboardInset(
+            notificationCenter: center, measure: { _ in 402 },
+            handoffSleep: guards.parkedSleep(for:))
         let presentation = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         defer { presentation.continuation.finish() }
         withObservationTracking {
@@ -1264,7 +1270,8 @@ struct TerminalAgentSwitcherTests {
             window.isHidden = true
         }
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
-        terminal.keyboardTransitionFallbackDelay = 0.05
+        let leash = ManualClock()
+        terminal.keyboardTransitionSleep = leash.parkedSleep(for:)
         host.view.addSubview(terminal)
         window.layoutIfNeeded()
 
@@ -1284,6 +1291,8 @@ struct TerminalAgentSwitcherTests {
         }
         try #require(terminal.requestKeyboardHandoff(id: handoffID))
         center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        // The leash runs out only after the transient hide is in.
+        try #require(await leash.pass(HeelerTerminalView.keyboardTransitionFallbackDelay))
         var handoffEvents = ended.stream.makeAsyncIterator()
         let endedOutcome = await handoffEvents.next()
 
@@ -1298,12 +1307,24 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test func aTemporaryDetachKeepsItsDestinationOwnedHandoff() async throws {
         let center = NotificationCenter()
-        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        let clock = ManualClock()
+        let inset = TerminalKeyboardInset(
+            notificationCenter: center, measure: { _ in 402 },
+            sleep: clock.parkedSleep(for:), handoffSleep: clock.parkedSleep(for:))
+        let presentation = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { presentation.continuation.finish() }
+        withObservationTracking {
+            _ = inset.height
+        } onChange: {
+            presentation.continuation.yield(())
+        }
         center.post(
             name: UIResponder.keyboardWillShowNotification, object: nil,
             userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
                 x: 0, y: 554, width: 440, height: 436)])
-        try await Task.sleep(for: .milliseconds(120))
+        try #require(await clock.pass(TerminalKeyboardInset.coalesceDelay))
+        var presentationEvents = presentation.stream.makeAsyncIterator()
+        _ = await presentationEvents.next()
         #expect(inset.height == 402)
 
         let terminal = TerminalScreenView.makeConfiguredTerminal(
@@ -1317,7 +1338,7 @@ struct TerminalAgentSwitcherTests {
             window.isHidden = true
         }
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
-        terminal.keyboardTransitionFallbackDelay = 60
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         let localKeyboardFrame = CGRect(x: 0, y: 400, width: 390, height: 300)
         terminal.keyboardLayoutFrameProvider = { _ in localKeyboardFrame }
         host.view.addSubview(terminal)
@@ -1458,10 +1479,10 @@ struct TerminalAgentSwitcherTests {
 
         // The handoff itself: the terminal claims the keyboard as it reaches
         // its window and freezes its grid until that keyboard settles. This
-        // test drives that settle explicitly, so the wall-clock fallback stays
-        // out of it — a loaded runner must not thaw the freeze the foreign
-        // events below are supposed to leave alone (#225).
-        terminal.keyboardTransitionFallbackDelay = 60
+        // test drives that settle explicitly, so the fallback waits on a clock
+        // the test never moves — a loaded runner must not thaw the freeze the
+        // foreign events below are supposed to leave alone (#225).
+        terminal.keyboardTransitionSleep = ManualClock().parkedSleep(for:)
         terminal.raisesKeyboardWhenReady = true
         terminal.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
         host.view.addSubview(terminal)

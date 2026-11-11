@@ -30,14 +30,14 @@ struct QuestionFormCard: View {
     private var isReady: Bool { store.progress == .ready }
 
     private var detail: String {
-        let position = "\(page + 1) of \(form.questions.count)"
+        let position = String(localized: "\(page + 1) of \(form.questions.count)")
         return draft.isSkipped ? "\(position), skipped" : position
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: "Question", detail: detail,
+                title: String(localized: "Question"), detail: detail,
                 isActing: store.progress == .acting, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: maxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -120,7 +120,7 @@ struct QuestionFormCard: View {
             // `Write-in...` goes with the checks.
             if !question.isMultiSelect || form.writesInWithSelection {
                 BlockedTextField(
-                    placeholder: "Type your own answer",
+                    placeholder: String(localized: "Type your own answer"),
                     text: Binding(get: { draft.text }, set: { draft.type($0) }), isFocused: $isTextFocused)
             }
             HStack(spacing: 8) {

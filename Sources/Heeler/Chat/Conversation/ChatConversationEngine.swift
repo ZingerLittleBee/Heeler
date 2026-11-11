@@ -158,10 +158,10 @@ enum ChatToolOutputFailure: Error, Equatable, Sendable {
     /// What the row says.
     var message: String {
         switch self {
-        case .notFollowing: "Output is available when connected."
-        case .tooLong: "This output is too long to show here."
-        case .gone: "Output is no longer available."
-        case .unreadable(let reason): "Couldn't load output: \(reason)"
+        case .notFollowing: String(localized: "Output is available when connected.")
+        case .tooLong: String(localized: "This output is too long to show here.")
+        case .gone: String(localized: "Output is no longer available.")
+        case .unreadable(let reason): String(localized: "Couldn't load output: \(reason)")
         }
     }
 
@@ -240,6 +240,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// What a sent prompt and a recorded one are compared on: the text as
     /// the program records it, which drops what Heeler adds when it sends.
     var echoKey: @Sendable (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// What the program records for a send it moves pasted image paths
+    /// around in, each placeholder back as its path; nil when it moves none.
+    var pastedImageEcho: @Sendable (String) -> String? = { _ in nil }
     /// Names the conversation from the file's first bytes, for a program
     /// that rewrites them; nil compares the bytes.
     var identity: TranscriptFollower.Identity?
@@ -365,6 +368,9 @@ actor ChatConversationEngine {
     private let transcriptRoot: String?
     /// Heeler can name an id before the program has written it (ADR 0034).
     private let sessionMayPrecedeItsStore: Bool
+    /// The localization entries are worded in now, which a saved document
+    /// must match to join live rows (`ChatCacheDocument.localization`).
+    private let localization: String
 
     init(
         reference: ConversationReference,
@@ -376,10 +382,12 @@ actor ChatConversationEngine {
         workflowLimits: WorkflowLimits = WorkflowLimits(),
         transcriptRoot: String? = nil,
         sessionMayPrecedeItsStore: Bool = false,
+        localization: String = ChatCacheDocument.currentLocalization,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.transcriptRoot = transcriptRoot
         self.sessionMayPrecedeItsStore = sessionMayPrecedeItsStore
+        self.localization = localization
         self.reference = reference
         self.cacheKey = cacheKey
         self.files = files
@@ -391,7 +399,10 @@ actor ChatConversationEngine {
     }
 
     /// Shows what the device kept from an earlier visit, before the Host
-    /// answers.
+    /// answers. A document from another adapter revision is discarded. One
+    /// worded in another language still shows, since a Saved Chat's
+    /// messages live only here, but never joins live rows (`joinedCache`),
+    /// so the next save words it anew.
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
         case .hit(let document) where document.adapterRevision == adapter.revision:
@@ -594,7 +605,7 @@ actor ChatConversationEngine {
             recordFailure(error)
             let message =
                 (error as? TransportError)?.presentation.summary
-                ?? "Earlier messages could not be read"
+                ?? String(localized: "Earlier messages could not be read")
             olderSearch = nil
             update { $0.older = .failed(message) }
             projectIfNeeded()
@@ -656,7 +667,8 @@ actor ChatConversationEngine {
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
             title: snapshot.transcript.title, entries: entries, savedAt: date,
             backgroundWork: snapshot.transcript.listedBackgroundWork,
-            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns)
+            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns,
+            localization: localization)
         await cache.save(document)
         // What was just saved fills in above a later window: a moved file's
         // fresh tail, or a rewrite's.
@@ -779,7 +791,7 @@ actor ChatConversationEngine {
             return .failure(failure)
         } catch {
             return .failure(
-                .unreadable((error as? TransportError)?.presentation.summary ?? "The Host could not be read."))
+                .unreadable((error as? TransportError)?.presentation.summary ?? String(localized: "The Host could not be read.")))
         }
     }
 
@@ -883,7 +895,7 @@ actor ChatConversationEngine {
             case .failure(.mismatched): return .unavailable(.mismatched)
             case .failure(.unsupportedVersion(let version)):
                 let name = reference.program == .omp ? "Oh My Pi" : "Pi"
-                return .unavailable(.unsupportedFormat("\(name) session version \(version)"))
+                return .unavailable(.unsupportedFormat(String(localized: "\(name) session version \(version)")))
             }
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
@@ -991,10 +1003,10 @@ actor ChatConversationEngine {
     }
 
     /// The saved document when its entries continue the live window without
-    /// a gap.
+    /// a gap, in the words the live rows use.
     private func joinedCache(windowStart: UInt64) -> ChatCacheDocument? {
-        guard adapter.joinsCachedHistory, let cached, windowStart > 0, cached.coverageEnd >= windowStart,
-            cached.coverageStart < windowStart
+        guard adapter.joinsCachedHistory, let cached, cached.isWorded(in: localization), windowStart > 0,
+            cached.coverageEnd >= windowStart, cached.coverageStart < windowStart
         else { return nil }
         return cached
     }

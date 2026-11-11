@@ -579,9 +579,11 @@ extension GrokUpdateRecord {
 
             /// What a tagged failure reads as when nothing else describes it.
             private static let readableFailures = [
-                "FileNotFound": "File not found", "NotADirectory": "Not a directory",
-                "MultipleMatchesFound": "Multiple matches", "InvalidInput": "Invalid input",
-                "FileTooLarge": "File too large",
+                "FileNotFound": String(localized: "File not found"),
+                "NotADirectory": String(localized: "Not a directory"),
+                "MultipleMatchesFound": String(localized: "Multiple matches"),
+                "InvalidInput": String(localized: "Invalid input"),
+                "FileTooLarge": String(localized: "File too large"),
             ]
 
             /// The variant of an externally tagged `rawOutput`, such as

@@ -67,7 +67,7 @@ enum InputBoxStateDetector {
 
     private static func claude(_ screen: ANSIScreen) -> InputBoxState {
         guard let box = ClaudeInputBox.locate(in: screen) else {
-            return .unknown("Claude's input box is not on screen.")
+            return .unknown(String(localized: "Claude's input box is not on screen."))
         }
         let rows = screen.rows
         let field = FieldText.read(DialogRowScanner.runs(of: rows[box.inputRows.lowerBound], from: 2))
@@ -118,7 +118,7 @@ enum InputBoxStateDetector {
     private static func codex(_ screen: ANSIScreen) -> InputBoxState {
         guard let composer = CodexComposer.locate(in: screen) else {
             if let reason = codexDisabledReason(in: screen) { return .disabled(reason) }
-            return .unknown("Codex's composer is not on screen.")
+            return .unknown(String(localized: "Codex's composer is not on screen."))
         }
         let rows = screen.rows
         let runs = DialogRowScanner.runs(of: rows[composer.row], from: 2)
@@ -135,12 +135,12 @@ enum InputBoxStateDetector {
             return .shellMode(lines.joined(separator: "\n"))
         }
         if lines.isEmpty {
-            return .unknown("Codex's composer shows neither text nor its placeholder.")
+            return .unknown(String(localized: "Codex's composer shows neither text nor its placeholder."))
         }
         if lines.count == 1, !visible.isEmpty, visible.allSatisfy(\.style.isDim) {
             let shown = firstLine.hasSuffix("…") ? String(firstLine.dropLast()) : firstLine
             guard codexPlaceholders.contains(where: { $0.hasPrefix(shown) }) else {
-                return .unknown("The composer shows \u{201C}\(firstLine)\u{201D}, which Heeler does not know.")
+                return .unknown(String(localized: "The composer shows \u{201C}\(firstLine)\u{201D}, which Heeler does not know."))
             }
             if let overlay = codexOverlay(around: composer, in: screen) {
                 return .overlay(overlay)

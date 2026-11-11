@@ -49,7 +49,7 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         message.textColor = .secondaryLabel
         message.accessibilityIdentifier = "chat.image-preview.message"
         view.addSubview(message)
-        retry.setTitle("Retry", for: .normal)
+        retry.setTitle(String(localized: "Retry"), for: .normal)
         retry.addAction(UIAction { [weak self] _ in self?.startLoading() }, for: .touchUpInside)
         view.addSubview(retry)
         navigationItem.rightBarButtonItem = UIBarButtonItem(

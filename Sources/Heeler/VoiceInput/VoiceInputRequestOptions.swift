@@ -28,16 +28,16 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
 
         var message: String {
             switch self {
-            case .languagesUnavailable: "Set language fields in Custom, or use automatic detection for this service."
-            case .singleLanguage: "Choose one language, or use automatic detection for mixed speech."
-            case .invalidLanguage: "Use language codes such as en, zh, or zh-tw, without duplicates."
-            case .customOnly: "Additional request fields are only available for Custom services."
-            case .invalidName: "Field names may contain ASCII letters, numbers, underscores, hyphens, dots, and a final []."
-            case .reservedName: "File and model are supplied by Voice Input and cannot be overridden."
-            case .duplicateName: "Use one entry per field name. Add values to that entry to repeat it."
-            case .missingValues: "Each field needs at least one value. A value may be empty."
-            case .singleValue: "Use one value for language, prompt, response_format, or stream, without brackets."
-            case .conflictingLanguages: "Use language or languages, not both."
+            case .languagesUnavailable: String(localized: "Set language fields in Custom, or use automatic detection for this service.")
+            case .singleLanguage: String(localized: "Choose one language, or use automatic detection for mixed speech.")
+            case .invalidLanguage: String(localized: "Use language codes such as en, zh, or zh-tw, without duplicates.")
+            case .customOnly: String(localized: "Additional request fields are only available for Custom services.")
+            case .invalidName: String(localized: "Field names may contain ASCII letters, numbers, underscores, hyphens, dots, and a final [].")
+            case .reservedName: String(localized: "File and model are supplied by Voice Input and cannot be overridden.")
+            case .duplicateName: String(localized: "Use one entry per field name. Add values to that entry to repeat it.")
+            case .missingValues: String(localized: "Each field needs at least one value. A value may be empty.")
+            case .singleValue: String(localized: "Use one value for language, prompt, response_format, or stream, without brackets.")
+            case .conflictingLanguages: String(localized: "Use language or languages, not both.")
             }
         }
     }
@@ -93,9 +93,9 @@ enum VoiceInputLanguage {
 
     static func name(_ code: String) -> String {
         switch code {
-        case "zh-cn": "Chinese (Mainland China)"
-        case "zh-tw": "Chinese (Taiwan)"
-        case "zh-hk": "Chinese (Hong Kong)"
+        case "zh-cn": String(localized: "Chinese (Mainland China)")
+        case "zh-tw": String(localized: "Chinese (Taiwan)")
+        case "zh-hk": String(localized: "Chinese (Hong Kong)")
         default: Locale.current.localizedString(forLanguageCode: code) ?? code
         }
     }

@@ -292,16 +292,21 @@ struct SSHRoute: Sendable {
 
     /// How a failure names this route: `10.0.0.5`, `100.64.0.5 over
     /// Tailscale`, `127.0.0.1:2222 via vps.example`, `127.0.0.1:2222 via
-    /// vps.example:2022`.
+    /// vps.example:2022`. Shown to the user, so each shape is one localized
+    /// phrase rather than English joined onto the address.
     var label: String {
-        var label = port == 22 ? host : "\(host):\(port)"
-        if let jump {
-            label += " via \(jump.port == 22 ? jump.host : "\(jump.host):\(jump.port)")"
+        let address = port == 22 ? host : "\(host):\(port)"
+        let jumpAddress = jump.map { $0.port == 22 ? $0.host : "\($0.host):\($0.port)" }
+        switch (jumpAddress, overlay?.networkName) {
+        case (let jumpAddress?, let network?):
+            return String(localized: "\(address) via \(jumpAddress) over \(network)")
+        case (let jumpAddress?, nil):
+            return String(localized: "\(address) via \(jumpAddress)")
+        case (nil, let network?):
+            return String(localized: "\(address) over \(network)")
+        case (nil, nil):
+            return address
         }
-        if let overlay {
-            label += " over \(overlay.networkName)"
-        }
-        return label
     }
 }
 

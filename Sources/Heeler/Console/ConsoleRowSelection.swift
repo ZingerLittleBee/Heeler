@@ -6,10 +6,11 @@ import UIKit
 /// `List(selection:)` would paint the system selection: a full-width band
 /// in the tint, which is system blue while the list has keyboard focus, and
 /// it flips the row's hierarchical text to white. Neither suits a list set
-/// beside a terminal, so the sidebar draws the app's own quiet selection,
-/// the same neutral fill the terminal drawer uses, inside the row's shape.
+/// beside a terminal, so the sidebar draws the app's own quiet selection, a
+/// neutral veil over the theme (`ThemeVeil.selection`), inside the row's
+/// shape.
 enum ConsoleRowSelection {
-    static let fill = Color(uiColor: .tertiarySystemFill)
+    static let fill = Color(uiColor: ThemeVeil.selection)
 }
 
 /// A rounded, inset fill behind a selected sidebar row; nothing elsewhere.
