@@ -1,8 +1,23 @@
 // A tmux Pane's `@heeler-status` option (ADR 0044), shared with
 // `plugin/test-vectors/tmux-heeler-status-v1.json`.
 
+import { REPORTED_APPS } from "../core/agent-rule.js";
+
 /** Programs known to report done, so their idle ends no turn (tmux-heeler-status-v1.json). */
 export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build"]);
+
+/**
+ * The word `status` reports for a Pane whose known Agent is `kind`, or null
+ * when `app` names another known program (`tmux-heeler-status-v1.json`).
+ */
+export function wordForTmuxAgent(status, kind) {
+  if (!kind) return null;
+  if (status.app !== null) {
+    const reported = status.app.toLowerCase();
+    if (Object.hasOwn(REPORTED_APPS, reported) && REPORTED_APPS[reported] !== kind) return null;
+  }
+  return status.state;
+}
 
 /** Reads a tmux Pane's `@heeler-status` value into its fields and counts. */
 export function readHeelerStatus(value) {

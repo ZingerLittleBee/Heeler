@@ -9,6 +9,7 @@ import { liveActivityListener } from "./notifications/activity.js";
 import { notificationListener } from "./notifications/notifier.js";
 import { combineTmuxListeners, followStoredTmuxServers } from "./tmux/follower.js";
 import { tmuxPipeReaderListener } from "./tmux/pipe-reader.js";
+import { tmuxTranscriptListener } from "./tmux/transcript-watcher.js";
 import { usageSessions } from "./usage/layout.js";
 import { tmuxUsageListener, usageListener } from "./usage/recorder.js";
 
@@ -36,6 +37,7 @@ followStoredTmuxServers({
   listener: combineTmuxListeners(
     tmuxUsageListener({ directory, log }),
     tmuxPipeReaderListener({ log }),
+    tmuxTranscriptListener(),
   ),
 });
 

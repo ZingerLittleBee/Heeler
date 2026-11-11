@@ -59,7 +59,7 @@
     },
     {
       "path": "main.js",
-      "sha256": "0cf17076160d3ba2369ff103a9b4b720fca728d3537a712fd822f27755d83922"
+      "sha256": "6fff6a42cdf1ecf052a8063f14aa055dc70fe34f1a052132bf902358bfb193b7"
     },
     {
       "path": "notifications/activity.js",
@@ -231,7 +231,11 @@
     },
     {
       "path": "tmux/status.js",
-      "sha256": "1dc3aeccc7ec8305d464dd7310dfddfa7ede03930b7f7eb9bbb4c81d0ad2b1e7"
+      "sha256": "374ab1aa0b0f0f0e0cacadb5982f857f235ef9cac73df60c362200af107aae7f"
+    },
+    {
+      "path": "tmux/transcript-watcher.js",
+      "sha256": "99354050597e5c61c8775bf90bd82c47e8e1ec2f89361bf6f44dfea700139c66"
     },
     {
       "path": "usage-query.js",
