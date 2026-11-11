@@ -172,6 +172,7 @@ struct ConsoleView: View {
     @Environment(\.agentSceneRouting) private var sceneRouting
 
     var body: some View {
+        let _ = PerfTrace.count("ConsoleView.body")
         tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
     }
 
@@ -2271,18 +2272,22 @@ struct ConsoleView: View {
     }
 
     private var hostSections: [ConsoleHostSection] {
-        listPresentation.sections(
-            hosts: hosts.consoleHosts,
-            console: console,
-            filteredHostIDs: hostFilter,
-            searchQuery: agentSearchText)
+        PerfTrace.span("console.list.host-sections") {
+            listPresentation.sections(
+                hosts: hosts.consoleHosts,
+                console: console,
+                filteredHostIDs: hostFilter,
+                searchQuery: agentSearchText)
+        }
     }
 
     private var workspaceCards: [ConsoleWorkspaceCard] {
-        ConsoleWorkspaceCard.cards(
-            listPresentation.workspaceSections(
-                hosts: hosts.consoleHosts, console: console,
-                filteredHostIDs: hostFilter, searchQuery: agentSearchText))
+        PerfTrace.span("console.list.workspace-cards") {
+            ConsoleWorkspaceCard.cards(
+                listPresentation.workspaceSections(
+                    hosts: hosts.consoleHosts, console: console,
+                    filteredHostIDs: hostFilter, searchQuery: agentSearchText))
+        }
     }
 
     /// Where previous and next can land.
@@ -2330,8 +2335,10 @@ struct ConsoleView: View {
     }
 
     private var filteredAgents: [ConsoleAgent] {
-        let statusFilter = listPresentation.statusFilter
-        return searchedAgents.filter { statusFilter.admits($0) }
+        PerfTrace.span("console.list.filtered-agents") {
+            let statusFilter = listPresentation.statusFilter
+            return searchedAgents.filter { statusFilter.admits($0) }
+        }
     }
 
     private var statusFilterCounts: [ConsoleAgentStatusFilter: Int] {
@@ -2343,6 +2350,8 @@ struct ConsoleView: View {
     /// Judged before the search, so a row's title does not change as the
     /// user types.
     private var agentTitleQualifiers: [ConsoleAgent.ID: String] {
+        let span = PerfTrace.begin("console.list.title-qualifiers")
+        defer { PerfTrace.end(span) }
         // By Workspace rows leave fields to their card's titles.
         let isByWorkspace = listPresentation.mode == .byWorkspace
         let savedStructures = isByWorkspace ? console.savedWorkspaceStructures : [:]

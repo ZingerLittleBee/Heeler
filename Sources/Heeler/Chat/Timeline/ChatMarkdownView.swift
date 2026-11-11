@@ -20,6 +20,8 @@ struct ChatMarkdownView: View {
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
+        let _ = PerfTrace.count("ChatMarkdownView.body")
+        let _ = PerfTrace.count("ChatMarkdownView.blocks", blocks.count)
         VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks.indices, id: \.self) { @Sendable index in
                 MainActorContent {

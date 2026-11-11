@@ -51,7 +51,9 @@ final class ChatTimelineModel {
             waiting = nil
             let isNewConversation = request.conversation != conversation
             if isNewConversation { await builder.reset() }
+            let build = PerfTrace.beginInterval("chat.rows.build", "entries=\(request.input.entries.count)")
             let rows = await builder.rows(for: request.input)
+            PerfTrace.endInterval(build, "rows=\(rows.count)")
             var next = state
             if isNewConversation {
                 conversation = request.conversation

@@ -77,6 +77,8 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     override func prepare() {
         super.prepare()
         guard let collectionView else { return }
+        let span = PerfTrace.begin("chat.layout.prepare")
+        defer { PerfTrace.end(span) }
         let ids = itemIDs()
         let width = max(0, collectionView.bounds.width - trailingReserve)
         // A row measured in another font is as stale as one in another size.
@@ -163,6 +165,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
             forPreferredLayoutAttributes: preferredAttributes, withOriginalAttributes: originalAttributes)
         let index = preferredAttributes.indexPath.item
         guard let collectionView, index < geometry.count else { return context }
+        PerfTrace.count("chat.layout.resized-row")
         let anchor = isFollowing() ? nil : stableAnchor(in: collectionView)
         let delta = geometry.setHeight(preferredAttributes.size.height, at: index)
         context.contentSizeAdjustment = CGSize(width: 0, height: delta)

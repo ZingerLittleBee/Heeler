@@ -233,6 +233,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let registration = UICollectionView.CellRegistration<ChatHostingCell, ChatRowID> {
             [weak self] cell, _, id in
             guard let self, let row = rowsByID[id] else { return }
+            PerfTrace.count("chat.cell.configure")
             cell.rowID = id
             let isExpanded = expanded.contains(id)
             let files = expandedFiles[id] ?? []
@@ -256,8 +257,20 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        PerfTrace.setContext("chat", "shown")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        PerfTrace.setContext("chat", nil)
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        let span = PerfTrace.begin("chat.did-layout")
+        defer { PerfTrace.end(span) }
         updateBottomObstruction()
         liftEndClearOfCollapseControl()
         requestOlderIfShort()
@@ -299,6 +312,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         if let applied, applied.generation == state.generation, applied.revision == state.revision {
             return
         }
+        let span = PerfTrace.begin("chat.apply")
+        defer { PerfTrace.end(span) }
+        PerfTrace.count("chat.apply.rows", state.rows.count)
         let previous = applied
         let oldRows = rowsByID
         applied = state
@@ -318,8 +334,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             noteFollowing()
             let snapshot = projectedSnapshot()
             UIView.performWithoutAnimation {
-                dataSource.applySnapshotUsingReloadData(snapshot)
-                collectionView.layoutIfNeeded()
+                PerfTrace.span("chat.apply.reload") { dataSource.applySnapshotUsingReloadData(snapshot) }
+                PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
                 pinToEnd()
             }
             forgetMeasurements()
@@ -340,7 +356,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         var snapshot = projectedSnapshot()
-        let changed = changedRows(since: oldRows, in: snapshot)
+        let changed = PerfTrace.span("chat.apply.changed") { changedRows(since: oldRows, in: snapshot) }
+        PerfTrace.count("chat.apply.changed-rows", changed.count)
         // The layout still holds the shown rows' last heights.
         let heightsBefore = rowHeights(changed)
         snapshot.reconfigureItems(changed)
@@ -354,8 +371,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         UIView.performWithoutAnimation {
-            dataSource.apply(snapshot, animatingDifferences: false)
-            collectionView.layoutIfNeeded()
+            PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
+            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
@@ -403,6 +420,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Folds the applied rows as the open headers say, and makes the
     /// result what the list shows.
     private func projectedSnapshot() -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
+        let span = PerfTrace.begin("chat.apply.project")
+        defer { PerfTrace.end(span) }
         let output = ChatTimelineProjection.project(
             applied?.rows ?? [], turns: applied?.turns ?? [], precedingTurnEnd: applied?.precedingTurnEnd,
             signals: applied?.signals ?? ChatTurnSignals(), open: openHeaders)
@@ -987,6 +1006,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let span = PerfTrace.begin("chat.scroll.did-scroll")
+        defer { PerfTrace.end(span) }
         if disclosureAnchor == nil { latch.scrolled(isAtEnd: isAtEnd) }
         noteFollowing()
         releaseHoldIfBack()
@@ -1212,6 +1233,8 @@ final class ChatHostingCell: UICollectionViewCell {
         guard let fitted = layoutAttributes.copy() as? UICollectionViewLayoutAttributes else {
             return layoutAttributes
         }
+        let span = PerfTrace.begin("chat.cell.measure")
+        defer { PerfTrace.end(span) }
         let size = contentView.systemLayoutSizeFitting(
             CGSize(width: layoutAttributes.size.width, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)

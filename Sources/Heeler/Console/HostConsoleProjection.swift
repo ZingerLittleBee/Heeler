@@ -730,6 +730,13 @@ final class HostConsoleProjection: ConsoleHostProjection {
 
     private func handle(_ update: EventsSessionUpdate) {
         guard !hasEnded else { return }
+        let span = PerfTrace.begin("host.update")
+        defer { PerfTrace.end(span) }
+        switch update {
+        case .connectionHealthChanged: PerfTrace.count("host.update.health")
+        case .status(let status): PerfTrace.event("host.status", "host=\(host.name) status=\(status)")
+        case .event: PerfTrace.count("host.update.event")
+        }
         isCheckingConnection = session.isCheckingConnection
         switch update {
         case .connectionHealthChanged:
@@ -818,9 +825,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
         let paneRevisionBeforeSnapshot = paneChangeRevision
         let transportGenerationBeforeSnapshot = session.currentTransportGeneration
         do {
+            let read = PerfTrace.beginInterval("host.snapshot", "host=\(host.name)")
             let snapshot = try await session.withTransport { transport in
                 try await transport.sessionSnapshot()
             }
+            PerfTrace.endInterval(read)
             guard
                 !hasEnded,
                 status == .connected,
@@ -887,6 +896,8 @@ final class HostConsoleProjection: ConsoleHostProjection {
         preservingPaneChangesAfter paneStartRevision: UInt64,
         requestGeneration: UInt64
     ) {
+        let span = PerfTrace.begin("host.snapshot.apply")
+        defer { PerfTrace.end(span) }
         sidebarRevision &+= 1
         let builder = ConsolePaneRowBuilder(host: host, inventory: snapshot)
         let liveChange: (String) -> PaneInfo? = { [latestPaneChanges] paneID in

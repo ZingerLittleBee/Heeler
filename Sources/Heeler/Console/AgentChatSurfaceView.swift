@@ -178,6 +178,7 @@ struct AgentChatSurfaceView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentChatSurfaceView.body")
         GeometryReader { proxy in
             presentedSurface
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
@@ -362,6 +363,8 @@ struct AgentChatSurfaceView: View {
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
+            let span = PerfTrace.begin("chat.surface.feed")
+            defer { PerfTrace.end(span) }
             let transcript = chat?.conversation.transcript
             let entries = feed.history.marking(transcript?.entries ?? [])
             timeline.update(
@@ -885,6 +888,8 @@ struct AgentChatSurfaceView: View {
     }
 
     private var timelineFeed: TimelineFeed {
+        let span = PerfTrace.begin("chat.surface.timeline-feed")
+        defer { PerfTrace.end(span) }
         guard let chat else {
             return TimelineFeed(
                 generation: 0, revision: 0, older: .reachedStart, pending: [], history: BlockedHistory(),

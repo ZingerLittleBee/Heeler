@@ -1466,6 +1466,8 @@ final class ConsoleStore {
     }
 
     private func rebuild() {
+        let span = PerfTrace.begin("console.rebuild")
+        defer { PerfTrace.end(span) }
         let current = Array(projections.values)
         reconcileTerminalConnections(current)
         requestHostPlatforms(current)
@@ -1889,6 +1891,8 @@ final class ConsoleStore {
     }
 
     private func rebuildAgentOrder() {
+        let span = PerfTrace.begin("console.rebuild.order")
+        defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
@@ -2250,6 +2254,8 @@ final class ConsoleStore {
     }
 
     private func reconcileChatCache() {
+        let span = PerfTrace.begin("console.rebuild.chat-cache")
+        defer { PerfTrace.end(span) }
         for projection in projections.values {
             let host = projection.host
             guard host.capabilities.chat, isActive,
@@ -2290,7 +2296,10 @@ final class ConsoleStore {
                         let chat = chatStore(for: agent, program: program) else { continue }
                     let key = chatPrefetchKey(agent, generation: generation)
                     chatPrefetched[agent.id] = key
+                    let read = PerfTrace.beginInterval("chat.prefetch", "pane=\(agent.agent.paneID)")
                     let prefetched = await chat.prefetch()
+                    PerfTrace.endInterval(
+                        read, "ok=\(prefetched) entries=\(chat.conversation.transcript.entries.count)")
                     guard !Task.isCancelled else { return }
                     let snapshot = chat.conversation
                     let retries = chatPrefetchRetries[agent.id].flatMap { $0.key == key ? $0.count : nil } ?? 0
@@ -2339,6 +2348,8 @@ final class ConsoleStore {
     /// stays open, and its Chat with it, until the Agent is back or gone.
     private func publishChatAgents() {
         guard !chatStores.isEmpty else { return }
+        let span = PerfTrace.begin("console.rebuild.chat-agents")
+        defer { PerfTrace.end(span) }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
         for (id, store) in chatStores {
             let core = projections[id.hostID] as? HerdrCoreConsoleProjection
