@@ -23,8 +23,11 @@ function run(target) {
 }
 
 // `show-environment -s` on tmux 3.3a and 3.7b: `NAME="value"; export NAME;`
-// or `unset NAME;`. A value keeps its newlines inside the quotes, and `"`,
-// `\`, `$` and `` ` `` are escaped with a backslash. Anything else is unreadable.
+// or `unset NAME;`. A name runs up to `="` or `;` (tmux names cannot contain
+// `=`), so a bash function (`BASH_FUNC_module%%`) or a `.` or `-` in the name
+// is one statement and is ignored unless Usage records that name. A value
+// keeps its newlines inside the quotes, and `"`, `\`, `$` and `` ` `` are
+// escaped with a backslash. Anything else is unreadable.
 function parseShellEnvironment(text) {
   const found = new Map();
   let index = 0;
@@ -34,11 +37,12 @@ function parseShellEnvironment(text) {
   const skipSpace = () => {
     while (index < text.length && " \n\t\r".includes(text[index])) index += 1;
   };
-  const readName = () => {
-    const start = index;
-    while (index < text.length && /[A-Za-z0-9_]/.test(text[index])) index += 1;
-    if (index === start) fail();
-    return text.slice(start, index);
+  const readUntil = (marker) => {
+    const at = text.indexOf(marker, index);
+    if (at <= index) fail();
+    const name = text.slice(index, at);
+    index = at;
+    return name;
   };
   const expect = (token) => {
     if (!text.startsWith(token, index)) fail();
@@ -69,18 +73,18 @@ function parseShellEnvironment(text) {
     if (index >= text.length) break;
     if (text.startsWith("unset ", index)) {
       index += "unset ".length;
-      const name = readName();
+      const name = readUntil(";");
       expect(";");
       found.set(name, null);
       continue;
     }
-    const name = readName();
+    const name = readUntil('="');
     expect('="');
     const value = readQuoted();
     expect(";");
     skipSpace();
     expect("export ");
-    if (readName() !== name) fail();
+    if (readUntil(";") !== name) fail();
     expect(";");
     found.set(name, value);
   }

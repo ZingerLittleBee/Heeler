@@ -223,7 +223,7 @@
     },
     {
       "path": "usage/tmux-environment.js",
-      "sha256": "8a90430f64ea43cf25cba21ed74e22d0d7a201385890af51bf572d1c39aeac4e"
+      "sha256": "218bfcc4d812684d39db0ab69033c2c58bbd9ce16de04e104ccea04ec3915e6b"
     },
     {
       "path": "version.json",

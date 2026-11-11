@@ -84,6 +84,34 @@ test("the global environment's named values, and nothing else", async () => {
   }
 });
 
+test("a bash function and names with a dot or a dash leave the real values", async () => {
+  const running = server();
+  try {
+    running.set(
+      "BASH_FUNC_module%%",
+      "() {\nCLAUDE_CONFIG_DIR=\"/planted\"; export CLAUDE_CONFIG_DIR;\nunset HOME;\n}\n",
+    );
+    running.set("WITH.DOT", "dot-marker");
+    running.set("WITH-DASH", "dash-marker");
+    running.set("CLAUDE_CONFIG_DIR", "/fixture/real-claude");
+    running.set("HOME", "/tmp/fixture-home");
+
+    const environment = await readTmuxGlobalEnvironment({ executable: tmux, socket: running.socket });
+    assert.ok(environment);
+    assert.deepEqual(Object.keys(environment).sort(), [...ENVIRONMENT_NAMES].sort());
+    assert.equal(environment.CLAUDE_CONFIG_DIR, "/fixture/real-claude");
+    assert.equal(environment.HOME, "/tmp/fixture-home");
+    assert.equal(Object.values(environment).includes("/planted"), false);
+    assert.equal(Object.values(environment).includes("dot-marker"), false);
+    assert.equal(Object.values(environment).includes("dash-marker"), false);
+    assert.equal("BASH_FUNC_module%%" in environment, false);
+    assert.equal("WITH.DOT" in environment, false);
+    assert.equal("WITH-DASH" in environment, false);
+  } finally {
+    running.stop();
+  }
+});
+
 test("a server that is not there is unreadable, and asking does not start one", async () => {
   const root = mkdtempSync(join(tmpdir(), "heeler-tmux-env-"));
   roots.push(root);
