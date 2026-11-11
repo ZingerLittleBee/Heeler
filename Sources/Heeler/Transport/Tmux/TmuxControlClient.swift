@@ -39,6 +39,8 @@ actor TmuxControlClient {
         case tagged(UInt64)
         /// A `run`, answered through `runs` while it still waits there.
         case run(UInt64)
+        /// A `post`, whose reply nobody reads.
+        case dropped
     }
 
     nonisolated let events: AsyncStream<Event>
@@ -90,10 +92,20 @@ actor TmuxControlClient {
         lineSink.yield(Self.line(command))
     }
 
+    /// Sends `command` without waiting for its reply, which is dropped. Its
+    /// effects come in order with everything sent before and after it.
+    func post(_ command: TmuxControlCommand) throws {
+        if let end { throw Ended(end: end) }
+        waiters.append(.dropped)
+        lineSink.yield(Self.line(command))
+    }
+
     /// Sends `command` and waits for its reply. A run that times out or is
-    /// cancelled still has its reply coming, and keeps its place in line.
+    /// cancelled still has its reply coming, and keeps its place in line. A
+    /// run whose task was cancelled before it began sends nothing.
     func run(_ command: TmuxControlCommand, timeout: Duration) async throws -> TmuxControlReply {
         if let end { throw Ended(end: end) }
+        try Task.checkCancellation()
         nextRun += 1
         let id = nextRun
         waiters.append(.run(id))
@@ -104,7 +116,15 @@ actor TmuxControlClient {
         }
         defer { timer.cancel() }
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { runs[id] = $0 }
+            try await withCheckedThrowingContinuation { continuation in
+                // A cancel that came before the run waited here has nothing
+                // to stop yet.
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    runs[id] = continuation
+                }
+            }
         } onCancel: {
             Task { await self.stopWaiting(id, with: CancellationError()) }
         }
@@ -175,6 +195,7 @@ actor TmuxControlClient {
             switch waiters.removeFirst() {
             case .tagged(let tag): eventSink.yield(.replied(tag: tag, reply))
             case .run(let id): runs.removeValue(forKey: id)?.resume(returning: reply)
+            case .dropped: break
             }
         case .output(let pane, let bytes):
             eventSink.yield(.output(pane: pane, bytes: bytes))

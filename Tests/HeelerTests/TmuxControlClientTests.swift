@@ -136,6 +136,44 @@ struct TmuxControlClientTests {
         #expect(try await next == reply(3, ["next"]))
     }
 
+    /// A run whose task was cancelled before it began waits for nothing: it
+    /// ends at once, not at its timeout, and writes nothing.
+    @Test func aRunCancelledBeforeItWaitsEndsAtOnce() async throws {
+        let (client, channel) = client()
+        await channel.send(Data("%begin 1 1 0\n%end 1 1 0\n".utf8))
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await client.run(command("late"), timeout: .seconds(60))
+        }
+        let started = ContinuousClock.now
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(ContinuousClock.now - started < .seconds(5))
+        #expect(await client.waitingCommands == 0)
+        #expect(await channel.written.isEmpty)
+    }
+
+    /// A posted command keeps its place in line, and its reply goes nowhere.
+    @Test func aPostedCommandsReplyIsDropped() async throws {
+        let (client, channel) = client()
+        await channel.send(Data("%begin 1 1 0\n%end 1 1 0\n".utf8))
+        try await client.post(command("posted"))
+        try await client.send(command("tagged"), tag: 4)
+        try await waitUntil("both commands to be written") { await channel.written.count == 2 }
+        #expect(await lines(channel) == ["posted\n", "tagged\n"])
+        await channel.send(Data("%begin 1 2 1\nfor post\n%end 1 2 1\n%begin 1 3 1\nfor tag\n%end 1 3 1\n".utf8))
+        await channel.finish()
+        #expect(await drained(client) == [.replied(tag: 4, reply(3, ["for tag"])), .ended(.channelEnded)])
+    }
+
+    @Test func aPostAfterTheEndThrowsIt() async throws {
+        let (client, channel) = client()
+        await channel.finish()
+        _ = await drained(client)
+        await #expect(throws: TmuxControlClient.Ended(end: .channelEnded)) {
+            try await client.post(command("late"))
+        }
+    }
+
     /// The commands the client was started with reply with flags 0, one
     /// block each, before anything it writes.
     @Test func theStartCommandsRepliesAreKeptApart() async throws {

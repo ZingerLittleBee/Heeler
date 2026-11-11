@@ -338,6 +338,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private(set) var controlCommands: [String] = []
     /// Control clients that answer nothing at all, for attaches that time out.
     private var silentControlClients = 0
+    /// What `#{pane_key_mode}` reads for a pane, by pane id: `VT10x`, as under
+    /// tmux's default `extended-keys off`, unless set.
+    private var keyModes: [String: String] = [:]
 
     var openControlClients: Int { controlClients.count }
 
@@ -346,6 +349,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     func setScreen(_ rows: [String], of pane: String, on name: String = "default") {
         screens[Self.socketPath(name, in: loginDirectory), default: [:]][pane] = rows
+    }
+
+    /// What `#{pane_key_mode}` reads for `pane` from now on: `Ext 1` or
+    /// `Ext 2` once its program asked for extended keys, empty before tmux 3.5.
+    func setKeyMode(_ mode: String, of pane: String) {
+        keyModes[pane] = mode
     }
 
     func silenceNextControlClient() {
@@ -461,6 +470,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let heeler = controlClients.values.filter { $0.socket == client.socket && $0.window == window }
                 .map { "\($0.sessionID) \(window) 1" }.sorted()
             return block(users + heeler)
+        case "display-message" where words.contains(TmuxKey.paneKeyModeFormat):
+            let target = words.firstIndex(of: "-t").map { words[$0 + 1] } ?? pane.paneID
+            return block([keyModes[target] ?? "VT10x"])
         case "display-message":
             let width = pane.width, height = pane.height
             return block([
@@ -474,6 +486,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         case "refresh-client":
             return block(["%continue \(pane.paneID)"])
         case "kill-window", "kill-session":
+            return block([])
+        case "send-keys", "set-buffer", "paste-buffer":
             return block([])
         default:
             return block(["unknown command: \(words.first ?? "")"], succeeded: false)

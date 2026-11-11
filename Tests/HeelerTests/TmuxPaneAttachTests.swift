@@ -183,14 +183,101 @@ struct TmuxPaneAttachTests {
         }
     }
 
-    @Test func keysAreTakenAndNotSentYet() async throws {
+    // MARK: Input
+
+    /// The lines the Attach's client wrote for input: keys, text, pastes and
+    /// the reads of `#{pane_key_mode}` before a key with no legacy encoding.
+    private func input(on tmux: ScriptedTmuxHost) async -> [String] {
+        await tmux.controlCommands.filter { line in
+            ["send-keys ", "set-buffer ", "paste-buffer "].contains { line.hasPrefix($0) }
+                || line.contains("pane_key_mode")
+        }
+    }
+
+    private static let keyModeRead = ##"display-message -p -t "%0" "\#\{pane_key_mode\}""##
+
+    /// Text goes as text and each key by its tmux name, in the order typed,
+    /// through the Attach's own client.
+    @Test func textAndKeysGoThroughTheClientInOrder() async throws {
         let tmux = await host()
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
+        session.send(Data(#"echo "hi" $HOME ~ #{x};"#.utf8) + Data([0x0D]))
+        session.send(Data("\u{1B}[A\u{03}\u{1B}[Z".utf8))
+        let expected = [
+            ##"send-keys -l -t "%0" -- "echo \"hi\" \$HOME \~ \#\{x\}\;""##,
+            #"send-keys -t "%0" Enter"#,
+            #"send-keys -t "%0" Up"#,
+            #"send-keys -t "%0" C-c"#,
+            #"send-keys -t "%0" BTab"#,
+        ]
+        try await waitUntil("the input") { await input(on: tmux).count >= expected.count }
+        #expect(await input(on: tmux) == expected)
+    }
+
+    /// A key with no legacy encoding goes only while the Pane's program reads
+    /// keys in an extended mode, never before tmux 3.5 (an empty read), and
+    /// what was typed after it follows it.
+    @Test(arguments: [("VT10x", false), ("", false), ("Ext 1", true), ("Ext 2", true)])
+    func aKeyWithNoLegacyEncodingGoesOnlyInAnExtendedMode(mode: String, sent: Bool) async throws {
+        let tmux = await host()
+        await tmux.setKeyMode(mode, of: "%0")
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        session.send(Data("\u{1B}[27;2;13~".utf8))
+        session.send(Data("x".utf8))
+        let expected = [Self.keyModeRead] + (sent ? [#"send-keys -t "%0" S-Enter"#] : []) + [#"send-keys -l -t "%0" -- x"#]
+        try await waitUntil("the input") { await input(on: tmux).count >= expected.count }
+        #expect(await input(on: tmux) == expected)
+    }
+
+    /// Every measured key reaches tmux by the name the shared vector holds,
+    /// and none as bytes with `send-keys -H`.
+    @Test func everyMeasuredKeyGoesByItsName() async throws {
+        let vector = try TmuxInputVectorFile.load()
+        let tmux = await host()
+        await tmux.setKeyMode("Ext 2", of: "%0")
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        for key in vector.keys { session.send(TmuxInputVectorFile.bytes(key.desktop)) }
+        let expected = vector.keys.map { key in
+            key.text.map { TmuxControlCommand(["send-keys", "-l", "-t", "%0", "--", $0]).line }
+                ?? TmuxControlCommand(["send-keys", "-t", "%0", key.key ?? ""]).line
+        }
+        let sent = { await self.input(on: tmux).filter { $0 != Self.keyModeRead } }
+        try await waitUntil("every key") { await sent().count >= expected.count }
+        #expect(await sent() == expected)
+        #expect(await !tmux.controlCommands.contains { $0.contains(" -H") })
+    }
+
+    /// A paste goes into a buffer named for this Attach, and is pasted from it
+    /// exactly, line feeds included, then the buffer is deleted.
+    @Test func aPasteGoesThroughABufferOfTheAttachs() async throws {
+        let tmux = await host()
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        let name = try #require(await tmux.attachSessions.first)
+        session.send(Data("\u{1B}[200~line one\nline \"two\"\u{1B}[201~\r".utf8))
+        let expected = [
+            #"set-buffer -b \#(name) -- "line one\nline \"two\"""#,
+            #"paste-buffer -p -r -d -b \#(name) -t "%0""#,
+            #"send-keys -t "%0" Enter"#,
+        ]
+        try await waitUntil("the paste") { await input(on: tmux).count >= expected.count }
+        #expect(await input(on: tmux) == expected)
+    }
+
+    /// Once the Attach ended, input is refused rather than kept.
+    @Test func inputAfterTheEndIsRefused() async throws {
+        let tmux = await host()
+        let session = try await attach(on: tmux)
         var output = session.output.makeAsyncIterator()
         _ = try await output.next()
-        let before = await tmux.controlCommands
-        try await session.sendAcknowledged(Data("ls\r".utf8))
-        #expect(await tmux.controlCommands == before)
+        await tmux.endUserSessions(holding: "%0")
+        _ = await ending(of: &output)
+        await #expect(throws: (any Error).self) {
+            try await session.sendAcknowledged(Data("ls".utf8))
+        }
+        await session.end()
     }
 }

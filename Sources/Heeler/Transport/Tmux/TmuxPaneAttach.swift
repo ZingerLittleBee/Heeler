@@ -15,7 +15,8 @@ import Foundation
 /// its exec failed. Ending the session closes the exec: tmux reads the end of
 /// its input, detaches the client, and the session ends with it.
 ///
-/// Keys are not sent yet: they are dropped.
+/// What the user types goes through the same client, in order (`type(_:)`).
+/// The view's resizes are not sent.
 actor TmuxPaneAttach {
     private let client: TmuxControlClient
     private let session: String
@@ -54,7 +55,9 @@ actor TmuxPaneAttach {
         try await attach.start(within: startLimit)
         let input = TerminalAttachInputQueue()
         let pump = Task {
-            try? await input.pump(write: { _ in }, resize: { _, _ in })
+            // A write fails only once the client has ended, which `output`
+            // reports: there is nothing else for this task to say.
+            try? await input.pump(write: { try await attach.type($0) }, resize: { _, _ in })
         }
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
@@ -202,6 +205,50 @@ actor TmuxPaneAttach {
                 await client.close()
             }
         }
+    }
+
+    // MARK: Input
+
+    /// How long a read of `#{pane_key_mode}` may take before its key is dropped.
+    private static let keyModeTimeout = Duration.seconds(5)
+
+    /// Types the terminal view's bytes into the Pane through the client, in
+    /// order (ADR 0043): text with `send-keys -l`, each key by its tmux name,
+    /// and a paste through a buffer named for this Attach, so it arrives
+    /// exactly and bracketed only if the program asked for that. Throws once
+    /// the client has ended.
+    func type(_ bytes: Data) async throws {
+        for input in TmuxKeyReader.read(bytes) {
+            switch input {
+            case .text(let text):
+                try await client.post(TmuxControlCommand(["send-keys", "-l", "-t", pane, "--", text]))
+            case .key(let key):
+                guard try await tmuxEncodes(key) else { continue }
+                try await client.post(TmuxControlCommand(["send-keys", "-t", pane, key.name]))
+            case .paste(let text):
+                guard !text.isEmpty else { continue }
+                try await client.post(TmuxControlCommand(["set-buffer", "-b", session, "--", text]))
+                try await client.post(TmuxControlCommand(["paste-buffer", "-p", "-r", "-d", "-b", session, "-t", pane]))
+            }
+        }
+    }
+
+    /// Whether tmux can encode `key` for the Pane's program now: a key with no
+    /// legacy encoding only in an extended mode, which tmux shows from 3.5.
+    /// Anything typed after it waits for the answer.
+    private func tmuxEncodes(_ key: TmuxKey) async throws -> Bool {
+        guard key.isExtended else { return true }
+        let reply: TmuxControlReply
+        do {
+            reply = try await client.run(
+                TmuxControlCommand(["display-message", "-p", "-t", pane, TmuxKey.paneKeyModeFormat]),
+                timeout: Self.keyModeTimeout)
+        } catch TransportError.timedOut {
+            return false
+        }
+        guard reply.succeeded else { return false }
+        let mode = reply.lines.map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n")
+        return key.isSent(whilePaneKeyModeReads: mode)
     }
 
     // MARK: Output
