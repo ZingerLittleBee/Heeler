@@ -66,6 +66,24 @@ xcrun devicectl device copy from --device "$DEVICE" --domain-type appDataContain
   --domain-identifier dev.bybee.heeler --source Library/Caches/PerfTrace --destination ./PerfTrace
 ```
 
+## Find what re-evaluates a body
+
+A count that rises with every event says a `body` runs, not why. For one run,
+put `let _ = Self._logChanges()` in that `body` and read what SwiftUI logs:
+
+```sh
+xcrun simctl spawn "$UDID" log stream --level debug \
+  --predicate 'process == "Heeler" AND subsystem == "com.apple.SwiftUI"'
+```
+
+- `@self changed`: the parent built the view again. Look at what the view is
+  handed, since a closure never compares equal, and at why the parent ran.
+- `\Store.property changed`: an observable property read while this body ran.
+  That includes what the initializers of the views it builds read.
+- `_name changed`: the view's own state or environment.
+
+The line is for the run only; take it out before committing.
+
 ## Add a measurement
 
 - `PerfTrace.begin` and `end`, or `PerfTrace.span { }`, time main-actor work
