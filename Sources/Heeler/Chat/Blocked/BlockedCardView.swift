@@ -519,8 +519,10 @@ private struct BlockedDialogCard: View {
         if isAddingNote {
             VStack(alignment: .leading, spacing: 8) {
                 BlockedTextField(
-                    placeholder: String(localized: "Tell \(dialog.program.chatName) what to do"), text: $text,
-                    isFocused: $isTextFocused)
+                    placeholder: String(
+                        localized: "Tell \(dialog.program.chatName) what to do",
+                        comment: "Placeholder of the note field on a permission card: the program's name"),
+                    text: $text, isFocused: $isTextFocused)
                 HStack(spacing: 8) {
                     if let allow = dialog.options.first(where: { $0.role == .approve }) {
                         Button("Allow with Note") { perform(.amend(ordinal: allow.ordinal, note: text)) }

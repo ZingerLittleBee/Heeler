@@ -50503,7 +50503,29 @@
         }
       }
     },
-    "Tell %@ what to do" : {},
+    "Tell %@ what to do" : {
+      "comment" : "Placeholder of the note field on a permission card: the program's name",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に指示する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告诉 %@ 怎么做"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告訴 %@ 要做什麼"
+          }
+        }
+      }
+    },
     "Tell Claude what to change" : {
       "localizations" : {
         "ja" : {
