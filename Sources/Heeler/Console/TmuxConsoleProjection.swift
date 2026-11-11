@@ -61,6 +61,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var openCodeVersion: String?
     /// The Panes this device shows now, whose finished turns are seen as they end.
     private var shownAgents: Set<String> = []
+    /// Where Heeler's Claude Code hook script goes, read once per connection's projection.
+    private var hookLocations: HostHelperProbe.Locations?
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -343,7 +345,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         let server = try await launchServer()
-        let made = try await created(try command { try TmuxLaunch.agentWindow(request, on: server) })
+        let hooks = await hookSettings(for: request)
+        let made = try await created(
+            try command { try TmuxLaunch.agentWindow(request, on: server, hookSettings: hooks) })
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
             workspaceID: request.workspaceID ?? "", tabID: made.windowID, paneID: made.paneID,
@@ -358,8 +362,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec
     ) async throws -> Agent {
         let server = try await launchServer()
+        let hooks = await hookSettings(for: request)
         let made = try await created(
-            try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server) })
+            try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server, hookSettings: hooks) })
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
             workspaceID: made.sessionID ?? "", tabID: made.windowID, paneID: made.paneID,
@@ -420,6 +425,67 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         return TmuxLaunch.Server(
             paths: paths, shell: shell, kernel: facts.kernel, running: server != nil,
             openCodeVersion: openCodeVersion)
+    }
+
+    // MARK: Claude Code hooks (ADR 0044)
+
+    /// Places Heeler's Claude Code hook script, the settings a launch passes and
+    /// the stored tmux paths the script runs, and answers where they went.
+    func placeClaudeCodeHooks() async throws -> HostHelperProbe.Locations {
+        let paths = try await launchServer().paths
+        let locations = try await claudeCodeHookLocations()
+        let files = TmuxClaudeCodeHooks.files(
+            script: try TmuxClaudeCodeHooks.bundledScript(), paths: paths, dataHome: locations.dataHome)
+        let nonce = HostProcessReader.makeNonce()
+        let script = TmuxClaudeCodeHooks.placeScript(files, nonce: nonce)
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(script, throughLoginShell: false)
+        }
+        guard TmuxClaudeCodeHooks.isPlaced(result, nonce: nonce) else {
+            throw TransportError.malformedResponse(String(localized: "The Host refused Heeler's hook script."))
+        }
+        return locations
+    }
+
+    /// The Host's home and data home, as the Helper's own script finds them.
+    func claudeCodeHookLocations() async throws -> HostHelperProbe.Locations {
+        if let hookLocations { return hookLocations }
+        let nonce = HostProcessReader.makeNonce()
+        let script = TmuxClaudeCodeHooks.locateScript(nonce: nonce)
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(script, throughLoginShell: false)
+        }
+        guard result.exitStatus == 0,
+            let locations = try? TmuxClaudeCodeHooks.locations(stdout: result.stdout, nonce: nonce)
+        else {
+            throw TransportError.malformedResponse(String(localized: "Heeler couldn't read where this Host keeps its files."))
+        }
+        hookLocations = locations
+        return locations
+    }
+
+    /// The settings file a Claude Code launch passes with `--settings`: nil for
+    /// any other program, under a root whose settings already run Heeler's
+    /// script, or when the script couldn't be placed. The Agent starts either
+    /// way. A root Heeler can't read with certainty gets them too, since one
+    /// handler in two settings files runs once.
+    private func hookSettings(for request: AgentLaunchRequest) async -> String? {
+        guard request.kind == SupportedAgentKind.claude.rawValue,
+            let locations = try? await placeClaudeCodeHooks()
+        else { return nil }
+        let settings = ClaudeCodeHooks.launchSettingsPath(dataHome: locations.dataHome)
+        guard let root = TmuxClaudeCodeHooks.root(environment: request.environment, home: locations.home) else {
+            return settings
+        }
+        let session = session
+        let path = ClaudeCodeHooks.settingsPath(root: root)
+        let current = try? await session.withTransport { transport in
+            try await HarnessConfigEditor(files: transport.hostServices).read(path)
+        }
+        guard let current,
+            ClaudeCodeHooks.presence(in: current, script: ClaudeCodeHooks.scriptPath(dataHome: locations.dataHome)) == .on
+        else { return settings }
+        return nil
     }
 
     /// Rename and close need a server. A window with none is `TmuxLaunch`'s own

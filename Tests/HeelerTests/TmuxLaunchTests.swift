@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import Testing
 
@@ -159,6 +158,48 @@ struct TmuxLaunchTests {
         #expect(text(command) == script(
             "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '\(Self.paneFormat)' -- '/usr/local/bin/fish' -ic 'exec $argv[2..]' fish claude --resume abc"
         ))
+    }
+
+    // MARK: Heeler's Claude Code hooks (ADR 0044)
+
+    private static let hookSettings = "/Users/dev/Library/Application Support/heeler/claude-code/hooks.json"
+
+    /// The program after `--`, as tmux parses the exec line's words.
+    private func program(_ command: TmuxLaunch.Command) throws -> [String] {
+        let line = try #require(text(command).split(separator: "\n").first { $0.hasPrefix("exec ") })
+        let words = ScriptedTmuxHost.words(of: String(line))
+        let separator = try #require(words.firstIndex(of: "--"))
+        return Array(words[(separator + 1)...])
+    }
+
+    @Test func aClaudeCodeLaunchCarriesHeelersHooksBeforeItsOwnArguments() throws {
+        let request = AgentLaunchRequest(
+            kind: "claude", name: "claude", arguments: ["--resume", "abc"], workspaceID: "$0", cwd: "/work")
+        let window = try TmuxLaunch.agentWindow(request, on: server(), hookSettings: Self.hookSettings)
+        let session = try TmuxLaunch.agentSession(
+            request, workspace: NewWorkspaceSpec(directory: "/work", label: "work"), on: server(),
+            hookSettings: Self.hookSettings)
+        let expected = ["/bin/zsh", "-ic", "exec \"$@\"", "/bin/zsh", "claude", "--settings", Self.hookSettings, "--resume", "abc"]
+        #expect(try program(window) == expected)
+        #expect(try program(session) == expected)
+        #expect(try program(TmuxLaunch.agentWindow(request, on: server())).contains("--settings") == false)
+    }
+
+    @Test func aFreshClaudeCodeKeepsItsSessionFlagBesideTheHooks() throws {
+        let command = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "$0", cwd: "/work"),
+            on: server(), hookSettings: Self.hookSettings)
+        let words = try program(command)
+        #expect(Array(words.prefix(6)) == ["/bin/zsh", "-ic", "exec \"$@\"", "/bin/zsh", "claude", "--session-id"])
+        #expect(Array(words.suffix(2)) == ["--settings", Self.hookSettings])
+    }
+
+    @Test(arguments: ["codex", "pi", "my-tool"])
+    func anotherProgramIgnoresTheHooks(_ kind: String) throws {
+        let command = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(kind: kind, name: kind, workspaceID: "$0", cwd: "/work"),
+            on: server(), hookSettings: Self.hookSettings)
+        #expect(!(try program(command)).contains("--settings"))
     }
 
     @Test func aWindowNeedsASessionAndADirectory() {
@@ -480,7 +521,7 @@ struct TmuxLaunchTests {
         let scriptFile = root.appendingPathComponent("launch.sh")
         try Data(script.utf8).write(to: scriptFile)
 
-        let status = try spawn(program: "/bin/sh", arguments: [scriptFile.path], environment: environment)
+        let status = try HostShell.run("/bin/sh", arguments: [scriptFile.path], environment: environment)
         guard status == 0 else { throw ShellRoundTrip.exit(status) }
 
         let names = try FileManager.default.contentsOfDirectory(at: out, includingPropertiesForKeys: nil)
@@ -497,51 +538,13 @@ struct TmuxLaunchTests {
         return argv[next]
     }
 
-    private static func spawn(program: String, arguments: [String], environment: [String: String]) throws -> Int32 {
-        var merged = ProcessInfo.processInfo.environment
-        for (key, value) in environment { merged[key] = value }
-        var pid: pid_t = 0
-        let code = try withCStrings([program] + arguments) { argv in
-            try withCStrings(merged.map { "\($0.key)=\($0.value)" }) { envp in
-                posix_spawn(&pid, program, nil, nil, argv, envp)
-            }
-        }
-        guard code == 0 else { throw ShellRoundTrip.spawn(code) }
-        var raw: Int32 = 0
-        guard waitpid(pid, &raw, 0) == pid else { throw ShellRoundTrip.wait }
-        guard raw & 0x7f == 0 else { throw ShellRoundTrip.exit(raw) }
-        return (raw >> 8) & 0xff
-    }
-
-    private static func withCStrings(
-        _ values: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) throws -> Int32
-    ) throws -> Int32 {
-        let allocated: [UnsafeMutablePointer<CChar>] = try values.map { value in
-            try value.withCString { pointer in
-                guard let copy = strdup(pointer) else { throw ShellRoundTrip.spawn(Int32(ENOMEM)) }
-                return copy
-            }
-        }
-        defer { allocated.forEach { free($0) } }
-        var pointers: [UnsafeMutablePointer<CChar>?] = allocated
-        pointers.append(nil)
-        return try pointers.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { throw ShellRoundTrip.spawn(Int32(EINVAL)) }
-            return try body(base)
-        }
-    }
-
     private enum ShellRoundTrip: Error, CustomStringConvertible {
-        case spawn(Int32)
-        case wait
         case exit(Int32)
         case unquotablePath
         case missingExecutable
 
         var description: String {
             switch self {
-            case .spawn(let code): "posix_spawn failed (\(code))"
-            case .wait: "waitpid failed"
             case .exit(let code): "shell exited \(code)"
             case .unquotablePath: "printer path is not a single safe word"
             case .missingExecutable: "script is missing the tmux executable path"

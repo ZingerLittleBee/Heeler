@@ -685,8 +685,9 @@ struct TmuxTransportE2ETests {
                 let response = try await fixture.run("ps -ww -o args= -p \(pid)")
                 guard response.exitStatus == 0 else { return false }
                 let line = String(decoding: response.stdout, as: UTF8.self)
-                return line.contains("claude") && line.contains("--session-id")
+                return line.contains("claude") && line.contains("--session-id") && line.contains("--settings")
             }
+            try await expectClaudeCodeHooksPlaced(fixture, paths: try #require(store.tmuxServer(on: host.id)?.paths))
             let reported = try await paneField("#{pane_current_path}", of: opened.paneID, on: fixture)
             let physical = trimmed(
                 try await fixture.require("cd \(GitProbe.singleQuoted(directory)) && pwd -P"))
@@ -704,6 +705,18 @@ struct TmuxTransportE2ETests {
             try await fixture.eventually { await store.agents.isEmpty }
             #expect(await store.terminals.contains { $0.paneID == "%0" })
         }
+    }
+
+    /// Heeler's hook script, and the stored tmux paths it runs, where the
+    /// Helper's own script finds the Host's data home (ADR 0044).
+    private func expectClaudeCodeHooksPlaced(_ fixture: TmuxSSHFixture, paths: TmuxPaths) async throws {
+        let located = try await fixture.run(String(decoding: TmuxClaudeCodeHooks.locateScript(nonce: "e2e"), as: UTF8.self))
+        let data = try TmuxClaudeCodeHooks.locations(stdout: located.stdout, nonce: "e2e").dataHome
+        let script = try await fixture.run("cat \(GitProbe.singleQuoted(ClaudeCodeHooks.scriptPath(dataHome: data)))")
+        #expect(script.stdout == (try TmuxClaudeCodeHooks.bundledScript()))
+        let stored = try await fixture.run(
+            "cat \(GitProbe.singleQuoted(TmuxClaudeCodeHooks.storedPathsFile(dataHome: data, paths: paths)))")
+        #expect(try JSONDecoder().decode(TmuxPaths.self, from: stored.stdout) == paths)
     }
 
     @Test("a new terminal opens a window running the user's shell")

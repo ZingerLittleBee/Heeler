@@ -9,7 +9,9 @@ import Foundation
 /// starts one, through the user's login shell and without `-N`; macOS says to
 /// start tmux on the Mac, and anything else starts nothing. An Agent is the
 /// same program herdr-core runs: the user's shell replaces itself with it,
-/// with ADR 0034's session flags.
+/// with ADR 0034's session flags, and a Claude Code under a configuration root
+/// without Heeler's hooks gets them for that launch alone through `--settings`
+/// (ADR 0044).
 enum TmuxLaunch {
     struct Server: Equatable, Sendable {
         var paths: TmuxPaths
@@ -46,11 +48,15 @@ enum TmuxLaunch {
     static let paneFormat = "#{pane_id} #{window_id}"
     static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{session_name}"
 
-    static func agentWindow(_ request: AgentLaunchRequest, on server: Server) throws -> Command {
+    /// `hookSettings` is the settings file a Claude Code launch passes. Any
+    /// other program ignores it.
+    static func agentWindow(
+        _ request: AgentLaunchRequest, on server: Server, hookSettings: String? = nil
+    ) throws -> Command {
         let session = try required(request.workspaceID)
         let directory = try required(request.cwd)
         let launch = try disposition(of: server, createsSession: false)
-        let agent = program(of: request, on: server)
+        let agent = program(of: request, on: server, hookSettings: hookSettings)
         return command(
             windowWords(session: session, directory: directory, environment: agent.environment, program: agent.argv),
             paths: server.paths, loginShell: launch.loginShell)
@@ -66,10 +72,10 @@ enum TmuxLaunch {
     }
 
     static func agentSession(
-        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec, on server: Server
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec, on server: Server, hookSettings: String? = nil
     ) throws -> Command {
         let launch = try disposition(of: server, createsSession: true)
-        let agent = program(of: request, on: server)
+        let agent = program(of: request, on: server, hookSettings: hookSettings)
         return command(
             sessionWords(
                 name: workspace.label, directory: try required(workspace.directory),
@@ -170,14 +176,16 @@ enum TmuxLaunch {
     }
 
     private static func program(
-        of request: AgentLaunchRequest, on server: Server
+        of request: AgentLaunchRequest, on server: Server, hookSettings: String?
     ) -> (argv: [String], environment: [String: String]) {
         guard let kind = SupportedAgentKind(rawValue: request.kind) else {
             let argv = HerdrCoreShellLaunch.argv(shell: server.shell, program: [request.kind] + request.arguments)
             return (argv, request.environment)
         }
+        var arguments = request.arguments
+        if kind == .claude, let hookSettings { arguments = ["--settings", hookSettings] + arguments }
         let start = HerdrCoreLaunch.agentStart(
-            kind: kind, arguments: request.arguments, environment: request.environment,
+            kind: kind, arguments: arguments, environment: request.environment,
             openCodeVersion: server.openCodeVersion)
         return (HerdrCoreShellLaunch.argv(shell: server.shell, program: start.program), start.environment)
     }

@@ -15,12 +15,16 @@ import Foundation
 /// `kill-window` to those panes, and a discovery script lists
 /// `installedExecutables`. `show-environment -g` prints the global lines a
 /// test planted, and `show-environment -t` prints a session delta only when
-/// the target is a session id (`$n`).
+/// the target is a session id (`$n`). The Helper's `locate` script prints the
+/// Host's home and data home, a script placing Heeler's Claude Code hook files
+/// writes each here-document into `hostFiles`, and the connection reads those
+/// files back as SFTP would.
 actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     static let nonce = "scripted-tmux-host-nonce"
     static let executable = "/opt/homebrew/bin/tmux"
     static let directory = "/private/tmp/tmux-501"
     static let instance = TmuxServerInstance(pid: 4242, startTime: 1_794_326_988)
+    static let home = "/Users/dev"
 
     static func socketPath(_ name: String = "default", in directory: String = directory) -> String {
         "\(directory)/\(name)"
@@ -70,6 +74,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private var failures: [TransportError] = []
     private var nextAnswers: [GitExecResult] = []
     private var connected = true
+    /// The Host's files a test planted or a hook placement wrote, by path.
+    private(set) var hostFiles: [String: Data] = [:]
+    private var refusesHookFiles = false
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -1057,6 +1064,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.openControlClient(script, dial: id)
         }
 
+        func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+            try await requireConnected()
+            return try await host.readHostFileRange(range)
+        }
+
         func close() async throws {
             connected = false
             await host.noteClose(ofDial: id)
@@ -1067,10 +1079,68 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let text = String(decoding: script, as: UTF8.self)
         log.append(throughLoginShell ? "command login" : "command")
         commands.append(text)
+        if let files = hookFilesAnswer(to: text) { return files }
         if let discovery = discoveryAnswer(in: text) {
             return GitExecResult(stdout: Data(discovery.utf8), stderr: Data(), exitStatus: 0)
         }
         return await apply(text)
+    }
+
+    // MARK: The Host's files
+
+    /// Where the Helper's `locate` script finds the data home on this kernel.
+    var dataHome: String {
+        kernel == "Darwin" ? "\(Self.home)/Library/Application Support" : "\(Self.home)/.local/share"
+    }
+
+    func setHostFile(_ path: String, _ contents: Data?) {
+        hostFiles[path] = contents
+    }
+
+    /// The next hook placements exit 1 and write nothing.
+    func refuseHookFiles(_ refused: Bool = true) {
+        refusesHookFiles = refused
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        guard let file = hostFiles[range.path] else { return RemoteFileSlice(data: Data(), length: nil) }
+        let start = min(Int(range.offset), file.count)
+        return RemoteFileSlice(data: file[start..<min(start + range.maxBytes, file.count)], length: UInt64(file.count))
+    }
+
+    /// The Helper's `locate` script, or a placement of Heeler's hook files.
+    private func hookFilesAnswer(to script: String) -> GitExecResult? {
+        guard let first = script.split(separator: "\n").first, first.hasPrefix("printf '%s begin\\n' '") else {
+            return nil
+        }
+        let nonce = String(first.dropFirst("printf '%s begin\\n' '".count).prefix { $0 != "'" })
+        let framed = { (lines: [String]) in
+            Self.succeeded((["\(nonce) begin"] + lines + ["\(nonce) end"]).joined(separator: "\n") + "\n")
+        }
+        if script.contains("printf 'data %s\\n'") {
+            log.append("locate")
+            return framed(["home \(Self.home)", "data \(dataHome)", "config \(Self.home)/.config"])
+        }
+        let delimiter = "__HEELER_FILE_\(nonce)"
+        guard script.contains(delimiter) else { return nil }
+        log.append("place hook files")
+        if refusesHookFiles { return Self.failed("mkdir: Permission denied\n") }
+        var path: String?
+        var lines: [Substring] = []
+        for line in script.split(separator: "\n", omittingEmptySubsequences: false) {
+            if let open = path {
+                if line == delimiter {
+                    hostFiles[open] = Data((lines.joined(separator: "\n") + "\n").utf8)
+                    path = nil
+                    lines = []
+                } else {
+                    lines.append(line)
+                }
+            } else if line.hasPrefix("  __h_put ") {
+                path = Self.words(of: String(line)).dropFirst().first
+            }
+        }
+        return framed([])
     }
 
     /// Discovery's markers, with the programs a test listed and OpenCode's

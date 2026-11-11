@@ -239,6 +239,126 @@ struct TmuxLaunchConsoleTests {
 
     // MARK: Discovery
 
+    // MARK: Heeler's Claude Code hooks (ADR 0044)
+
+    private let dataHome = "\(ScriptedTmuxHost.home)/Library/Application Support"
+    private var hookScript: String { ClaudeCodeHooks.scriptPath(dataHome: dataHome) }
+    private var hookSettings: String { ClaudeCodeHooks.launchSettingsPath(dataHome: dataHome) }
+    private var storedPaths: String {
+        TmuxClaudeCodeHooks.storedPathsFile(dataHome: dataHome, paths: ScriptedTmuxHost.paths())
+    }
+
+    /// The last launch's program, as tmux parses the exec line's words.
+    private func launchedProgram(_ tmux: ScriptedTmuxHost) async throws -> [String] {
+        let script = try #require(await commandScripts(tmux).last)
+        let line = try #require(script.split(separator: "\n").first { $0.hasPrefix("exec ") })
+        let words = ScriptedTmuxHost.words(of: String(line))
+        let separator = try #require(words.firstIndex(of: "--"))
+        return Array(words[(separator + 1)...])
+    }
+
+    private func startedWithSession(_ tmux: ScriptedTmuxHost) async throws -> ConsoleStore {
+        await tmux.setPanes([.make(sessionName: "main")])
+        let store = await started(tmux)
+        try await waitUntil("the session") { store.workspacesByHost[host.id]?.map(\.label) == ["main"] }
+        return store
+    }
+
+    private func claude(environment: [String: String] = [:]) -> AgentLaunchRequest {
+        AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "$0", cwd: "/work", environment: environment)
+    }
+
+    @Test func aClaudeCodeAgentGetsHeelersHooksForItsLaunchAlone() async throws {
+        let tmux = ScriptedTmuxHost()
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgent(claude(), on: host.id)
+
+        #expect(Array(try await launchedProgram(tmux).suffix(2)) == ["--settings", hookSettings])
+        let files = await tmux.hostFiles
+        #expect(files[hookScript] == (try TmuxClaudeCodeHooks.bundledScript()))
+        #expect(files[hookSettings] == ClaudeCodeHooks.launchSettings(script: hookScript))
+        #expect(storedPaths == "\(dataHome)/heeler/host-helper/tmux/default/paths.json")
+        let stored = try #require(files[storedPaths])
+        #expect(try JSONDecoder().decode(TmuxPaths.self, from: stored) == ScriptedTmuxHost.paths())
+        // Heeler's own files and nothing else: the root's settings stay as they were.
+        #expect(Set(files.keys) == [hookScript, hookSettings, storedPaths])
+        store.setHosts([])
+    }
+
+    @Test func aRootThatRunsTheHooksGetsNoSettings() async throws {
+        let tmux = ScriptedTmuxHost()
+        let settings = ClaudeCodeHooks.launchSettings(script: hookScript)
+        await tmux.setHostFile("\(ScriptedTmuxHost.home)/.claude/settings.json", settings)
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgent(claude(), on: host.id)
+
+        let program = try await launchedProgram(tmux)
+        #expect(program.contains("claude"))
+        #expect(!program.contains("--settings"))
+        #expect(await tmux.hostFiles["\(ScriptedTmuxHost.home)/.claude/settings.json"] == settings)
+        store.setHosts([])
+    }
+
+    @Test func theRootAnAccountNamesIsTheOneThatCounts() async throws {
+        let tmux = ScriptedTmuxHost()
+        let work = "\(ScriptedTmuxHost.home)/.claude-work"
+        await tmux.setHostFile(
+            "\(ScriptedTmuxHost.home)/.claude/settings.json", ClaudeCodeHooks.launchSettings(script: hookScript))
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgent(claude(environment: ["CLAUDE_CONFIG_DIR": work]), on: host.id)
+        #expect(Array(try await launchedProgram(tmux).suffix(2)) == ["--settings", hookSettings])
+
+        await tmux.setHostFile("\(work)/settings.json", ClaudeCodeHooks.launchSettings(script: hookScript))
+        _ = try await store.startAgent(claude(environment: ["CLAUDE_CONFIG_DIR": work]), on: host.id)
+        #expect(!(try await launchedProgram(tmux)).contains("--settings"))
+        // The Host's folders are read once; the files are placed for each launch.
+        #expect(await tmux.log.filter { $0 == "locate" }.count == 1)
+        #expect(await tmux.log.filter { $0 == "place hook files" }.count == 2)
+        store.setHosts([])
+    }
+
+    @Test func anotherProgramPlacesNothing() async throws {
+        let tmux = ScriptedTmuxHost()
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgent(
+            AgentLaunchRequest(kind: "codex", name: "codex", workspaceID: "$0", cwd: "/work"), on: host.id)
+
+        #expect(try await launchedProgram(tmux).contains("codex"))
+        #expect(await tmux.hostFiles.isEmpty)
+        #expect(await !tmux.log.contains("place hook files"))
+        store.setHosts([])
+    }
+
+    @Test func aHostThatRefusesTheFilesStillStartsClaudeCode() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.refuseHookFiles()
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgent(claude(), on: host.id)
+
+        try await waitUntil("the new agent") { store.agents.contains { $0.agent.kind == "claude" } }
+        let program = try await launchedProgram(tmux)
+        #expect(program.contains("claude"))
+        #expect(!program.contains("--settings"))
+        store.setHosts([])
+    }
+
+    @Test func aClaudeCodeInANewWorkspaceGetsTheHooksToo() async throws {
+        let tmux = ScriptedTmuxHost()
+        let store = try await startedWithSession(tmux)
+
+        _ = try await store.startAgentInNewWorkspace(
+            AgentLaunchRequest(kind: "claude", name: "claude", cwd: "/ignored"),
+            workspace: NewWorkspaceSpec(directory: "/work", label: "feature"), on: host.id)
+
+        #expect(Array(try await launchedProgram(tmux).suffix(2)) == ["--settings", hookSettings])
+        store.setHosts([])
+    }
+
     @Test func discoveryListsClaudeAndKeepsOpenCodesVersion() async throws {
         let tmux = ScriptedTmuxHost()
         await tmux.setInstalled(["claude", "opencode"], openCodeVersion: "opencode v2.2.2")

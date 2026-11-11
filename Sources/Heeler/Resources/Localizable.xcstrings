@@ -24750,6 +24750,7 @@
         }
       }
     },
+    "Heeler can't read this file as plain JSON, so it won't change it." : {},
     "Heeler can't read this file with certainty, so it won't change it." : {
       "localizations" : {
         "ja" : {
@@ -25617,6 +25618,7 @@
         }
       }
     },
+    "Heeler couldn't read where this Host keeps its files." : {},
     "Heeler couldn't read which OpenCode this Agent runs, so it can't tell which file to change. Nothing was written. %@" : {
       "localizations" : {
         "ja" : {
@@ -53741,6 +53743,7 @@
         }
       }
     },
+    "The Host refused Heeler's hook script." : {},
     "The Host refused Stop: %@" : {
       "localizations" : {
         "ja" : {
@@ -61211,6 +61214,7 @@
         }
       }
     },
+    "This file sets Claude Code's hooks in a form Heeler won't change." : {},
     "This file sets Grok Build's notifications in a form Heeler won't change." : {
       "localizations" : {
         "ja" : {
