@@ -1,10 +1,11 @@
 // Which Terminal is an Agent (ADR 0032): the app's HerdrCoreAgentRule read on the
 // Host. A Terminal is one while a known agent program holds its foreground, or
 // while any program but a shell does and it has a Program Status whose `app` is
-// missing or unknown here. A known `app` counts only while it names the foreground:
-// nothing ties a report to a process, and the core keeps the report after its
-// program left. A `-NoExit` PowerShell, whose foreground never changes, is its shell
-// while the Terminal's title is that PowerShell's own path.
+// missing or unknown here. A known `app` counts only while it names the foreground,
+// or under a `-NoExit` PowerShell that is not at its prompt: nothing ties a report
+// to a process, and the core keeps the report after its program left. A `-NoExit`
+// PowerShell, whose foreground never changes, is its shell while the Terminal's
+// title is that PowerShell's own path.
 //
 // plugin/test-vectors/herdr-core-agent-rule-v1.json holds this rule's cases for both
 // sides, so a change here changes that file and the app's rule in one commit.
@@ -92,7 +93,8 @@ const RESERVED_KINDS = new Set([...SUPPORTED_KINDS, "cursor-agent", "kiro-cli", 
 
 const SHELL_PROGRAM = { shell: true };
 const known = (kind) => ({ known: kind });
-const other = (name) => ({ other: name });
+// Only the outer -NoExit PowerShell itself can adopt a known report, never its script or unwrapped child.
+const other = (name, acceptsKnownReport = false) => ({ other: name, acceptsKnownReport });
 
 const strings = (values) => (Array.isArray(values) ? values.filter((value) => typeof value === "string") : []);
 const text = (value) => (typeof value === "string" ? value : "");
@@ -265,12 +267,17 @@ function powerShellWords(line) {
 /** `pwsh -NoExit -Command "& 'prog' 'arg'"`, as the desktop app runs it, and `-Command "& 'prog' 'arg'; exit $LASTEXITCODE"`, as Heeler does. */
 function readPowerShell(args, name, depth) {
   const option = args.findIndex((argument) => ["-command", "-c"].includes(argument.toLowerCase()));
-  if (option === -1) return args.slice(1).some((argument) => !argument.startsWith("-")) ? other(name) : SHELL_PROGRAM;
+  const options = args.slice(1, option === -1 ? args.length : option);
+  const hasNoExit = options.some(isNoExitOption);
+  if (option === -1) {
+    if (options.some((argument) => !argument.startsWith("-") && !isNoExitOption(argument))) return other(name);
+    return hasNoExit ? other(name, depth === 0) : SHELL_PROGRAM;
+  }
   if (option + 1 >= args.length) return SHELL_PROGRAM;
   const exit = "; exit $LASTEXITCODE";
   const line = args[option + 1].endsWith(exit) ? args[option + 1].slice(0, -exit.length) : args[option + 1];
   const words = powerShellWords(line);
-  return words === null ? other(name) : read(words, depth + 1);
+  return words === null ? other(name, depth === 0 && hasNoExit) : read(words, depth + 1);
 }
 
 /** A wrapper, a line or a script is what the shell runs. A shell with options alone is the prompt, which ends the Agent. */
@@ -375,7 +382,11 @@ function continuesAsShell(args) {
   return args.slice(1).some((argument) => CONTINUING_WRAPPER_BODIES.has(argument) || ["-noexit", "/k"].includes(argument.toLowerCase()));
 }
 
-const readLaunch = (args) => (continuesAsShell(args) ? SHELL_PROGRAM : read(args));
+function readLaunch(args) {
+  if (continuesAsShell(args)) return SHELL_PROGRAM;
+  const program = read(args);
+  return program.acceptsKnownReport ? SHELL_PROGRAM : program;
+}
 
 /** `-NoExit` as PowerShell takes it: any case, `-`, `--` or `/`, and cut short as far as `-NoE`. */
 function isNoExitOption(argument) {
@@ -462,6 +473,11 @@ export function agentIn(record) {
     const foreign = report === null || (reported !== null && reported !== program.known);
     return { kind: program.known, known: true, status: foreign ? "unknown" : statusWord(report.state) };
   }
-  if (report === null || reportedKind(app.toLowerCase()) !== null) return null;
+  if (report === null) return null;
+  const reported = reportedKind(app.toLowerCase());
+  if (reported !== null) {
+    if (!program.acceptsKnownReport) return null;
+    return { kind: reported, known: true, status: statusWord(report.state) };
+  }
   return { kind: genericKind(app, program.other), known: false, status: statusWord(report.state) };
 }
