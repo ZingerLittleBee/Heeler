@@ -71,14 +71,26 @@ for any size it takes part in sizing every window of that session.
   `send-keys` and text with `send-keys -l`, so tmux encodes each key for the
   mode the Pane's program set, as it does a desktop terminal's keys. Direct
   Input's keys arrive as the bytes the terminal view encodes, so Heeler reads
-  them back into keys, whichever keyboard protocol the view is in. Shift+Tab is
-  `BTab`. A key with no legacy encoding (Shift or Ctrl with Enter or Space, Ctrl
-  with Tab or Backspace, Ctrl+Shift with Tab or a letter, Ctrl with a digit or
-  punctuation) is sent only while `#{pane_key_mode}` reads `Ext 1` or `Ext 2`,
-  and never before tmux 3.5, which has no such format, because tmux types the
-  name of a key it cannot encode into the Pane as text. Ctrl+Shift+Tab then goes
-  as `C-BTab`, and Ctrl+Shift with a letter names the capital (`C-S-A`), as
-  these encode the way a desktop terminal's keys do. Text never carries a
+  them back into keys, whichever keyboard protocol the view is in. A bracketed
+  paste the view writes in parts is held until its end marker, or sent in parts
+  of 1 MiB when longer, each as one `set-buffer` into a buffer named for the
+  Attach and `paste-buffer -p -r -d`; if the paste fails, Heeler deletes that
+  buffer by its name. Shift+Tab is `BTab`. A key with no legacy encoding (Shift
+  with Enter, Space or Escape, Ctrl with Enter, Tab, Backspace or Escape,
+  Ctrl+Shift with Tab or a letter, Ctrl with a digit or with punctuation other
+  than `@ [ \ ] ^ _ ? /`) is sent only while `#{pane_key_mode}` reads `Ext 1`
+  or `Ext 2`, and never before tmux 3.5, which has no such format, because tmux
+  types the name of a key it cannot encode into the Pane as text.
+  Ctrl+Shift+Tab then goes as `C-BTab`, and Ctrl+Shift with a letter names the
+  capital (`C-S-A`), as these encode the way a desktop terminal's keys do.
+  Ctrl+Space and Ctrl with `@ [ \ ] ^ _ ? /` are legacy keys, sent in every
+  mode: each has a control byte for its legacy encoding (Ctrl+/ shares Ctrl+_'s
+  `0x1F`), and on tmux 3.3a and 3.7b a program read Heeler's key as it read a
+  desktop terminal's in every mode. Ctrl+@, Ctrl+[ and Ctrl+?, whose bytes are
+  Ctrl+Space's, Escape's and Backspace's, go as `C-Space`, `Escape` and
+  `BSpace` in whichever form the view encodes them, because the desktop's bytes
+  read that way in every mode, while on 3.7b tmux's own `C-@`, `C-[` and `C-?`
+  encode as extended keys in an extended mode. Text never carries a
   control character: Enter, Tab and the rest go as key names. Every argument is
   written in tmux's double-quoted form, with `"`, `\`, `$`, `~`, `#`, `{`, `}`
   and `;` escaped and control characters as `\n`, `\r`, `\t` or `\ooo`; an
@@ -236,6 +248,14 @@ with the same key sent by `send-keys` name:
 - On both, asking for kitty's protocol changed no key from what a program that
   asked for nothing got, and `send-keys -H` wrote its bytes unchanged in every
   mode.
+- Measured the same way on 2026-11-11, Ctrl with `@`, `[`, `\`, `]`, `^` and
+  `?`, which the desktop typed as its control byte, reached the program on both
+  versions as `C-Space`, `Escape`, `C-\`, `C-]`, `C-^` and `BSpace` sent by name
+  did, in every mode. On 3.7b tmux's own `C-@` and `C-[` encoded in `Ext 2`, and
+  `C-?` in `Ext 1` and `Ext 2`, as the key's modifyOtherKeys or CSI u form
+  (`ESC [ 27 ; 5 ; 64 ~` for `C-@`), which is what the desktop's
+  modifyOtherKeys form of the key gave, where its control byte gave Ctrl+Space,
+  Escape and Backspace.
 - Text through `send-keys -l`, in the double-quoted form, kept quotes, `$`, `~`,
   `#{}`, `;`, CJK, emoji with skin tones and joiners, and a trailing backslash
   exactly on both versions. A line feed inside it arrived on 3.3a, and on 3.7b
@@ -318,13 +338,19 @@ session's current window.
   changes.
 - Before tmux 3.7, a multi-line Send to an agent that turned bracketed paste off
   before the Attach began can submit its lines one by one.
-- A key with no legacy encoding does nothing from Heeler while
-  `#{pane_key_mode}` reads `VT10x`: always under tmux's default
-  `extended-keys off`, and under `on` until the program asks for
-  modifyOtherKeys, which Codex and Grok Build never do. It does nothing at all
-  before tmux 3.5, where a desktop terminal's can still reach a program that
-  asked for it. A new line in an agent's prompt then takes Ctrl+J, or
-  Option+Enter outside Pi.
+- A key with no legacy encoding, such as Shift+Enter, Ctrl+Tab or Ctrl with a
+  digit, does nothing from Heeler while `#{pane_key_mode}` reads `VT10x`:
+  always under tmux's default `extended-keys off`, and under `on` until the
+  program asks for modifyOtherKeys, which Codex and Grok Build never do. It does
+  nothing at all before tmux 3.5, where a desktop terminal's can still reach a
+  program that asked for it. A new line in an agent's prompt then takes Ctrl+J,
+  or Option+Enter outside Pi. Ctrl+Space and Ctrl with `@ [ \ ] ^ _ ? /` are
+  legacy keys and work in every mode, but Ctrl+@, Ctrl+[ and Ctrl+? reach the
+  program as Ctrl+Space, Escape and Backspace even where it asked for a
+  protocol that tells them apart, as a desktop terminal's control bytes do.
+- A bracketed paste whose end marker never comes takes what is typed after it
+  as pasted text, sent once 1 MiB has gathered; what is held when the Attach
+  ends is dropped.
 - Input was measured on macOS only, against tmux 3.3a and 3.7b, with a pty
   writing xterm's encodings in place of a real desktop terminal, and with agent
   programs on a mock model under 3.7b. tmux 3.4 to 3.6, Linux, and reading the
