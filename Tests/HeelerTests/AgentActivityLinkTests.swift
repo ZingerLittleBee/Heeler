@@ -88,8 +88,11 @@ struct AgentLinkHostLookupTests {
         #expect(try opened(link, in: [core, Self.studio])
             == AgentNotificationTarget(hostID: Self.studio.id, paneID: "t3"))
         let ownLink = try #require(AgentActivityLink.agentURL(hostID: core.id.uuidString, paneID: "t3"))
-        #expect(try opened(ownLink.absoluteString, in: [core])
-            == AgentNotificationTarget(hostID: core.id, paneID: "t3"))
+        #expect(try opened(ownLink.absoluteString, in: [core]) == nil,
+            "an old unpinned activity cannot name a replacement Core's Terminal")
+        let pinned = try #require(AgentActivityLink.agentURL(hostID: core.id.uuidString, paneID: "t3", coreID: "core-a"))
+        #expect(try opened(pinned.absoluteString, in: [core])
+            == AgentNotificationTarget(hostID: core.id, paneID: "t3", coreID: "core-a"))
     }
 
     @Test func addressMatchesIgnoringCase() throws {

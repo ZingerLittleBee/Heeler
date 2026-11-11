@@ -5,6 +5,9 @@ extension AgentActivityLink.Target {
     /// Console: the link names no pane, or no single Host answers to it.
     func agent(in hosts: [Host]) -> AgentNotificationTarget? {
         guard let paneID, let hostID = host.resolvedID(in: hosts) else { return nil }
+        if hosts.first(where: { $0.id == hostID })?.serverKind == .herdrCore, coreID == nil {
+            return nil // Legacy unpinned rows cannot safely name a Core Terminal.
+        }
         return AgentNotificationTarget(hostID: hostID, paneID: paneID, coreID: coreID)
     }
 }

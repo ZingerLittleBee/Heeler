@@ -118,7 +118,8 @@ Decrypted plaintext (canonical form):
   `heeler://agent/<hostID>/<terminalAddress>`; the notification router must
   verify it against fresh connected inventory before opening that Terminal.
   Reused addresses on a replacement Core must not open from an old activity.
-  Console-level links carry no Terminal identity. Older Node producers may
+  A saved Core Host's legacy row link without a Core pin opens the Console,
+  not a Terminal. Console-level links carry no Terminal identity. Older Node producers may
   ignore this additive metadata and do not gain native Core action support.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
   metadata); breaking changes bump `v` on both ends together.
