@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -50,9 +51,9 @@ struct TmuxPaneAttachTests {
         return read
     }
 
-    /// Each line the Attaches' clients wrote, as the words tmux parses it into.
+    /// Each command the Attaches' clients wrote, as the words tmux parses it into.
     private func commands(on tmux: ScriptedTmuxHost) async -> [[String]] {
-        await tmux.controlCommands.map(ScriptedTmuxHost.words(of:))
+        await tmux.controlCommands.flatMap(ScriptedTmuxHost.commandList(of:))
     }
 
     private static func endsASession(_ words: [String]) -> Bool {
@@ -650,5 +651,114 @@ struct TmuxPaneAttachTests {
         await tmux.paneOutput("\u{1B}[?2004lprompt", in: "%0")
         _ = try await read(until: "prompt", from: &output)
         #expect(await send.bracketedPaste() == .disabled)
+    }
+
+    @Test func aClientEndingMidPasteLeavesNoHeelerBufferAndReportsUnknownOnceStarted() async throws {
+        let tmux = await host()
+        await tmux.setBuffer("the user's", named: "buffer0")
+
+        // 1. Typed paste (#690) whose control client breaks mid-paste leaves no Heeler buffer.
+        let first = try await attach(on: tmux)
+        var firstOutput = first.output.makeAsyncIterator()
+        _ = try await firstOutput.next()
+        await tmux.breakControlClientOnNextPasteWrite()
+        first.send(Data("\u{1B}[200~sensitive typed paste\u{1B}[201~".utf8))
+        _ = await ending(of: &firstOutput)
+        #expect(await tmux.buffers == ["buffer0": "the user's"])
+        await first.end()
+
+        // 2. Checked Send paste (#691) whose control client breaks mid-paste leaves no Heeler buffer
+        // and reports `.unknown` (since the paste already started), whereas a paste called after the
+        // session's queue ended never starts and reports `.notLeft`.
+        let second = try await attach(on: tmux)
+        var secondOutput = second.output.makeAsyncIterator()
+        _ = try await secondOutput.next()
+        let secondSend = try #require(second.tmuxSend)
+        await tmux.breakControlClientOnNextPasteWrite()
+        let brokenMidPaste = await secondSend.paste("sensitive composer paste", { try await Task.sleep(for: $0) })
+        #expect(brokenMidPaste == .unknown)
+        #expect(await tmux.buffers == ["buffer0": "the user's"])
+        await second.end()
+
+        let neverStarted = await secondSend.paste("after end", { try await Task.sleep(for: $0) })
+        #expect(neverStarted == .notLeft)
+        #expect(await tmux.buffers == ["buffer0": "the user's"])
+
+        // 3. If tmux exits (`%exit`) or the Attach ends while a paste is held in flight, the started
+        // paste reports `.unknown` rather than `.notLeft`, and leaves no Heeler buffer.
+        let third = try await attach(on: tmux)
+        var thirdOutput = third.output.makeAsyncIterator()
+        _ = try await thirdOutput.next()
+        let thirdSend = try #require(third.tmuxSend)
+        await tmux.holdControlReplies(true)
+        let inFlight = Task { await thirdSend.paste("in flight before server exit", { try await Task.sleep(for: $0) }) }
+        try await waitUntil("in-flight paste written") {
+            await commands(on: tmux).contains { $0 == ["set-buffer", "-b", $0.dropFirst(2).first ?? "", "--", "in flight before server exit"] }
+        }
+        #expect(await tmux.buffers == ["buffer0": "the user's"])
+        await tmux.stopServer()
+        #expect(await inFlight.value == .unknown)
+        await tmux.holdControlReplies(false)
+        await third.end()
+    }
+
+    @Test func runOrderedReportsNotLeftBeforeStartingAndUnknownOnceStarted() async throws {
+        // 1. Queue already finished before `runOrdered`: never starts -> `.notLeft`.
+        let finishedQueue = TerminalAttachInputQueue()
+        finishedQueue.finish()
+        let ranOnFinished = Mutex(false)
+        let afterFinish = await TmuxPaneAttach.runOrdered(on: finishedQueue) {
+            ranOnFinished.withLock { $0 = true }
+            return .left
+        }
+        #expect(afterFinish == .notLeft)
+        #expect(!ranOnFinished.withLock { $0 })
+
+        // 2. Queued behind a failing write: `pump` stops before reaching the action -> `.notLeft`.
+        let failingQueue = TerminalAttachInputQueue()
+        let allowWriteFailure = AsyncStream.makeStream(of: Void.self)
+        let enteredWrite = Mutex(false)
+        let failingPump = Task {
+            try await failingQueue.pump(
+                write: { _ in
+                    enteredWrite.withLock { $0 = true }
+                    for await _ in allowWriteFailure.stream { break }
+                    throw TransportError.channelFailed(detail: "lost")
+                },
+                resize: { _, _ in })
+        }
+        failingQueue.send(Data("x".utf8))
+        try await waitUntil("write in flight") { enteredWrite.withLock { $0 } }
+        let ranBehindFailure = Mutex(false)
+        let queuedBehindFailure = Task {
+            await TmuxPaneAttach.runOrdered(on: failingQueue) {
+                ranBehindFailure.withLock { $0 = true }
+                return .left
+            }
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        allowWriteFailure.continuation.finish()
+        _ = try? await failingPump.value
+        #expect(await queuedBehindFailure.value == .notLeft)
+        #expect(!ranBehindFailure.withLock { $0 })
+
+        // 3. Operation started, then queue finishes and `pump` cancels while in flight
+        // (`performAcknowledged` throws `sessionEnded` before a result is recorded) -> `.unknown`.
+        let activeQueue = TerminalAttachInputQueue()
+        let started = Mutex(false)
+        let activePump = Task {
+            try? await activeQueue.pump(write: { _ in }, resize: { _, _ in })
+        }
+        let inFlight = Task {
+            await TmuxPaneAttach.runOrdered(on: activeQueue) {
+                started.withLock { $0 = true }
+                try await Task.sleep(for: .seconds(60))
+                return .left
+            }
+        }
+        try await waitUntil("operation started") { started.withLock { $0 } }
+        activeQueue.finish()
+        activePump.cancel()
+        #expect(await inFlight.value == .unknown)
     }
 }

@@ -123,14 +123,15 @@ actor TmuxPaneAttach {
         }
     }
 
-    private static func runOrdered(
+    static func runOrdered(
         on input: TerminalAttachInputQueue,
-        _ operation: @escaping @Sendable () async -> TmuxSendWriteOutcome
+        _ operation: @escaping @Sendable () async throws -> TmuxSendWriteOutcome
     ) async -> TmuxSendWriteOutcome {
         let outcome = Mutex(TmuxSendWriteOutcome.notLeft)
         do {
             try await input.performAcknowledged {
-                let result = await operation()
+                outcome.withLock { $0 = .unknown }
+                let result = try await operation()
                 outcome.withLock { $0 = result }
             }
         } catch {
@@ -529,29 +530,42 @@ actor TmuxPaneAttach {
         case timedOut
     }
 
-    /// Pastes `text` from the buffer named for this Attach, which `-d`
-    /// deletes once pasted. A paste that failed, or that tmux did not answer
-    /// in time, leaves the buffer to be deleted by that name.
+    /// Pastes `text` from the buffer named for this Attach, setting and
+    /// pasting it in one `;`-separated command list so the server runs both
+    /// (with `-d` deleting the buffer) or neither if the client disconnects.
+    /// A paste that failed or went unanswered while the client lives still
+    /// posts an explicit `delete-buffer` by that name.
     private func paste(_ text: String) async throws {
         _ = try await pasteFromNamedBuffer(text)
     }
 
     private func pasteFromNamedBuffer(
         _ text: String,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        onSent: (@Sendable () -> Void)? = nil
     ) async throws -> PasteReply {
         guard !text.isEmpty else { return .pasted }
-        try await client.post(TmuxControlCommand(["set-buffer", "-b", session, "--", text]))
+        let sent = Mutex(false)
         let reply: PasteReply
         do {
             let pasted = try await client.run(
+                after: TmuxControlCommand(["set-buffer", "-b", session, "--", text]),
                 TmuxControlCommand(["paste-buffer", "-p", "-r", "-d", "-b", session, "-t", pane]),
                 timeout: Self.answerTimeout,
-                sleep: sleep
+                sleep: sleep,
+                onSent: {
+                    sent.withLock { $0 = true }
+                    onSent?()
+                }
             ).succeeded
             reply = pasted ? .pasted : .refused
         } catch TransportError.timedOut {
             reply = .timedOut
+        } catch {
+            if sent.withLock({ $0 }) {
+                try? await client.post(TmuxControlCommand(["delete-buffer", "-b", session]))
+            }
+            throw error
         }
         if reply != .pasted {
             try await client.post(TmuxControlCommand(["delete-buffer", "-b", session]))
@@ -569,17 +583,17 @@ actor TmuxPaneAttach {
     ) async -> TmuxSendWriteOutcome {
         guard !text.isEmpty else { return .left }
         guard await client.end == nil else { return .notLeft }
+        let sent = Mutex(false)
         do {
-            switch try await pasteFromNamedBuffer(text, sleep: sleep) {
+            switch try await pasteFromNamedBuffer(
+                text, sleep: sleep, onSent: { sent.withLock { $0 = true } })
+            {
             case .pasted: return .left
             case .refused: return .notLeft
             case .timedOut: return .unknown
             }
-        } catch let ended as TmuxControlClient.Ended {
-            if case .exited = ended.end { return .notLeft }
-            return .unknown
         } catch {
-            return .unknown
+            return sent.withLock { $0 } ? .unknown : .notLeft
         }
     }
 
@@ -608,20 +622,17 @@ actor TmuxPaneAttach {
         sleep: @escaping @Sendable (Duration) async throws -> Void
     ) async -> TmuxSendWriteOutcome {
         guard await client.end == nil else { return .notLeft }
+        let sent = Mutex(false)
         do {
             let succeeded = try await client.run(
                 TmuxControlCommand(words),
                 timeout: Self.answerTimeout,
-                sleep: sleep
+                sleep: sleep,
+                onSent: { sent.withLock { $0 = true } }
             ).succeeded
             return succeeded ? .left : .notLeft
-        } catch TransportError.timedOut {
-            return .unknown
-        } catch let ended as TmuxControlClient.Ended {
-            if case .exited = ended.end { return .notLeft }
-            return .unknown
         } catch {
-            return .unknown
+            return sent.withLock { $0 } ? .unknown : .notLeft
         }
     }
 

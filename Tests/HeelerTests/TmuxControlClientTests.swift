@@ -110,6 +110,42 @@ struct TmuxControlClientTests {
         #expect(try await answer == reply(2, ["for run"]))
     }
 
+    @Test func aCommandListRunWritesOneLineDropsSetupReplyAndKeepsOrder() async throws {
+        let (client, channel) = client()
+        await channel.send(Data("%begin 1 1 0\n%end 1 1 0\n".utf8))
+        async let pasted = client.run(
+            after: command("set-buffer", "-b", "hb", "--", "a ; b"),
+            command("paste-buffer", "-p", "-r", "-d", "-b", "hb", "-t", "%0"),
+            timeout: .seconds(5))
+        try await waitUntil("one line with two waiters") {
+            let written = await channel.written.count
+            let waiting = await client.waitingCommands
+            return written == 1 && waiting == 2
+        }
+        #expect(
+            await lines(channel) == [
+                #"set-buffer -b hb -- "a \; b" ; paste-buffer -p -r -d -b hb -t "%0""# + "\n"
+            ])
+        async let after = client.run(command("next"), timeout: .seconds(5))
+        try await waitUntil("the following command to wait") { await client.waitingCommands == 3 }
+        await channel.send(
+            Data(
+                """
+                %begin 1 10 1
+                setup ignored
+                %end 1 10 1
+                %begin 1 11 1
+                paste reply
+                %end 1 11 1
+                %begin 1 12 1
+                after reply
+                %end 1 12 1
+
+                """.utf8))
+        #expect(try await pasted == reply(11, ["paste reply"]))
+        #expect(try await after == reply(12, ["after reply"]))
+    }
+
     /// A command whose caller stopped waiting still has a reply coming, and
     /// the next command's reply is the one after it.
     @Test func aRunThatTimedOutKeepsItsPlaceInLine() async throws {

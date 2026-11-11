@@ -561,7 +561,7 @@ final class TerminalAttachInputQueue: Sendable {
 
     private enum ReliablePayload: Sendable {
         case input(TerminalAttachInput)
-        case action(@Sendable () async -> Void)
+        case action(@Sendable () async throws -> Void)
     }
 
     private struct ReliableItem: Sendable {
@@ -615,8 +615,9 @@ final class TerminalAttachInputQueue: Sendable {
     }
 
     /// Runs `action` in FIFO order with queued keystrokes and resizes, throwing
-    /// `TerminalAttachInputError.sessionEnded` if the queue ended before `action` ran.
-    func performAcknowledged(_ action: @escaping @Sendable () async -> Void) async throws {
+    /// what `action` threw or `TerminalAttachInputError.sessionEnded` if the
+    /// queue ended before `action` finished.
+    func performAcknowledged(_ action: @escaping @Sendable () async throws -> Void) async throws {
         try await withCheckedThrowingContinuation { (continuation: Acknowledgement) in
             let isOpen = state.withLock { !$0.isFinished && !$0.hasStoppedPumping }
             guard isOpen else {
@@ -679,8 +680,12 @@ final class TerminalAttachInputQueue: Sendable {
             case .input(let input):
                 return input
             case .action(let action):
-                await action()
-                finishInFlight(.success(()))
+                do {
+                    try await action()
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                }
             }
         }
         return nil
@@ -814,8 +819,13 @@ final class TerminalAttachInputQueue: Sendable {
             case .input(.resize(let cols, let rows)):
                 try await resize(cols, rows)
             case .action(let action):
-                await action()
-                finishInFlight(.success(()))
+                do {
+                    try await action()
+                    guard !Task.isCancelled else { return }
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                }
             }
         }
     }

@@ -448,6 +448,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let window: String?
         var ignoringSize = false
         var windowSizes: [String: (width: Int, height: Int)] = [:]
+        var pendingInput = Data()
     }
 
     private var controlClients: [UInt64: ControlClient] = [:]
@@ -478,6 +479,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// incoming commands still arrive in `controlCommands`.
     private var holdingControlReplies = false
     private var heldControlReplies: [(client: UInt64, data: Data, changedWindows: [String], socket: String)] = []
+    private var breakControlOnNextPasteWrite: TransportError?
 
     var openControlClients: Int { controlClients.count }
 
@@ -619,6 +621,15 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         silentControlClients += 1
     }
 
+    /// Runs the first control-client write of the next paste on the server,
+    /// then fails that client's channel before its reply (or any following
+    /// write) arrives.
+    func breakControlClientOnNextPasteWrite(
+        _ error: TransportError = .channelFailed(detail: "the control client's channel broke")
+    ) {
+        breakControlOnNextPasteWrite = error
+    }
+
     /// Breaks open control clients on `name` so their Attaches enter `.ended`.
     func breakControlClients(
         _ error: TransportError = .channelFailed(detail: "the control client's channel broke"),
@@ -722,25 +733,50 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     private func controlClientWrote(_ data: Data, client id: UInt64) async {
-        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
-            controlCommands.append(String(line))
-            guard let client = controlClients[id] else { return }
-            let words = Self.words(of: String(line))
-            let (reply, changedWindows) = answer(words, from: client, id: id)
-            if words.first == "paste-buffer", reply.contains("\n%end "), let hook = onNextPaste {
-                onNextPaste = nil
-                await hook()
-            }
-            let replyBytes = Data(reply.utf8)
-            if holdingControlReplies {
-                heldControlReplies.append(
-                    (client: id, data: replyBytes, changedWindows: changedWindows, socket: client.socket))
+        guard controlClients[id] != nil else { return }
+        controlClients[id]?.pendingInput.append(data)
+        while let newline = controlClients[id]?.pendingInput.firstIndex(of: UInt8(ascii: "\n")) {
+            guard let pending = controlClients[id]?.pendingInput else { return }
+            let rawLine = pending[..<newline]
+            controlClients[id]?.pendingInput = Data(pending[pending.index(after: newline)...])
+            let line = String(decoding: rawLine, as: UTF8.self)
+            controlCommands.append(line)
+            let list = Self.commandList(of: line)
+            let breaksAfterLine: TransportError?
+            if list.contains(where: { $0.first == "set-buffer" || $0.first == "paste-buffer" }),
+                let failure = breakControlOnNextPasteWrite
+            {
+                breakControlOnNextPasteWrite = nil
+                breaksAfterLine = failure
             } else {
-                await client.channel.send(replyBytes)
-                await notifyLayoutChanges(changedWindows, on: client.socket)
+                breaksAfterLine = nil
             }
-            if let ended = ending(after: words, from: client) {
-                for other in ended { await endControlClient(other) }
+            for words in list {
+                guard let client = controlClients[id] else { return }
+                let (reply, changedWindows) = answer(words, from: client, id: id)
+                let succeeded = reply.contains("\n%end ")
+                if words.first == "paste-buffer", succeeded, let hook = onNextPaste {
+                    onNextPaste = nil
+                    await hook()
+                }
+                if breaksAfterLine == nil {
+                    let replyBytes = Data(reply.utf8)
+                    if holdingControlReplies {
+                        heldControlReplies.append(
+                            (client: id, data: replyBytes, changedWindows: changedWindows, socket: client.socket))
+                    } else {
+                        await client.channel.send(replyBytes)
+                        await notifyLayoutChanges(changedWindows, on: client.socket)
+                    }
+                }
+                if let ended = ending(after: words, from: client) {
+                    for other in ended { await endControlClient(other) }
+                }
+                if !succeeded { break }
+            }
+            if let failure = breaksAfterLine, let client = controlClients.removeValue(forKey: id) {
+                await client.channel.fail(failure)
+                return
             }
         }
     }
@@ -1055,6 +1091,59 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
         if inWord { words.append(String(word)) }
         return words
+    }
+
+    /// The `;`-separated commands on one control-mode line, with quoted and
+    /// escaped semicolons kept inside their words as tmux's parser reads them.
+    static func commandList(of line: String) -> [[String]] {
+        var commands: [[String]] = []
+        var words: [String] = []
+        var word = String.UnicodeScalarView()
+        var quote: Unicode.Scalar?
+        var inWord = false
+        var scalars = line.unicodeScalars.makeIterator()
+        while let scalar = scalars.next() {
+            if let open = quote, scalar == open {
+                quote = nil
+            } else if quote == nil, scalar == "'" || scalar == "\"" {
+                quote = scalar
+                inWord = true
+            } else if quote == nil, scalar == "\\", let escaped = scalars.next() {
+                word.append(escaped)
+                inWord = true
+            } else if quote == nil, scalar == ";" {
+                if inWord {
+                    words.append(String(word))
+                    word = String.UnicodeScalarView()
+                    inWord = false
+                }
+                if !words.isEmpty {
+                    commands.append(words)
+                    words = []
+                }
+            } else if quote == nil, scalar == " " {
+                if inWord { words.append(String(word)) }
+                word = String.UnicodeScalarView()
+                inWord = false
+            } else if quote == "\"", scalar == "\\", let escaped = scalars.next() {
+                switch escaped {
+                case "n": word.append("\n")
+                case "r": word.append("\r")
+                case "t": word.append("\t")
+                case "0"..."3":
+                    let digits = [escaped, scalars.next(), scalars.next()].compactMap { $0 }
+                    let value = digits.reduce(0) { $0 * 8 + ($1.value - 0x30) }
+                    if let control = Unicode.Scalar(value) { word.append(control) }
+                default: word.append(escaped)
+                }
+            } else {
+                word.append(scalar)
+                inWord = true
+            }
+        }
+        if inWord { words.append(String(word)) }
+        if !words.isEmpty { commands.append(words) }
+        return commands
     }
 
     /// Pane output as `%output` writes it.

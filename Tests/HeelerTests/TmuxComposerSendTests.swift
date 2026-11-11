@@ -93,7 +93,7 @@ struct TmuxComposerSendTests {
         }
 
         func controlWords() async -> [[String]] {
-            await tmux.controlCommands.map(ScriptedTmuxHost.words(of:))
+            await tmux.controlCommands.flatMap(ScriptedTmuxHost.commandList(of:))
         }
 
         func sendWords() async -> [[String]] {
@@ -147,6 +147,10 @@ struct TmuxComposerSendTests {
         #expect(setBuffer == ["set-buffer", "-b", bufferName, "--", text])
         #expect(words[1] == ["paste-buffer", "-p", "-r", "-d", "-b", bufferName, "-t", "%0"])
         #expect(words[2] == ["send-keys", "-t", "%0", "Enter"])
+        let pasteLines = await fixture.tmux.controlCommands
+            .map(ScriptedTmuxHost.commandList(of:))
+            .filter { $0.contains { $0.first == "set-buffer" || $0.first == "paste-buffer" } }
+        #expect(pasteLines == [[setBuffer, words[1]]])
         #expect((await fixture.tmux.foregroundScripts).count == 2)
         #expect(await fixture.tmux.buffers.isEmpty)
 
@@ -645,5 +649,37 @@ struct TmuxComposerSendTests {
         #expect(words[0].last == "first")
         #expect(words[3].last == "second")
         await fixture.finish()
+    }
+
+    @Test func clientEndingMidPasteLeavesNoHeelerBufferAndReportsOutcomeUnknown() async throws {
+        let fixture = try await Fixture()
+        try await fixture.live()
+        await fixture.tmux.setBuffer("the user's", named: "buffer0")
+        await fixture.tmux.breakControlClientOnNextPasteWrite()
+
+        fixture.composer.replaceDraft(with: "sensitive draft ; with quotes \"x\"")
+        let outcome = await fixture.composer.send(policy: fixture.policy)
+        #expect(outcome == .outcomeUnknown)
+        #expect(fixture.composer.messages.first?.state == .outcomeUnknown)
+        #expect(await fixture.tmux.buffers == ["buffer0": "the user's"])
+        await fixture.finish()
+
+        // Also cover a server `%exit` while `paste-buffer` is held in flight: the paste
+        // already started, so Composer reports `.outcomeUnknown`, not `.failed` ("not sent").
+        let second = try await Fixture()
+        try await second.live()
+        await second.tmux.setBuffer("the user's", named: "buffer0")
+        await second.tmux.holdControlReplies(true)
+        second.composer.replaceDraft(with: "in flight before exit")
+        let sending = Task { await second.composer.send(policy: second.policy) }
+        try await Fixture.waitUntil("paste written") {
+            await second.sendWords().contains { $0.first == "paste-buffer" }
+        }
+        #expect(await second.tmux.buffers == ["buffer0": "the user's"])
+        await second.tmux.stopServer()
+        #expect(await sending.value == .outcomeUnknown)
+        #expect(second.composer.messages.first?.state == .outcomeUnknown)
+        await second.tmux.holdControlReplies(false)
+        await second.finish()
     }
 }

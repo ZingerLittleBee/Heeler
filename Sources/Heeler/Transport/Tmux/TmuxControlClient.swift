@@ -106,14 +106,48 @@ actor TmuxControlClient {
     func run(
         _ command: TmuxControlCommand,
         timeout: Duration,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        onSent: (@Sendable () -> Void)? = nil
+    ) async throws -> TmuxControlReply {
+        try await enqueueAndRun(
+            line: Self.line(command), leadingDroppedReplies: 0,
+            timeout: timeout, sleep: sleep, onSent: onSent)
+    }
+
+    /// Sends `setup` and `command` as one `;`-separated command list on a
+    /// single control-mode line, drops `setup`'s reply, and waits for
+    /// `command`'s reply. `setup` must be a command that cannot fail (such as
+    /// `set-buffer -b <name> -- <text>`), so tmux always runs both commands on
+    /// the server — or neither if the client's input closes before the newline
+    /// arrives — and emits two replies in order.
+    func run(
+        after setup: TmuxControlCommand,
+        _ command: TmuxControlCommand,
+        timeout: Duration,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        onSent: (@Sendable () -> Void)? = nil
+    ) async throws -> TmuxControlReply {
+        try await enqueueAndRun(
+            line: Data((setup.line + " ; " + command.line + "\n").utf8),
+            leadingDroppedReplies: 1,
+            timeout: timeout, sleep: sleep, onSent: onSent)
+    }
+
+    private func enqueueAndRun(
+        line: Data,
+        leadingDroppedReplies: Int,
+        timeout: Duration,
+        sleep: @escaping @Sendable (Duration) async throws -> Void,
+        onSent: (@Sendable () -> Void)?
     ) async throws -> TmuxControlReply {
         if let end { throw Ended(end: end) }
         try Task.checkCancellation()
         nextRun += 1
         let id = nextRun
+        for _ in 0..<leadingDroppedReplies { waiters.append(.dropped) }
         waiters.append(.run(id))
-        lineSink.yield(Self.line(command))
+        lineSink.yield(line)
+        onSent?()
         let timer = Task { [weak self] in
             try await sleep(timeout)
             await self?.stopWaiting(id, with: TransportError.timedOut)
