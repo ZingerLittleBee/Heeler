@@ -104,6 +104,7 @@ export function followRegisteredSessions({ directory, log = () => {}, pollMs = P
   const wantedSessions = () => {
     const wanted = new Set();
     for (const raw of [...registeredSessions(directory), ...alsoFollow()]) {
+      if (raw.startsWith("tmux/")) continue;
       const session = normalizeSessionName(raw);
       if (session !== null) {
         wanted.add(session);

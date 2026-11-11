@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { combineListeners, followRegisteredSessions } from "./core/follower.js";
-import { liveActivityListener } from "./notifications/activity.js";
-import { notificationListener } from "./notifications/notifier.js";
+import { liveActivityListener, tmuxLiveActivityListener } from "./notifications/activity.js";
+import { notificationListener, tmuxNotificationListener } from "./notifications/notifier.js";
 import { combineTmuxListeners, followStoredTmuxServers } from "./tmux/follower.js";
 import { tmuxPipeReaderListener } from "./tmux/pipe-reader.js";
 import { tmuxTranscriptListener } from "./tmux/transcript-watcher.js";
@@ -38,6 +38,8 @@ followStoredTmuxServers({
     tmuxUsageListener({ directory, log }),
     tmuxPipeReaderListener({ log }),
     tmuxTranscriptListener(),
+    tmuxNotificationListener({ directory, log }),
+    tmuxLiveActivityListener({ directory, log }),
   ),
 });
 

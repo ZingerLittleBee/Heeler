@@ -202,13 +202,13 @@ export function tmuxTranscriptListener() {
         (prev.watching || (word === "blocked" && tail.sawAssistant));
 
       if (endedAfterStatusChanged) {
-        await setIdleOnPane(target, pane);
+        const applied = await setIdleOnPane(target, pane);
         const updated = readHeelerStatus(pane.status);
         const updatedWord = wordForTmuxAgent(updated, "claude");
         tracked.panes.set(pane.paneID, {
           pid: session.pid,
           file: session.file,
-          offset: tail.offset,
+          offset: applied ? tail.offset : prev.offset,
           turn: updated.turn,
           watching: updatedWord === "working" || updatedWord === "blocked",
         });

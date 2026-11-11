@@ -11,7 +11,7 @@
     },
     {
       "path": "core/follower.js",
-      "sha256": "880e505a9f0dcb8db4236adf45a8a07ee3dfb73c563119a405a0b72833a75e4b"
+      "sha256": "d5bfcb628dbc8d04557d26ca1e2a3488475c7cde620839179a3fa233ecba4050"
     },
     {
       "path": "core/frames.js",
@@ -59,15 +59,15 @@
     },
     {
       "path": "main.js",
-      "sha256": "6fff6a42cdf1ecf052a8063f14aa055dc70fe34f1a052132bf902358bfb193b7"
+      "sha256": "d557a3a37e2eb0b2a620146bea0e57f1c7b760d5f506a438cdaebed07cbe4e40"
     },
     {
       "path": "notifications/activity.js",
-      "sha256": "14aa112bc484ec79bbbe086ceca478387f7fd41556198b4990e3028a133e56ad"
+      "sha256": "bf41ef25151805691689c029c8239d3a7cd0478a60c5fb9ac0c2b06b4aa286a7"
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "f7f234234833b47d071279527ff995e6d0ed6450a4d14cec6fe098322928aec9"
+      "sha256": "4adc8da75550d2c99464937d714607d4d71d8502dfd9bbeba15f55366e369119"
     },
     {
       "path": "notifications/seen-marks.js",
@@ -235,7 +235,11 @@
     },
     {
       "path": "tmux/transcript-watcher.js",
-      "sha256": "99354050597e5c61c8775bf90bd82c47e8e1ec2f89361bf6f44dfea700139c66"
+      "sha256": "3464bcf46c74aa5dca7d075a608b0ac30e1b4a88b1415a52ab49da77dd39eeb2"
+    },
+    {
+      "path": "tmux/turn-state.js",
+      "sha256": "a5e6ba2c31947a53c800cd14e4e4991aebff242d8d6b2a3279f8e670e8faaa6d"
     },
     {
       "path": "usage-query.js",
