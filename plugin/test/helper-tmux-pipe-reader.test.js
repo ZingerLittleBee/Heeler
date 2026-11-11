@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { combineTmuxListeners, followTmuxServer } from "../helper/tmux/follower.js";
+import { runStoredTmux } from "../helper/tmux/client.js";
 import { createOsc7501Parser } from "../helper/tmux/osc7501.js";
 import { tmuxPipeReaderListener } from "../helper/tmux/pipe-reader.js";
 import { continueHeelerStatus, readHeelerStatus } from "../helper/tmux/status.js";
@@ -528,5 +529,95 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     await waitFor(() => ticks >= afterExitTick + 3, "follower observed exit on user-piped pane", PATIENCE_MS);
     assert.equal(server.paneState(paneID).hasPipe, true);
     assert.equal(server.paneState(paneID).pipeMark, "");
+  });
+
+  test("a failed pipe-pane attach leaves neither option behind and retries on a later sample", async () => {
+    const server = startPrivateServer("work");
+    const codex = makeControlledAgent("codex");
+    const paneID = server.run("new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "main:", codex.executable, "--no-daemon").trim();
+
+    // First failure mode: tmux's own `pipe-pane` command fails after the leading `set-option`s run.
+    let failTmuxCommandOnce = true;
+    let stateAfterFailedSample = null;
+    const logs = [];
+    const firstFollower = followTmuxServer("work", server.paths, {
+      pollIntervalMs: 40,
+      listener: combineTmuxListeners(
+        tmuxPipeReaderListener({
+          log: (line) => logs.push(line),
+          runTmux: async (target, args, options) => {
+            if (failTmuxCommandOnce && args.includes("pipe-pane")) {
+              failTmuxCommandOnce = false;
+              const pipeIndex = args.indexOf("pipe-pane");
+              const broken = [...args];
+              const targetFlagIndex = broken.indexOf("-t", pipeIndex);
+              broken[targetFlagIndex + 1] = "%999";
+              return runStoredTmux(target, broken, options);
+            }
+            return runStoredTmux(target, args, options);
+          },
+        }),
+        {
+          panesUpdated: () => {
+            if (!failTmuxCommandOnce && stateAfterFailedSample === null) {
+              stateAfterFailedSample = server.paneState(paneID);
+            }
+          },
+        },
+      ),
+    });
+    cleanups.push(() => firstFollower.stop());
+
+    await waitFor(() => stateAfterFailedSample !== null, "first attach attempt failed", PATIENCE_MS);
+    assert.equal(stateAfterFailedSample.hasPipe, false);
+    assert.equal(stateAfterFailedSample.pipeMark, "");
+    assert.equal(stateAfterFailedSample.pipedProgram, "");
+    assert.ok(logs.some((line) => line.includes("pipe-pane on") && line.includes("failed")));
+
+    await waitFor(
+      () => server.paneState(paneID).hasPipe && server.paneState(paneID).pipeMark !== "",
+      "later sample retried and attached after tmux command failure",
+      PATIENCE_MS,
+    );
+    codex.emit("\x1b]7501;state=working:app=codex\x07");
+    await waitFor(
+      () => server.paneState(paneID).status === "state=working:app=codex:turn=0:blocked=0",
+      "status written after retry",
+      PATIENCE_MS,
+    );
+    await firstFollower.stop();
+
+    // Second failure mode: worker path is missing on the first attempt, then valid on the next sample.
+    const secondCodex = makeControlledAgent("codex");
+    const secondPane = server.run("new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "main:", secondCodex.executable, "--no-daemon").trim();
+    let workerAttempts = 0;
+    const secondFollower = followTmuxServer("work", server.paths, {
+      pollIntervalMs: 40,
+      listener: tmuxPipeReaderListener({
+        resolveWorkerPath: (defaultPath) => {
+          workerAttempts += 1;
+          return workerAttempts === 1 ? join(root, "missing-worker.js") : defaultPath;
+        },
+      }),
+    });
+    cleanups.push(() => secondFollower.stop());
+
+    await waitFor(() => workerAttempts >= 1, "first worker-path attempt issued", PATIENCE_MS);
+    // tmux detects a dead pipe-pane child when the Pane next writes output (`EPIPE`).
+    secondCodex.emit("prompt\r\n");
+    await waitFor(
+      () =>
+        workerAttempts >= 2 &&
+        server.paneState(secondPane).hasPipe &&
+        server.paneState(secondPane).pipedProgram !== "",
+      "later sample retried and attached after missing worker path",
+      PATIENCE_MS,
+    );
+    secondCodex.emit("\x1b]7501;state=done:app=codex\x07");
+    await waitFor(
+      () => server.paneState(secondPane).status === "state=done:app=codex:turn=0:blocked=0",
+      "status written after worker-path retry",
+      PATIENCE_MS,
+    );
   });
 });

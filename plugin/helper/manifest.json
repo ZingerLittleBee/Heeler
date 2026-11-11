@@ -219,11 +219,11 @@
     },
     {
       "path": "tmux/pipe-pane-worker.js",
-      "sha256": "bccbac2c64d53624e0af396dd83d95fcea43e08eeef7f8df5e3fcacbea823b1d"
+      "sha256": "7dbe6141029bceaae566ae732939d2e94e1840cbc7729008f7e77438dd369aef"
     },
     {
       "path": "tmux/pipe-reader.js",
-      "sha256": "e1f4d3bcd6a90837e888e8dcc3ee8b00c662aa40c83c0a0cba550799ab82c518"
+      "sha256": "04f85def07de1f3cd359e4dd278ac93eb9ef39e5e2fcf3bed1f5fd80ce61699b"
     },
     {
       "path": "tmux/socket-name.js",

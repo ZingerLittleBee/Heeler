@@ -1,8 +1,8 @@
 // Runs under `tmux pipe-pane -O -t <pane>` for one Codex, Grok Build or
-// OpenCode Pane (ADR 0044). Reads raw Pane output from stdin, writes OSC 7501
-// status changes to `@heeler-status` continuing the Pane's counts, and clears
-// its own `@heeler-pipe` mark when the pipe closes while leaving `@heeler-piped`
-// on the Pane until the foreground program changes.
+// OpenCode Pane (ADR 0044). Records the piped `kind:pid` in `@heeler-piped`
+// once running, writes OSC 7501 status changes to `@heeler-status` continuing
+// the Pane's counts, and clears its own `@heeler-pipe` mark when the pipe
+// closes while leaving `@heeler-piped` on the Pane until the foreground changes.
 
 import { runStoredTmux } from "./client.js";
 import { createOsc7501Parser } from "./osc7501.js";
@@ -17,7 +17,9 @@ function parseConfig(encoded) {
       !/^\d+$/.test(String(raw?.serverPid ?? "")) ||
       !/^%\d+$/.test(raw?.pane ?? "") ||
       typeof raw?.mark !== "string" ||
-      raw.mark === ""
+      raw.mark === "" ||
+      typeof raw?.programKey !== "string" ||
+      raw.programKey === ""
     ) {
       return null;
     }
@@ -26,6 +28,7 @@ function parseConfig(encoded) {
       serverPid: String(raw.serverPid),
       pane: raw.pane,
       mark: raw.mark,
+      programKey: raw.programKey,
     };
   } catch {
     return null;
@@ -37,6 +40,31 @@ if (!config) process.exit(1);
 
 let writes = Promise.resolve();
 let closing = false;
+
+function markPipedProgram() {
+  writes = writes
+    .then(async () => {
+      const read = await runStoredTmux(config.target, [
+        "display-message",
+        "-p",
+        "-t",
+        config.pane,
+        "#{pid}\t#{@heeler-pipe}",
+      ]);
+      if (!read.ok) return;
+      const [pid = "", pipeMark = ""] = read.stdout.replace(/\n$/, "").split("\t");
+      if (pid !== config.serverPid || pipeMark !== config.mark) return;
+      await runStoredTmux(config.target, [
+        "set-option",
+        "-p",
+        "-t",
+        config.pane,
+        "@heeler-piped",
+        config.programKey,
+      ]);
+    })
+    .catch(() => {});
+}
 
 function writeReport(report) {
   writes = writes
@@ -73,7 +101,21 @@ function clearOwnMarkAndExit() {
       if (!read.ok) return;
       const [pid = "", pipeMark = ""] = read.stdout.replace(/\n$/, "").split("\t");
       if (pid !== config.serverPid || pipeMark !== config.mark) return;
-      await runStoredTmux(config.target, ["set-option", "-p", "-u", "-t", config.pane, "@heeler-pipe"]);
+      await runStoredTmux(config.target, [
+        "set-option",
+        "-p",
+        "-t",
+        config.pane,
+        "@heeler-piped",
+        config.programKey,
+        ";",
+        "set-option",
+        "-p",
+        "-u",
+        "-t",
+        config.pane,
+        "@heeler-pipe",
+      ]);
     })
     .catch(() => {})
     .finally(() => {
@@ -81,6 +123,7 @@ function clearOwnMarkAndExit() {
     });
 }
 
+markPipedProgram();
 const parser = createOsc7501Parser(writeReport);
 process.stdin.on("data", (chunk) => parser.feed(chunk));
 process.stdin.on("end", clearOwnMarkAndExit);

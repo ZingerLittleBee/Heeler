@@ -1,8 +1,9 @@
 // Attaches and closes Heeler's `pipe-pane` status readers on tmux Panes running
 // Codex, Grok Build or OpenCode (ADR 0044). Leaves any Pane the user already
-// pipes untouched, and keeps the last piped `kind:pid` in `@heeler-piped` on the
-// Pane so a pipe closed without Heeler stays untouched across Helper restarts
-// until the Pane's foreground program changes.
+// pipes untouched; the running worker records its `kind:pid` in `@heeler-piped`
+// on the Pane so a pipe closed without Heeler stays untouched across Helper
+// restarts until the Pane's foreground program changes, while a failed attach
+// leaves neither option behind and retries on the next sample.
 
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -46,16 +47,16 @@ function quoteForPipePane(argument) {
   return shellQuoted.replaceAll("%", "%%").replaceAll("#", "##");
 }
 
-function workerCommand({ tmux, socket, serverPid, pane, mark }) {
+function workerCommand({ tmux, socket, serverPid, pane, mark, programKey, workerPath }) {
   const encoded = Buffer.from(
-    JSON.stringify({ tmux, socket, serverPid: String(serverPid), pane, mark }),
+    JSON.stringify({ tmux, socket, serverPid: String(serverPid), pane, mark, programKey }),
     "utf8",
   ).toString("base64url");
-  return `exec ${quoteForPipePane(process.execPath)} ${quoteForPipePane(WORKER_PATH)} ${encoded}`;
+  return `exec ${quoteForPipePane(process.execPath)} ${quoteForPipePane(workerPath)} ${encoded}`;
 }
 
-async function readLivePanePipe(target, paneID) {
-  const read = await runStoredTmux(target, [
+async function readLivePanePipe(runTmux, target, paneID) {
+  const read = await runTmux(target, [
     "display-message",
     "-p",
     "-t",
@@ -67,28 +68,47 @@ async function readLivePanePipe(target, paneID) {
   return { serverPid: pid, hasPipe: pipe !== "0", pipeMark, pipedProgram };
 }
 
-async function attachPipe(target, { paths, serverPid, paneID, currentKey, socket, log }) {
+async function attachPipe(
+  runTmux,
+  target,
+  { paths, serverPid, paneID, currentKey, socket, log, resolveWorkerPath },
+) {
   const mark = `${currentKey}:${randomBytes(6).toString("hex")}`;
+  const workerPath = resolveWorkerPath(WORKER_PATH);
   const command = workerCommand({
     tmux: paths.executable,
     socket: paths.socket,
     serverPid,
     pane: paneID,
     mark,
+    programKey: currentKey,
+    workerPath,
   });
-  const attached = await runStoredTmux(target, [
+  const attached = await runTmux(target, [
     "set-option", "-p", "-t", paneID, PIPE_OPTION, mark,
     ";",
-    "set-option", "-p", "-t", paneID, PIPED_OPTION, currentKey,
+    "set-option", "-p", "-u", "-t", paneID, PIPED_OPTION,
     ";",
     "pipe-pane", "-O", "-t", paneID, command,
   ]);
   if (!attached.ok) {
+    const live = await readLivePanePipe(runTmux, target, paneID);
+    if (live && live.serverPid === String(serverPid) && live.pipeMark === mark) {
+      await runTmux(target, [
+        "set-option", "-p", "-u", "-t", paneID, PIPE_OPTION,
+        ";",
+        "set-option", "-p", "-u", "-t", paneID, PIPED_OPTION,
+      ]);
+    }
     log(`tmux socket ${JSON.stringify(socket)}: pipe-pane on ${paneID} failed (${attached.stderr.trim()})`);
   }
 }
 
-export function tmuxPipeReaderListener({ log = () => {} } = {}) {
+export function tmuxPipeReaderListener({
+  log = () => {},
+  runTmux = runStoredTmux,
+  resolveWorkerPath = (defaultPath) => defaultPath,
+} = {}) {
   return {
     async panesUpdated({ socket, paths, serverPid, panes }) {
       const target = { tmux: paths.executable, socket: paths.socket };
@@ -107,48 +127,55 @@ export function tmuxPipeReaderListener({ log = () => {} } = {}) {
           const markedKey = markedProgramKey(pane.pipeMark);
           if (pane.hasPipe) {
             if (currentKey !== null && markedKey === currentKey) {
-              if (pipedProgram !== currentKey) {
-                const live = await readLivePanePipe(target, pane.paneID);
-                if (live && live.serverPid === expectedPid && live.pipeMark === pane.pipeMark) {
-                  await runStoredTmux(target, ["set-option", "-p", "-t", pane.paneID, PIPED_OPTION, currentKey]);
-                }
-              }
               continue;
             }
-            const live = await readLivePanePipe(target, pane.paneID);
+            const live = await readLivePanePipe(runTmux, target, pane.paneID);
             if (!live || live.serverPid !== expectedPid || live.pipeMark !== pane.pipeMark) continue;
             if (currentKey !== null) {
-              await attachPipe(target, { paths, serverPid, paneID: pane.paneID, currentKey, socket, log });
+              await attachPipe(runTmux, target, {
+                paths,
+                serverPid,
+                paneID: pane.paneID,
+                currentKey,
+                socket,
+                log,
+                resolveWorkerPath,
+              });
             } else {
-              await runStoredTmux(target, [
-                "pipe-pane", "-t", pane.paneID,
-                ";",
+              await runTmux(target, [
                 "set-option", "-p", "-u", "-t", pane.paneID, PIPE_OPTION,
                 ";",
                 "set-option", "-p", "-u", "-t", pane.paneID, PIPED_OPTION,
+                ";",
+                "pipe-pane", "-t", pane.paneID,
               ]);
             }
             continue;
           }
 
-          // `hasPipe` is false while `@heeler-pipe` is still set: the pipe closed
-          // externally right before `list-panes` or its worker died without clearing.
-          const live = await readLivePanePipe(target, pane.paneID);
+          // `hasPipe` is false while `@heeler-pipe` is still set: either a running
+          // worker closed before clearing `@heeler-pipe`, or a worker command failed
+          // before starting (`@heeler-piped` was never set).
+          const live = await readLivePanePipe(runTmux, target, pane.paneID);
           if (!live || live.serverPid !== expectedPid || live.hasPipe || live.pipeMark !== pane.pipeMark) continue;
-          if (currentKey !== null && markedKey === currentKey) {
-            await runStoredTmux(target, [
-              "set-option", "-p", "-t", pane.paneID, PIPED_OPTION, currentKey,
-              ";",
-              "set-option", "-p", "-u", "-t", pane.paneID, PIPE_OPTION,
-            ]);
+          if (currentKey !== null && markedKey === currentKey && live.pipedProgram === currentKey) {
+            await runTmux(target, ["set-option", "-p", "-u", "-t", pane.paneID, PIPE_OPTION]);
           } else if (currentKey === null) {
-            await runStoredTmux(target, [
+            await runTmux(target, [
               "set-option", "-p", "-u", "-t", pane.paneID, PIPE_OPTION,
               ";",
               "set-option", "-p", "-u", "-t", pane.paneID, PIPED_OPTION,
             ]);
           } else {
-            await attachPipe(target, { paths, serverPid, paneID: pane.paneID, currentKey, socket, log });
+            await attachPipe(runTmux, target, {
+              paths,
+              serverPid,
+              paneID: pane.paneID,
+              currentKey,
+              socket,
+              log,
+              resolveWorkerPath,
+            });
           }
           continue;
         }
@@ -156,7 +183,7 @@ export function tmuxPipeReaderListener({ log = () => {} } = {}) {
         // `!pane.hasPipe && pane.pipeMark === ""`
         if (currentKey === null) {
           if (pipedProgram !== "") {
-            const live = await readLivePanePipe(target, pane.paneID);
+            const live = await readLivePanePipe(runTmux, target, pane.paneID);
             if (
               live &&
               live.serverPid === expectedPid &&
@@ -164,7 +191,7 @@ export function tmuxPipeReaderListener({ log = () => {} } = {}) {
               live.pipeMark === "" &&
               live.pipedProgram === pipedProgram
             ) {
-              await runStoredTmux(target, ["set-option", "-p", "-u", "-t", pane.paneID, PIPED_OPTION]);
+              await runTmux(target, ["set-option", "-p", "-u", "-t", pane.paneID, PIPED_OPTION]);
             }
           }
           continue;
@@ -174,7 +201,7 @@ export function tmuxPipeReaderListener({ log = () => {} } = {}) {
           continue;
         }
 
-        const live = await readLivePanePipe(target, pane.paneID);
+        const live = await readLivePanePipe(runTmux, target, pane.paneID);
         if (
           !live ||
           live.serverPid !== expectedPid ||
@@ -185,7 +212,15 @@ export function tmuxPipeReaderListener({ log = () => {} } = {}) {
           continue;
         }
 
-        await attachPipe(target, { paths, serverPid, paneID: pane.paneID, currentKey, socket, log });
+        await attachPipe(runTmux, target, {
+          paths,
+          serverPid,
+          paneID: pane.paneID,
+          currentKey,
+          socket,
+          log,
+          resolveWorkerPath,
+        });
       }
     },
   };
