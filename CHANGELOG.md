@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Verify amux Core pairing after Device Key authentication against the live Core and native helper identity/readiness. Show amux-managed helper health without Node install/remove actions, fence its notification/config/seen files to the explicit directory, and direct verification failures to amux while preserving retry metadata. Full phone and helper-runtime acceptance remains separate. (zinger-labs/amux#160)
 - Decode amux Core pairing v3 into a distinct native-helper endpoint, preserve its Core identity across saved Hosts, and reject a replacement Core before discovery or terminal actions. TUI pairing and ordinary Core Hosts keep their existing routes. (zinger-labs/amux#160)
 - Browse an amux Core Host's shared Spaces, Worktrees and Tabs in Console, including empty checkouts and unassigned terminals. Start an Agent or Terminal in a selected Host directory without changing amux organization; new terminals remain unassigned until placed from amux. Missing or incompatible organization keeps ordinary Core discovery available. (zinger-labs/amux#161)
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)

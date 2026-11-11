@@ -29,6 +29,11 @@ LAUNCHCTL_FIXTURES = ROOT / "plugin/test/fixtures/launchctl"
 SOURCES = [
     ROOT / "Sources/Heeler/Transport/HostHelperScript.swift",
     ROOT / "Sources/Heeler/Transport/NodeToolchainProbe.swift",
+    ROOT / "Sources/Heeler/Pairing/AmuxCoreEndpoint.swift",
+    ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreLocator.swift",
+    ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreSessionName.swift",
+    ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreWindowsLocator.swift",
+    ROOT / "scripts/fixtures/herdr-core-tool-stubs.swift",
     ROOT / "scripts/fixtures/string-localized-shim.swift",
 ]
 
@@ -63,6 +68,8 @@ struct Input: Decodable {
     var recordFiles: [String]?
     var recordFolders: [String]?
     var quietMinutes: Int?
+    var endpoint: AmuxCoreEndpoint?
+    var status: Bool?
 }
 
 let arguments = CommandLine.arguments
@@ -72,6 +79,9 @@ let step: HostHelperScript.Step
 switch input.step {
 case "probe": step = .probe
 case "locate": step = .locate
+case "amuxNative":
+    guard let endpoint = input.endpoint else { exit(64) }
+    step = .amuxNative(endpoint, status: input.status ?? false)
 case "listExtensionFolders":
     step = .listExtensionFolders(node: input.node ?? "", lister: input.lister ?? "", home: input.home ?? "")
 case "makeFolders": step = .makeFolders(input.folders ?? [], privateFolder: input.privateFolder ?? "")
@@ -245,6 +255,7 @@ class HelperScriptCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.build = Path(tempfile.mkdtemp(prefix="heeler-helper-build-"))
+        cls.addClassCleanup(shutil.rmtree, cls.build, ignore_errors=True)
         (cls.build / "stub.swift").write_text(STUB)
         (cls.build / "main.swift").write_text(MAIN)
         cls.binary = cls.build / "helper"
@@ -253,10 +264,6 @@ class HelperScriptCase(unittest.TestCase):
              str(cls.build / "main.swift"), "-o", str(cls.binary)],
             check=True,
         )
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        shutil.rmtree(cls.build, ignore_errors=True)
 
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="hh-")).resolve()
@@ -592,6 +599,34 @@ class ServiceNodeTests(HelperScriptCase):
 
 
 class InstallStepTests(HelperScriptCase):
+    def test_native_queries_only_the_explicit_helper_and_preserves_failure(self) -> None:
+        endpoint = json.loads((ROOT / "plugin/test-vectors/amux-pairing-helper-v1.json").read_text())["payload"]
+        executable = self.home / "amux native helper"
+        executable.write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$@" >> "$FAKE_LOG"\n'
+            'cat > "$FAKE_NATIVE_INPUT"\nprintf \'%s\\n\' \'{"kind":"amux-native"}\'\n'
+            'exit "$FAKE_NATIVE_STATUS"\n')
+        executable.chmod(0o755)
+        endpoint["helper"]["executable"] = str(executable)
+        endpoint["helper"]["directory"] = str(self.home / "amux mobile")
+        stdin = self.root / "native-stdin"
+        self.env["FAKE_NATIVE_INPUT"] = str(stdin)
+        for shell in shells():
+            for status, exit_status in [(False, 0), (True, 23)]:
+                with self.subTest(shell=shell, status=status):
+                    self.log.write_text("")
+                    self.env["FAKE_NATIVE_STATUS"] = str(exit_status)
+                    result = self.run_script(shell, step="amuxNative", endpoint=endpoint, status=status)
+                    self.assertEqual(result.returncode, exit_status, result.stderr)
+                    self.assertEqual(self.log.read_text().splitlines(), [
+                        "core", "status" if status else "identity", "--config",
+                        endpoint["helper"]["directory"] + "/core-helper.json",
+                    ])
+                    self.assertEqual(stdin.read_bytes(), b"")
+                    self.assertIn('{"kind":"amux-native"}', result.stdout)
+                    self.assertTrue(result.stdout.rstrip().endswith(f"{NONCE} end"), result.stdout)
+                    self.assertFalse(self.helper_dir.exists())
+
     def test_make_folders_says_which_it_created_and_makes_them_private(self) -> None:
         (self.home / ".config").mkdir()
         folders = [str(self.home / ".config"), str(self.home / ".config/a"), str(self.home / ".config/a/b")]

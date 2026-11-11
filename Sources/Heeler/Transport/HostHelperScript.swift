@@ -9,6 +9,8 @@ struct HostHelperScript: Sendable, Equatable {
         case probe
         /// Only the directories the Helper's paths come from.
         case locate
+        /// Queries only the v3 code's explicitly managed native helper.
+        case amuxNative(AmuxCoreEndpoint, status: Bool)
         /// Runs the Helper's `extensions/extension-folders.js`, by its text since
         /// the Helper may not be on this Host yet.
         case listExtensionFolders(node: String, lister: String, home: String)
@@ -105,6 +107,8 @@ struct HostHelperScript: Sendable, Equatable {
         switch step {
         case .probe: lines = probe
         case .locate: lines = locations
+        case .amuxNative(let endpoint, let status):
+            lines = ["\(quote(endpoint.helper.executable)) core \(status ? "status" : "identity") --config \(quote(endpoint.helper.directory + "/core-helper.json")) </dev/null"]
         case .listExtensionFolders(let node, let lister, let home):
             // The script itself is this shell's stdin, so Node must not read it.
             lines = ["\(quote(node)) --input-type=module -e \(quote(lister)) \(quote(home)) </dev/null"]

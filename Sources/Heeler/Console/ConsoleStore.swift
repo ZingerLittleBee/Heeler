@@ -2434,7 +2434,7 @@ extension ConsoleStore: NotificationTransportProvider {
             }
         }
         return try await withCoreConnection(host) { transport in
-            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
+            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName, amuxEndpoint: host.coreEndpoint))
         }
     }
 
@@ -2449,7 +2449,7 @@ extension ConsoleStore: NotificationTransportProvider {
         try await withCoreConnection(host) { transport in
             try await operation(HostHelperUsageHost(
                 services: transport.hostServices,
-                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName, amuxEndpoint: host.coreEndpoint)))
         }
     }
 
