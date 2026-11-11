@@ -16,3 +16,7 @@ not_found_handling = "404-page"
 [[routes]]
 pattern = "heeler.bybee.dev"
 custom_domain = true
+
+[[routes]]
+pattern = "heeler.si"
+custom_domain = true
