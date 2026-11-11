@@ -5179,6 +5179,28 @@
         }
       }
     },
+    "A background service for Agent Notifications, Live Activity, Usage, and Pi and Oh My Pi Chat." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント通知、ライブアクティビティ、使用量、Pi と Oh My Pi のチャットのためのバックグラウンドサービスです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一项后台服务，用于 Agent 通知、实时活动、用量，以及 Pi 和 Oh My Pi 的“对话”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一項背景服務，用於 Agent 通知、即時動態、用量，以及 Pi 與 Oh My Pi 的對話檢視。"
+          }
+        }
+      }
+    },
     "A calm arctic palette for both appearances" : {
       "localizations" : {
         "ja" : {
@@ -7590,28 +7612,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 通知會經由推播中繼傳送：你的主機會加密每則通知，中繼只會將其轉送給 Apple，完全沒有解密所需的金鑰。"
-          }
-        }
-      }
-    },
-    "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホストのエージェント通知・ライブアクティビティ・使用量は Host Helper と共に提供されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主机上的 Agent 通知、实时活动和用量由 Host Helper 提供。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主機上的 Agent 通知、即時動態與用量都隨 Host Helper 提供。"
           }
         }
       }
