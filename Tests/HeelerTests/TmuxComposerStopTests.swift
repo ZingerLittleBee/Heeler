@@ -352,6 +352,82 @@ struct TmuxComposerStopTests {
         await fixture.finish()
     }
 
+    @Test func toolsEscapeDeclinesOnlyABlockedClaudeCodeQuestion() {
+        #expect(TmuxConsoleProjection.toolsEscapeDeclines(kind: "claude", status: .blocked))
+        #expect(!TmuxConsoleProjection.toolsEscapeDeclines(kind: "claude", status: .working))
+        #expect(!TmuxConsoleProjection.toolsEscapeDeclines(kind: "claude", status: .idle))
+        #expect(!TmuxConsoleProjection.toolsEscapeDeclines(kind: "codex", status: .blocked))
+        #expect(!TmuxConsoleProjection.toolsEscapeDeclines(kind: "opencode", status: .blocked))
+        #expect(!TmuxConsoleProjection.toolsEscapeDeclines(kind: nil, status: .blocked))
+    }
+
+    @Test func aDecliningAnswerWritesIdleAndClearsAClaudeQuestion() async throws {
+        let fixture = try await Fixture(
+            command: "claude", app: "claude-code", state: "blocked", turn: 4, blocked: 2)
+        await fixture.tmux.setAsk("UGljaw==", of: "%0")
+
+        let outcome = await fixture.console.recordHeelerAnswer(declines: true, for: fixture.agent)
+
+        #expect(outcome == .applied("state=idle:app=claude-code:turn=4:blocked=2"))
+        #expect(await fixture.tmux.status(of: "%0") == "state=idle:app=claude-code:turn=4:blocked=2")
+        #expect(await fixture.tmux.ask(of: "%0") == "")
+        await fixture.finish()
+    }
+
+    @Test func anyOtherAnswerWritesWorking() async throws {
+        let claude = try await Fixture(
+            command: "claude", app: "claude-code", state: "blocked", turn: 4, blocked: 2)
+        await claude.tmux.setAsk("UGljaw==", of: "%0")
+        let claudeOutcome = await claude.console.recordHeelerAnswer(declines: false, for: claude.agent)
+        #expect(claudeOutcome == .applied("state=working:app=claude-code:turn=4:blocked=2"))
+        #expect(await claude.tmux.ask(of: "%0") == "")
+        await claude.finish()
+
+        let open = try await Fixture(command: "opencode", app: "opencode", state: "blocked", turn: 3, blocked: 1)
+        await open.tmux.setAsk("kept", of: "%0")
+        let openOutcome = await open.console.recordHeelerAnswer(declines: true, for: open.agent)
+        #expect(openOutcome == .applied("state=idle:app=opencode:turn=3:blocked=1"))
+        #expect(await open.tmux.ask(of: "%0") == "kept")
+        await open.finish()
+    }
+
+    @Test func anUnlistedProgramAnswerWritesNothing() async throws {
+        let fixture = try await Fixture(command: "cursor", app: "cursor")
+        let before = await fixture.tmux.status(of: "%0")
+        let outcome = await fixture.console.recordHeelerAnswer(declines: false, for: fixture.agent)
+        #expect(outcome == .failed)
+        #expect(await fixture.tmux.status(of: "%0") == before)
+        await fixture.finish()
+    }
+
+    @Test func anAcknowledgedEscapeLeavesBeforeADeclineWritesIdle() async throws {
+        let fixture = try await Fixture(command: "claude", app: "claude-code", state: "blocked", turn: 1, blocked: 1)
+        try await fixture.live()
+        await fixture.tmux.setAsk("UGljaw==", of: "%0")
+        let mark = await fixture.tmux.controlCommands.count
+
+        #expect(await fixture.attach.sendEscapeKeyAcknowledged())
+        #expect(await fixture.stopCommands(after: mark) == [Self.escape])
+        let outcome = await fixture.console.recordHeelerAnswer(declines: true, for: fixture.agent)
+
+        #expect(outcome == .applied("state=idle:app=claude-code:turn=1:blocked=1"))
+        #expect(await fixture.tmux.ask(of: "%0") == "")
+        await fixture.finish()
+    }
+
+    @Test func escapeWhileClaudeIsWorkingWritesNothing() async throws {
+        let fixture = try await Fixture(command: "claude", app: "claude-code")
+        try await fixture.live()
+        let before = await fixture.tmux.status(of: "%0")
+        let mark = await fixture.tmux.controlCommands.count
+
+        #expect(await fixture.attach.sendEscapeKeyAcknowledged())
+
+        #expect(await fixture.stopCommands(after: mark) == [Self.escape])
+        #expect(await fixture.tmux.status(of: "%0") == before)
+        await fixture.finish()
+    }
+
     @Test func keysThatLeftStillCountWhenAnotherWriterWonTheStatus() async throws {
         let fixture = try await Fixture(command: "claude", app: "claude-code")
         try await fixture.live()

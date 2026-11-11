@@ -855,6 +855,20 @@ final class ConsoleStore {
         return session
     }
 
+    /// Whether this Host keeps Program Status on its own tmux socket, so a
+    /// decline or another answer from Heeler can write it.
+    func recordsHeelerAnswers(on hostID: Host.ID) -> Bool {
+        projections[hostID] is TmuxConsoleProjection
+    }
+
+    /// Writes idle when `declines`, otherwise working. A Host that does not
+    /// record answers writes nothing.
+    @discardableResult
+    func recordHeelerAnswer(declines: Bool, for agent: ConsoleAgent) async -> TmuxStatusWrite.Outcome {
+        guard let tmux = projections[agent.hostID] as? TmuxConsoleProjection else { return .failed }
+        return await tmux.recordHeelerAnswer(declines: declines, on: agent.agent.paneID)
+    }
+
     /// The terminal Composer's Stop, or nil to keep Send. A projection that
     /// supplies Stop says whether this Pane gets one. One that does not keeps
     /// Esc, which Grok Build does not take. `pressEsc` is that Esc.

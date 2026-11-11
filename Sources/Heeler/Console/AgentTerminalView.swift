@@ -1486,6 +1486,18 @@ struct AgentTerminalView: View {
     private func sendAgentQuickKey(_ key: AgentQuickKey) {
         if key == .escape, keyboardControl.pendingModifiers.isEmpty {
             keyboardControl.noteReliableInputBegan()
+            if console.recordsHeelerAnswers(on: agent.hostID),
+                TmuxConsoleProjection.toolsEscapeDeclines(kind: agent.agent.kind, status: agent.agent.status)
+            {
+                let agent = agent
+                let attach = attach
+                let console = console
+                Task {
+                    guard await attach.sendEscapeKeyAcknowledged() else { return }
+                    await console.recordHeelerAnswer(declines: true, for: agent)
+                }
+                return
+            }
             attach.sendEscapeKey()
             return
         }

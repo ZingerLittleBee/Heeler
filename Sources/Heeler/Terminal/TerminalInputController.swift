@@ -219,6 +219,20 @@ final class TerminalInputController {
         return true
     }
 
+    /// The Esc quick key, returning once the byte has left. Indexed as
+    /// `.escapeKey` only after that, so a session that ended first records nothing.
+    @discardableResult
+    func sendEscapeKeyAcknowledged() async -> Bool {
+        guard isEnabled, let generation = liveGeneration else { return false }
+        do {
+            try await writeAcknowledged(Data([0x1B]), generation: generation)
+        } catch {
+            return false
+        }
+        userMessageIndex.observeOutgoing(Data([0x1B]), source: .escapeKey)
+        return true
+    }
+
     /// Touch scrolling is deliberately separate from reliable terminal input.
     /// The live session can coalesce and shed stale momentum without changing
     /// keyboard, Paste, or Snippet delivery semantics.

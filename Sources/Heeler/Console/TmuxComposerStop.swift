@@ -115,7 +115,7 @@ final class TmuxComposerStop {
     }
 
     /// The `app` word a Program Status uses for this program.
-    private static func reportedApp(_ program: ChatProgram) -> String {
+    static func reportedApp(_ program: ChatProgram) -> String {
         HerdrCoreAgentRule.reportedApps.first { $0.value == program.rawValue }?.key ?? program.rawValue
     }
 }

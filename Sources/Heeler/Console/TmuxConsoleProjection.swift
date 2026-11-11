@@ -246,6 +246,26 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         inventory?.panes.first { $0.paneID == paneID }
     }
 
+    /// Tools-keyboard Esc declines only while Claude Code is asking something.
+    /// Any other Esc, including one while Claude is Working, is just a key.
+    static func toolsEscapeDeclines(kind: String?, status: AgentStatus) -> Bool {
+        kind == ChatProgram.claude.rawValue && status == .blocked
+    }
+
+    /// Heeler's own answer on this Pane (ADR 0044). A decline writes idle;
+    /// any other answer writes working. Navigation keys are not answers, and
+    /// neither is an Enter whose selected option this caller does not know.
+    /// Claude Code idle and working also clear `@heeler-ask`.
+    func recordHeelerAnswer(declines: Bool, on paneID: String) async -> TmuxStatusWrite.Outcome {
+        guard let kind = agentsByPane[paneID]?.agent.kind, let program = ChatProgram(rawValue: kind) else {
+            return .failed
+        }
+        return await writeHeelerStatus(
+            TmuxStatusReport(
+                state: declines ? "idle" : "working", app: TmuxComposerStop.reportedApp(program)),
+            on: paneID)
+    }
+
     /// Heeler's own write of this Pane's `@heeler-status` (ADR 0044). Idle and
     /// working for Claude Code also clear `@heeler-ask`. One compare: a value
     /// that changed first is left as it is.
