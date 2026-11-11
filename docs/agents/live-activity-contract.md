@@ -262,3 +262,9 @@ cross-AAD case proving domain separation. Pin-order cases also carry
 shared sort rule, and one such case pins Error under `blocked`. Consumed by both
 the Node suite and HeelerTests;
 regenerate only via an independent raw-crypto script.
+
+`plugin/test-vectors/amux-core-activity-v1.json` separately pins the native
+Core extension, byte-for-byte seal and open in Heeler and amux. Its amux copy
+is `Tests/Fixtures/herdr-core/amux-core-activity-v1.json`. It uses raw
+AES-256-GCM with key bytes 0...31, nonce bytes 192...203 and the same AAD;
+the existing TUI vectors and independent Node helper are unchanged.

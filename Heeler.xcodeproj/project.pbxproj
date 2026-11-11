@@ -58,6 +58,7 @@
 		0E50946869DD6FC41373079B /* HeelerSSHHostKeyPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70C49925D454207F859F897 /* HeelerSSHHostKeyPolicyTests.swift */; };
 		0E75981CA4853F8638AA3F48 /* UsageWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67DDAADA38B1C89CD658C143 /* UsageWidgetViews.swift */; };
 		0E9BBEF746E06C3A3192B65F /* TerminalListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F2E0AFE933B0CC1F932006 /* TerminalListView.swift */; };
+		0F0122D4CEE3A24A52B132FF /* amux-core-activity-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = E0D40982A102EEE9A91B6BFC /* amux-core-activity-v1.json */; };
 		0FCA9A08E011A847F31A4B85 /* AgentNotificationCenterDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00BABBDEFEDCB3D11EF1EFA7 /* AgentNotificationCenterDelegate.swift */; };
 		0FE90B9982AF87386D6898ED /* AgentActivityDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60468938DA99734F4DCBBEC /* AgentActivityDecryptor.swift */; };
 		10324EE6A79714E5D12220B6 /* AgentStatusPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A430D16838A39772ED0AA73 /* AgentStatusPalette.swift */; };
@@ -2083,6 +2084,7 @@
 		E0B72AE2059C59D8A59C9B2A /* AppActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinator.swift; sourceTree = "<group>"; };
 		E0CF924A5A56449015AB3AAE /* AgentDetailHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailHeader.swift; sourceTree = "<group>"; };
 		E0D337C054FB9D9E5814193E /* AgentMarks.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = AgentMarks.xcassets; sourceTree = "<group>"; };
+		E0D40982A102EEE9A91B6BFC /* amux-core-activity-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "amux-core-activity-v1.json"; sourceTree = "<group>"; };
 		E138D7B73DADC1BCEE01C0E8 /* VoiceInputSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputSettingsTests.swift; sourceTree = "<group>"; };
 		E15A9C3D4479146FAD7BE5AE /* ConsoleDriftLocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleDriftLocalizationTests.swift; sourceTree = "<group>"; };
 		E15C4213B6A4A97D781279B5 /* OpenCodePluginEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodePluginEditTests.swift; sourceTree = "<group>"; };
@@ -3311,6 +3313,7 @@
 		82CA97AAEAF7E8D41B6C8B7F /* test-vectors */ = {
 			isa = PBXGroup;
 			children = (
+				E0D40982A102EEE9A91B6BFC /* amux-core-activity-v1.json */,
 				DA665727F448CC94C7ECF106 /* amux-organization-v1.json */,
 				AEE1A9B1885C5C6E75582854 /* amux-pairing-helper-v1.json */,
 				4D23B2481552DE847CD7FBB1 /* herdr-core-agent-rule-v1.json */,
@@ -3926,6 +3929,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				32FD10D6802D96EF929E544E /* ChatFixtures in Resources */,
+				0F0122D4CEE3A24A52B132FF /* amux-core-activity-v1.json in Resources */,
 				326B9566CEE0054B589F07FC /* amux-organization-v1.json in Resources */,
 				19778553970C26EE514A6751 /* amux-pairing-helper-v1.json in Resources */,
 				31D22FECC0AF4A3F38FDA11A /* herdr-core-agent-rule-v1.json in Resources */,

@@ -1,0 +1,7 @@
+{
+  "description": "Native amux/Heeler Core Activity v1 interoperability vector, generated with raw Node AES-256-GCM, not either production sealer. Key bytes 0...31, nonce bytes 192...203, AAD HERDR-ACTIVITY:1. Existing TUI vectors remain unchanged; independent Node helpers are not changed by this native-only extension.",
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "nonce": "wMHCw8TFxsfIycrL",
+  "plaintext": "{\"agents\":[{\"kind\":\"claude\",\"pane\":\"t7\",\"status\":\"blocked\"}],\"core\":\"core-a\",\"host\":\"mbp\",\"v\":1}",
+  "envelope": "{\"v\":1,\"kid\":\"Yw3NKWbEM2Y\",\"n\":\"wMHCw8TFxsfIycrL\",\"ct\":\"e2pGABIW4i2646bZEMeBOChR2R1fjn7PTqZpJhUNHtjZtK2FBuxnL-o-IHiNsRart0e9Fr2uy3zgB1ONzsVYcn9JqQfLpRPeB7h5Pth1d-k2MoiV5GBH_YEClmWUdiK_xX2JDUlh9PLriPOeC5mMkg\"}"
+}

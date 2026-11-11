@@ -12,6 +12,22 @@ import Testing
 struct AgentActivityEnvelopeTests {
     private static let vectors = LiveActivityVectorFile.shared
 
+    @Test func nativeCoreVectorSealsAndOpensByteForByte() throws {
+        struct Vector: Decodable { let key: String; let nonce: String; let envelope: String }
+        let url = try #require(Bundle(for: BundleLocator.self)
+            .url(forResource: "amux-core-activity-v1", withExtension: "json"))
+        let vector = try JSONDecoder().decode(Vector.self, from: Data(contentsOf: url))
+        let key = try #require(Data(base64URLEncoded: vector.key))
+        let nonce = try #require(Data(base64URLEncoded: vector.nonce))
+        let expected = AgentActivityDetails(hostName: "mbp",
+            agents: [.init(paneID: "t7", kind: "claude", status: "blocked")], coreID: "core-a")
+        #expect(try AgentActivityEnvelope.open(Data(vector.envelope.utf8), using: key) == expected)
+        #expect(String(decoding: try AgentActivityEnvelope.seal(expected, using: key, nonce: nonce),
+            as: UTF8.self) == vector.envelope)
+    }
+
+    private final class BundleLocator {}
+
     @Test func sharedVectorFileHasCases() {
         #expect(Self.vectors.valid.count >= 4)
         #expect(Self.vectors.invalid.count >= 5)
