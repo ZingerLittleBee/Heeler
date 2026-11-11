@@ -102,7 +102,7 @@ Decrypted plaintext (canonical form):
   herdr-core Host the Terminal's label for `label:<key>` fields, which the Helper
   reads from the same `tokens`.
   On a herdr-core Host the app takes an Agent's `cwd` from its Terminal's
-  foreground sample, else the record's launch `cwd`. Host Helper 0.5.5 still
+  foreground sample, else the record's launch `cwd`. Host Helper 0.5.6 still
   sends the record's `cwd` for its rows and its notifications' project, so an
   Agent typed after a `cd` names its Terminal's starting folder there once the
   app suspends, until the next plugin version follows the app.
