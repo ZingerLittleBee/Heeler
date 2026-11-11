@@ -179,6 +179,9 @@ struct HostOnboardingView: View {
                 }
                 if let harnessEdits {
                     HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
+                    if store.host.serverKind == .tmux, harnessEdits.hostStatuses[store.host.id] == .connected {
+                        ClaudeCodeHooksSection(flow: harnessEdits.claudeCodeHooksFlow(on: store.host.id))
+                    }
                 }
             } else {
                 serverKindSection

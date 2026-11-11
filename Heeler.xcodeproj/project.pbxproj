@@ -636,6 +636,7 @@
 		8FC7B3F9BAC1C86576520AEF /* ClaudeTranscriptLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67915AA97A2D8B0113F65CE4 /* ClaudeTranscriptLocatorTests.swift */; };
 		8FF7B6608E88BAF756D66548 /* VoiceInputSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE30EA02E9CF206CF221AFF7 /* VoiceInputSession.swift */; };
 		9019E7748FBF71744AB4CE14 /* LocalNetworkDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9D46A53C3C2F8710D6700F /* LocalNetworkDiscovery.swift */; };
+		9051EA998ECE7311D8263C04 /* ClaudeCodeHooksFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF61E52CE8C1103F9E5655DD /* ClaudeCodeHooksFlowTests.swift */; };
 		91386D52E541ABB78FA4F39C /* ChatStopPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C566D947C5E39608EEC199 /* ChatStopPlan.swift */; };
 		91BF879F537B1B0DD0B5E78B /* HostConsoleProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */; };
 		921875AD80D687FB0C2AD771 /* NumberedChatReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24E3F2728F8EED318E0F73F /* NumberedChatReducer.swift */; };
@@ -685,6 +686,7 @@
 		9D876037CBC6A4878EA8D8C3 /* GrokScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707D880228BFDD6D1652DB85 /* GrokScreen.swift */; };
 		9DC6AF274D7C3BEDC038A985 /* GrokFileChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CF28C4CFD9E5A1823EA378 /* GrokFileChanges.swift */; };
 		9E7AFEC6FD8926C79DCB9D1D /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7065C3BE109D2F52AE3BC2 /* HerdrAPITypes.swift */; };
+		9ED1A6DA97A8EC6C39C9D252 /* ClaudeCodeHooksSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76EF39DE950E595EC33F4FC /* ClaudeCodeHooksSection.swift */; };
 		9ED432CFB7DD4CCC60AA0B2A /* CodexPendingEchoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606DC1CA3CEE33CCCC4EA551 /* CodexPendingEchoTests.swift */; };
 		9F0051CD770B87BCA519AC99 /* ChangesStoreFailureStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1F4711A688E588FEC33628 /* ChangesStoreFailureStateTests.swift */; };
 		9F33E6B6FB4C4085CAA86B7E /* ClaudeTranscriptRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7B849F54A144724C4D064F /* ClaudeTranscriptRecord.swift */; };
@@ -1034,6 +1036,7 @@
 		E9D5DD0D136597844A8FE54B /* HerdrEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 764EB7D298185F64BA26C8B2 /* HerdrEvents.swift */; };
 		EA145D626FACCBCCF2E94D67 /* HerdrCoreVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5DFB755AC2022C61C4A661C /* HerdrCoreVectorFile.swift */; };
 		EA6340CA36917C35588E0755 /* AgentRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48CA996470393ED037D0364 /* AgentRoute.swift */; };
+		EA72C2CE5DB6A9A6E6A35FA7 /* ClaudeCodeHooksFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1EB9A1221682D7FD756CEC /* ClaudeCodeHooksFlow.swift */; };
 		EA83373CB743395BF9FF0689 /* ImagePreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF5D79337402EF6FA70F9CA /* ImagePreparer.swift */; };
 		EB0A19180625B9575295E214 /* CodexRolloutReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1EBE30DF2957D7B22837CA /* CodexRolloutReducer.swift */; };
 		EB1F4A3B8FF586F8E41F968F /* WorkspaceTerminalPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17292F6548C42EE456D6A397 /* WorkspaceTerminalPresentationTests.swift */; };
@@ -1920,6 +1923,7 @@
 		ACD077CCDE12B9CE49BF7D08 /* GitProbeRecordings+Patch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+Patch.swift"; sourceTree = "<group>"; };
 		ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "sidebar-layout-v1.json"; sourceTree = "<group>"; };
 		ACE3FB96A86B3835C9168B5D /* AgentTerminalCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTerminalCache.swift; sourceTree = "<group>"; };
+		AD1EB9A1221682D7FD756CEC /* ClaudeCodeHooksFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeHooksFlow.swift; sourceTree = "<group>"; };
 		AD50043422BE4A7863C21F2B /* ChatMarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkdownView.swift; sourceTree = "<group>"; };
 		AD69BB4579A415BE96578319 /* HeelerWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD9ABABB1CA63F2B23539DD6 /* HerdrCoreLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreLink.swift; sourceTree = "<group>"; };
@@ -1967,6 +1971,7 @@
 		B72B6518B66F047F3B4BFB32 /* ClaudeDialogParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDialogParser.swift; sourceTree = "<group>"; };
 		B738369540A3945A762C2B9C /* AgentKindMarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentKindMarkTests.swift; sourceTree = "<group>"; };
 		B75ABC195486D6E47B41C543 /* TmuxControlReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxControlReader.swift; sourceTree = "<group>"; };
+		B76EF39DE950E595EC33F4FC /* ClaudeCodeHooksSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeHooksSection.swift; sourceTree = "<group>"; };
 		B7F661B5D2153414B59FF899 /* ChatMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkdownTests.swift; sourceTree = "<group>"; };
 		B7FD2219A8AED3A836669619 /* OpenCodeRecordSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeRecordSourceTests.swift; sourceTree = "<group>"; };
 		B850B34406603B1EC21E871A /* GenericDialogCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenericDialogCardView.swift; sourceTree = "<group>"; };
@@ -2276,6 +2281,7 @@
 		FE31FD98C71EC0A9939EE0AB /* ChatRowBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRowBuilder.swift; sourceTree = "<group>"; };
 		FE62169C67E1ED1082DB98B9 /* HeelerSSHTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerSSHTransport.swift; sourceTree = "<group>"; };
 		FF5F7088D1B393599B6DA1EB /* HerdrAppControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAppControl.swift; sourceTree = "<group>"; };
+		FF61E52CE8C1103F9E5655DD /* ClaudeCodeHooksFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeHooksFlowTests.swift; sourceTree = "<group>"; };
 		FF744C06B0CAE716C1EDFAF4 /* AgentFocusCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFocusCoordinatorTests.swift; sourceTree = "<group>"; };
 		FFE4F4F852F91D9F13D5931A /* HarnessConfigEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessConfigEditTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -2453,6 +2459,7 @@
 				2E7CC8BE17472C87D20F6F28 /* ChipWrapTests.swift */,
 				68FD3B95F16763F73F525069 /* ClaudeAccountsUsageTests.swift */,
 				7C26CB9A95794EEDF88CF131 /* ClaudeChainResolverTests.swift */,
+				FF61E52CE8C1103F9E5655DD /* ClaudeCodeHooksFlowTests.swift */,
 				6588E825898FDFE338259362 /* ClaudeCodeHooksTests.swift */,
 				15E1799026D6E39B76BE80C2 /* ClaudeDialogParserTests.swift */,
 				541B6BD9F48CB41007DC16A6 /* ClaudeImagePasteTests.swift */,
@@ -3152,6 +3159,8 @@
 				FBE2F11B705B68BB1FBE993D /* AttachRestorationTrace.swift */,
 				F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */,
 				CFC9F2432433142FC0AC6463 /* ClaudeCodeHooks.swift */,
+				AD1EB9A1221682D7FD756CEC /* ClaudeCodeHooksFlow.swift */,
+				B76EF39DE950E595EC33F4FC /* ClaudeCodeHooksSection.swift */,
 				1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */,
 				24572762858C00624BE837E8 /* ComposerDeliveryPolicy.swift */,
 				D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */,
@@ -4290,6 +4299,8 @@
 				6EB8A0959CB9BFF014870C31 /* ChipWrap.swift in Sources */,
 				E06C5A70BFBFE23806B2857E /* ClaudeChainResolver.swift in Sources */,
 				028382018C6BEC8780CD3597 /* ClaudeCodeHooks.swift in Sources */,
+				EA72C2CE5DB6A9A6E6A35FA7 /* ClaudeCodeHooksFlow.swift in Sources */,
+				9ED1A6DA97A8EC6C39C9D252 /* ClaudeCodeHooksSection.swift in Sources */,
 				85D366C6AC21840FDA4C040D /* ClaudeDialogParser.swift in Sources */,
 				6CBFDA339FE6A8A0A47529EC /* ClaudeFileIdentity.swift in Sources */,
 				5FCD7965946C3A65B8C14E12 /* ClaudeImagePaste.swift in Sources */,
@@ -4830,6 +4841,7 @@
 				734FD556C1C20F021D475CD7 /* ChipWrapTests.swift in Sources */,
 				381360C7B0EF3590D194682A /* ClaudeAccountsUsageTests.swift in Sources */,
 				540F5B581FC8DD4D0664039D /* ClaudeChainResolverTests.swift in Sources */,
+				9051EA998ECE7311D8263C04 /* ClaudeCodeHooksFlowTests.swift in Sources */,
 				B8E6088C53E916C59D1290DF /* ClaudeCodeHooksTests.swift in Sources */,
 				49C023510B428B3E9FB51BCB /* ClaudeDialogParserTests.swift in Sources */,
 				09A7BCD071E7E11CB967219D /* ClaudeImagePasteTests.swift in Sources */,

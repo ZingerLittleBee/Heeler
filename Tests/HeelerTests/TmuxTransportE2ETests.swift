@@ -688,6 +688,7 @@ struct TmuxTransportE2ETests {
                 return line.contains("claude") && line.contains("--session-id") && line.contains("--settings")
             }
             try await expectClaudeCodeHooksPlaced(fixture, paths: try #require(store.tmuxServer(on: host.id)?.paths))
+            try await expectHostDetailAddsAndRemovesTheHooks(store.claudeCodeHooksFlow(on: host.id), on: fixture)
             let reported = try await paneField("#{pane_current_path}", of: opened.paneID, on: fixture)
             let physical = trimmed(
                 try await fixture.require("cd \(GitProbe.singleQuoted(directory)) && pwd -P"))
@@ -717,6 +718,39 @@ struct TmuxTransportE2ETests {
         let stored = try await fixture.run(
             "cat \(GitProbe.singleQuoted(TmuxClaudeCodeHooks.storedPathsFile(dataHome: data, paths: paths)))")
         #expect(try JSONDecoder().decode(TmuxPaths.self, from: stored.stdout) == paths)
+    }
+
+    /// Host detail adds the hooks to the default root, which is under the
+    /// fixture's own HOME, and takes them out again, leaving the file as it was.
+    @MainActor
+    private func expectHostDetailAddsAndRemovesTheHooks(
+        _ flow: ClaudeCodeHooksFlow, on fixture: TmuxSSHFixture
+    ) async throws {
+        await flow.load()
+        let root = try #require(flow.roots.first { $0.accountName == nil })
+        let home = URL(fileURLWithPath: fixture.configuration.homePath).resolvingSymlinksInPath().path
+        let rootHome = URL(fileURLWithPath: root.path).deletingLastPathComponent().resolvingSymlinksInPath().path
+        try #require(rootHome == home, "\(root.path) is not under the fixture's HOME")
+        let folder = GitProbe.singleQuoted(root.path)
+        let settings = GitProbe.singleQuoted(root.settingsPath)
+        let original = Data("{\n  \"model\": \"opus\"\n}\n".utf8)
+        try await fixture.require("mkdir \(folder) && printf '{\\n  \"model\": \"opus\"\\n}\\n' > \(settings)")
+        #expect(try await fixture.run("cat \(settings)").stdout == original)
+
+        await flow.dismiss(root)
+        await flow.review(root, adding: true)
+        if case .review(let change, adding: true) = flow.states[root.id] {
+            await flow.accept(root)
+            #expect(flow.states[root.id] == .read(.on))
+            #expect(try await fixture.run("cat \(settings)").stdout == change.after)
+            await flow.review(root, adding: false)
+            await flow.accept(root)
+            #expect(flow.states[root.id] == .read(.off))
+            #expect(try await fixture.run("cat \(settings)").stdout == original)
+        } else {
+            Issue.record("expected a review, got \(String(describing: flow.states[root.id]))")
+        }
+        try await fixture.require("rm -rf \(folder)")
     }
 
     @Test("a new terminal opens a window running the user's shell")

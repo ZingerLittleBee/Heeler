@@ -2203,6 +2203,31 @@ final class ConsoleStore {
             })
     }
 
+    /// Host detail's Claude Code hooks on a tmux Host (ADR 0044): it reads and
+    /// writes through the harness edit seam, and finds and places Heeler's script
+    /// through the Host's tmux projection.
+    func claudeCodeHooksFlow(on hostID: Host.ID) -> ClaudeCodeHooksFlow {
+        func tmux(of store: ConsoleStore) throws -> TmuxConsoleProjection {
+            guard let tmux = store.projections[hostID] as? TmuxConsoleProjection else {
+                throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+            }
+            return tmux
+        }
+        return ClaudeCodeHooksFlow(
+            services: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.harnessEditServices(on: hostID)
+            },
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return try await tmux(of: self).claudeCodeHookLocations()
+            },
+            place: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                _ = try await tmux(of: self).placeClaudeCodeHooks()
+            })
+    }
+
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {
         try await projection(for: hostID).withHostServices { $0 }
     }
