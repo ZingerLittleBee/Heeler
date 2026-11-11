@@ -210,7 +210,9 @@ enum TmuxLaunch {
 
     private static func command(_ words: [String], paths: TmuxPaths, loginShell: Bool) -> Command {
         let flags = loginShell ? ["-S"] : ["-N", "-S"]
-        let line = (["exec", "\"$t\""] + flags + ["\"$s\""] + words.map(shellWord)).joined(separator: " ")
+        // tmux would take a word's trailing `;` as the end of the command.
+        let arguments = words.map { shellWord(TmuxArgument.oneShot($0)) }
+        let line = (["exec", "\"$t\""] + flags + ["\"$s\""] + arguments).joined(separator: " ")
         let body = """
             t=\(HerdrCoreLocator.quoted(paths.executable))
             s=\(HerdrCoreLocator.quoted(paths.socket))

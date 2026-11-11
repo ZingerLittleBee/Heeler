@@ -367,6 +367,39 @@ struct TmuxLaunchTests {
         #expect(try #require(Self.argument(argv, after: "-c")) == Data(directory.utf8))
     }
 
+    /// tmux takes an argv word ending in `;` as the end of a command and reads
+    /// one ending in `\;` as ending in `;` (ADR 0043), so a word of the user's
+    /// that ends in `;` reaches tmux whole.
+    @Test(arguments: ["ends;", #"ends\;"#, ";", "a;b"])
+    func aWordEndingInASemicolonReachesTmuxWhole(_ value: String) throws {
+        let expected = Data(value.utf8)
+        let agent = try Self.posixArgv(
+            of: try TmuxLaunch.agentWindow(
+                AgentLaunchRequest(
+                    kind: "tool", name: "tool", arguments: [value], workspaceID: "$0", cwd: value,
+                    environment: ["HEELER_TEST": value]),
+                on: server()))
+        #expect(Self.tmuxWord(try #require(agent.last)) == expected)
+        #expect(Self.tmuxWord(try #require(Self.argument(agent, after: "-c"))) == expected)
+        let environment = try #require(agent.first { $0.starts(with: Data("HEELER_TEST=".utf8)) })
+        #expect(Self.tmuxWord(environment) == Data("HEELER_TEST=\(value)".utf8))
+        let workspace = try Self.posixArgv(
+            of: try TmuxLaunch.shellSession(NewWorkspaceSpec(directory: "/work", label: value), on: server()))
+        #expect(Self.tmuxWord(try #require(Self.argument(workspace, after: "-s"))) == expected)
+        let renamed = try Self.posixArgv(of: TmuxLaunch.renameSession(id: "$0", label: value, paths: Self.paths))
+        #expect(Self.tmuxWord(try #require(Self.argument(renamed, after: "--"))) == expected)
+    }
+
+    /// An argv word as tmux 3.3a's `cmd_parse_from_arguments` keeps it; nil
+    /// when tmux takes its `;` as the end of a command.
+    private static func tmuxWord(_ word: Data) -> Data? {
+        guard word.last == UInt8(ascii: ";") else { return word }
+        var kept = word.dropLast()
+        guard kept.last == UInt8(ascii: "\\") else { return nil }
+        kept[kept.index(before: kept.endIndex)] = UInt8(ascii: ";")
+        return Data(kept)
+    }
+
     /// The Linux start stores the whole script in one quoted assignment and
     /// runs it through `$SHELL -lic`. A stand-in shell skips the login files.
     @Test func theLoginShellStartRoundTripsUserText() throws {
