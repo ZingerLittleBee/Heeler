@@ -324,6 +324,7 @@ struct AgentComposerView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentComposerView.body")
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 AgentDetailStatusChrome(
@@ -1320,6 +1321,8 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         context _: Context
     ) -> CGSize? {
         guard let width = proposal.width else { return nil }
+        let span = PerfTrace.begin("chat.composer.size")
+        defer { PerfTrace.end(span) }
         let measured = uiView.sizeThatFits(
             CGSize(width: width, height: .greatestFiniteMagnitude))
         let maximumHeight = uiView.draftLineHeight * CGFloat(lineLimit)

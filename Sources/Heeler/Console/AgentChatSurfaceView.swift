@@ -1498,10 +1498,13 @@ struct AgentChatSurfaceView: View {
     }
 
     private var agentSwitcher: TerminalAgentSwitcher {
-        TerminalAgentSwitcher(
-            items: TerminalAgentSwitcherItem.items(
+        let items = PerfTrace.span("switcher.items") {
+            TerminalAgentSwitcherItem.items(
                 for: console.chatDisplayAgents, pins: console.pins,
-                layout: { console.rowLayout(for: $0) }),
+                layout: { console.rowLayout(for: $0) })
+        }
+        return TerminalAgentSwitcher(
+            items: items,
             selectedID: agent.id,
             onSelect: switchToAgent,
             onTogglePin: { id in

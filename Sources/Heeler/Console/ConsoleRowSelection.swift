@@ -219,6 +219,7 @@ struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
     }
 
     func body(content: Content) -> some View {
+        let _ = PerfTrace.count("ConsoleRowContextMenu.body")
         if isSidebarColumn || liftsCard {
             content
                 // Measured from a background: reading the row's own

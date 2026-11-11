@@ -17,6 +17,7 @@ struct AgentDetailStatusChrome: View {
     @Environment(\.showAgentStatusExplanation) private var showStatusExplanation
 
     var body: some View {
+        let _ = PerfTrace.count("AgentDetailStatusChrome.body")
         let store = changes?.store
         // A divider only between two groups that both show, so a Checkout
         // not read yet, or a clean one, leaves no stray rule behind.

@@ -197,6 +197,8 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
         guard items != self.items || selectedID != self.selectedID else { return }
+        let span = PerfTrace.begin("switcher.update")
+        defer { PerfTrace.end(span) }
         let selectionChanged = selectedID != self.selectedID
         let previousIDs = chips.map(\.id)
         let previousPinByID = Dictionary(
