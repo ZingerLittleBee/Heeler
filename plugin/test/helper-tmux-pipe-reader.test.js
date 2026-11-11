@@ -3,7 +3,7 @@
 // temporary HOME and fake agent programs writing bare and `ESC P tmux;`
 // wrapped OSC 7501 reports.
 
-import { afterEach, beforeEach, suite, test } from "node:test";
+import { afterEach, before, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,8 +15,9 @@ import { createOsc7501Parser } from "../helper/tmux/osc7501.js";
 import { tmuxPipeReaderListener } from "../helper/tmux/pipe-reader.js";
 import { continueHeelerStatus, readHeelerStatus } from "../helper/tmux/status.js";
 import { waitFor } from "./support/fake-core.js";
+import { resolveTestTmux } from "./support/tmux.js";
 
-const tmux = process.env.HEELER_TEST_TMUX ?? "/opt/homebrew/bin/tmux";
+const { skip, requireTmux } = resolveTestTmux();
 const PATIENCE_MS = 5000;
 const STATUS_VECTOR = JSON.parse(
   readFileSync(new URL("../test-vectors/tmux-heeler-status-v1.json", import.meta.url), "utf8"),
@@ -38,11 +39,12 @@ afterEach(async () => {
 });
 
 function startPrivateServer(socketName = "work") {
+  const executable = requireTmux();
   const socketDir = join(root, "sockets");
   mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   const socket = join(socketDir, socketName);
   execFileSync(
-    tmux,
+    executable,
     ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "main", "-x", "80", "-y", "24", "/bin/cat"],
     {
       env: { PATH: "/usr/bin:/bin", HOME: home, USER: "fixture", TMUX_TMPDIR: socketDir },
@@ -51,7 +53,7 @@ function startPrivateServer(socketName = "work") {
   );
   const stop = () => {
     try {
-      execFileSync(tmux, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
+      execFileSync(executable, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
     } catch {
       // Already stopped.
     }
@@ -59,14 +61,14 @@ function startPrivateServer(socketName = "work") {
   cleanups.push(async () => stop());
   return {
     socket,
-    paths: { executable: tmux, socket },
+    paths: { executable, socket },
     stop,
     run(...args) {
-      return execFileSync(tmux, ["-N", "-S", socket, ...args], { encoding: "utf8" });
+      return execFileSync(executable, ["-N", "-S", socket, ...args], { encoding: "utf8" });
     },
     paneState(paneID) {
       const out = execFileSync(
-        tmux,
+        executable,
         ["-N", "-S", socket, "display-message", "-p", "-t", paneID, "#{pane_pipe}\t#{@heeler-pipe}\t#{@heeler-status}"],
         { encoding: "utf8" },
       ).replace(/\n$/, "");
@@ -176,7 +178,11 @@ suite("tmux status vector and OSC 7501 parser", () => {
   });
 });
 
-suite("tmux pipe-pane status reader", () => {
+suite("tmux pipe-pane status reader", { skip }, () => {
+  before(() => {
+    requireTmux();
+  });
+
   test("attaches to Codex, Grok Build and OpenCode, writes @heeler-status continuing counts, and ignores non-pipe programs", async () => {
     const server = startPrivateServer("work");
     const codex = makeControlledAgent("codex");

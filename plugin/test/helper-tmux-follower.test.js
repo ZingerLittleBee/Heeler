@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 
 import {
   TMUX_POLL_INTERVAL_MS,
@@ -17,8 +17,9 @@ import {
   followTmuxServer,
 } from "../helper/tmux/follower.js";
 import { waitFor } from "./support/fake-core.js";
+import { resolveTestTmux } from "./support/tmux.js";
 
-const tmux = process.env.HEELER_TEST_TMUX ?? "/opt/homebrew/bin/tmux";
+const { skip, requireTmux } = resolveTestTmux();
 const PATIENCE_MS = 5000;
 
 let root;
@@ -40,11 +41,12 @@ afterEach(async () => {
 });
 
 function startPrivateServer(socketName = "work") {
+  const executable = requireTmux();
   const socketDir = join(root, "sockets");
   mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   const socket = join(socketDir, socketName);
   execFileSync(
-    tmux,
+    executable,
     ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "main", "-x", "80", "-y", "24", "/bin/cat"],
     {
       env: { PATH: "/usr/bin:/bin", HOME: home, USER: "fixture", TMUX_TMPDIR: socketDir },
@@ -53,7 +55,7 @@ function startPrivateServer(socketName = "work") {
   );
   const stop = () => {
     try {
-      execFileSync(tmux, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
+      execFileSync(executable, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
     } catch {
       // Already stopped.
     }
@@ -63,7 +65,7 @@ function startPrivateServer(socketName = "work") {
     socket,
     stop,
     run(...args) {
-      return execFileSync(tmux, ["-N", "-S", socket, ...args], { encoding: "utf8" });
+      return execFileSync(executable, ["-N", "-S", socket, ...args], { encoding: "utf8" });
     },
   };
 }
@@ -74,12 +76,48 @@ function storePaths(socketName, paths) {
   writeFileSync(join(folder, "paths.json"), `${JSON.stringify(paths)}\n`, { mode: 0o600 });
 }
 
+suite("tmux test resolver", () => {
+  test("prefers HEELER_TEST_TMUX, falls back to PATH, skips locally when absent, and fails under CI", () => {
+    const emptyBin = join(root, "empty-bin");
+    const customBin = join(root, "custom-bin");
+    mkdirSync(emptyBin, { recursive: true });
+    mkdirSync(customBin, { recursive: true });
+    const fakeTmux = join(customBin, "tmux");
+    writeFileSync(fakeTmux, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    chmodSync(fakeTmux, 0o755);
+
+    const fromExplicit = resolveTestTmux({ HEELER_TEST_TMUX: fakeTmux, PATH: emptyBin });
+    assert.equal(fromExplicit.tmux, fakeTmux);
+    assert.equal(fromExplicit.skip, false);
+    assert.equal(fromExplicit.pathWithTmux, `${customBin}${delimiter}${emptyBin}`);
+
+    const fromPath = resolveTestTmux({ PATH: customBin });
+    assert.equal(fromPath.tmux, fakeTmux);
+    assert.equal(fromPath.skip, false);
+    assert.equal(fromPath.pathWithTmux, customBin);
+
+    const missingLocal = resolveTestTmux({ PATH: emptyBin });
+    assert.equal(missingLocal.tmux, null);
+    assert.equal(missingLocal.skip, "tmux is not installed");
+
+    const missingCI = resolveTestTmux({ PATH: emptyBin, CI: "true" });
+    assert.equal(missingCI.tmux, null);
+    assert.equal(missingCI.skip, false);
+    assert.throws(() => missingCI.requireTmux(), /tmux is not installed/);
+
+    const badExplicit = resolveTestTmux({ HEELER_TEST_TMUX: join(emptyBin, "missing"), PATH: customBin });
+    assert.equal(badExplicit.skip, false);
+    assert.throws(() => badExplicit.requireTmux(), /HEELER_TEST_TMUX is not an executable file/);
+  });
+});
+
 suite("tmux follower", () => {
   test("samples every 5 seconds by default", () => {
     assert.equal(TMUX_POLL_INTERVAL_MS, 5000);
   });
 
-  test("waits while no server runs without starting one, then follows it and starts over on a new instance", async () => {
+  test("waits while no server runs without starting one, then follows it and starts over on a new instance", { skip }, async () => {
+    const executable = requireTmux();
     // Even if ~/.tmux.conf tries to start a session, `-N` must never start a server.
     writeFileSync(join(home, ".tmux.conf"), "new-session -d -s autostart\n");
     const socketDir = join(root, "sockets");
@@ -90,7 +128,7 @@ suite("tmux follower", () => {
 
     const follower = followTmuxServer(
       "work",
-      { executable: tmux, socket },
+      { executable, socket },
       {
         pollIntervalMs: 25,
         log: (line) => logs.push(line),
@@ -133,7 +171,8 @@ suite("tmux follower", () => {
     second.stop();
   });
 
-  test("omits Heeler's attach sessions, deduplicates linked windows, and resolves a pane's foreground agent", async () => {
+  test("omits Heeler's attach sessions, deduplicates linked windows, and resolves a pane's foreground agent", { skip }, async () => {
+    const executable = requireTmux();
     const bin = join(root, "bin");
     mkdirSync(bin, { recursive: true });
     const fakeCodex = join(bin, "codex");
@@ -162,7 +201,7 @@ suite("tmux follower", () => {
     let latest = [];
     const follower = followTmuxServer(
       "work",
-      { executable: tmux, socket: server.socket },
+      { executable, socket: server.socket },
       {
         pollIntervalMs: 25,
         listener: {
@@ -187,11 +226,12 @@ suite("tmux follower", () => {
     assert.ok(matching[0].foregroundPid > 0);
   });
 
-  test("follows stored tmux/<socket>/paths.json entries and stops when removed", async () => {
+  test("follows stored tmux/<socket>/paths.json entries and stops when removed", { skip }, async () => {
+    const executable = requireTmux();
     const server = startPrivateServer("work");
-    storePaths("work", { executable: tmux, socket: server.socket });
+    storePaths("work", { executable, socket: server.socket });
     // Invalid or mismatched entries are ignored.
-    storePaths("other", { executable: tmux, socket: join(root, "sockets", "wrong-name") });
+    storePaths("other", { executable, socket: join(root, "sockets", "wrong-name") });
 
     const seen = new Map();
     const ended = [];

@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { resolveTestTmux } from "./support/tmux.js";
+
 const EXTENSION = fileURLToPath(new URL("../helper/extensions/heeler-session.js", import.meta.url));
 const vectors = JSON.parse(
   readFileSync(new URL("../test-vectors/tmux-heeler-status-v1.json", import.meta.url), "utf8"),
@@ -44,16 +46,7 @@ suite("@heeler-status from the shared vector", () => {
   });
 });
 
-/** tmux as the user's shell finds it, or null. */
-function findTmux() {
-  const found = spawnSync("/bin/sh", ["-c", "command -v tmux"], { encoding: "utf8" });
-  const path = found.stdout.trim();
-  return found.status === 0 && path.startsWith("/") ? path : null;
-}
-
-const TMUX = findTmux();
-// The CI runner has tmux; a machine without it says so instead of passing.
-const skip = TMUX || process.env.CI ? false : "tmux is not installed";
+const { tmux: TMUX, skip, pathWithTmux, requireTmux } = resolveTestTmux();
 
 /** A stand-in program: it loads the extension with Pi's API, waits for `go`, runs its steps, then stays. */
 const DRIVER = `
@@ -92,7 +85,7 @@ suite("the extension in a tmux Pane", { skip }, () => {
 
   /** The server's environment, which every Pane starts from: nothing of the test runner's own tmux. */
   function tmuxEnvironment() {
-    return { HOME: home, PATH: process.env.PATH, SHELL: "/bin/sh", TERM: "xterm-256color", LC_ALL: "C" };
+    return { HOME: home, PATH: pathWithTmux, SHELL: "/bin/sh", TERM: "xterm-256color", LC_ALL: "C" };
   }
 
   /** A copy of the extension as a folder holds it; Pi's package resolves from it for Pi. */
@@ -121,20 +114,24 @@ suite("the extension in a tmux Pane", { skip }, () => {
   }
 
   before(() => {
+    const executable = requireTmux();
     root = mkdtempSync(join(tmpdir(), "htx-"));
     home = join(root, "home");
     mkdirSync(home);
     socket = join(root, "s");
     writeFileSync(join(root, "driver.mjs"), DRIVER);
     // A placeholder keeps the server up between the windows the tests open.
-    execFileSync(TMUX, ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "hold", "sleep", "600"], {
+    execFileSync(executable, ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "hold", "sleep", "600"], {
       env: tmuxEnvironment(),
     });
-    storePaths("s", { executable: TMUX, socket });
+    execFileSync(executable, ["-N", "-S", socket, "set-environment", "-g", "PATH", pathWithTmux], {
+      env: tmuxEnvironment(),
+    });
+    storePaths("s", { executable, socket });
   });
 
   after(() => {
-    if (socket && existsSync(socket)) spawnSync(TMUX, ["-S", socket, "kill-server"]);
+    if (TMUX && socket && existsSync(socket)) spawnSync(TMUX, ["-S", socket, "kill-server"]);
     if (root) rmSync(root, { recursive: true, force: true });
   });
 

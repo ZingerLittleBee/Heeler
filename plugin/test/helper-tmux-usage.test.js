@@ -16,8 +16,9 @@ import { followStoredTmuxServers } from "../helper/tmux/follower.js";
 import { helperStateDirectory } from "../helper/usage/layout.js";
 import { tmuxUsageListener } from "../helper/usage/recorder.js";
 import { waitFor } from "./support/fake-core.js";
+import { resolveTestTmux } from "./support/tmux.js";
 
-const tmux = process.env.HEELER_TEST_TMUX ?? "/opt/homebrew/bin/tmux";
+const { skip, requireTmux } = resolveTestTmux();
 const HELPER = fileURLToPath(new URL("../helper", import.meta.url));
 const PATIENCE_MS = 5000;
 
@@ -41,11 +42,12 @@ afterEach(async () => {
 });
 
 function startPrivateServer(socketName, envVars = {}) {
+  const executable = requireTmux();
   const socketDir = join(root, "sockets");
   mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   const socket = join(socketDir, socketName);
   execFileSync(
-    tmux,
+    executable,
     ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "main", "-x", "80", "-y", "24", "/bin/cat"],
     {
       env: { PATH: "/usr/bin:/bin", HOME: home, USER: "fixture", ...envVars },
@@ -53,11 +55,11 @@ function startPrivateServer(socketName, envVars = {}) {
     },
   );
   for (const [name, value] of Object.entries(envVars)) {
-    execFileSync(tmux, ["-N", "-S", socket, "set-environment", "-g", name, value], { stdio: "ignore" });
+    execFileSync(executable, ["-N", "-S", socket, "set-environment", "-g", name, value], { stdio: "ignore" });
   }
   const stop = () => {
     try {
-      execFileSync(tmux, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
+      execFileSync(executable, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
     } catch {
       // Already stopped.
     }
@@ -67,15 +69,16 @@ function startPrivateServer(socketName, envVars = {}) {
     socket,
     stop,
     run(...args) {
-      return execFileSync(tmux, ["-N", "-S", socket, ...args], { encoding: "utf8" });
+      return execFileSync(executable, ["-N", "-S", socket, ...args], { encoding: "utf8" });
     },
   };
 }
 
 function storePaths(socketName, socket) {
+  const executable = requireTmux();
   const folder = join(directory, "tmux", socketName);
   mkdirSync(folder, { recursive: true, mode: 0o700 });
-  writeFileSync(join(folder, "paths.json"), `${JSON.stringify({ executable: tmux, socket })}\n`, { mode: 0o600 });
+  writeFileSync(join(folder, "paths.json"), `${JSON.stringify({ executable, socket })}\n`, { mode: 0o600 });
 }
 
 function runQuery(...args) {
@@ -87,7 +90,7 @@ function runQuery(...args) {
 }
 
 suite("tmux Usage recorder and query", () => {
-  test("records tmux/<socket>/runtime.json apart from core sessions, re-reads on restart, and serves usage-query.js --tmux", async () => {
+  test("records tmux/<socket>/runtime.json apart from core sessions, re-reads on restart, and serves usage-query.js --tmux", { skip }, async () => {
     const firstConfig = join(root, "claude-first");
     const projects = join(firstConfig, "projects", "proj");
     mkdirSync(projects, { recursive: true });
@@ -158,7 +161,7 @@ suite("tmux Usage recorder and query", () => {
     second.stop();
   });
 
-  test("notes running Claude Code and Codex directories in tmux Panes for Account suggestions", async () => {
+  test("notes running Claude Code and Codex directories in tmux Panes for Account suggestions", { skip }, async () => {
     const bin = join(root, "bin");
     const claudeDir = join(root, "acct-claude");
     const codexDir = join(root, "acct-codex");
