@@ -19,9 +19,10 @@ struct HerdrCoreAgent: Equatable, Sendable {
 /// Which Terminal is an Agent (ADR 0032). A Terminal is one while a known agent
 /// program holds its foreground, or while any program but a shell does and it
 /// has a Program Status whose `app` is missing or unknown here. A known `app`
-/// counts only while it names the foreground: nothing ties a report to a process,
-/// and the core keeps the report after its program left. The foreground is read
-/// after unwrapping launch wrappers, `sh -c` lines, interpreters and `npx` or
+/// counts only while it names the foreground, or under a `-NoExit` PowerShell
+/// that is not at its prompt: nothing ties a report to a process, and the core
+/// keeps the report after its program left. The foreground is read after
+/// unwrapping launch wrappers, `sh -c` lines, interpreters and `npx` or
 /// `npm exec`, and a cleared one leaves the last sample standing
 /// (`HerdrCoreTerminalRecord.noteForeground`). A `-NoExit` PowerShell, whose
 /// foreground never changes, is its shell while the Terminal's title is that
@@ -48,10 +49,14 @@ enum HerdrCoreAgentRule {
         case .known(let kind):
             return HerdrCoreAgent(
                 kind: kind, isKnownProgram: true, status: status(of: record, heldBy: kind))
-        case .other(let name):
+        case .other(let name, let acceptsKnownReport):
             guard let report = record.status else { return nil }
             let app = report.app.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard reportedApps[app.lowercased()] == nil else { return nil }
+            if let kind = reportedApps[app.lowercased()] {
+                guard acceptsKnownReport else { return nil }
+                return HerdrCoreAgent(
+                    kind: kind, isKnownProgram: true, status: agentStatus(report.state))
+            }
             return HerdrCoreAgent(
                 kind: genericKind(app: app, program: name), isKnownProgram: false,
                 status: agentStatus(report.state))
@@ -87,7 +92,9 @@ enum HerdrCoreAgentRule {
     enum Program: Equatable, Sendable {
         case shell
         case known(String)
-        case other(String)
+        /// Only the outer `-NoExit` PowerShell itself can adopt a known report;
+        /// a script or unwrapped child does not inherit that permission.
+        case other(String, acceptsKnownReport: Bool = false)
     }
 
     /// What a command line comes to: its program, and the arguments that program got.
@@ -130,7 +137,10 @@ enum HerdrCoreAgentRule {
     /// cleared one, so this can also be long after the launch. One that continues
     /// as a shell may have outlived its command, so only a sample can name it.
     private static func readLaunch(_ arguments: [String]) -> Program {
-        continuesAsShell(arguments) ? .shell : read(arguments).program
+        guard !continuesAsShell(arguments) else { return .shell }
+        let program = read(arguments).program
+        if case .other(_, true) = program { return .shell }
+        return program
     }
 
     private static func continuesAsShell(_ arguments: [String]) -> Bool {
@@ -260,18 +270,24 @@ enum HerdrCoreAgentRule {
     /// `pwsh -NoExit -Command "& 'prog' 'arg'"`, as the desktop app runs it, and
     /// `-Command "& 'prog' 'arg'; exit $LASTEXITCODE"`, as Heeler does.
     private static func readPowerShell(_ arguments: [String], name: String, depth: Int) -> Reading {
-        guard
-            let option = arguments.firstIndex(where: {
-                let option = $0.lowercased()
-                return option == "-command" || option == "-c"
-            })
-        else {
-            return Reading(program: arguments.dropFirst().contains { !$0.hasPrefix("-") } ? .other(name) : .shell)
+        let option = arguments.firstIndex {
+            let option = $0.lowercased()
+            return option == "-command" || option == "-c"
+        }
+        let options = arguments.prefix(option ?? arguments.count).dropFirst()
+        let hasNoExit = options.contains(where: isNoExitOption)
+        guard let option else {
+            if options.contains(where: { !$0.hasPrefix("-") && !isNoExitOption($0) }) {
+                return Reading(program: .other(name))
+            }
+            return Reading(program: hasNoExit ? .other(name, acceptsKnownReport: depth == 0) : .shell)
         }
         guard option + 1 < arguments.count else { return Reading(program: .shell) }
         var line = arguments[option + 1]
         if line.hasSuffix(powerShellExit) { line.removeLast(powerShellExit.count) }
-        guard let words = powerShellWords(line) else { return Reading(program: .other(name)) }
+        guard let words = powerShellWords(line) else {
+            return Reading(program: .other(name, acceptsKnownReport: depth == 0 && hasNoExit))
+        }
         return read(words, depth: depth + 1)
     }
 

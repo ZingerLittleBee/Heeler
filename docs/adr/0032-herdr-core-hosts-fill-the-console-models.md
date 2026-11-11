@@ -54,7 +54,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
 - A Terminal is an Agent while its foreground program is a known agent
   program, or, while the Terminal has a Program Status whose `app` is missing
   or unknown to Heeler, any program other than a shell. A Program Status with
-  a known `app` counts only while that `app` names the foreground program. A
+  a known `app` counts only while that `app` names the foreground program, or
+  under a `-NoExit` PowerShell that is not at its prompt. A
   shell in the foreground ends the Agent, whatever was reported last. The
   foreground is read after unwrapping: the desktop app's wrapper forms, `sh -c
   <command line>`, interpreters running an agent's script, and `npx` or `npm
@@ -234,13 +235,15 @@ with test clients, not the app.
   and the launch arguments, never the child
   ([observation](../agents/herdr-compatibility.md)). Recognizing a Windows
   Agent therefore reads the program out of PowerShell's `-Command` argument
-  (`HerdrCoreAgentRule.readPowerShell`). Under Heeler's form the Terminal finished when its program ended, so
+  (`HerdrCoreAgentRule.readPowerShell`), or, when a `-NoExit` PowerShell has no
+  `& '<agent>'` command (such as the core's prompt-hook PowerShell or a plain
+  `-NoExit` shell) and is not at its prompt, from a known `app` in its Program
+  Status (#678). Under Heeler's form the Terminal finished when its program ended, so
   its Pane closes as on Unix. `choice.exe` finished it with its own code, 2.
   Claude Code stopped by two Ctrl+C keys finished it with 1, not separated from
   PowerShell's own code. On 2026-11-03 Claude Code 2.1.286's `/exit` finished it
   with 0 and its trust dialog's "No, exit" with 1, both reason `exited`, so a
-  program's own code comes through when it exits normally. Under the
-  desktop's `-NoExit` form an Agent's exit leaves the foreground's pid, name and
+  program's own code comes through when it exits normally. Under `-NoExit` an Agent's exit leaves the foreground's pid, name and
   arguments unchanged and sends no new foreground event, so "a shell in the
   foreground ends the Agent" never fires. A read of PowerShell's children
   showed the exit, and the attach stream later carried PowerShell's prompt. The
@@ -251,22 +254,24 @@ with test clients, not the app.
   console starts with: the core's own `-NoExit` PowerShell, at its prompt with
   nothing run, read an empty title. So a `-NoExit` PowerShell in the foreground
   (`-NoExit` in any case, after `-`, `--` or `/`, or cut short to `-NoE`) whose
-  Terminal title is a path to that same PowerShell reads as that shell, and the
-  Terminal leaves the Agents for the Terminals tab. An empty title, as in a
+  Terminal title is a path to that same PowerShell reads as that shell, whatever
+  was reported last, and the Terminal leaves the Agents for the Terminals tab.
+  An empty title, as in a
   console nothing has titled yet or after a core restart, which empties titles
   (the Windows observations), keeps the foreground's reading. The title is the
   program's to set, so this costs something: a program that sets that path as its
-  own title reads as the shell, and whether one that never titles itself leaves
-  the path behind when it exits was not seen, so such an Agent may stay listed
-  after its exit. Claude Code titles itself as it starts, and Grok Build 1.0.70
-  and Oh My Pi 18.13.3 titled their Terminals under Heeler's form; no harness but
-  Claude Code was run under the desktop form. `cmd /k` was not run and has no
-  title reading.
-  Heeler's launch does not use `-NoExit`, so this reaches only a Terminal the
-  desktop app started. #590's read of PowerShell's children still serves Chat's
-  binding only (ADR 0034), and Send still refuses such a Terminal while it is an
-  Agent (ADR 0035): a title read before the paste says nothing of the moment
-  Enter arrives.
+  own title, or one typed into a core PowerShell that never sets the title (such
+  as Antigravity 1.5.5), reads as the shell, and whether one under the desktop
+  wrapper that never titles itself leaves the path behind when it exits was not
+  seen, so such an Agent may stay listed after its exit. Claude Code, Pi and
+  Codex title their Terminals when typed into a core PowerShell (#678), and
+  Grok Build 1.0.70 and Oh My Pi 18.13.3 titled their Terminals under Heeler's
+  form. `cmd /k` was not run and has no title reading.
+  Heeler's launch does not use `-NoExit`, so this reaches only a `-NoExit`
+  PowerShell Terminal the desktop app or the core started. #590's read of
+  PowerShell's children still serves Chat's binding only (ADR 0034), and Send
+  still refuses such a Terminal while it is an Agent (ADR 0035): a title read
+  before the paste says nothing of the moment Enter arrives.
 - The same `choice.exe` runs through `connect` over one SSH exec gave the same
   foreground and finishes, 2 under Heeler's form and the shell's `exit 5` under
   `-NoExit`. On that machine the exec refused a program on a path through fnm's
