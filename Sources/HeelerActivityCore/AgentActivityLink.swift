@@ -16,7 +16,7 @@ enum AgentActivityLink {
     static let host = "agent"
 
     /// A tap on one agent row: opens that agent's detail.
-    static func agentURL(hostID: String, paneID: String) -> URL? {
+    static func agentURL(hostID: String, paneID: String, coreID: String? = nil) -> URL? {
         var components = URLComponents()
         components.scheme = scheme
         components.host = host
@@ -25,6 +25,10 @@ enum AgentActivityLink {
                 withAllowedCharacters: .urlPathAllowedStrict)
         else { return nil }
         components.percentEncodedPath = "/\(hostID)/\(pane)"
+        if let coreID {
+            guard !coreID.isEmpty else { return nil }
+            components.queryItems = [URLQueryItem(name: "core", value: coreID)]
+        }
         return components.url
     }
 
@@ -42,6 +46,7 @@ enum AgentActivityLink {
         let host: HostReference
         /// Absent for Console-level links.
         let paneID: String?
+        var coreID: String? = nil
     }
 
     /// How a link names its Host.
@@ -56,7 +61,16 @@ enum AgentActivityLink {
     static func target(from url: URL) -> Target? {
         guard url.scheme == scheme, url.host() == host else { return nil }
         let parts = url.pathComponents.filter { $0 != "/" }
-        return parts.isEmpty ? lookupTarget(from: url) : idTarget(from: parts)
+        guard var target = parts.isEmpty ? lookupTarget(from: url) : idTarget(from: parts) else { return nil }
+        let cores = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .filter { $0.name == "core" } ?? []
+        guard cores.count <= 1 else { return nil }
+        if let item = cores.first {
+            guard let coreID = item.value, !coreID.isEmpty, target.paneID != nil,
+                  case .id = target.host else { return nil }
+            target.coreID = coreID
+        }
+        return target
     }
 
     private static func idTarget(from parts: [String]) -> Target? {

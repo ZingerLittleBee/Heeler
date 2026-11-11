@@ -210,7 +210,6 @@ struct HostLiveActivityCoordinatorTests {
         try await withFixture { defaults in
             let coordinator = makeCoordinator(defaults: defaults)
             try await registerDevice()
-            try saveKey()
             armWorld()
             world.coreID = "core-a"
             coordinator.start()
@@ -219,7 +218,8 @@ struct HostLiveActivityCoordinatorTests {
             let initial = try #require(controller.requested.first?.envelope)
             #expect(try AgentActivityEnvelope.open(JSONEncoder().encode(initial), using: notificationKey()).coreID == "core-a")
             world.awaitingSnapshot = [host.id]
-            world.statuses[host.id] = .reconnecting
+            world.statuses[host.id] = .reconnecting(
+                attempt: 1, delay: .seconds(1), failure: .sshUnreachable(detail: "down"))
             coordinator.connectionsDidChange()
             world.coreID = "core-b"
             world.awaitingSnapshot = []

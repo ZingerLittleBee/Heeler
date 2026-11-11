@@ -5,7 +5,7 @@ extension AgentActivityLink.Target {
     /// Console: the link names no pane, or no single Host answers to it.
     func agent(in hosts: [Host]) -> AgentNotificationTarget? {
         guard let paneID, let hostID = host.resolvedID(in: hosts) else { return nil }
-        return AgentNotificationTarget(hostID: hostID, paneID: paneID)
+        return AgentNotificationTarget(hostID: hostID, paneID: paneID, coreID: coreID)
     }
 }
 

@@ -137,6 +137,7 @@ struct AgentActivityLockScreenView: View {
                 ) { @Sendable [rowMinimumHeight] agent in
                     AgentActivityLinkedRow(
                         hostID: hostID,
+                        coreID: presentation.coreID,
                         agent: agent,
                         surface: .lockScreen,
                         minimumHeight: rowMinimumHeight)
@@ -180,6 +181,7 @@ struct AgentActivityLockScreenView: View {
         if let first = visibleAgents.first {
             AgentActivityLinkedRow(
                 hostID: hostID,
+                coreID: presentation.coreID,
                 agent: first,
                 surface: .lockScreen,
                 minimumHeight: rowMinimumHeight)
@@ -454,6 +456,7 @@ struct AgentActivityIslandRows: View {
             ForEach(presentation.expandedAgents, id: \.paneID) { @Sendable agent in
                 AgentActivityLinkedRow(
                     hostID: hostID,
+                    coreID: presentation.coreID,
                     agent: agent,
                     surface: .island,
                     minimumHeight: AgentActivityIslandMetrics.rowHeight(for: agent))
@@ -517,13 +520,14 @@ enum AgentActivityRowMetrics {
 /// widgetURL remains the fallback for taps on the surrounding chrome.
 private struct AgentActivityLinked<Content: View>: View {
     let hostID: String
+    let coreID: String?
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
     let minimumHeight: CGFloat
     @ViewBuilder let content: Content
 
     var body: some View {
-        if let url = AgentActivityLink.agentURL(hostID: hostID, paneID: agent.paneID) {
+        if let url = AgentActivityLink.agentURL(hostID: hostID, paneID: agent.paneID, coreID: coreID) {
             Link(destination: url) {
                 content
                     .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
@@ -542,6 +546,7 @@ private struct AgentActivityLinked<Content: View>: View {
 
 private struct AgentActivityLinkedRow: View {
     let hostID: String
+    let coreID: String?
     let agent: AgentActivityDetails.AgentDetail
     let surface: AgentActivitySurface
     let minimumHeight: CGFloat
@@ -549,6 +554,7 @@ private struct AgentActivityLinkedRow: View {
     var body: some View {
         AgentActivityLinked(
             hostID: hostID,
+            coreID: coreID,
             agent: agent,
             surface: surface,
             minimumHeight: surface == .island

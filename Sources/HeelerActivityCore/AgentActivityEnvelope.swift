@@ -6,6 +6,8 @@ import Foundation
 struct AgentActivityDetails: Sendable, Equatable {
     var hostName: String
     var agents: [AgentDetail]
+    /// Authenticated Core identity for row actions; absent for Herdr TUI.
+    var coreID: String? = nil
 
     struct Field: Codable, Sendable, Equatable {
         var text: String
@@ -139,6 +141,9 @@ enum AgentActivityEnvelope {
         guard let host = wire.host, !host.isEmpty else {
             throw .badPayload(reason: "host must be a non-empty string")
         }
+        guard wire.core?.isEmpty != true else {
+            throw .badPayload(reason: "core must be a non-empty string when present")
+        }
         guard let wireAgents = wire.agents else {
             throw .badPayload(reason: "agents must be an array")
         }
@@ -160,7 +165,7 @@ enum AgentActivityEnvelope {
                     workspace: nonEmpty(item.workspace), status: status,
                     title: nonEmpty(item.title), rows: item.rows))
         }
-        return AgentActivityDetails(hostName: host, agents: agents)
+        return AgentActivityDetails(hostName: host, agents: agents, coreID: wire.core)
     }
 
     /// Canonical plaintext: compact JSON, keys sorted at every level, agents
@@ -177,7 +182,7 @@ enum AgentActivityEnvelope {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(
-            OutgoingPlaintext(agents: agents, host: details.hostName, v: version))
+            OutgoingPlaintext(agents: agents, core: details.coreID, host: details.hostName, v: version))
     }
 
     private static func nonEmpty(_ text: String?) -> String? {
@@ -191,6 +196,7 @@ enum AgentActivityEnvelope {
         var v: Double?
         var host: String?
         var agents: [WireAgent]?
+        var core: String?
     }
 
     private struct WireAgent: Decodable {
@@ -205,6 +211,7 @@ enum AgentActivityEnvelope {
 
     private struct OutgoingPlaintext: Encodable {
         var agents: [OutgoingAgent]
+        var core: String?
         var host: String
         var v: Int
     }

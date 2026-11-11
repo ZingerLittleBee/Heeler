@@ -110,6 +110,16 @@ Decrypted plaintext (canonical form):
   owns that information. Missing context suppresses that field only.
 - `host` is the Host machine's short hostname (first DNS label), ≤80
   graphemes.
+- Optional `core` is the permanent Core ID, inside the authenticated details,
+  never the relay's plaintext counts. Core producers preserve it through every
+  size-degradation step. TUI producers omit it, preserving their canonical
+  bytes. Top-level key order is `agents` < `core` < `host` < `v`.
+  A Core row action carries this identity as the `core` query item on
+  `heeler://agent/<hostID>/<terminalAddress>`; the notification router must
+  verify it against fresh connected inventory before opening that Terminal.
+  Reused addresses on a replacement Core must not open from an old activity.
+  Console-level links carry no Terminal identity. Older Node producers may
+  ignore this additive metadata and do not gain native Core action support.
 - Unknown fields in plaintext or envelope frame are ignored (additive v1
   metadata); breaking changes bump `v` on both ends together.
 - Size budget: the base64url `ct` should stay ≤ ~2800 bytes so the full

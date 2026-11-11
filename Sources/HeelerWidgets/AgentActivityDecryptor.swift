@@ -34,6 +34,11 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
+    var coreID: String? {
+        guard case .detailed(let details, _) = self else { return nil }
+        return details.coreID
+    }
+
     /// First Agent in envelope order (pinned eligible first, then status rank).
     var primaryAgent: AgentActivityDetails.AgentDetail? {
         agents.first

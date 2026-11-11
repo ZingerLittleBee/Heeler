@@ -152,6 +152,7 @@ final class HeelerAppModel {
                 }
                 return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
             },
+            coreIdentity: { [weak console] id in console?.hostCores[id] },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []
             },

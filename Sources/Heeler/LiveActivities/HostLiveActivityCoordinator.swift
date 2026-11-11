@@ -31,6 +31,7 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private let hostDisplayName: @MainActor (Host.ID) -> String
     @ObservationIgnored private let isAwaitingSnapshot: @MainActor (Host.ID) -> Bool
     @ObservationIgnored private let connectionStatus: @MainActor (Host.ID) -> EventsSessionStatus?
+    @ObservationIgnored private let coreIdentity: @MainActor (Host.ID) -> String?
     @ObservationIgnored private let pinnedPaneIDs: @MainActor (Host.ID) -> [String]
     @ObservationIgnored private let rowLayout: @MainActor (Host.ID) -> AgentRowLayout?
     @ObservationIgnored private let settleDuration: Duration
@@ -93,6 +94,7 @@ final class HostLiveActivityCoordinator {
         connectionStatus: @escaping @MainActor (Host.ID) -> EventsSessionStatus?,
         supportsHost: @escaping @MainActor (Host.ID) -> Bool = { _ in true },
         registrationGate: @escaping @MainActor (Host.ID) -> LiveActivityGate = { _ in .open },
+        coreIdentity: @escaping @MainActor (Host.ID) -> String? = { _ in nil },
         pinnedPaneIDs: @escaping @MainActor (Host.ID) -> [String] = { _ in [] },
         rowLayout: @escaping @MainActor (Host.ID) -> AgentRowLayout? = { _ in nil },
         settleDuration: Duration = .seconds(3),
@@ -110,6 +112,7 @@ final class HostLiveActivityCoordinator {
         self.hostDisplayName = hostDisplayName
         self.isAwaitingSnapshot = isAwaitingSnapshot
         self.connectionStatus = connectionStatus
+        self.coreIdentity = coreIdentity
         self.pinnedPaneIDs = pinnedPaneIDs
         self.rowLayout = rowLayout
         self.settleDuration = settleDuration
@@ -395,6 +398,7 @@ final class HostLiveActivityCoordinator {
         return AgentActivityContentBuilder.desire(
             from: agents,
             hostName: resolvedHostName(hostID, agents: agents),
+            coreID: coreIdentity(hostID),
             pinnedPaneIDs: pinnedPaneIDs(hostID), layout: rowLayout(hostID))
     }
 

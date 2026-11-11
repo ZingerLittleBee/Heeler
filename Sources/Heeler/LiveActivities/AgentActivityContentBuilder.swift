@@ -7,6 +7,7 @@ struct AgentActivityDesire: Equatable, Sendable {
     var counts: AgentActivityAttributes.ContentState.Counts
     var hostName: String
     var agents: [AgentActivityDetails.AgentDetail]
+    var coreID: String? = nil
 }
 
 /// Builds a Host's Live Activity `ContentState` from the Console's Agent
@@ -25,6 +26,7 @@ enum AgentActivityContentBuilder {
     static func desire(
         from agents: [ConsoleAgent],
         hostName: String,
+        coreID: String? = nil,
         pinnedPaneIDs: [String] = [],
         layout: AgentRowLayout? = nil
     ) -> AgentActivityDesire? {
@@ -46,7 +48,7 @@ enum AgentActivityContentBuilder {
         return AgentActivityDesire(
             counts: .init(working: working, blocked: blocked, done: done),
             hostName: prefixGraphemes(hostName, max: maxHostGraphemes),
-            agents: details)
+            agents: details, coreID: coreID)
     }
 
     /// Seals `desire` under the Host's Notification Key. Degrades in contract
@@ -79,7 +81,7 @@ enum AgentActivityContentBuilder {
 
         for candidate in candidates {
             guard let sealed = try? AgentActivityEnvelope.seal(
-                AgentActivityDetails(hostName: candidate.hostName, agents: candidate.agents),
+                AgentActivityDetails(hostName: candidate.hostName, agents: candidate.agents, coreID: candidate.coreID),
                 using: key,
                 nonce: nonce),
                 let envelope = try? JSONDecoder().decode(
