@@ -304,7 +304,7 @@ struct CodexMessageDisplayTests {
         #expect(prompt?.pastedImagePaths == [path])
     }
 
-    @Test("A prompt steered into a running turn is marked queued")
+    @Test("A prompt steered into a running turn joins it, delivered")
     func steeredPrompt() {
         var builder = CodexRolloutBuilder()
         builder.turnStarted("t1")
@@ -316,7 +316,7 @@ struct CodexMessageDisplayTests {
 
         #expect(
             builder.reducer().transcript(idle).entries.compactMap(\.user) == [
-                ChatUserMessage(text: "start"), ChatUserMessage(text: "also this", wasQueued: true),
+                ChatUserMessage(text: "start"), ChatUserMessage(text: "also this", delivery: .steered),
             ])
     }
 

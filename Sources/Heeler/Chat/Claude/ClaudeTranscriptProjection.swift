@@ -813,7 +813,9 @@ private struct Builder {
             addInterruptMarker(record, text: text)
             return
         }
-        let wasQueued = record.promptSource == "queued"
+        // A prompt queued during a turn and delivered as a user record
+        // (`promptSource` `queued`) opens the next turn, as every user record
+        // does, so it reads as sent directly.
         switch ClaudeUserText.classify(text) {
         case .prompt(let prompt):
             guard ClaudeTranscriptProjection.isHuman(record.originKind), record.promptSource != "system" else {
@@ -825,8 +827,7 @@ private struct Builder {
                 "user:\(record.uuid)", at: record,
                 .user(
                     ChatUserMessage(
-                        text: prompt, imageCount: record.imageCount, imagePaths: imageSources[record.uuid] ?? [],
-                        wasQueued: wasQueued)))
+                        text: prompt, imageCount: record.imageCount, imagePaths: imageSources[record.uuid] ?? [])))
         case .command(let invocation):
             // A local command records its output below it; a skill or prompt
             // command records the expanded prompt, which stays hidden.
@@ -840,7 +841,7 @@ private struct Builder {
                     .user(
                         ChatUserMessage(
                             text: invocation.displayText, imageCount: record.imageCount,
-                            imagePaths: imageSources[record.uuid] ?? [], command: invocation, wasQueued: wasQueued)))
+                            imagePaths: imageSources[record.uuid] ?? [], command: invocation)))
             }
         case .localCommandOutput(let output):
             addOutputNotice(output: output, at: record)
@@ -974,8 +975,8 @@ private struct Builder {
     }
 
     /// Bubbles for prompts queued in the running turn and not delivered
-    /// yet, marked "Sent while working" like the bubble their delivery adds;
-    /// returns their entries by enqueue offset. A turn opened above the
+    /// yet, marked Queued until the bubble their delivery adds replaces
+    /// them; returns their entries by enqueue offset. A turn opened above the
     /// loaded lines is running when they neither open nor close one and the
     /// Agent works.
     mutating func addWaitingPrompts(_ waiting: [(offset: UInt64, text: String)]) -> [UInt64: ChatEntryID] {
@@ -994,13 +995,13 @@ private struct Builder {
             entries.append(
                 ChatEntry(
                     id: id, sourceOffset: prompt.offset,
-                    content: .user(ChatUserMessage(text: prompt.text, wasQueued: true))))
+                    content: .user(ChatUserMessage(text: prompt.text, delivery: .queued))))
             added[prompt.offset] = id
         }
         return added
     }
 
-    /// A prompt or notification delivered while a turn was running.
+    /// A prompt or notification delivered into a running turn.
     private mutating func addQueuedCommand(_ record: ClaudeRecord) {
         guard let queued = record.attachment?.queuedCommand, !queued.isMeta else { return }
         // A user record written for the same prompt shows it instead (SDK
@@ -1016,14 +1017,14 @@ private struct Builder {
             guard !prompt.isEmpty || queued.imageCount > 0 else { return }
             add(
                 entryID, at: record,
-                .user(ChatUserMessage(text: prompt, imageCount: queued.imageCount, wasQueued: true)))
+                .user(ChatUserMessage(text: prompt, imageCount: queued.imageCount, delivery: .steered)))
         case .command(let invocation):
             add(
                 entryID, at: record,
                 .user(
                     ChatUserMessage(
                         text: invocation.displayText, imageCount: queued.imageCount, command: invocation,
-                        wasQueued: true)))
+                        delivery: .steered)))
         case .taskNotification(let notification):
             guard !notificationKeys.contains(Self.key(of: notification)) else { return }
             add("notice:\(record.uuid)", at: record, .notice(Self.notice(for: notification)))

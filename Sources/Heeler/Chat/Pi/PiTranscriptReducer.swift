@@ -241,12 +241,13 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                         content = .user(
                             ChatUserMessage(
                                 text: invocation.displayText, imageCount: images, command: invocation,
-                                wasQueued: steers))
+                                delivery: steers ? .steered : .direct))
                         prompt =
                             skill.arguments.isEmpty
                             ? "/skill:\(skill.name)" : "/skill:\(skill.name) \(skill.arguments)"
                     } else {
-                        content = .user(ChatUserMessage(text: text, imageCount: images, wasQueued: steers))
+                        content = .user(
+                            ChatUserMessage(text: text, imageCount: images, delivery: steers ? .steered : .direct))
                         prompt = text
                     }
                     if steers {

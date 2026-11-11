@@ -175,6 +175,26 @@ struct ChatTranscriptCacheTests {
         #expect(message == ChatUserMessage(text: "[Image #1]look", imageCount: 1))
     }
 
+    /// A message saved before Chat told a queued prompt from a delivered
+    /// one was marked only as sent during a turn. The cache never keeps a
+    /// prompt still queued, so it reads as delivered into that turn.
+    @Test func olderCachedQueuedMessagesDecodeAsDelivered() throws {
+        let json = #"{"text":"Also check the README","imageCount":0,"attachmentLabels":[],"wasQueued":true}"#
+        let message = try JSONDecoder().decode(ChatUserMessage.self, from: Data(json.utf8))
+        #expect(message == ChatUserMessage(text: "Also check the README", delivery: .steered))
+    }
+
+    @Test(arguments: [ChatUserMessage.Delivery.direct, .queued, .steered])
+    func userMessagesKeepTheirDelivery(_ delivery: ChatUserMessage.Delivery) throws {
+        let message = ChatUserMessage(
+            text: "look", imageCount: 1, imagePaths: ["/tmp/a.png"], attachmentLabels: ["notes.md"],
+            command: ChatCommandInvocation(name: "review"), delivery: delivery)
+        let data = try JSONEncoder().encode(message)
+        #expect(try JSONDecoder().decode(ChatUserMessage.self, from: data) == message)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(json["wasQueued"] == nil)
+    }
+
     @Test func fileNamesRevealNoIdentifiers() {
         let key = ChatCacheKey(
             hostID: Self.hostA, socketLocation: .namedSession("work"),

@@ -36,6 +36,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good.
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
 - Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list. (PR #661)
 - Show each Host in Settings > Notifications as one row with its switch and a line saying what is on or what it needs. Done Notifications, Live Activity and their notes move to the Host's own page, which on a herdr-core Host also shows the Host Helper's status and opens its sheet on the Host's page in Hosts. (PR #661)

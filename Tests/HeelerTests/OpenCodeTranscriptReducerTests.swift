@@ -37,7 +37,7 @@ struct OpenCodeTranscriptReducerTests {
         #expect(transcript.turns.first?.ending == .completed)
         #expect(transcript.turns.first?.endedAt == Self.date(1_800_000_692_097))
         let steer = try #require(transcript.entries.first { $0.id == Self.steerID })
-        #expect(steer.content == .user(ChatUserMessage(text: "After that, reply with two.", wasQueued: true)))
+        #expect(steer.content == .user(ChatUserMessage(text: "After that, reply with two.", delivery: .steered)))
         #expect(transcript.recordedPrompts.map(\.offset) == [176, 187])
         #expect(transcript.latestPromptOffset == 187)
         let shell = try #require(Self.tools(transcript).first)
@@ -55,7 +55,7 @@ struct OpenCodeTranscriptReducerTests {
             queued.entries.last
                 == ChatEntry(
                     id: Self.steerID, sourceOffset: 184,
-                    content: .user(ChatUserMessage(text: "After that, reply with two.", wasQueued: true))))
+                    content: .user(ChatUserMessage(text: "After that, reply with two.", delivery: .queued))))
         #expect(queued.unrecordedEntryIDs == [Self.steerID])
         #expect(
             queued.recordedPrompts.last
@@ -66,6 +66,10 @@ struct OpenCodeTranscriptReducerTests {
         let promoted = reducer.transcript(ChatProjectionContext(activity: .idle))
         Self.expectNoMalformedLines(promoted)
         #expect(promoted.entries.filter { $0.id == Self.steerID }.map(\.sourceOffset) == [187])
+        // Delivered, it is no longer Queued.
+        #expect(
+            promoted.entries.first { $0.id == Self.steerID }?.content
+                == .user(ChatUserMessage(text: "After that, reply with two.", delivery: .steered)))
         #expect(promoted.unrecordedEntryIDs.isEmpty)
         #expect(promoted.recordedPrompts.filter { $0.entryID == Self.steerID }.map(\.offset) == [187])
         #expect(promoted.turns.map(\.ending) == [.completed])
@@ -119,7 +123,7 @@ struct OpenCodeTranscriptReducerTests {
             transcript.turns.map(\.endedAt) == [
                 Self.date(1_800_000_100_102), Self.date(1_800_000_100_104), Self.date(1_800_000_100_106), nil,
             ])
-        #expect(Self.prompts(transcript).allSatisfy { !$0.wasQueued })
+        #expect(Self.prompts(transcript).allSatisfy { $0.delivery == .direct })
         #expect(transcript.entries.contains { $0.content == .notice(ChatNotice(kind: .error, title: "Rate limited")) })
     }
 
@@ -139,7 +143,8 @@ struct OpenCodeTranscriptReducerTests {
         #expect(transcript.turns.map(\.ending) == [.completed, .interrupted, .failed, .completed, .completed, .completed])
         try #require(transcript.turns.count == 6)
         #expect(transcript.turns[3].endedAt == Self.date(1_800_000_100_108))
-        #expect(Self.prompts(transcript).map(\.wasQueued) == [false, false, false, false, false, false, true])
+        #expect(
+            Self.prompts(transcript).map(\.delivery) == [.direct, .direct, .direct, .direct, .direct, .direct, .steered])
     }
 
     @Test func escStopEndsTheTurnInterruptedAndKeepsPartialText() throws {
@@ -666,7 +671,7 @@ struct OpenCodeTranscriptReducerTests {
                 .user(ChatUserMessage(text: "Long prompt\n\n(truncated in Chat)")),
                 .assistant(ChatAssistantMessage(text: "Long reply\n\n(truncated in Chat)")),
                 .reasoning(ChatReasoning(text: "Long thought\n\n(truncated in Chat)")),
-                .user(ChatUserMessage(text: "Long steer\n\n(truncated in Chat)", wasQueued: true)),
+                .user(ChatUserMessage(text: "Long steer\n\n(truncated in Chat)", delivery: .queued)),
             ])
         // The row's prompt echoes by the text it keeps; the queued one only
         // once its row holds more.

@@ -15,8 +15,8 @@ struct ChatTimelineProjectionTests {
         ChatRow(id: .entry(ChatEntryID(id)), content: content, revision: revision, topSpacing: 0)
     }
 
-    private static func user(_ id: String, queued: Bool = false) -> ChatRow {
-        row(id, .user(ChatUserMessage(text: id, wasQueued: queued)))
+    private static func user(_ id: String, delivery: ChatUserMessage.Delivery = .direct) -> ChatRow {
+        row(id, .user(ChatUserMessage(text: id, delivery: delivery)))
     }
 
     private static func text(_ id: String) -> ChatRow {
@@ -302,13 +302,17 @@ struct ChatTimelineProjectionTests {
         #expect(Self.ids(Self.project(rows, turns: [Self.turn("u1")])) == ["u1", "q1", "[turn a1]", "a1"])
     }
 
+    /// A prompt that joined the running turn, or still waits for it, opens
+    /// none.
     @Test func withoutRecordedTurnsAPromptOpensOne() {
         let rows = [
-            Self.user("u1"), Self.tool("c1"), Self.text("a1"), Self.user("q1", queued: true), Self.text("a2"),
-            Self.user("u2"), Self.tool("c2"), Self.text("a3"),
+            Self.user("u1"), Self.tool("c1"), Self.text("a1"), Self.user("s1", delivery: .steered), Self.text("a2"),
+            Self.user("u2"), Self.tool("c2"), Self.text("a3"), Self.user("q1", delivery: .queued),
         ]
         let output = Self.project(rows, turns: [], signals: Self.working)
-        #expect(Self.ids(output) == ["u1", "q1", "[turn a2]", "a2", "u2", "c2", "a3"])
+        #expect(Self.ids(output) == ["u1", "s1", "[turn a2]", "a2", "u2", "c2", "a3", "q1"])
+        #expect(Self.turnHeader(output, .turn(ChatEntryID("a2"))) != nil)
+        #expect(output.trajectories.count == 2)
     }
 
     @Test func rowsAboveTheFirstLoadedTurnFoldOnceNothingOlderRemains() {
@@ -414,7 +418,7 @@ struct ChatTimelineProjectionTests {
         image.imagePath = "/tmp/shot.png"
         let breakers: [ChatRow] = [
             Self.text("x"), Self.notice("x", .system), Self.row("x", .divider(ChatDivider(kind: .compaction))),
-            Self.user("x", queued: true), Self.tool("x", .agent, name: "Agent"), Self.tool("x", .question, name: "AskUserQuestion"),
+            Self.user("x", delivery: .steered), Self.tool("x", .agent, name: "Agent"), Self.tool("x", .question, name: "AskUserQuestion"),
             Self.tool("x", status: .awaitingApproval), Self.tool("x", name: "user_shell"),
             // Its image shows on the row, never folded into a group.
             Self.row("x", .tool(image)),
@@ -624,7 +628,7 @@ struct ChatTimelineProjectionTests {
     @Test func subagentMergingStopsAtTurnsAndUserMessages() {
         let rows = [
             Self.user("u1"), Self.subagent("a1", path: "/root/task", event: "started"),
-            Self.user("queued", queued: true), Self.subagent("a2", path: "/root/task", event: "interacted"),
+            Self.user("queued", delivery: .steered), Self.subagent("a2", path: "/root/task", event: "interacted"),
             Self.user("u2"), Self.subagent("a3", path: "/root/task", event: "completed"),
         ]
         let output = Self.project(rows, turns: [Self.turn("u1"), Self.turn("u2")])
