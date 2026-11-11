@@ -25,12 +25,21 @@ import Testing
         let blocked: Int
     }
 
+    struct Report: Decodable {
+        let state: String
+        let app: String?
+        let kind: String?
+        let msg: String?
+    }
+
     struct Write: Decodable {
         struct Step: Decodable {
+            let report: Report
             let value: String
         }
 
         let name: String
+        let start: String?
         let steps: [Step]
     }
 
@@ -73,6 +82,25 @@ import Testing
             #expect(status.message == vector.msg, "\(vector.name)")
             #expect(status.turn == vector.turn, "\(vector.name)")
             #expect(status.blocked == vector.blocked, "\(vector.name)")
+        }
+    }
+
+    /// Each report continues the value the step before it left, as the vector's
+    /// writers do (the app's own Stop and declines among them).
+    @Test func everyWriteContinuesTheCountsTheVectorSays() throws {
+        let file = try Self.vectors()
+        #expect(!file.writes.isEmpty)
+        for vector in file.writes {
+            var previous = vector.start
+            for step in vector.steps {
+                let next = TmuxProgramStatus.continued(
+                    previous,
+                    by: TmuxStatusReport(
+                        state: step.report.state, app: step.report.app,
+                        kind: step.report.kind, message: step.report.msg))
+                #expect(next == step.value, "\(vector.name): \(step.value)")
+                previous = next
+            }
         }
     }
 

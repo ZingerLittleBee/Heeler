@@ -8,6 +8,15 @@ import Foundation
 ///
 /// `plugin/test-vectors/tmux-heeler-status-v1.json` holds the format and its
 /// rules, read by the app, the hook script and the Helper alike.
+/// One report applied to a Pane's `@heeler-status` (`continueHeelerStatus`).
+struct TmuxStatusReport: Equatable, Sendable {
+    var state: String
+    var app: String?
+    var kind: String?
+    /// Base64, as OSC 7501 carries it.
+    var message: String?
+}
+
 struct TmuxProgramStatus: Equatable, Sendable {
     /// OSC 7501's `state`, nil for a status that was cleared or never set.
     var state: String?
@@ -40,6 +49,36 @@ struct TmuxProgramStatus: Equatable, Sendable {
     private static func count(_ text: String) -> Int {
         guard !text.isEmpty, text.allSatisfy(\.isASCII), text.allSatisfy(\.isNumber) else { return 0 }
         return Int(text) ?? 0
+    }
+
+    /// Programs whose idle does not end a turn. These are the `app` words in
+    /// `plugin/test-vectors/tmux-heeler-status-v1.json`, the same set the Helper
+    /// continues counts with.
+    static let doneReporterApps: Set<String> = ["claude-code", "codex", "pi", "omp", "grok-build"]
+
+    /// The option value after `report`, continuing the counts in `previous`.
+    /// An unset option is an empty value. `clear` keeps only the counts. A
+    /// report from another program ends nothing of the one it found.
+    static func continued(_ previous: String?, by report: TmuxStatusReport) -> String {
+        let last = TmuxProgramStatus(option: previous ?? "")
+        if report.state == "clear" {
+            return "turn=\(last.turn):blocked=\(last.blocked)"
+        }
+        let app = report.app.flatMap { $0.isEmpty ? nil : $0 }
+        let sameApp = last.state != nil && last.app == app
+        let endsTurn = sameApp && (
+            ((last.state == "working" || last.state == "blocked")
+                && (report.state == "done" || report.state == "error"))
+            || (last.state == "working" && report.state == "idle"
+                && !doneReporterApps.contains(app ?? "")))
+        let asks = report.state == "blocked" && !(sameApp && last.state == "blocked")
+        var words = ["state=\(report.state)"]
+        if let app { words.append("app=\(app)") }
+        if let kind = report.kind, !kind.isEmpty { words.append("kind=\(kind)") }
+        if let message = report.message, !message.isEmpty { words.append("msg=\(message)") }
+        let turn = last.turn + (endsTurn ? 1 : 0)
+        let blocked = last.blocked + (asks ? 1 : 0)
+        return "\(words.joined(separator: ":")):turn=\(turn):blocked=\(blocked)"
     }
 
     /// The word this status reports for an Agent of `kind`. A report whose `app`
