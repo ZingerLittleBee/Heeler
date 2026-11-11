@@ -574,6 +574,62 @@ suite("across connections", () => {
     assert.deepEqual(lastTo(ACTIVITY_A).counts, { working: 0, blocked: 1, done: 0 });
   });
 
+  test("a missed snapshot sends nothing extra for unchanged Panes, keeps kept signatures, and drops Panes that left", async () => {
+    register(entry(KEY_A, ALERT_A, ACTIVITY_A));
+    const core = await connected([agent("t1"), agent("t2")]);
+    await pushes(ACTIVITY_A, 1);
+
+    // 1. An unchanged missed snapshot sends no extra update.
+    nextSeq += 1;
+    core.last.sendEvents(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "missed", params: { seq: nextSeq, terminals: [agent("t1"), agent("t2")] } })}\n`,
+    );
+    await quiet();
+    assert.equal(updatesTo(ACTIVITY_A).length, 1);
+
+    // 2. An unchanged Pane ("t2") keeps its signature across missed, so unchanged reports on it do not hold back "t1"'s Blocked.
+    writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relay.url, activity_debounce_ms: 80, retry_delay_ms: 1 }));
+    nextSeq += 1;
+    core.last.sendEvents(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        method: "missed",
+        params: {
+          seq: nextSeq,
+          terminals: [agent("t1", { status: { state: "blocked", app: "claude-code" } }), agent("t2")],
+        },
+      })}\n`,
+    );
+    const reports = setInterval(() => status(core, "t2", "working"), 5);
+    try {
+      await waitFor(() => lastTo(ACTIVITY_A).counts.blocked === 1, "kept Pane signature did not hold back missed Blocked", 2000);
+    } finally {
+      clearInterval(reports);
+    }
+    assert.equal(updatesTo(ACTIVITY_A).length, 2);
+
+    // 3. A Pane ("t2") that leaves in missed loses its signature, so recreating it with its prior state resets a pending debounce.
+    writeFileSync(join(directory, "notify.json"), JSON.stringify({ relay_url: relay.url, activity_debounce_ms: 400, retry_delay_ms: 1 }));
+    nextSeq += 1;
+    core.last.sendEvents(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        method: "missed",
+        params: { seq: nextSeq, terminals: [agent("t1")] },
+      })}\n`,
+    );
+    await new Promise((done) => setTimeout(done, 250));
+    assert.equal(updatesTo(ACTIVITY_A).length, 2);
+
+    // "t2" had working before it left; because its signature was deleted on missed, recreating it resets the 400ms timer.
+    send(core, "created", "t2", agent("t2"));
+    await new Promise((done) => setTimeout(done, 230));
+    assert.equal(updatesTo(ACTIVITY_A).length, 2, "recreated Pane reset the debounce because its old signature was removed");
+
+    await pushes(ACTIVITY_A, 3);
+    assert.deepEqual(lastTo(ACTIVITY_A).counts, { working: 2, blocked: 0, done: 0 });
+  });
+
   test("another core id starts its turns over", async () => {
     register(entry(KEY_A, ALERT_A, ACTIVITY_A));
     const first = await connected([agent("t1", { turn: 4, status: { state: "done", app: "claude-code" } })]);
@@ -640,16 +696,30 @@ suite("a token the relay says is gone", () => {
 });
 
 suite("what the Helper keeps", () => {
-  test("is private to the user, and goes when no registration names the session", async () => {
+  test("is private to the user, omits tmux blockedCounts on core, and goes when no registration names the session", async () => {
     register(entry(KEY_A, ALERT_A, ACTIVITY_A));
-    const core = await connected([agent("t1")]);
+    const core = await connected([agent("t1", { status: { state: "blocked", app: "claude-code" } })]);
     await pushes(ACTIVITY_A, 1);
     const kept = join(directory, "state", "activity", `${SESSION}.json`);
     await waitFor(() => existsSync(kept), "the memory file");
     assert.equal(statSync(kept).mode & 0o777, 0o600);
 
-    register();
+    const saved = JSON.parse(readFileSync(kept, "utf8"));
+    assert.equal("blockedCounts" in saved.tokens[ACTIVITY_A], false);
+    assert.deepEqual(saved.tokens[ACTIVITY_A].statuses, { t1: "blocked" });
+    assert.equal(saved.tokens[ACTIVITY_A].ended, false);
+
+    // Reconnecting to another core id keeps core token memory free of blockedCounts as well.
     await core.stop();
+    const nextCore = await startCore([agent("t1")], { core: "next-core" });
+    await pushes(ACTIVITY_A, 2);
+    await waitFor(() => JSON.parse(readFileSync(kept, "utf8")).core === "next-core", "updated memory file for next-core");
+    const afterReconnect = JSON.parse(readFileSync(kept, "utf8"));
+    assert.equal("blockedCounts" in afterReconnect.tokens[ACTIVITY_A], false);
+    assert.deepEqual(afterReconnect.tokens[ACTIVITY_A].statuses, { t1: "working" });
+
+    register();
+    await nextCore.stop();
     await waitFor(() => !existsSync(kept), "the memory file to go");
   });
 });
