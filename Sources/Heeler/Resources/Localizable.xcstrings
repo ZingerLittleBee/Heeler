@@ -2835,6 +2835,24 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドタスクが %lld 件停止しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个后台任务已停止"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個背景任務已停止"
+          }
         }
       }
     },
@@ -25517,6 +25535,24 @@
                 }
               }
             }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」の後に Heeler がエージェントの画面を読み取れなかったため、%1$lld 件のバックグラウンドコマンドがまだ実行中の可能性があります: %2$@。ターミナルで /tasks を入力してから k を押して止めてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“停止”后 Heeler 无法读取 Agent 的屏幕，因此可能仍有 %1$lld 个后台命令在运行：%2$@。请在终端中输入 /tasks，然后按 k 停止它们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」後 Heeler 無法讀取 Agent 的畫面，因此可能仍有 %1$lld 個背景指令在執行：%2$@。請在終端機中輸入 /tasks，然後按 k 停止它們。"
           }
         }
       }
@@ -49011,6 +49047,24 @@
                 }
               }
             }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」でターンは終了しましたが、%1$lld 件のバックグラウンドコマンドがまだ実行中です: %2$@。ターミナルで /tasks を入力してから k を押して止めてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“停止”已结束本轮，但仍有 %1$lld 个后台命令在运行：%2$@。请在终端中输入 /tasks，然后按 k 停止它们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」已結束這一輪，但仍有 %1$lld 個背景指令在執行：%2$@。請在終端機中輸入 /tasks，然後按 k 停止它們。"
           }
         }
       }
