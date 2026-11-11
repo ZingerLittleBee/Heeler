@@ -106,6 +106,21 @@ struct ChatMarkdownView: View {
         return result
     }
 
+    /// A code block's content as its box draws it: as written, and where
+    /// Chat can open images, each line that is a path to one a link in the
+    /// tint color. The line keeps the block's face and gets no photo
+    /// symbol, so the block's lines stay aligned.
+    nonisolated static func codeText(_ content: AttributedString, opensImages: Bool) -> AttributedString {
+        guard opensImages else { return content }
+        var result = content
+        for run in content.runs {
+            if let path = run[ChatImageLink.PathAttribute.self] {
+                result[run.range].link = ChatImageLink.url(for: path)
+            }
+        }
+        return result
+    }
+
     /// The content as a text block draws it in `font`: `styled`, with a
     /// photo symbol before each path that opens an image, so the link reads
     /// as a picture rather than as code or a web page.
@@ -214,7 +229,7 @@ private struct ChatMarkdownBlockView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-                Text(verbatim: block.text)
+                Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil))
                     .font(.system(.footnote, design: .monospaced))
             }
             .padding(10)

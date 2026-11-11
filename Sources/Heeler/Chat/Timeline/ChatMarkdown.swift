@@ -41,7 +41,9 @@ struct ChatMarkdownBlock: Sendable, Equatable {
     /// What to draw: the text with its inline styles (emphasis, strong,
     /// inline code, strikethrough) and permitted links, and without block
     /// attributes. Empty for a thematic break, and for a list item whose
-    /// first block is not a paragraph; that block follows as its own.
+    /// first block is not a paragraph; that block follows as its own. A code
+    /// block's is its text, with each line that is an image's path marked
+    /// (`ChatImageLink.markingLines`).
     let content: AttributedString
     /// The block as plain text, for Select Text and VoiceOver. A list item
     /// starts with its marker and a space, so a numbered list keeps its
@@ -498,8 +500,12 @@ private struct BlockBuilder {
         }
         switch chain.first?.kind {
         case .codeBlock(let hint)?:
+            // Any language: each line is judged on its own text.
             let language = hint?.split(whereSeparator: \.isWhitespace).first.map(String.init)
-            return make(.code(language: language), Self.droppingFinalNewline(String(parsed[group.range].characters)))
+            let text = Self.droppingFinalNewline(String(parsed[group.range].characters))
+            return ChatMarkdownBlock(
+                kind: .code(language: language), content: ChatImageLink.markingLines(text), text: text,
+                listDepth: listDepth, quoteDepth: quoteDepth, blankLineBefore: blankLineBefore)
         case .thematicBreak?:
             return make(.thematicBreak, "")
         default:
