@@ -73,6 +73,18 @@ struct HostHelperFiles: HostNotificationFiles {
 
     func replaceNotificationRegistration(_ contents: Data) async throws {
         try await replace(HeelerSSHTransport.notificationRegistrationFileName, contents)
+        if case .tmuxSocket(let socket, let paths?) = target {
+            let normalized = TmuxSocketName.normalized(socket)
+            if paths.serves(socketName: normalized),
+                let file = try? NotificationRegistrationFile.decode(contents),
+                file.devices.contains(where: { $0["session"] == .string("tmux/\(normalized)") })
+            {
+                let stored = String(decoding: TmuxClaudeCodeHooks.storedPaths(paths), as: UTF8.self)
+                let script = HostHelperScript(
+                    .refreshTmuxPaths(socket: normalized, storedPaths: stored), nonce: nonce())
+                _ = try? await host.runHostHelperScript(script)
+            }
+        }
     }
 
     func readNotificationConfig() async throws -> Data? {

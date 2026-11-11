@@ -358,7 +358,7 @@ struct TmuxConsoleTests {
 
     // MARK: Host integrations
 
-    @Test func aTmuxHostJoinsUsageAndAccountsWhileLiveActivitiesWait() throws {
+    @Test func aTmuxHostJoinsUsageAccountsAndLiveActivities() throws {
         #expect(ServerKind.tmux.hasHostIntegrations)
         #expect(ServerKind.herdrTUI.hasHostIntegrations)
         #expect(ServerKind.herdrCore.hasHostIntegrations)
@@ -376,7 +376,7 @@ struct TmuxConsoleTests {
 
         #expect(catalog.consoleHosts.map(\.id) == [tui.id, added.id])
         #expect(catalog.integratedHosts.map(\.id) == [tui.id, added.id])
-        #expect(!catalog.supportsLiveActivities(for: added.id))
+        #expect(catalog.supportsLiveActivities(for: added.id))
         #expect(catalog.supportsLiveActivities(for: tui.id))
     }
 

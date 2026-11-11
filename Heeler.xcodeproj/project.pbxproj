@@ -677,6 +677,7 @@
 		99321D853ED2DF38BA57FB55 /* GrokDialogPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C377A95698B50F0851757C6C /* GrokDialogPlannerTests.swift */; };
 		998C0897399E9D7EEFE98295 /* AgentSessionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A0D34CD58BD9C168178A23 /* AgentSessionConfig.swift */; };
 		9A1EF3031B0903D87E4682FC /* AgentModelProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A383F050585E92B29A100E2 /* AgentModelProbe.swift */; };
+		9A481A0F9152E91DDC294FF8 /* TmuxHostHelperNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B73334DB5BEAB22D96FAA /* TmuxHostHelperNotificationsTests.swift */; };
 		9AA26D72B34CCF2E34C8C675 /* WorktreeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 669A53C020B39F9DFAFE005E /* WorktreeDetailView.swift */; };
 		9AF7E3EFA40799ECDB9A5019 /* HerdrCoreHostMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CC62BC4417CEECA8234BE0 /* HerdrCoreHostMemory.swift */; };
 		9B0D55D4DE1A7DDFF7507533 /* PiChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A29D9737D4307123E499898 /* PiChatTests.swift */; };
@@ -1458,6 +1459,7 @@
 		3F0BE2BC519E8D9DC31EC1D2 /* TmuxAttachScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxAttachScript.swift; sourceTree = "<group>"; };
 		3F4858DA258C7032AC64AD52 /* RelayContentStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayContentStateDecodeTests.swift; sourceTree = "<group>"; };
 		3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleWorkspaceCards.swift; sourceTree = "<group>"; };
+		3F8B73334DB5BEAB22D96FAA /* TmuxHostHelperNotificationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxHostHelperNotificationsTests.swift; sourceTree = "<group>"; };
 		3FF0618E3CE1094C0F1E14B2 /* TmuxPaneConsoleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxPaneConsoleTests.swift; sourceTree = "<group>"; };
 		400DB5B242363C4980CC0E70 /* HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift"; sourceTree = "<group>"; };
 		401B06FA1073EFC5F056E941 /* AgentRowChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowChanges.swift; sourceTree = "<group>"; };
@@ -2760,6 +2762,7 @@
 				05CF760287A748FED019036E /* TmuxEnvironmentTests.swift */,
 				EAA5C32ED1E388E613273820 /* TmuxHeelerStatusTests.swift */,
 				73BA197846F0A51990AA9C83 /* TmuxHostCatalogTests.swift */,
+				3F8B73334DB5BEAB22D96FAA /* TmuxHostHelperNotificationsTests.swift */,
 				B962730F894B916B5B233ABC /* TmuxHostOnboardingTests.swift */,
 				7BB186843F581A953B0BF650 /* TmuxInputVectorTests.swift */,
 				0D573F9C275DF90AA6AC5BB5 /* TmuxInventoryConsoleTests.swift */,
@@ -5190,6 +5193,7 @@
 				827D4A9E6A5EF736677AFC8F /* TmuxEnvironmentTests.swift in Sources */,
 				C7F260A5DECFF4E5F3C5C92F /* TmuxHeelerStatusTests.swift in Sources */,
 				699DB2AF6533021E5D8CF802 /* TmuxHostCatalogTests.swift in Sources */,
+				9A481A0F9152E91DDC294FF8 /* TmuxHostHelperNotificationsTests.swift in Sources */,
 				E01C6C2B6FE021123D7967A3 /* TmuxHostOnboardingTests.swift in Sources */,
 				F597C9B0B78B9AC3738FD0D9 /* TmuxInputVectorFile.swift in Sources */,
 				E074C6F4D42B432614731CF9 /* TmuxInputVectorTests.swift in Sources */,

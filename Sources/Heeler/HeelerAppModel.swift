@@ -148,7 +148,8 @@ final class HeelerAppModel {
                 hostStore?.supportsLiveActivities(for: id) ?? false
             },
             registrationGate: { [weak hostStore, weak notificationPreferences] id in
-                guard hostStore?.hosts.first(where: { $0.id == id })?.serverKind == .herdrCore else {
+                let kind = hostStore?.hosts.first(where: { $0.id == id })?.serverKind
+                guard kind == .herdrCore || kind == .tmux else {
                     return .open
                 }
                 return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown

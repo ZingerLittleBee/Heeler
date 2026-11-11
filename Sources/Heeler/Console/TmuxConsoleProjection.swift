@@ -13,7 +13,8 @@ import Foundation
 ///
 /// An Agent's status is its Pane's `@heeler-status` (ADR 0044), and Done is
 /// per device: this device's seen marks and each Pane's turns are kept by
-/// server instance, beside it, with no Helper to hold them.
+/// server instance, and written to the Host Helper's directory while this
+/// device is registered there (ADR 0033).
 ///
 /// A Pane opens live, through `terminalRunner`, and Composer Send types into
 /// its Agent through that Attach's control client in checked steps
@@ -54,6 +55,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private let memory: HerdrCoreHostMemory
     private let pins: PinnedAgentsStore
     private let onPathsResolved: @MainActor (TmuxPaths) -> Void
+    private let onSeenMarksChanged: @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
@@ -85,6 +87,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         gitGate: GitExecGate,
         sendClock: BlockedCardClock = .live,
         onPathsResolved: @escaping @MainActor (TmuxPaths) -> Void,
+        onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -94,6 +97,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.gitGate = gitGate
         self.sendClock = sendClock
         self.onPathsResolved = onPathsResolved
+        self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
 
@@ -200,10 +204,15 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
                 invalidateInventory()
             }
         case .server(let server):
+            let coreBefore = memory.coreID(for: host.id)
+            let marksBefore = seenMarks
             // What was listed came from the server that answered before.
             if self.server?.instance != server.instance { invalidateInventory() }
             self.server = server
             noteInstance(server.instance)
+            if let coreAfter = memory.coreID(for: host.id), coreAfter != coreBefore, !marksBefore.isEmpty {
+                onSeenMarksChanged(coreAfter, seenMarks)
+            }
         case .paths(let paths):
             guard paths != host.tmuxPaths, paths.serves(socketName: host.tmuxSocketName) else { return }
             host.tmuxPaths = paths
@@ -272,11 +281,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// Each snapshot is the whole inventory, so nothing is carried over. Its
     /// rows name their server, which the loop asked later than `server` did.
     private func replaceInventory(with inventory: TmuxInventory) {
+        let coreBefore = memory.coreID(for: host.id)
+        let marksBefore = seenMarks
         if let instance = inventory.instance { noteInstance(instance) }
         let listed = Set(inventory.panes.map(\.paneID))
         pins.retainPins(hostID: host.id, paneIDs: listed)
         memory.retainTmuxPanes(listed, for: host.id)
         noteTurns(in: inventory)
+        let coreAfter = memory.coreID(for: host.id)
+        let marksAfter = seenMarks
+        if let coreAfter, (coreAfter != coreBefore && !marksBefore.isEmpty) || marksAfter != marksBefore {
+            onSeenMarksChanged(coreAfter, marksAfter)
+        }
         self.inventory = inventory
         rebuildRows()
         refreshMissingCheckouts(in: inventory)
@@ -339,12 +355,29 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let opening = opened.filter { known[$0] != nil }
         guard !opening.isEmpty else { return }
         let wasDone = doneAgents
+        let marksBefore = seenMarks
         for paneID in opening {
             memory.updateTmuxTurnState(of: paneID, for: host.id) { $0.markSeen() }
         }
+        reportSeenMarks(ifChangedFrom: marksBefore)
         guard doneAgents != wasDone else { return }
         rebuildRows()
         onChange()
+    }
+
+    private var seenMarks: [String: HerdrCoreTurnState.Mark] {
+        memory.tmuxTurnStates(for: host.id).compactMapValues(\.seen)
+    }
+
+    /// Every mark this device holds, for a new registration's first file.
+    var currentSeenMarks: (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
+        memory.coreID(for: host.id).map { ($0, seenMarks) }
+    }
+
+    private func reportSeenMarks(ifChangedFrom before: [String: HerdrCoreTurnState.Mark]) {
+        let marks = seenMarks
+        guard marks != before, let core = memory.coreID(for: host.id) else { return }
+        onSeenMarksChanged(core, marks)
     }
 
     private var doneAgents: Set<String> {

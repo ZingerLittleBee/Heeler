@@ -404,13 +404,13 @@ final class HostStore {
         hosts.filter(\.serverKind.hasHostIntegrations)
     }
 
-    /// A Host waiting for its Server Kind stays out of Live Activities, and so
-    /// does one of a kind nothing reports for yet. Whether a core Host may show
-    /// one is its registration's call, see `LiveActivityGate`.
+    /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
+    /// herdr-core or tmux Host may show one is its registration's call, see
+    /// `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
         switch hosts.first(where: { $0.id == id })?.serverKind {
-        case .herdrTUI, .herdrCore: true
-        case .tmux, .unconfirmed, nil: false
+        case .herdrTUI, .herdrCore, .tmux: true
+        case .unconfirmed, nil: false
         }
     }
 

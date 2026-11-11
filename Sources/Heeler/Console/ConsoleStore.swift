@@ -1492,6 +1492,9 @@ final class ConsoleStore {
                         onPathsResolved: { [weak self, id = host.id] paths in
                             self?.onTmuxPathsResolved?(id, paths)
                         },
+                        onSeenMarksChanged: { [weak self, id = host.id] core, marks in
+                            self?.onCoreSeenMarksChanged?(id, core, marks)
+                        },
                         onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
@@ -2518,11 +2521,13 @@ extension ConsoleStore: NotificationTransportProvider {
             }
         }
         if let host = tmuxHost(hostID) {
+            let projectionPaths = (projections[hostID] as? TmuxConsoleProjection)?.host.storedTmuxPaths
             return try await withTmuxConnection(host) { transport in
-                try await operation(
+                let paths = await transport.hostFacts().paths ?? projectionPaths ?? host.storedTmuxPaths
+                return try await operation(
                     HostHelperFiles(
                         host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
-                        tmuxPaths: host.storedTmuxPaths))
+                        tmuxPaths: paths))
             }
         }
         return try await projection(for: hostID).withNotificationTransport { transport in
@@ -2544,30 +2549,36 @@ extension ConsoleStore: NotificationTransportProvider {
             return
         }
         if let host = tmuxHost(hostID) {
+            let projectionPaths = (projections[hostID] as? TmuxConsoleProjection)?.host.storedTmuxPaths
             try await withTmuxConnection(host) { transport in
+                let paths = await transport.hostFacts().paths ?? projectionPaths ?? host.storedTmuxPaths
                 try await operation(HostHelperUsageHost(
                     services: transport.hostServices,
                     files: HostHelperFiles(
                         host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
-                        tmuxPaths: host.storedTmuxPaths)))
+                        tmuxPaths: paths)))
             }
             return
         }
         try await withNotificationTransport(for: hostID) { try await operation($0) }
     }
 
-    /// What this device has seen on a core Host. Nil on any other Host.
+    /// What this device has seen on a core or tmux Host. Nil on any other Host.
     func coreSeenMarks(on hostID: Host.ID) -> (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
-        (projections[hostID] as? HerdrCoreConsoleProjection)?.currentSeenMarks
+        if let core = (projections[hostID] as? HerdrCoreConsoleProjection)?.currentSeenMarks {
+            return core
+        }
+        return (projections[hostID] as? TmuxConsoleProjection)?.currentSeenMarks
     }
 
     /// Whether this Host's notification files can be asked for now. A stopped
-    /// core leaves a core Host's SSH up and its Helper's files in reach, and it
-    /// reads as reconnecting for as long as it stays stopped.
+    /// core or tmux server leaves the Host's SSH up and its Helper's files in
+    /// reach, and it reads as reconnecting for as long as it stays stopped.
     func canReachNotificationFiles(_ hostID: Host.ID) -> Bool {
         switch hostStatuses[hostID] {
         case .connected: true
         case .reconnecting(_, _, .herdrCoreNotRunning): coreHost(hostID) != nil
+        case .reconnecting(_, _, .tmuxServerNotRunning): tmuxHost(hostID) != nil
         default: false
         }
     }
