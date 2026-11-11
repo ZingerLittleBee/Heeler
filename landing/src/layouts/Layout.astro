@@ -60,5 +60,18 @@ const imageAlt = 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. 
       <slot />
     </main>
     <SiteFooter />
+    <script is:inline>
+      (() => {
+        if (location.hostname !== 'heeler.si') return;
+        const from = 'https://docs.heeler.bybee.dev';
+        for (const anchor of document.querySelectorAll(`a[href^="${from}"]`)) {
+          const href = anchor.getAttribute('href');
+          if (href == null) continue;
+          if (href === from || href.startsWith(`${from}/`) || href.startsWith(`${from}?`) || href.startsWith(`${from}#`)) {
+            anchor.setAttribute('href', `https://docs.heeler.si${href.slice(from.length)}`);
+          }
+        }
+      })();
+    </script>
   </body>
 </html>

@@ -16,6 +16,7 @@ import { RootProvider } from '@fumadocs/base-ui/provider/astro';
 import { GlobeIcon, House } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { navigate } from 'astro:transitions/client';
+import { landingOrigin, rewriteCrossSiteAnchors, rewriteCrossSiteHref } from '@/lib/cross-site.ts';
 import { githubRepo, htmlLang, type Locale, localeFromPath } from '@/lib/guides.ts';
 import { useLanguage } from './language';
 import { layoutSlots } from './layout-slots';
@@ -71,6 +72,16 @@ export function Docs({ trees, pathname, params, page, children }: DocsProps) {
   usePanelScroll(activePathname);
   const language = useLanguage(activePathname);
   const websiteLabel = isZh ? 'Heeler 官网' : 'Heeler website';
+  // SSR and the first client render keep the canonical URL so hydration matches.
+  const [websiteHref, setWebsiteHref] = useState(landingOrigin);
+  useEffect(() => {
+    setWebsiteHref(rewriteCrossSiteHref(landingOrigin, window.location.hostname));
+    // Wait for React to hydrate before changing any of its rendered anchors.
+    const apply = () => rewriteCrossSiteAnchors(window.location.hostname, document);
+    apply();
+    document.addEventListener('astro:page-load', apply);
+    return () => document.removeEventListener('astro:page-load', apply);
+  }, [activePathname]);
 
   return (
     <RootProvider
@@ -99,7 +110,7 @@ export function Docs({ trees, pathname, params, page, children }: DocsProps) {
             text: websiteLabel,
             label: websiteLabel,
             icon: <GlobeIcon />,
-            url: 'https://heeler.bybee.dev',
+            url: websiteHref,
             external: true,
           },
         ]}
