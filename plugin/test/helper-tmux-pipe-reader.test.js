@@ -38,6 +38,16 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+function processAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
+}
+
 function startPrivateServer(socketName = "work") {
   const executable = requireTmux();
   const socketDir = join(root, "sockets");
@@ -47,24 +57,72 @@ function startPrivateServer(socketName = "work") {
     executable,
     ["-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "main", "-x", "80", "-y", "24", "/bin/cat"],
     {
-      env: { PATH: "/usr/bin:/bin", HOME: home, USER: "fixture", TMUX_TMPDIR: socketDir },
+      env: {
+        PATH: "/usr/bin:/bin",
+        HOME: home,
+        USER: "fixture",
+        TMUX_TMPDIR: socketDir,
+        HISTFILE: "/dev/null",
+        HISTSIZE: "0",
+        SAVEHIST: "0",
+      },
       stdio: "ignore",
     },
   );
-  const stop = () => {
+  const stop = async () => {
+    const pids = new Set();
+    try {
+      const listed = execFileSync(executable, ["-N", "-S", socket, "list-panes", "-a", "-F", "#{pid} #{pane_pid}"], {
+        encoding: "utf8",
+      });
+      for (const word of listed.trim().split(/\s+/)) {
+        if (/^\d+$/.test(word)) pids.add(Number(word));
+      }
+    } catch {
+      // Already stopped.
+    }
     try {
       execFileSync(executable, ["-N", "-S", socket, "kill-server"], { stdio: "ignore" });
     } catch {
       // Already stopped.
     }
+    if (pids.size > 0) {
+      await waitFor(() => [...pids].every((pid) => !processAlive(pid)), "server and pane processes exited", PATIENCE_MS);
+    }
   };
-  cleanups.push(async () => stop());
+  cleanups.push(() => stop());
   return {
     socket,
     paths: { executable, socket },
     stop,
     run(...args) {
       return execFileSync(executable, ["-N", "-S", socket, ...args], { encoding: "utf8" });
+    },
+    openShellPane() {
+      return execFileSync(
+        executable,
+        [
+          "-N",
+          "-S",
+          socket,
+          "new-window",
+          "-d",
+          "-P",
+          "-F",
+          "#{pane_id}",
+          "-t",
+          "main:",
+          "/usr/bin/env",
+          "HISTFILE=/dev/null",
+          "HISTSIZE=0",
+          "SAVEHIST=0",
+          "ENV=/dev/null",
+          "PS1=$ ",
+          "/bin/sh",
+          "-i",
+        ],
+        { encoding: "utf8" },
+      ).trim();
     },
     paneState(paneID) {
       const out = execFileSync(
@@ -251,9 +309,7 @@ suite("tmux pipe-pane status reader", { skip }, () => {
   test("recognizes its own @heeler-pipe across a Helper restart and closes it when the foreground leaves", async () => {
     const server = startPrivateServer("work");
     const codex = makeControlledAgent("codex");
-    const paneID = server
-      .run("new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "main:", "/usr/bin/env", "ENV=/dev/null", "PS1=$ ", "/bin/sh", "-i")
-      .trim();
+    const paneID = server.openShellPane();
     server.run("send-keys", "-t", paneID, "-l", `'${codex.executable}'`);
     server.run("send-keys", "-t", paneID, "Enter");
 
@@ -306,9 +362,7 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     const server = startPrivateServer("work");
     const firstCodex = makeControlledAgent("codex");
     const secondCodex = makeControlledAgent("codex");
-    const paneID = server
-      .run("new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "main:", "/usr/bin/env", "ENV=/dev/null", "PS1=$ ", "/bin/sh", "-i")
-      .trim();
+    const paneID = server.openShellPane();
     server.run("send-keys", "-t", paneID, "-l", `'${firstCodex.executable}'; '${secondCodex.executable}'`);
     server.run("send-keys", "-t", paneID, "Enter");
 
@@ -357,9 +411,7 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     const server = startPrivateServer("work");
     const codex = makeControlledAgent("codex");
     const userLog = join(root, "user-pipe.log");
-    const paneID = server
-      .run("new-window", "-d", "-P", "-F", "#{pane_id}", "-t", "main:", "/usr/bin/env", "ENV=/dev/null", "PS1=$ ", "/bin/sh", "-i")
-      .trim();
+    const paneID = server.openShellPane();
     server.run("send-keys", "-t", paneID, "-l", `'${codex.executable}'`);
     server.run("send-keys", "-t", paneID, "Enter");
     server.run("pipe-pane", "-O", "-t", paneID, `/bin/cat > '${userLog.replaceAll("'", "'\\''")}'`);
