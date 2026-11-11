@@ -71,7 +71,7 @@ struct TmuxPaneAttachTests {
         #expect(script.contains("link-window -s '%0'"))
         #expect(await tmux.openControlClients == 1)
         let commands = await tmux.controlCommands
-        #expect(commands.first?.hasPrefix("list-panes -s -t '=heeler-attach-") == true)
+        #expect(commands.first?.hasPrefix(#"list-panes -s -t "=heeler-attach-"#) == true)
     }
 
     @Test func theFirstPaintComesFirstThenThePanesOutput() async throws {
@@ -93,7 +93,7 @@ struct TmuxPaneAttachTests {
     @Test func aPaneThatIsGoneEndsTheAttachAndItsSession() async throws {
         let tmux = await host()
         await #expect(throws: TransportError.tmuxPaneGone) { try await attach("%7", on: tmux) }
-        #expect(await tmux.controlCommands.contains { $0.hasPrefix("kill-session -t '$") })
+        #expect(await tmux.controlCommands.contains { $0.hasPrefix(#"kill-session -t "\$"#) })
         try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
     }
 
@@ -105,7 +105,7 @@ struct TmuxPaneAttachTests {
         var request = request
         request.coreID = "tmux-4242-1"
         await #expect(throws: TransportError.tmuxServerGone) { try await transport.attachPane("%0", request: request) }
-        #expect(await tmux.controlCommands.contains { $0.hasPrefix("kill-session -t '$") })
+        #expect(await tmux.controlCommands.contains { $0.hasPrefix(#"kill-session -t "\$"#) })
         try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
 
         request.coreID = ScriptedTmuxHost.instance.id
@@ -134,7 +134,7 @@ struct TmuxPaneAttachTests {
         await tmux.pause("%0")
         let repainted = try await read(until: "after the pause", from: &output)
         #expect(repainted.hasPrefix(TmuxPanePaint.reset))
-        #expect(await tmux.controlCommands.contains("refresh-client -A '%0:continue'"))
+        #expect(await tmux.controlCommands.contains(#"refresh-client -A "%0:continue""#))
     }
 
     // MARK: Ending
@@ -158,7 +158,7 @@ struct TmuxPaneAttachTests {
         await tmux.endUserSessions(holding: "%0")
         let error = await ending(of: &output)
         #expect(error as? TransportError == .tmuxPaneGone)
-        #expect(await tmux.controlCommands.contains("kill-window -t '@0'"))
+        #expect(await tmux.controlCommands.contains(#"kill-window -t "@0""#))
     }
 
     @Test func aServerThatStopsEndsTheAttach() async throws {

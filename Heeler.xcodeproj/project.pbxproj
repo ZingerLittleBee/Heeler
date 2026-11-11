@@ -655,6 +655,7 @@
 		96C9E9E62BB96A66A68570E9 /* TerminalKeysKeyboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCE32D8F2A1A12B183B3DA5 /* TerminalKeysKeyboardTests.swift */; };
 		97131CF364FC16DE4A2F8226 /* TmuxControlReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75ABC195486D6E47B41C543 /* TmuxControlReader.swift */; };
 		97574FEB5FEA14A5776F7B22 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D2BCB4E4038F510852F71C /* SecretStore.swift */; };
+		9766D00AFCF01872135C6894 /* TmuxArgument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986C91A32D7B926A9B11B96A /* TmuxArgument.swift */; };
 		977353630D3F6AB17896900B /* PiTranscriptLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C8B33506454D0170CEEC11 /* PiTranscriptLocator.swift */; };
 		97C02BAFE399CE0387CC8163 /* AgentActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E7BAE850794FFCE32E0062 /* AgentActivityAttributes.swift */; };
 		97F008EAAA97FFAF3EBDF20E /* AgentRowLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 431389855EAA66004BCCB5B9 /* AgentRowLayoutTests.swift */; };
@@ -903,6 +904,7 @@
 		D20C025851965986547FAAB5 /* ClosePaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */; };
 		D20D448687DFF3125D9B17DF /* ClaudeTranscriptProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9153299D65A76990413D95F1 /* ClaudeTranscriptProjection.swift */; };
 		D2405D8443F085D4E3CD1810 /* NotificationKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6D0361E0EB15681156D5C7 /* NotificationKeyStore.swift */; };
+		D28D949476CAF3E858D2E885 /* TmuxArgumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39AC94552D3E098C61E7A4A /* TmuxArgumentTests.swift */; };
 		D2A88ABAF9B288C577236B7A /* HerdrCoreComposerSend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C87715683760CC51A10FF4 /* HerdrCoreComposerSend.swift */; };
 		D3373034F3B20022C0886AD6 /* TerminalKeyboardHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAA775A929F4FA4C419DE4A /* TerminalKeyboardHolder.swift */; };
 		D33AB87E0BCEB58D9F07DF70 /* ChatTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89CECDD19118EEA250C34DCC /* ChatTranscript.swift */; };
@@ -1818,6 +1820,7 @@
 		978D7D0A7769F1D10ABD61D4 /* ChatBackgroundWorkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBackgroundWorkTests.swift; sourceTree = "<group>"; };
 		979BAAEF9E00C3C5D9D0655F /* ConsoleDetailCores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleDetailCores.swift; sourceTree = "<group>"; };
 		97F6D914DAA7D1E0C90859DE /* TmuxPaneFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxPaneFeedTests.swift; sourceTree = "<group>"; };
+		986C91A32D7B926A9B11B96A /* TmuxArgument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxArgument.swift; sourceTree = "<group>"; };
 		98CF28C4CFD9E5A1823EA378 /* GrokFileChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokFileChanges.swift; sourceTree = "<group>"; };
 		98E879CB1A1456EE04976137 /* BlockedCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedCardViewTests.swift; sourceTree = "<group>"; };
 		996FEB63446D29BFF498378F /* AgentWindowDrag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWindowDrag.swift; sourceTree = "<group>"; };
@@ -2123,6 +2126,7 @@
 		E21D81A4968978A358129216 /* ChatLineFramer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLineFramer.swift; sourceTree = "<group>"; };
 		E24C0B60FDE0AD3D3ABD13E4 /* AgentListFieldsAddFieldSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListFieldsAddFieldSheet.swift; sourceTree = "<group>"; };
 		E295975DC35FDF1E786ADF86 /* AgentDetailSurfaceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailSurfaceSettings.swift; sourceTree = "<group>"; };
+		E39AC94552D3E098C61E7A4A /* TmuxArgumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxArgumentTests.swift; sourceTree = "<group>"; };
 		E3B331536AFB3AAB2EDE1080 /* ClaudePermissionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePermissionMode.swift; sourceTree = "<group>"; };
 		E3DB29A74E2CF2AD600AAB56 /* ScriptedHelperHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedHelperHost.swift; sourceTree = "<group>"; };
 		E3DF1E766622CCF516CB87EC /* AgentAccountKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAccountKinds.swift; sourceTree = "<group>"; };
@@ -2701,6 +2705,7 @@
 				9F11B5986980B4EE7E9760F9 /* TerminalWindowResizeCoalescingTests.swift */,
 				1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */,
 				613A50BBF54B1307BE5F3831 /* TmuxAgentRuleTests.swift */,
+				E39AC94552D3E098C61E7A4A /* TmuxArgumentTests.swift */,
 				E6B66A83331895E8D6B5E85E /* TmuxAttachE2ETests.swift */,
 				798F28D8DFF4206460C85C97 /* TmuxAttachScriptTests.swift */,
 				3A60EB0F0B1EC6F8941080C5 /* TmuxConsoleTests.swift */,
@@ -3460,6 +3465,7 @@
 		ABF362FECE984D3322F46186 /* Tmux */ = {
 			isa = PBXGroup;
 			children = (
+				986C91A32D7B926A9B11B96A /* TmuxArgument.swift */,
 				3F0BE2BC519E8D9DC31EC1D2 /* TmuxAttachScript.swift */,
 				45277B07A13CF82ECBA9B1F3 /* TmuxControlClient.swift */,
 				7EBD75939D57B863990C64A2 /* TmuxControlCommand.swift */,
@@ -4599,6 +4605,7 @@
 				A32FEE6CB03586CB5117A3C5 /* TerminalZoomSettings.swift in Sources */,
 				A3048755E431CE08A6FF7A68 /* TideGitPrompt.swift in Sources */,
 				335A086A54860A41B1141821 /* TmuxAgentRule.swift in Sources */,
+				9766D00AFCF01872135C6894 /* TmuxArgument.swift in Sources */,
 				C131653782AE4DFFC76D737E /* TmuxAttachScript.swift in Sources */,
 				5B2BECA4E3E983EB39D44EA2 /* TmuxConsoleProjection.swift in Sources */,
 				0B88AA9B90FB99543DA119AA /* TmuxControlClient.swift in Sources */,
@@ -5097,6 +5104,7 @@
 				C1B5D5204EE37B50D3D42984 /* TerminalZoomSettingsTests.swift in Sources */,
 				099CD816C9173740BCE1E64E /* TestWindow.swift in Sources */,
 				43A38C688E912DE27C79D237 /* TmuxAgentRuleTests.swift in Sources */,
+				D28D949476CAF3E858D2E885 /* TmuxArgumentTests.swift in Sources */,
 				3857E9CE2B778A92E38265CE /* TmuxAttachE2ETests.swift in Sources */,
 				426C0083DABA4A4B7A422D0E /* TmuxAttachScriptTests.swift in Sources */,
 				40737C1122F29A62A8224407 /* TmuxConsoleTests.swift in Sources */,

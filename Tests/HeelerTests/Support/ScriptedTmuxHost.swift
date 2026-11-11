@@ -522,26 +522,42 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         controlClients[id] = nil
     }
 
-    /// A command line's words, as tmux's parser reads the quoting Heeler writes.
-    private static func words(of line: String) -> [String] {
+    /// A command line's words, as tmux's parser reads the quoting Heeler
+    /// writes: single quotes keep everything, and in double quotes `\n`, `\r`,
+    /// `\t` and `\ooo` are control characters and `\` keeps any other.
+    static func words(of line: String) -> [String] {
         var words: [String] = []
-        var word = ""
-        var quoted = false
+        var word = String.UnicodeScalarView()
+        var quote: Unicode.Scalar?
         var inWord = false
-        for character in line {
-            if character == "'" {
-                quoted.toggle()
+        var scalars = line.unicodeScalars.makeIterator()
+        while let scalar = scalars.next() {
+            if let open = quote, scalar == open {
+                quote = nil
+            } else if quote == nil, scalar == "'" || scalar == "\"" {
+                quote = scalar
                 inWord = true
-            } else if character == " ", !quoted {
-                if inWord { words.append(word) }
-                word = ""
+            } else if quote == nil, scalar == " " {
+                if inWord { words.append(String(word)) }
+                word = String.UnicodeScalarView()
                 inWord = false
+            } else if quote == "\"", scalar == "\\", let escaped = scalars.next() {
+                switch escaped {
+                case "n": word.append("\n")
+                case "r": word.append("\r")
+                case "t": word.append("\t")
+                case "0"..."3":
+                    let digits = [escaped, scalars.next(), scalars.next()].compactMap { $0 }
+                    let value = digits.reduce(0) { $0 * 8 + ($1.value - 0x30) }
+                    if let control = Unicode.Scalar(value) { word.append(control) }
+                default: word.append(escaped)
+                }
             } else {
-                word.append(character)
+                word.append(scalar)
                 inWord = true
             }
         }
-        if inWord { words.append(word) }
+        if inWord { words.append(String(word)) }
         return words
     }
 

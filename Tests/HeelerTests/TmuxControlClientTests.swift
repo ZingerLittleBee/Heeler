@@ -271,22 +271,22 @@ struct TmuxControlCommandTests {
         #expect(TmuxControlCommand(["kill-window", "-t", "x_1-2"]).line == "kill-window -t x_1-2")
     }
 
-    @Test func wordsWithOtherPrintableCharactersAreSingleQuoted() {
+    @Test func otherWordsAreDoubleQuoted() {
         #expect(
             TmuxControlCommand(["display-message", "-p", "-t", "%5", "#{pane_id} #{?@heeler-attach,1,0};$x"]).line
-                == "display-message -p -t '%5' '#{pane_id} #{?@heeler-attach,1,0};$x'")
+                == ##"display-message -p -t "%5" "\#\{pane_id\} \#\{?@heeler-attach,1,0\}\;\$x""##)
     }
 
     @Test func anEmptyWordIsKept() {
-        #expect(TmuxControlCommand(["set-option", "-u", ""]).line == "set-option -u ''")
+        #expect(TmuxControlCommand(["set-option", "-u", ""]).line == #"set-option -u """#)
     }
 
     /// tmux reads `\ooo` in double quotes from 3.3a on, and expands `$` and `~`
     /// there unless they are escaped.
-    @Test func wordsSingleQuotesCannotHoldAreDoubleQuotedWithEscapes() {
+    @Test func controlCharactersAndExpansionsAreEscaped() {
         #expect(
             TmuxControlCommand(["x", "it's \"a\" $HOME ~ \\ \u{1B}[1m\n\u{7F}中"]).line
-                == #"x "it's \"a\" \$HOME \~ \\ \033[1m\012\177中""#)
+                == #"x "it's \"a\" \$HOME \~ \\ \033[1m\n\177中""#)
     }
 
     @Test func aLineNeverHoldsANewline() {

@@ -20,26 +20,12 @@ struct TmuxControlCommand: Equatable, Sendable {
         words.map(Self.quoted).joined(separator: " ")
     }
 
-    /// A word as tmux 3.3a's parser reads it back: as it is when it holds
-    /// nothing the parser treats specially, in single quotes when it can be,
-    /// and in double quotes with escapes otherwise. Inside double quotes tmux
-    /// expands `$` and `~`, and reads `\ooo` octal escapes.
+    /// A word as tmux's parser reads it back: as it is when it holds only
+    /// letters, digits, `_` and `-`, and in tmux's double-quoted form
+    /// (`TmuxArgument.quoted`) otherwise.
     static func quoted(_ word: String) -> String {
         if !word.isEmpty, word.unicodeScalars.allSatisfy(isPlain) { return word }
-        if !word.unicodeScalars.contains(where: { $0 == "'" || isControl($0) }) { return "'\(word)'" }
-        var quoted = "\""
-        for scalar in word.unicodeScalars {
-            switch scalar {
-            case "\\", "\"", "$", "~":
-                quoted += "\\\(scalar)"
-            case _ where isControl(scalar):
-                let octal = String(scalar.value, radix: 8)
-                quoted += "\\" + String(repeating: "0", count: max(0, 3 - octal.count)) + octal
-            default:
-                quoted.unicodeScalars.append(scalar)
-            }
-        }
-        return quoted + "\""
+        return TmuxArgument.quoted(word)
     }
 
     private static func isPlain(_ scalar: Unicode.Scalar) -> Bool {
@@ -47,9 +33,5 @@ struct TmuxControlCommand: Equatable, Sendable {
         case "a"..."z", "A"..."Z", "0"..."9", "_", "-": true
         default: false
         }
-    }
-
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.value < 0x20 || scalar.value == 0x7F
     }
 }
