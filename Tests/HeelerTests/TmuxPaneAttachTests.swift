@@ -50,6 +50,15 @@ struct TmuxPaneAttachTests {
         return read
     }
 
+    /// Each line the Attaches' clients wrote, as the words tmux parses it into.
+    private func commands(on tmux: ScriptedTmuxHost) async -> [[String]] {
+        await tmux.controlCommands.map(ScriptedTmuxHost.words(of:))
+    }
+
+    private static func endsASession(_ words: [String]) -> Bool {
+        words.count == 3 && words[0] == "kill-session" && words[1] == "-t" && words[2].hasPrefix("$")
+    }
+
     private func ending(of output: inout AsyncThrowingStream<Data, any Error>.Iterator) async -> (any Error)? {
         do {
             while try await output.next() != nil {}
@@ -70,8 +79,9 @@ struct TmuxPaneAttachTests {
         #expect(script.contains("@heeler-attach '%0'"))
         #expect(script.contains("link-window -s '%0'"))
         #expect(await tmux.openControlClients == 1)
-        let commands = await tmux.controlCommands
-        #expect(commands.first?.hasPrefix(#"list-panes -s -t "=heeler-attach-"#) == true)
+        let first = try #require(await commands(on: tmux).first)
+        #expect(first.prefix(3) == ["list-panes", "-s", "-t"])
+        #expect(first.dropFirst(3).first?.hasPrefix("=heeler-attach-") == true)
     }
 
     @Test func theFirstPaintComesFirstThenThePanesOutput() async throws {
@@ -93,7 +103,7 @@ struct TmuxPaneAttachTests {
     @Test func aPaneThatIsGoneEndsTheAttachAndItsSession() async throws {
         let tmux = await host()
         await #expect(throws: TransportError.tmuxPaneGone) { try await attach("%7", on: tmux) }
-        #expect(await tmux.controlCommands.contains { $0.hasPrefix(#"kill-session -t "\$"#) })
+        #expect(await commands(on: tmux).contains(where: Self.endsASession))
         try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
     }
 
@@ -105,7 +115,7 @@ struct TmuxPaneAttachTests {
         var request = request
         request.coreID = "tmux-4242-1"
         await #expect(throws: TransportError.tmuxServerGone) { try await transport.attachPane("%0", request: request) }
-        #expect(await tmux.controlCommands.contains { $0.hasPrefix(#"kill-session -t "\$"#) })
+        #expect(await commands(on: tmux).contains(where: Self.endsASession))
         try await waitUntil("the client to go") { await tmux.openControlClients == 0 }
 
         request.coreID = ScriptedTmuxHost.instance.id
@@ -134,7 +144,7 @@ struct TmuxPaneAttachTests {
         await tmux.pause("%0")
         let repainted = try await read(until: "after the pause", from: &output)
         #expect(repainted.hasPrefix(TmuxPanePaint.reset))
-        #expect(await tmux.controlCommands.contains(#"refresh-client -A "%0:continue""#))
+        #expect(await commands(on: tmux).contains(["refresh-client", "-A", "%0:continue"]))
     }
 
     // MARK: Ending
@@ -158,7 +168,7 @@ struct TmuxPaneAttachTests {
         await tmux.endUserSessions(holding: "%0")
         let error = await ending(of: &output)
         #expect(error as? TransportError == .tmuxPaneGone)
-        #expect(await tmux.controlCommands.contains(#"kill-window -t "@0""#))
+        #expect(await commands(on: tmux).contains(["kill-window", "-t", "@0"]))
     }
 
     @Test func aServerThatStopsEndsTheAttach() async throws {
@@ -185,16 +195,20 @@ struct TmuxPaneAttachTests {
 
     // MARK: Input
 
-    /// The lines the Attach's client wrote for input: keys, text, pastes and
-    /// the reads of `#{pane_key_mode}` before a key with no legacy encoding.
-    private func input(on tmux: ScriptedTmuxHost) async -> [String] {
-        await tmux.controlCommands.filter { line in
-            ["send-keys ", "set-buffer ", "paste-buffer "].contains { line.hasPrefix($0) }
-                || line.contains("pane_key_mode")
+    /// What the Attach's client wrote for input, as tmux parses it: keys,
+    /// text, buffers, pastes, and the reads of `#{pane_key_mode}`.
+    private func input(on tmux: ScriptedTmuxHost) async -> [[String]] {
+        await commands(on: tmux).filter { words in
+            ["send-keys", "set-buffer", "paste-buffer"].contains(words.first ?? "")
+                || words.contains(TmuxKey.paneKeyModeFormat)
         }
     }
 
-    private static let keyModeRead = ##"display-message -p -t "%0" "\#\{pane_key_mode\}""##
+    private static let keyModeRead = ["display-message", "-p", "-t", "%0", TmuxKey.paneKeyModeFormat]
+
+    private static func text(_ text: String) -> [String] { ["send-keys", "-l", "-t", "%0", "--", text] }
+
+    private static func key(_ name: String) -> [String] { ["send-keys", "-t", "%0", name] }
 
     /// Text goes as text and each key by its tmux name, in the order typed,
     /// through the Attach's own client.
@@ -205,11 +219,7 @@ struct TmuxPaneAttachTests {
         session.send(Data(#"echo "hi" $HOME ~ #{x};"#.utf8) + Data([0x0D]))
         session.send(Data("\u{1B}[A\u{03}\u{1B}[Z".utf8))
         let expected = [
-            ##"send-keys -l -t "%0" -- "echo \"hi\" \$HOME \~ \#\{x\}\;""##,
-            #"send-keys -t "%0" Enter"#,
-            #"send-keys -t "%0" Up"#,
-            #"send-keys -t "%0" C-c"#,
-            #"send-keys -t "%0" BTab"#,
+            Self.text(#"echo "hi" $HOME ~ #{x};"#), Self.key("Enter"), Self.key("Up"), Self.key("C-c"), Self.key("BTab"),
         ]
         try await waitUntil("the input") { await input(on: tmux).count >= expected.count }
         #expect(await input(on: tmux) == expected)
@@ -226,7 +236,7 @@ struct TmuxPaneAttachTests {
         defer { Task { await session.end() } }
         session.send(Data("\u{1B}[27;2;13~".utf8))
         session.send(Data("x".utf8))
-        let expected = [Self.keyModeRead] + (sent ? [#"send-keys -t "%0" S-Enter"#] : []) + [#"send-keys -l -t "%0" -- x"#]
+        let expected = [Self.keyModeRead] + (sent ? [Self.key("S-Enter")] : []) + [Self.text("x")]
         try await waitUntil("the input") { await input(on: tmux).count >= expected.count }
         #expect(await input(on: tmux) == expected)
     }
@@ -240,29 +250,52 @@ struct TmuxPaneAttachTests {
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
         for key in vector.keys { session.send(TmuxInputVectorFile.bytes(key.desktop)) }
-        let expected = vector.keys.map { key in
-            key.text.map { TmuxControlCommand(["send-keys", "-l", "-t", "%0", "--", $0]).line }
-                ?? TmuxControlCommand(["send-keys", "-t", "%0", key.key ?? ""]).line
-        }
+        let expected = vector.keys.map { key in key.text.map(Self.text) ?? Self.key(key.key ?? "") }
         let sent = { await self.input(on: tmux).filter { $0 != Self.keyModeRead } }
         try await waitUntil("every key") { await sent().count >= expected.count }
         #expect(await sent() == expected)
-        #expect(await !tmux.controlCommands.contains { $0.contains(" -H") })
+        #expect(await !commands(on: tmux).contains { $0.first == "send-keys" && $0.contains("-H") })
+    }
+
+    private static let pasted = Data("\u{1B}[200~line one\nline \"two\"\u{1B}[201~\r".utf8)
+
+    private static func pasteCommands(_ name: String) -> [[String]] {
+        [
+            ["set-buffer", "-b", name, "--", "line one\nline \"two\""],
+            ["paste-buffer", "-p", "-r", "-d", "-b", name, "-t", "%0"],
+            Self.key("Enter"),
+        ]
     }
 
     /// A paste goes into a buffer named for this Attach, and is pasted from it
-    /// exactly, line feeds included, then the buffer is deleted.
+    /// exactly, line feeds included, which deletes the buffer.
     @Test func aPasteGoesThroughABufferOfTheAttachs() async throws {
         let tmux = await host()
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
         let name = try #require(await tmux.attachSessions.first)
-        session.send(Data("\u{1B}[200~line one\nline \"two\"\u{1B}[201~\r".utf8))
-        let expected = [
-            #"set-buffer -b \#(name) -- "line one\nline \"two\"""#,
-            #"paste-buffer -p -r -d -b \#(name) -t "%0""#,
-            #"send-keys -t "%0" Enter"#,
-        ]
+        session.send(Self.pasted)
+        let expected = Self.pasteCommands(name)
+        try await waitUntil("the paste") { await input(on: tmux).count >= expected.count }
+        #expect(await input(on: tmux) == expected)
+    }
+
+    /// The view can write a paste's start marker, its text and its end marker
+    /// apart: it is still one paste, whose line feeds stay line feeds. Cut
+    /// inside the start marker after `ESC [ 2`, in the text, and inside the
+    /// end marker; cuts after `ESC` and `ESC [` are `TmuxInputStreamTests`'.
+    @Test(arguments: [[3], [4], [5], [6], [14], [20], [26], [27], [29], [3, 14, 27], [6, 26, 30]])
+    func aPasteCutAcrossWritesIsOnePaste(cuts: [Int]) async throws {
+        let tmux = await host()
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        let name = try #require(await tmux.attachSessions.first)
+        var start = 0
+        for cut in cuts + [Self.pasted.count] {
+            session.send(Data(Self.pasted.prefix(cut).dropFirst(start)))
+            start = cut
+        }
+        let expected = Self.pasteCommands(name)
         try await waitUntil("the paste") { await input(on: tmux).count >= expected.count }
         #expect(await input(on: tmux) == expected)
     }

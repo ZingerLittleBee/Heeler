@@ -30,6 +30,7 @@ actor TmuxPaneAttach {
     private var pending = Data()
     private var reader: CheckedContinuation<Data?, any Error>?
     private var outcome: Result<Void, any Error>?
+    private var typed = TmuxInputStream()
 
     /// The tag of the barrier. `TmuxPaneFeed` tags its commands from 1.
     private static let barrierTag: UInt64 = 0
@@ -57,7 +58,9 @@ actor TmuxPaneAttach {
         let pump = Task {
             // A write fails only once the client has ended, which `output`
             // reports: there is nothing else for this task to say.
-            try? await input.pump(write: { try await attach.type($0) }, resize: { _, _ in })
+            try? await input.pump(
+                write: { try await attach.type($0, moreQueued: { input.hasQueuedKeystrokes }) },
+                resize: { _, _ in })
         }
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
@@ -215,10 +218,11 @@ actor TmuxPaneAttach {
     /// Types the terminal view's bytes into the Pane through the client, in
     /// order (ADR 0043): text with `send-keys -l`, each key by its tmux name,
     /// and a paste through a buffer named for this Attach, so it arrives
-    /// exactly and bracketed only if the program asked for that. Throws once
-    /// the client has ended.
-    func type(_ bytes: Data) async throws {
-        for input in TmuxKeyReader.read(bytes) {
+    /// exactly and bracketed only if the program asked for that. A paste goes
+    /// on across writes (`TmuxInputStream`); `moreQueued` says whether another
+    /// write already waits. Throws once the client has ended.
+    func type(_ bytes: Data, moreQueued: @Sendable () -> Bool = { false }) async throws {
+        for input in typed.read(bytes, moreQueued: moreQueued()) {
             switch input {
             case .text(let text):
                 try await client.post(TmuxControlCommand(["send-keys", "-l", "-t", pane, "--", text]))

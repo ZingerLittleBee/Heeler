@@ -190,3 +190,104 @@ struct TmuxKeyReaderTests {
         #expect(TmuxKeyReader.read(Data("\u{1B}\u{1B}[A".utf8)) == [Self.key("M-Up")])
     }
 }
+
+/// The view's writes read one after another: a bracketed paste goes on
+/// across them, and so do a paste's start marker and a character cut short.
+struct TmuxInputStreamTests {
+    private static let pasted = Data("\u{1B}[200~line one\nline \"two\" 中\u{1B}[201~\r".utf8)
+    private static let read: [TmuxInput] = [.paste("line one\nline \"two\" 中"), .key(TmuxKey(name: "Enter", isExtended: false))]
+
+    /// Reads `parts` as writes; another is queued behind each but the last
+    /// when `queued`.
+    private func read(_ parts: [Data], queued: Bool, into stream: inout TmuxInputStream) -> [TmuxInput] {
+        var inputs: [TmuxInput] = []
+        for (index, part) in parts.enumerated() {
+            TmuxKeyReader.append(stream.read(part, moreQueued: queued && index < parts.count - 1), to: &inputs)
+        }
+        return inputs
+    }
+
+    private func read(_ parts: [Data], queued: Bool) -> [TmuxInput] {
+        var stream = TmuxInputStream()
+        return read(parts, queued: queued, into: &stream)
+    }
+
+    /// Cut at every byte: inside the start marker, in the text, inside a
+    /// character, and inside the end marker.
+    @Test func aPasteCutAnywhereIsOnePaste() {
+        let bytes = Self.pasted
+        for cut in 1..<bytes.count {
+            let parts = [Data(bytes.prefix(cut)), Data(bytes.dropFirst(cut))]
+            #expect(read(parts, queued: true) == Self.read, "cut at \(cut)")
+        }
+    }
+
+    @Test func aPasteCutTwiceAnywhereIsOnePaste() {
+        let bytes = Self.pasted
+        for first in 1..<bytes.count {
+            for second in (first + 1)..<bytes.count {
+                let parts = [
+                    Data(bytes.prefix(first)), Data(bytes.prefix(second).dropFirst(first)), Data(bytes.dropFirst(second)),
+                ]
+                #expect(read(parts, queued: true) == Self.read, "cut at \(first) and \(second)")
+            }
+        }
+    }
+
+    /// `ESC [ 2` and more of the start marker are no key, so they wait even
+    /// with nothing queued; the rest of the paste comes whenever it comes.
+    @Test func aPasteCutAfterItsStartMarkerBeganWaitsForTheRest() {
+        let bytes = Self.pasted
+        for cut in 3..<bytes.count {
+            let parts = [Data(bytes.prefix(cut)), Data(bytes.dropFirst(cut))]
+            #expect(read(parts, queued: false) == Self.read, "cut at \(cut)")
+        }
+    }
+
+    /// `ESC` and `ESC [` are keys: they wait only while another write is
+    /// queued, and join it only when it goes on with a paste.
+    @Test func escapeAtTheEndOfAWriteIsAKeyUnlessAPasteFollows() {
+        let escape = TmuxInput.key(TmuxKey(name: "Escape", isExtended: false))
+        #expect(read([Data("\u{1B}".utf8)], queued: false) == [escape])
+        #expect(read([Data("\u{1B}[".utf8)], queued: false) == [.key(TmuxKey(name: "M-[", isExtended: false))])
+        #expect(read([Data("\u{1B}".utf8), Data(":".utf8)], queued: true) == [escape, .text(":")])
+        #expect(read([Data("\u{1B}".utf8), Data("\u{1B}".utf8)], queued: true) == [escape, escape])
+        #expect(
+            read([Data("\u{1B}".utf8), Data("\u{1B}[200~x\u{1B}[201~".utf8)], queued: true) == [escape, .paste("x")])
+        #expect(read([Data("ab\u{1B}".utf8), Data("[200~x\u{1B}[201~".utf8)], queued: true) == [.text("ab"), .paste("x")])
+    }
+
+    @Test func aCharacterCutShortWaitsForTheRest() {
+        let han = Array("中".utf8), accent = Array("é".utf8)
+        #expect(read([Data(han.prefix(2)), Data(han.suffix(1))], queued: false) == [.text("中")])
+        #expect(read([Data("a".utf8) + Data(han.prefix(1)), Data(han.dropFirst())], queued: false) == [.text("a中")])
+        #expect(
+            read([Data([0x1B] + accent.prefix(1)), Data(accent.suffix(1))], queued: false)
+                == [.key(TmuxKey(name: "M-é", isExtended: false))])
+        // What does not go on with the character drops it, as invalid UTF-8.
+        #expect(read([Data(han.prefix(2)), Data("b".utf8)], queued: false) == [.text("b")])
+    }
+
+    /// Past the limit, what arrived is pasted at a character boundary and the
+    /// rest goes on; nothing is lost and no character is split.
+    @Test func aPasteOverTheLimitGoesInPartsWholeCharacters() {
+        let body = "aé中bcdefg👍🏽hijklmnop中q"
+        var stream = TmuxInputStream(pasteLimit: 8)
+        let bytes = Array(("\u{1B}[200~" + body + "\u{1B}[201~x").utf8)
+        let inputs = read(bytes.map { Data([$0]) }, queued: true, into: &stream)
+        var pastes: [String] = []
+        for input in inputs {
+            if case .paste(let text) = input { pastes.append(text) }
+        }
+        #expect(pastes.count > 1)
+        #expect(pastes.joined() == body)
+        #expect(pastes.allSatisfy { $0.utf8.count <= 8 && !$0.contains("\u{FFFD}") })
+        #expect(inputs.last == .text("x"))
+    }
+
+    @Test func anOpenPasteEndsWithWhatArrived() {
+        var stream = TmuxInputStream()
+        #expect(stream.read(Data("\u{1B}[200~half".utf8), moreQueued: false) == [])
+        #expect(stream.end() == [.paste("half")])
+    }
+}

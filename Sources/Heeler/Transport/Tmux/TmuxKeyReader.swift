@@ -47,20 +47,37 @@ struct TmuxKey: Equatable, Sendable {
 /// and a bracketed paste becomes `.paste`. What is no key is dropped: the
 /// view's answers to queries (tmux answered the program already), focus and
 /// mouse reports, key releases, and keys tmux cannot name (Super, Hyper and
-/// kitty's keys without a character).
+/// kitty's keys without a character). `TmuxInputStream` reads the view's
+/// writes one after another.
 enum TmuxKeyReader {
+    /// Reads `bytes` whole: a paste with no end marker runs to their end.
     static func read(_ bytes: Data) -> [TmuxInput] {
-        var cursor = Cursor(bytes: Array(bytes))
+        var stream = TmuxInputStream()
+        var inputs = stream.read(bytes, moreQueued: false)
+        append(stream.end(), to: &inputs)
+        return inputs
+    }
+
+    /// Keys and text in `bytes` up to the start of a bracketed paste, and
+    /// where the paste's text begins, after its start marker.
+    static func keys(in bytes: [UInt8]) -> (inputs: [TmuxInput], pasteAt: Int?) {
+        var cursor = Cursor(bytes: bytes)
         var inputs: [TmuxInput] = []
         while let read = cursor.next() {
-            guard let input = read else { continue }
-            if case .text(let more) = input, case .text(let run)? = inputs.last {
-                inputs[inputs.count - 1] = .text(run + more)
+            if let input = read { append([input], to: &inputs) }
+        }
+        return (inputs, cursor.pasteAt)
+    }
+
+    /// Appends `more` to `inputs`, one text run where two meet.
+    static func append(_ more: [TmuxInput], to inputs: inout [TmuxInput]) {
+        for input in more {
+            if case .text(let text) = input, case .text(let run)? = inputs.last {
+                inputs[inputs.count - 1] = .text(run + text)
             } else {
                 inputs.append(input)
             }
         }
-        return inputs
     }
 
     // MARK: Keys
@@ -228,10 +245,17 @@ enum TmuxKeyReader {
     private struct Cursor {
         let bytes: [UInt8]
         var index = 0
+        /// Where a bracketed paste's text begins; reading stops there.
+        private(set) var pasteAt: Int?
 
-        /// The next input; `.some(nil)` for bytes that held none; nil at the end.
+        init(bytes: [UInt8]) {
+            self.bytes = bytes
+        }
+
+        /// The next input; `.some(nil)` for bytes that held none; nil at the
+        /// end, or at the start of a paste.
         mutating func next() -> TmuxInput?? {
-            guard index < bytes.count else { return nil }
+            guard index < bytes.count, pasteAt == nil else { return nil }
             let byte = bytes[index]
             if byte == 0x1B { return .some(escape()) }
             if byte < 0x20 || byte == 0x7F {
@@ -343,7 +367,10 @@ enum TmuxKeyReader {
             guard let modifiers = Modifiers(parameter: field(1) ?? 1) else { return .some(nil) }
             switch final {
             case UInt8(ascii: "~"):
-                if field(0) == 200 { return .some(paste()) }
+                if field(0) == 200 {
+                    pasteAt = index
+                    return .some(nil)
+                }
                 if field(0) == 27, fields.count >= 3 {
                     guard let code = field(2), let base = TmuxKeyReader.base(code: code, shifted: nil) else {
                         return .some(nil)
@@ -374,16 +401,6 @@ enum TmuxKeyReader {
             }
         }
 
-        /// A bracketed paste's text, up to its end marker or the end of the bytes.
-        private mutating func paste() -> TmuxInput? {
-            let end: [UInt8] = Array("\u{1B}[201~".utf8)
-            let start = index
-            var at = start
-            while at < bytes.count, !bytes[at...].starts(with: end) { at += 1 }
-            index = min(bytes.count, at + end.count)
-            return .paste(String(decoding: bytes[start..<at], as: UTF8.self))
-        }
-
         /// Parameters split at `;`, each split at `:`. An empty one reads as nil.
         private static func fields(_ parameters: [UInt8]) -> [[Int?]] {
             parameters.split(separator: UInt8(ascii: ";"), omittingEmptySubsequences: false).map { field in
@@ -411,5 +428,162 @@ enum TmuxKeyReader {
             guard case .scalarValue(let scalar) = decoder.decode(&iterator) else { return (nil, 1) }
             return (scalar, length)
         }
+    }
+}
+
+/// The terminal view's input as it arrives, one write at a time (ADR 0043).
+///
+/// A bracketed paste goes on across writes until its end marker and is pasted
+/// as one, so its line feeds never become Enter keys. Past `pasteLimit` bytes
+/// what has arrived is pasted, at a character boundary, and the rest goes on
+/// as a paste of its own.
+///
+/// A write that ends inside a paste's start marker waits for the next one:
+/// `ESC [ 2`, `ESC [ 20` and `ESC [ 200` are no key. `ESC` and `ESC [` are
+/// keys (Escape, Alt+[), and wait only while another write is already
+/// queued; they join it only when it goes on with the marker, so a key typed
+/// after Escape stays a key of its own. A write that ends inside a character
+/// waits for the rest of it.
+struct TmuxInputStream {
+    /// A 1 MB `set-buffer` pasted exactly on 3.3a and 3.7b (ADR 0043).
+    static let defaultPasteLimit = 1 << 20
+
+    private static let pasteStart = Array("\u{1B}[200~".utf8)
+    private static let pasteEnd = Array("\u{1B}[201~".utf8)
+
+    let pasteLimit: Int
+    /// The end of the last write, kept for the next.
+    private var held: [UInt8] = []
+    /// The text of a paste still open.
+    private var paste: [UInt8]?
+
+    init(pasteLimit: Int = defaultPasteLimit) {
+        self.pasteLimit = max(pasteLimit, 1)
+    }
+
+    /// What `bytes` completes. `moreQueued` says another write already waits.
+    mutating func read(_ bytes: Data, moreQueued: Bool) -> [TmuxInput] {
+        var inputs: [TmuxInput] = []
+        var data = Array(bytes)
+        if !held.isEmpty {
+            if Self.continues(held, with: data) {
+                data = held + data
+            } else {
+                TmuxKeyReader.append(TmuxKeyReader.keys(in: held).inputs, to: &inputs)
+            }
+            held = []
+        }
+        var at = 0
+        while at < data.count {
+            if paste != nil {
+                at = continuePaste(data, from: at, into: &inputs)
+                continue
+            }
+            var segment = Array(data[at...])
+            let read = TmuxKeyReader.keys(in: segment)
+            if let pasteAt = read.pasteAt {
+                TmuxKeyReader.append(read.inputs, to: &inputs)
+                paste = []
+                at += pasteAt
+                continue
+            }
+            let kept = Self.unfinished(segment, moreQueued: moreQueued)
+            if kept > 0 {
+                held = Array(segment.suffix(kept))
+                segment.removeLast(kept)
+                TmuxKeyReader.append(TmuxKeyReader.keys(in: segment).inputs, to: &inputs)
+            } else {
+                TmuxKeyReader.append(read.inputs, to: &inputs)
+            }
+            at = data.count
+        }
+        return inputs
+    }
+
+    /// What is left once no more comes: an open paste runs to here, and kept
+    /// bytes read as they are.
+    mutating func end() -> [TmuxInput] {
+        var inputs: [TmuxInput] = []
+        if let body = paste, !body.isEmpty { inputs.append(.paste(String(decoding: body, as: UTF8.self))) }
+        paste = nil
+        TmuxKeyReader.append(TmuxKeyReader.keys(in: held).inputs, to: &inputs)
+        held = []
+        return inputs
+    }
+
+    /// Adds `bytes[start...]` to the open paste. Returns where reading goes
+    /// on: after the end marker, or at the end of `bytes`.
+    private mutating func continuePaste(_ bytes: [UInt8], from start: Int, into inputs: inout [TmuxInput]) -> Int {
+        var body = paste ?? []
+        let previous = body.count
+        body.append(contentsOf: bytes[start...])
+        // The end marker can begin in what an earlier write brought.
+        if let end = Self.index(of: Self.pasteEnd, in: body, from: max(0, previous - (Self.pasteEnd.count - 1))) {
+            if end > 0 { inputs.append(.paste(String(decoding: body[..<end], as: UTF8.self))) }
+            paste = nil
+            return start + end + Self.pasteEnd.count - previous
+        }
+        // Keep what could begin the end marker.
+        while body.count - (Self.pasteEnd.count - 1) > pasteLimit {
+            let cut = Self.characterStart(in: body, at: pasteLimit)
+            inputs.append(.paste(String(decoding: body[..<cut], as: UTF8.self)))
+            body.removeFirst(cut)
+        }
+        paste = body
+        return bytes.count
+    }
+
+    /// How many bytes at the end of `bytes` wait for the next write.
+    private static func unfinished(_ bytes: [UInt8], moreQueued: Bool) -> Int {
+        for length in stride(from: pasteStart.count - 1, through: 1, by: -1) where bytes.count >= length {
+            guard bytes.suffix(length).elementsEqual(pasteStart.prefix(length)) else { continue }
+            // After another `ESC` it is that key's Alt.
+            let start = bytes.count - length
+            guard start == 0 || bytes[start - 1] != 0x1B else { break }
+            if length >= 3 || moreQueued { return length }
+            break
+        }
+        guard let lead = truncatedCharacter(in: bytes) else { return 0 }
+        return bytes.count - lead + (lead > 0 && bytes[lead - 1] == 0x1B ? 1 : 0)
+    }
+
+    /// Whether `bytes` go on from `held`: with more of the paste's start
+    /// marker, or with the rest of a character.
+    private static func continues(_ held: [UInt8], with bytes: [UInt8]) -> Bool {
+        if pasteStart.starts(with: held) {
+            return pasteStart.starts(with: held + bytes.prefix(pasteStart.count - held.count))
+        }
+        return bytes.first.map { (0x80...0xBF).contains($0) } ?? false
+    }
+
+    /// Where a UTF-8 character that `bytes` end inside begins.
+    private static func truncatedCharacter(in bytes: [UInt8]) -> Int? {
+        var index = bytes.count - 1
+        var continuations = 0
+        while index >= 0, continuations < 3, (0x80...0xBF).contains(bytes[index]) {
+            index -= 1
+            continuations += 1
+        }
+        guard index >= 0 else { return nil }
+        let length: Int
+        switch bytes[index] {
+        case 0xC2...0xDF: length = 2
+        case 0xE0...0xEF: length = 3
+        case 0xF0...0xF4: length = 4
+        default: return nil
+        }
+        return continuations + 1 < length ? index : nil
+    }
+
+    /// `at`, or the start of the character `at` falls inside.
+    private static func characterStart(in bytes: [UInt8], at: Int) -> Int {
+        var index = at
+        while index > 0, at - index < 3, (0x80...0xBF).contains(bytes[index]) { index -= 1 }
+        return index > 0 ? index : at
+    }
+
+    private static func index(of marker: [UInt8], in bytes: [UInt8], from start: Int) -> Int? {
+        guard bytes.count >= marker.count, start <= bytes.count - marker.count else { return nil }
+        return (start...(bytes.count - marker.count)).first { bytes[$0...].starts(with: marker) }
     }
 }

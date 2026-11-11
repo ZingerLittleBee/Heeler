@@ -615,6 +615,14 @@ final class TerminalAttachInputQueue: Sendable {
         state.withLock { $0.pendingScroll = nil }
     }
 
+    /// Whether keystrokes wait behind what the writer has, so a writer can
+    /// tell a write cut short from one that ends where it ends.
+    var hasQueuedKeystrokes: Bool {
+        state.withLock { state in
+            if case .keystrokes? = state.reliable.first?.input { true } else { false }
+        }
+    }
+
     func resize(cols: Int, rows: Int) {
         enqueueReliable(ReliableItem(input: .resize(cols: cols, rows: rows)), discardingPendingScroll: false)
     }

@@ -399,7 +399,7 @@ extension TmuxTransportE2ETests {
     /// Text typed into an Attach arrives exactly: quotes, `$`, `~`, `#{}`,
     /// `;`, CJK, emoji and a trailing backslash. A paste arrives as one, line
     /// feeds and tabs kept, between the bracketed paste markers the program
-    /// asked for.
+    /// asked for, though the view wrote its markers and its text apart.
     @Test("text and a paste typed into an Attach arrive exactly")
     func textAndAPasteTypedIntoAnAttachArriveExactly() async throws {
         let vector = try TmuxInputVectorFile.load()
@@ -412,8 +412,9 @@ extension TmuxTransportE2ETests {
             do {
                 let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
                 for text in texts { session.send(Data(text.utf8)) }
-                let bracketed = "\u{1B}[200~" + paste + "\u{1B}[201~"
-                session.send(Data(bracketed.utf8))
+                let parts = ["\u{1B}[200~", paste, "\u{1B}[201~"]
+                for part in parts { session.send(Data(part.utf8)) }
+                let bracketed = parts.joined()
                 session.send(Data(Self.endOfTyping.utf8))
                 let expected = Self.hex(Data((texts.joined() + bracketed + Self.endOfTyping).utf8))
                 #expect(try await typed(into: file, on: fixture) == expected)
