@@ -1284,10 +1284,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         try await chatTyping(at: paneID).paste(text)
     }
 
-    /// Checked Composer Send (ADR 0035). `live` follows a projection replaced
-    /// after the Composer was opened.
     var stagingSaysTransportFailures: Bool { true }
 
+    /// Checked Composer Send (ADR 0035). `live` follows a projection replaced
+    /// after the Composer was opened.
     func checkedComposerSend(
         for paneID: String,
         keepingTo corePin: TerminalCorePin,
