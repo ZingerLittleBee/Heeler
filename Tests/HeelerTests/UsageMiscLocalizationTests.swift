@@ -13,8 +13,8 @@ struct UsageMiscLocalizationTests {
 
     @Test(arguments: [
         AgentUsageExclusion.notConnected, .notReadYet, .usageOff, .needsPlugin, .unsupportedPlatform,
-        .needsHostHelper, .updateHostHelper, .waitingForCore, .repairHostHelper, .hostHelperNotOnWindows,
-        .noAgentActivity, .updateRequired, .readFailed,
+        .needsHostHelper, .updateHostHelper, .waitingForCore, .waitingForTmux, .repairHostHelper,
+        .hostHelperNotOnWindows, .noAgentActivity, .updateRequired, .readFailed,
     ])
     func everyExclusionRoundTripsThroughItsToken(_ exclusion: AgentUsageExclusion) throws {
         let token = try #require(exclusion.token)

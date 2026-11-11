@@ -356,10 +356,10 @@ struct TmuxConsoleTests {
         store.setHosts([])
     }
 
-    // MARK: What a tmux Host has no part in yet
+    // MARK: Host integrations
 
-    @Test func aTmuxHostHasNoIntegrationsToShowYet() throws {
-        #expect(!ServerKind.tmux.hasHostIntegrations)
+    @Test func aTmuxHostJoinsUsageAndAccountsWhileLiveActivitiesWait() throws {
+        #expect(ServerKind.tmux.hasHostIntegrations)
         #expect(ServerKind.herdrTUI.hasHostIntegrations)
         #expect(ServerKind.herdrCore.hasHostIntegrations)
         #expect(!ServerKind.unconfirmed.hasHostIntegrations)
@@ -375,7 +375,7 @@ struct TmuxConsoleTests {
         added = try catalog.confirmServerKind(.tmux, for: added.id)
 
         #expect(catalog.consoleHosts.map(\.id) == [tui.id, added.id])
-        #expect(catalog.integratedHosts.map(\.id) == [tui.id])
+        #expect(catalog.integratedHosts.map(\.id) == [tui.id, added.id])
         #expect(!catalog.supportsLiveActivities(for: added.id))
         #expect(catalog.supportsLiveActivities(for: tui.id))
     }

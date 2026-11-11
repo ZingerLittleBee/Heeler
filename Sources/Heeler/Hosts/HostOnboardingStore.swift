@@ -195,7 +195,7 @@ final class HostOnboardingStore {
         notRunningCore = nil
         coreStartConfirmation = nil
         coreStart = .idle
-        if host.serverKind == .herdrCore {
+        if host.serverKind == .herdrCore || host.serverKind == .tmux {
             let hostHelper = hostHelper ?? makeHostHelper()
             hostHelper.checkStarted()
             self.hostHelper = hostHelper
@@ -404,8 +404,9 @@ final class HostOnboardingStore {
     }
 
     /// A tmux Host's preflight: one ask of its server, with the stored paths
-    /// while they answer and through the login shell once they do not, and
-    /// close. It starts nothing. Paths resolved again go to the catalog.
+    /// while they answer and through the login shell once they do not, its
+    /// Host Helper read over the same connection, and close. It starts nothing.
+    /// Paths resolved again go to the catalog before the Helper plan is built.
     private func performTmuxChecks(settings: SSHTransportSettings) async {
         pluginStatus = .unsupportedServerKind
         do {
@@ -421,9 +422,10 @@ final class HostOnboardingStore {
                 outcome = .failure(error)
             }
             let resolved = await transport.resolvedPaths()
-            // Preflight only probes; the Console owns long-lived connections.
-            try? await transport.close()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
             if let resolved, resolved != host.tmuxPaths {
                 host.tmuxPaths = resolved
                 noteTmuxPaths(host.id, resolved)
@@ -435,6 +437,14 @@ final class HostOnboardingStore {
             case .failure(let error):
                 report = failureReport(error)
             }
+            guard let confirmation = await hostHelper?.beginRefresh(over: transport), !Task.isCancelled else {
+                try? await transport.close()
+                return
+            }
+            hostHelperConfirmation = Task {
+                await confirmation()
+                try? await transport.close()
+            }
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
@@ -445,21 +455,37 @@ final class HostOnboardingStore {
     /// The Helper's actions dial for themselves, after the preflight settled the
     /// Host key: a key that still needs trusting is declined.
     private func makeHostHelper() -> HostHelperStore {
-        let host = host
+        let initialHost = host
         let connector = connector
         let knownHosts = knownHosts
         let credentials = credentials
         let overlays = overlays
         let store = HostHelperStore(
-            connect: {
+            connect: { [weak self] in
+                let host = await MainActor.run { self?.host ?? initialHost }
                 let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
-                return try await connector.connectCore(
-                    settings: SSHTransportSettings(
-                        host: host, credentials: try credentials.credentials(for: host),
-                        hostKeyPolicy: policy, overlays: overlays))
+                let settings = SSHTransportSettings(
+                    host: host, credentials: try credentials.credentials(for: host),
+                    hostKeyPolicy: policy, overlays: overlays)
+                if host.serverKind == .tmux {
+                    let transport = try await connector.connectTmux(settings: settings)
+                    if host.tmuxPaths == nil {
+                        _ = try? await transport.status()
+                        if let resolved = await transport.resolvedPaths() {
+                            await MainActor.run { [weak self] in
+                                guard let self, self.host.tmuxPaths != resolved else { return }
+                                self.host.tmuxPaths = resolved
+                                self.noteTmuxPaths(self.host.id, resolved)
+                            }
+                        }
+                    }
+                    return transport
+                }
+                return try await connector.connectCore(settings: settings)
             },
+            tmuxPaths: { [weak self] in self?.host.tmuxPaths ?? initialHost.tmuxPaths },
             healthGap: hostHelperHealthGap,
-            undoEdits: { [harnessEdits, hostID = host.id] services in
+            undoEdits: { [harnessEdits, hostID = initialHost.id] services in
                 try await harnessEdits?.undoEditsGoingWithTheHelper(on: hostID, over: services)
             })
         store.onChanged = hostHelperDidChange

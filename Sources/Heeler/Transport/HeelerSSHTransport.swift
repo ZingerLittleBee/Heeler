@@ -3881,10 +3881,13 @@ extension HeelerSSHTransport: HostHelperHost {
     /// One bounded exec, long enough for the Node.js search's login shell.
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
         // A Usage read searches for nothing, and a screen is waiting on it.
-        if case .usageQuery = script.step {
+        switch script.step {
+        case .usageQuery, .tmuxUsageQuery:
             return try await runBoundedScript(
                 Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        default:
+            break
         }
         return try await runBoundedScript(
             Data(script.text.utf8), feature: String(localized: "The Host Helper"), deadline: .seconds(40), remoteSeconds: 30,

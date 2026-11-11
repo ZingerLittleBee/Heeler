@@ -33,7 +33,7 @@ struct HostHelperScript: Sendable, Equatable {
         case removeFiles([String])
         /// Removes each folder that is empty, in the order given.
         case removeEmptyFolders([String])
-        case removeTree(String)
+        case removeTree(String, keeping: [String] = [])
         /// Clears what an install that never finished left in the Helper directory
         /// and beside the files `record` names: staging folders, a previous `app`
         /// and half-written temporary files. With a record, and no Helper in place, no
@@ -46,6 +46,9 @@ struct HostHelperScript: Sendable, Equatable {
         /// so the Helper comes to follow that session's core. The whole answer
         /// is framed and capped, so a cut-off report can never read as complete.
         case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
+        /// Runs the Helper's own Usage query for a tmux server, whose stored
+        /// paths live under `tmux/<socket>`. Makes no session folder.
+        case tmuxUsageQuery(timeZone: String, claudeLimits: Bool, socket: String)
     }
 
     /// What an install record names, for `tidyInterruptedInstall`.
@@ -164,12 +167,28 @@ struct HostHelperScript: Sendable, Equatable {
             lines = files.isEmpty ? [":"] : ["rm -f -- \(files.map(quote).joined(separator: " "))"]
         case .removeEmptyFolders(let folders):
             lines = folders.isEmpty ? [":"] : folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" }
-        case .removeTree(let path):
-            lines = ["rm -rf -- \(quote(path))"]
+        case .removeTree(let path, let keeping):
+            if keeping.isEmpty {
+                lines = ["rm -rf -- \(quote(path))"]
+            } else {
+                let keep = keeping.map { "! -name \(quote($0))" }.joined(separator: " ")
+                lines = [
+                    "if [ -d \(quote(path)) ]; then",
+                    "  (cd \(quote(path)) && find . -mindepth 1 -maxdepth 1 \(keep) -exec rm -rf -- {} +) || exit 1",
+                    "  rmdir -- \(quote(path)) 2>/dev/null || :",
+                    "fi",
+                ]
+            }
         case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
             lines = tidy(directory: directory, record: record, quietMinutes: quietMinutes)
         case .usageQuery(let timeZone, let claudeLimits, let session):
-            lines = usageQuery(timeZone: timeZone, claudeLimits: claudeLimits, session: session, nonce: nonce)
+            lines = usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, folder: "sessions", flag: "--session",
+                name: session, createsFolder: true, nonce: nonce)
+        case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket):
+            lines = usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, folder: "tmux", flag: "--tmux",
+                name: socket, createsFolder: false, nonce: nonce)
         }
         return (["printf '%s begin\\n' \(quote(nonce))"] + lines
             + ["__h_status=$?", "printf '%s end\\n' \(quote(nonce))", "exit \"$__h_status\""])
@@ -190,10 +209,12 @@ struct HostHelperScript: Sendable, Equatable {
     ]
 
     private static func usageQuery(
-        timeZone: String, claudeLimits: Bool, session: String, nonce: String
+        timeZone: String, claudeLimits: Bool, folder: String, flag: String, name: String,
+        createsFolder: Bool, nonce: String
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
+        let prepare = createsFolder ? ["  mkdir -p -- \"$__h_target\" || return 1"] : []
         return [
             "LC_ALL=C; export LC_ALL",
             "umask 077",
@@ -202,19 +223,19 @@ struct HostHelperScript: Sendable, Equatable {
             dataHome,
             "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
             "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
-            "__h_session=\"$__h_dir\"/sessions/\(quote(session))",
+            "__h_target=\"$__h_dir\"/\(folder)/\(quote(name))",
             nodeGoneFunction,
             "__h_usage() {",
             "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",
             "  [ -f \"$__h_app/usage-query.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
-            "  mkdir -p -- \"$__h_session\" || return 1",
-            "  if ! IFS= read -r __h_node < \"$__h_session/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
+        ] + prepare + [
+            "  if ! IFS= read -r __h_node < \"$__h_target/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
-            "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)",
+            "  \"$__h_node\" \"$__h_app/usage-query.js\" --tz \(quote(timeZone)) \(flag) \(quote(name))\(flags)",
             "  __h_result=$?",
             "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
             // A service on a Node.js that runs rewrites this record when it next
-            // reaches the core. One on the same lost Node.js never will.
+            // reaches the server. One on the same lost Node.js never will.
             "  case \"$(uname -s)\" in",
             "  Darwin) __h_service_node=$(launchctl print \"user/$(id -u)/\(HostHelperLaunchAgent.label)\" 2>/dev/null | \(programOfPrint)) ;;",
             "  *) case \"$XDG_CONFIG_HOME\" in /*) __h_config=\"$XDG_CONFIG_HOME\";; *) __h_config=\"$HOME/.config\";; esac",
@@ -278,7 +299,7 @@ struct HostHelperScript: Sendable, Equatable {
             ["[ -z \"$__h_others\" ]", "[ ! -e \(app) ]", "[ ! -h \(app) ]", "[ -f \(quote(recordFileName)) ]"]
             + files.map { "[ ! -e \(quote($0)) ]" } + files.map { "[ ! -h \(quote($0)) ]" }
         return lines + [
-            "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) -print) || __h_others=unread",
+            "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) ! -name 'tmux' -print) || __h_others=unread",
             "if \(conditions.joined(separator: " && ")); then",
             "rm -f -- \(quote(recordFileName)) || return 1",
             "cd /",

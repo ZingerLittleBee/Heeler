@@ -121,6 +121,8 @@ struct AgentUsagePresentationTests {
              ["Usage needs a newer Host Helper. Update it from this Host's details."]),
             (.init(state: .hostHelper(.waitingForCore)),
              ["The Host Helper has not reached this session's core yet. Start the core if it is not running."]),
+            (.init(state: .hostHelper(.waitingForTmux)),
+             ["The Host Helper has not reached this tmux server yet. Start tmux if it is not running."]),
             (.init(state: .hostHelper(.nodeGone)),
              ["The Node.js the Host Helper was set up with has gone from this Host. "
                 + "Repair it from this Host's details."]),

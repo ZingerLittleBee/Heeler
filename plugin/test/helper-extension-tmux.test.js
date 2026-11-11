@@ -247,6 +247,82 @@ suite("the extension in a tmux Pane", { skip }, () => {
     assert.equal(option(pane, "@heeler-status"), "");
   });
 
+  test("writing the Helper install's paths.json activates the extension on that server", async () => {
+    const freshSocket = join(root, "installed-work");
+    execFileSync(TMUX, ["-f", "/dev/null", "-S", freshSocket, "new-session", "-d", "-s", "hold", "sleep", "600"], {
+      env: tmuxEnvironment(),
+    });
+    try {
+      const serverPid = execFileSync(TMUX, ["-N", "-S", freshSocket, "display-message", "-p", "#{pid}"], {
+        encoding: "utf8",
+        env: tmuxEnvironment(),
+      }).trim();
+      const runOnFresh = async () => {
+        const name = `fresh-${runs++}`;
+        const go = join(root, `${name}.go`);
+        const done = join(root, `${name}.done`);
+        const steps = [{ event: "session_start" }, { event: "agent_start" }];
+        const pane = execFileSync(
+          TMUX,
+          [
+            "-N",
+            "-S",
+            freshSocket,
+            "new-window",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-n",
+            name,
+            "--",
+            process.execPath,
+            join(root, "driver.mjs"),
+            extensionCopy("pi"),
+            JSON.stringify(steps),
+            go,
+            done,
+            JSON.stringify({ TMUX: `${freshSocket},${serverPid},0` }),
+          ],
+          { encoding: "utf8", env: tmuxEnvironment() },
+        ).trim();
+        writeFileSync(go, "");
+        const deadline = Date.now() + 10000;
+        while (!existsSync(done)) {
+          assert.ok(Date.now() < deadline, `the stand-in in ${pane} did not finish`);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const status = execFileSync(
+          TMUX,
+          ["-N", "-S", freshSocket, "show-options", "-p", "-q", "-v", "-t", pane, "@heeler-status"],
+          { encoding: "utf8", env: tmuxEnvironment() },
+        ).replace(/\n$/, "");
+        return { ...JSON.parse(readFileSync(done, "utf8")), status };
+      };
+
+      const beforeInstall = await runOnFresh();
+      assert.deepEqual(beforeInstall.registered, []);
+      assert.equal(beforeInstall.status, "");
+
+      // Exact TmuxClaudeCodeHooks.storedPaths encoding: sorted keys, unescaped slashes, trailing newline.
+      const data =
+        process.platform === "darwin" ? join(home, "Library", "Application Support") : join(home, ".local", "share");
+      const folder = join(data, "heeler", "host-helper", "tmux", "installed-work");
+      mkdirSync(folder, { recursive: true, mode: 0o700 });
+      writeFileSync(
+        join(folder, "paths.json"),
+        `{"executable":${JSON.stringify(TMUX)},"socket":${JSON.stringify(freshSocket)}}\n`,
+        { mode: 0o600 },
+      );
+
+      const afterInstall = await runOnFresh();
+      assert.ok(afterInstall.registered.includes("agent_start"));
+      assert.equal(afterInstall.status, "state=working:app=pi:turn=0:blocked=0");
+    } finally {
+      if (existsSync(freshSocket)) spawnSync(TMUX, ["-S", freshSocket, "kill-server"]);
+    }
+  });
+
   test("with no stored tmux for its server, or none of tmux, it stays inert", async () => {
     const other = join(root, "other");
     storePaths("other", { executable: TMUX, socket });

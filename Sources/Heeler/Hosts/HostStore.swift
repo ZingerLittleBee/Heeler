@@ -405,10 +405,13 @@ final class HostStore {
     }
 
     /// A Host waiting for its Server Kind stays out of Live Activities, and so
-    /// does one of a kind nothing reports for. Whether a core Host may show one
-    /// is its registration's call, see `LiveActivityGate`.
+    /// does one of a kind nothing reports for yet. Whether a core Host may show
+    /// one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
-        hosts.first(where: { $0.id == id })?.serverKind.hasHostIntegrations == true
+        switch hosts.first(where: { $0.id == id })?.serverKind {
+        case .herdrTUI, .herdrCore: true
+        case .tmux, .unconfirmed, nil: false
+        }
     }
 
     /// Removes the Host, its stored password, and the device's consent to

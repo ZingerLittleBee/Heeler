@@ -290,6 +290,29 @@ struct HostHelperInstallTests {
         #expect(plan.files.count == bundle.files.count + 6)
     }
 
+    @Test func installingOnATmuxHostWritesTheStoredPathsListedInThePlan() async throws {
+        let paths = try #require(TmuxPaths(executable: "/opt/homebrew/bin/tmux", socket: "/private/tmp/tmux-501/work"))
+        let expectedPath = "\(ScriptedHelperHost.helperDirectory)/tmux/work/paths.json"
+        let before = await host.filePaths()
+        let reading = try await installer.read()
+        let plan = try HostHelperInstallPlan(reading: reading, bundle: bundle, tmuxPaths: paths)
+
+        #expect(plan.files.contains(expectedPath))
+        let helperLocation = try #require(plan.locations.first { $0.title == "Helper" })
+        #expect(helperLocation.paths.contains(expectedPath))
+
+        _ = try await installer.install(over: reading, bundle: bundle, tmuxPaths: paths)
+        let written = await host.filePaths().subtracting(before)
+        #expect(written == Set(plan.files))
+        #expect(await host.files[expectedPath]?.contents == TmuxClaudeCodeHooks.storedPaths(paths))
+        #expect(await host.files[expectedPath]?.mode == 0o600)
+        #expect(await host.folders["\(ScriptedHelperHost.helperDirectory)/tmux/work"] == 0o700)
+
+        let recordData = try #require(await host.files["\(ScriptedHelperHost.helperDirectory)/installed.json"]?.contents)
+        let record = try JSONDecoder().decode(HostHelperInstallRecord.self, from: recordData)
+        #expect(!record.folders.contains { $0.hasPrefix(ScriptedHelperHost.helperDirectory) })
+    }
+
     @Test func theSheetGroupsThoseFilesByWhereTheyGoFolderByFolder() async throws {
         let plan = try HostHelperInstallPlan(reading: try await installer.read(), bundle: bundle)
         let locations = plan.locations
@@ -897,6 +920,24 @@ struct HostHelperRemovalTests {
         #expect(!steps.contains { $0.contains("Text") || $0.hasPrefix("removeFolder") }, "\(steps)")
         #expect(steps.contains { $0.hasPrefix("removeTree") })
         #expect(await host.files[Self.openCodeConfig]?.contents == Self.openCodeOriginal)
+    }
+
+    @Test func removingTheHelperKeepsStoredTmuxPathsAndDeletesEverythingElse() async throws {
+        let paths = try #require(TmuxPaths(executable: "/opt/homebrew/bin/tmux", socket: "/private/tmp/tmux-501/work"))
+        let pathsFile = "\(directory)/tmux/work/paths.json"
+        _ = try await installer.install(over: try await installer.read(), bundle: bundle, tmuxPaths: paths)
+        await host.seedFile("\(directory)/notifications.json", Data("{}".utf8))
+        await host.seedFile("\(directory)/usage-accounts.json", Data("{}".utf8))
+        await host.seedFile("\(directory)/sessions/work/runtime.json", Data("{}".utf8))
+
+        try await installer.remove(over: try await installer.read())
+
+        #expect(await host.filePaths() == [pathsFile])
+        #expect(await host.files[pathsFile]?.contents == TmuxClaudeCodeHooks.storedPaths(paths))
+        let after = try await installer.read()
+        #expect(after.status == .notInstalled)
+        #expect(!after.offersRemoval)
+        #expect(!after.leftInterruptedInstall)
     }
 
     /// Grok Build's edit keeps its own offer and undo.

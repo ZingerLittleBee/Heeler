@@ -161,4 +161,69 @@ import Testing
         }
         #expect(flow.roots.isEmpty)
     }
+
+    @Test func hostDetailListsEachClaudeCodeAccountAddedOnATmuxHost() async throws {
+        let tmux = ScriptedTmuxHost()
+        let host = Host(
+            address: "mac.example", username: "dev", serverKind: .tmux,
+            sessionName: "work", tmuxPaths: ScriptedTmuxHost.paths("work"))
+        await tmux.startServer("work")
+        let dataHome = await tmux.dataHome
+        await tmux.helper.seedFolder("\(dataHome)/heeler/host-helper", mode: 0o700)
+
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not under test") },
+                    keepalive: nil)
+            },
+            connectTmux: { host in
+                await tmux.transport(socketName: host.tmuxSocketName, storedPaths: host.storedTmuxPaths)
+            },
+            makeTmuxSession: { host in
+                TmuxHostSession(
+                    storedPaths: host.storedTmuxPaths,
+                    connect: { paths in await tmux.transport(socketName: host.tmuxSocketName, storedPaths: paths) },
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
+                    keepalive: nil)
+            })
+        console.setHosts([host])
+        await console.resume()
+        defer { console.setHosts([]) }
+
+        for _ in 0..<200 where console.hostStatuses[host.id] != .connected {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(console.hostStatuses[host.id] == .connected)
+
+        let installer = HostHelperInstaller(
+            host: tmux, bundle: { HostHelperFixture.bundle() }, healthGap: {})
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(),
+            tmuxPaths: ScriptedTmuxHost.paths())
+
+        let accounts = console.hostAccountsStore(for: host.id)
+        try await accounts.load()
+        let workAccount = try JSONDecoder().decode(
+            AgentUsageReport.AccountSuggestion.self,
+            from: Data(#"{"directory":"/Users/dev/.claude-work","name":"Work","source":"agent"}"#.utf8))
+        let personalAccount = try JSONDecoder().decode(
+            AgentUsageReport.AccountSuggestion.self,
+            from: Data(#"{"directory":"/Users/dev/.claude-personal","name":"Personal","source":"agent"}"#.utf8))
+        #expect(await accounts.add(workAccount, for: .claude))
+        #expect(await accounts.add(personalAccount, for: .claude))
+
+        let flow = console.claudeCodeHooksFlow(on: host.id)
+        await flow.load()
+
+        #expect(flow.phase == .loaded)
+        #expect(!flow.accountsUnreadable)
+        #expect(flow.roots == [
+            .init(accountName: nil, path: "/Users/dev/.claude"),
+            .init(accountName: "Work", path: "/Users/dev/.claude-work"),
+            .init(accountName: "Personal", path: "/Users/dev/.claude-personal"),
+        ])
+    }
 }

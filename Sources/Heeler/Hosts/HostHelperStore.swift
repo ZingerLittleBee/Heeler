@@ -40,7 +40,8 @@ final class HostHelperStore {
     /// Helper should look again.
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
 
-    @ObservationIgnored private let connect: @Sendable () async throws -> any HerdrCoreTransport
+    @ObservationIgnored private let connect: @Sendable () async throws -> any HostHelperConnection
+    @ObservationIgnored private let tmuxPaths: @MainActor () -> TmuxPaths?
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
@@ -49,7 +50,8 @@ final class HostHelperStore {
     @ObservationIgnored private let undoEdits: @MainActor @Sendable (any HostServices) async throws -> String?
 
     init(
-        connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
+        connect: @escaping @Sendable () async throws -> any HostHelperConnection,
+        tmuxPaths: @escaping @MainActor () -> TmuxPaths? = { nil },
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         healthGap: @escaping @Sendable () async throws -> Void = {
@@ -58,6 +60,7 @@ final class HostHelperStore {
         undoEdits: @escaping @MainActor @Sendable (any HostServices) async throws -> String? = { _ in nil }
     ) {
         self.connect = connect
+        self.tmuxPaths = tmuxPaths
         self.bundle = bundle
         self.nonce = nonce
         self.healthGap = healthGap
@@ -134,7 +137,7 @@ final class HostHelperStore {
     /// goes, unless that action is still running and has yet to report. The second
     /// health read a LaunchAgent takes comes back for the caller to run, as it is
     /// over ten seconds away, and until it has run nothing has been concluded.
-    func beginRefresh(over transport: any HerdrCoreTransport) async -> HealthConfirmation? {
+    func beginRefresh(over transport: any HostHelperConnection) async -> HealthConfirmation? {
         if running == nil { failure = nil }
         let began = actionsDone
         let installer = installer(transport)
@@ -179,8 +182,9 @@ final class HostHelperStore {
             await listInstall()
             return
         }
+        let paths = tmuxPaths()
         await perform(.install) { installer, reading, bundle, _ in
-            _ = try await installer.install(over: reading, bundle: try bundle())
+            _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
         }
     }
 
@@ -219,7 +223,7 @@ final class HostHelperStore {
         }
     }
 
-    private func read(over transport: any HerdrCoreTransport, began: Int? = nil) async {
+    private func read(over transport: any HostHelperConnection, began: Int? = nil) async {
         let began = began ?? actionsDone
         do {
             let read = try await installer(transport).check()
@@ -240,7 +244,7 @@ final class HostHelperStore {
         planFailure = nil
         guard read.installAction != nil else { return }
         do {
-            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle())
+            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle(), tmuxPaths: tmuxPaths())
         } catch {
             planFailure = Self.message(for: error)
         }
@@ -266,7 +270,7 @@ final class HostHelperStore {
         running = action
         failure = nil
         defer { running = nil }
-        let transport: any HerdrCoreTransport
+        let transport: any HostHelperConnection
         do {
             transport = try await connect()
         } catch {
@@ -285,7 +289,7 @@ final class HostHelperStore {
         onChanged?()
     }
 
-    private func installer(_ transport: any HerdrCoreTransport) -> HostHelperInstaller {
+    private func installer(_ transport: any HostHelperConnection) -> HostHelperInstaller {
         HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce, bundle: bundle, healthGap: healthGap)
     }
 

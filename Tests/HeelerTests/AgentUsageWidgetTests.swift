@@ -56,6 +56,7 @@ struct AgentUsageWidgetTests {
         (AgentUsageHostHelperNeed.notInstalled, AgentUsageExclusion.needsHostHelper),
         (AgentUsageHostHelperNeed.outdated, AgentUsageExclusion.updateHostHelper),
         (AgentUsageHostHelperNeed.waitingForCore, AgentUsageExclusion.waitingForCore),
+        (AgentUsageHostHelperNeed.waitingForTmux, AgentUsageExclusion.waitingForTmux),
         (AgentUsageHostHelperNeed.nodeGone, AgentUsageExclusion.repairHostHelper),
         (AgentUsageHostHelperNeed.notOnWindows, AgentUsageExclusion.hostHelperNotOnWindows),
     ])

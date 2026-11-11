@@ -167,7 +167,7 @@ struct HostOnboardingView: View {
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
-                if store.host.serverKind.hasHostIntegrations { pluginRow }
+                if store.host.serverKind == .herdrTUI || store.host.serverKind == .herdrCore { pluginRow }
                 if let helper = store.hostHelper { hostHelperRow(helper) }
             }
 

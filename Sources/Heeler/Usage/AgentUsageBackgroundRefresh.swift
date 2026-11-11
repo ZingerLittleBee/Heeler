@@ -56,7 +56,8 @@ struct AgentUsageBackgroundRefresh {
                 guard let state, !Task.isCancelled else { continue }
                 readings.append(AgentUsageWidgetReading(
                     id: host.id, name: host.displayName, state: state, readAt: readAt,
-                    isConnected: host.serverKind != .herdrCore || !state.couldNotReachHost))
+                    isConnected: (host.serverKind != .herdrCore && host.serverKind != .tmux)
+                        || !state.couldNotReachHost))
                 publisher.publish(readings, updating: hosts)
             }
         }
@@ -75,8 +76,7 @@ extension AgentUsageBackgroundRefresh {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
         Self(read: { host, claudeLimits in
-            // Nothing says what a Host of an unconfirmed Server Kind runs, and
-            // nothing on a tmux Host reports Usage.
+            // Nothing says what a Host of an unconfirmed Server Kind runs.
             guard host.serverKind.hasHostIntegrations else { return nil }
             var host = host
             host.routes.removeAll { $0.overlayNetworkID != nil }
@@ -92,6 +92,18 @@ extension AgentUsageBackgroundRefresh {
                     let state = await readWithRereads(sleep: sleep) {
                         try await AgentUsageStore.reading(
                             overHelper: helper, session: host.sessionName,
+                            timeZone: timeZone, claudeLimits: claudeLimits
+                        ).state
+                    }
+                    try? await transport.close()
+                    return state
+                }
+                if host.serverKind == .tmux {
+                    let transport = try await connector.connectTmux(settings: settings)
+                    let helper = transport.hostHelperHost
+                    let state = await readWithRereads(sleep: sleep) {
+                        try await AgentUsageStore.reading(
+                            overHelper: helper, tmuxSocket: host.tmuxSocketName,
                             timeZone: timeZone, claudeLimits: claudeLimits
                         ).state
                     }
@@ -136,7 +148,7 @@ extension AgentUsageBackgroundRefresh {
     private static func wantsAnotherRead(_ state: AgentUsageStore.State) -> Bool {
         switch state {
         case .available(let report): report.refreshing == true
-        case .hostHelper(.waitingForCore): true
+        case .hostHelper(.waitingForCore), .hostHelper(.waitingForTmux): true
         default: false
         }
     }

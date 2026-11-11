@@ -107,7 +107,7 @@ struct TmuxHostOnboardingTests {
         #expect(await tmux.log == ["detection", "close", "probe stored", "close"])
         #expect(store.serverKindSummary == "tmux 3.7b")
         #expect(store.pluginStatus == .unsupportedServerKind)
-        #expect(store.hostHelper == nil)
+        #expect(store.hostHelper?.status == .notInstalled)
         #expect(store.offeredKinds.isEmpty)
         // Nothing but the tmux transport ever dialed.
         #expect(await connector.transports.isEmpty)
@@ -315,6 +315,32 @@ struct TmuxHostOnboardingTests {
 
         #expect(store.serverKindSummary == "tmux")
         #expect(failedCheck(store)?.0 == .herdrInstalled)
+    }
+
+    @Test func theHostHelperInstallsStoredPathsEvenWithNoServerRunningAndRemovalKeepsThem() async throws {
+        let tmux = ScriptedTmuxHost(sockets: [], kernel: "Linux")
+        let host = Host(address: "linux.example", username: "dev", serverKind: .tmux, sessionName: "work")
+        let (store, _) = makeStore(host, tmux: tmux)
+
+        await store.runChecks()
+
+        let helper = try #require(store.hostHelper)
+        #expect(failedCheck(store)?.0 == .serverRunning)
+        #expect(store.host.storedTmuxPaths == ScriptedTmuxHost.paths("work"))
+        #expect(helper.status == .notInstalled)
+
+        let pathsFile = "\(await tmux.dataHome)/heeler/host-helper/tmux/work/paths.json"
+        #expect(helper.plan?.files.contains(pathsFile) == true)
+
+        await helper.install()
+        #expect(helper.failure == nil)
+        #expect(helper.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+        #expect(await tmux.helper.files[pathsFile]?.contents == TmuxClaudeCodeHooks.storedPaths(ScriptedTmuxHost.paths("work")))
+
+        await helper.remove()
+        #expect(helper.failure == nil)
+        #expect(helper.status == .notInstalled)
+        #expect(await tmux.helper.filePaths() == [pathsFile])
     }
 
     // MARK: What the confirmation says

@@ -153,6 +153,8 @@ final class ConsoleStore {
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
+    /// The tmux Hosts' equivalent, dialed when no live tmux session is up.
+    @ObservationIgnored private let connectTmux: @Sendable (Host) async throws -> any TmuxTransport
     @ObservationIgnored private let snapshotRetryDelay: Duration
     @ObservationIgnored private let chatPrefetchRetryDelay: Duration
     @ObservationIgnored private var isActive = false
@@ -225,6 +227,8 @@ final class ConsoleStore {
             ConsoleStore.sshSessionFactory(),
         connectCore: @escaping @Sendable (Host) async throws -> any HerdrCoreTransport =
             ConsoleStore.sshCoreConnector(),
+        connectTmux: @escaping @Sendable (Host) async throws -> any TmuxTransport =
+            ConsoleStore.sshTmuxConnector(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
             ChatTranscriptAdapter.standard(for: $0)
         },
@@ -273,6 +277,7 @@ final class ConsoleStore {
         self.rowLayouts = rowLayouts
         self.makeSession = makeSession
         self.connectCore = connectCore
+        self.connectTmux = connectTmux
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -1759,6 +1764,13 @@ final class ConsoleStore {
                         timeZone: timeZone, claudeLimits: claudeLimits)
                 }
             }
+            if let host = self.tmuxHost(hostID) {
+                return try await self.withTmuxConnection(host) { transport in
+                    try await AgentUsageStore.reading(
+                        overHelper: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
+                        timeZone: timeZone, claudeLimits: claudeLimits)
+                }
+            }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
@@ -1775,17 +1787,17 @@ final class ConsoleStore {
         return AgentUsageHostEntry(
             id: host.id, name: host.displayName, store: store,
             isConnected: usageHasConnection(host, state: store.state),
-            readsOverHostHelper: host.serverKind == .herdrCore)
+            readsOverHostHelper: host.serverKind == .herdrCore || host.serverKind == .tmux)
     }
 
     /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
-    /// borrows the Console's. A core Host's read dials one when the Console has
-    /// none: its Helper answers with the core stopped, and a native Windows Host
-    /// says why it has none though its session never connects. So only a read
-    /// that could not reach the Host makes a core Host not connected.
+    /// borrows the Console's. A core or tmux Host's read dials one when the
+    /// Console has none: its Helper answers with the server stopped, and a
+    /// native Windows Host says why it has none though its session never
+    /// connects. So only a read that could not reach the Host makes it not connected.
     private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
         if hostStatuses[host.id] == .connected { return true }
-        return host.serverKind == .herdrCore && !state.couldNotReachHost
+        return (host.serverKind == .herdrCore || host.serverKind == .tmux) && !state.couldNotReachHost
     }
 
     /// The Host's Accounts for every harness (#621), kept for as long as
@@ -1875,7 +1887,7 @@ final class ConsoleStore {
             return AgentUsageWidgetReading(
                 id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
                 isConnected: usageHasConnection(host, state: state),
-                keepsLastAnswerUntilRead: host.serverKind == .herdrCore)
+                keepsLastAnswerUntilRead: host.serverKind == .herdrCore || host.serverKind == .tmux)
         })
     }
 
@@ -1885,10 +1897,11 @@ final class ConsoleStore {
     }
 
     /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
-    /// Console's connection. A core Host's read dials one when the Console has
-    /// none, so a stopped core or a native Windows Host still gets its answer.
+    /// Console's connection. A core or tmux Host's read dials one when the
+    /// Console has none, so a stopped server or a native Windows Host still
+    /// gets its answer.
     private func canReadUsageForWidgets(_ id: Host.ID) -> Bool {
-        hostStatuses[id] == .connected || coreHost(id) != nil
+        hostStatuses[id] == .connected || coreHost(id) != nil || tmuxHost(id) != nil
     }
 
     /// Reads Usage again for each Host that can be read and whose widget figures
@@ -2483,19 +2496,24 @@ extension ConsoleStore: NotificationTransportProvider {
         try await projection(for: hostID).withNotificationTransport(operation)
     }
 
-    /// The root follows the Server Kind: a herdr-core Host's files are the Host
-    /// Helper's, every other Host's the plugin's, over its live connection.
+    /// The root follows the Server Kind: a herdr-core or tmux Host's files are
+    /// the Host Helper's, every other Host's the plugin's, over its live connection.
     func withNotificationFiles<Value: Sendable>(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostNotificationFiles) async throws -> Value
     ) async throws -> Value {
-        guard let host = coreHost(hostID) else {
-            return try await projection(for: hostID).withNotificationTransport { transport in
-                try await operation(transport)
+        if let host = coreHost(hostID) {
+            return try await withCoreConnection(host) { transport in
+                try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
             }
         }
-        return try await withCoreConnection(host) { transport in
-            try await operation(HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName))
+        if let host = tmuxHost(hostID) {
+            return try await withTmuxConnection(host) { transport in
+                try await operation(HostHelperFiles(host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName))
+            }
+        }
+        return try await projection(for: hostID).withNotificationTransport { transport in
+            try await operation(transport)
         }
     }
 
@@ -2504,14 +2522,23 @@ extension ConsoleStore: NotificationTransportProvider {
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
     ) async throws {
-        guard let host = coreHost(hostID) else {
-            return try await withNotificationTransport(for: hostID) { try await operation($0) }
+        if let host = coreHost(hostID) {
+            try await withCoreConnection(host) { transport in
+                try await operation(HostHelperUsageHost(
+                    services: transport.hostServices,
+                    files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+            }
+            return
         }
-        try await withCoreConnection(host) { transport in
-            try await operation(HostHelperUsageHost(
-                services: transport.hostServices,
-                files: HostHelperFiles(host: transport.hostHelperHost, session: host.sessionName)))
+        if let host = tmuxHost(hostID) {
+            try await withTmuxConnection(host) { transport in
+                try await operation(HostHelperUsageHost(
+                    services: transport.hostServices,
+                    files: HostHelperFiles(host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName)))
+            }
+            return
         }
+        try await withNotificationTransport(for: hostID) { try await operation($0) }
     }
 
     /// What this device has seen on a core Host. Nil on any other Host.
@@ -2540,6 +2567,10 @@ extension ConsoleStore: NotificationTransportProvider {
         catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
     }
 
+    fileprivate func tmuxHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID && $0.serverKind == .tmux }
+    }
+
     /// A core Host's connection for one operation: the Console's own while it
     /// has one, else one dialed for the operation, since a Helper answers
     /// whether or not a core runs.
@@ -2562,6 +2593,29 @@ extension ConsoleStore: NotificationTransportProvider {
             throw error
         }
     }
+
+    /// The tmux Hosts' equivalent: the Console's connection while it has one,
+    /// else one dialed for the operation, since a Helper answers whether or not
+    /// a tmux server runs.
+    fileprivate func withTmuxConnection<Value: Sendable>(
+        _ host: Host,
+        _ operation: @escaping @Sendable (any TmuxTransport) async throws -> Value
+    ) async throws -> Value {
+        if let session = (projections[host.id] as? TmuxConsoleProjection)?.session,
+            let live = try? await session.withTransport({ $0 }), await live.isConnected
+        {
+            return try await operation(live)
+        }
+        let transport = try await connectTmux(host)
+        do {
+            let value = try await operation(transport)
+            try? await transport.close()
+            return value
+        } catch {
+            try? await transport.close()
+            throw error
+        }
+    }
 }
 
 extension ConsoleStore {
@@ -2574,16 +2628,23 @@ extension ConsoleStore {
         overlays: OverlayNetworkRuntime = .shared
     ) -> @Sendable (Host) async throws -> any HerdrCoreTransport {
         { host in
-            let resolved: SSHCredentials
-            do {
-                resolved = try credentials.credentials(for: host)
-            } catch HostCredentialsError.passwordNotSet {
-                throw TransportError.authenticationFailed
-            }
-            let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
-            return try await connector.connectCore(
-                settings: SSHTransportSettings(
-                    host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays))
+            try await connector.connectCore(
+                settings: consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+        }
+    }
+
+    /// The tmux Hosts' equivalent, with the same trust rules.
+    static func sshTmuxConnector(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) async throws -> any TmuxTransport {
+        { host in
+            try await connector.connectTmux(
+                settings: consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
         }
     }
 

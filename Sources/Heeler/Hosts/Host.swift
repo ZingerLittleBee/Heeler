@@ -89,12 +89,11 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     var isConfirmed: Bool { self != .unconfirmed }
 
     /// Whether Heeler's side of the Host exists for this kind: the plugin or
-    /// the Host Helper behind Agent Notifications, Live Activity, Usage and
-    /// Accounts. A tmux Host has none yet, and its Settings pages wait for it.
+    /// the Host Helper behind Usage and Accounts.
     var hasHostIntegrations: Bool {
         switch self {
-        case .herdrTUI, .herdrCore: true
-        case .tmux, .unconfirmed: false
+        case .herdrTUI, .herdrCore, .tmux: true
+        case .unconfirmed: false
         }
     }
 

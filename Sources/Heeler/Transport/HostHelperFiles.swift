@@ -1,26 +1,55 @@
 import Foundation
 
-/// Notification and Usage files on a herdr-core Host, rooted at the Host Helper's
-/// directory and never at the plugin's configuration directory (ADR 0033). Each
-/// file call finds the directory afresh, in one small exec, and a Usage read runs
-/// the Helper's own query in one bounded exec.
+/// Notification and Usage files on a herdr-core or tmux Host, rooted at the Host
+/// Helper's directory and never at the plugin's configuration directory (ADRs
+/// 0033 and 0044). Each file call finds the directory afresh, in one small exec,
+/// and a Usage read runs the Helper's own query in one bounded exec.
 struct HostHelperFiles: HostNotificationFiles {
+    enum Target: Sendable, Equatable {
+        case coreSession(String)
+        case tmuxSocket(String)
+    }
+
     let host: any HostHelperHost
-    /// The Host's core session, as the user wrote it. Usage is read per session.
-    var session = ""
+    var target: Target = .coreSession("")
     var nonce: @Sendable () -> String = { UUID().uuidString }
 
-    /// The Helper's report for this session. Throws `AgentUsageHostHelperNeed`
+    init(
+        host: any HostHelperHost, session: String = "",
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
+        self.host = host
+        target = .coreSession(session)
+        self.nonce = nonce
+    }
+
+    init(
+        host: any HostHelperHost, tmuxSocket: String,
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
+        self.host = host
+        target = .tmuxSocket(tmuxSocket)
+        self.nonce = nonce
+    }
+
+    /// The Helper's report for this target. Throws `AgentUsageHostHelperNeed`
     /// when no Helper here can answer.
     func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
             throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
-        let script = HostHelperScript(
-            .usageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits,
-                session: HerdrCoreSessionName.normalized(session)),
-            nonce: nonce())
+        let step: HostHelperScript.Step =
+            switch target {
+            case .coreSession(let session):
+                .usageQuery(
+                    timeZone: timeZone, claudeLimits: claudeLimits,
+                    session: HerdrCoreSessionName.normalized(session))
+            case .tmuxSocket(let socket):
+                .tmuxUsageQuery(
+                    timeZone: timeZone, claudeLimits: claudeLimits,
+                    socket: TmuxSocketName.normalized(socket))
+            }
+        let script = HostHelperScript(step, nonce: nonce())
         let result = try await host.runHostHelperScript(script)
         return try AgentUsageProbe.parseHelper(stdout: result.stdout, nonce: script.nonce)
     }

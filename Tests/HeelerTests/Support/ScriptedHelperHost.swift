@@ -87,8 +87,10 @@ actor ScriptedHelperHost: HostHelperHost {
     /// connection to that session's core rewrites.
     var recordNodeGone = false
 
-    /// What the Helper's Usage query prints, per session.
+    /// What the Helper's Usage query prints, per session or tmux socket.
     private var usageAnswers: [String: Data] = [:]
+    private var tmuxUsageAnswers: [String: Data] = [:]
+    private var customHome: String?
 
     private(set) var files: [String: File] = [:]
     private(set) var folders: [String: UInt32] = [:]
@@ -106,6 +108,20 @@ actor ScriptedHelperHost: HostHelperHost {
         for folder in ["/home", Self.home] { folders[folder] = 0o755 }
     }
 
+    init(home: String, kernel: String) {
+        customHome = home
+        self.kernel = kernel
+        if kernel == "Darwin" {
+            node = .found(path: "/opt/homebrew/bin/node")
+        }
+        let initialFolder = kernel == "Darwin" ? "\(home)/Library/Application Support" : home
+        var current = ""
+        for component in initialFolder.split(separator: "/") {
+            current += "/\(component)"
+            folders[current] = 0o755
+        }
+    }
+
     /// A Mac with Application Support and no LaunchAgents folder yet.
     static func macOS() async -> ScriptedHelperHost {
         let host = ScriptedHelperHost()
@@ -121,8 +137,17 @@ actor ScriptedHelperHost: HostHelperHost {
     }
 
     private var isMac: Bool { kernel == "Darwin" }
-    private var homeDirectory: String { isMac ? Self.macHome : Self.home }
-    private var helperDirectory: String { isMac ? Self.macHelperDirectory : Self.helperDirectory }
+    private var homeDirectory: String { customHome ?? (isMac ? Self.macHome : Self.home) }
+    private var helperDirectory: String {
+        isMac
+            ? "\(homeDirectory)/Library/Application Support/heeler/host-helper"
+            : "\(homeDirectory)/.local/share/heeler/host-helper"
+    }
+    private var unitPath: String { "\(homeDirectory)/.config/systemd/user/heeler-host-helper.service" }
+    private var unitLinkPath: String {
+        "\(homeDirectory)/.config/systemd/user/default.target.wants/heeler-host-helper.service"
+    }
+    private var launchAgentPath: String { "\(homeDirectory)/Library/LaunchAgents/dev.bybee.heeler.host-helper.plist" }
 
     func configure(_ change: @Sendable (isolated ScriptedHelperHost) -> Void) {
         change(self)
@@ -165,14 +190,20 @@ actor ScriptedHelperHost: HostHelperHost {
 
     /// The files a Usage read looks for in an installed Helper.
     func installApp(usage: Bool = true) {
-        seedFile("\(Self.helperDirectory)/app/main.js", Data())
-        if usage { seedFile("\(Self.helperDirectory)/app/usage-query.js", Data()) }
+        seedFile("\(helperDirectory)/app/main.js", Data())
+        if usage { seedFile("\(helperDirectory)/app/usage-query.js", Data()) }
     }
 
     /// What the Helper has for a session once it has recorded its core.
     func seedUsage(_ report: Data, session: String) {
-        seedFile("\(Self.helperDirectory)/sessions/\(session)/runtime-node", Data((Self.node + "\n").utf8))
+        seedFile("\(helperDirectory)/sessions/\(session)/runtime-node", Data((Self.node + "\n").utf8))
         usageAnswers[session] = report
+    }
+
+    /// What the Helper has for a tmux socket once it has recorded its server.
+    func seedTmuxUsage(_ report: Data, socket: String) {
+        seedFile("\(helperDirectory)/tmux/\(socket)/runtime-node", Data((Self.node + "\n").utf8))
+        tmuxUsageAnswers[socket] = report
     }
 
     /// Everything under a folder, for tests of what an install left.
@@ -319,12 +350,14 @@ actor ScriptedHelperHost: HostHelperHost {
             for path in paths { files[path] = nil }
         case .removeEmptyFolders(let paths):
             for path in paths where isEmpty(path) { folders[path] = nil }
-        case .removeTree(let path):
-            removeTree(path)
+        case .removeTree(let path, let keeping):
+            removeTree(path, keeping: keeping)
         case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
             lines = tidy(directory: directory, record: record, waitsForQuiet: quietMinutes != nil)
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
+        case .tmuxUsageQuery(_, _, let socket):
+            lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", tmuxUsageBody(socket: socket), "__HEELER_USAGE_END_\(script.nonce):0"]
         }
         if let afterBootout, isStoppedByBootout(script.step) {
             self.afterBootout = nil
@@ -359,6 +392,19 @@ actor ScriptedHelperHost: HostHelperHost {
         return String(decoding: report, as: UTF8.self)
     }
 
+    private func tmuxUsageBody(socket: String) -> String {
+        let directory = helperDirectory
+        guard files["\(directory)/app/main.js"] != nil else { return "helper-absent" }
+        guard files["\(directory)/app/usage-query.js"] != nil else { return "helper-outdated" }
+        let missing = #"{"version":1,"runtime":"missing"}"#
+        if recordNodeGone, files["\(directory)/tmux/\(socket)/runtime-node"] != nil {
+            return serviceNodeGone ? "helper-node-gone" : missing
+        }
+        guard files["\(directory)/tmux/\(socket)/runtime-node"] != nil, let report = tmuxUsageAnswers[socket]
+        else { return missing }
+        return String(decoding: report, as: UTF8.self)
+    }
+
     /// As the real script does, but with no clock: `installWritesAreRecent` stands
     /// for anything of an install written within the quiet minutes.
     private func tidy(directory: String, record: HostHelperScript.RecordedPaths?, waitsForQuiet: Bool) -> [String] {
@@ -371,9 +417,12 @@ actor ScriptedHelperHost: HostHelperHost {
         for path in Array(files.keys) where isLeftover(path) { files[path] = nil }
         for path in Array(folders.keys) where isLeftover(path) { folders[path] = nil }
         let recordPath = "\(directory)/\(HostHelperScript.recordFileName)"
+        let tmuxFolder = "\(directory)/tmux"
         guard let record, files[recordPath] != nil, folders["\(directory)/app"] == nil,
             !record.files.contains(where: { files[$0] != nil }),
-            !(Array(files.keys) + Array(folders.keys)).contains(where: { $0.hasPrefix(directory + "/") && $0 != recordPath })
+            !(Array(files.keys) + Array(folders.keys)).contains(where: {
+                $0.hasPrefix(directory + "/") && $0 != recordPath && $0 != tmuxFolder && !$0.hasPrefix(tmuxFolder + "/")
+            })
         else { return [] }
         files[recordPath] = nil
         for folder in record.folders where isEmpty(folder) { folders[folder] = nil }
@@ -391,9 +440,21 @@ actor ScriptedHelperHost: HostHelperHost {
         !(files.keys.contains { $0.hasPrefix(folder + "/") } || folders.keys.contains { $0.hasPrefix(folder + "/") })
     }
 
-    private func removeTree(_ path: String) {
-        for key in files.keys where key == path || key.hasPrefix(path + "/") { files[key] = nil }
-        for key in folders.keys where key == path || key.hasPrefix(path + "/") { folders[key] = nil }
+    private func removeTree(_ path: String, keeping: [String] = []) {
+        if keeping.isEmpty {
+            for key in Array(files.keys) where key == path || key.hasPrefix(path + "/") { files[key] = nil }
+            for key in Array(folders.keys) where key == path || key.hasPrefix(path + "/") { folders[key] = nil }
+            return
+        }
+        let kept = keeping.map { "\(path)/\($0)" }
+        let isKept = { (key: String) in kept.contains { key == $0 || key.hasPrefix($0 + "/") } }
+        for key in Array(files.keys) where (key == path || key.hasPrefix(path + "/")) && !isKept(key) {
+            files[key] = nil
+        }
+        for key in Array(folders.keys) where key.hasPrefix(path + "/") && !isKept(key) {
+            folders[key] = nil
+        }
+        if isEmpty(path) { folders[path] = nil }
     }
 
     private func move(_ source: String, to target: String) {
@@ -410,9 +471,9 @@ actor ScriptedHelperHost: HostHelperHost {
     private func applySystemctl(_ arguments: [String]) {
         switch arguments.first {
         case "enable":
-            files[Self.unitLink] = File(contents: Data(), mode: 0o777)
+            files[unitLinkPath] = File(contents: Data(), mode: 0o777)
         case "disable":
-            files[Self.unitLink] = nil
+            files[unitLinkPath] = nil
             if arguments.contains("--now") {
                 activeState = "inactive"
                 runningCode = nil
@@ -508,7 +569,7 @@ actor ScriptedHelperHost: HostHelperHost {
         }
         if isMac {
             lines.append("uid 501")
-            if files[Self.launchAgent] != nil { lines.append("launch-agent-file") }
+            if files[launchAgentPath] != nil { lines.append("launch-agent-file") }
             let read = printAnswer()
             lines.append("launchd-exit \(read.status)")
             lines += Self.ownFields(ofPrint: read.text).map { "launchd \($0)" }
@@ -517,7 +578,7 @@ actor ScriptedHelperHost: HostHelperHost {
         } else if !userManagerReachable {
             lines += ["linger \(lingerOn ? "yes" : "no")", "unit-unreachable"]
         } else {
-            let loaded = files[Self.unit] != nil
+            let loaded = files[unitPath] != nil
             lines += [
                 "linger \(lingerOn ? "yes" : "no")",
                 "unit LoadState=\(loaded ? "loaded" : "not-found")", "unit ActiveState=\(activeState)",
@@ -560,9 +621,10 @@ actor ScriptedHelperHost: HostHelperHost {
         case .enableLinger: "enableLinger"
         case .removeFiles(let paths): "removeFiles \(paths.joined(separator: " "))"
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"
-        case .removeTree(let path): "removeTree \(path)"
+        case .removeTree(let path, _): "removeTree \(path)"
         case .tidyInterruptedInstall(_, _, let quietMinutes): quietMinutes == nil ? "tidy" : "tidy when quiet"
         case .usageQuery(_, _, let session): "usageQuery \(session)"
+        case .tmuxUsageQuery(_, _, let socket): "tmuxUsageQuery \(socket)"
         }
     }
 }

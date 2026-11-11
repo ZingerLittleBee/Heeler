@@ -74,8 +74,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private var failures: [TransportError] = []
     private var nextAnswers: [GitExecResult] = []
     private var connected = true
-    /// The Host's files a test planted or a hook placement wrote, by path.
-    private(set) var hostFiles: [String: Data] = [:]
+    /// The Host Helper seam on the same scripted file tree, rooted at `Self.home`.
+    nonisolated let helper: ScriptedHelperHost
     private var refusesHookFiles = false
 
     /// Everything that happened, in order.
@@ -90,6 +90,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     ) {
         self.kernel = kernel
         self.shell = shell
+        helper = ScriptedHelperHost(home: Self.home, kernel: kernel)
         executables = executable.map { [$0: version] } ?? [:]
         loginExecutable = executable
         loginDirectory = directory
@@ -1069,6 +1070,46 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.readHostFileRange(range)
         }
 
+        func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+            try await requireConnected()
+            try await host.replaceHostTextFile(path: path, expected: expected, contents: contents)
+        }
+
+        func createHostFolder(path: String) async throws {
+            try await requireConnected()
+            try await host.createHostFolder(path: path)
+        }
+
+        func removeEmptyHostFolder(path: String) async throws {
+            try await requireConnected()
+            try await host.removeEmptyHostFolder(path: path)
+        }
+
+        func hostHomeDirectory() async throws -> String {
+            try await requireConnected()
+            return try await host.hostHomeDirectory()
+        }
+
+        func hostPlatform() async throws -> HostPlatform {
+            try await requireConnected()
+            return try await host.hostPlatform()
+        }
+
+        func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+            try await requireConnected()
+            return try await host.runHostHelperScript(script)
+        }
+
+        func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
+            try await requireConnected()
+            return try await host.readHostHelperFile(at: path, privateDirectory: privateDirectory)
+        }
+
+        func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+            try await requireConnected()
+            try await host.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
+        }
+
         func close() async throws {
             connected = false
             await host.noteClose(ofDial: id)
@@ -1079,7 +1120,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let text = String(decoding: script, as: UTF8.self)
         log.append(throughLoginShell ? "command login" : "command")
         commands.append(text)
-        if let files = hookFilesAnswer(to: text) { return files }
+        if let files = await hookFilesAnswer(to: text) { return files }
         if let discovery = discoveryAnswer(in: text) {
             return GitExecResult(stdout: Data(discovery.utf8), stderr: Data(), exitStatus: 0)
         }
@@ -1093,8 +1134,18 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         kernel == "Darwin" ? "\(Self.home)/Library/Application Support" : "\(Self.home)/.local/share"
     }
 
-    func setHostFile(_ path: String, _ contents: Data?) {
-        hostFiles[path] = contents
+    /// The Host's files a test planted, a hook placement wrote, or the Helper
+    /// seam updated, by path.
+    var hostFiles: [String: Data] {
+        get async { await helper.files.mapValues(\.contents) }
+    }
+
+    func setHostFile(_ path: String, _ contents: Data?) async {
+        if let contents {
+            await helper.seedFile(path, contents)
+        } else {
+            await helper.removeFile(path)
+        }
     }
 
     /// The next hook placements exit 1 and write nothing.
@@ -1103,13 +1154,43 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
-        guard let file = hostFiles[range.path] else { return RemoteFileSlice(data: Data(), length: nil) }
-        let start = min(Int(range.offset), file.count)
-        return RemoteFileSlice(data: file[start..<min(start + range.maxBytes, file.count)], length: UInt64(file.count))
+        await helper.readHostFile(range)
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        try await helper.replaceHostText(path: path, expected: expected, contents: contents)
+    }
+
+    func createHostFolder(path: String) async throws {
+        await helper.createFolder(path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        await helper.removeFolderIfEmpty(path)
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        Self.home
+    }
+
+    func hostPlatform() async throws -> HostPlatform {
+        try await helper.hostPlatform()
+    }
+
+    func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
+        try await helper.runHostHelperScript(script)
+    }
+
+    func readHostHelperFile(at path: String, privateDirectory: String) async throws -> Data? {
+        try await helper.readHostHelperFile(at: path, privateDirectory: privateDirectory)
+    }
+
+    func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+        try await helper.replaceHostHelperFile(contents, at: path, privateDirectory: privateDirectory)
     }
 
     /// The Helper's `locate` script, or a placement of Heeler's hook files.
-    private func hookFilesAnswer(to script: String) -> GitExecResult? {
+    private func hookFilesAnswer(to script: String) async -> GitExecResult? {
         guard let first = script.split(separator: "\n").first, first.hasPrefix("printf '%s begin\\n' '") else {
             return nil
         }
@@ -1130,7 +1211,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         for line in script.split(separator: "\n", omittingEmptySubsequences: false) {
             if let open = path {
                 if line == delimiter {
-                    hostFiles[open] = Data((lines.joined(separator: "\n") + "\n").utf8)
+                    await helper.seedFile(open, Data((lines.joined(separator: "\n") + "\n").utf8))
                     path = nil
                     lines = []
                 } else {

@@ -510,6 +510,36 @@ suite("the script in a tmux Pane", { skip }, () => {
     assert.deepEqual(outside.statuses, [""]);
   });
 
+  test("a hook still writes after Helper removal deletes everything in host-helper except tmux/", async () => {
+    const data =
+      process.platform === "darwin" ? join(home, "Library", "Application Support") : join(home, ".local", "share");
+    const helperDir = join(data, "heeler", "host-helper");
+    mkdirSync(join(helperDir, "app"), { recursive: true });
+    writeFileSync(join(helperDir, "app", "main.js"), "// helper\n");
+    writeFileSync(join(helperDir, "installed.json"), '{"version":1,"files":[],"folders":[]}\n');
+    writeFileSync(join(helperDir, "notifications.json"), "{}\n");
+    writeFileSync(join(helperDir, "usage-accounts.json"), "{}\n");
+
+    for (const entry of ["app", "installed.json", "notifications.json", "usage-accounts.json"]) {
+      rmSync(join(helperDir, entry), { recursive: true, force: true });
+    }
+    assert.equal(existsSync(join(helperDir, "app")), false);
+    assert.equal(existsSync(join(helperDir, "tmux", "s", "paths.json")), true);
+
+    const { statuses } = await run({
+      steps: [
+        { event: { hook_event_name: "SessionStart", source: "startup" } },
+        { event: { hook_event_name: "UserPromptSubmit", prompt: "keep going" } },
+        { event: { hook_event_name: "Stop", stop_hook_active: false } },
+      ],
+    });
+    assert.deepEqual(statuses, [
+      "state=idle:app=claude-code:turn=0:blocked=0",
+      "state=working:app=claude-code:turn=0:blocked=0",
+      "state=done:app=claude-code:turn=1:blocked=0",
+    ]);
+  });
+
   test("a hook whose script is gone does nothing and fails nothing", async () => {
     const { statuses } = await run({
       command: hookCommand(join(root, "gone", "hook.sh")),

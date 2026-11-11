@@ -18,6 +18,14 @@ protocol HostHelperHost: Sendable {
     func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws
 }
 
+/// An SSH connection that carries Host Helper reads, installs and removals:
+/// either a herdr-core Host's or a tmux Host's (ADRs 0033 and 0044).
+protocol HostHelperConnection: Sendable {
+    nonisolated var hostServices: any HostServices { get }
+    nonisolated var hostHelperHost: any HostHelperHost { get }
+    func close() async throws
+}
+
 /// What an install is going to write, which the install sheet lists. It is the
 /// only description of the install: the installer works from it.
 struct HostHelperInstallPlan: Sendable, Equatable {
@@ -26,8 +34,11 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     let nodePath: String
     /// Names launchd's domain on a Mac.
     let uid: String
+    /// The tmux Host's stored paths, written into the Helper directory so its
+    /// follower and extensions find the server.
+    let tmuxPaths: TmuxPaths?
 
-    init(reading: HostHelperReading, bundle: HostHelperBundle) throws {
+    init(reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil) throws {
         if case .newer(let version) = reading.integrity {
             throw HostHelperError.newerInstalled(version: version)
         }
@@ -41,8 +52,10 @@ struct HostHelperInstallPlan: Sendable, Equatable {
         uid = reading.probe?.uid ?? ""
         if layout.manager == .launchd, uid.isEmpty { throw HostHelperError.unreadableHost }
         home = reading.probe?.locations.home ?? ""
+        dataHome = reading.probe?.locations.dataHome ?? ""
         self.layout = layout
         self.nodePath = nodePath
+        self.tmuxPaths = tmuxPaths
         self.extensionFolders = extensionFolders.map(\.path)
         helperFiles = reading.replacesHelper
             ? (bundle.manifest.files.map(\.path) + [HostHelperScript.manifestFileName]) : []
@@ -52,6 +65,13 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     private let helperFiles: [String]
     private let extensionFolders: [String]
     private let home: String
+    private let dataHome: String
+
+    /// Where the stored tmux paths go in the Helper directory, nil on other Hosts.
+    var tmuxPathsFile: String? {
+        guard let tmuxPaths, !dataHome.isEmpty else { return nil }
+        return TmuxClaudeCodeHooks.storedPathsFile(dataHome: dataHome, paths: tmuxPaths)
+    }
 
     /// Heeler's extension in each folder Pi and Oh My Pi load extensions from.
     var extensionFiles: [String] {
@@ -62,7 +82,10 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     var outsideFiles: [String] { layout.serviceFiles + extensionFiles }
 
     /// Every folder the install needs, parents first.
-    var folderChain: [String] { layout.folderChain(reaching: extensionFolders) }
+    var folderChain: [String] {
+        let extra = tmuxPathsFile.map { [($0 as NSString).deletingLastPathComponent] } ?? []
+        return layout.folderChain(reaching: extensionFolders + extra)
+    }
 
     /// Every file the install leaves on the Host.
     var files: [String] { locations.flatMap(\.paths).sorted() }
@@ -70,7 +93,8 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     /// The same files by where they go, as the sheet lists them.
     var locations: [HostHelperFileLocation] {
         let log = layout.manager == .launchd ? [layout.log] : []
-        let helper = helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log
+        let tmux = tmuxPathsFile.map { [$0] } ?? []
+        let helper = helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log + tmux
         let all = [
             HostHelperFileLocation(kind: .helper, paths: helper, home: home),
             HostHelperFileLocation(kind: .service(layout.manager), paths: layout.serviceFiles, home: home),
@@ -188,8 +212,10 @@ struct HostHelperInstaller: Sendable {
 
     /// Puts a Helper in place if the Host needs one, then sets up its service
     /// with the Node.js the Host has now, and returns what the Host then reads.
-    func install(over reading: HostHelperReading, bundle: HostHelperBundle) async throws -> HostHelperReading {
-        let plan = try HostHelperInstallPlan(reading: reading, bundle: bundle)
+    func install(
+        over reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil
+    ) async throws -> HostHelperReading {
+        let plan = try HostHelperInstallPlan(reading: reading, bundle: bundle, tmuxPaths: tmuxPaths)
         let layout = plan.layout
         guard let extensionText = bundle.files[HostHelperScript.extensionPath] else {
             throw HostHelperError.bundleUnavailable
@@ -200,8 +226,11 @@ struct HostHelperInstaller: Sendable {
         // Until it is, nothing else does, so a failure here takes them back.
         let previous = Self.record(of: reading)
         var record = (previous ?? HostHelperInstallRecord(files: [], folders: []))
-            // The Helper directory goes as a whole, at the end of a removal.
-            .merged(files: plan.outsideFiles, folders: created.filter { $0 != layout.directory })
+            // The Helper directory goes as a whole, at the end of a removal,
+            // while stored tmux paths under `tmux/` stay for Claude Code's hooks.
+            .merged(
+                files: plan.outsideFiles,
+                folders: created.filter { $0 != layout.directory && !$0.hasPrefix("\(layout.directory)/") })
         if layout.manager == .launchd { record.launchAgentLabel = HostHelperLaunchAgent.label }
         do {
             try await write(
@@ -219,10 +248,17 @@ struct HostHelperInstaller: Sendable {
                 // install takes back all it made, its record too. A link that has
                 // gone cannot, and the next read does it instead.
                 if previous == nil, reading.integrity == .absent {
+                    await takeBack(created.filter { $0.hasPrefix("\(layout.directory)/") })
                     await tidy(layout, record: record, quietMinutes: nil)
                 }
                 throw error
             }
+        }
+        if let tmuxPaths = plan.tmuxPaths, let tmuxPathsFile = plan.tmuxPathsFile {
+            let folder = (tmuxPathsFile as NSString).deletingLastPathComponent
+            try await write(
+                TmuxClaudeCodeHooks.storedPaths(tmuxPaths), to: tmuxPathsFile, in: folder,
+                step: String(localized: "Writing the stored tmux paths"))
         }
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: String(localized: "Placing the Pi and Oh My Pi extensions"))
@@ -244,7 +280,8 @@ struct HostHelperInstaller: Sendable {
 
     /// Stops the service, deletes the recorded files and then the created folders
     /// that are now empty, undoes the harness edits that go with the Helper, and
-    /// finally deletes the Helper directory with its registrations and seen marks.
+    /// finally deletes the Helper directory's own files, keeping `tmux/` so
+    /// Claude Code's hooks continue to find the stored tmux (ADR 0044).
     /// Linger stays as it is.
     func remove(
         over reading: HostHelperReading, undoingEdits: @Sendable () async throws -> Void = {}
@@ -283,7 +320,9 @@ struct HostHelperInstaller: Sendable {
         try await check(
             .removeEmptyFolders(folders.filter { !layout.holdsDirectory($0) }), step: String(localized: "Deleting the folders"))
         try await undoingEdits()
-        try await check(.removeTree(layout.directory), step: String(localized: "Deleting the Host Helper directory"))
+        try await check(
+            .removeTree(layout.directory, keeping: ["tmux"]),
+            step: String(localized: "Deleting the Host Helper directory"))
         // Those above the Helper directory only empty once it has gone.
         try await check(
             .removeEmptyFolders(folders.filter { layout.holdsDirectory($0) }), step: String(localized: "Deleting the folders"))
