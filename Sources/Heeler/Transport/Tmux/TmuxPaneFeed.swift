@@ -51,7 +51,7 @@ struct TmuxPaneFeed: Sendable {
     private let pane: String
     private let window: String
     private let session: String
-    private let viewRows: Int
+    private var viewRows: Int
     private let wantsHistory: Bool
     private var nextTag: UInt64 = 1
     private var purposes: [UInt64: Purpose] = [:]
@@ -87,6 +87,19 @@ struct TmuxPaneFeed: Sendable {
     /// The first paint's commands.
     mutating func start() -> [Action] {
         beginPaint()
+    }
+
+    mutating func updateViewRows(_ rows: Int) {
+        guard rows > 0 else { return }
+        viewRows = rows
+    }
+
+    /// Paints the Pane again without repeating its history, as when its size
+    /// or the view's changed.
+    mutating func repaint() -> [Action] {
+        guard !ended, painted || paint != nil else { return [] }
+        attempts = 0
+        return beginPaint()
     }
 
     mutating func receive(_ event: TmuxControlClient.Event) -> [Action] {

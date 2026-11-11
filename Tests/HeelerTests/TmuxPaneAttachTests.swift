@@ -334,4 +334,154 @@ struct TmuxPaneAttachTests {
         }
         await session.end()
     }
+
+    // MARK: Sizing
+
+    @Test func aViewedAttachScalesAndCorrectsItsWindowsSizeWithoutZooming() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, command: "claude", width: 53, height: 24),
+            .make(pane: 1, paneIndex: 1, command: "zsh", width: 53, height: 24),
+            .make(pane: 2, paneIndex: 2, command: "zsh", width: 52, height: 24),
+            .make(session: 1, sessionName: "other", window: 2, pane: 3, command: "zsh", width: 132, height: 40),
+        ])
+        await tmux.setWindow("@0", width: 160, height: 24, layout: ScriptedTmuxHost.horizontalSplit(["%0", "%1", "%2"]))
+        await tmux.setWindow("@2", width: 132, height: 40)
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        let session = try await transport.attachPane(
+            "%0", request: TerminalAttachRequest(target: .terminal("%0"), surfaceHasHistory: true, cols: 40, rows: 10))
+        defer { Task { await session.end() } }
+
+        let size = try #require(await tmux.paneSize("%0"))
+        #expect(size.width <= 40 && size.height <= 10)
+        #expect(size == (40, 10))
+        #expect(await tmux.windowSize("@2") == (132, 40))
+        let sent = await commands(on: tmux)
+        #expect(sent.contains { $0.prefix(2) == ["refresh-client", "-C"] && $0.last?.hasPrefix("@0:") == true })
+        #expect(!sent.contains { $0.contains("resize-pane") || $0.contains("-Z") })
+    }
+
+    @Test func aSmallerDesktopClientCapsTheWindowAndChangingTheCeilingRepaintsThePane() async throws {
+        let tmux = await host(height: 6)
+        await tmux.setWindow("@0", width: 50, height: 6)
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 50, height: 6)])
+        await tmux.setScreen(["capped", "", "", "", "", ""], of: "%0")
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        let session = try await transport.attachPane(
+            "%0", request: TerminalAttachRequest(target: .terminal("%0"), surfaceHasHistory: true, cols: 80, rows: 12))
+        defer { Task { await session.end() } }
+
+        var output = session.output.makeAsyncIterator()
+        let first = try await read(until: "capped", from: &output)
+        #expect(await tmux.windowSize("@0") == (50, 6))
+        #expect(first.contains("\u{1B}[1;6r"))
+
+        await tmux.setScreen(["tighter", "", "", "", ""], of: "%0")
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 40, height: 5)])
+        let repainted = try await read(until: "tighter", from: &output)
+        #expect(await tmux.windowSize("@0") == (40, 5))
+        #expect(repainted.contains("\u{1B}[1;5r"))
+    }
+
+    @Test func resizesRideTheInputQueueInOrderAndKeepSplitSequencesTogether() async throws {
+        let tmux = await host()
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        let name = try #require(await tmux.attachSessions.first)
+
+        session.send(Data("before".utf8))
+        session.send(Data("\u{1B}".utf8))
+        session.resize(cols: 100, rows: 12)
+        session.send(Data("after".utf8))
+        session.send(Data("\u{1B}[200~hel".utf8))
+        session.resize(cols: 90, rows: 10)
+        session.send(Data("lo\u{1B}[201~".utf8))
+
+        try await waitUntil("the ordered input and resizes") {
+            await commands(on: tmux).contains(["paste-buffer", "-p", "-r", "-d", "-b", name, "-t", "%0"])
+        }
+        let ordered = await commands(on: tmux).filter { words in
+            words.first == "send-keys" || words.first == "paste-buffer"
+                || (words.first == "refresh-client" && words.contains("-C"))
+        }
+        #expect(ordered == [
+            ["refresh-client", "-C", "@0:80x4"],
+            Self.text("before"),
+            Self.key("Escape"),
+            ["refresh-client", "-C", "@0:100x12"],
+            Self.text("after"),
+            ["refresh-client", "-C", "@0:90x10"],
+            ["paste-buffer", "-p", "-r", "-d", "-b", name, "-t", "%0"],
+        ])
+    }
+
+    @Test func hidingAndShowingTurnsIgnoreSizeOnAndOff() async throws {
+        let tmux = await host(height: 48)
+        await tmux.setWindow("@0", width: 160, height: 48)
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        let session = try await transport.attachPane(
+            "%0", request: TerminalAttachRequest(target: .terminal("%0"), surfaceHasHistory: true, cols: 80, rows: 24))
+        defer { Task { await session.end() } }
+
+        #expect(await tmux.windowSize("@0") == (80, 24))
+        #expect(await tmux.controlClientsIgnoringSize() == [false])
+
+        session.setPresence(.hidden)
+        try await waitUntil("ignore-size on") { await tmux.controlClientsIgnoringSize() == [true] }
+        #expect(await tmux.windowSize("@0") == (160, 48))
+        #expect(await commands(on: tmux).contains(["refresh-client", "-f", "ignore-size", "-C", "@0:80x24"]))
+
+        let countWhileHidden = await commands(on: tmux).count
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 140, height: 40)])
+        try await waitUntil("check after desktop resize") { await commands(on: tmux).count >= countWhileHidden + 1 }
+        #expect(await tmux.windowSize("@0") == (140, 40))
+        // Only TmuxPaneFeed's link check runs while hidden; no sizing or repaint commands leave.
+        let whileHidden = Array((await commands(on: tmux)).dropFirst(countWhileHidden))
+        #expect(!whileHidden.contains { $0.first == "refresh-client" || $0.first == "capture-pane" })
+
+        session.setPresence(.viewed(nil))
+        try await waitUntil("ignore-size off") { await tmux.controlClientsIgnoringSize() == [false] }
+        #expect(await tmux.windowSize("@0") == (80, 24))
+        #expect(await commands(on: tmux).contains(["refresh-client", "-f", "!ignore-size", "-C", "@0:80x24"]))
+    }
+
+    @Test func anAttachOpenedHiddenOrObservingLeavesTheWindowsSizeAlone() async throws {
+        let tmux = await host(height: 48)
+        await tmux.setWindow("@0", width: 160, height: 48)
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+
+        let hidden = try await transport.attachPane(
+            "%0",
+            request: TerminalAttachRequest(
+                target: .terminal("%0"), viewer: .resumed, isViewed: false, surfaceHasHistory: true, cols: 80, rows: 24))
+        #expect(await tmux.windowSize("@0") == (160, 48))
+        #expect(await tmux.controlClientsIgnoringSize() == [true])
+        #expect(await commands(on: tmux).contains(["refresh-client", "-f", "ignore-size"]))
+        #expect(await !commands(on: tmux).contains { $0.first == "refresh-client" && $0.contains("-C") })
+        await hidden.end()
+
+        let observing = try await transport.attachPane(
+            "%0",
+            request: TerminalAttachRequest(
+                target: .terminal("%0"), viewer: .observe, surfaceHasHistory: true, cols: 80, rows: 24))
+        observing.setPresence(.viewed(nil))
+        #expect(await tmux.windowSize("@0") == (160, 48))
+        await observing.end()
+    }
+
+    @Test func hidingWithNoDesktopClientKeepsTheWindowsSize() async throws {
+        let tmux = await host(height: 30)
+        await tmux.setWindow("@0", width: 120, height: 30)
+        let transport = await tmux.transport(socketName: "default", storedPaths: ScriptedTmuxHost.paths())
+        let session = try await transport.attachPane(
+            "%0", request: TerminalAttachRequest(target: .terminal("%0"), surfaceHasHistory: true, cols: 80, rows: 24))
+        defer { Task { await session.end() } }
+
+        #expect(await tmux.windowSize("@0") == (80, 24))
+        session.setPresence(.hidden)
+        try await waitUntil("ignore-size on") { await tmux.controlClientsIgnoringSize() == [true] }
+        #expect(await tmux.windowSize("@0") == (80, 24))
+    }
 }

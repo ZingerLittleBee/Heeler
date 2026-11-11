@@ -532,7 +532,7 @@ final class AttachTerminalStore {
         // opening is someone acting on it.
         let reportsOnceOpen = !isViewed || viewer == .interactive
         let request = TerminalAttachRequest(
-            target: target, takeover: takeover, viewer: viewer,
+            target: target, takeover: takeover, viewer: viewer, isViewed: isViewed,
             displayFacts: isViewed ? feed.displayFacts : nil,
             surfaceHasHistory: hasTakenOutput, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in

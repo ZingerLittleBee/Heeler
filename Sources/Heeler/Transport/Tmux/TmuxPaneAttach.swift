@@ -10,20 +10,36 @@ import Foundation
 /// session's start and is dropped. A session that started wrong is ended: on
 /// another server with `TransportError.tmuxServerGone`.
 ///
+/// While shown, the client asks for a per-window size scaled from the Pane's
+/// share of its window and corrects it until the Pane fits inside the view's
+/// grid; when hidden or retained it turns on `ignore-size` so tmux hands the
+/// window back to any other client at once.
+///
 /// The output ends with `TransportError.tmuxPaneGone` once the Pane is gone or
 /// Heeler's session no longer holds it, and with the client's own failure when
 /// its exec failed. Ending the session closes the exec: tmux reads the end of
 /// its input, detaches the client, and the session ends with it.
 ///
-/// What the user types goes through the same client, in order (`type(_:)`).
-/// The view's resizes are not sent.
+/// What the user types and the view's resizes go through the same client, in
+/// order (`type(_:)`, `resize(columns:rows:)`).
 actor TmuxPaneAttach {
     private let client: TmuxControlClient
     private let session: String
     private let pane: String
-    private let viewRows: Int
+    private var viewColumns: Int
+    private var viewRows: Int
+    private let sizesWindow: Bool
+    private var isViewed: Bool
     private let includingHistory: Bool
     private let instance: String?
+    private var window: String?
+    private var ignoringSize = false
+    private var lastSizedWindow: (width: Int, height: Int)?
+    private var settled: (geometry: TmuxPaneGeometry, columns: Int, rows: Int)?
+    private var lastPainted: (paneWidth: Int, paneHeight: Int, viewColumns: Int, viewRows: Int)?
+    private var syncingPlacement = false
+    private var needsPlacementSync = false
+    private var placementWaiters: [CheckedContinuation<Void, Never>] = []
     private var feed: TmuxPaneFeed?
     private var starting: CheckedContinuation<Void, any Error>?
     private var startResult: Result<Void, any Error>?
@@ -39,7 +55,10 @@ actor TmuxPaneAttach {
         self.client = client
         self.session = session
         self.pane = pane
+        viewColumns = request.cols
         viewRows = request.rows
+        sizesWindow = request.viewer != .observe
+        isViewed = request.isViewed && request.viewer != .observe
         includingHistory = !request.surfaceHasHistory
         instance = request.coreID
     }
@@ -60,14 +79,23 @@ actor TmuxPaneAttach {
             // reports: there is nothing else for this task to say.
             try? await input.pump(
                 write: { try await attach.type($0, moreQueued: { input.hasQueuedKeystrokes }) },
-                resize: { _, _ in })
+                resize: { cols, rows in await attach.resize(columns: cols, rows: rows) })
+        }
+        let (presences, presence) = AsyncStream.makeStream(of: TerminalViewerPresence.self)
+        let presencePump = Task {
+            for await change in presences {
+                await attach.applyPresence(change)
+            }
         }
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
-            input: input
+            input: input,
+            onPresence: { presence.yield($0) }
         ) {
             input.finish()
+            presence.finish()
             pump.cancel()
+            presencePump.cancel()
             await attach.close()
         }
     }
@@ -129,6 +157,11 @@ actor TmuxPaneAttach {
         let actions = feed.receive(event)
         self.feed = feed
         await perform(actions)
+        if case .notification(.layoutChanged(let changed)) = event,
+            changed == window, isViewed, sizesWindow, outcome == nil
+        {
+            Task { await self.syncPlacement() }
+        }
     }
 
     private func starting(with event: TmuxControlClient.Event) async {
@@ -137,6 +170,17 @@ actor TmuxPaneAttach {
         case .replied(Self.barrierTag, let reply):
             switch TmuxAttachScript.started(reply, pane: pane, instance: instance) {
             case .ready(let session, let window):
+                self.window = window
+                do {
+                    try await applyInitialPlacement()
+                } catch let ended as TmuxControlClient.Ended {
+                    finishStart(.failure(Self.startFailure(ended.end)))
+                    return
+                } catch {
+                    await failStart(error)
+                    return
+                }
+                guard startResult == nil else { return }
                 var feed = TmuxPaneFeed(
                     pane: pane, window: window, session: session, viewRows: viewRows,
                     includingHistory: includingHistory)
@@ -208,6 +252,175 @@ actor TmuxPaneAttach {
                 await client.close()
             }
         }
+    }
+
+    // MARK: Sizing and presence
+
+    func resize(columns: Int, rows: Int) async {
+        guard columns > 0, rows > 0, outcome == nil else { return }
+        if columns != viewColumns || rows != viewRows {
+            viewColumns = columns
+            viewRows = rows
+            settled = nil
+            feed?.updateViewRows(rows)
+        }
+        guard isViewed, sizesWindow else { return }
+        await syncPlacement()
+    }
+
+    func applyPresence(_ presence: TerminalViewerPresence) async {
+        guard outcome == nil else { return }
+        switch presence {
+        case .viewed:
+            guard sizesWindow else { return }
+            if !isViewed {
+                isViewed = true
+                settled = nil
+            } else if !ignoringSize, settled?.columns == viewColumns, settled?.rows == viewRows {
+                return
+            }
+            await syncPlacement()
+        case .hidden:
+            guard isViewed || !ignoringSize else { return }
+            isViewed = false
+            settled = nil
+            await syncPlacement()
+        case .factsChanged:
+            return
+        }
+    }
+
+    private func applyInitialPlacement() async throws {
+        if isViewed, sizesWindow, viewColumns > 0, viewRows > 0 {
+            let targetColumns = viewColumns
+            let targetRows = viewRows
+            guard let initial = try await readGeometry(),
+                let final = try await runSizer(from: initial, targetColumns: targetColumns, targetRows: targetRows)
+            else { return }
+            lastPainted = (
+                paneWidth: final.paneWidth, paneHeight: final.paneHeight,
+                viewColumns: targetColumns, viewRows: targetRows
+            )
+        } else {
+            try await client.post(TmuxPaneSize.ignoreSizeCommand())
+            ignoringSize = true
+        }
+    }
+
+    private func syncPlacement() async {
+        needsPlacementSync = true
+        if syncingPlacement {
+            await withCheckedContinuation { placementWaiters.append($0) }
+            return
+        }
+        syncingPlacement = true
+        defer {
+            syncingPlacement = false
+            let waiters = placementWaiters
+            placementWaiters = []
+            for waiter in waiters { waiter.resume() }
+        }
+        while needsPlacementSync, outcome == nil {
+            needsPlacementSync = false
+            await applyPlacementOnce()
+        }
+    }
+
+    private func applyPlacementOnce() async {
+        guard let window, outcome == nil else { return }
+        let wantsSize = isViewed && sizesWindow && viewColumns > 0 && viewRows > 0
+        if !wantsSize {
+            guard !ignoringSize else { return }
+            let releasing = lastSizedWindow.map { (window: window, width: $0.width, height: $0.height) }
+            guard (try? await client.post(TmuxPaneSize.ignoreSizeCommand(releasing: releasing))) != nil else { return }
+            ignoringSize = true
+            settled = nil
+            return
+        }
+        let targetColumns = viewColumns
+        let targetRows = viewRows
+        do {
+            guard let initial = try await readGeometry() else { return }
+            if lastSizedWindow != nil {
+                lastSizedWindow = (initial.windowWidth, initial.windowHeight)
+            }
+            guard isViewed, sizesWindow, viewColumns == targetColumns, viewRows == targetRows else { return }
+            if !ignoringSize,
+                let settled,
+                settled.geometry == initial,
+                settled.columns == targetColumns,
+                settled.rows == targetRows
+            {
+                await repaintIfNeeded(
+                    paneWidth: initial.paneWidth, paneHeight: initial.paneHeight,
+                    viewColumns: targetColumns, viewRows: targetRows)
+                return
+            }
+            guard let final = try await runSizer(from: initial, targetColumns: targetColumns, targetRows: targetRows) else {
+                return
+            }
+            await repaintIfNeeded(
+                paneWidth: final.paneWidth, paneHeight: final.paneHeight,
+                viewColumns: targetColumns, viewRows: targetRows)
+        } catch {
+            return
+        }
+    }
+
+    private func runSizer(
+        from initial: TmuxPaneGeometry, targetColumns: Int, targetRows: Int
+    ) async throws -> TmuxPaneGeometry? {
+        var sizer = TmuxPaneSizer(targetColumns: targetColumns, targetRows: targetRows)
+        let first = sizer.initialRequest(from: initial)
+        try await client.post(
+            TmuxPaneSize.sizeCommand(
+                window: initial.windowID, columns: first.columns, rows: first.rows,
+                clearingIgnoreSize: ignoringSize))
+        guard var geometry = try await readGeometry() else { return nil }
+        while let next = sizer.nextRequest(after: geometry) {
+            guard isViewed, sizesWindow, viewColumns == targetColumns, viewRows == targetRows else {
+                ignoringSize = false
+                lastSizedWindow = (geometry.windowWidth, geometry.windowHeight)
+                return nil
+            }
+            try await client.post(
+                TmuxPaneSize.sizeCommand(window: geometry.windowID, columns: next.columns, rows: next.rows))
+            guard let updated = try await readGeometry() else { return nil }
+            geometry = updated
+        }
+        ignoringSize = false
+        lastSizedWindow = (geometry.windowWidth, geometry.windowHeight)
+        settled = (geometry, targetColumns, targetRows)
+        return geometry
+    }
+
+    private func readGeometry() async throws -> TmuxPaneGeometry? {
+        let reply: TmuxControlReply
+        do {
+            reply = try await client.run(TmuxPaneSize.readCommand(pane: pane), timeout: Self.answerTimeout)
+        } catch TransportError.timedOut {
+            return nil
+        }
+        guard reply.succeeded, let line = reply.lines.first else { return nil }
+        return TmuxPaneGeometry(line)
+    }
+
+    private func repaintIfNeeded(paneWidth: Int, paneHeight: Int, viewColumns: Int, viewRows: Int) async {
+        let current = (paneWidth: paneWidth, paneHeight: paneHeight, viewColumns: viewColumns, viewRows: viewRows)
+        if let last = lastPainted,
+            last.paneWidth == current.paneWidth,
+            last.paneHeight == current.paneHeight,
+            last.viewColumns == current.viewColumns,
+            last.viewRows == current.viewRows
+        {
+            return
+        }
+        lastPainted = current
+        guard var feed else { return }
+        feed.updateViewRows(viewRows)
+        let actions = feed.repaint()
+        self.feed = feed
+        await perform(actions)
     }
 
     // MARK: Input

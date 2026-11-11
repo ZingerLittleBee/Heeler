@@ -241,4 +241,20 @@ struct TmuxPaneFeedTests {
         #expect(feed.receive(.notification(.sessionChanged(session: "$1"))) == [.end(.sessionLeft)])
         #expect(feed.receive(output("after")).isEmpty)
     }
+
+    @Test func aRepaintUpdatesTheViewRowsWithoutRepeatingHistory() throws {
+        var feed = feed(history: true)
+        _ = answer(sent(feed.start()), into: &feed)
+        feed.updateViewRows(8)
+        let actions = feed.repaint()
+        #expect(sent(actions).map(\.line) == TmuxPanePaint.commands(pane: pane, includingHistory: false).map(\.line))
+        let repainted = answer(sent(actions), into: &feed, screen: ["resized", "", "", ""])
+        let expected = TmuxPanePaint.bytes(
+            modes: try #require(TmuxPaneModes(Data(modes.utf8))),
+            history: nil,
+            screen: ["resized", "", "", ""].map { Data($0.utf8) },
+            normalScreen: [],
+            viewRows: 8)
+        #expect(written(repainted) == [expected])
+    }
 }

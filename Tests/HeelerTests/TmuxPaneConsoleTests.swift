@@ -288,4 +288,53 @@ struct TmuxPaneConsoleTests {
         #expect(cores.openAnew(.agent(agent.id), console: console))
         #expect(cores.session(for: agent, console: console) !== session)
     }
+
+    // MARK: Sizing and retention
+
+    @Test func retainingAnAgentTerminalHandsTheWindowBackAndShowingItAgainTakesTheSizeBack() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([.make(command: "claude", width: 160, height: 48, arguments: Self.claude)])
+        await tmux.setWindow("@0", width: 160, height: 48)
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        let console = try await launch(over: tmux)
+        defer { console.setHosts([]) }
+
+        let cache = console.agentTerminals
+        let agent = try #require(console.agents.first)
+        let owner = UUID()
+        let entry = cache.acquire(agent: agent, console: console, ownerID: owner, corePin: console.corePin(on: host.id))
+        entry.attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the first paint") { entry.attach.terminalStatus == .live }
+        #expect(await tmux.windowSize("@0") == (80, 24))
+        #expect(await tmux.controlClientsIgnoringSize() == [false])
+
+        cache.release(entry, ownerID: owner)
+        try await waitUntil("ignore-size while retained") { await tmux.controlClientsIgnoringSize() == [true] }
+        #expect(await tmux.openControlClients == 1)
+        #expect(await tmux.windowSize("@0") == (160, 48))
+
+        cache.activate(entry, ownerID: owner)
+        try await waitUntil("the size taken back") { await tmux.windowSize("@0") == (80, 24) }
+        #expect(await tmux.controlClientsIgnoringSize() == [false])
+    }
+
+    @Test func aDroppedConnectionWhileViewedSizesTheWindowAgainOnReattach() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([.make(command: "claude", width: 160, height: 48, arguments: Self.claude)])
+        await tmux.setWindow("@0", width: 160, height: 48)
+        await tmux.setDesktopClients([.init(windowID: "@0", width: 160, height: 48)])
+        let console = try await launch(over: tmux)
+        defer { console.setHosts([]) }
+
+        let store = AttachTerminalStore(target: .terminal("%0"), runTerminal: console.terminalRunner(for: host.id))
+        store.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the first paint") { store.status == .live }
+        #expect(await tmux.windowSize("@0") == (80, 24))
+
+        await tmux.dropConnections()
+        try await waitUntil("the second attach") { await tmux.controlScripts.count == 2 }
+        try await waitUntil("its first paint") { store.status == .live }
+        #expect(await tmux.windowSize("@0") == (80, 24))
+        await store.stop()
+    }
 }

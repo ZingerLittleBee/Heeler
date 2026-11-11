@@ -48,8 +48,8 @@ struct TerminalDisplayFacts: Sendable, Equatable {
     var cell: CellPixels?
 }
 
-/// Whether anyone is looking at a retained terminal. Only a herdr-core attach
-/// passes this on: a hidden one reports neither focus nor display facts.
+/// Whether anyone is looking at a retained terminal. Only a herdr-core or tmux
+/// attach passes this on: a hidden one yields its size and reports no focus.
 enum TerminalViewerPresence: Sendable, Equatable {
     case viewed(TerminalDisplayFacts?)
     case hidden
@@ -63,6 +63,9 @@ struct TerminalAttachRequest: Sendable, Equatable {
     let target: TerminalAttachTarget
     let takeover: Bool
     let viewer: TerminalViewerRole
+    /// Whether a surface is showing this attach now. On a reconnect while
+    /// shown, `viewer` is `.resumed` for a core while `isViewed` stays true.
+    let isViewed: Bool
     let displayFacts: TerminalDisplayFacts?
     /// The surface this attach paints already holds its scrollback, so a server
     /// that can send it should not send it again.
@@ -77,6 +80,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         target: TerminalAttachTarget,
         takeover: Bool = false,
         viewer: TerminalViewerRole = .interactive,
+        isViewed: Bool? = nil,
         displayFacts: TerminalDisplayFacts? = nil,
         surfaceHasHistory: Bool = false,
         cols: Int,
@@ -85,6 +89,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         self.target = target
         self.takeover = takeover
         self.viewer = viewer
+        self.isViewed = isViewed ?? (viewer == .interactive)
         self.displayFacts = displayFacts
         self.surfaceHasHistory = surfaceHasHistory
         self.cols = cols

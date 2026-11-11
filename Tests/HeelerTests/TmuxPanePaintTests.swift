@@ -1,5 +1,7 @@
 import Foundation
+import GhosttyTerminal
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -200,5 +202,55 @@ struct TmuxPanePaintTests {
         #expect(!tracker.usesApplicationCursorKeys)
         #expect(!tracker.tracksMouse && !tracker.usesSGRMouseEncoding)
         #expect(!tracker.usesBracketedPaste)
+    }
+
+    @MainActor
+    @Test func aSmallerPaneConfinesScrollingAndLeavesTheRestOfTheViewBlank() async throws {
+        var grid: (cols: Int, rows: Int)?
+        let terminal = TerminalScreenView.makeConfiguredTerminal(onSizeChanged: { grid = ($0, $1) })
+        let controller = UIViewController()
+        controller.view = terminal
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 520, height: 420))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        terminal.layoutIfNeeded()
+        for _ in 0..<200 where grid == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let viewGrid = try #require(grid)
+        #expect(viewGrid.cols > 20 && viewGrid.rows > 4)
+
+        let painted = TmuxPanePaint.bytes(
+            modes: try modes(modesLine(cursor: (6, 3), region: (0, 3), size: (20, 4))),
+            history: nil,
+            screen: lines("row one", "row two", "row three", "row 4!"),
+            normalScreen: [],
+            viewRows: viewGrid.rows)
+        #expect(text(painted).contains("\(escape)[1;4r"))
+        terminal.receive(painted)
+        terminal.receive(Data("\r\nrow five\r\nrow six".utf8))
+
+        var viewport: [String] = []
+        for _ in 0..<200 {
+            if let read = terminal.terminalSession.readViewportText(), read.contains("row six") {
+                viewport = read.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(viewport.count >= viewGrid.rows)
+        #expect(viewport.prefix(4).map { $0.trimmingCharacters(in: .whitespaces) } == [
+            "row three", "row 4!", "row five", "row six",
+        ])
+        for row in viewport.dropFirst(4) {
+            #expect(row.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        for row in viewport.prefix(4) where row.count > 20 {
+            #expect(row.dropFirst(20).trimmingCharacters(in: .whitespaces).isEmpty)
+        }
     }
 }

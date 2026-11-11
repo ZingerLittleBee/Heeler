@@ -157,7 +157,7 @@ enum TmuxPanePaint {
             paint += control("[?1049h")
         }
         paint += rows(screen)
-        paint += settings(modes)
+        paint += settings(modes, viewRows: viewRows)
         let row = modes.origin ? modes.cursorY - modes.scrollRegionTop : modes.cursorY
         paint += position(row: row + 1, column: modes.cursorX + 1)
         return paint
@@ -172,9 +172,10 @@ enum TmuxPanePaint {
         return painted + control("[0m")
     }
 
-    private static func settings(_ modes: TmuxPaneModes) -> Data {
+    private static func settings(_ modes: TmuxPaneModes, viewRows: Int) -> Data {
         var set = ""
-        if modes.scrollRegionTop != 0 || modes.scrollRegionBottom != modes.height - 1 {
+        let terminalRows = viewRows > 0 ? max(modes.height, viewRows) : modes.height
+        if modes.scrollRegionTop != 0 || modes.scrollRegionBottom != terminalRows - 1 {
             set += "[\(modes.scrollRegionTop + 1);\(modes.scrollRegionBottom + 1)r"
         }
         let switches: [(Bool, String)] = [
