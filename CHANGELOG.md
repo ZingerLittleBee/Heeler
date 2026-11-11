@@ -32,7 +32,7 @@ Entries reference the pull request that made the change.
   message went in would take it as its answer. macOS and Linux herdr-core
   Hosts offer it too, following the conversation from its first message,
   sent from Chat or the terminal. Windows herdr-core Hosts don't offer it.
-  (#644)
+  (PR #705)
 
 ### Changed
 
@@ -44,7 +44,7 @@ Entries reference the pull request that made the change.
   as other user messages, keeping command output below the bubble. (#648)
 - Codex's question card names its page beside its title, `1 of 2` as a
   question form does, and none for a single question, instead of a
-  `Question 1/2` line above the question. (#644)
+  `Question 1/2` line above the question. (PR #705)
 - When a command in a Shell Terminal starts an Agent, the Agent's terminal
   keeps the keyboard up as it takes the screen over, as Back and the
   Terminals drawer already do. An Agent that opens on Chat, whether it
@@ -52,7 +52,7 @@ Entries reference the pull request that made the change.
   Terminal or an Agent's terminal, or comes from the Agent switcher or New
   Agent on an Agent's terminal, takes over once the keyboard has gone down,
   so Chat's own buttons, such as Choose a Conversation, are not left under
-  the keyboard. (#644)
+  the keyboard. (PR #705)
 
 ### Fixed
 
@@ -74,17 +74,17 @@ Entries reference the pull request that made the change.
 - A Send of an image path followed by text settles once Claude Code records it, rather than staying as not yet in the conversation. (PR #647)
 - A Claude Code scheduled task shows as a small notice opening its own turn, rather than its reply folding into the turn before, and no longer waits as an unsent message. (PR #647)
 - Clear an unsaved Voice Input API key when its service or Custom URL changes, and report Keychain deletion failures without switching the saved destination or withdrawing its agreement. (PR #643)
-- Hold a Chat message at once while Oh My Pi or OpenCode reports Working, instead of showing it as Sending until Heeler has read the Agent's screen. The notice clears on the next status change. (#644)
-- On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (#644)
-- Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (#644)
-- Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (#644)
-- Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, or as soon as a new Antigravity CLI shows before herdr reports its status, until Chat has read the dialog for its card, instead of showing the Composer for a few seconds first, as before Antigravity CLI's trust prompt. (#644)
-- When a Blocked card's answer can't read the Agent's screen, as a herdr-core Host's first read can miss its time limit over a slow link, read it once more instead of refusing the first tap. A second failure still says nothing was sent. (#644)
-- Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (#644)
-- Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (#644)
-- On herdr-core Hosts, an Agent started by typing its command in a Terminal shows the directory it runs in, in its Agents row and its header, rather than the one the Terminal started in. Its Workspace still follows where the Terminal started. (#644)
-- On herdr-core Hosts, the Core Environment notice also names a variable the core's Terminals inherit from its `herdr-core hold`, which can carry the environment of whoever started the core when the core's own process does not, as on a Mac whose core launchd runs. Heeler checks again when a Terminal starts, so a hold that came with the first Terminal is read without reconnecting. (#644)
-- The Host Helper is set up on a Node.js install, passing over another program's bundled runtime that a version manager's shim or the `PATH` leads to first, as mise's did to cursor-agent's, for one later on the `PATH`. It names fnm's default alias, Homebrew's `bin`, `/usr/bin` or another manager's stable link where it finds one, rather than the versioned binary that link leads to, so an upgrade no longer strands it on a removed version. A plugin install likewise goes on past an `npm` on the `PATH` whose Node.js is too old. A Helper already installed changes at its next Install, Update or Repair. When the Node.js the Helper recorded has gone, Usage runs its query with the service's Node.js, but the Helper still starts its background refresh with the recorded one, so once the last refresh is a minute old Token Usage reads as failed and Usage counts nothing for that Host, until the Helper restarts, as a Repair makes it. Keeping that refresh running needs the Helper's next version. (#644)
+- Hold a Chat message at once while Oh My Pi or OpenCode reports Working, instead of showing it as Sending until Heeler has read the Agent's screen. The notice clears on the next status change. (PR #705)
+- On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (PR #705)
+- Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (PR #705)
+- Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (PR #705)
+- Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, or as soon as a new Antigravity CLI shows before herdr reports its status, until Chat has read the dialog for its card, instead of showing the Composer for a few seconds first, as before Antigravity CLI's trust prompt. (PR #705)
+- When a Blocked card's answer can't read the Agent's screen, as a herdr-core Host's first read can miss its time limit over a slow link, read it once more instead of refusing the first tap. A second failure still says nothing was sent. (PR #705)
+- Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (PR #705)
+- Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (PR #705)
+- On herdr-core Hosts, an Agent started by typing its command in a Terminal shows the directory it runs in, in its Agents row and its header, rather than the one the Terminal started in. Its Workspace still follows where the Terminal started. (PR #705)
+- On herdr-core Hosts, the Core Environment notice also names a variable the core's Terminals inherit from its `herdr-core hold`, which can carry the environment of whoever started the core when the core's own process does not, as on a Mac whose core launchd runs. Heeler checks again when a Terminal starts, so a hold that came with the first Terminal is read without reconnecting. (PR #705)
+- The Host Helper is set up on a Node.js install, passing over another program's bundled runtime that a version manager's shim or the `PATH` leads to first, as mise's did to cursor-agent's, for one later on the `PATH`. It names fnm's default alias, Homebrew's `bin`, `/usr/bin` or another manager's stable link where it finds one, rather than the versioned binary that link leads to, so an upgrade no longer strands it on a removed version. A plugin install likewise goes on past an `npm` on the `PATH` whose Node.js is too old. A Helper already installed changes at its next Install, Update or Repair. When the Node.js the Helper recorded has gone, Usage runs its query with the service's Node.js, but the Helper still starts its background refresh with the recorded one, so once the last refresh is a minute old Token Usage reads as failed and Usage counts nothing for that Host, until the Helper restarts, as a Repair makes it. Keeping that refresh running needs the Helper's next version. (PR #705)
 
 ## [0.1.18]
 
