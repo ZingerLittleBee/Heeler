@@ -47,11 +47,15 @@ struct PairingCodeVectorFile: Decodable, Sendable {
     static let v2: PairingCodeVectorFile = load("pairing-code-v2")
 
     static func amuxCode() throws -> PairingCode {
+        try PairingCode.decode(amuxText())
+    }
+
+    static func amuxText() throws -> String {
         struct Fixture: Decodable { let code: String }
         guard let url = Bundle(for: BundleLocator.self).url(forResource: "amux-pairing-helper-v1", withExtension: "json") else {
             throw CocoaError(.fileNoSuchFile)
         }
-        return try PairingCode.decode(JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url)).code)
+        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url)).code
     }
 
     private static func load(_ resource: String) -> PairingCodeVectorFile {

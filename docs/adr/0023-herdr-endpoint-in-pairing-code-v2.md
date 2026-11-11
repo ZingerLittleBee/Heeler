@@ -73,3 +73,35 @@ A Host without an endpoint behaves exactly as before.
 - An older build ignores the endpoint and drops it on its next catalog save.
   Only TestFlight users can downgrade, so the endpoint stays in the same Host
   catalog.
+
+## Amendment: explicit amux Core pairing v3
+
+The amux migration contract in
+[amux #160](https://github.com/zinger-labs/amux/issues/160) adds
+`HERDR-PAIR:3`, a separate `AmuxCoreEndpoint`, not a TUI endpoint with a flag.
+It carries a non-default session, exact Core ID/generation, socket and endpoint
+launcher, read-only `amux-organization` schema, and an `amux-native` helper
+contract/directory/executable with five required capabilities. Unknown versions
+and missing capabilities fail before Host creation. Existing v1/v2 and ordinary
+Core Hosts retain their independent routes and Node Helper behavior.
+
+After pinned-host-key Device Key authentication, pairing verifies the exact
+live Core hello and the native helper's compiled identity and live status over
+that authenticated SSH connection before returning a result. The Bootstrap Key
+has already been consumed if verification fails: retries preserve all endpoint
+metadata and use only the Device Key. Every later Core framed link repeats its
+ID/generation fence before discovery or mutation. No step starts a paired Core
+or falls back to TUI.
+
+Native readiness requires an identity-checked follower reporting `ready` and
+an unsigned subscription sequence, never merely a configuration file. Stopped
+and disconnected states are shown as such. Native registration/config/seen
+operations use only the explicit helper directory after rechecking identity and
+readiness. Native Usage is unsupported, not a Node installation to repair.
+Heeler never installs, repairs, removes, loads or enables linger for this
+amux-managed helper. Independent helpers and their files remain untouched.
+
+The native follower, notification and activity producers belong to amux's
+separate #162/#163 slices. This client contract does not claim those capabilities
+are implemented by an arbitrary amux binary, nor does Simulator coverage replace
+physical-iPhone pairing, terminal, reconnect or revocation acceptance.

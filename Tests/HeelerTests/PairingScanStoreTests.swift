@@ -123,11 +123,11 @@ struct PairingScanStoreTests {
         let env = try makeEnv()
         defer { env.cleanup() }
 
-        env.store.submit(scannedCode: "HERDR-PAIR:3:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
+        env.store.submit(scannedCode: "HERDR-PAIR:4:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
 
         #expect(env.store.pairingCode == nil)
         let message = env.store.scanFailureMessage
-        #expect(message?.contains("version 3") == true)
+        #expect(message?.contains("version 4") == true)
         #expect(message?.contains("Update Heeler") == true)
     }
 
@@ -450,6 +450,44 @@ struct PairingScanStoreTests {
         #expect(codes.last?.bootstrap == nil)
         #expect(codes.last?.addresses == codes.first?.addresses)
         #expect(codes.last?.username == codes.first?.username)
+    }
+
+    @Test(arguments: [false, true])
+    func coreVerificationFailureNamesAmuxAndRetryPreservesTheExactEndpoint(withBootstrap: Bool) async throws {
+        let env = try makeEnv(outcomes: [
+            .fails(.verificationFailed(detail: "the paired native follower is disconnected")),
+            .succeeds(Self.pairedResult),
+        ])
+        defer { env.cleanup() }
+        var text = try PairingCodeVectorFile.amuxText()
+        if withBootstrap {
+            let encoded = try #require(text.split(separator: ":").last)
+            let body = try #require(Data(base64URLEncoded: String(encoded)))
+            guard case .object(var payload) = try JSONDecoder().decode(JSONValue.self, from: body) else {
+                Issue.record("expected Core pairing payload"); return
+            }
+            payload["seed"] = .string(try #require(Self.bootstrapVector.payload.bootstrapSeed))
+            payload["exp"] = .number(Double(try #require(Self.bootstrapVector.payload.expiresAt)))
+            text = "HERDR-PAIR:3:" + (try JSONEncoder().encode(JSONValue.object(payload))).base64URLEncodedString()
+        }
+        env.store.submit(scannedCode: text)
+        let endpoint = try #require(env.store.pairingCode?.coreEndpoint)
+        await env.store.pair()
+        let failure = try #require(env.store.failure)
+        #expect(failure.step == .verify)
+        #expect(failure.canRetry)
+        #expect(failure.message.contains("Mobile settings in amux"))
+        #expect(failure.message.contains("native follower is disconnected"))
+        #expect(env.catalog.hosts.isEmpty)
+        await env.store.pair()
+        let paired = try #require(env.store.pairedHost)
+        #expect(paired.serverKind == .herdrCore)
+        #expect(paired.coreEndpoint == endpoint)
+        let codes = await env.connector.capturedCodes
+        #expect(codes.count == 2)
+        #expect((codes.first?.bootstrap != nil) == withBootstrap)
+        #expect(codes.last?.bootstrap == nil)
+        #expect(codes.allSatisfy { $0.coreEndpoint == endpoint })
     }
 
     /// The bootstrap-less retry code is rebuilt field by field; the Herdr

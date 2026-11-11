@@ -137,8 +137,15 @@ final class PairingScanStore {
                 attemptCode = code.withoutBootstrap
                 enrolledViaBootstrap = true
             }
-            failure = Self.failure(
-                for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
+            if code.coreEndpoint != nil, case .verificationFailed(let detail) = error {
+                failure = PairingFailure(
+                    step: .verify,
+                    message: String(localized: "The paired Core or native helper could not be verified. Check Mobile settings in amux, then try again. (\(detail))"),
+                    canRetry: true)
+            } else {
+                failure = Self.failure(
+                    for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
+            }
             return
         } catch is CancellationError {
             // The scan sheet went away mid-ceremony; nobody is left to tell.

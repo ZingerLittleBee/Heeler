@@ -3788,6 +3788,11 @@ extension HeelerSSHTransport: HostHelperHost {
                 Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
         }
+        if case .amuxNative = script.step {
+            return try await runBoundedScript(
+                Data(script.text.utf8), feature: String(localized: "The amux native helper"), deadline: .seconds(12), remoteSeconds: 8,
+                timeoutMarkerPrefix: "__HEELER_AMUX_HELPER_TIMEOUT_", timedOut: .timedOut)
+        }
         return try await runBoundedScript(
             Data(script.text.utf8), feature: String(localized: "The Host Helper"), deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_HOST_HELPER_TIMEOUT_", timedOut: .timedOut)

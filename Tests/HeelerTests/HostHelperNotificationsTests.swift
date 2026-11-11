@@ -21,6 +21,82 @@ struct HostHelperNotificationsTests {
     private let viewer = UUID()
     private let window = UUID()
 
+    @Test func nativeReadyWithoutASubscriptionSequenceCannotAuthorizeFileWrites() async throws {
+        let endpoint = try #require(PairingCodeVectorFile.amuxCode().coreEndpoint)
+        let host = await ScriptedHelperHost.native()
+        await host.configure { $0.nativeHealth = ScriptedHelperHost.nativeHealthJSON.replacingOccurrences(of: ",\"sequence\":7", with: "") }
+        let files = HostHelperFiles(host: host, amuxEndpoint: endpoint)
+        await #expect(throws: (any Error).self) {
+            try await files.replaceNotificationRegistration(Data("registration".utf8))
+        }
+        #expect(await host.writes.isEmpty)
+    }
+
+    @Test func amuxNativeHelperUsesOnlyItsExplicitDirectoryAndLiveReadiness() async throws {
+        let endpoint = try #require(PairingCodeVectorFile.amuxCode().coreEndpoint)
+        let host = await ScriptedHelperHost.native()
+        let files = HostHelperFiles(host: host, session: endpoint.session, amuxEndpoint: endpoint)
+        let reading = try #require(await files.readHostHelper())
+        #expect(reading.native?.state == .ready)
+        #expect(reading.notificationStanding.canRegister)
+        #expect(reading.unsupportedPlatform == nil)
+        #expect(!reading.replacesHelper)
+        #expect(reading.probe == nil)
+        #expect(reading.layout == nil)
+        #expect(reading.installAction == nil)
+        #expect(!reading.offersRemoval)
+        try await files.replaceNotificationRegistration(Data("registration".utf8))
+        try await files.replaceSeenMarks(Data("seen".utf8), keyID: String(repeating: "a", count: 64))
+        #expect(await host.writes.map(\.path) == [endpoint.helper.directory + "/notifications.json",
+            endpoint.helper.directory + "/seen-" + String(repeating: "a", count: 64) + ".json"])
+        #expect(await host.writes.allSatisfy { $0.privateDirectory == endpoint.helper.directory })
+    }
+
+    @Test(arguments: ["stopped", "disconnected", "unknown"])
+    func nativeNonReadyHealthCannotAuthorizeAnyFileOperation(state: String) async throws {
+        let endpoint = try #require(PairingCodeVectorFile.amuxCode().coreEndpoint)
+        let helper = await ScriptedHelperHost.native()
+        await helper.configure {
+            $0.nativeHealth = ScriptedHelperHost.nativeHealthJSON.replacingOccurrences(of: "ready", with: state)
+        }
+        let files = HostHelperFiles(host: helper, amuxEndpoint: endpoint)
+        await #expect(throws: (any Error).self) { try await files.readNotificationRegistration() }
+        await #expect(throws: (any Error).self) { try await files.replaceNotificationRegistration(Data()) }
+        await #expect(throws: (any Error).self) { try await files.readNotificationConfig() }
+        await #expect(throws: (any Error).self) { try await files.replaceNotificationConfig(Data()) }
+        await #expect(throws: (any Error).self) { try await files.replaceSeenMarks(Data(), keyID: String(repeating: "a", count: 64)) }
+        await #expect(throws: (any Error).self) { try await files.removeSeenMarks(keyID: String(repeating: "a", count: 64)) }
+        #expect(await helper.writes.isEmpty)
+        #expect(await helper.reads.isEmpty)
+        #expect(await helper.steps.allSatisfy { if case .amuxNative = $0 { true } else { false } })
+    }
+
+    @Test func nativeFilesReadWriteAndRemoveOnlyTheirOwnNamesAndNeverRunNodeUsage() async throws {
+        let endpoint = try #require(PairingCodeVectorFile.amuxCode().coreEndpoint)
+        let helper = await ScriptedHelperHost.native()
+        let files = HostHelperFiles(host: helper, amuxEndpoint: endpoint)
+        let own = endpoint.helper.directory
+        let independent = ScriptedHelperHost.helperDirectory + "/notifications.json"
+        await helper.seedFile(independent, Data("standalone".utf8))
+        try await files.replaceNotificationRegistration(Data("device".utf8))
+        try await files.replaceNotificationConfig(Data("relay".utf8))
+        #expect(try await files.readNotificationRegistration() == Data("device".utf8))
+        #expect(try await files.readNotificationConfig() == Data("relay".utf8))
+        let keyID = String(repeating: "a", count: 64)
+        try await files.replaceSeenMarks(Data("seen".utf8), keyID: keyID)
+        try await files.removeSeenMarks(keyID: keyID)
+        #expect(await helper.files[own + "/seen-" + keyID + ".json"] == nil)
+        #expect(await helper.files[independent]?.contents == Data("standalone".utf8))
+        #expect(await helper.writes.allSatisfy { $0.privateDirectory == own && $0.path.hasPrefix(own + "/") })
+        await helper.clearLog()
+        await #expect(throws: TransportError.self) { try await files.readUsage(timeZone: "UTC", claudeLimits: true) }
+        await #expect(throws: TransportError.self) { try await files.readUsageAccountFile() }
+        await #expect(throws: TransportError.self) { try await files.replaceUsageAccountFile(Data()) }
+        #expect(await helper.steps.isEmpty)
+        #expect(await helper.writes.isEmpty)
+        #expect(await helper.reads.isEmpty)
+    }
+
     /// One live core Host with both stores following it, as the app has them.
     private struct Rig {
         let helper: ScriptedHelperHost

@@ -186,6 +186,7 @@ enum HostHelperUnsupportedPlatform: Sendable, Equatable {
 }
 
 enum HostHelperStatus: Sendable, Equatable {
+    case amuxManaged(AmuxNativeHelperReading.State)
     case notInstalled
     case installed(version: PluginVersion, updateAvailable: Bool)
     /// Another device installed a newer one, which this build never replaces.
@@ -226,13 +227,21 @@ struct HostHelperReading: Sendable, Equatable {
         case damaged
     }
 
-    /// Nil only on native Windows, which has no POSIX shell to probe.
+    /// Nil on native Windows or when the amux-native contract replaces Node's probe.
     let probe: HostHelperProbe?
     let bundled: PluginVersion
+    let native: AmuxNativeHelperReading?
 
     init(probe: HostHelperProbe?, bundled: PluginVersion = HostHelperCompatibility.bundled) {
         self.probe = probe
         self.bundled = bundled
+        native = nil
+    }
+
+    init(native: AmuxNativeHelperReading) {
+        probe = nil
+        bundled = HostHelperCompatibility.bundled
+        self.native = native
     }
 
     var layout: HostHelperLayout? {
@@ -240,6 +249,7 @@ struct HostHelperReading: Sendable, Equatable {
     }
 
     var unsupportedPlatform: HostHelperUnsupportedPlatform? {
+        if native != nil { return nil }
         guard let probe else { return .nativeWindows }
         switch probe.kernel {
         case HerdrCoreLocator.linuxKernel: return probe.hasSystemd ? nil : .noSystemd
@@ -282,6 +292,7 @@ struct HostHelperReading: Sendable, Equatable {
     }
 
     var status: HostHelperStatus {
+        if let native { return .amuxManaged(native.state) }
         if let unsupportedPlatform { return .unsupportedPlatform(unsupportedPlatform) }
         guard let probe else { return .unsupportedPlatform(.nativeWindows) }
         switch integrity {
@@ -326,7 +337,8 @@ struct HostHelperReading: Sendable, Equatable {
     /// True when an install would put new Helper files in place. An older
     /// device never does over a newer Helper.
     var replacesHelper: Bool {
-        switch integrity {
+        if native != nil { return false }
+        return switch integrity {
         case .absent, .damaged: true
         case .intact(let version): version < bundled
         case .newer: false
@@ -398,6 +410,12 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
     let drivesLiveActivity: Bool
 
     init(_ reading: HostHelperReading) {
+        if let native = reading.native {
+            canRegister = native.state == .ready && native.capabilities.contains("notify-v1")
+            drivesLiveActivity = native.state == .ready && native.capabilities.contains("activity-v1")
+            requirement = canRegister ? nil : native.detail
+            return
+        }
         let status = reading.status
         let presentation = reading.presentation
         let action = String(localized: "See this Host's page in Hosts.")
@@ -424,7 +442,7 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
             canRegister = true
             requirement = asRequirement
             drivesLiveActivity = !lacksLiveActivity
-        case .notInstalled, .damaged, .nodeMissing, .serviceFailed:
+        case .notInstalled, .damaged, .nodeMissing, .serviceFailed, .amuxManaged:
             canRegister = false
             requirement = asRequirement
             drivesLiveActivity = false
@@ -451,6 +469,14 @@ struct HostHelperPresentation: Sendable, Equatable {
     /// so the copy names what does change it.
     init(_ status: HostHelperStatus, canRepair: Bool = true) {
         switch status {
+        case .amuxManaged(let state):
+            switch state {
+            case .ready: value = String(localized: "amux Native")
+            case .stopped: value = String(localized: "Stopped")
+            case .disconnected: value = String(localized: "Disconnected")
+            }
+            detail = AmuxNativeHelperReading(state: state, capabilities: []).detail
+            needsAttention = state != .ready
         case .notInstalled:
             value = String(localized: "Not Installed")
             detail = Self.featuresSentence

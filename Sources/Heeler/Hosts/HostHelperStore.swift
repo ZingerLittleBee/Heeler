@@ -41,6 +41,7 @@ final class HostHelperStore {
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
 
     @ObservationIgnored private let connect: @Sendable () async throws -> any HerdrCoreTransport
+    @ObservationIgnored private let amuxEndpoint: AmuxCoreEndpoint?
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
@@ -49,6 +50,7 @@ final class HostHelperStore {
     @ObservationIgnored private let undoEdits: @MainActor @Sendable (any HostServices) async throws -> String?
 
     init(
+        amuxEndpoint: AmuxCoreEndpoint? = nil,
         connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
@@ -58,6 +60,7 @@ final class HostHelperStore {
         undoEdits: @escaping @MainActor @Sendable (any HostServices) async throws -> String? = { _ in nil }
     ) {
         self.connect = connect
+        self.amuxEndpoint = amuxEndpoint
         self.bundle = bundle
         self.nonce = nonce
         self.healthGap = healthGap
@@ -137,6 +140,10 @@ final class HostHelperStore {
     func beginRefresh(over transport: any HerdrCoreTransport) async -> HealthConfirmation? {
         if running == nil { failure = nil }
         let began = actionsDone
+        if amuxEndpoint != nil {
+            await read(over: transport, began: began)
+            return nil
+        }
         let installer = installer(transport)
         do {
             let first = try await installer.readLoadingAgent()
@@ -205,6 +212,7 @@ final class HostHelperStore {
     }
 
     private func listInstall() async {
+        guard amuxEndpoint == nil else { return }
         guard running == nil else { return }
         running = .install
         failure = nil
@@ -222,7 +230,13 @@ final class HostHelperStore {
     private func read(over transport: any HerdrCoreTransport, began: Int? = nil) async {
         let began = began ?? actionsDone
         do {
-            let read = try await installer(transport).check()
+            let read: HostHelperReading
+            if let amuxEndpoint {
+                read = try await HostHelperReading(native: AmuxNativeHelperReading.read(
+                    endpoint: amuxEndpoint, over: transport.hostHelperHost, nonce: nonce))
+            } else {
+                read = try await installer(transport).check()
+            }
             if answers(began) { adopt(read) }
         } catch {
             if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
@@ -262,6 +276,7 @@ final class HostHelperStore {
             HostHelperInstaller, HostHelperReading, @Sendable () throws -> HostHelperBundle, any HostServices
         ) async throws -> Void
     ) async {
+        guard amuxEndpoint == nil else { return }
         guard running == nil else { return }
         running = action
         failure = nil
