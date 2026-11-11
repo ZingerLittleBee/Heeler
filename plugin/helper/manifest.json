@@ -235,7 +235,7 @@
     },
     {
       "path": "tmux/transcript-watcher.js",
-      "sha256": "3464bcf46c74aa5dca7d075a608b0ac30e1b4a88b1415a52ab49da77dd39eeb2"
+      "sha256": "d09c6ed5525620e91633e2d02cf20e1c9be16c1ebdf98377295577a499fdab05"
     },
     {
       "path": "tmux/turn-state.js",

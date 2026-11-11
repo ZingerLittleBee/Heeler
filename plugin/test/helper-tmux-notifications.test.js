@@ -469,7 +469,8 @@ suite("tmux Live Activity and desktop declines", () => {
   });
 
   test("a Claude Code desktop decline clears Blocked before notifications fire and ends the Live Activity", { skip }, async () => {
-    writeConfig(relay.url, { debounceMs: 80, activityDebounceMs: 20 });
+    // Production defaults are debounceMs=5000 > settleMs=1000; preserve that ordering under fast polling.
+    writeConfig(relay.url, { debounceMs: 1600, activityDebounceMs: 20 });
     const fakeClaude = makeAgentBinary("claude");
     const server = startPrivateServer("work", "cli-tools", [fakeClaude, "--ide"]);
     const pid = Number(server.run("display-message", "-p", "-t", "%0", "#{pane_pid}").trim());
@@ -498,16 +499,77 @@ suite("tmux Live Activity and desktop declines", () => {
 
     await waitFor(() => activitiesTo(ACTIVITY_A).length === 1, "working Live Activity push", PATIENCE_MS);
 
-    // PermissionRequest sets blocked, then user immediately presses Esc at the desktop (writing turn_duration).
+    // PermissionRequest opens the prompt (starting the Blocked alert debounce), then the user presses Esc at the desktop.
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({ type: "assistant", uuid: "a1", sessionId, message: { id: "m1", role: "assistant", content: [] } })}\n`,
+    );
     server.run("set-option", "-p", "-t", "%0", "@heeler-status", "state=blocked:app=claude-code:kind=permission:turn=0:blocked=1");
+    await waitFor(() => activitiesTo(ACTIVITY_A).length === 2, "blocked Live Activity push", PATIENCE_MS);
+    assert.equal(activitiesTo(ACTIVITY_A)[1].counts.blocked, 1);
+
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({ type: "system", subtype: "turn_duration", uuid: "t1", parentUuid: "a1", durationMs: 250, sessionId })}\n`,
+    );
+
+    await waitFor(() => activitiesTo(ACTIVITY_A).at(-1)?.event === "end", "Live Activity ended on desktop decline", PATIENCE_MS);
+    await new Promise((done) => setTimeout(done, 750));
+    assert.equal(alertsTo(ALERT_A).length, 0, "no Blocked or Done alert sent after desktop decline");
+  });
+
+  test("a normal Claude Code turn delivers Done even when the transcript watcher polls turn_duration before Stop", { skip }, async () => {
+    writeConfig(relay.url, { debounceMs: 20, activityDebounceMs: 20 });
+    const fakeClaude = makeAgentBinary("claude");
+    const server = startPrivateServer("work", "cli-tools", [fakeClaude, "--ide"]);
+    const pid = Number(server.run("display-message", "-p", "-t", "%0", "#{pane_pid}").trim());
+    const transcript = join(home, "normal.jsonl");
+    const sessionId = "s-normal";
+
+    writeFileSync(transcript, "");
+    server.run("set-option", "-p", "-t", "%0", "@heeler-session", JSON.stringify({ session: sessionId, file: transcript, pid }));
+    server.run("set-option", "-p", "-t", "%0", "@heeler-status", "state=working:app=claude-code:turn=0:blocked=0");
+
+    register(entry(KEY_A, ALERT_A, { session: "tmux/work", activity: ACTIVITY_A }));
+
+    let polls = 0;
+    const follower = followTmuxServer(
+      "work",
+      { executable: server.executable, socket: server.socket },
+      {
+        pollIntervalMs: 25,
+        listener: combineTmuxListeners(
+          tmuxTranscriptListener(),
+          {
+            panesUpdated: () => {
+              polls += 1;
+            },
+          },
+          tmuxNotificationListener({ directory, log: (line) => logs.push(line) }),
+          tmuxLiveActivityListener({ directory, log: (line) => logs.push(line), hostName: HOST }),
+        ),
+      },
+    );
+    cleanups.push(() => follower.stop());
+
+    await waitFor(() => activitiesTo(ACTIVITY_A).length === 1, "working Live Activity push", PATIENCE_MS);
+
+    // Claude Code appends turn_duration before Stop hook finishes; let watcher polls land in between.
     appendFileSync(
       transcript,
       `${JSON.stringify({ type: "assistant", uuid: "a1", sessionId, message: { id: "m1", role: "assistant", content: [] } })}\n` +
         `${JSON.stringify({ type: "system", subtype: "turn_duration", uuid: "t1", parentUuid: "a1", durationMs: 250, sessionId })}\n`,
     );
+    const afterWrite = polls;
+    await waitFor(() => polls >= afterWrite + 2, "watcher polled turn_duration before Stop hook", PATIENCE_MS);
 
-    await waitFor(() => activitiesTo(ACTIVITY_A).at(-1)?.event === "end", "Live Activity ended on desktop decline", PATIENCE_MS);
-    await new Promise((done) => setTimeout(done, 130));
-    assert.equal(alertsTo(ALERT_A).length, 0, "no Blocked or Done alert sent after desktop decline");
+    // Stop hook runs against the unchanged working status -> advances turn to 1 and sets done.
+    const current = server.run("show-options", "-p", "-q", "-v", "-t", "%0", "@heeler-status").replace(/\n$/, "");
+    assert.equal(current, "state=working:app=claude-code:turn=0:blocked=0");
+    server.run("set-option", "-p", "-t", "%0", "@heeler-status", "state=done:app=claude-code:turn=1:blocked=0");
+
+    await waitFor(() => alertsTo(ALERT_A).length === 1, "Done alert delivered", PATIENCE_MS);
+    assert.equal(openAlert(alertsTo(ALERT_A)[0].body.envelope, KEY_A).status, "done");
+    await waitFor(() => activitiesTo(ACTIVITY_A).at(-1)?.counts?.done === 1, "Live Activity shows Done", PATIENCE_MS);
   });
 });
