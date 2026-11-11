@@ -64,8 +64,8 @@ struct UsageMiscLocalizationTests {
         #expect(AgentActivityCopy.count(2, status: "blocked") == "2 blocked")
         #expect(AgentActivityCopy.count(1, status: "done") == "1 done")
         #expect(AgentActivityCopy.count(3, status: "paused") == "3 paused")
-        #expect(AgentActivityCopy.status("working") == "working")
-        #expect(AgentActivityCopy.status("paused") == "paused")
+        #expect(AgentActivityCopy.lockScreenStatus("working") == "Working")
+        #expect(AgentActivityCopy.lockScreenStatus("paused") == "paused")
     }
 
     // MARK: Changes

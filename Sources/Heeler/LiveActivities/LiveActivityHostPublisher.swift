@@ -10,9 +10,13 @@ final class LiveActivityHostPublisher {
     }
 
     func publish(_ hosts: [Host]) {
+        let catalog = hosts.map { (id: $0.id.uuidString, name: $0.displayName) }
+        let labels = HostMonogram.labels(for: catalog)
         let snapshot = LiveActivityHostSnapshot(
             v: LiveActivityHostSnapshot.currentVersion,
-            hosts: hosts.map { .init(id: $0.id.uuidString, name: $0.displayName) })
+            hosts: catalog.map { entry in
+                .init(id: entry.id, name: entry.name, label: labels[entry.id])
+            })
         guard snapshot != published else { return }
         published = snapshot
         store.write(snapshot)

@@ -19,7 +19,8 @@ struct AgentLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             AgentActivityIsland.make(
                 presentation: AgentActivityDecryptor.presentation(for: context.state),
-                hostID: context.attributes.hostID)
+                hostID: context.attributes.hostID,
+                hostSnapshot: LiveActivityHostSnapshotStore().read())
         }
     }
 }
@@ -79,7 +80,8 @@ enum AgentActivitySemanticStyle {
         case .lockScreen:
             Color(uiColor: .label)
         case .island:
-            Color.primary
+            Color(uiColor: UIColor.label.resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: .dark)))
         }
     }
 
@@ -88,7 +90,8 @@ enum AgentActivitySemanticStyle {
         case .lockScreen:
             Color(uiColor: .secondaryLabel)
         case .island:
-            Color.secondary
+            Color(uiColor: UIColor.secondaryLabel.resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: .dark)))
         }
     }
 }
@@ -193,17 +196,19 @@ struct AgentActivityLockScreenView: View {
 
 // MARK: - Dynamic Island
 
-/// The island speaks in status tokens: a glyph whose shape names the status,
-/// then that status's count. The most urgent status leads; the others trail.
 enum AgentActivityIsland {
-    static func make(presentation: AgentActivityPresentation, hostID: String) -> DynamicIsland {
-        let counts = presentation.counts
+    static func make(
+        presentation: AgentActivityPresentation, hostID: String,
+        hostSnapshot: LiveActivityHostSnapshot? = LiveActivityHostSnapshotStore().read()
+    ) -> DynamicIsland {
+        let island = AgentActivityIslandPresentation(
+            presentation: presentation, hostID: hostID, hostSnapshot: hostSnapshot)
         return DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
-                AgentActivityIslandHeadline(counts: counts)
+                AgentActivityIslandHeadline(presentation: island)
             }
             DynamicIslandExpandedRegion(.trailing) {
-                AgentActivityIslandTrailingTokens(counts: counts)
+                AgentActivityIslandHeaderTrailing(presentation: island)
                     .frame(
                         maxWidth: .infinity, minHeight: AgentActivityIslandMetrics.headerHeight,
                         alignment: .trailing)
@@ -212,15 +217,15 @@ enum AgentActivityIsland {
                 AgentActivityIslandRows(presentation: presentation, hostID: hostID)
             }
         } compactLeading: {
-            AgentActivityCompactLeading(counts: counts)
+            AgentActivityCompactLeading(presentation: island)
         } compactTrailing: {
-            AgentActivityCompactTrailing(counts: counts)
+            AgentActivityCompactTrailing(presentation: island)
         } minimal: {
-            AgentActivityMinimal(counts: counts)
+            AgentActivityMinimal(presentation: island)
         }
         .contentMargins(
             [.leading, .trailing], AgentActivityIslandMetrics.expandedSideMargin, for: .expanded)
-        .keylineTint(islandKeylineTint(counts: counts))
+        .keylineTint(islandKeylineTint(counts: presentation.counts))
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
 
@@ -235,12 +240,17 @@ enum AgentActivityIsland {
 }
 
 enum AgentActivityIslandMetrics {
-    /// Glyph beside a count in the compact presentation and expanded tally.
-    static let tokenGlyph: CGFloat = 15
-    static let minimalGlyph: CGFloat = 13
+    static let compactMark: CGFloat = 13
+    static let compactSpacing: CGFloat = 4
+    static let compactTileHeight: CGFloat = 20
+    static let minimalMark: CGFloat = 9
+    static let minimalSingleMark: CGFloat = 15
+    static let minimalTileWidth: CGFloat = 24
+    static let minimalTileHeight: CGFloat = 22
+    static let hostTileHeight: CGFloat = 18
     static let rowGlyph: CGFloat = 13
-    /// The expanded headline glyph is this wide and each row glyph is centered
-    /// in a column this wide, so glyph centers and text edges share one line.
+    /// Each row glyph is centered in a column this wide, so glyph centers
+    /// and text edges share one line.
     static let markerColumn: CGFloat = 19
     /// Matches the gap between a row's marker and its text.
     static let markerSpacing: CGFloat = 7
@@ -327,116 +337,175 @@ struct AgentActivityStatusGlyph: View {
     }
 }
 
-/// One status on the island: its glyph, then its count, in that status's ink.
-struct AgentActivityStatusToken: View {
-    let status: String
-    /// Nil draws the glyph alone.
-    let count: Int?
-    var glyphSize = AgentActivityIslandMetrics.tokenGlyph
-    var font = Font.subheadline.weight(.semibold)
+struct AgentActivityIslandMark: View {
+    let mark: AgentActivityIslandPresentation.Mark
+    let size: CGFloat
 
     var body: some View {
-        HStack(spacing: 3) {
-            AgentActivityStatusGlyph(status: status, size: glyphSize)
-            if let count {
-                Text("\(count)")
-            }
+        if mark.isOverflow {
+            Image(systemName: "plus")
+                .font(.system(size: size * 0.9, weight: .bold))
+                .frame(width: size, height: size)
+                .foregroundStyle(AgentActivityStatusStyle.ink(for: "unknown", on: .island))
+        } else {
+            AgentActivityStatusGlyph(status: mark.status, size: size)
         }
-        .font(font.monospacedDigit())
-        .foregroundStyle(AgentActivityStatusStyle.ink(for: status, on: .island))
     }
 }
 
-/// The most urgent status. When it is the only status, its count moves across
-/// the camera to the trailing side, so the two sides never repeat one number.
 struct AgentActivityCompactLeading: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
+    let presentation: AgentActivityIslandPresentation
 
     var body: some View {
-        let items = counts.attentionItems
-        if let top = items.first {
-            AgentActivityStatusToken(status: top.status, count: items.count > 1 ? top.count : nil)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(AgentActivityCopy.count(top.count, status: top.status))
+        HStack(spacing: AgentActivityIslandMetrics.compactSpacing) {
+            if let label = presentation.hostLabel {
+                AgentActivityHostTile(label: label, height: AgentActivityIslandMetrics.compactTileHeight)
+            }
+            ForEach(Array(presentation.marks.prefix(2))) { @Sendable mark in
+                AgentActivityIslandMark(mark: mark, size: AgentActivityIslandMetrics.compactMark)
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .islandTypeSize()
     }
 }
 
 struct AgentActivityCompactTrailing: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
+    let presentation: AgentActivityIslandPresentation
 
     var body: some View {
-        let items = counts.attentionItems
-        if items.count == 1, let only = items.first {
-            Text("\(only.count)")
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(AgentActivityStatusStyle.ink(for: only.status, on: .island))
-                // The leading side already speaks this count.
-                .accessibilityHidden(true)
-        } else {
-            AgentActivityIslandTrailingTokens(counts: counts)
-        }
-    }
-}
-
-/// Every status after the most urgent one, in attention order.
-struct AgentActivityIslandTrailingTokens: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
-
-    var body: some View {
-        let rest = Array(counts.attentionItems.dropFirst())
-        if !rest.isEmpty {
-            HStack(spacing: 7) {
-                ForEach(rest, id: \.status) { @Sendable item in
-                    AgentActivityStatusToken(status: item.status, count: item.count)
-                }
+        HStack(spacing: AgentActivityIslandMetrics.compactSpacing) {
+            ForEach(Array(presentation.marks.dropFirst(2))) { @Sendable mark in
+                AgentActivityIslandMark(mark: mark, size: AgentActivityIslandMetrics.compactMark)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(AgentActivityNarration.countsLabel(rest))
-            .islandTypeSize()
         }
+        .accessibilityHidden(true)
+        .islandTypeSize()
     }
 }
 
 struct AgentActivityMinimal: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
+    let presentation: AgentActivityIslandPresentation
 
     var body: some View {
-        if let top = counts.attentionItems.first {
-            AgentActivityStatusToken(
-                status: top.status, count: top.count,
-                glyphSize: AgentActivityIslandMetrics.minimalGlyph,
-                font: .footnote.weight(.bold)
-            )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(AgentActivityNarration.countsLabel(counts.attentionItems))
+        Group {
+            if presentation.hasMultipleHosts, let label = presentation.hostLabel {
+                AgentActivityHostTile(
+                    label: label,
+                    status: presentation.minimalTileStatus,
+                    width: AgentActivityIslandMetrics.minimalTileWidth,
+                    height: AgentActivityIslandMetrics.minimalTileHeight)
+            } else {
+                AgentActivityMinimalMarks(marks: presentation.marks)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .islandTypeSize()
+    }
+}
+
+private struct AgentActivityMinimalMarks: View {
+    let marks: [AgentActivityIslandPresentation.Mark]
+
+    var body: some View {
+        let size = marks.count == 1
+            ? AgentActivityIslandMetrics.minimalSingleMark : AgentActivityIslandMetrics.minimalMark
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 2) {
+                ForEach(Array(marks.prefix(2))) { @Sendable mark in
+                    AgentActivityIslandMark(mark: mark, size: size)
+                }
+            }
+            if marks.count > 2 {
+                HStack(spacing: 2) {
+                    ForEach(Array(marks.dropFirst(2).prefix(2))) { @Sendable mark in
+                        AgentActivityIslandMark(mark: mark, size: size)
+                    }
+                }
+            }
         }
     }
 }
 
-/// Expanded leading region: the most urgent status, spelled out.
-struct AgentActivityIslandHeadline: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
+struct AgentActivityHostTile: View {
+    let label: String
+    var status: String?
+    var width: CGFloat? = nil
+    var height: CGFloat = AgentActivityIslandMetrics.hostTileHeight
 
     var body: some View {
-        if let top = counts.attentionItems.first {
-            HStack(spacing: AgentActivityIslandMetrics.markerSpacing) {
-                AgentActivityStatusGlyph(
-                    status: top.status, size: AgentActivityIslandMetrics.markerColumn)
-                Text(AgentActivityCopy.count(top.count, status: top.status))
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+        ZStack {
+            Text(label)
+                .font(.system(size: min(11, height * 0.62), weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.3)
+                .padding(.horizontal, width == nil ? 3 : 0)
+            if status == "done" {
+                Image(systemName: "checkmark")
+                    .font(.system(size: height * 0.34, weight: .bold))
+                    .foregroundStyle(AgentActivityStatusStyle.ink(for: "done", on: .island))
+                    .offset(x: height * 0.32, y: -height * 0.28)
             }
-            .foregroundStyle(AgentActivityStatusStyle.ink(for: top.status, on: .island))
-            .frame(
-                maxWidth: .infinity, minHeight: AgentActivityIslandMetrics.headerHeight,
-                alignment: .leading
-            )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(AgentActivityCopy.count(top.count, status: top.status))
-            .islandTypeSize()
         }
+        .frame(width: width ?? min(24, max(height, CGFloat(label.count * 7 + 6))), height: height)
+        .foregroundStyle(status == "blocked" ? Color.black : AgentActivitySemanticStyle.primary(on: .island))
+        .background(tileBackground)
+        .overlay(tileBorder)
+        .clipShape(RoundedRectangle(cornerRadius: height * 0.31, style: .continuous))
+    }
+
+    private var tileBackground: some View {
+        RoundedRectangle(cornerRadius: height * 0.31, style: .continuous)
+            .fill(status == "blocked"
+                ? AgentActivityStatusStyle.ink(for: "blocked", on: .island)
+                : status == nil ? Color.white.opacity(0.14) : Color.clear)
+    }
+
+    private var tileBorder: some View {
+        RoundedRectangle(cornerRadius: height * 0.31, style: .continuous)
+            .stroke(status == "working" || status == "done"
+                ? AgentActivityStatusStyle.ink(for: status ?? "unknown", on: .island)
+                : Color.clear, lineWidth: 1)
+    }
+}
+
+struct AgentActivityIslandHeadline: View {
+    let presentation: AgentActivityIslandPresentation
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if presentation.hasMultipleHosts, let label = presentation.hostLabel {
+                AgentActivityHostTile(label: label)
+            }
+            if let hostName = presentation.hostName {
+                Text(hostName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AgentActivitySemanticStyle.primary(on: .island))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: AgentActivityIslandMetrics.headerHeight, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.hostName ?? presentation.accessibilityLabel)
+        .islandTypeSize()
+    }
+}
+
+struct AgentActivityIslandHeaderTrailing: View {
+    let presentation: AgentActivityIslandPresentation
+
+    var body: some View {
+        HStack(spacing: AgentActivityIslandMetrics.compactSpacing) {
+            ForEach(presentation.marks) { @Sendable mark in
+                AgentActivityIslandMark(mark: mark, size: 10)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AgentActivityCopy.lockScreenCounts(presentation.counts))
+        .islandTypeSize()
     }
 }
 
@@ -454,10 +523,18 @@ struct AgentActivityIslandRows: View {
                     surface: .island,
                     minimumHeight: AgentActivityIslandMetrics.rowHeight(for: agent))
             }
+            if presentation.expandedAgents.isEmpty,
+                !AgentActivityCopy.lockScreenCounts(presentation.counts).isEmpty
+            {
+                Text(AgentActivityCopy.lockScreenCounts(presentation.counts))
+                    .font(.caption)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .island))
+                    .lineLimit(1)
+            }
             if presentation.overflowCount > 0 {
                 Text("+\(presentation.overflowCount) more")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .island))
                     .padding(
                         .leading,
                         AgentActivityIslandMetrics.markerColumn
@@ -474,13 +551,8 @@ enum AgentActivityNarration {
         for agent: AgentActivityDetails.AgentDetail, on surface: AgentActivitySurface = .island
     ) -> String {
         let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
-        let status = surface == .lockScreen
-            ? AgentActivityCopy.lockScreenStatus(agent.status) : AgentActivityCopy.status(agent.status)
+        let status = AgentActivityCopy.lockScreenStatus(agent.status)
         return (rows.filter { !$0.isEmpty } + [status]).joined(separator: ", ")
-    }
-
-    static func countsLabel(_ items: [(status: String, count: Int)]) -> String {
-        items.map { AgentActivityCopy.count($0.count, status: $0.status) }.joined(separator: ", ")
     }
 }
 
@@ -642,13 +714,11 @@ struct AgentActivityRowView: View {
                         .lineLimit(1)
                 }
             }
-            if surface == .lockScreen {
-                Spacer(minLength: 0)
-                Text(AgentActivityCopy.lockScreenStatus(agent.status))
-                    .font(.caption)
-                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
-                    .fixedSize(horizontal: true, vertical: false)
-            }
+            Spacer(minLength: 0)
+            Text(AgentActivityCopy.lockScreenStatus(agent.status))
+                .font(.caption)
+                .foregroundStyle(AgentActivitySemanticStyle.secondary(on: surface))
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, agent.rows == nil || surface == .island ? 0 : 1)
         .layoutPriority(1)
@@ -852,11 +922,14 @@ struct AgentActivityRowView: View {
         counts: AgentActivityAttributes.ContentState.Counts,
         colorScheme: ColorScheme = .light
     ) -> some View {
-        HStack(spacing: 0) {
-            AgentActivityCompactLeading(counts: counts)
+        let island = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: counts), hostID: "preview",
+            hostSnapshot: LiveActivityHostSnapshot(v: 1, hosts: [.init(id: "preview", name: "Laptop", label: "L")]))
+        return HStack(spacing: 0) {
+            AgentActivityCompactLeading(presentation: island)
             // Stands in for the camera housing between the two sides.
             Color.clear.frame(width: 126)
-            AgentActivityCompactTrailing(counts: counts)
+            AgentActivityCompactTrailing(presentation: island)
         }
         .padding(.horizontal, 11)
         .frame(height: 37)
@@ -869,7 +942,10 @@ struct AgentActivityRowView: View {
         counts: AgentActivityAttributes.ContentState.Counts,
         colorScheme: ColorScheme = .light
     ) -> some View {
-        AgentActivityMinimal(counts: counts)
+        let island = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: counts), hostID: "preview",
+            hostSnapshot: LiveActivityHostSnapshot(v: 1, hosts: [.init(id: "preview", name: "Laptop", label: "L")]))
+        return AgentActivityMinimal(presentation: island)
             .frame(width: 37, height: 37)
             .background(Color.black, in: Circle())
             .environment(\.colorScheme, colorScheme)
@@ -880,10 +956,22 @@ struct AgentActivityRowView: View {
         _ presentation: AgentActivityPresentation,
         colorScheme: ColorScheme = .light
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let hostName: String
+        if case .detailed(let details, _) = presentation {
+            hostName = details.hostName
+        } else {
+            hostName = "Laptop"
+        }
+        let island = AgentActivityIslandPresentation(
+            presentation: presentation, hostID: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E",
+            hostSnapshot: LiveActivityHostSnapshot(v: 1, hosts: [
+                .init(id: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E", name: hostName, label: "L"),
+                .init(id: "other", name: "Oak4d", label: "O"),
+            ]))
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 0) {
-                AgentActivityIslandHeadline(counts: presentation.counts)
-                AgentActivityIslandTrailingTokens(counts: presentation.counts)
+                AgentActivityIslandHeadline(presentation: island)
+                AgentActivityIslandHeaderTrailing(presentation: island)
             }
             AgentActivityIslandRows(
                 presentation: presentation, hostID: "6D8EC348-4DAF-455C-BA8F-5FCC41799C0E")
