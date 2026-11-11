@@ -24,7 +24,7 @@ enum PerfMainThreadSampler {
     /// The first stacks of a stall come close together, to catch a short
     /// one; a long stall then gets a few more, further apart.
     private static let denseSamples = 8
-    private static let mostSamples = 24
+    private static let mostSamples = 16
     private static let denseSpacing: UInt64 = 8_000_000
     private static let sparseSpacing: UInt64 = 50_000_000
     private static let pollMicroseconds: UInt32 = 4_000
@@ -151,8 +151,9 @@ enum PerfMainThreadSampler {
 
 // What the signal handler reads and writes. Globals, so the handler captures
 // nothing, and each written by one side at a time: the watchdog waits for
-// `perfSampleReady` before it reads what the handler wrote.
-private let perfSampleCapacity: Int32 = 128
+// `perfSampleReady` before it reads what the handler wrote. A SwiftUI update
+// under a collection view layout runs well past a hundred frames deep.
+private let perfSampleCapacity: Int32 = 224
 private nonisolated(unsafe) let perfSampleBuffer =
     UnsafeMutablePointer<UnsafeMutableRawPointer?>.allocate(capacity: Int(perfSampleCapacity))
 private nonisolated(unsafe) var perfSampleCount: Int32 = 0
