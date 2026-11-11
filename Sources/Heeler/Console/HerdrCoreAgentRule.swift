@@ -19,9 +19,10 @@ struct HerdrCoreAgent: Equatable, Sendable {
 /// Which Terminal is an Agent (ADR 0032). A Terminal is one while a known agent
 /// program holds its foreground, or while any program but a shell does and it
 /// has a Program Status whose `app` is missing or unknown here. A known `app`
-/// counts only while it names the foreground: nothing ties a report to a process,
-/// and the core keeps the report after its program left. The foreground is read
-/// after unwrapping launch wrappers, `sh -c` lines, interpreters and `npx` or
+/// counts only while it names the foreground, or under a `-NoExit` PowerShell
+/// that is not at its prompt: nothing ties a report to a process, and the core
+/// keeps the report after its program left. The foreground is read after
+/// unwrapping launch wrappers, `sh -c` lines, interpreters and `npx` or
 /// `npm exec`, and a cleared one leaves the last sample standing
 /// (`HerdrCoreTerminalRecord.noteForeground`). A `-NoExit` PowerShell, whose
 /// foreground never changes, is its shell while the Terminal's title is that
@@ -51,13 +52,11 @@ enum HerdrCoreAgentRule {
         case .other(let name):
             guard let report = record.status else { return nil }
             let app = report.app.trimmingCharacters(in: .whitespacesAndNewlines)
-            if shells.contains(baseName(name)) {
-                if let kind = reportedApps[app.lowercased()] ?? knownKind(app.lowercased()) {
-                    return HerdrCoreAgent(
-                        kind: kind, isKnownProgram: true, status: agentStatus(report.state))
-                }
+            if let kind = reportedApps[app.lowercased()] {
+                guard shells.contains(baseName(name)) else { return nil }
+                return HerdrCoreAgent(
+                    kind: kind, isKnownProgram: true, status: agentStatus(report.state))
             }
-            guard reportedApps[app.lowercased()] == nil else { return nil }
             return HerdrCoreAgent(
                 kind: genericKind(app: app, program: name), isKnownProgram: false,
                 status: agentStatus(report.state))
@@ -124,7 +123,7 @@ enum HerdrCoreAgentRule {
         guard !foreground.argv.isEmpty else {
             return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name]).program
         }
-        if showsPowerShellPrompt(foreground.argv, title: record.title, status: record.status) { return .shell }
+        if showsPowerShellPrompt(foreground.argv, title: record.title) { return .shell }
         let program = read(foreground.argv).program
         if case .other = program, let kind = knownKind(baseName(foreground.name)) {
             return .known(kind)
@@ -288,10 +287,7 @@ enum HerdrCoreAgentRule {
     /// after its program exits, so only the console's title shows the exit: it goes
     /// back to that PowerShell's own path (ADR 0032). A console nothing has titled
     /// reads an empty title instead, which keeps the foreground's reading.
-    private static func showsPowerShellPrompt(_ arguments: [String], title: String, status: HerdrCoreProgramStatus?) -> Bool {
-        if status?.state == "working" || status?.app.lowercased() == "antigravity" || status?.app.lowercased() == "agy" {
-            return false
-        }
+    private static func showsPowerShellPrompt(_ arguments: [String], title: String) -> Bool {
         guard let executable = arguments.first else { return false }
         let name = baseName(executable)
         guard name == "powershell" || name == "pwsh", arguments.dropFirst().contains(where: isNoExitOption)

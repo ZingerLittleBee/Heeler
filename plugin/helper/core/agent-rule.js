@@ -1,10 +1,11 @@
 // Which Terminal is an Agent (ADR 0032): the app's HerdrCoreAgentRule read on the
 // Host. A Terminal is one while a known agent program holds its foreground, or
 // while any program but a shell does and it has a Program Status whose `app` is
-// missing or unknown here. A known `app` counts only while it names the foreground:
-// nothing ties a report to a process, and the core keeps the report after its
-// program left. A `-NoExit` PowerShell, whose foreground never changes, is its shell
-// while the Terminal's title is that PowerShell's own path.
+// missing or unknown here. A known `app` counts only while it names the foreground,
+// or under a `-NoExit` PowerShell that is not at its prompt: nothing ties a report
+// to a process, and the core keeps the report after its program left. A `-NoExit`
+// PowerShell, whose foreground never changes, is its shell while the Terminal's
+// title is that PowerShell's own path.
 //
 // plugin/test-vectors/herdr-core-agent-rule-v1.json holds this rule's cases for both
 // sides, so a change here changes that file and the app's rule in one commit.
@@ -394,8 +395,7 @@ function isNoExitOption(argument) {
  * PowerShell's own path (ADR 0032). A console nothing has titled reads an empty title
  * instead, which keeps the foreground's reading.
  */
-function showsPowerShellPrompt(args, title, status) {
-  if (status?.state === "working" || ["antigravity", "agy"].includes(status?.app?.toLowerCase())) return false;
+function showsPowerShellPrompt(args, title) {
   if (args.length === 0) return false;
   const name = baseName(args[0]);
   if ((name !== "powershell" && name !== "pwsh") || !args.slice(1).some(isNoExitOption)) return false;
@@ -411,7 +411,7 @@ function programOf(record) {
   const args = strings(foreground.argv);
   const name = text(foreground.name);
   if (args.length === 0) return name === "" ? readLaunch(launch) : read([name]);
-  if (showsPowerShellPrompt(args, text(record.title), record.status)) return SHELL_PROGRAM;
+  if (showsPowerShellPrompt(args, text(record.title))) return SHELL_PROGRAM;
   const program = read(args);
   // A process whose arguments say nothing known can still be known by its OS
   // name, as a native install running from a versioned path is.
@@ -466,12 +466,10 @@ export function agentIn(record) {
     return { kind: program.known, known: true, status: foreign ? "unknown" : statusWord(report.state) };
   }
   if (report === null) return null;
-  if (SHELLS.has(baseName(program.other))) {
-    const kind = reportedKind(app.toLowerCase()) ?? knownKind(app.toLowerCase());
-    if (kind !== null) {
-      return { kind, known: true, status: statusWord(report.state) };
-    }
+  const reported = reportedKind(app.toLowerCase());
+  if (reported !== null) {
+    if (!SHELLS.has(baseName(program.other))) return null;
+    return { kind: reported, known: true, status: statusWord(report.state) };
   }
-  if (reportedKind(app.toLowerCase()) !== null) return null;
   return { kind: genericKind(app, program.other), known: false, status: statusWord(report.state) };
 }

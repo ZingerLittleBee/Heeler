@@ -4713,22 +4713,26 @@
     },
     {
       "name": "interactively started pi in PowerShell is recognized as pi",
-      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Pi 1.5.2 typed into a core PowerShell terminal, 2026-11-10 (#667, #678)",
       "record": {
         "address": "t1",
         "state": "live",
         "pid": 1234,
         "argv": [
-          "pwsh.exe",
-          "-NoExit"
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
         ],
         "cwd": "C:\\Users\\user",
         "foreground": {
           "pid": 1234,
-          "name": "pwsh.exe",
+          "name": "powershell.exe",
           "argv": [
-            "pwsh.exe",
-            "-NoExit"
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
           ],
           "cwd": "C:\\Users\\user"
         },
@@ -4737,7 +4741,7 @@
           "app": "pi"
         },
         "reported": true,
-        "title": "π - interactive"
+        "title": "π - user"
       },
       "expected": {
         "kind": "pi",
@@ -4746,95 +4750,27 @@
       }
     },
     {
-      "name": "interactively started antigravity in PowerShell while working is recognized as agy",
-      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
-      "record": {
-        "address": "t2",
-        "state": "live",
-        "pid": 5678,
-        "argv": [
-          "pwsh.exe",
-          "-NoExit"
-        ],
-        "cwd": "C:\\Users\\user",
-        "foreground": {
-          "pid": 5678,
-          "name": "pwsh.exe",
-          "argv": [
-            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-            "-NoExit",
-            "-Command",
-            "$global:__hc_prompt = 1"
-          ],
-          "cwd": "C:\\Users\\user"
-        },
-        "status": {
-          "state": "working",
-          "app": "antigravity"
-        },
-        "reported": true,
-        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
-      },
-      "expected": {
-        "kind": "agy",
-        "known": true,
-        "status": "working"
-      }
-    },
-    {
-      "name": "interactively started antigravity in PowerShell while idle is recognized as agy",
-      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
-      "record": {
-        "address": "t2b",
-        "state": "live",
-        "pid": 5679,
-        "argv": [
-          "pwsh.exe",
-          "-NoExit"
-        ],
-        "cwd": "C:\\Users\\user",
-        "foreground": {
-          "pid": 5679,
-          "name": "pwsh.exe",
-          "argv": [
-            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-            "-NoExit",
-            "-Command",
-            "$global:__hc_prompt = 1"
-          ],
-          "cwd": "C:\\Users\\user"
-        },
-        "status": {
-          "state": "idle",
-          "app": "antigravity"
-        },
-        "reported": true,
-        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
-      },
-      "expected": {
-        "kind": "agy",
-        "known": true,
-        "status": "idle"
-      }
-    },
-    {
       "name": "interactively started claude-code in PowerShell is recognized as claude",
-      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Claude Code 2.1.317 typed into a core PowerShell terminal, 2026-11-10 (#667, #678)",
       "record": {
         "address": "t3",
         "state": "live",
         "pid": 7890,
         "argv": [
-          "pwsh.exe",
-          "-NoExit"
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
         ],
         "cwd": "C:\\Users\\user",
         "foreground": {
           "pid": 7890,
-          "name": "pwsh.exe",
+          "name": "powershell.exe",
           "argv": [
-            "pwsh.exe",
-            "-NoExit"
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
           ],
           "cwd": "C:\\Users\\user"
         },
@@ -4853,22 +4789,26 @@
     },
     {
       "name": "interactively started codex in PowerShell while working is recognized as codex",
-      "source": "Heeler issue #667: interactive agents in Windows PowerShell",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Codex 0.163.0 typed into a core PowerShell terminal, 2026-11-10 (#667, #678)",
       "record": {
         "address": "t4",
         "state": "live",
         "pid": 8901,
         "argv": [
           "pwsh.exe",
-          "-NoExit"
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
         ],
         "cwd": "C:\\Users\\user",
         "foreground": {
           "pid": 8901,
           "name": "pwsh.exe",
           "argv": [
-            "pwsh.exe",
-            "-NoExit"
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
           ],
           "cwd": "C:\\Users\\user"
         },
@@ -4877,13 +4817,146 @@
           "app": "codex"
         },
         "reported": true,
-        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+        "title": "user"
       },
       "expected": {
         "kind": "codex",
         "known": true,
         "status": "working"
       }
+    },
+    {
+      "name": "interactively started antigravity in PowerShell while working is no Agent while titled with PowerShell's path",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Antigravity 1.5.5 typed into a core PowerShell terminal, 2026-11-10 (#667, #678): Antigravity never sets the console title, so the title remains PowerShell's own path",
+      "record": {
+        "address": "t2",
+        "state": "live",
+        "pid": 5678,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 5678,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "working",
+          "app": "antigravity"
+        },
+        "reported": true,
+        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "interactively started antigravity in PowerShell while idle is no Agent while titled with PowerShell's path",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Antigravity 1.5.5 typed into a core PowerShell terminal, 2026-11-10 (#667, #678): Antigravity never sets the console title and can leave an idle report after exiting",
+      "record": {
+        "address": "t2b",
+        "state": "live",
+        "pid": 5679,
+        "argv": [
+          "pwsh.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "pid": 5679,
+          "name": "pwsh.exe",
+          "argv": [
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+          ],
+          "cwd": "C:\\Users\\user"
+        },
+        "status": {
+          "state": "idle",
+          "app": "antigravity"
+        },
+        "reported": true,
+        "title": "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "an interactively started Agent in PowerShell that exited and cleared its report is no Agent",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Claude Code 2.1.317 and Pi 1.5.2 exited back to PowerShell's prompt, 2026-11-10 (#667, #678)",
+      "record": {
+        "address": "t7",
+        "state": "live",
+        "pid": 117771,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+          ],
+          "cwd": "C:\\Users\\user",
+          "name": "powershell.exe",
+          "pid": 117771
+        },
+        "status": null,
+        "reported": true,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
+    },
+    {
+      "name": "an interactively started Agent in PowerShell stopped mid-turn with its working report kept is no Agent once titled with PowerShell's path",
+      "source": "Native Windows (build 26200), herdr-core 0.1.20, Windows PowerShell 5.1, Claude Code 2.1.317 stopped mid-turn without clearing its report, 2026-11-10 (#678)",
+      "record": {
+        "address": "t8",
+        "state": "live",
+        "pid": 117772,
+        "argv": [
+          "powershell.exe",
+          "-NoExit",
+          "-Command",
+          "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+        ],
+        "cwd": "C:\\Users\\user",
+        "foreground": {
+          "argv": [
+            "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoExit",
+            "-Command",
+            "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $l = $ExecutionContext.SessionState.Path.CurrentLocation; if ($l.Provider.Name -eq 'FileSystem') { try { [Environment]::CurrentDirectory = $l.ProviderPath } catch {} }; $p }"
+          ],
+          "cwd": "C:\\Users\\user",
+          "name": "powershell.exe",
+          "pid": 117772
+        },
+        "status": {
+          "app": "claude-code",
+          "state": "working"
+        },
+        "reported": true,
+        "title": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "expected": null
     }
   ]
 }
