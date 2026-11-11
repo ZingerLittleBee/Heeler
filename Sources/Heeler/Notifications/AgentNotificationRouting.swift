@@ -7,6 +7,14 @@ import Foundation
 struct AgentNotificationTarget: Hashable, Sendable {
     let hostID: UUID
     let paneID: String
+    /// Authenticated permanent Core pin; legacy TUI targets have none.
+    let coreID: String?
+
+    init(hostID: UUID, paneID: String, coreID: String? = nil) {
+        self.hostID = hostID
+        self.paneID = paneID
+        self.coreID = coreID
+    }
 
     /// The Console row this target lands on.
     var agentID: ConsoleAgent.ID {

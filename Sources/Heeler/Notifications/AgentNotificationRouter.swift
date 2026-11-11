@@ -31,6 +31,9 @@ final class AgentNotificationRouter {
     @ObservationIgnored private var knownAgentIDs: Set<ConsoleAgent.ID> = []
     @ObservationIgnored private var pendingExpiry: Task<Void, Never>?
     @ObservationIgnored private let pendingGrace: Duration
+    /// Read live at navigation time, never cache a Core identity beside rows
+    /// whose Host/address may be reused after replacement.
+    @ObservationIgnored var coreIdentity: @MainActor (Host.ID) -> String? = { _ in nil }
 
     /// `pendingGrace` bounds how long a tap may wait for its pane: long
     /// enough for a cold launch to connect and sync its Hosts, short enough
@@ -50,7 +53,12 @@ final class AgentNotificationRouter {
             path = []
             return
         }
-        if knownAgentIDs.contains(target.agentID) {
+        let current = coreIdentity(target.hostID)
+        if let core = target.coreID, let current, core != current {
+            path = []
+            return
+        }
+        if knownAgentIDs.contains(target.agentID), target.coreID == nil || target.coreID == current {
             if path == [target.agentID] {
                 repeatLandings += 1
             } else {
@@ -68,8 +76,13 @@ final class AgentNotificationRouter {
     /// link is dropped instead of yanking them away.
     func agentsDidChange(_ agents: [ConsoleAgent]) {
         knownAgentIDs = Set(agents.map(\.id))
-        guard let pending = pendingTarget, knownAgentIDs.contains(pending.agentID)
-        else { return }
+        guard let pending = pendingTarget else { return }
+        let current = coreIdentity(pending.hostID)
+        if let core = pending.coreID, let current, core != current {
+            cancelPending()
+            return
+        }
+        guard knownAgentIDs.contains(pending.agentID), pending.coreID == nil || pending.coreID == current else { return }
         cancelPending()
         if path.isEmpty {
             path = [pending.agentID]
