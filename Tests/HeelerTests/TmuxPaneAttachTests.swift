@@ -452,7 +452,9 @@ struct TmuxPaneAttachTests {
         let listReadsBeforeLayout = await commands(on: tmux).filter { $0.first == "list-clients" }.count
         await tmux.setWindow("@0", width: 80, height: 20, layout: ScriptedTmuxHost.horizontalSplit(["%0", "%1"]))
         try await waitUntil("capped split after layout-change") { await tmux.windowSize("@0") == (120, 20) }
-        #expect(await commands(on: tmux).filter { $0.first == "list-clients" }.count > listReadsBeforeLayout)
+        try await waitUntil("ceiling re-read on layout-change") {
+            await commands(on: tmux).filter { $0.first == "list-clients" }.count > listReadsBeforeLayout
+        }
         #expect(await commands(on: tmux).contains(["refresh-client", "-C", "@0:120x20"]))
         #expect(await !commands(on: tmux).contains { $0.prefix(2) == ["refresh-client", "-C"] && $0.last == "@0:161x20" })
     }
@@ -560,8 +562,8 @@ struct TmuxPaneAttachTests {
             "%0",
             request: TerminalAttachRequest(
                 target: .terminal("%0"), viewer: .resumed, isViewed: false, surfaceHasHistory: true, cols: 80, rows: 24))
+        try await waitUntil("ignore-size on") { await tmux.controlClientsIgnoringSize() == [true] }
         #expect(await tmux.windowSize("@0") == (160, 48))
-        #expect(await tmux.controlClientsIgnoringSize() == [true])
         #expect(await commands(on: tmux).contains(["refresh-client", "-f", "ignore-size"]))
         #expect(await !commands(on: tmux).contains { $0.first == "refresh-client" && $0.contains("-C") })
         await hidden.end()
@@ -570,8 +572,13 @@ struct TmuxPaneAttachTests {
             "%0",
             request: TerminalAttachRequest(
                 target: .terminal("%0"), viewer: .observe, surfaceHasHistory: true, cols: 80, rows: 24))
+        try await waitUntil("ignore-size on") { await tmux.controlClientsIgnoringSize() == [true] }
         observing.setPresence(.viewed(nil))
+        var observingOutput = observing.output.makeAsyncIterator()
+        _ = try await observingOutput.next()
+        #expect(await tmux.controlClientsIgnoringSize() == [true])
         #expect(await tmux.windowSize("@0") == (160, 48))
+        #expect(await !commands(on: tmux).contains { $0.first == "refresh-client" && $0.contains("-C") })
         await observing.end()
     }
 
