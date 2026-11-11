@@ -55,7 +55,7 @@ struct SSHTransportConnector: TransportConnector {
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         HerdrCoreSSHTransport(
             connection: try await HeelerSSHTransport.connect(settings: settings),
-            session: settings.coreSessionName)
+            session: settings.coreSessionName, amuxEndpoint: settings.amuxCoreEndpoint)
     }
 }
 
@@ -99,6 +99,7 @@ extension SSHTransportSettings {
             socket: host.socketLocation)
         serverKind = host.serverKind
         coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
+        amuxCoreEndpoint = host.coreEndpoint
         // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
         // SSH PATH for every herdr exec; `socket` already names its socket.
         if let endpoint = host.herdrEndpoint,

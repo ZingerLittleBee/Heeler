@@ -15,9 +15,10 @@ share no Agents. A herdr-core Host whose core also serves the Herdr desktop
 app is still herdr-core; the app's organization is data the Host carries, not
 another kind. Adding a Host by hand saves it unconfirmed, a stored state no
 connection, Agent or notification reaches. Its Host detail detects the kinds
-and the user confirms one, once; a Pairing Code always adds a confirmed Herdr
-TUI Host. The Host keeps it: neither a connection nor an edit switches a Host
-to the other kind (ADR 0031).
+and the user confirms one, once. A Pairing Code adds a confirmed Herdr TUI
+Host for v1/v2, or an explicit amux-managed Core Host for v3 after live Core
+and native-helper verification. Neither a connection nor an edit switches a
+Host to the other kind (ADR 0031).
 _Avoid_: backend, server type, flavor
 
 **Herdr desktop app**:
@@ -94,7 +95,7 @@ The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Ke
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. The QR image is just its rendering.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. Version 3 identifies amux's isolated Core, its exact identity and read-only organization, and the amux-managed native helper contract and capabilities. It never creates a TUI Host or an independently installed Node Helper. The QR image is just its rendering.
 _Avoid_: QR code, invite
 
 **Herdr Endpoint**:

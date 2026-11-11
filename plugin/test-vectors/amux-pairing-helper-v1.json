@@ -1,0 +1,33 @@
+{
+  "code": "HERDR-PAIR:3:eyJhZGRycyI6WyIxOTIuMC4yLjQyIl0sInBvcnQiOjIyLCJ1c2VyIjoiYWRhIiwiZnAiOiJTSEEyNTY6NitqbmNOZGlic0cyY3F2Zm9MQXBHck84Q3ZJd0FFTXpzQitJaWxPczh0ZyIsInNvY2siOiIvVXNlcnMvYWRhLy5hbXV4L2NvcmUvcnVuL2Muc29jayIsImhlcmRyIjoiL1VzZXJzL2FkYS8uYW11eC9jb3JlL2Jpbi9oYyIsImtpbmQiOiJjb3JlIiwic2Vzc2lvbiI6ImFtdXgtcmVsZWFzZSIsImNvcmUiOnsiaWQiOiJjb3JlLWEiLCJnZW5lcmF0aW9uIjoxfSwib3JnYW5pemF0aW9uIjp7Im5hbWUiOiJhbXV4LW9yZ2FuaXphdGlvbiIsInNjaGVtYSI6MSwiYWNjZXNzIjoicmVhZC1vbmx5In0sImhlbHBlciI6eyJraW5kIjoiYW11eC1uYXRpdmUiLCJjb250cmFjdCI6MSwiZGlyZWN0b3J5IjoiL1VzZXJzL2FkYS8uYW11eC9jb3JlL21vYmlsZSIsImV4ZWN1dGFibGUiOiIvVXNlcnMvYWRhLy5hbXV4L2NvcmUvYmluL2FtdXgtaGVlbGVyIiwiY2FwYWJpbGl0aWVzIjpbImNvcmUtZXZlbnRzLXYxIiwic2Vlbi12MSIsIm5vdGlmeS12MSIsImFjdGl2aXR5LXYxIiwiZW5yb2xsLXYxIl19fQ",
+  "payload": {
+    "addrs": ["192.0.2.42"],
+    "port": 22,
+    "user": "ada",
+    "fp": "SHA256:6+jncNdibsG2cqvfoLApGrO8CvIwAEMzsB+IilOs8tg",
+    "sock": "/Users/ada/.amux/core/run/c.sock",
+    "herdr": "/Users/ada/.amux/core/bin/hc",
+    "kind": "core",
+    "session": "amux-release",
+    "core": {"id": "core-a", "generation": 1},
+    "organization": {"name": "amux-organization", "schema": 1, "access": "read-only"},
+    "helper": {
+      "kind": "amux-native",
+      "contract": 1,
+      "directory": "/Users/ada/.amux/core/mobile",
+      "executable": "/Users/ada/.amux/core/bin/amux-heeler",
+      "capabilities": ["core-events-v1", "seen-v1", "notify-v1", "activity-v1", "enroll-v1"]
+    }
+  },
+  "helperConfiguration": {
+    "schemaVersion": 1,
+    "serverKind": "core",
+    "coreID": "core-a",
+    "generation": 1,
+    "session": "amux-release",
+    "socket": "/Users/ada/.amux/core/run/c.sock",
+    "coreExecutable": "/Users/ada/.amux/core/bin/hc",
+    "directory": "/Users/ada/.amux/core/mobile",
+    "capabilities": ["core-events-v1", "seen-v1", "notify-v1", "activity-v1", "enroll-v1"]
+  }
+}

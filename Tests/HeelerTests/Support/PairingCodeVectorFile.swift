@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import Heeler
+
 /// The shared Pairing Code vectors from `plugin/test-vectors/`, the single
 /// source of truth for the envelope across the Node plugin and this app
 /// (ADR 0007). The JSON files are bundled into the test target as resources
@@ -43,6 +45,18 @@ struct PairingCodeVectorFile: Decodable, Sendable {
     static let shared: PairingCodeVectorFile = load("pairing-code-v1")
     /// `pairing-code-v2.json`: version 2 codes, which only the app decodes.
     static let v2: PairingCodeVectorFile = load("pairing-code-v2")
+
+    static func amuxCode() throws -> PairingCode {
+        try PairingCode.decode(amuxText())
+    }
+
+    static func amuxText() throws -> String {
+        struct Fixture: Decodable { let code: String }
+        guard let url = Bundle(for: BundleLocator.self).url(forResource: "amux-pairing-helper-v1", withExtension: "json") else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url)).code
+    }
 
     private static func load(_ resource: String) -> PairingCodeVectorFile {
         guard

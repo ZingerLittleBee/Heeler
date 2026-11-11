@@ -28,6 +28,19 @@ actor ScriptedHelperHost: HostHelperHost {
     static let macDomain = "user/501"
     static let macService = "user/501/dev.bybee.heeler.host-helper"
 
+    static let nativeIdentityJSON = #"{"kind":"amux-native","contract":1,"schemaVersion":1,"serverKind":"core","coreID":"core-a","generation":1,"session":"amux-release","socket":"/Users/ada/.amux/core/run/c.sock","coreExecutable":"/Users/ada/.amux/core/bin/hc","directory":"/Users/ada/.amux/core/mobile","capabilities":["core-events-v1","seen-v1","notify-v1","activity-v1","enroll-v1"]}"#
+    static let nativeHealthJSON = #"{"kind":"amux-native","contract":1,"coreID":"core-a","session":"amux-release","socket":"/Users/ada/.amux/core/run/c.sock","state":"ready","sequence":7}"#
+
+    static func native() async -> ScriptedHelperHost {
+        let host = ScriptedHelperHost()
+        await host.configure {
+            $0.nativeIdentity = nativeIdentityJSON
+            $0.nativeHealth = nativeHealthJSON
+            $0.seedFolder("/Users/ada/.amux/core/mobile", mode: 0o700)
+        }
+        return host
+    }
+
     /// launchd holds the agent.
     var agentLoaded = false
     /// What the next reads of `launchctl print` answer, as real outputs. Past
@@ -48,6 +61,9 @@ actor ScriptedHelperHost: HostHelperHost {
     var platform = HostPlatform.posix
     var kernel = "Linux"
     var hasSystemd = true
+    var nativeIdentity: String?
+    var nativeHealth: String?
+    var nativeExitStatus: Int32 = 0
     var node = HostHelperProbe.Node.found(path: ScriptedHelperHost.node)
     var lingerOn = true
     /// Whether anything answers at the user bus.
@@ -326,6 +342,10 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = tidy(directory: directory, record: record, waitsForQuiet: quietMinutes != nil)
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
+        case .amuxNative(_, let health):
+            guard let answer = health ? nativeHealth : nativeIdentity else { throw HostHelperError.unreadableHost }
+            lines = [answer]
+            status = nativeExitStatus
         }
         if let afterBootout, isStoppedByBootout(script.step) {
             self.afterBootout = nil
@@ -564,6 +584,7 @@ actor ScriptedHelperHost: HostHelperHost {
         case .removeTree(let path): "removeTree \(path)"
         case .tidyInterruptedInstall(_, _, let quietMinutes): quietMinutes == nil ? "tidy" : "tidy when quiet"
         case .usageQuery(_, _, let session): "usageQuery \(session)"
+        case .amuxNative: "amuxNative"
         }
     }
 }

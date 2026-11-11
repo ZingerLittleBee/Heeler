@@ -395,6 +395,7 @@ final class HostOnboardingStore {
         let credentials = credentials
         let overlays = overlays
         let store = HostHelperStore(
+            amuxEndpoint: host.coreEndpoint,
             connect: {
                 let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
                 return try await connector.connectCore(

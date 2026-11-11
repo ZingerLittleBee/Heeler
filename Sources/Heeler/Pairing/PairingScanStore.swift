@@ -137,8 +137,15 @@ final class PairingScanStore {
                 attemptCode = code.withoutBootstrap
                 enrolledViaBootstrap = true
             }
-            failure = Self.failure(
-                for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
+            if code.coreEndpoint != nil, case .verificationFailed(let detail) = error {
+                failure = PairingFailure(
+                    step: .verify,
+                    message: String(localized: "The paired Core or native helper could not be verified. Check Mobile settings in amux, then try again. (\(detail))"),
+                    canRetry: true)
+            } else {
+                failure = Self.failure(
+                    for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
+            }
             return
         } catch is CancellationError {
             // The scan sheet went away mid-ceremony; nobody is left to tell.
@@ -166,6 +173,7 @@ final class PairingScanStore {
             username: result.username,
             authMethod: .deviceKey,
             herdrEndpoint: code.endpoint,
+            coreEndpoint: code.coreEndpoint,
             routes: addresses.enumerated().map { index, address in
                 // The first route takes the Host's id, as a Host saved
                 // before routes does.
@@ -284,6 +292,6 @@ extension PairingCode {
     fileprivate var withoutBootstrap: PairingCode {
         PairingCode(
             addresses: addresses, port: port, username: username,
-            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint)
+            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint, coreEndpoint: coreEndpoint)
     }
 }

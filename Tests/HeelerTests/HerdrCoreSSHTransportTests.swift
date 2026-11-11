@@ -9,6 +9,20 @@ import Testing
 @Suite struct HerdrCoreSSHTransportTests {
     // MARK: Connecting
 
+    @Test func pairedCoreRejectsAReplacementBeforeAnyDiscovery() async throws {
+        let endpoint = try #require(PairingCodeVectorFile.amuxCode().coreEndpoint)
+        let host = ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(
+            executable: endpoint.executablePath, defaultPath: endpoint.socketPath, socketFile: true),
+            channel: .answersHello(ScriptedCoreHost.helloReply()))
+        let transport = HerdrCoreSSHTransport(connection: host, session: endpoint.session,
+                                             amuxEndpoint: endpoint, nonce: { ScriptedCoreHost.nonce })
+        await #expect(throws: TransportError.self) { try await transport.hello() }
+        let socket = try #require(await host.socket)
+        #expect(await socket.isClosed)
+        #expect(await host.log.last == "open \(endpoint.socketPath)")
+        try await transport.close()
+    }
+
     @Test func aRunningCoreConnectsOverTheLockedSocketWithOneFramedHello() async throws {
         let host = ScriptedCoreHost(
             locator: ScriptedCoreHost.locatorLines(lock: "/tmp/elsewhere.sock", socketFile: true),

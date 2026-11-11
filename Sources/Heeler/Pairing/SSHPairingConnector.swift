@@ -16,6 +16,7 @@ struct SSHPairingConnector: PairingConnector {
     /// Recognizes Tailscale SSH from a server identification string. A
     /// property only so the e2e suite can stand the local OpenSSH in for it.
     var identifiesTailscaleSSH: @Sendable (String?) -> Bool = Self.isTailscaleSSH
+    var nonce: @Sendable () -> String = { UUID().uuidString }
 
     private static let authenticationTimeout: Duration = .seconds(10)
     private static let cleanupTimeout: Duration = .seconds(2)
@@ -36,7 +37,7 @@ struct SSHPairingConnector: PairingConnector {
                     detail: "The Host did not accept the Device Key; it is not enrolled there yet."
                 ))
             onStep(.verify)
-            await Self.close(reached.connection)
+            try await finishVerification(code: code, over: reached.connection)
             return PairingResult(
                 address: reached.address,
                 port: code.port,
@@ -236,8 +237,49 @@ struct SSHPairingConnector: PairingConnector {
 
     // MARK: Verify
 
+    /// Consumes an authenticated, host-key-pinned connection. Verify the live
+    /// framed Core identity before asking only the paired native helper. A
+    /// successful SSH login alone is not proof of the scanned endpoint.
+    func verifyCoreEndpoint(_ endpoint: AmuxCoreEndpoint, over connection: any HerdrCoreHostConnection) async throws {
+        let transport = HerdrCoreSSHTransport(
+            connection: connection, session: endpoint.session, amuxEndpoint: endpoint, nonce: nonce)
+        do {
+            try Task.checkCancellation()
+            _ = try await transport.hello()
+            let native = try await AmuxNativeHelperReading.read(
+                endpoint: endpoint, over: transport.hostHelperHost, nonce: nonce)
+            guard native.state == .ready else {
+                throw PairingCeremonyError.verificationFailed(detail: native.detail)
+            }
+            try Task.checkCancellation()
+            try await transport.close()
+        } catch {
+            try? await transport.close()
+            if error is CancellationError || Task.isCancelled { throw CancellationError() }
+            if let ceremony = error as? PairingCeremonyError { throw ceremony }
+            if case TransportError.malformedResponse(let message) = error {
+                throw PairingCeremonyError.verificationFailed(detail: message)
+            }
+            if let transport = error as? TransportError {
+                throw PairingCeremonyError.verificationFailed(detail: transport.presentation.message)
+            }
+            if let helper = error as? HostHelperError {
+                throw PairingCeremonyError.verificationFailed(detail: helper.message)
+            }
+            throw PairingCeremonyError.verificationFailed(detail: "\(error)")
+        }
+    }
+
+    private func finishVerification(code: PairingCode, over connection: SSHConnection) async throws {
+        if let endpoint = code.coreEndpoint {
+            try await verifyCoreEndpoint(endpoint, over: HeelerSSHTransport(connection: connection, socketPath: endpoint.socketPath))
+        } else {
+            await Self.close(connection)
+        }
+    }
+
     /// Reconnects to the successful candidate with the same Host Key pin and
-    /// the Device Key. A PairingResult exists only after this authentication.
+    /// the Device Key. Core pairing also verifies its live Core/native helper.
     private func verify(
         code: PairingCode,
         address: String,
@@ -275,7 +317,7 @@ struct SSHPairingConnector: PairingConnector {
                 connection,
                 username: code.username,
                 identity: deviceKey)
-            await Self.close(connection)
+            try await finishVerification(code: code, over: connection)
             return PairingResult(
                 address: address,
                 port: code.port,
@@ -293,6 +335,7 @@ struct SSHPairingConnector: PairingConnector {
             throw CancellationError()
         } catch {
             await Self.close(connection)
+            if let ceremony = error as? PairingCeremonyError { throw ceremony }
             throw PairingCeremonyError.verificationFailed(detail: "\(error)")
         }
     }

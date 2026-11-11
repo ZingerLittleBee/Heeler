@@ -8,11 +8,15 @@ struct HostHelperFiles: HostNotificationFiles {
     let host: any HostHelperHost
     /// The Host's core session, as the user wrote it. Usage is read per session.
     var session = ""
+    var amuxEndpoint: AmuxCoreEndpoint? = nil
     var nonce: @Sendable () -> String = { UUID().uuidString }
 
     /// The Helper's report for this session. Throws `AgentUsageHostHelperNeed`
     /// when no Helper here can answer.
     func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+        guard amuxEndpoint == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Usage through the amux native helper"))
+        }
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
             throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
@@ -49,10 +53,16 @@ struct HostHelperFiles: HostNotificationFiles {
     }
 
     func readUsageAccountFile() async throws -> Data? {
-        try await read(UsageAccountFile.fileName)
+        guard amuxEndpoint == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Usage Accounts through the amux native helper"))
+        }
+        return try await read(UsageAccountFile.fileName)
     }
 
     func replaceUsageAccountFile(_ contents: Data) async throws {
+        guard amuxEndpoint == nil else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Usage Accounts through the amux native helper"))
+        }
         try await replace(UsageAccountFile.fileName, contents)
     }
 
@@ -62,7 +72,10 @@ struct HostHelperFiles: HostNotificationFiles {
     /// left out. It takes no second health read: a user waiting on a switch gets
     /// what launchd says now, and Host detail is where health is settled.
     func readHostHelper() async throws -> HostHelperReading? {
-        try await HostHelperInstaller(
+        if let amuxEndpoint {
+            return try await HostHelperReading(native: AmuxNativeHelperReading.read(endpoint: amuxEndpoint, over: host, nonce: nonce))
+        }
+        return try await HostHelperInstaller(
             host: host, nonce: nonce, bundle: { throw HostHelperBundle.LoadError.missing }
         ).readLoadingAgent()
     }
@@ -72,7 +85,7 @@ struct HostHelperFiles: HostNotificationFiles {
     }
 
     func removeSeenMarks(keyID: String) async throws {
-        let path = try await layout().file(named: HerdrCoreSeenMarkFile.fileName(keyID: keyID))
+        let path = try await directory() + "/" + HerdrCoreSeenMarkFile.fileName(keyID: keyID)
         let result = try await host.runHostHelperScript(HostHelperScript(.removeFiles([path]), nonce: nonce()))
         guard result.exitStatus == 0 else {
             throw NotificationRegistrationError.writeFailed(detail: String(decoding: result.stderr, as: UTF8.self))
@@ -80,14 +93,25 @@ struct HostHelperFiles: HostNotificationFiles {
     }
 
     private func read(_ name: String) async throws -> Data? {
-        let layout = try await layout()
-        return try await host.readHostHelperFile(at: layout.file(named: name), privateDirectory: layout.directory)
+        let directory = try await directory()
+        return try await host.readHostHelperFile(at: directory + "/" + name, privateDirectory: directory)
     }
 
     private func replace(_ name: String, _ contents: Data) async throws {
-        let layout = try await layout()
+        let directory = try await directory()
         try await host.replaceHostHelperFile(
-            contents, at: layout.file(named: name), privateDirectory: layout.directory)
+            contents, at: directory + "/" + name, privateDirectory: directory)
+    }
+
+    private func directory() async throws -> String {
+        if let amuxEndpoint {
+            let reading = try await AmuxNativeHelperReading.read(endpoint: amuxEndpoint, over: host, nonce: nonce)
+            guard reading.state == .ready else {
+                throw TransportError.malformedResponse(reading.detail)
+            }
+            return amuxEndpoint.helper.directory
+        }
+        return try await layout().directory
     }
 
     private func layout() async throws -> HostHelperLayout {

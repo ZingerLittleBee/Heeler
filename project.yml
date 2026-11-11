@@ -305,6 +305,8 @@ targets:
         buildPhase: resources
       - path: plugin/test-vectors/amux-organization-v1.json
         buildPhase: resources
+      - path: plugin/test-vectors/amux-pairing-helper-v1.json
+        buildPhase: resources
       # Scrubbed native Windows capture, replayed by the Swift link tests.
       - path: plugin/test-vectors/herdr-core-frames-windows-v1.json
         buildPhase: resources
