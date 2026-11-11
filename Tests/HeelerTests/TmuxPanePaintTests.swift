@@ -274,11 +274,17 @@ struct TmuxPanePaintTests {
         terminal.receive(painted)
         terminal.receive(Data("\r\nrow five\r\nrow six".utf8))
 
+        // Ghostty applies host output off the reading thread, so the first
+        // frame that contains "row six" can still be mid-update.
+        let expected = ["row three", "row 4!", "row five", "row six"]
         var viewport: [String] = []
         for _ in 0..<200 {
-            if let read = terminal.terminalSession.readViewportText(), read.contains("row six") {
-                viewport = read.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                break
+            if let read = terminal.terminalSession.readViewportText() {
+                let rows = read.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                if rows.prefix(4).map({ $0.trimmingCharacters(in: .whitespaces) }) == expected {
+                    viewport = rows
+                    break
+                }
             }
             try await Task.sleep(for: .milliseconds(10))
         }
