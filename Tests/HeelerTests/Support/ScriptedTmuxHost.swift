@@ -77,6 +77,15 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// The Host Helper seam on the same scripted file tree, rooted at `Self.home`.
     nonisolated let helper: ScriptedHelperHost
     private var refusesHookFiles = false
+    private struct SeededProcess {
+        var variables: [String: String?]
+        var name: String?
+        var parent: Int?
+    }
+    private var seededProcesses: [Int: SeededProcess] = [:]
+    private var unavailableProcesses: Set<Int> = []
+    private var allProcessesUnavailable = false
+    private(set) var processVariableReads: [String] = []
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -1095,6 +1104,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.hostPlatform()
         }
 
+        func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+            try await requireConnected()
+            return try await host.readProcesses(request)
+        }
+
         func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
             try await requireConnected()
             return try await host.runHostHelperScript(script)
@@ -1175,6 +1189,90 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     func hostPlatform() async throws -> HostPlatform {
         try await helper.hostPlatform()
+    }
+
+    /// Seeds one process's environment, name and parent for `readProcesses`.
+    func setProcessEnvironment(
+        _ variables: [String: String?], forProcess pid: Int, name: String? = nil, parent: Int? = nil
+    ) {
+        seededProcesses[pid] = SeededProcess(variables: variables, name: name, parent: parent)
+        unavailableProcesses.remove(pid)
+    }
+
+    /// Marks `pid`, or every process when nil, unreadable by `readProcesses`.
+    func makeProcessEnvironmentUnavailable(forProcess pid: Int? = nil) {
+        if let pid {
+            unavailableProcesses.insert(pid)
+        } else {
+            allProcessesUnavailable = true
+        }
+    }
+
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        processVariableReads.append(contentsOf: request.valuesOf)
+        guard !allProcessesUnavailable else { return [:] }
+
+        func listedPane(for pid: Int) -> TmuxInventory.Pane? {
+            for (socket, listed) in panes where servers[socket] != nil {
+                if let pane = listed.first(where: { $0.processID == pid }) { return pane }
+            }
+            return nil
+        }
+
+        func exists(_ pid: Int) -> Bool {
+            seededProcesses[pid] != nil || listedPane(for: pid) != nil
+        }
+
+        var walkedPIDs: [Int] = []
+        if let root = request.descendantsOf {
+            guard let rootPID = Int(root), exists(rootPID), !unavailableProcesses.contains(rootPID) else {
+                return [:]
+            }
+            var queue = [rootPID]
+            var seen: Set<Int> = [rootPID]
+            while !queue.isEmpty {
+                let current = queue.removeFirst()
+                let children = seededProcesses.keys.sorted().filter {
+                    seededProcesses[$0]?.parent == current && !seen.contains($0)
+                }
+                for child in children {
+                    seen.insert(child)
+                    walkedPIDs.append(child)
+                    queue.append(child)
+                }
+            }
+        }
+
+        let targetPIDs = Array(
+            Set(request.pids.compactMap(Int.init) + walkedPIDs)
+        ).sorted()
+        var result: [String: HostProcessReader.Facts] = [:]
+        for pid in targetPIDs where exists(pid) {
+            let key = String(pid)
+            var fact = HostProcessReader.Facts()
+            let seeded = seededProcesses[pid]
+            let pane = listedPane(for: pid)
+            if request.descendantsOf != nil {
+                fact.parent = String(seeded?.parent ?? 1)
+                let fallback = pane?.command.isEmpty == false ? pane?.command : nil
+                fact.name = seeded?.name ?? fallback ?? "grok"
+                if request.descendantsOf == key {
+                    fact.descendants = .value(walkedPIDs.map(String.init))
+                }
+            }
+            let readable = !unavailableProcesses.contains(pid)
+            for variable in request.valuesOf {
+                if !readable {
+                    fact.variables[variable] = .unavailable
+                } else if let entry = seeded?.variables[variable] {
+                    fact.variables[variable] = entry.map(HostProcessReader.Variable.value) ?? .unset
+                } else {
+                    fact.variables[variable] = .unset
+                }
+            }
+            result[key] = fact
+        }
+        return result
     }
 
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {

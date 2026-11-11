@@ -1551,12 +1551,11 @@ final class ConsoleStore {
                     .map { (projection.host.id, $0) }
             })
         coreStatusExplanations = Dictionary(
-            uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
-                .flatMap { projection in
-                    projection.statusExplanations.map {
-                        (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
-                    }
-                })
+            uniqueKeysWithValues: current.lazy.flatMap { projection in
+                projection.statusExplanations.map {
+                    (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
+                }
+            })
         let nextDesktopAppNaming = Dictionary(
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .compactMap { projection in
@@ -2136,11 +2135,14 @@ final class ConsoleStore {
     /// Agent's, whose `GROK_HOME` says which file its program reads.
     /// The edit this explanation may offer, where its Host can make it: it reads
     /// the Agent's environment and writes a POSIX path, neither of which a native
-    /// Windows core Host serves (ADR 0033).
+    /// Windows core Host serves (ADRs 0033 and 0044).
     func grokBuildEditFlow(
         for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
     ) -> HarnessConfigEditFlow? {
-        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).hostScripts else { return nil }
+        let supportsEdit =
+            capabilities(for: hostID).hostScripts
+            || catalog.first(where: { $0.id == hostID })?.serverKind == .tmux
+        guard explanation.offersGrokBuildEdit, supportsEdit else { return nil }
         return grokBuildEditFlow(on: hostID, process: explanation.agentProcess)
     }
 
@@ -2246,17 +2248,25 @@ final class ConsoleStore {
     }
 
     private func grokBuildEdit(on hostID: Host.ID, process: Int?) async throws -> HarnessConfigEdit {
-        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
-            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
-        }
-        // Only an environment that was read can say `GROK_HOME` is unset. Taking an
-        // unreadable one for unset would edit a file this Agent may not read.
-        guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
         let grokHome: String?
-        switch await core.processVariable("GROK_HOME", pid: process) {
-        case .value(let value): grokHome = value
-        case .unset: grokHome = nil
-        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        if let core = projections[hostID] as? HerdrCoreConsoleProjection {
+            // Only an environment that was read can say `GROK_HOME` is unset. Taking an
+            // unreadable one for unset would edit a file this Agent may not read.
+            guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+            switch await core.processVariable("GROK_HOME", pid: process) {
+            case .value(let value): grokHome = value
+            case .unset: grokHome = nil
+            case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+        } else if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+            switch await tmux.grokBuildProcessVariable("GROK_HOME", paneProcessID: process) {
+            case .value(let value): grokHome = value
+            case .unset: grokHome = nil
+            case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+        } else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
         }
         let home = try await harnessEditServices(on: hostID).hostHomeDirectory()
         guard let path = GrokBuildProgramStatusEdit.configPath(grokHome: grokHome, home: home) else {

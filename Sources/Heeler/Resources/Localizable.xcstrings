@@ -960,6 +960,7 @@
         }
       }
     },
+    "%@ has no status because this Pane already has a pipe-pane of your own, which Heeler leaves alone." : {},
     "%@ has not reported a state yet." : {
       "comment" : "%@ is a program name",
       "localizations" : {
@@ -1002,6 +1003,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 尚未回報狀態。"
+          }
+        }
+      }
+    },
+    "%@ hasn't reported a status. In tmux its status comes from the Host Helper's extension." : {},
+    "%@ hasn't reported a status. In tmux its status is read by the Host Helper, from %@ %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ hasn't reported a status. In tmux its status is read by the Host Helper, from %2$@ %3$@."
           }
         }
       }
@@ -13217,6 +13229,7 @@
     },
     "Claude Code Agents Heeler starts report their status already. Adding the hooks does the same for ones you start yourself." : {},
     "Claude Code Hooks" : {},
+    "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks." : {},
     "Claude Code is reading or changing a setting. Try again in a moment." : {
       "comment" : "Terminal input refusal while Claude Code reads or changes a setting.",
       "localizations" : {
@@ -23531,6 +23544,8 @@
         }
       }
     },
+    "Grok Build hasn't reported a status." : {},
+    "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper." : {},
     "Grok Build is already cancelling the turn." : {
       "localizations" : {
         "ja" : {
@@ -52457,6 +52472,7 @@
         }
       }
     },
+    "The Host Helper has not reached this tmux server yet. Start tmux if it is not running." : {},
     "The Host Helper is gone, but its OpenCode edit stays in %@. %@" : {
       "comment" : "First %@ is a file path, second the reason",
       "localizations" : {
@@ -65867,6 +65883,7 @@
         }
       }
     },
+    "Waiting for tmux" : {},
     "Waiting to join" : {
       "comment" : "Overlay network status: waiting for an admin's approval or a config server's network assignment",
       "localizations" : {
@@ -66780,6 +66797,7 @@
         }
       }
     },
+    "Writing the stored tmux paths" : {},
     "Wrote" : {
       "comment" : "A file a command wrote whole",
       "localizations" : {

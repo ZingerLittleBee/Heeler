@@ -398,4 +398,106 @@ struct TmuxConsoleTests {
         #expect(action(.connected, passed: true, waits: false) == .none)
         #expect(action(.notRunning, passed: false, waits: true) == .none)
     }
+
+    // MARK: Unknown status explanations and Grok Build's edit
+
+    @Test func unknownAgentsExplainTheirStatusAndOfferGrokBuildsEdit() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, processID: 900, command: "codex", hasPipe: true, pipeMark: "", arguments: ["codex"]),
+            .make(pane: 1, processID: 1000, command: "grok", arguments: ["grok"]),
+            .make(
+                pane: 2, processID: 1100, command: "claude",
+                status: "state=idle:app=claude-code:turn=1:blocked=0", arguments: ["claude"]),
+        ])
+        await tmux.setProcessEnvironment([:], forProcess: 1000, name: "zsh")
+        await tmux.setProcessEnvironment(["GROK_HOME": "/opt/grok"], forProcess: 2000, name: "grok", parent: 1000)
+
+        let console = await started(tmux)
+        let store = console.store
+        defer { store.setHosts([]) }
+        try await waitUntil("the server's inventory") { !store.hostsAwaitingSnapshot.contains(host.id) }
+
+        let pipedID = ConsoleAgent.ID(hostID: host.id, paneID: "%0")
+        let grokID = ConsoleAgent.ID(hostID: host.id, paneID: "%1")
+        let claudeID = ConsoleAgent.ID(hostID: host.id, paneID: "%2")
+
+        let piped = try #require(store.coreStatusExplanations[pipedID])
+        #expect(
+            piped.text
+                == "Codex has no status because this Pane already has a pipe-pane of your own, which Heeler leaves alone.")
+        #expect(!piped.offersGrokBuildEdit)
+        #expect(store.grokBuildEditFlow(for: piped, on: host.id) == nil)
+        #expect(store.coreStatusExplanations[claudeID] == nil)
+
+        let grok = try #require(store.coreStatusExplanations[grokID])
+        #expect(grok.offersGrokBuildEdit)
+        let flow = try #require(store.grokBuildEditFlow(for: grok, on: host.id))
+
+        await flow.review()
+        guard case .review(let change) = flow.phase else {
+            Issue.record("expected a review, got \(flow.phase)")
+            return
+        }
+        #expect(change.path == "/opt/grok/config.toml")
+        #expect(await tmux.hostFiles["/opt/grok/config.toml"] == nil)
+
+        await flow.accept()
+        #expect(
+            await tmux.hostFiles["/opt/grok/config.toml"]
+                == Data("[ui.notifications]\nprogram_status = \"on\"\n".utf8))
+        let applied = try #require(store.harnessEdits.edits(on: host.id).first)
+        #expect(applied.path == "/opt/grok/config.toml")
+
+        await store.harnessEditFlow(for: applied, on: host.id).undo()
+        #expect(await tmux.hostFiles["/opt/grok/config.toml"] == nil)
+        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
+
+        await tmux.changePanes { panes in
+            panes[1].status = "state=idle:app=grok-build:turn=0:blocked=0"
+        }
+        try await waitUntil("Grok Build's reported status") {
+            store.coreStatusExplanations[grokID] == nil
+        }
+    }
+
+    @Test func grokBuildsEditReadsDefaultHomeOrRefusesWhenEnvironmentCannotBeRead() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, processID: 1200, command: "grok", arguments: ["grok"]),
+            .make(pane: 1, processID: 1300, command: "grok", arguments: ["grok"]),
+        ])
+        await tmux.setProcessEnvironment([:], forProcess: 1200, name: "grok")
+        // In `%1`, Grok Build exited back to zsh before the user reviewed the edit.
+        await tmux.setProcessEnvironment([:], forProcess: 1300, name: "zsh")
+
+        let console = await started(tmux)
+        let store = console.store
+        defer { store.setHosts([]) }
+        try await waitUntil("the server's inventory") { !store.hostsAwaitingSnapshot.contains(host.id) }
+
+        let directFlow = store.grokBuildEditFlow(on: host.id, process: 1200)
+        await directFlow.review()
+        guard case .review(let directChange) = directFlow.phase else {
+            Issue.record("expected a review, got \(directFlow.phase)")
+            return
+        }
+        #expect(directChange.path == "\(ScriptedTmuxHost.home)/.grok/config.toml")
+
+        let exitedFlow = store.grokBuildEditFlow(on: host.id, process: 1300)
+        await exitedFlow.review()
+        #expect(
+            exitedFlow.phase
+                == .failed(
+                    "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."))
+
+        await tmux.makeProcessEnvironmentUnavailable(forProcess: 1200)
+        let unreadableFlow = store.grokBuildEditFlow(on: host.id, process: 1200)
+        await unreadableFlow.review()
+        #expect(
+            unreadableFlow.phase
+                == .failed(
+                    "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."))
+        #expect(await tmux.hostFiles.isEmpty)
+    }
 }

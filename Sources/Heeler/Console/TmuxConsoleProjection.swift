@@ -44,6 +44,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var sidebarRevision: UInt64 = 0
     let terminalLabelKeys: [String] = []
 
@@ -233,6 +234,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         workspaces = []
         terminalsByPane = [:]
         agentsByPane = [:]
+        statusExplanations = [:]
         leakedEnvironmentNames = []
     }
 
@@ -280,6 +282,12 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         terminalsByPane = rows
         agentsByPane = agents
         lastKnownAgentsByPane = agents
+        statusExplanations = Dictionary(
+            uniqueKeysWithValues: organization.panes.compactMap { pane in
+                guard rows[pane.paneID]?.isAgent == true else { return nil }
+                let status = statuses[pane.paneID] ?? .unknown
+                return HerdrCoreStatusExplanation(pane: pane, agentStatus: status).map { (pane.paneID, $0) }
+            })
         workspaces = builder.workspaceRows()
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
@@ -623,6 +631,45 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {
         try await operation(try await session.withTransport { $0.hostServices })
+    }
+
+    /// One variable of the Grok Build process running in a Pane started at
+    /// `paneProcessID`, or `.unavailable` when the process tree cannot name one.
+    func grokBuildProcessVariable(_ name: String, paneProcessID: Int) async -> HostProcessReader.Variable {
+        guard paneProcessID > 0 else { return .unavailable }
+        let root = String(paneProcessID)
+        let request = HostProcessReader.Request(pids: [root], valuesOf: [name], descendantsOf: root)
+        guard let services = try? await session.withTransport({ $0.hostServices }),
+            let facts = try? await services.readProcesses(request),
+            let pid = Self.grokBuildProcess(in: facts, root: root)
+        else { return .unavailable }
+        return facts[pid]?.variables[name] ?? .unavailable
+    }
+
+    /// The nearest process to `root` named for Grok Build, or `root` itself when
+    /// nothing runs below it and it is not a shell. Nil when two are equally near
+    /// or the walk could not list the tree.
+    static func grokBuildProcess(in facts: [String: HostProcessReader.Facts], root: String) -> String? {
+        guard case .value(let descendants) = facts[root]?.descendants else { return nil }
+        var children: [String: [String]] = [:]
+        for pid in descendants {
+            if let parent = facts[pid]?.parent { children[parent, default: []].append(pid) }
+        }
+        func isGrok(_ fact: HostProcessReader.Facts?) -> Bool {
+            guard let name = fact?.name?.lowercased() else { return false }
+            return name == "grok" || name == "grok-build"
+        }
+        var level = [root]
+        while !level.isEmpty {
+            let named = level.filter { isGrok(facts[$0]) }
+            if named.count > 1 { return nil }
+            if let found = named.first { return found }
+            level = level.flatMap { children[$0] ?? [] }
+        }
+        guard descendants.isEmpty, let rootName = facts[root]?.name,
+            HerdrCoreAgentRule.program(arguments: [], name: rootName) != .shell
+        else { return nil }
+        return root
     }
 
     /// The plugin's files belong to Herdr TUI Hosts, and its surfaces say so.
