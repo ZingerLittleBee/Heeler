@@ -27,6 +27,7 @@ struct HostLiveActivityCoordinatorTests {
         var statuses: [UUID: EventsSessionStatus] = [:]
         var deviceToken: APNSDeviceToken?
         var layout: AgentRowLayout?
+        var coreID: String?
         var coordinators: [HostLiveActivityCoordinator] = []
         let startedAt = ContinuousClock.now
         var trace: [String] = []
@@ -116,6 +117,7 @@ struct HostLiveActivityCoordinatorTests {
             isAwaitingSnapshot: { world.awaitingSnapshot.contains($0) },
             connectionStatus: { world.statuses[$0] },
             supportsHost: supportsHost,
+            coreIdentity: { _ in world.coreID },
             pinnedPaneIDs: { pinStore?.pinnedPaneIDs(for: $0) ?? [] },
             rowLayout: { _ in world.layout },
             settleDuration: .milliseconds(20))
@@ -203,6 +205,32 @@ struct HostLiveActivityCoordinatorTests {
     }
 
     // MARK: Start / settle / flap
+
+    @Test func foregroundContentKeepsCurrentCoreIdentityAcrossReconnect() async throws {
+        try await withFixture { defaults in
+            let coordinator = makeCoordinator(defaults: defaults)
+            try await registerDevice()
+            try saveKey()
+            armWorld()
+            world.coreID = "core-a"
+            coordinator.start()
+            coordinator.agentsDidChange([agent("t7", .working)])
+            try await waitUntil("Core activity starts") { !controller.requested.isEmpty }
+            let initial = try #require(controller.requested.first?.envelope)
+            #expect(try AgentActivityEnvelope.open(JSONEncoder().encode(initial), using: notificationKey()).coreID == "core-a")
+            world.awaitingSnapshot = [host.id]
+            world.statuses[host.id] = .reconnecting
+            coordinator.connectionsDidChange()
+            world.coreID = "core-b"
+            world.awaitingSnapshot = []
+            world.statuses[host.id] = .connected
+            coordinator.connectionsDidChange()
+            coordinator.agentsDidChange([agent("t7", .blocked)])
+            try await waitUntil("fresh Core replaces the encrypted action identity") { !controller.updates.isEmpty }
+            let update = try #require(controller.updates.last?.content.envelope)
+            #expect(try AgentActivityEnvelope.open(JSONEncoder().encode(update), using: notificationKey()).coreID == "core-b")
+        }
+    }
 
     @Test func fixtureTeardownReleasesTheCoordinatorAndSubscriptions() async throws {
         weak var owner: HostLiveActivityCoordinator?

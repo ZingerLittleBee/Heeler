@@ -12,6 +12,22 @@ struct AgentActivityContentBuilderTests {
     private let hostID = UUID()
     private let key = Data(0..<32)
 
+    @Test func coreIdentitySurvivesSealingDegradationAndRowLink() throws {
+        var desired = try #require(AgentActivityContentBuilder.desire(
+            from: [agent("t7", .working)], hostName: "mbp", coreID: "core-a"))
+        desired.agents[0].rows = [[.init(text: String(repeating: "界", count: 3000))]]
+        let content = try #require(AgentActivityContentBuilder.content(for: desired, key: key))
+        let details = try opened(content)
+        #expect(details.coreID == "core-a")
+        #expect(details.agents.first?.rows == nil)
+        let link = try #require(AgentActivityLink.agentURL(
+            hostID: hostID.uuidString, paneID: "t7", coreID: details.coreID))
+        let target = try #require(AgentActivityLink.target(from: link))
+        #expect(target.coreID == "core-a")
+        #expect(target.agent(in: []) == AgentNotificationTarget(hostID: hostID, paneID: "t7", coreID: "core-a"))
+        #expect(AgentActivityLink.target(from: try #require(URL(string: link.absoluteString + "&core=other"))) == nil)
+    }
+
     @Test func configuredRowsKeepDirectoryPluginTextAndStylesInsideEncryption() throws {
         let row = ConsoleAgent(
             hostID: hostID, hostName: "Studio Mac",
