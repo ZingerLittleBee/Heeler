@@ -428,4 +428,411 @@ extension TmuxTransportE2ETests {
             }
         }
     }
+
+    // MARK: Sizing
+
+    private struct DesktopClient: Sendable {
+        let pid: Int
+        let fixture: TmuxSSHFixture
+
+        func stop() async {
+            _ = try? await fixture.run("kill \(pid) 2>/dev/null; true")
+            try? await fixture.eventually {
+                let ps = (try? await fixture.require("ps -p \(pid) -o pid= || true")) ?? ""
+                return ps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        }
+    }
+
+    /// A stand-in desktop terminal attached to `target` over a real PTY whose
+    /// window area is `windowColumns` by `windowRows` (one status line below).
+    private func attachDesktopClient(
+        to target: String, windowColumns: Int, windowRows: Int, on fixture: TmuxSSHFixture
+    ) async throws -> DesktopClient {
+        let home = fixture.configuration.homePath
+        let program = "\(home)/bin/desktop-client"
+        try await fixture.writeProgram(
+            at: program,
+            """
+            #!/usr/bin/python3
+            import fcntl, os, pty, signal, struct, subprocess, sys, termios
+            tmux_exec, sock, target, cols, rows, pid_file = sys.argv[1:7]
+            if os.fork() > 0:
+                os._exit(0)
+            os.setsid()
+            devnull = os.open("/dev/null", os.O_RDWR)
+            for fd in (0, 1, 2):
+                os.dup2(devnull, fd)
+            if devnull > 2:
+                os.close(devnull)
+            master, slave = pty.openpty()
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", int(rows), int(cols), 0, 0))
+            env = {
+                "HOME": os.environ["HOME"],
+                "TMUX_TMPDIR": os.environ["TMUX_TMPDIR"],
+                "TERM": "xterm-256color",
+                "PATH": "/usr/bin:/bin",
+            }
+            child = subprocess.Popen(
+                [tmux_exec, "-N", "-S", sock, "attach-session", "-t", target],
+                stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True,
+            )
+            os.close(slave)
+            def shutdown(_sig, _frame):
+                try:
+                    child.terminate()
+                except OSError:
+                    pass
+                try:
+                    os.close(master)
+                except OSError:
+                    pass
+                os._exit(0)
+            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                signal.signal(sig, shutdown)
+            with open(pid_file, "w") as handle:
+                handle.write(f"{os.getpid()}\\n")
+            try:
+                while os.read(master, 16384):
+                    pass
+            except OSError:
+                pass
+            try:
+                os.close(master)
+            except OSError:
+                pass
+            child.wait()
+            """)
+        let pidFile = "\(home)/desktop-\(UUID().uuidString.prefix(8)).pid"
+        let ptyRows = windowRows + 1
+        let command = [
+            "/usr/bin/python3", program, fixture.configuration.tmuxExecutable, fixture.socketPath(),
+            target, "\(windowColumns)", "\(ptyRows)", pidFile,
+        ].map(GitProbe.singleQuoted).joined(separator: " ")
+        try await fixture.require(command)
+        try await fixture.eventually {
+            guard try await fixture.exists(pidFile) else { return false }
+            let clients = try await fixture.tmux(
+                nil, "list-clients", "-F", "#{client_control_mode} #{client_width}x#{client_height}")
+            return clients.contains("0 \(windowColumns)x\(ptyRows)\n")
+        }
+        let pidText = try await fixture.require("cat " + GitProbe.singleQuoted(pidFile))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let pid = try #require(Int(pidText))
+        return DesktopClient(pid: pid, fixture: fixture)
+    }
+
+    private struct PanePlacement: Equatable, Sendable {
+        let paneWidth: Int
+        let paneHeight: Int
+        let windowWidth: Int
+        let windowHeight: Int
+        let zoomed: Bool
+    }
+
+    private func placement(of pane: String, on fixture: TmuxSSHFixture) async throws -> PanePlacement {
+        let fields = try await fixture.tmux(
+            nil, "display-message", "-p", "-t", pane,
+            "#{pane_width} #{pane_height} #{window_width} #{window_height} #{window_zoomed_flag}"
+        ).split(whereSeparator: \.isWhitespace)
+        let numbers = try fields.map { try #require(Int($0)) }
+        try #require(numbers.count == 5)
+        return PanePlacement(
+            paneWidth: numbers[0], paneHeight: numbers[1],
+            windowWidth: numbers[2], windowHeight: numbers[3],
+            zoomed: numbers[4] != 0)
+    }
+
+    private func windowDimensions(_ target: String, on fixture: TmuxSSHFixture) async throws -> String {
+        try await fixture.tmux(nil, "display-message", "-p", "-t", target, "#{window_width}x#{window_height}")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @Test("a shown Pane scales its window to fit the device, stops at a smaller desktop client's ceiling, and leaves the rest of the view blank")
+    func aShownPaneFitsTheDeviceAndRespectsADesktopCeiling() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+
+            // A 3-pane split with a larger desktop client on the same window:
+            // Heeler scales from the Pane's share, corrects until the Pane fits,
+            // and never zooms a pane.
+            let (pane, file) = try await followingPane(["new-window", "-t", "main:", "-n", "split"], on: fixture)
+            _ = try await followingPane(["split-window", "-h", "-t", pane], on: fixture)
+            _ = try await followingPane(["split-window", "-h", "-t", pane], on: fixture)
+            try await fixture.tmux(nil, "select-layout", "-t", pane, "even-horizontal")
+            try await append("split ready\\n", to: file, on: fixture)
+            try await waitUntilShown("split ready", in: pane, on: fixture)
+
+            let largeDesktop = try await attachDesktopClient(
+                to: "main", windowColumns: 180, windowRows: 50, on: fixture)
+            do {
+                try await fixture.eventually { try await windowDimensions(pane, on: fixture) == "180x50" }
+                let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+                do {
+                    var req = TerminalAttachRequest(target: .terminal(pane), surfaceHasHistory: false, cols: 40, rows: 12)
+                    req.coreID = try await fixture.serverInstance().id
+                    let session = try await transport.attachPane(pane, request: req)
+                    var output = session.output.makeAsyncIterator()
+                    _ = try await read(until: "split ready", from: &output)
+
+                    let fitted = try await placement(of: pane, on: fixture)
+                    #expect(fitted.paneWidth <= 40 && fitted.paneWidth >= 39)
+                    #expect(fitted.paneHeight == 12)
+                    #expect(fitted.windowWidth > 40 && fitted.windowWidth < 180)
+                    #expect(!fitted.zoomed)
+
+                    session.resize(cols: 50, rows: 15)
+                    try await fixture.eventually {
+                        let resized = try await placement(of: pane, on: fixture)
+                        return resized.paneWidth <= 50 && resized.paneWidth >= 49 && resized.paneHeight == 15
+                    }
+                    #expect(try await !placement(of: pane, on: fixture).zoomed)
+
+                    await session.end()
+                    try await transport.close()
+                } catch {
+                    try? await transport.close()
+                    throw error
+                }
+                await largeDesktop.stop()
+            } catch {
+                await largeDesktop.stop()
+                throw error
+            }
+
+            // A smaller desktop client on the same window caps the window's
+            // size, and the smaller Pane renders inside its own rows and
+            // columns while the rest of the 80x24 terminal view stays blank.
+            let (cappedPane, cappedFile) = try await followingPane(
+                ["new-window", "-t", "main:", "-n", "capped"], on: fixture)
+            let smallDesktop = try await attachDesktopClient(
+                to: "main", windowColumns: 36, windowRows: 6, on: fixture)
+            do {
+                try await fixture.eventually { try await windowDimensions(cappedPane, on: fixture) == "36x6" }
+                try await append((1...10).map { "row \($0)\\n" }.joined(), to: cappedFile, on: fixture)
+                try await waitUntilShown("row 10", in: cappedPane, on: fixture)
+                try await openCappedPaneInTheTerminalView(cappedPane, file: cappedFile, on: fixture)
+                await smallDesktop.stop()
+            } catch {
+                await smallDesktop.stop()
+                throw error
+            }
+        }
+    }
+
+    @MainActor
+    private func openCappedPaneInTheTerminalView(
+        _ pane: String, file: String, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+        let attach = AttachTerminalStore(
+            target: .terminal(pane), runTerminal: store.terminalRunner(for: host.id, keepingTo: store.corePin(on: host.id)))
+        let controller = UIHostingController(rootView: TerminalScreenView(feed: attach.feed))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        do {
+            try await fixture.eventually { await store.terminals.contains { $0.paneID == pane } }
+            controller.view.layoutIfNeeded()
+            let terminal = try #require(Self.terminalViews(in: controller.view).first)
+            attach.viewDidResize(cols: 80, rows: 24)
+            try await fixture.eventually { await attach.status == .live }
+            try await waitForViewport(of: terminal) { $0.contains("row 10") }
+
+            let capped = try await placement(of: pane, on: fixture)
+            #expect(capped == PanePlacement(paneWidth: 36, paneHeight: 6, windowWidth: 36, windowHeight: 6, zoomed: false))
+
+            // Stream more lines so the terminal scrolls live output: the scroll
+            // region confines it to rows 1..6 and leaves rows 7..24 blank.
+            try await append("live 11\\nlive 12\\nlive 13\\n", to: file, on: fixture)
+            try await waitForViewport(of: terminal) { $0.contains("live 13") }
+            #expect(try await windowDimensions(pane, on: fixture) == "36x6")
+
+            let viewport = try #require(terminal.terminalSession.readViewportText())
+            let lines = viewport.components(separatedBy: "\n")
+            #expect(lines.count >= 24)
+            for row in lines.prefix(6) {
+                #expect(row.trimmingCharacters(in: .whitespaces).count <= 36)
+            }
+            for row in lines.dropFirst(6) {
+                #expect(row.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            await attach.stop()
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            store.setHosts([])
+        } catch {
+            await attach.stop()
+            store.setHosts([])
+            throw error
+        }
+    }
+
+    @Test("sizing a Pane's window leaves other windows untouched across window-size modes, aggressive-resize, and with no desktop client")
+    func sizingAPaneLeavesOtherWindowsUntouched() async throws {
+        let cases: [(mode: String, aggressive: Bool, desktop: Bool)] = [
+            ("latest", false, true),
+            ("latest", true, true),
+            ("smallest", false, true),
+            ("largest", false, true),
+            ("latest", false, false),
+            ("smallest", false, false),
+        ]
+        try await TmuxSSHFixture.with { fixture in
+            for scenario in cases {
+                try await fixture.reset()
+                try await fixture.startServer()
+                try await fixture.tmux(nil, "set-option", "-gw", "window-size", scenario.mode)
+                try await fixture.tmux(nil, "set-option", "-gw", "aggressive-resize", scenario.aggressive ? "on" : "off")
+
+                try await fixture.tmux(nil, "new-session", "-d", "-s", "work", "-x", "150", "-y", "44", "/bin/cat")
+                let firstOther = "work:0"
+                let (pane, file) = try await followingPane(["new-window", "-d", "-t", "work:", "-n", "watched"], on: fixture)
+                _ = try await followingPane(["split-window", "-d", "-h", "-t", pane], on: fixture)
+                try await fixture.tmux(nil, "new-window", "-d", "-t", "work:", "-n", "third", "/bin/cat")
+                let thirdOther = "work:2"
+                try await fixture.tmux(nil, "new-session", "-d", "-s", "side", "-x", "132", "-y", "38", "/bin/cat")
+                let sideOther = "side:0"
+                try await append("ready\\n", to: file, on: fixture)
+                try await waitUntilShown("ready", in: pane, on: fixture)
+
+                let desktop: DesktopClient? =
+                    scenario.desktop
+                    ? try await attachDesktopClient(to: "work", windowColumns: 150, windowRows: 44, on: fixture)
+                    : nil
+                do {
+                    if scenario.desktop {
+                        try await fixture.eventually { try await windowDimensions(firstOther, on: fixture) == "150x44" }
+                    }
+                    let beforeFirst = try await windowDimensions(firstOther, on: fixture)
+                    let beforeThird = try await windowDimensions(thirdOther, on: fixture)
+                    let beforeSide = try await windowDimensions(sideOther, on: fixture)
+                    #expect(beforeFirst == "150x44")
+                    #expect(beforeThird == "150x44")
+                    #expect(beforeSide == "132x38")
+
+                    let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+                    do {
+                        var req = TerminalAttachRequest(
+                            target: .terminal(pane), surfaceHasHistory: false, cols: 42, rows: 14)
+                        req.coreID = try await fixture.serverInstance().id
+                        let session = try await transport.attachPane(pane, request: req)
+                        var output = session.output.makeAsyncIterator()
+                        _ = try await read(until: "ready", from: &output)
+
+                        let watched = try await placement(of: pane, on: fixture)
+                        #expect(watched.paneWidth <= 42 && watched.paneWidth >= 41)
+                        #expect(watched.paneHeight == 14)
+                        #expect(!watched.zoomed)
+
+                        let label = "\(scenario.mode) aggressive=\(scenario.aggressive) desktop=\(scenario.desktop)"
+                        #expect(try await windowDimensions(firstOther, on: fixture) == beforeFirst, Comment(rawValue: label))
+                        #expect(try await windowDimensions(thirdOther, on: fixture) == beforeThird, Comment(rawValue: label))
+                        #expect(try await windowDimensions(sideOther, on: fixture) == beforeSide, Comment(rawValue: label))
+
+                        await session.end()
+                        try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+                        #expect(try await windowDimensions(firstOther, on: fixture) == beforeFirst, Comment(rawValue: label))
+                        #expect(try await windowDimensions(thirdOther, on: fixture) == beforeThird, Comment(rawValue: label))
+                        #expect(try await windowDimensions(sideOther, on: fixture) == beforeSide, Comment(rawValue: label))
+                        try await transport.close()
+                    } catch {
+                        try? await transport.close()
+                        throw error
+                    }
+                    await desktop?.stop()
+                } catch {
+                    await desktop?.stop()
+                    throw error
+                }
+            }
+        }
+    }
+
+    @Test("hiding a retained Attach turns on ignore-size and hands the window back; showing it again takes the size back")
+    func hidingARetainedAttachHandsTheWindowBackAndShowingTakesItAgain() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, file) = try await followingPane(["new-window", "-t", "main:", "-n", "retained"], on: fixture)
+            try await append("retained ready\\n", to: file, on: fixture)
+            try await waitUntilShown("retained ready", in: pane, on: fixture)
+            let desktop = try await attachDesktopClient(to: "main", windowColumns: 150, windowRows: 44, on: fixture)
+            do {
+                try await fixture.eventually { try await windowDimensions(pane, on: fixture) == "150x44" }
+                try await exerciseRetentionHandBack(pane, desktop: desktop, on: fixture)
+                await desktop.stop()
+            } catch {
+                await desktop.stop()
+                throw error
+            }
+        }
+    }
+
+    @MainActor
+    private func exerciseRetentionHandBack(
+        _ pane: String, desktop: DesktopClient, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+        let attach = AttachTerminalStore(
+            target: .terminal(pane), runTerminal: store.terminalRunner(for: host.id, keepingTo: store.corePin(on: host.id)))
+        do {
+            try await fixture.eventually { await store.terminals.contains { $0.paneID == pane } }
+            attach.viewDidResize(cols: 70, rows: 20)
+            try await fixture.eventually { await attach.status == .live }
+            try await fixture.eventually { try await windowDimensions(pane, on: fixture) == "70x20" }
+
+            let activeClient = try #require(
+                try await clients(on: fixture).first { $0.hasPrefix(TmuxAttachScript.sessionPrefix) })
+            #expect(activeClient.contains("pause-after=\(TmuxSSHTransport.pauseAfter)"))
+            #expect(!activeClient.contains("ignore-size"))
+
+            // Stop showing the Pane while keeping the retained Attach: the
+            // client turns on ignore-size and hands the window back at once.
+            attach.setViewed(false)
+            try await fixture.eventually { try await windowDimensions(pane, on: fixture) == "150x44" }
+            #expect(try await attachSessions(on: fixture).count == 1)
+            let hiddenClient = try #require(
+                try await clients(on: fixture).first { $0.hasPrefix(TmuxAttachScript.sessionPrefix) })
+            #expect(hiddenClient.contains("ignore-size"))
+            #expect(hiddenClient.contains("pause-after=\(TmuxSSHTransport.pauseAfter)"))
+
+            // Showing it again clears ignore-size and takes the size back.
+            attach.setViewed(true)
+            try await fixture.eventually { try await windowDimensions(pane, on: fixture) == "70x20" }
+            let reshownClient = try #require(
+                try await clients(on: fixture).first { $0.hasPrefix(TmuxAttachScript.sessionPrefix) })
+            #expect(!reshownClient.contains("ignore-size"))
+
+            // With no desktop client attached, hiding keeps the window's size.
+            await desktop.stop()
+            attach.setViewed(false)
+            try await fixture.eventually {
+                let flags = try await clients(on: fixture).first { $0.hasPrefix(TmuxAttachScript.sessionPrefix) } ?? ""
+                return flags.contains("ignore-size")
+            }
+            #expect(try await windowDimensions(pane, on: fixture) == "70x20")
+
+            await attach.stop()
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            store.setHosts([])
+        } catch {
+            await attach.stop()
+            store.setHosts([])
+            throw error
+        }
+    }
 }
