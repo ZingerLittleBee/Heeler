@@ -1174,6 +1174,59 @@ printf '{{"version":1,"runtime":"recorded"}}\\n'
                 self.assertEqual(self.query(shell, tmux_socket="work", stored_paths=updated), (self.MISSING, "0"))
                 self.assertEqual(paths_file.read_text(), updated)
 
+    def test_tmux_usage_query_continues_when_stored_paths_cannot_be_written(self) -> None:
+        stored = '{"executable":"/opt/homebrew/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        node = self.bin / "recorded-node"
+        node.write_text(f"""#!/bin/sh
+printf '%s\\n' "$@" >> "{self.log}"
+printf '{{"version":1,"runtime":"recorded"}}\\n'
+""")
+        node.chmod(0o755)
+
+        for shell in shells():
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.helper_dir, ignore_errors=True)
+                self.installed()
+                # Parent directory is read-only, so `mkdir -p` for `tmux/work` fails.
+                self.helper_dir.chmod(0o500)
+                try:
+                    self.assertEqual(self.query(shell, tmux_socket="work", stored_paths=stored), (self.MISSING, "0"))
+                    strict = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=stored)
+                    self.assertNotEqual(strict.returncode, 0)
+                finally:
+                    self.helper_dir.chmod(0o700)
+
+                # Target directory has a runtime record and is read-only, so temp file creation fails.
+                folder = self.helper_dir / "tmux/work"
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / "runtime-node").write_text(f"{node}\n")
+                folder.chmod(0o500)
+                try:
+                    self.log.write_text("")
+                    self.assertEqual(
+                        self.query(shell, tmux_socket="work", stored_paths=stored),
+                        ('{"version":1,"runtime":"recorded"}', "0"),
+                    )
+                    self.assertEqual(
+                        self.log.read_text().splitlines(),
+                        [str(self.helper_dir / "app/usage-query.js"), "--tz", "Asia/Kolkata", "--tmux", "work"],
+                    )
+                finally:
+                    folder.chmod(0o700)
+
+                # `mv` fails after writing the temp file (target is a non-empty directory): temp file is cleaned up.
+                blocking = folder / "paths.json"
+                (blocking / "keep").mkdir(parents=True)
+                self.log.write_text("")
+                self.assertEqual(
+                    self.query(shell, tmux_socket="work", stored_paths=stored),
+                    ('{"version":1,"runtime":"recorded"}', "0"),
+                )
+                self.assertEqual(list(folder.glob("paths.json.tmp-*")), [])
+                strict_mv = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=stored)
+                self.assertNotEqual(strict_mv.returncode, 0)
+                self.assertEqual(list(folder.glob("paths.json.tmp-*")), [])
+
     def test_refresh_tmux_paths_updates_only_when_helper_or_stored_paths_already_exist(self) -> None:
         initial = '{"executable":"/usr/local/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
         moved = '{"executable":"/opt/homebrew/bin/tmux","socket":"/tmp/tmux-501/work"}\n'

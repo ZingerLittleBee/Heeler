@@ -193,7 +193,7 @@ struct HostHelperScript: Sendable, Equatable {
         case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket, let storedPaths):
             let prepare: [String] =
                 if let storedPaths, !storedPaths.isEmpty {
-                    writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: "return 1")
+                    writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: nil)
                 } else {
                     []
                 }
@@ -232,16 +232,28 @@ struct HostHelperScript: Sendable, Equatable {
     ]
 
     private static func writeStoredTmuxPaths(
-        _ storedPaths: String, nonce: String, failCommand: String
+        _ storedPaths: String, nonce: String, failCommand: String?
     ) -> [String] {
         let want = storedPaths.trimmingCharacters(in: .newlines)
+        guard let failCommand else {
+            return [
+                "  if mkdir -p -- \"$__h_target\" 2>/dev/null; then",
+                "    __h_paths=\"$__h_target/paths.json\"",
+                "    __h_want=\(quote(want))",
+                "    if [ ! -f \"$__h_paths\" ] || [ \"$(cat \"$__h_paths\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+                "      __h_tmp=\"$__h_paths\(temporarySuffix)\(nonce)\"",
+                "      (printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_paths\" ] && mv -f -- \"$__h_tmp\" \"$__h_paths\") 2>/dev/null || rm -f -- \"$__h_tmp\" 2>/dev/null || :",
+                "    fi",
+                "  fi",
+            ]
+        }
         return [
             "  mkdir -p -- \"$__h_target\" || \(failCommand)",
             "  __h_paths=\"$__h_target/paths.json\"",
             "  __h_want=\(quote(want))",
             "  if [ ! -f \"$__h_paths\" ] || [ \"$(cat \"$__h_paths\" 2>/dev/null)\" != \"$__h_want\" ]; then",
             "    __h_tmp=\"$__h_paths\(temporarySuffix)\(nonce)\"",
-            "    if printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && mv -f -- \"$__h_tmp\" \"$__h_paths\"; then :; else rm -f -- \"$__h_tmp\"; \(failCommand); fi",
+            "    if printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_paths\" ] && mv -f -- \"$__h_tmp\" \"$__h_paths\"; then :; else rm -f -- \"$__h_tmp\"; \(failCommand); fi",
             "  fi",
         ]
     }
