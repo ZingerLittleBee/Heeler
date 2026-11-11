@@ -530,6 +530,58 @@ struct TmuxTransportE2ETests {
         }
     }
 
+    @Test("a variable set in the global and session environment is found by name")
+    func aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let session = trimmed(
+                try await fixture.tmux(nil, "display-message", "-p", "-t", "main", "#{session_id}"))
+            // Values stay on the Host. These strings are the fixture's own, and
+            // the published notice and account sets must not contain them.
+            let claudeDirectory = "/fixture/claude"
+            let codexDirectory = "/fixture/codex"
+            try await fixture.tmux(nil, "set-environment", "-g", "CLAUDE_CONFIG_DIR", claudeDirectory)
+            try await fixture.tmux(nil, "set-environment", "-g", "CLAUDECODE", "1")
+            try await fixture.tmux(nil, "set-environment", "-t", session, "CODEX_HOME", codexDirectory)
+            try await fixture.tmux(nil, "set-environment", "-t", session, "-r", "CLAUDE_CONFIG_DIR")
+            try await environmentReachesTheConsole(
+                fixture, session: session, claudeDirectory: claudeDirectory, codexDirectory: codexDirectory)
+        }
+    }
+
+    /// The server may already carry other names, so this checks the planted ones
+    /// are present. A session removal drops that name from the session only.
+    @MainActor
+    private func environmentReachesTheConsole(
+        _ fixture: TmuxSSHFixture, session: String, claudeDirectory: String, codexDirectory: String
+    ) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually {
+                let notice = await store.hostCoreEnvironmentNotices[host.id]
+                let accounts = await store.hostTmuxAccountEnvironments[host.id]
+                let sessionNames = accounts?.bySession[session] ?? []
+                return notice?.variables.contains { $0.name == "CLAUDECODE" } == true
+                    && accounts?.global.contains("CLAUDE_CONFIG_DIR") == true
+                    && sessionNames.contains("CODEX_HOME")
+                    && !sessionNames.contains("CLAUDE_CONFIG_DIR")
+            }
+            let notice = try #require(store.hostCoreEnvironmentNotices[host.id])
+            let accounts = try #require(store.hostTmuxAccountEnvironments[host.id])
+            let expected = try #require(HerdrCoreEnvironmentNotice(names: ["CLAUDECODE"]))
+            let variable = try #require(notice.variables.first { $0.name == "CLAUDECODE" })
+            #expect(variable == expected.variables[0])
+            let sessionNames = try #require(accounts.bySession[session])
+            #expect(sessionNames.contains("CODEX_HOME"))
+            #expect(!sessionNames.contains("CLAUDE_CONFIG_DIR"))
+            let published = (
+                notice.variables.map(\.name) + notice.variables.map(\.breaks) + accounts.global.sorted()
+                    + accounts.bySession.flatMap { [$0.key] + $0.value.sorted() }
+            ).joined(separator: "\n")
+            #expect(!published.contains(claudeDirectory))
+            #expect(!published.contains(codexDirectory))
+        }
+    }
+
     // MARK: Launches
 
     /// `claude` on the login shell's PATH, the program a New Agent asks for.
