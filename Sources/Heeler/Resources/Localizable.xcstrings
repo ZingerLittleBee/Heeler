@@ -20592,6 +20592,28 @@
         }
       }
     },
+    "Enter Password…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを入力…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入密码…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸入密碼…"
+          }
+        }
+      }
+    },
     "Enter a branch name." : {
       "localizations" : {
         "ja" : {
@@ -22455,6 +22477,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "填入"
+          }
+        }
+      }
+    },
+    "Fill Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを入力"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "填入密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "填入密碼"
           }
         }
       }
@@ -34116,6 +34160,28 @@
         }
       }
     },
+    "No password prompt is on screen. If nothing is asking for one, the password will show in the terminal. It’s typed in without Return." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面にパスワードの入力要求がありません。何も要求していなければ、パスワードはターミナルに表示されます。入力後に Return キーは押されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上没有密码提示。如果没有程序在要密码，密码会显示在终端里。输入后不会自动回车。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "畫面上沒有密碼提示。如果沒有程式在要求密碼，密碼會顯示在終端機裡。輸入後不會自動按下 Return 鍵。"
+          }
+        }
+      }
+    },
     "No peers with an address" : {
       "localizations" : {
         "ja" : {
@@ -37666,6 +37732,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此工作區開啟新的 shell 分頁"
+          }
+        }
+      }
+    },
+    "Opens a secure field for the password prompt on screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面のパスワード入力要求に答える安全な入力欄を開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开安全输入框，回应屏幕上的密码提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟安全輸入欄位，回應畫面上的密碼提示"
           }
         }
       }
@@ -57160,6 +57248,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "面板沒有此動作。"
+          }
+        }
+      }
+    },
+    "The password is typed in without Return. Press Return in the terminal to submit it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードは Return キーなしで入力されます。ターミナルで Return キーを押して送信してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码输入后不会自动回车。请在终端里按回车键提交。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼輸入後不會自動按下 Return 鍵。請在終端機裡按下 Return 鍵送出。"
           }
         }
       }

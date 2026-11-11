@@ -229,6 +229,48 @@ struct TerminalInputControllerTests {
             ])
     }
 
+    @Test func aPasswordGoesOutWholeWithoutReturn() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(controller.insertSecret("correct horse 电池 staple"))
+
+        #expect(writes == [Data("correct horse 电池 staple".utf8)])
+    }
+
+    @Test func thePasswordIsNotRecordedAsAMessageWhenTheUserPressesReturn() {
+        let controller = TerminalInputController()
+        _ = controller.beginSession { _ in }
+
+        #expect(controller.insertSecret("correct horse battery staple"))
+        #expect(controller.send(Data([0x0D])))
+
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test(arguments: ["line\nbreak", "carriage\rreturn", "tab\there", "escape\u{1B}[31m", "nul\u{0}"])
+    func aPasswordWithAControlCharacterIsRefused(_ password: String) {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        _ = controller.beginSession { writes.append($0) }
+
+        #expect(!controller.insertSecret(password))
+        #expect(writes.isEmpty)
+    }
+
+    @Test func aPasswordNeedsALiveEnabledSession() {
+        var writes: [Data] = []
+        let controller = TerminalInputController()
+        #expect(!controller.insertSecret("hunter2"))
+
+        _ = controller.beginSession { writes.append($0) }
+        controller.isEnabled = false
+        #expect(!controller.insertSecret("hunter2"))
+        #expect(!controller.insertSecret(""))
+        #expect(writes.isEmpty)
+    }
+
     @Test func snippetWithUnsafeControlCharactersIsRefused() {
         var writes: [Data] = []
         let controller = TerminalInputController()

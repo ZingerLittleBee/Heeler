@@ -353,6 +353,15 @@ final class ShellTerminalStore {
         _ = input.confirmPaste()
     }
 
+    /// Whether a password typed into the sheet can reach the pane now.
+    var canInsertPassword: Bool { terminal.status == .live && input.isEnabled }
+
+    /// See `TerminalInputController.insertSecret`.
+    func insertPassword(_ password: String) -> Bool {
+        guard canInsertPassword else { return false }
+        return input.insertSecret(password)
+    }
+
     func retryTerminal() { terminal.retry() }
 
     /// The retained terminal came on or off screen.

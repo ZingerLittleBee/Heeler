@@ -70,6 +70,7 @@
 		11FCA50DADBE91ED19ECF5EE /* GrokCardBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */; };
 		1268A8553B7E8383D523BAB5 /* HerdrCoreOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A268F2C5E0B2FBDA6756411B /* HerdrCoreOrganization.swift */; };
 		129B429808DB034DD48F5527 /* AgyToolActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D5A8FB4E280735BDB8627C /* AgyToolActivityTests.swift */; };
+		129B8EAA243189CF1CD0D763 /* TerminalPasswordPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA01AE1F02CC663B91D6C8D /* TerminalPasswordPromptTests.swift */; };
 		12B61E17D212416E86EE63ED /* AgentCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6803A0055A861DFCA2A67217 /* AgentCardView.swift */; };
 		12E7AC4DC85597751AFB87B5 /* ComposerStagingOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90A54C0D7458BACB97128AE4 /* ComposerStagingOwnershipTests.swift */; };
 		12F6F23F680F99366A2D6072 /* HostProcessReaderWindowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43289E51134F9FF8625A1EF1 /* HostProcessReaderWindowsTests.swift */; };
@@ -273,6 +274,7 @@
 		408278FB2160F999B3B44322 /* GitProbe+PatchParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBAC1AA317E3367B5FCE47C /* GitProbe+PatchParser.swift */; };
 		412A4995F53B6CE01D1ED340 /* LaunchPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F93EB7210962D8745D4AF6ED /* LaunchPresetTests.swift */; };
 		412EE0CCB79F5ABA76A64512 /* ChangesReference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70EB6C147704B87ED1E31263 /* ChangesReference.swift */; };
+		418F5008370E903A74222B60 /* ShellTerminalPasswordFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BB54B93940C297518A3440B /* ShellTerminalPasswordFill.swift */; };
 		41CE04A256929B8D197C77A7 /* TerminalRetentionBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14F97CFBEFA6F0C866CACEF /* TerminalRetentionBudgetTests.swift */; };
 		4208D9C640E2993EFEAE26A0 /* ConsoleChatCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47397CB9CDEEF1A41251789F /* ConsoleChatCacheTests.swift */; };
 		4279DDB34FE4746B020D592C /* ReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3801638051F3E5F394CF3FBD /* ReconnectPolicyTests.swift */; };
@@ -443,6 +445,7 @@
 		68908D3D5A69BFBF951A64FA /* AgentTerminalCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591775602B1028102AE578BC /* AgentTerminalCacheTests.swift */; };
 		68C3A7395A2C4FB0B9743E3B /* RemoteHostEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1CFC40038FAF47FAE74CC2 /* RemoteHostEnvironment.swift */; };
 		68DF935AA6F4DF2BE1C72008 /* AgentComposerStop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7BE8391B312E7E435D288D /* AgentComposerStop.swift */; };
+		68FAAC2CE60E94D5938493D8 /* TerminalPasswordPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45184F9F6FED40203641ECA /* TerminalPasswordPrompt.swift */; };
 		693D650A778BAC6F2189F32A /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2782D0CCB8DD0CC97AF6932C /* AcknowledgementsView.swift */; };
 		69789BFC12127E6C6DC61755 /* FileDiffListChangeNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10D52510AEF298FEB5C27ED /* FileDiffListChangeNotice.swift */; };
 		6A22880E01196C3D0CD63579 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10961AC1A5B294E66555423E /* Localizable.xcstrings */; };
@@ -1399,6 +1402,7 @@
 		3EC9CE7DCD296C9AD913C5E2 /* ConsoleTabBarBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleTabBarBridge.swift; sourceTree = "<group>"; };
 		3F4858DA258C7032AC64AD52 /* RelayContentStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayContentStateDecodeTests.swift; sourceTree = "<group>"; };
 		3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleWorkspaceCards.swift; sourceTree = "<group>"; };
+		3FA01AE1F02CC663B91D6C8D /* TerminalPasswordPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPasswordPromptTests.swift; sourceTree = "<group>"; };
 		3FD9D5A85D9C5036CBE775A3 /* AgyTranscriptLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyTranscriptLocator.swift; sourceTree = "<group>"; };
 		400DB5B242363C4980CC0E70 /* HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+UntrackedDirectory.swift"; sourceTree = "<group>"; };
 		401B06FA1073EFC5F056E941 /* AgentRowChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowChanges.swift; sourceTree = "<group>"; };
@@ -1719,6 +1723,7 @@
 		8AD05613124EA385DF48CF72 /* AgentUsageLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageLimitsTests.swift; sourceTree = "<group>"; };
 		8AD5AC7650CAC6F4DBDDABF8 /* DialogRowScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialogRowScanner.swift; sourceTree = "<group>"; };
 		8B02412C186BA855DFD9379A /* AgentNotificationRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRoutingTests.swift; sourceTree = "<group>"; };
+		8BB54B93940C297518A3440B /* ShellTerminalPasswordFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellTerminalPasswordFill.swift; sourceTree = "<group>"; };
 		8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStoreTests.swift; sourceTree = "<group>"; };
 		8C6B9C302C533F3305AE2D26 /* HerdrCoreWindowsTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWindowsTransportTests.swift; sourceTree = "<group>"; };
 		8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStagingStore.swift; sourceTree = "<group>"; };
@@ -2078,6 +2083,7 @@
 		E3B331536AFB3AAB2EDE1080 /* ClaudePermissionMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePermissionMode.swift; sourceTree = "<group>"; };
 		E3DB29A74E2CF2AD600AAB56 /* ScriptedHelperHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedHelperHost.swift; sourceTree = "<group>"; };
 		E3DF1E766622CCF516CB87EC /* AgentAccountKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAccountKinds.swift; sourceTree = "<group>"; };
+		E45184F9F6FED40203641ECA /* TerminalPasswordPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPasswordPrompt.swift; sourceTree = "<group>"; };
 		E48CA996470393ED037D0364 /* AgentRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRoute.swift; sourceTree = "<group>"; };
 		E49BC1F4C8C0CF282424F538 /* OpenCodePluginEdit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodePluginEdit.swift; sourceTree = "<group>"; };
 		E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscoveryTests.swift; sourceTree = "<group>"; };
@@ -2647,6 +2653,7 @@
 				D98C291FF5279ECEDF232B5D /* TerminalMessageJumpControllerTests.swift */,
 				1319D3592F49F46F93F2EE73 /* TerminalModeTrackerTests.swift */,
 				8D6490F9D4A3ECF0F9899D1A /* TerminalMouseReportingTests.swift */,
+				3FA01AE1F02CC663B91D6C8D /* TerminalPasswordPromptTests.swift */,
 				C14F97CFBEFA6F0C866CACEF /* TerminalRetentionBudgetTests.swift */,
 				856C56B29DCF048C09AF7C1C /* TerminalStatusDialogTests.swift */,
 				80C3966A26050D88C26229E9 /* TerminalSurfaceOrphanLayerTests.swift */,
@@ -2736,6 +2743,7 @@
 				698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */,
 				4997A79DA8D98F7BA97E60F6 /* TerminalMouseReporting.swift */,
 				7EA83366C03C1D15B1DE8D1E /* TerminalOrphanSurfaceLayers.swift */,
+				E45184F9F6FED40203641ECA /* TerminalPasswordPrompt.swift */,
 				847A1406F4AAEBF2F1EDFA1F /* TerminalScreenView.swift */,
 				0A5AC4A835B6FCE7731E251E /* TerminalScrollControl.swift */,
 				D1359A2D60189FA45F8DFB0D /* TerminalTextSafety.swift */,
@@ -3110,6 +3118,7 @@
 				C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */,
 				381B00805D3CDEEE94DAE35B /* RenameStore.swift */,
 				07A6A8381CE83D1F110DE1EA /* SearchDrawerTuck.swift */,
+				8BB54B93940C297518A3440B /* ShellTerminalPasswordFill.swift */,
 				175D872736F56BE7D98A5A40 /* ShellTerminalStore.swift */,
 				819E36D9E9AE398B986ECACC /* ShellTerminalView.swift */,
 				B671CE47EB462C3933AF4283 /* SidebarSearchDrawer.swift */,
@@ -4480,6 +4489,7 @@
 				34DE39C9B3FDCB80049DB3FC /* ServerKindDetectionScript.swift in Sources */,
 				D8FA3A3189491AC2A765C6BC /* SettingsView.swift in Sources */,
 				C0CA2928B947520D9FB9CAF9 /* SharedAsyncOperation.swift in Sources */,
+				418F5008370E903A74222B60 /* ShellTerminalPasswordFill.swift in Sources */,
 				E6C62004AD1258DB773F9B07 /* ShellTerminalStore.swift in Sources */,
 				0CA75907397EA525E9E7D742 /* ShellTerminalView.swift in Sources */,
 				5AA35B673EF018CF12EBFD3B /* SideBySideDiff.swift in Sources */,
@@ -4517,6 +4527,7 @@
 				B5BF158F1DCA20F1B7AA12B0 /* TerminalMessageJumpController.swift in Sources */,
 				A236FAB25CBCB58BDDDBA00C /* TerminalMouseReporting.swift in Sources */,
 				558112530B864897BAE6900A /* TerminalOrphanSurfaceLayers.swift in Sources */,
+				68FAAC2CE60E94D5938493D8 /* TerminalPasswordPrompt.swift in Sources */,
 				D7E0DBBBC8229F24218C8958 /* TerminalRetentionBudget.swift in Sources */,
 				289D5FF53D330E3C7CA81707 /* TerminalScreenView.swift in Sources */,
 				84107CE13DF5FB29C1D05AA0 /* TerminalScrollControl.swift in Sources */,
@@ -5008,6 +5019,7 @@
 				BE92EAF1AB7A7A6B6E65170F /* TerminalMessageJumpControllerTests.swift in Sources */,
 				CBDCB3F3F8D22433CD71C763 /* TerminalModeTrackerTests.swift in Sources */,
 				4712E2A7878E4962BDEC7E8C /* TerminalMouseReportingTests.swift in Sources */,
+				129B8EAA243189CF1CD0D763 /* TerminalPasswordPromptTests.swift in Sources */,
 				41CE04A256929B8D197C77A7 /* TerminalRetentionBudgetTests.swift in Sources */,
 				7AAD57A0A0BF63FE16C76C17 /* TerminalStatusDialogTests.swift in Sources */,
 				581CB87C7122F80410C6723D /* TerminalSurfaceOrphanLayerTests.swift in Sources */,

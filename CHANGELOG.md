@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
 - Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)
 - Read Heeler in Traditional Chinese (Taiwan). On a Traditional Chinese device, or with Traditional Chinese chosen as Heeler's language, everything Japanese and Simplified Chinese cover presents in Traditional Chinese, permission prompts included. (PR #668)
