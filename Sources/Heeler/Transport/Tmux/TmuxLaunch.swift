@@ -105,6 +105,25 @@ enum TmuxLaunch {
         command(["kill-window", "-t", id], paths: paths, loginShell: false)
     }
 
+    /// The session name for a Worktree: the branch, with `.` and `:` replaced by
+    /// `-` because tmux rejects both in a session name, then `-2`, `-3`, …
+    /// while that name is already taken.
+    static func sessionName(forBranch branch: String, taken: Set<String>) -> String {
+        let base = String(branch.map { $0 == "." || $0 == ":" ? "-" : $0 })
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base)-\(number)") { number += 1 }
+        return "\(base)-\(number)"
+    }
+
+    /// `@heeler-worktree` on the session id, after the session exists. The path
+    /// is how a later removal finds the session, never its name.
+    static func setWorktree(session: String, path: String, paths: TmuxPaths) -> Command {
+        command(
+            ["set-option", "-t", session, "@heeler-worktree", path],
+            paths: paths, loginShell: false)
+    }
+
     /// The server's global environment, which a new session inherits.
     /// `show-environment -g` prints `NAME=value`; the caller keeps names only.
     static func showEnvironment(paths: TmuxPaths) -> Command {

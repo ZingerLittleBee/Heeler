@@ -463,6 +463,57 @@ struct TmuxLaunchTests {
         #expect(!argv.contains(Data("-N".utf8)))
     }
 
+    // MARK: Worktree sessions
+
+    @Test func aWorktreeSessionKeepsTheBranchAndNumbersWhenThatNameIsTaken() {
+        #expect(TmuxLaunch.sessionName(forBranch: "feature/login", taken: []) == "feature/login")
+        #expect(
+            TmuxLaunch.sessionName(forBranch: "feature/login", taken: ["feature/login"])
+                == "feature/login-2")
+        #expect(
+            TmuxLaunch.sessionName(
+                forBranch: "feature/login", taken: ["feature/login", "feature/login-2", "other"])
+                == "feature/login-3")
+        #expect(
+            TmuxLaunch.sessionName(
+                forBranch: "feature/login", taken: ["feature/login", "feature/login-3"])
+                == "feature/login-2")
+    }
+
+    /// tmux rejects `.` and `:` in a session name. A dotted branch such as
+    /// `v1.2` is a branch git accepts, so the session name replaces those.
+    @Test func aDottedBranchBecomesASessionNameTmuxAccepts() {
+        #expect(TmuxLaunch.sessionName(forBranch: "v1.2", taken: []) == "v1-2")
+        #expect(TmuxLaunch.sessionName(forBranch: "v1.2", taken: ["v1-2"]) == "v1-2-2")
+        #expect(TmuxLaunch.sessionName(forBranch: "a:b", taken: []) == "a-b")
+    }
+
+    @Test func aWorktreeMarkAddressesTheSessionById() throws {
+        let path = "/Users/dev/.heeler/worktrees/my app/feature-login"
+        let command = TmuxLaunch.setWorktree(session: "$3", path: path, paths: Self.paths)
+        #expect(text(command) == script(
+            "exec \"$t\" -N -S \"$s\" set-option -t '$3' @heeler-worktree '/Users/dev/.heeler/worktrees/my app/feature-login'"
+        ))
+        #expect(!command.throughLoginShell)
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "-t")) == Data("$3".utf8))
+        #expect(argv.contains(Data("@heeler-worktree".utf8)))
+        #expect(argv.last == Data(path.utf8))
+    }
+
+    @Test func aBranchWithShellCharactersIsQuotedAsTheSessionName() throws {
+        let branch = "a;b'c$(id)`x`"
+        #expect(TmuxLaunch.sessionName(forBranch: branch, taken: []) == branch)
+        let directory = "/Users/dev/.heeler/worktrees/my app/a-b-c-id-x"
+        let command = try TmuxLaunch.agentSession(
+            AgentLaunchRequest(kind: "claude", name: "claude", cwd: "/ignored"),
+            workspace: NewWorkspaceSpec(directory: directory, label: branch),
+            on: server())
+        let argv = try Self.posixArgv(of: command)
+        #expect(try #require(Self.argument(argv, after: "-s")) == Data(branch.utf8))
+        #expect(try #require(Self.argument(argv, after: "-c")) == Data(directory.utf8))
+    }
+
     // MARK: What tmux prints
 
     @Test func createdReadsThePrintedIds() {
