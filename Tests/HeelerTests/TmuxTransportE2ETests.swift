@@ -944,4 +944,122 @@ struct TmuxTransportE2ETests {
             try await fixture.eventually { await store.agents.isEmpty }
         }
     }
+
+    /// A repository path with a space, and a branch whose slug is not the branch.
+    /// A session already named `feature/login` must stay; the checkout's session
+    /// is the numbered one, found afterwards by `@heeler-worktree`.
+    @Test("a named branch checks out under .heeler, numbers the session, and removal ends only that session")
+    func aNamedBranchChecksOutUnderHeelerAndRemovalEndsOnlyThatSession() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            try await agentOnLoginPath(on: fixture)
+            let home = fixture.configuration.homePath
+            let repo = "\(home)/my app"
+            let path = try #require(
+                HerdrCoreWorktrees.checkoutPath(
+                    home: home, mainCheckout: repo, branch: "feature/login", root: ".heeler"))
+            try await plantRepository(at: repo, on: fixture)
+            // Two words, so tmux runs them and fish does not stay in front.
+            try await fixture.tmux(
+                nil, "new-session", "-d", "-s", "feature/login", "-c", home, "/bin/sleep", "3600")
+            try await fixture.tmux(
+                nil, "new-session", "-d", "-s", "source", "-c", repo, "/bin/sleep", "3600")
+            try await openAndRemoveWorktree(fixture, repository: repo, path: path)
+        }
+    }
+
+    /// `git` may live in Homebrew, off the fixture exec's PATH.
+    private func plantRepository(at path: String, on fixture: TmuxSSHFixture) async throws {
+        let quoted = GitProbe.singleQuoted(path)
+        try await fixture.require(
+            """
+            mkdir -p \(quoted) && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH \
+            git -C \(quoted) init -q && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH \
+            git -C \(quoted) -c user.name=lab -c user.email=lab@localhost -c commit.gpgsign=false \
+            commit -q --allow-empty -m one
+            """)
+    }
+
+    private func paneIDs(_ target: String, on fixture: TmuxSSHFixture) async throws -> [String] {
+        try await fixture.tmux(nil, "list-panes", "-t", target, "-F", "#{pane_id}")
+            .split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+    }
+
+    private func sessionExists(_ id: String, on fixture: TmuxSSHFixture) async throws -> Bool {
+        try await fixture.run(fixture.tmuxLine(["has-session", "-t", id])).exitStatus == 0
+    }
+
+    @MainActor
+    private func openAndRemoveWorktree(
+        _ fixture: TmuxSSHFixture, repository: String, path: String
+    ) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually {
+                let labels = await self.labelsInListOrder(store, host: host)
+                return labels.contains("main") && labels.contains("source")
+                    && labels.contains("feature/login")
+            }
+            let source = try #require(store.workspacesByHost[host.id]?.first { $0.label == "source" })
+            let decoy = try #require(
+                store.workspacesByHost[host.id]?.first { $0.label == "feature/login" })
+            let main = try #require(store.workspacesByHost[host.id]?.first { $0.label == "main" })
+            #expect(source.checkoutPath == nil)
+            let sourcePane = try #require(
+                store.terminals.first { $0.workspaceID == source.id }?.paneID)
+            let cwd = try await self.paneField("#{pane_current_path}", of: sourcePane, on: fixture)
+            #expect(cwd.hasSuffix("/my app"))
+
+            let opened = try await store.startAgentInNewWorktree(
+                AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: source.id),
+                worktree: WorktreeSpec(branch: "feature/login"), on: host.id)
+            #expect(opened.cwd == path)
+            try await fixture.eventually {
+                await store.agents.contains { $0.agent.paneID == opened.paneID && $0.checkoutPath == path }
+            }
+            let row = try #require(store.agents.first { $0.agent.paneID == opened.paneID })
+            #expect(row.workspaceLabel == "feature/login-2")
+            #expect(row.repositoryCheckout?.repoName == "my app")
+            #expect(row.repositoryCheckout?.repoKey.hasSuffix("/my app") == true)
+            #expect(row.repositoryCheckout?.isLinkedWorktree == true)
+            #expect(row.checkoutPath == path)
+            let marked = opened.workspaceID
+            #expect(
+                self.trimmed(try await fixture.tmux(
+                    nil, "display-message", "-p", "-t", marked, "#{session_name}"))
+                    == "feature/login-2")
+            #expect(
+                self.trimmed(try await fixture.tmux(
+                    nil, "display-message", "-p", "-t", marked, "#{@heeler-worktree}"))
+                    == path)
+            #expect(
+                self.trimmed(try await fixture.tmux(
+                    nil, "display-message", "-p", "-t", decoy.id, "#{@heeler-worktree}")).isEmpty)
+            let kept = [main.id: try await self.paneIDs(main.id, on: fixture),
+                        source.id: try await self.paneIDs(source.id, on: fixture),
+                        decoy.id: try await self.paneIDs(decoy.id, on: fixture)]
+            let checkout = try #require(row.repositoryCheckout)
+            let receipt = try await store.removeWorktree(
+                WorktreeRemovalRequest(
+                    identity: WorktreeIdentity(
+                        hostID: host.id, workspaceID: row.agent.workspaceID, checkout: checkout)),
+                on: host.id)
+
+            try await fixture.eventually {
+                await store.workspacesByHost[host.id]?.contains { $0.id == marked } != true
+            }
+            #expect(receipt.affectedAgentIDs.contains(row.id))
+            #expect(try await self.sessionExists(marked, on: fixture) == false)
+            for (id, panes) in kept {
+                #expect(try await self.paneIDs(id, on: fixture) == panes)
+            }
+            #expect(try await fixture.sessionNames().contains("feature/login"))
+            #expect(try await fixture.sessionNames().contains("feature/login-2") == false)
+            #expect(try await fixture.exists(path) == false)
+            let quoted = GitProbe.singleQuoted(repository)
+            let ref = try await fixture.run(
+                "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH git -C \(quoted) "
+                    + "show-ref --verify --quiet refs/heads/feature/login")
+            #expect(ref.exitStatus == 0)
+        }
+    }
 }

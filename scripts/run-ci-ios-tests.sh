@@ -2408,7 +2408,7 @@ run_tmux_fixture_suite() {
     HEELER_SSH_E2E_CONFIG=$(<"$tmux_fixture_dir/tmux-test-config")
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite TmuxTransportE2ETests 27 1 0 TmuxTransportE2ETests || return $?
+    run_suite TmuxTransportE2ETests 28 1 0 TmuxTransportE2ETests || return $?
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
     push_simulator_environment HEELER_SSH_E2E_CONFIG \
         HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
