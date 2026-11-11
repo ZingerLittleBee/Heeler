@@ -284,4 +284,141 @@ extension TmuxTransportE2ETests {
         walk(root)
         return found
     }
+
+    // MARK: Input
+
+    /// Sent last, so the probe's file ending in it holds everything typed.
+    private static let endOfTyping = "#end"
+
+    /// A Pane whose program reads what it is typed, raw, into a new file,
+    /// after asking for bracketed paste and, for `mok2`, modifyOtherKeys 2.
+    private func probePane(asking mode: String, on fixture: TmuxSSHFixture) async throws -> (pane: String, file: String) {
+        let home = fixture.configuration.homePath
+        let program = "\(home)/bin/read-typed"
+        try await fixture.writeProgram(
+            at: program,
+            """
+            #!/bin/sh
+            stty raw -echo
+            if [ "$2" = mok2 ]; then printf '\\033[>4;2m'; fi
+            printf '\\033[?2004h'
+            exec cat > "$1"
+            """)
+        let file = "\(home)/typed-\(UUID().uuidString.prefix(8)).bin"
+        let pane = try await fixture.require(
+            fixture.tmuxLine(["new-window", "-d", "-t", "main:", "-P", "-F", "#{pane_id}", "/bin/sh", program, file, mode]))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(TmuxAttachScript.isPaneID(pane))
+        // The file appears once the terminal is raw and the modes are asked for.
+        try await fixture.eventually { try await fixture.run("test -e \(GitProbe.singleQuoted(file))").exitStatus == 0 }
+        return (pane, file)
+    }
+
+    /// What the probe read, in hex, once the last thing it read was
+    /// `endOfTyping`, or when that never came.
+    private func typed(into file: String, on fixture: TmuxSSHFixture) async throws -> String {
+        let end = Self.hex(Data(Self.endOfTyping.utf8))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        var read = ""
+        repeat {
+            if !read.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+            read = try await fixture.require("od -An -tx1 -v \(GitProbe.singleQuoted(file)) | tr -d ' \\n'")
+        } while !read.hasSuffix(end) && ContinuousClock.now < deadline
+        return read
+    }
+
+    private static func hex(_ bytes: Data) -> String {
+        bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The measured keys typed here: text, legacy keys, and each kind of key
+    /// with no legacy encoding.
+    private static let typedKeys = [
+        "a", "Space", "Enter", "Tab", "BTab", "Escape", "BSpace", "Up", "Home", "PPage", "F1", "F5",
+        "S-Enter", "C-Enter", "M-Enter", "C-Tab", "C-S-Tab", "C-BSpace", "C-Up", "M-Left", "C-a", "C-c",
+        "C-j", "C-_", "C-Space", "C-S-a", "C-1", "M-a", "M-A", "C-M-a", "S-Space",
+    ]
+
+    /// Keys typed into an Attach reach the Pane's program as the input
+    /// measurements recorded a desktop terminal's (`tmux-input-v1.json`):
+    /// under tmux's default `extended-keys off`, and under `on` for a program
+    /// that asked for modifyOtherKeys 2. A key with no legacy encoding arrives
+    /// only while `#{pane_key_mode}` reads an extended mode, and otherwise not
+    /// at all. A tmux the measurements did not cover is held to 3.7b's reads.
+    @Test("keys typed into an Attach reach the Pane's program as a desktop terminal's do")
+    func keysTypedIntoAnAttachReachTheProgramAsMeasured() async throws {
+        let vector = try TmuxInputVectorFile.load()
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let version = try await fixture.tmux(nil, "-V").trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "tmux ", with: "")
+            let measured = vector.runs.contains { $0.version == version } ? version : "3.7b"
+            let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+            do {
+                for (extendedKeys, program) in [("off", "legacy"), ("on", "mok2")] {
+                    let run = try #require(
+                        vector.runs.first {
+                            $0.version == measured && $0.extendedKeys == extendedKeys && $0.program == program
+                                && ($0.extendedKeysFormat ?? "xterm") == "xterm"
+                        })
+                    try await fixture.tmux(nil, "set-option", "-s", "extended-keys", extendedKeys)
+                    let (pane, file) = try await probePane(asking: program, on: fixture)
+                    try await fixture.eventually {
+                        try await fixture.tmux(nil, "display-message", "-p", "-t", pane, TmuxKey.paneKeyModeFormat)
+                            .trimmingCharacters(in: .whitespacesAndNewlines) == run.paneKeyMode
+                    }
+                    var expected = ""
+                    let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                    for name in Self.typedKeys {
+                        let key = try #require(vector.keys.first { $0.name == name })
+                        session.send(TmuxInputVectorFile.bytes(key.desktop))
+                        let sent = key.extended != true
+                            || TmuxKey(name: key.key ?? "", isExtended: true).isSent(whilePaneKeyModeReads: run.paneKeyMode)
+                        if sent { expected += run.read[name] ?? "" }
+                    }
+                    session.send(Data(Self.endOfTyping.utf8))
+                    expected += Self.hex(Data(Self.endOfTyping.utf8))
+                    let read = try await typed(into: file, on: fixture)
+                    #expect(read == expected, "tmux \(version), extended-keys \(extendedKeys), \(program)")
+                    await session.end()
+                }
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+        }
+    }
+
+    /// Text typed into an Attach arrives exactly: quotes, `$`, `~`, `#{}`,
+    /// `;`, CJK, emoji and a trailing backslash. A paste arrives as one, line
+    /// feeds and tabs kept, between the bracketed paste markers the program
+    /// asked for.
+    @Test("text and a paste typed into an Attach arrive exactly")
+    func textAndAPasteTypedIntoAnAttachArriveExactly() async throws {
+        let vector = try TmuxInputVectorFile.load()
+        let texts = vector.texts.map(\.text).filter { !$0.unicodeScalars.contains { $0.value < 0x20 } }
+        let paste = try #require(vector.pasteTexts.first { $0.name == "tabs-unicode" }).text
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, file) = try await probePane(asking: "legacy", on: fixture)
+            let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
+            do {
+                let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                for text in texts { session.send(Data(text.utf8)) }
+                let bracketed = "\u{1B}[200~" + paste + "\u{1B}[201~"
+                session.send(Data(bracketed.utf8))
+                session.send(Data(Self.endOfTyping.utf8))
+                let expected = Self.hex(Data((texts.joined() + bracketed + Self.endOfTyping).utf8))
+                #expect(try await typed(into: file, on: fixture) == expected)
+                // The paste's buffer went with it.
+                #expect(try await fixture.tmux(nil, "list-buffers", "-F", "#{buffer_name}").isEmpty)
+                await session.end()
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+        }
+    }
 }
