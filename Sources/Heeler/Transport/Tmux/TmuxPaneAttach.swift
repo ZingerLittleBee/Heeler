@@ -212,8 +212,9 @@ actor TmuxPaneAttach {
 
     // MARK: Input
 
-    /// How long a read of `#{pane_key_mode}` may take before its key is dropped.
-    private static let keyModeTimeout = Duration.seconds(5)
+    /// How long tmux may take to answer a read of `#{pane_key_mode}`, whose
+    /// key is then dropped, or a paste, whose buffer is then deleted.
+    private static let answerTimeout = Duration.seconds(5)
 
     /// Types the terminal view's bytes into the Pane through the client, in
     /// order (ADR 0043): text with `send-keys -l`, each key by its tmux name,
@@ -230,11 +231,27 @@ actor TmuxPaneAttach {
                 guard try await tmuxEncodes(key) else { continue }
                 try await client.post(TmuxControlCommand(["send-keys", "-t", pane, key.name]))
             case .paste(let text):
-                guard !text.isEmpty else { continue }
-                try await client.post(TmuxControlCommand(["set-buffer", "-b", session, "--", text]))
-                try await client.post(TmuxControlCommand(["paste-buffer", "-p", "-r", "-d", "-b", session, "-t", pane]))
+                try await paste(text)
             }
         }
+    }
+
+    /// Pastes `text` from the buffer named for this Attach, which `-d`
+    /// deletes once pasted. A paste that failed, or that tmux did not answer
+    /// in time, leaves the buffer to be deleted by that name.
+    private func paste(_ text: String) async throws {
+        guard !text.isEmpty else { return }
+        try await client.post(TmuxControlCommand(["set-buffer", "-b", session, "--", text]))
+        let pasted: Bool
+        do {
+            pasted = try await client.run(
+                TmuxControlCommand(["paste-buffer", "-p", "-r", "-d", "-b", session, "-t", pane]),
+                timeout: Self.answerTimeout
+            ).succeeded
+        } catch TransportError.timedOut {
+            pasted = false
+        }
+        if !pasted { try await client.post(TmuxControlCommand(["delete-buffer", "-b", session])) }
     }
 
     /// Whether tmux can encode `key` for the Pane's program now: a key with no
@@ -246,7 +263,7 @@ actor TmuxPaneAttach {
         do {
             reply = try await client.run(
                 TmuxControlCommand(["display-message", "-p", "-t", pane, TmuxKey.paneKeyModeFormat]),
-                timeout: Self.keyModeTimeout)
+                timeout: Self.answerTimeout)
         } catch TransportError.timedOut {
             return false
         }

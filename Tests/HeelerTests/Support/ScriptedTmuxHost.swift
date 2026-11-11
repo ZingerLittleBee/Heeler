@@ -341,6 +341,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// What `#{pane_key_mode}` reads for a pane, by pane id: `VT10x`, as under
     /// tmux's default `extended-keys off`, unless set.
     private var keyModes: [String: String] = [:]
+    /// The server's paste buffers, by name, and pastes still to fail.
+    private(set) var buffers: [String: String] = [:]
+    private var failingPastes = 0
 
     var openControlClients: Int { controlClients.count }
 
@@ -355,6 +358,17 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// `Ext 2` once its program asked for extended keys, empty before tmux 3.5.
     func setKeyMode(_ mode: String, of pane: String) {
         keyModes[pane] = mode
+    }
+
+    /// A buffer of the user's own, which no paste of Heeler's may touch.
+    func setBuffer(_ text: String, named name: String) {
+        buffers[name] = text
+    }
+
+    /// The next `paste-buffer` fails, as it does when its pane went away,
+    /// and leaves its buffer.
+    func failNextPaste() {
+        failingPastes += 1
     }
 
     func silenceNextControlClient() {
@@ -487,11 +501,36 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return block(["%continue \(pane.paneID)"])
         case "kill-window", "kill-session":
             return block([])
-        case "send-keys", "set-buffer", "paste-buffer":
+        case "send-keys":
+            return block([])
+        case "set-buffer":
+            guard let name = Self.value(of: "-b", in: words), let text = Self.value(of: "--", in: words) else {
+                return block(["usage: set-buffer"], succeeded: false)
+            }
+            buffers[name] = text
+            return block([])
+        case "paste-buffer":
+            let name = Self.value(of: "-b", in: words) ?? ""
+            if failingPastes > 0 {
+                failingPastes -= 1
+                return block(["can't find pane: \(Self.value(of: "-t", in: words) ?? "")"], succeeded: false)
+            }
+            guard buffers[name] != nil else { return block(["no buffer \(name)"], succeeded: false) }
+            if words.contains("-d") { buffers[name] = nil }
+            return block([])
+        case "delete-buffer":
+            let name = Self.value(of: "-b", in: words) ?? ""
+            guard buffers.removeValue(forKey: name) != nil else { return block(["unknown buffer: \(name)"], succeeded: false) }
             return block([])
         default:
             return block(["unknown command: \(words.first ?? "")"], succeeded: false)
         }
+    }
+
+    /// The word after `flag`.
+    private static func value(of flag: String, in words: [String]) -> String? {
+        guard let index = words.firstIndex(of: flag), index + 1 < words.count else { return nil }
+        return words[index + 1]
     }
 
     /// The clients a command ended: a killed window takes the sessions that

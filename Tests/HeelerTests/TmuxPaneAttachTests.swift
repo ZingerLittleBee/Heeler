@@ -199,7 +199,7 @@ struct TmuxPaneAttachTests {
     /// text, buffers, pastes, and the reads of `#{pane_key_mode}`.
     private func input(on tmux: ScriptedTmuxHost) async -> [[String]] {
         await commands(on: tmux).filter { words in
-            ["send-keys", "set-buffer", "paste-buffer"].contains(words.first ?? "")
+            ["send-keys", "set-buffer", "paste-buffer", "delete-buffer"].contains(words.first ?? "")
                 || words.contains(TmuxKey.paneKeyModeFormat)
         }
     }
@@ -278,6 +278,7 @@ struct TmuxPaneAttachTests {
         let expected = Self.pasteCommands(name)
         try await waitUntil("the paste") { await input(on: tmux).count >= expected.count }
         #expect(await input(on: tmux) == expected)
+        #expect(await tmux.buffers.isEmpty)
     }
 
     /// The view can write a paste's start marker, its text and its end marker
@@ -298,6 +299,26 @@ struct TmuxPaneAttachTests {
         let expected = Self.pasteCommands(name)
         try await waitUntil("the paste") { await input(on: tmux).count >= expected.count }
         #expect(await input(on: tmux) == expected)
+    }
+
+    /// A paste that failed leaves its buffer, which Heeler deletes by its
+    /// name; the user's own buffers stay.
+    @Test func aBufferAFailedPasteLeftIsDeleted() async throws {
+        let tmux = await host()
+        await tmux.setBuffer("the user's", named: "buffer0")
+        await tmux.failNextPaste()
+        let session = try await attach(on: tmux)
+        defer { Task { await session.end() } }
+        let name = try #require(await tmux.attachSessions.first)
+        session.send(Data("\u{1B}[200~text\u{1B}[201~".utf8))
+        let expected = [
+            ["set-buffer", "-b", name, "--", "text"],
+            ["paste-buffer", "-p", "-r", "-d", "-b", name, "-t", "%0"],
+            ["delete-buffer", "-b", name],
+        ]
+        try await waitUntil("the buffer to go") { await input(on: tmux).count >= expected.count }
+        #expect(await input(on: tmux) == expected)
+        #expect(await tmux.buffers == ["buffer0": "the user's"])
     }
 
     /// Once the Attach ended, input is refused rather than kept.
