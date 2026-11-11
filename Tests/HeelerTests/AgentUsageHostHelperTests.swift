@@ -258,13 +258,16 @@ struct AgentUsageHostHelperTests {
         #expect(AgentUsageScope.exclusion(for: store.state) == .waitingForTmux)
         let helperDir = "\(ScriptedTmuxHost.home)/Library/Application Support/heeler/host-helper"
         #expect(await tmux.helper.folders["\(helperDir)/sessions/work"] == nil)
+        #expect(
+            await tmux.helper.files["\(helperDir)/tmux/work/paths.json"]?.contents
+                == TmuxClaudeCodeHooks.storedPaths(ScriptedTmuxHost.paths("work")))
 
         await tmux.helper.seedTmuxUsage(try AgentUsageFixture.reportData(refreshing: false), socket: "work")
         await store.pullToRefresh()
 
         #expect(store.state == .available(try AgentUsageFixture.report()))
         let sockets = await tmux.helper.steps.compactMap { step -> String? in
-            guard case .tmuxUsageQuery(_, _, let socket) = step else { return nil }
+            guard case .tmuxUsageQuery(_, _, let socket, _) = step else { return nil }
             return socket
         }
         #expect(sockets == ["work", "work"])

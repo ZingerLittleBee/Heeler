@@ -356,8 +356,14 @@ actor ScriptedHelperHost: HostHelperHost {
             lines = tidy(directory: directory, record: record, waitsForQuiet: quietMinutes != nil)
         case .usageQuery(_, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
-        case .tmuxUsageQuery(_, _, let socket):
-            lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", tmuxUsageBody(socket: socket), "__HEELER_USAGE_END_\(script.nonce):0"]
+        case .tmuxUsageQuery(_, _, let socket, let storedPaths):
+            lines = [
+                "__HEELER_USAGE_BEGIN_\(script.nonce)",
+                tmuxUsageBody(socket: socket, storedPaths: storedPaths),
+                "__HEELER_USAGE_END_\(script.nonce):0",
+            ]
+        case .refreshTmuxPaths(let socket, let storedPaths):
+            refreshTmuxPaths(socket: socket, storedPaths: storedPaths)
         }
         if let afterBootout, isStoppedByBootout(script.step) {
             self.afterBootout = nil
@@ -392,10 +398,13 @@ actor ScriptedHelperHost: HostHelperHost {
         return String(decoding: report, as: UTF8.self)
     }
 
-    private func tmuxUsageBody(socket: String) -> String {
+    private func tmuxUsageBody(socket: String, storedPaths: String?) -> String {
         let directory = helperDirectory
         guard files["\(directory)/app/main.js"] != nil else { return "helper-absent" }
         guard files["\(directory)/app/usage-query.js"] != nil else { return "helper-outdated" }
+        if let storedPaths, !storedPaths.isEmpty {
+            storeTmuxPaths(storedPaths, socket: socket)
+        }
         let missing = #"{"version":1,"runtime":"missing"}"#
         if recordNodeGone, files["\(directory)/tmux/\(socket)/runtime-node"] != nil {
             return serviceNodeGone ? "helper-node-gone" : missing
@@ -403,6 +412,22 @@ actor ScriptedHelperHost: HostHelperHost {
         guard files["\(directory)/tmux/\(socket)/runtime-node"] != nil, let report = tmuxUsageAnswers[socket]
         else { return missing }
         return String(decoding: report, as: UTF8.self)
+    }
+
+    private func refreshTmuxPaths(socket: String, storedPaths: String) {
+        let directory = helperDirectory
+        let pathsFile = "\(directory)/tmux/\(socket)/paths.json"
+        guard files["\(directory)/app/main.js"] != nil || files[pathsFile] != nil else { return }
+        storeTmuxPaths(storedPaths, socket: socket)
+    }
+
+    private func storeTmuxPaths(_ storedPaths: String, socket: String) {
+        let directory = helperDirectory
+        folders[directory] = 0o700
+        folders["\(directory)/tmux"] = 0o700
+        folders["\(directory)/tmux/\(socket)"] = 0o700
+        let normalized = storedPaths.trimmingCharacters(in: .newlines) + "\n"
+        files["\(directory)/tmux/\(socket)/paths.json"] = File(contents: Data(normalized.utf8), mode: 0o600)
     }
 
     /// As the real script does, but with no clock: `installWritesAreRecent` stands
@@ -624,7 +649,8 @@ actor ScriptedHelperHost: HostHelperHost {
         case .removeTree(let path, _): "removeTree \(path)"
         case .tidyInterruptedInstall(_, _, let quietMinutes): quietMinutes == nil ? "tidy" : "tidy when quiet"
         case .usageQuery(_, _, let session): "usageQuery \(session)"
-        case .tmuxUsageQuery(_, _, let socket): "tmuxUsageQuery \(socket)"
+        case .tmuxUsageQuery(_, _, let socket, _): "tmuxUsageQuery \(socket)"
+        case .refreshTmuxPaths(let socket, _): "refreshTmuxPaths \(socket)"
         }
     }
 }

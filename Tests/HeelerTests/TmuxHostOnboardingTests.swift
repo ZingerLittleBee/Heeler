@@ -343,6 +343,26 @@ struct TmuxHostOnboardingTests {
         #expect(await tmux.helper.filePaths() == [pathsFile])
     }
 
+    @Test func anAlreadyInstalledHelperGetsTheTmuxHostsStoredPathsWithoutAnotherInstall() async throws {
+        let tmux = ScriptedTmuxHost(sockets: ["work"], kernel: "Linux")
+        let installer = HostHelperInstaller(host: tmux.helper, healthGap: {})
+        let before = try await installer.check()
+        _ = try await installer.install(over: before, bundle: try HostHelperBundle.load())
+        let workPathsFile = "\(await tmux.dataHome)/heeler/host-helper/tmux/work/paths.json"
+        #expect(await tmux.helper.files[workPathsFile] == nil)
+
+        let host = Host(address: "linux.example", username: "dev", serverKind: .tmux, sessionName: "work")
+        let (store, _) = makeStore(host, tmux: tmux)
+        await store.runChecks()
+
+        let helper = try #require(store.hostHelper)
+        #expect(helper.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
+        #expect(helper.plan == nil)
+        #expect(
+            await tmux.helper.files[workPathsFile]?.contents
+                == TmuxClaudeCodeHooks.storedPaths(ScriptedTmuxHost.paths("work")))
+    }
+
     // MARK: What the confirmation says
 
     @Test func theNoteCountsTheKindsFound() async throws {

@@ -7,7 +7,7 @@ import Foundation
 struct HostHelperFiles: HostNotificationFiles {
     enum Target: Sendable, Equatable {
         case coreSession(String)
-        case tmuxSocket(String)
+        case tmuxSocket(String, TmuxPaths?)
     }
 
     let host: any HostHelperHost
@@ -24,11 +24,11 @@ struct HostHelperFiles: HostNotificationFiles {
     }
 
     init(
-        host: any HostHelperHost, tmuxSocket: String,
+        host: any HostHelperHost, tmuxSocket: String, tmuxPaths: TmuxPaths? = nil,
         nonce: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
         self.host = host
-        target = .tmuxSocket(tmuxSocket)
+        target = .tmuxSocket(tmuxSocket, tmuxPaths)
         self.nonce = nonce
     }
 
@@ -38,17 +38,23 @@ struct HostHelperFiles: HostNotificationFiles {
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
             throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
-        let step: HostHelperScript.Step =
-            switch target {
-            case .coreSession(let session):
-                .usageQuery(
-                    timeZone: timeZone, claudeLimits: claudeLimits,
-                    session: HerdrCoreSessionName.normalized(session))
-            case .tmuxSocket(let socket):
-                .tmuxUsageQuery(
-                    timeZone: timeZone, claudeLimits: claudeLimits,
-                    socket: TmuxSocketName.normalized(socket))
+        let step: HostHelperScript.Step
+        switch target {
+        case .coreSession(let session):
+            step = .usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits,
+                session: HerdrCoreSessionName.normalized(session))
+        case .tmuxSocket(let socket, let paths):
+            let normalized = TmuxSocketName.normalized(socket)
+            let storedPaths = paths.flatMap {
+                $0.serves(socketName: normalized)
+                    ? String(decoding: TmuxClaudeCodeHooks.storedPaths($0), as: UTF8.self)
+                    : nil
             }
+            step = .tmuxUsageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits,
+                socket: normalized, storedPaths: storedPaths)
+        }
         let script = HostHelperScript(step, nonce: nonce())
         let result = try await host.runHostHelperScript(script)
         return try AgentUsageProbe.parseHelper(stdout: result.stdout, nonce: script.nonce)

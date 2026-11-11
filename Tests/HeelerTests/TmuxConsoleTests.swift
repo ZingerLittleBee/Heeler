@@ -500,4 +500,35 @@ struct TmuxConsoleTests {
                     "Heeler couldn't read this Agent's environment, so it can't tell which file to change. Nothing was written."))
         #expect(await tmux.hostFiles.isEmpty)
     }
+
+    @Test func resolvingMovedTmuxPathsUpdatesStoredHelperPathsOnlyWherePresent() async throws {
+        let movedPaths = try #require(
+            TmuxPaths(executable: "/usr/local/bin/tmux", socket: ScriptedTmuxHost.socketPath("default")))
+        let pathsFile = "\(ScriptedTmuxHost.home)/Library/Application Support/heeler/host-helper/tmux/default/paths.json"
+
+        // Without the Helper or placed hooks, resolving moved paths writes nothing.
+        let cleanTmux = ScriptedTmuxHost()
+        await cleanTmux.moveExecutable(to: "/usr/local/bin/tmux")
+        let cleanConsole = await started(cleanTmux)
+        defer { cleanConsole.store.setHosts([]) }
+        try await waitUntil("the moved paths in the catalog") {
+            cleanConsole.resolved.noted == [movedPaths]
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await cleanTmux.helper.files[pathsFile] == nil)
+
+        // With the Helper installed, resolving moved paths updates `paths.json`.
+        let helperTmux = ScriptedTmuxHost()
+        await helperTmux.helper.installApp()
+        await helperTmux.moveExecutable(to: "/usr/local/bin/tmux")
+        let helperConsole = await started(helperTmux)
+        defer { helperConsole.store.setHosts([]) }
+        for _ in 0..<500 {
+            if await helperTmux.helper.files[pathsFile]?.contents == TmuxClaudeCodeHooks.storedPaths(movedPaths) {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await helperTmux.helper.files[pathsFile]?.contents == TmuxClaudeCodeHooks.storedPaths(movedPaths))
+    }
 }

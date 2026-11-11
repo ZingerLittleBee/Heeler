@@ -194,6 +194,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             guard paths != host.tmuxPaths, paths.serves(socketName: host.tmuxSocketName) else { return }
             host.tmuxPaths = paths
             onPathsResolved(paths)
+            Task { [weak self] in await self?.refreshStoredPaths(paths) }
         case .inventory(let inventory):
             guard status == .connected, server != nil else { return }
             replaceInventory(with: inventory)
@@ -433,6 +434,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         return TmuxLaunch.Server(
             paths: paths, shell: shell, kernel: facts.kernel, running: server != nil,
             openCodeVersion: openCodeVersion)
+    }
+
+    /// Keeps `<Helper dir>/tmux/<socket>/paths.json` current when `tmux` moves,
+    /// where the Host already holds the Helper or placed Claude Code hooks.
+    private func refreshStoredPaths(_ paths: TmuxPaths) async {
+        let socket = TmuxSocketName.normalized(host.tmuxSocketName)
+        let stored = String(decoding: TmuxClaudeCodeHooks.storedPaths(paths), as: UTF8.self)
+        let script = HostHelperScript(
+            .refreshTmuxPaths(socket: socket, storedPaths: stored), nonce: HostProcessReader.makeNonce())
+        _ = try? await session.withTransport { transport in
+            try await transport.hostHelperHost.runHostHelperScript(script)
+        }
     }
 
     // MARK: Claude Code hooks (ADR 0044)

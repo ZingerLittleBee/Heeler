@@ -41,7 +41,7 @@ final class HostHelperStore {
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
 
     @ObservationIgnored private let connect: @Sendable () async throws -> any HostHelperConnection
-    @ObservationIgnored private let tmuxPaths: @MainActor () -> TmuxPaths?
+    @ObservationIgnored private let tmuxPaths: @MainActor @Sendable () -> TmuxPaths?
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
@@ -51,7 +51,7 @@ final class HostHelperStore {
 
     init(
         connect: @escaping @Sendable () async throws -> any HostHelperConnection,
-        tmuxPaths: @escaping @MainActor () -> TmuxPaths? = { nil },
+        tmuxPaths: @escaping @MainActor @Sendable () -> TmuxPaths? = { nil },
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         healthGap: @escaping @Sendable () async throws -> Void = {
@@ -143,6 +143,7 @@ final class HostHelperStore {
         let installer = installer(transport)
         do {
             let first = try await installer.readLoadingAgent()
+            await syncTmuxPathsIfInstalled(first, with: installer)
             guard first.awaitsSecondHealthRead else {
                 if answers(began) { adopt(first) }
                 return nil
@@ -182,8 +183,9 @@ final class HostHelperStore {
             await listInstall()
             return
         }
-        let paths = tmuxPaths()
+        let readPaths = tmuxPaths
         await perform(.install) { installer, reading, bundle, _ in
+            let paths = await readPaths()
             _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
         }
     }
@@ -226,11 +228,18 @@ final class HostHelperStore {
     private func read(over transport: any HostHelperConnection, began: Int? = nil) async {
         let began = began ?? actionsDone
         do {
-            let read = try await installer(transport).check()
+            let installer = installer(transport)
+            let read = try await installer.check()
+            await syncTmuxPathsIfInstalled(read, with: installer)
             if answers(began) { adopt(read) }
         } catch {
             if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
+    }
+
+    private func syncTmuxPathsIfInstalled(_ reading: HostHelperReading, with installer: HostHelperInstaller) async {
+        guard running == nil, reading.hasInstalledHelper, let paths = tmuxPaths() else { return }
+        try? await installer.writeTmuxPaths(paths, over: reading)
     }
 
     /// Whether a read that began at this count may still say how the Host is.

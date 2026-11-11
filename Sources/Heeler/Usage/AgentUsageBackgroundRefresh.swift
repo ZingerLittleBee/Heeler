@@ -104,7 +104,7 @@ extension AgentUsageBackgroundRefresh {
                     let state = await readWithRereads(sleep: sleep) {
                         try await AgentUsageStore.reading(
                             overHelper: helper, tmuxSocket: host.tmuxSocketName,
-                            timeZone: timeZone, claudeLimits: claudeLimits
+                            tmuxPaths: host.storedTmuxPaths, timeZone: timeZone, claudeLimits: claudeLimits
                         ).state
                     }
                     try? await transport.close()

@@ -278,6 +278,23 @@ struct HostHelperInstaller: Sendable {
         return after
     }
 
+    /// Writes `paths` into an already-installed Helper directory so a Helper set up
+    /// for another Host on the same machine, or before `tmux` moved or its socket
+    /// changed, follows this Host's server without another install (ADRs 0042 and 0044).
+    func writeTmuxPaths(_ paths: TmuxPaths, over reading: HostHelperReading) async throws {
+        guard reading.hasInstalledHelper, let layout = reading.layout,
+            let dataHome = reading.probe?.locations.dataHome, !dataHome.isEmpty
+        else { return }
+        let file = TmuxClaudeCodeHooks.storedPathsFile(dataHome: dataHome, paths: paths)
+        let folder = (file as NSString).deletingLastPathComponent
+        _ = try await check(
+            .makeFolders(layout.folderChain(reaching: [folder]), privateFolder: layout.directory),
+            step: String(localized: "Creating the folders"))
+        try await write(
+            TmuxClaudeCodeHooks.storedPaths(paths), to: file, in: folder,
+            step: String(localized: "Writing the stored tmux paths"))
+    }
+
     /// Stops the service, deletes the recorded files and then the created folders
     /// that are now empty, undoes the harness edits that go with the Helper, and
     /// finally deletes the Helper directory's own files, keeping `tmux/` so

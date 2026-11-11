@@ -304,10 +304,11 @@ final class AgentUsageStore {
     /// A tmux Host's read: its Helper's report for the Host's tmux socket, from
     /// one bounded exec.
     nonisolated static func reading(
-        overHelper host: any HostHelperHost, tmuxSocket: String, timeZone: String, claudeLimits: Bool
+        overHelper host: any HostHelperHost, tmuxSocket: String, tmuxPaths: TmuxPaths? = nil,
+        timeZone: String, claudeLimits: Bool
     ) async throws -> Reading {
         try await reading(
-            overHelper: host, files: HostHelperFiles(host: host, tmuxSocket: tmuxSocket),
+            overHelper: host, files: HostHelperFiles(host: host, tmuxSocket: tmuxSocket, tmuxPaths: tmuxPaths),
             waiting: .waitingForTmux, timeZone: timeZone, claudeLimits: claudeLimits)
     }
 

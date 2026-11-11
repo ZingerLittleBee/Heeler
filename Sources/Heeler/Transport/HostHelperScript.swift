@@ -47,8 +47,13 @@ struct HostHelperScript: Sendable, Equatable {
         /// is framed and capped, so a cut-off report can never read as complete.
         case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
         /// Runs the Helper's own Usage query for a tmux server, whose stored
-        /// paths live under `tmux/<socket>`. Makes no session folder.
-        case tmuxUsageQuery(timeZone: String, claudeLimits: Bool, socket: String)
+        /// paths live under `tmux/<socket>`, and writes `storedPaths` there when
+        /// the Helper is installed so it comes to follow that server too. Makes
+        /// no core session folder.
+        case tmuxUsageQuery(timeZone: String, claudeLimits: Bool, socket: String, storedPaths: String? = nil)
+        /// Updates `tmux/<socket>/paths.json` when `tmux` moved on a Host that
+        /// already holds the Helper or placed `paths.json` for Claude Code's hooks.
+        case refreshTmuxPaths(socket: String, storedPaths: String)
     }
 
     /// What an install record names, for `tidyInterruptedInstall`.
@@ -184,11 +189,29 @@ struct HostHelperScript: Sendable, Equatable {
         case .usageQuery(let timeZone, let claudeLimits, let session):
             lines = usageQuery(
                 timeZone: timeZone, claudeLimits: claudeLimits, folder: "sessions", flag: "--session",
-                name: session, createsFolder: true, nonce: nonce)
-        case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket):
+                name: session, prepare: ["  mkdir -p -- \"$__h_target\" || return 1"], nonce: nonce)
+        case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket, let storedPaths):
+            let prepare: [String] =
+                if let storedPaths, !storedPaths.isEmpty {
+                    writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: "return 1")
+                } else {
+                    []
+                }
             lines = usageQuery(
                 timeZone: timeZone, claudeLimits: claudeLimits, folder: "tmux", flag: "--tmux",
-                name: socket, createsFolder: false, nonce: nonce)
+                name: socket, prepare: prepare, nonce: nonce)
+        case .refreshTmuxPaths(let socket, let storedPaths):
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "umask 077",
+                dataHome,
+                "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
+                "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
+                "__h_target=\"$__h_dir\"/tmux/\(quote(socket))",
+                "if [ -f \"$__h_app/main.js\" ] || [ -f \"$__h_target/paths.json\" ]; then",
+            ] + writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: "exit 1") + [
+                "fi",
+            ]
         }
         return (["printf '%s begin\\n' \(quote(nonce))"] + lines
             + ["__h_status=$?", "printf '%s end\\n' \(quote(nonce))", "exit \"$__h_status\""])
@@ -208,13 +231,27 @@ struct HostHelperScript: Sendable, Equatable {
         "printf 'config %s\\n' \"$__h_config\"",
     ]
 
+    private static func writeStoredTmuxPaths(
+        _ storedPaths: String, nonce: String, failCommand: String
+    ) -> [String] {
+        let want = storedPaths.trimmingCharacters(in: .newlines)
+        return [
+            "  mkdir -p -- \"$__h_target\" || \(failCommand)",
+            "  __h_paths=\"$__h_target/paths.json\"",
+            "  __h_want=\(quote(want))",
+            "  if [ ! -f \"$__h_paths\" ] || [ \"$(cat \"$__h_paths\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+            "    __h_tmp=\"$__h_paths\(temporarySuffix)\(nonce)\"",
+            "    if printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && mv -f -- \"$__h_tmp\" \"$__h_paths\"; then :; else rm -f -- \"$__h_tmp\"; \(failCommand); fi",
+            "  fi",
+        ]
+    }
+
     private static func usageQuery(
         timeZone: String, claudeLimits: Bool, folder: String, flag: String, name: String,
-        createsFolder: Bool, nonce: String
+        prepare: [String], nonce: String
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
-        let prepare = createsFolder ? ["  mkdir -p -- \"$__h_target\" || return 1"] : []
         return [
             "LC_ALL=C; export LC_ALL",
             "umask 077",

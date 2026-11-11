@@ -323,6 +323,14 @@ struct HostHelperReading: Sendable, Equatable {
         if case .found(let path) = probe?.node { path } else { nil }
     }
 
+    /// Whether an intact or newer Helper is already in place on the Host.
+    var hasInstalledHelper: Bool {
+        switch integrity {
+        case .intact, .newer: true
+        case .absent, .damaged: false
+        }
+    }
+
     /// True when an install would put new Helper files in place. An older
     /// device never does over a newer Helper.
     var replacesHelper: Bool {

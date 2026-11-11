@@ -1767,7 +1767,7 @@ final class ConsoleStore {
                 return try await self.withTmuxConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
-                        timeZone: timeZone, claudeLimits: claudeLimits)
+                        tmuxPaths: host.storedTmuxPaths, timeZone: timeZone, claudeLimits: claudeLimits)
                 }
             }
             return try await self.withNotificationTransport(for: hostID) { transport in
@@ -2519,7 +2519,10 @@ extension ConsoleStore: NotificationTransportProvider {
         }
         if let host = tmuxHost(hostID) {
             return try await withTmuxConnection(host) { transport in
-                try await operation(HostHelperFiles(host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName))
+                try await operation(
+                    HostHelperFiles(
+                        host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
+                        tmuxPaths: host.storedTmuxPaths))
             }
         }
         return try await projection(for: hostID).withNotificationTransport { transport in
@@ -2544,7 +2547,9 @@ extension ConsoleStore: NotificationTransportProvider {
             try await withTmuxConnection(host) { transport in
                 try await operation(HostHelperUsageHost(
                     services: transport.hostServices,
-                    files: HostHelperFiles(host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName)))
+                    files: HostHelperFiles(
+                        host: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
+                        tmuxPaths: host.storedTmuxPaths)))
             }
             return
         }
