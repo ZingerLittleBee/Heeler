@@ -893,7 +893,7 @@ struct SessionDriverE2ETests {
             if site == .pty {
                 let lines = recorder.lines(startingWith: "PTY close channel ")
                 #expect(lines.count == 1)
-                #expect(lines.first?.contains("send EOF timed out") == true)
+                #expect(lines.first?.contains("channel close timed out") == true)
                 #expect(lines.first?.contains("elapsed=") == true)
             }
             #expect(await connection.isConnected, "\(site.rawValue) invalidated the session")

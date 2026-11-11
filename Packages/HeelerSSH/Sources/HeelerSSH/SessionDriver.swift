@@ -4799,28 +4799,22 @@ actor SessionDriver {
             try resolveChannel(identity, allowClosing: allowClosing)))
     }
 
+    /// Closes and frees a channel, sending only what libssh2 has not sent for
+    /// it yet. libssh2's close sends EOF unless one went out before, then
+    /// CLOSE, and sends nothing once its CLOSE has gone out, so it is the only
+    /// call here that puts either message on the wire.
+    /// `libssh2_channel_send_eof` checks neither, and this teardown is also the
+    /// retry for one interrupted after its CLOSE went out: a cancellation or
+    /// deadline that reached `exitStatusAfterChannelClose`, or this function's
+    /// own close or free, on its owner's first pass. By then sshd has sent and
+    /// received CLOSE and freed the channel, and an EOF naming it makes sshd
+    /// drop the whole session ("ieof packet referred to nonexistent channel").
     private func cleanChannel(
         identity: ChannelIdentity,
         deadline: ContinuousClock.Instant,
         cancellable: Bool,
         allowClosing: Bool = false
     ) async throws {
-        diagnosticStep = "send EOF"
-        let eofResult = try await repeatUntilCompleteYielding(
-            deadline: deadline,
-            cancellable: cancellable,
-            identity: identity,
-            allowClosing: allowClosing
-        ) {
-            libssh2_channel_send_eof($0)
-        }
-        guard eofResult == 0
-            || eofResult == LIBSSH2_ERROR_CHANNEL_EOF_SENT
-            || eofResult == LIBSSH2_ERROR_CHANNEL_CLOSED
-        else {
-            throw SSHError.channelFailed
-        }
-
         diagnosticStep = "channel close"
         let closeResult = try await repeatUntilCompleteYielding(
             deadline: deadline,
@@ -4849,26 +4843,15 @@ actor SessionDriver {
         guard freeResult == 0 else { throw SSHError.channelFailed }
     }
 
+    /// The unregistered-channel form of `cleanChannel(identity:)`, and for the
+    /// same reason it leaves EOF to libssh2's close: the direct-tcpip pump
+    /// retries this teardown when its first pass fails after the CLOSE.
     private func cleanChannel(
         _ channel: OpaquePointer,
         session: OpaquePointer,
         deadline: ContinuousClock.Instant,
         cancellable: Bool
     ) async throws {
-        diagnosticStep = "send EOF"
-        let eofResult = try await repeatUntilComplete(
-            deadline: deadline,
-            cancellable: cancellable
-        ) {
-            libssh2_channel_send_eof(channel)
-        }
-        guard eofResult == 0
-            || eofResult == LIBSSH2_ERROR_CHANNEL_EOF_SENT
-            || eofResult == LIBSSH2_ERROR_CHANNEL_CLOSED
-        else {
-            throw SSHError.channelFailed
-        }
-
         diagnosticStep = "channel close"
         let closeResult = try await repeatUntilComplete(
             deadline: deadline,
