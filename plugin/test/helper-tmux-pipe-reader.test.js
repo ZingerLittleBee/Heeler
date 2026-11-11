@@ -603,13 +603,17 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     cleanups.push(() => secondFollower.stop());
 
     await waitFor(() => workerAttempts >= 1, "first worker-path attempt issued", PATIENCE_MS);
-    // tmux detects a dead pipe-pane child when the Pane next writes output (`EPIPE`).
-    secondCodex.emit("prompt\r\n");
+    // tmux detects a dead pipe-pane child when the Pane next writes output (`EPIPE`);
+    // under parallel suite load the missing-worker child may still be starting or exiting on the first write.
     await waitFor(
-      () =>
-        workerAttempts >= 2 &&
-        server.paneState(secondPane).hasPipe &&
-        server.paneState(secondPane).pipedProgram !== "",
+      () => {
+        if (workerAttempts < 2) secondCodex.emit("prompt\r\n");
+        return (
+          workerAttempts >= 2 &&
+          server.paneState(secondPane).hasPipe &&
+          server.paneState(secondPane).pipedProgram !== ""
+        );
+      },
       "later sample retried and attached after missing worker path",
       PATIENCE_MS,
     );
