@@ -127,11 +127,20 @@ function startPrivateServer(socketName = "work") {
     paneState(paneID) {
       const out = execFileSync(
         executable,
-        ["-N", "-S", socket, "display-message", "-p", "-t", paneID, "#{pane_pipe}\t#{@heeler-pipe}\t#{@heeler-status}"],
+        [
+          "-N",
+          "-S",
+          socket,
+          "display-message",
+          "-p",
+          "-t",
+          paneID,
+          "#{pane_pipe}\t#{@heeler-pipe}\t#{@heeler-piped}\t#{@heeler-status}",
+        ],
         { encoding: "utf8" },
       ).replace(/\n$/, "");
-      const [pipe = "0", pipeMark = "", status = ""] = out.split("\t");
-      return { hasPipe: pipe !== "0", pipeMark, status };
+      const [pipe = "0", pipeMark = "", pipedProgram = "", status = ""] = out.split("\t");
+      return { hasPipe: pipe !== "0", pipeMark, pipedProgram, status };
     },
   };
 }
@@ -403,6 +412,77 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     await waitFor(
       () => server.paneState(paneID).status === "state=idle:app=codex:turn=0:blocked=0",
       "second codex status written",
+      PATIENCE_MS,
+    );
+  });
+
+  test("a pipe closed without Heeler stays unattached across a Helper restart until a new program starts", async () => {
+    const server = startPrivateServer("work");
+    const firstCodex = makeControlledAgent("codex");
+    const secondCodex = makeControlledAgent("codex");
+    const paneID = server.openShellPane();
+    server.run("send-keys", "-t", paneID, "-l", `'${firstCodex.executable}'; '${secondCodex.executable}'`);
+    server.run("send-keys", "-t", paneID, "Enter");
+
+    const firstFollower = followTmuxServer("work", server.paths, {
+      pollIntervalMs: 30,
+      listener: tmuxPipeReaderListener(),
+    });
+    cleanups.push(() => firstFollower.stop());
+
+    await waitFor(
+      () => server.paneState(paneID).hasPipe && server.paneState(paneID).pipeMark !== "",
+      "first pipe attached",
+      PATIENCE_MS,
+    );
+
+    // Close the pipe externally while firstCodex stays in the foreground.
+    server.run("pipe-pane", "-t", paneID);
+    await waitFor(
+      () => !server.paneState(paneID).hasPipe && server.paneState(paneID).pipeMark === "",
+      "worker cleared @heeler-pipe on EOF",
+      PATIENCE_MS,
+    );
+
+    // Restart the Helper (brand-new follower and pipe-reader listener).
+    await firstFollower.stop();
+
+    let ticks = 0;
+    const secondFollower = followTmuxServer("work", server.paths, {
+      pollIntervalMs: 30,
+      listener: combineTmuxListeners(
+        tmuxPipeReaderListener(),
+        { panesUpdated: () => { ticks += 1; } },
+      ),
+    });
+    cleanups.push(() => secondFollower.stop());
+
+    await waitFor(() => ticks >= 4, "restarted follower sampled several times", PATIENCE_MS);
+    assert.equal(server.paneState(paneID).hasPipe, false);
+    assert.equal(server.paneState(paneID).pipeMark, "");
+
+    // Once firstCodex exits and secondCodex takes the foreground, the restarted Helper attaches.
+    firstCodex.exit();
+    await waitFor(
+      () => server.paneState(paneID).hasPipe && server.paneState(paneID).pipeMark !== "",
+      "restarted Helper attached to new foreground program",
+      PATIENCE_MS,
+    );
+    secondCodex.emit("\x1b]7501;state=working:app=codex\x07");
+    await waitFor(
+      () => server.paneState(paneID).status === "state=working:app=codex:turn=0:blocked=0",
+      "second codex status written after Helper restart",
+      PATIENCE_MS,
+    );
+
+    // Returning to the shell closes the pipe and clears both pipe options.
+    secondCodex.exit();
+    await waitFor(
+      () =>
+        !server.paneState(paneID).hasPipe &&
+        server.paneState(paneID).pipeMark === "" &&
+        server.paneState(paneID).pipedProgram === "",
+      "both @heeler-pipe and @heeler-piped cleared on return to shell",
       PATIENCE_MS,
     );
   });

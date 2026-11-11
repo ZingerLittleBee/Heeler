@@ -33,6 +33,7 @@ const TEXT_FIELDS = [
   "@heeler-status",
   "@heeler-session",
   "@heeler-pipe",
+  "@heeler-piped",
   "@heeler-attach",
 ];
 
@@ -122,7 +123,8 @@ function parseListedPanes(buffer) {
       status: texts[5],
       agentSession: texts[6],
       pipeMark: texts[7],
-      attachMark: texts[8],
+      pipedProgram: texts[8],
+      attachMark: texts[9],
     });
   }
 

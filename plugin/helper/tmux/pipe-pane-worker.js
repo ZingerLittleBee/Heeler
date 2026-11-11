@@ -1,7 +1,8 @@
 // Runs under `tmux pipe-pane -O -t <pane>` for one Codex, Grok Build or
 // OpenCode Pane (ADR 0044). Reads raw Pane output from stdin, writes OSC 7501
 // status changes to `@heeler-status` continuing the Pane's counts, and clears
-// its own `@heeler-pipe` mark when the pipe closes.
+// its own `@heeler-pipe` mark when the pipe closes while leaving `@heeler-piped`
+// on the Pane until the foreground program changes.
 
 import { runStoredTmux } from "./client.js";
 import { createOsc7501Parser } from "./osc7501.js";
