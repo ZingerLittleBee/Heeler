@@ -59,14 +59,22 @@ for any size it takes part in sizing every window of that session.
 - Size: while a device shows a Pane, Heeler asks for a size for its window
   (`refresh-client -C @<window>:<columns>x<rows>`), scaled from the Pane's share
   of the window, reads back the Pane's size, and corrects the request until the
-  Pane fits the device's grid. tmux takes the request as a ceiling: a window a
-  terminal of the user's also shows stays no larger than that terminal, so the
-  Pane can come out smaller than the device's grid, and the view shows it at its
-  own size with the rest blank. It is never larger. When the device stops
-  showing the Pane, including while ADR 0017 retains the Attach, the client
-  turns on `ignore-size` and tmux sizes the window by its other clients again;
-  a window no other client shows keeps the size it had. Heeler never zooms a
-  pane.
+  Pane fits the device's grid. Because under `window-size latest` the last
+  client to attach is the latest client until another client types, and under
+  `largest` tmux takes Heeler's larger request, tmux does not clamp the request
+  to a desktop client on its own: Heeler caps its request at the smallest window
+  area (`client_width` by `client_height` minus status lines, read from
+  `list-clients -F`) among non-control, non-`ignore-size` clients whose
+  session's current window is that window, with no ceiling when none shows it.
+  It re-reads the ceiling on every placement sync and on `%layout-change` for
+  that window, `%client-session-changed`, `%client-detached` and
+  `%session-window-changed`. A window a terminal of the user's also shows stays
+  no larger than that terminal, so the Pane can come out smaller than the
+  device's grid, and the view shows it at its own size with the rest blank. When
+  the device stops showing the Pane, including while ADR 0017 retains the
+  Attach, the client turns on `ignore-size` and tmux sizes the window by its
+  other clients again; a window no other client shows keeps the size it had.
+  Heeler never zooms a pane.
 - Input: Direct Input and the tools keyboard send tmux key names with
   `send-keys` and text with `send-keys -l`, so tmux encodes each key for the
   mode the Pane's program set, as it does a desktop terminal's keys. Direct
@@ -201,10 +209,23 @@ servers that were killed afterwards:
   `aggressive-resize` on, window 1 kept its size and window 0 still became
   80x24. With no desktop client, windows 0 and 1 became 80x24 and 60x30 and kept
   those sizes after the control client left.
-- With the desktop showing the same window, requests of 60x30, 45x60 and 200x80
-  gave 60x30, 45x49 and 160x49, and the desktop's typing changed none of them.
-  A client-wide `refresh-client -C 50x20` was taken back by the desktop's next
-  keystroke. A window split 80/79 became 45/44 at 90 columns and 90/89 at 180.
+- Under `window-size latest`, once the 160x49 desktop showing the same window
+  had typed to become the latest client, requests of 60x30, 45x60 and 200x80
+  gave 60x30, 45x49 and 160x49, and further typing by the desktop changed none
+  of them. A client-wide `refresh-client -C 50x20` was taken back by the
+  desktop's next keystroke. A window split 80/79 became 45/44 at 90 columns and
+  90/89 at 180.
+- Live on 2026-11-11 on both tmux 3.7b and 3.3a, with a 160x50 desktop client
+  attached first to window 0 (`status` on, so 160x49) and a control client
+  attaching after it to send `refresh-client -C @0:<W>x<H>` (identical on both
+  versions): under `latest`, with or without `aggressive-resize`, requesting
+  200x80 gave a 200x80 window because the newly attached control client was the
+  latest client, dropped to 160x49 only after the desktop typed, clamped a
+  later 199x79 request to 160x49, and moved to 120x40 when the desktop resized
+  to 120x41; under `smallest`, the window stayed capped at the desktop; under
+  `largest`, requesting 200x80 gave 200x80, stayed 200x80 after the desktop
+  typed, became 199x79 on that next request after the desktop shrank to 120x41,
+  and stayed larger than the desktop for as long as the control client asked.
 - A grouped session with its current window on window 1 kept window 0 at
   160x49 under `latest`, `largest` and with `aggressive-resize`, but its control
   client shrank window 0 to 80x24 under `smallest`, and with no desktop client.
@@ -325,7 +346,12 @@ session's current window.
 
 - While a device shows a Pane, the desktop sees that window at the device's
   size where its own terminal is larger, and a window no other client shows
-  keeps the device's size until one does.
+  keeps the device's size until one does. Because tmux sends no control-mode
+  notification when another client's terminal resizes, under `window-size
+  largest` a desktop client that shrinks below the window without detaching or
+  changing windows is not re-clamped until the next `%layout-change` on that
+  window, `%client-session-changed`, `%client-detached`,
+  `%session-window-changed` or device placement sync.
 - Heeler's sessions, one per Attach with one window each, show in `tmux ls`,
   in `choose-tree` and to tools that save and restore sessions, and its control
   clients show in `list-clients`. The user's own sessions read as before, and a
