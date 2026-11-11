@@ -90,13 +90,19 @@ suite("Host Helper closure", () => {
     }
   });
 
-  test("the service runs nothing but /bin/ps, so it can never start a core", () => {
-    // The Usage environment's read on macOS, and a Usage lock's owner check there.
-    const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js"]);
+  test("the service runs nothing but /bin/ps and the stored tmux with -N, so it can never start a core or a tmux server", () => {
+    // The Usage environment's read on macOS, a Usage lock's owner check there,
+    // and a tmux Pane's foreground group on macOS (ADR 0044).
+    const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js", "tmux/foreground.js"]);
+    // The stored tmux, always with `-N` and `-S` (ADR 0044).
+    const mayRunStoredTmux = new Set(["usage/tmux-environment.js", "tmux/client.js"]);
     for (const path of serviceModules()) {
       const source = readFileSync(join(HELPER, path), "utf8");
       if (mayRunPs.has(path)) {
         assert.deepEqual([...new Set(programsStarted(source))], ["\"/bin/ps\""], path);
+      } else if (mayRunStoredTmux.has(path)) {
+        assert.deepEqual([...new Set(programsStarted(source))], ["target.tmux"], path);
+        assert.match(source, /\bexecFile\(\s*target\.tmux,\s*\["-N",\s*"-S",\s*target\.socket,/);
       } else {
         for (const specifier of specifiersIn(source)) {
           assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);

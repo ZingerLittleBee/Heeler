@@ -1,5 +1,5 @@
 // The Host Helper's entry point: Heeler's background service on a herdr-core
-// Host (ADR 0033). The user service keeps this process running.
+// or tmux Host (ADRs 0033 and 0044). The user service keeps this process running.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import { combineListeners, followRegisteredSessions } from "./core/follower.js";
 import { liveActivityListener } from "./notifications/activity.js";
 import { notificationListener } from "./notifications/notifier.js";
+import { combineTmuxListeners, followStoredTmuxServers } from "./tmux/follower.js";
 import { usageSessions } from "./usage/layout.js";
-import { usageListener } from "./usage/recorder.js";
+import { tmuxUsageListener, usageListener } from "./usage/recorder.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 
@@ -26,6 +27,13 @@ followRegisteredSessions({
     usageListener({ directory, log }),
     notificationListener({ directory, log }),
     liveActivityListener({ directory, log }),
+  ),
+});
+followStoredTmuxServers({
+  directory,
+  log,
+  listener: combineTmuxListeners(
+    tmuxUsageListener({ directory, log }),
   ),
 });
 

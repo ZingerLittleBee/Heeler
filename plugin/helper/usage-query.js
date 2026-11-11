@@ -7,22 +7,32 @@ import { parseArgs } from "node:util";
 
 import { normalizeSessionName } from "./core/session-name.js";
 import { usageReport } from "./shared/usage/query.js";
-import { sessionRuntimeDirectory } from "./usage/layout.js";
+import { normalizeTmuxSocketName } from "./tmux/socket-name.js";
+import { sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./usage/layout.js";
 
 try {
   const { values } = parseArgs({
     options: {
       tz: { type: "string" },
-      session: { type: "string", default: "" },
+      session: { type: "string" },
+      tmux: { type: "string" },
       "claude-limits": { type: "boolean", default: false },
     },
     allowPositionals: false,
   });
-  const session = normalizeSessionName(values.session);
-  if (session === null) throw new Error("invalid session");
   // This file is in the Helper directory's `app` folder.
   const directory = fileURLToPath(new URL("..", import.meta.url));
-  const runtimeDirectory = sessionRuntimeDirectory(directory, session);
+  let runtimeDirectory;
+  if (values.tmux !== undefined) {
+    if (values.session !== undefined) throw new Error("ambiguous runtime target");
+    const socket = normalizeTmuxSocketName(values.tmux);
+    if (socket === null) throw new Error("invalid tmux socket");
+    runtimeDirectory = tmuxRuntimeDirectory(directory, socket);
+  } else {
+    const session = normalizeSessionName(values.session ?? "");
+    if (session === null) throw new Error("invalid session");
+    runtimeDirectory = sessionRuntimeDirectory(directory, session);
+  }
   console.log(JSON.stringify(usageReport({
     timeZone: values.tz,
     claudeLimits: values["claude-limits"],
