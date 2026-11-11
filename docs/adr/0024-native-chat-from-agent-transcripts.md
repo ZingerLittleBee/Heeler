@@ -60,8 +60,11 @@ first bytes, and Chat's sends are confirmed by entry: a rewrite neither
 drops the saved conversation nor confirms a send twice.
 A message that steers a running turn (Oh My Pi's `steering` flag, or a Pi
 prompt written within moments of the turn's tool results) shows inside that
-turn, marked Sent while working, instead of interrupting it, and still
-confirms Chat's send.
+turn instead of interrupting it, and still confirms Chat's send. Once
+delivered it carries no mark, as in the program's own terminal; only a
+prompt the program records as waiting and not yet delivered (Claude Code's
+enqueue, an OpenCode inbox row) is marked Queued until its delivery
+replaces it.
 A prompt typed after resuming a turn whose process died opens a turn of its
 own.
 
