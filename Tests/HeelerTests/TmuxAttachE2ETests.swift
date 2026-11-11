@@ -1014,6 +1014,90 @@ extension TmuxTransportE2ETests {
         }
     }
 
+    /// Text typed into the Attach, then Stop, reach the program in that order.
+    /// The stand-in is the same capturing Claude the Send test uses, so Stop
+    /// presses one Escape and the program reads the bytes.
+    @Test("typed text then Stop reach the Pane in that order")
+    func typedTextThenStopReachThePaneInOrder() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let home = fixture.configuration.homePath
+            let program = "\(home)/bin/claude.py"
+            try await fixture.writeProgram(
+                at: program,
+                """
+                #!/usr/bin/python3
+                import os, sys, tty
+                capture_path, ready_path = sys.argv[1:3]
+                tty.setraw(0)
+                with open(capture_path, "wb"):
+                    pass
+                with open(ready_path, "w") as handle:
+                    handle.write("ready\\n")
+                with open(capture_path, "ab", buffering=0) as sink:
+                    while True:
+                        chunk = os.read(0, 65536)
+                        if not chunk:
+                            break
+                        sink.write(chunk)
+                """)
+            let token = UUID().uuidString.prefix(8)
+            let captureFile = "\(home)/stop-\(token).bin"
+            let readyFile = "\(home)/stop-\(token).ready"
+            let pane = try await fixture.require(
+                fixture.tmuxLine([
+                    "new-window", "-d", "-t", "main:", "-P", "-F", "#{pane_id}",
+                    "/usr/bin/python3", program, captureFile, readyFile,
+                ]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(TmuxAttachScript.isPaneID(pane))
+            try await fixture.eventually { try await fixture.exists(readyFile) }
+            try await exerciseStopOrder(pane, captureFile: captureFile, on: fixture)
+        }
+    }
+
+    @MainActor
+    private func exerciseStopOrder(
+        _ pane: String, captureFile: String, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+
+        var attachToLeave: AgentAttachStore?
+        do {
+            try await fixture.eventually { await store.agents.contains { $0.agent.paneID == pane } }
+            let row = try #require(store.agents.first { $0.agent.paneID == pane })
+            #expect(row.agent.kind == "claude")
+            let session = store.composerSession(for: row)
+            let attach = AgentAttachStore(
+                target: pane, paneTitle: "", transportGeneration: nil, isOnStage: { true },
+                runTerminal: store.terminalRunner(for: host.id, keepingTo: session.corePin), closePane: {})
+            attachToLeave = attach
+            attach.viewDidResize(cols: 80, rows: 24)
+            try await fixture.eventually { await attach.input.readySession != nil }
+
+            #expect(attach.input.send(Data("ab".utf8)))
+            let interrupt = try #require(
+                store.terminalInterrupt(for: row, keepingTo: session.corePin, attach: attach) { .sent })
+            #expect(await interrupt.perform() == .sent)
+            #expect(attach.input.send(Data(Self.endOfTyping.utf8)))
+
+            let expected = Self.hex(Data("ab".utf8) + Data([0x1B]) + Data(Self.endOfTyping.utf8))
+            #expect(try await typed(into: captureFile, on: fixture) == expected)
+
+            await attach.leave().value
+            store.setHosts([])
+        } catch {
+            if let attachToLeave { await attachToLeave.leave().value }
+            store.setHosts([])
+            throw error
+        }
+    }
+
     @MainActor
     private func exerciseComposerSend(
         _ pane: String, captureFile: String, on fixture: TmuxSSHFixture
