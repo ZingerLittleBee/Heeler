@@ -31,7 +31,7 @@ struct TmuxInputVectorTests {
     }
 
     @Test func theVectorHoldsBothVersionsAndEveryKeyMode() {
-        #expect(vector.keys.count == 65)
+        #expect(vector.keys.count == 71)
         #expect(Set(vector.runs.map(\.version)) == ["3.3a", "3.7b"])
         #expect(Set(vector.runs.map(\.paneKeyMode)) == ["", "VT10x", "Ext 1", "Ext 2"])
         #expect(vector.runs.filter { $0.version == "3.3a" }.allSatisfy { $0.paneKeyMode.isEmpty })
@@ -50,6 +50,9 @@ struct TmuxInputVectorTests {
             #expect(TmuxKeyReader.read(desktop) == [expected], "\(key.name)")
             if let csiU = Self.csiU(desktop) {
                 #expect(TmuxKeyReader.read(csiU) == [expected], "\(key.name) as CSI u")
+            }
+            for alternate in key.alternates ?? [] {
+                #expect(TmuxKeyReader.read(TmuxInputVectorFile.bytes(alternate)) == [expected], "\(key.name) as \(alternate)")
             }
         }
     }
@@ -88,6 +91,24 @@ struct TmuxInputVectorTests {
             }
         }
         #expect(typed == ["S-Enter", "S-Space", "C-S-A", "C-S-V", "C-BSpace"])
+    }
+
+    /// A desktop terminal sends Ctrl with `@`, `[` and `?` as NUL, ESC and
+    /// DEL, which tmux reads as C-Space, Escape and Backspace. tmux's own
+    /// names for them encode as Ctrl with the character in an extended mode,
+    /// so Heeler sends the control character's key in every form.
+    @Test func ctrlWithAControlCharacterGoesAsThatCharactersKey() throws {
+        var differs: Set<String> = []
+        for run in vector.runs {
+            for (name, read) in run.otherNameRead where read != run.read[name] {
+                differs.insert(name)
+                #expect(["Ext 1", "Ext 2"].contains(run.paneKeyMode), "\(name) in \(run.version) \(run.program)")
+            }
+        }
+        #expect(differs == ["C-@", "C-[", "C-?"])
+        let names = Dictionary(uniqueKeysWithValues: vector.keys.map { ($0.name, $0.key) })
+        #expect(names["C-@"] == "C-Space" && names["C-["] == "Escape" && names["C-?"] == "BSpace")
+        #expect(names[#"C-\"#] == #"C-\"# && names["C-]"] == "C-]" && names["C-^"] == "C-^")
     }
 
     @Test func extendedKeysGoOnlyInAnExtendedMode() {

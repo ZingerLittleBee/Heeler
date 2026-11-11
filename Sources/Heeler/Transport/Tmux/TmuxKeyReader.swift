@@ -14,11 +14,11 @@ enum TmuxInput: Equatable, Sendable {
 /// A key as tmux names it: `Enter`, `BTab`, `C-a`, `M-Up`, `C-S-A`.
 struct TmuxKey: Equatable, Sendable {
     let name: String
-    /// The key has no legacy encoding (Shift or Ctrl with Enter or Space, Ctrl
-    /// with Tab or Backspace, Ctrl+Shift with Tab or a letter, Ctrl with a
-    /// digit or punctuation that has no control character): tmux encodes it
-    /// only while the Pane is in an extended keys mode, and otherwise types
-    /// its name into the Pane or sends its nearest legacy key.
+    /// The key has no legacy encoding (Shift with Enter, Space or Escape, Ctrl
+    /// with Enter, Tab, Backspace or Escape, Ctrl+Shift with Tab or a letter,
+    /// Ctrl with a digit or with punctuation other than `@ [ \ ] ^ _ ? /`): tmux
+    /// encodes it only while the Pane is in an extended keys mode, and
+    /// otherwise types its name into the Pane or sends its nearest legacy key.
     let isExtended: Bool
 
     /// How tmux encodes keys for a Pane: `VT10x`, `Ext 1` or `Ext 2` from tmux
@@ -98,8 +98,15 @@ enum TmuxKeyReader {
         case character(Unicode.Scalar, shifted: Unicode.Scalar?)
     }
 
-    /// Ctrl with these has a control character, so tmux encodes it in every mode.
-    private static let controlCharacters: Set<Unicode.Scalar> = [" ", "@", "[", "\\", "]", "^", "_", "/", "?"]
+    /// Ctrl with these types a control character, which a desktop terminal
+    /// sends in place of the key: Heeler sends that character's key, as tmux
+    /// reads it from a desktop terminal. tmux's own `C-@`, `C-[` and `C-?`
+    /// encode as Ctrl with the character in an extended mode on 3.7b, where
+    /// the desktop terminal's key reads as C-Space, Escape and Backspace
+    /// (`tmux-input-v1.json`).
+    private static let controlCharacters: [Unicode.Scalar: UInt8] = [
+        "@": 0x00, "[": 0x1B, "\\": 0x1C, "]": 0x1D, "^": 0x1E, "_": 0x1F, "?": 0x7F,
+    ]
 
     /// What Shift types on a US layout, for a CSI u key that did not say.
     private static let shiftedCharacters: [Unicode.Scalar: Unicode.Scalar] = [
@@ -153,7 +160,11 @@ enum TmuxKeyReader {
         }
         guard !isControl(typed) else { return nil }
         if modifiers.isEmpty { return .text(String(typed)) }
-        let extended = modifiers.contains(.ctrl) && !controlCharacters.contains(typed)
+        if modifiers.contains(.ctrl), let byte = controlCharacters[typed] {
+            return control(byte, modifiers.subtracting(.ctrl))
+        }
+        // Ctrl+/ reads as tmux's `C-/` in every mode measured.
+        let extended = modifiers.contains(.ctrl) && typed != "/"
         return key(String(typed), modifiers, extended: extended)
     }
 

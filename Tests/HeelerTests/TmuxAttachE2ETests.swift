@@ -331,12 +331,14 @@ extension TmuxTransportE2ETests {
         bytes.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// The measured keys typed here: text, legacy keys, and each kind of key
-    /// with no legacy encoding.
+    /// The measured keys typed here: text, legacy keys, each kind of key with
+    /// no legacy encoding, and Ctrl with each punctuation that has a control
+    /// character.
     private static let typedKeys = [
         "a", "Space", "Enter", "Tab", "BTab", "Escape", "BSpace", "Up", "Home", "PPage", "F1", "F5",
         "S-Enter", "C-Enter", "M-Enter", "C-Tab", "C-S-Tab", "C-BSpace", "C-Up", "M-Left", "C-a", "C-c",
         "C-j", "C-_", "C-Space", "C-S-a", "C-1", "M-a", "M-A", "C-M-a", "S-Space",
+        "C-@", "C-[", #"C-\"#, "C-]", "C-^", "C-?",
     ]
 
     /// Keys typed into an Attach reach the Pane's program as the input
@@ -344,7 +346,9 @@ extension TmuxTransportE2ETests {
     /// under tmux's default `extended-keys off`, and under `on` for a program
     /// that asked for modifyOtherKeys 2. A key with no legacy encoding arrives
     /// only while `#{pane_key_mode}` reads an extended mode, and otherwise not
-    /// at all. A tmux the measurements did not cover is held to 3.7b's reads.
+    /// at all. A key the view can send in other forms (`alternates`) is typed
+    /// in each, and each reads as the desktop terminal's key. A tmux the
+    /// measurements did not cover is held to 3.7b's reads.
     @Test("keys typed into an Attach reach the Pane's program as a desktop terminal's do")
     func keysTypedIntoAnAttachReachTheProgramAsMeasured() async throws {
         let vector = try TmuxInputVectorFile.load()
@@ -371,10 +375,12 @@ extension TmuxTransportE2ETests {
                     let session = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
                     for name in Self.typedKeys {
                         let key = try #require(vector.keys.first { $0.name == name })
-                        session.send(TmuxInputVectorFile.bytes(key.desktop))
                         let sent = key.extended != true
                             || TmuxKey(name: key.key ?? "", isExtended: true).isSent(whilePaneKeyModeReads: run.paneKeyMode)
-                        if sent { expected += run.read[name] ?? "" }
+                        for form in [key.desktop] + (key.alternates ?? []) {
+                            session.send(TmuxInputVectorFile.bytes(form))
+                            if sent { expected += run.read[name] ?? "" }
+                        }
                     }
                     session.send(Data(Self.endOfTyping.utf8))
                     expected += Self.hex(Data(Self.endOfTyping.utf8))

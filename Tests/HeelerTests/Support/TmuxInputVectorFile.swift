@@ -18,6 +18,8 @@ struct TmuxInputVectorFile: Decodable, Sendable {
         let name: String
         /// xterm's encoding of the key, as a desktop terminal sends it.
         let desktop: String
+        /// The same key in other forms the terminal view may send it in.
+        let alternates: [String]?
         /// Heeler's tmux name for it, or nil when Heeler types it as `text`.
         let key: String?
         let extended: Bool?
@@ -35,6 +37,8 @@ struct TmuxInputVectorFile: Decodable, Sendable {
         let read: [String: String]
         /// What it read for Heeler's `send-keys`, where that differed.
         let heelerRead: [String: String]
+        /// What it read for tmux's own name of a key Heeler names otherwise.
+        let otherNameRead: [String: String]
     }
 
     struct Text: Decodable, Sendable {

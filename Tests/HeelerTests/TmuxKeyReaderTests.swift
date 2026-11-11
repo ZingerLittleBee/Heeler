@@ -64,6 +64,13 @@ struct TmuxKeyReaderTests {
         ("ctrl+z", key("C-z"), [:]),
         ("ctrl+space", key("C-Space"), [:]),
         ("ctrl+backslash", key(#"C-\"#), [:]),
+        ("ctrl+]", key("C-]"), [:]),
+        ("ctrl+shift+6", key("C-^"), [:]),
+        // A desktop terminal sends these as NUL, ESC and DEL.
+        ("ctrl+shift+2", key("C-Space"), [:]),
+        ("ctrl+[", key("Escape"), [:]),
+        ("ctrl+alt+[", key("M-Escape"), [:]),
+        ("ctrl+shift+/", key("BSpace"), [:]),
         ("ctrl+/", key("C-/"), ["legacy": key("C-_")]),
         ("alt+a", key("M-a"), [:]),
         ("alt+shift+a", key("M-A"), [:]),
@@ -120,6 +127,10 @@ struct TmuxKeyReaderTests {
             ("\u{1B}[27;5;47~", Self.key("C-/")),
             ("\u{1B}[27;2;32~", Self.key("S-Space", extended: true)),
             ("\u{1B}[27;5;32~", Self.key("C-Space")),
+            ("\u{1B}[27;5;64~", Self.key("C-Space")),
+            ("\u{1B}[27;5;91~", Self.key("Escape")),
+            ("\u{1B}[27;5;93~", Self.key("C-]")),
+            ("\u{1B}[27;5;63~", Self.key("BSpace")),
             ("\u{1B}[27;3;127~", Self.key("M-BSpace")),
         ]
         for (bytes, reads) in cases {
