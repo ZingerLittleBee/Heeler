@@ -323,6 +323,9 @@ targets:
       # The tmux input measurements: keys, text and pastes per version and mode.
       - path: plugin/test-vectors/tmux-input-v1.json
         buildPhase: resources
+      # Heeler's Claude Code hook entries, read by Swift and the hook script's tests.
+      - path: plugin/test-vectors/claude-code-hooks-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources
