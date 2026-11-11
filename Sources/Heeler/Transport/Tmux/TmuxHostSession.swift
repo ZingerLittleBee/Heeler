@@ -13,9 +13,9 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
     /// Every pane the server lists: once after each `server`, and again each
     /// time something changed (ADR 0043).
     case inventory(TmuxInventory)
-    /// Names from `show-environment`, after the inventory's user sessions are
-    /// known. A failed read yields nothing, so nothing new is shown.
-    case environment(TmuxEnvironment.Reading)
+    /// Leaked names from `show-environment`, after the inventory's user
+    /// sessions are known. A failed read yields nothing, so nothing new is shown.
+    case environment(Set<String>)
 }
 
 /// Owns a tmux Host's connection, as `HerdrCoreHostSession` owns a herdr-core
@@ -450,7 +450,7 @@ actor TmuxHostSession {
     }
 
     private func noteEnvironment(
-        _ reading: TmuxEnvironment.Reading?, token: UInt64,
+        _ reading: Set<String>?, token: UInt64,
         key: (server: TmuxServerInstance, sessions: Set<String>), generation: UInt64
     ) {
         guard token == environmentToken, activationIsCurrent(generation), liveServer?.instance == key.server
@@ -465,7 +465,7 @@ actor TmuxHostSession {
     /// nothing for this one, as an unreadable core environment shows no notice.
     private static func loadEnvironment(
         sessions: Set<String>, paths: TmuxPaths, on transport: any TmuxTransport
-    ) async -> TmuxEnvironment.Reading? {
+    ) async -> Set<String>? {
         guard let global = await scope(TmuxLaunch.showEnvironment(paths: paths), on: transport) else { return nil }
         var deltas: [String: TmuxEnvironment.Scope] = [:]
         for id in sessions.sorted() {

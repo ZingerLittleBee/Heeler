@@ -63,14 +63,20 @@ struct TmuxEnvironmentTests {
         #expect(TmuxEnvironment.leaked(in: names) == ["CLAUDECODE", "TMUX", "HERDR_SESSION", "CODEX_THREAD_ID"])
     }
 
-    @Test func accountVariablesAreOnlyTheOnesThatLocateAnAccount() {
-        let names: Set<String> = [
-            "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME",
-            "PATH", "HOME", "USER", "GROK_HOME", "HTTP_PROXY", "PI_CODING_AGENT_DIR",
-        ]
-        #expect(
-            TmuxEnvironment.accountVariables(in: names)
-                == ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"])
+    /// A multi-line value is more than one line. A continuation that looks
+    /// like `NAME=` or `-NAME` counts as that name.
+    @Test func aContinuationLineThatLooksLikeANameCountsAsThatName() {
+        let stdout = Data(
+            """
+            HTTPS_PROXY=http://example.test/a
+            CLAUDECODE=not-a-real-assignment
+            -TMUX
+            """.utf8)
+
+        let scope = TmuxEnvironment.parse(stdout)
+
+        #expect(scope.assigned == ["HTTPS_PROXY", "CLAUDECODE"])
+        #expect(scope.removed == ["TMUX"])
     }
 
     @Test func aHostNoticeKeepsAGlobalLeakAndASessionsOwn() {
@@ -94,9 +100,6 @@ struct TmuxEnvironmentTests {
 
         let reading = TmuxEnvironment.reading(global: global, sessions: ["$0": removed, "$2": plain])
 
-        #expect(reading.leaked == ["CLAUDECODE", "CODEX_THREAD_ID"])
-        #expect(reading.globalAccountVariables == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
-        #expect(reading.accountVariablesBySession["$0"] == ["CODEX_HOME", "XDG_CONFIG_HOME"])
-        #expect(reading.accountVariablesBySession["$2"] == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
+        #expect(reading == ["CLAUDECODE", "CODEX_THREAD_ID"])
     }
 }

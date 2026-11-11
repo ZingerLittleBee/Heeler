@@ -3,9 +3,9 @@ import Testing
 
 @testable import Heeler
 
-/// The leaked-environment notice and the account-locating names, through
-/// `ConsoleStore` over a scripted tmux Host (ADR 0034, ADR 0043). The planted
-/// lines carry values; the published result is names only.
+/// The leaked-environment notice through `ConsoleStore` over a scripted
+/// tmux Host (ADR 0034, ADR 0043). The planted lines carry values; the
+/// published result is names only.
 @MainActor
 @Suite("tmux environment in the Console", .timeLimit(.minutes(1)))
 struct TmuxEnvironmentConsoleTests {
@@ -56,18 +56,13 @@ struct TmuxEnvironmentConsoleTests {
 
     private func published(_ store: ConsoleStore) -> String {
         let notice = store.hostCoreEnvironmentNotices[host.id]
-        let accounts = store.hostTmuxAccountEnvironments[host.id]
         return [
             notice?.variables.map(\.name).joined(separator: "\n") ?? "",
             notice?.variables.map(\.breaks).joined(separator: "\n") ?? "",
-            accounts?.global.sorted().joined(separator: "\n") ?? "",
-            accounts?.bySession
-                .map { "\($0.key) \($0.value.sorted().joined(separator: " "))" }
-                .sorted().joined(separator: "\n") ?? "",
         ].joined(separator: "\n")
     }
 
-    @Test func hostDetailShowsLeakedNamesAndAccountVariables() async throws {
+    @Test func hostDetailShowsLeakedNames() async throws {
         let tmux = ScriptedTmuxHost()
         await tmux.setPanes([
             .make(session: 0, sessionName: "main", pane: 1),
@@ -98,11 +93,6 @@ struct TmuxEnvironmentConsoleTests {
         #expect(
             notice.variables.first { $0.name == "CLAUDECODE" }?.breaks
                 == "Programs here read as started from inside Claude Code, which can change what they report and record.")
-        let accounts = try #require(store.hostTmuxAccountEnvironments[host.id])
-        #expect(accounts.global == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
-        #expect(accounts.bySession["$0"] == ["CODEX_HOME", "XDG_CONFIG_HOME"])
-        #expect(accounts.bySession["$2"] == ["CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"])
-        #expect(accounts.bySession["$9"] == nil)
         #expect(!published(store).contains(secret))
         #expect(!published(store).contains("/secret"))
 
@@ -113,14 +103,15 @@ struct TmuxEnvironmentConsoleTests {
         #expect(!commands.contains { $0.contains("show-environment") && $0.contains("main") })
         #expect(!commands.contains { $0.contains("show-environment -t '$9'") })
 
+        let before = commands.count
         await tmux.setSessionEnvironment(["CODEX_HOME=/secret/later"], session: "$4")
         await tmux.changePanes { panes in
             panes.append(.make(session: 4, sessionName: "later", pane: 4))
         }
         try await waitUntil("the new session") {
-            store.hostTmuxAccountEnvironments[self.host.id]?.bySession["$4"] == ["CODEX_HOME", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR"]
+            let commands = await tmux.commands
+            return commands.dropFirst(before).contains { $0.contains("show-environment -t '$4'") }
         }
-        #expect(await tmux.commands.contains { $0.contains("show-environment -t '$4'") })
         #expect(!published(store).contains(secret))
     }
 
@@ -131,11 +122,9 @@ struct TmuxEnvironmentConsoleTests {
         let store = try await launch(on: try device(), over: tmux)
         defer { store.setHosts([]) }
         try await waitUntil("the notice") { store.hostCoreEnvironmentNotices[self.host.id] != nil }
-        #expect(store.hostTmuxAccountEnvironments[host.id]?.global == ["CLAUDE_CONFIG_DIR"])
 
         await store.suspend()
         try await waitUntil("the notice to clear") { store.hostCoreEnvironmentNotices[self.host.id] == nil }
-        #expect(store.hostTmuxAccountEnvironments[host.id] == nil)
         #expect(!published(store).contains(secret))
     }
 
@@ -153,7 +142,6 @@ struct TmuxEnvironmentConsoleTests {
         try await waitUntil("the inventory") { store.hostsAwaitingSnapshot.isEmpty }
         try await Task.sleep(for: .milliseconds(50))
         #expect(store.hostCoreEnvironmentNotices[host.id] == nil)
-        #expect(store.hostTmuxAccountEnvironments[host.id] == nil)
         #expect(store.hostStatuses[host.id] == .connected)
 
         await tmux.failShowEnvironment(false)
@@ -162,7 +150,6 @@ struct TmuxEnvironmentConsoleTests {
         }
         try await waitUntil("the notice") { store.hostCoreEnvironmentNotices[self.host.id] != nil }
         #expect(store.hostCoreEnvironmentNotices[host.id]?.variables.map(\.name) == ["TMUX"])
-        #expect(store.hostTmuxAccountEnvironments[host.id]?.bySession["$0"] == ["CODEX_HOME"])
         #expect(!published(store).contains(secret))
     }
 }

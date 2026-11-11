@@ -537,48 +537,36 @@ struct TmuxTransportE2ETests {
             let session = trimmed(
                 try await fixture.tmux(nil, "display-message", "-p", "-t", "main", "#{session_id}"))
             // Values stay on the Host. These strings are the fixture's own, and
-            // the published notice and account sets must not contain them.
-            let claudeDirectory = "/fixture/claude"
-            let codexDirectory = "/fixture/codex"
-            try await fixture.tmux(nil, "set-environment", "-g", "CLAUDE_CONFIG_DIR", claudeDirectory)
-            try await fixture.tmux(nil, "set-environment", "-g", "CLAUDECODE", "1")
-            try await fixture.tmux(nil, "set-environment", "-t", session, "CODEX_HOME", codexDirectory)
-            try await fixture.tmux(nil, "set-environment", "-t", session, "-r", "CLAUDE_CONFIG_DIR")
+            // the published notice must not contain them.
+            let claudeValue = "/fixture/claude-token"
+            let threadValue = "/fixture/codex-thread"
+            try await fixture.tmux(nil, "set-environment", "-g", "CLAUDECODE", claudeValue)
+            try await fixture.tmux(nil, "set-environment", "-t", session, "CODEX_THREAD_ID", threadValue)
             try await environmentReachesTheConsole(
-                fixture, session: session, claudeDirectory: claudeDirectory, codexDirectory: codexDirectory)
+                fixture, claudeValue: claudeValue, threadValue: threadValue)
         }
     }
 
-    /// The server may already carry other names, so this checks the planted ones
-    /// are present. A session removal drops that name from the session only.
+    /// The server may already carry other names, so this checks the planted
+    /// leaked names are present. Values stay on the Host.
     @MainActor
     private func environmentReachesTheConsole(
-        _ fixture: TmuxSSHFixture, session: String, claudeDirectory: String, codexDirectory: String
+        _ fixture: TmuxSSHFixture, claudeValue: String, threadValue: String
     ) async throws {
         try await withConsole(fixture) { store, host in
             try await fixture.eventually {
-                let notice = await store.hostCoreEnvironmentNotices[host.id]
-                let accounts = await store.hostTmuxAccountEnvironments[host.id]
-                let sessionNames = accounts?.bySession[session] ?? []
-                return notice?.variables.contains { $0.name == "CLAUDECODE" } == true
-                    && accounts?.global.contains("CLAUDE_CONFIG_DIR") == true
-                    && sessionNames.contains("CODEX_HOME")
-                    && !sessionNames.contains("CLAUDE_CONFIG_DIR")
+                let names = await store.hostCoreEnvironmentNotices[host.id]?.variables.map(\.name) ?? []
+                return names.contains("CLAUDECODE") && names.contains("CODEX_THREAD_ID")
             }
             let notice = try #require(store.hostCoreEnvironmentNotices[host.id])
-            let accounts = try #require(store.hostTmuxAccountEnvironments[host.id])
             let expected = try #require(HerdrCoreEnvironmentNotice(names: ["CLAUDECODE"]))
             let variable = try #require(notice.variables.first { $0.name == "CLAUDECODE" })
             #expect(variable == expected.variables[0])
-            let sessionNames = try #require(accounts.bySession[session])
-            #expect(sessionNames.contains("CODEX_HOME"))
-            #expect(!sessionNames.contains("CLAUDE_CONFIG_DIR"))
-            let published = (
-                notice.variables.map(\.name) + notice.variables.map(\.breaks) + accounts.global.sorted()
-                    + accounts.bySession.flatMap { [$0.key] + $0.value.sorted() }
-            ).joined(separator: "\n")
-            #expect(!published.contains(claudeDirectory))
-            #expect(!published.contains(codexDirectory))
+            #expect(notice.variables.contains { $0.name == "CODEX_THREAD_ID" })
+            let published = (notice.variables.map(\.name) + notice.variables.map(\.breaks)).joined(separator: "\n")
+            #expect(!published.contains(claudeValue))
+            #expect(!published.contains(threadValue))
+            #expect(!published.contains("/fixture"))
         }
     }
 
