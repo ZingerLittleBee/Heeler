@@ -58,7 +58,8 @@ for any size it takes part in sizing every window of that session.
   '#{session_id}'` and sets `@heeler-attach`, `destroy-unattached off` and
   `detach-on-destroy on` in one command queue, proceeding only when `new-session`
   prints a `session_id` so a failed creation (such as a duplicate session name)
-  starts no feeder and kills nothing. `tmux -C` then attaches to that
+  starts no feeder and kills nothing, and ending that `session_id` (never the
+  name) on every later setup failure path. `tmux -C` then attaches to that
   `session_id`, links the Pane's window and closes the placeholder; its standard
   input comes through a POSIX `IFS= read -r` line-only feeder that forwards only
   newline-terminated lines, drops any trailing partial line whatever its quote
@@ -68,11 +69,11 @@ for any size it takes part in sizing every window of that session.
   a fallback `kill-session -t "$id"` runs after the pipeline for that same
   created session, and the shell traps `SIGHUP` and exits in that same parsed
   group, so a dropped channel still ends the session cleanly and later input is
-  never a shell command. When a Host connects, after the initial inventory for a
-  server instance arrives, Heeler also ends any leftover unattached session
-  carrying `@heeler-attach` (`if-shell -F` on the session id checking the server
-  instance, `#{session_attached} == 0`, and non-empty `@heeler-attach`, never by
-  name prefix alone).
+  never a shell command. Once per connection and server instance on success (with
+  a small retry bound on later inventories when a cleanup exec fails), Heeler
+  also ends any leftover unattached session carrying `@heeler-attach` (`if-shell
+  -F` on the session id checking the server instance, `#{session_attached} == 0`,
+  and non-empty `@heeler-attach`, never by name prefix alone).
 - Everything for one Attach goes through its control client, in order: first
   paint, keys, text, pastes, Send's steps and Stop. First paint is built from
   `capture-pane -e -p` with history, of both screens when the Pane is on the
@@ -324,7 +325,8 @@ servers that were killed afterwards:
   `dash`. The E2E tests are
   `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`,
   `aPartialControlLineInAnyQuoteStateIsNeverExecuted`,
-  `aPreExistingSessionWithTheAttachNameSurvives` and
+  `aPreExistingSessionWithTheAttachNameSurvives`,
+  `aFailedAttachSetupEndsOnlyTheSessionItCreated` and
   `connectingCleansUpUnattachedMarkedAttachSessionsOnly`.
 
 Input, live on 2026-11-10 on the same Mac with tmux 3.7b and with 3.3a built
@@ -446,10 +448,18 @@ session's current window.
   the feeder and `tmux -C` together leaves an unattached `heeler-attach-*`
   session (keeping the server alive): that leftover stays in `tmux ls` until it
   is killed, and while it exists a bare `tmux attach` may pick it (stories 85
-  and 86). Heeler's next connection to the Host cleans such leftovers up after
-  the initial inventory arrives, ending sessions carrying `@heeler-attach`
-  (matched by that option on the session id and never by session name prefix
-  alone, and only when `#{session_attached}` is `0`). Upstream tmux 3.3a–3.7b can
+  and 86). Cleanup runs once per connection and server instance once it succeeds
+  (retrying a failed cleanup exec on later inventories up to a small bound so it
+  never loops), so leftovers created later during that connection by another
+  device's `SIGKILL` wait for the next connection. Each cleanup kill re-checks at
+  run time with `if-shell -F` on the session id (`$n`), gating on the server
+  instance (`#{pid}:#{start_time}`), `#{session_attached} == 0`, and non-empty
+  `@heeler-attach` (never by session name prefix alone). After the brief
+  pre-cleanup pause, one narrow race remains: another device's Attach session is
+  unattached for tens of milliseconds between `new-session` and `tmux -C`
+  attaching; a cleanup kill landing in that window ends that Attach session, so
+  that device's Attach fails and is retried, and no user session or window is
+  lost. Upstream tmux 3.3a–3.7b can
   still crash or abort the server if a Host-local signal kills only the stdin
   feeder so `tmux -C` sees raw stdin EOF while remaining alive on a streaming
   pane with queued output blocks, or if a non-Heeler `tmux -C` client detaches
