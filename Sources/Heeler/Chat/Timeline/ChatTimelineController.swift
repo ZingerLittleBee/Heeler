@@ -224,7 +224,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             key.combine(disclosures[id] ?? 0)
             key.combine(row.topSpacing)
             key.combine(row.isNested)
-            return (row.seed, key.finalize())
+            return (row.seed, row.extent, key.finalize())
         }
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
         layout.disclosureAnchor = { [weak self] in self?.disclosureAnchor }

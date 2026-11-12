@@ -17,7 +17,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// Identity and revision of the rows the collection view holds now,
     /// in order; read from the data source so the two can never disagree.
     var itemIDs: () -> [ChatRowID] = { [] }
-    var rowInfo: (ChatRowID) -> (seed: ChatRowSeed, revision: Int)? = { _ in nil }
+    var rowInfo: (ChatRowID) -> (seed: ChatRowSeed, extent: ChatRowExtent?, revision: Int)? = { _ in nil }
     var isFollowing: () -> Bool = { true }
     /// The row the reader explicitly opened, including when its top is
     /// partially clipped. Its own growth must extend downward.
@@ -46,6 +46,10 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     private var held: [ChatRowID: CGFloat] = [:]
     private var width: CGFloat = 0
     private var contentSizeCategory = ""
+    /// What an unmeasured row's text is counted in: the reading column's
+    /// width and the body text's size.
+    private var textWidth: CGFloat = 0
+    private var textMetrics = ChatTextMetrics.standard
 
     func index(of id: ChatRowID) -> Int? {
         indexByID[id]
@@ -88,6 +92,13 @@ final class ChatTimelineLayout: UICollectionViewLayout {
             self.ids = ids
             self.width = width
             contentSizeCategory = category
+            textWidth = max(
+                0, min(width, ChatTimelineMetrics.maximumContentWidth) - 2 * ChatTimelineMetrics.horizontalPadding)
+            let standard = ChatTextMetrics.standard
+            textMetrics = ChatTextMetrics(
+                pointSize: UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize,
+                lineHeight: UIFontMetrics(forTextStyle: .body).scaledValue(
+                    for: standard.lineHeight, compatibleWith: traits))
             indexByID = Dictionary(ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
             held = held.filter { indexByID[$0.key] != nil }
             geometry.setHeights(ids.map(estimatedHeight))
@@ -208,7 +219,8 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         if let height = held[id] { return height }
         guard let info = rowInfo(id) else { return ChatRowSeed.system.height }
         return ChatHeightEstimate(
-            cached: measured[id], seed: info.seed, width: width,
+            cached: measured[id], seed: info.seed, extent: info.extent,
+            textWidth: textWidth, metrics: textMetrics, width: width,
             contentSizeCategory: contentSizeCategory, revision: info.revision
         ).height
     }

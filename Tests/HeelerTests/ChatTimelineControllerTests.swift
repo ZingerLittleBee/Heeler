@@ -248,6 +248,47 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// At one guess for every answer, a list opened at its end took a
+    /// dozen long answers to fill the screen that the last one fills, and
+    /// built and measured them all (perf lab: 20 cells, of them 5 long
+    /// answers nobody saw).
+    @Test func aListOfLongAnswersOpensWithOnlyTheRowsThatShow() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.longAnswers(14)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            #expect(controller.visibleRowIDs.last == rows.last?.id)
+            // Cells UIKit keeps for reuse stay in the view, hidden. At one
+            // guess for every answer this built 11.
+            let built = view.subviews.filter { $0 is ChatHostingCell }.count
+            #expect(built <= controller.visibleRowIDs.count + 3, "built \(built)")
+        }
+    }
+
+    /// The other half of the same guess: where an unmeasured answer is
+    /// placed is about where it measures, so the list is about as long
+    /// before the reader walks it as after.
+    @Test func unmeasuredAnswersStandAboutAsTallAsTheyMeasure() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.longAnswers(14)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            let guessed = view.contentSize.height
+            for _ in 0..<200 where view.contentOffset.y > view.minOffsetY + 0.5 {
+                Self.drag(controller, to: view.contentOffset.y - view.bounds.height * 0.8)
+                await Self.settle(controller)
+            }
+            #expect(view.contentOffset.y <= view.minOffsetY + 0.5)
+            let measured = view.contentSize.height
+            #expect(measured > view.bounds.height * 10)
+            #expect(guessed > measured * 0.7 && guessed < measured * 1.4, "guessed \(guessed), measured \(measured)")
+        }
+    }
+
     @Test func aShortConversationSitsAtTheBottom() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<2)))
@@ -1697,6 +1738,28 @@ struct ChatTimelineControllerTests {
 
     /// Lays out until the content size and offset hold still: measuring a
     /// row can change the rows shown, which then measure in turn.
+    /// Prompts with answers from a few lines to several screens: prose,
+    /// a list and code, as an Agent writes them.
+    nonisolated static func longAnswers(_ count: Int) -> [ChatEntry] {
+        (0..<count).flatMap { index in
+            let paragraphs = (0..<(2 + index % 5 * 3)).map { paragraph in
+                "Paragraph \(paragraph) of answer \(index). "
+                    + String(repeating: "The change keeps what the reader sees where it was. ", count: 2 + paragraph % 4)
+            }
+            let list = (1...(3 + index % 4)).map { "- Step \($0) of the plan for answer \(index)" }
+            let code = "```swift\n" + (1...(4 + index % 6)).map { "let value\($0) = compute(\($0))" }.joined(separator: "\n") + "\n```"
+            let text = (paragraphs + [list.joined(separator: "\n"), code]).joined(separator: "\n\n")
+            return [
+                ChatEntry(
+                    id: ChatEntryID("q\(index)"), sourceOffset: UInt64(index) * 200,
+                    content: .user(ChatUserMessage(text: "Question \(index): what changed in this part?"))),
+                ChatEntry(
+                    id: ChatEntryID("a\(index)"), sourceOffset: UInt64(index) * 200 + 100,
+                    content: .assistant(ChatAssistantMessage(text: text))),
+            ]
+        }
+    }
+
     private static func settle(_ controller: ChatTimelineController) async {
         let view = controller.timeline
         var last: (size: CGSize, offset: CGPoint)?
