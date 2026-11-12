@@ -29,8 +29,8 @@ Entries reference the pull request that made the change.
 ### Changed
 
 - Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
-- Read one status mark per Agent in the Dynamic Island, with bounded overflow, Host tiles when multiple Hosts are configured, and the full Host name above expanded Agent rows. (PR #TBD)
-- Identify each Lock Screen Live Activity by its Host name on the system material, with status glyphs and Working, Needs you, or Done beside the configured Agent fields. Counts-only summaries and overflow keep the full inventory visible. (PR #TBD)
+- Read one status mark per Agent in the Dynamic Island, with bounded overflow, Host tiles when multiple Hosts are configured, and the full Host name above expanded Agent rows. (PR #719)
+- Identify each Lock Screen Live Activity by its Host name on the system material, with status glyphs and Working, Needs you, or Done beside the configured Agent fields. Counts-only summaries and overflow keep the full inventory visible. (PR #718)
 - Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
 - Codex's question card names its page beside its title, `1 of 2` as a
