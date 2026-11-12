@@ -53,16 +53,26 @@ for any size it takes part in sizing every window of that session.
   Closing an Attach writes `kill-session -t "=<session>"` (`server_destroy_session`
   clears `c->session` before setting `CLIENT_EXIT` and before destroying the
   session) and keeps reading until `%exit` or the channel ends, then closes the
-  channel; what was already queued is written first. On the Host, the client's
-  standard input comes through a feeder that forwards the SSH channel and, if
-  the channel drops, breaks any partial control-mode line with an unclosed quote
-  and writes `kill-session -t "=<session>"` while holding the pipe open until
-  tmux exits (when tmux exits first, the pipeline terminates that feeder at
-  once); its standard output is piped through a drain that keeps reading until
-  tmux exits, a fallback `kill-session` runs after the pipeline, and the shell
-  that starts it traps `SIGHUP` and exits in that same parsed group, so a
-  dropped channel still ends the session cleanly and later input is never a
-  shell command.
+  channel; what was already queued is written first. On the Host, the script
+  first creates the detached session with `new-session -d -E -s "$n" -P -F
+  '#{session_id}'` and sets `@heeler-attach`, `destroy-unattached off` and
+  `detach-on-destroy on` in one command queue, proceeding only when `new-session`
+  prints a `session_id` so a failed creation (such as a duplicate session name)
+  starts no feeder and kills nothing. `tmux -C` then attaches to that
+  `session_id`, links the Pane's window and closes the placeholder; its standard
+  input comes through a POSIX `IFS= read -r` line-only feeder that forwards only
+  newline-terminated lines, drops any trailing partial line whatever its quote
+  state, and writes `kill-session -t '<session_id>'` on EOF while holding the
+  pipe open until tmux exits (when tmux exits first, the pipeline terminates that
+  feeder at once); its standard output goes through `{ cat; cat >/dev/null; }`,
+  a fallback `kill-session -t "$id"` runs after the pipeline for that same
+  created session, and the shell traps `SIGHUP` and exits in that same parsed
+  group, so a dropped channel still ends the session cleanly and later input is
+  never a shell command. When a Host connects, after the initial inventory for a
+  server instance arrives, Heeler also ends any leftover unattached session
+  carrying `@heeler-attach` (`if-shell -F` on the session id checking the server
+  instance, `#{session_attached} == 0`, and non-empty `@heeler-attach`, never by
+  name prefix alone).
 - Everything for one Attach goes through its control client, in order: first
   paint, keys, text, pastes, Send's steps and Stop. First paint is built from
   `capture-pane -e -p` with history, of both screens when the Pane is on the
@@ -300,12 +310,22 @@ servers that were killed afterwards:
   retaining Attaches, polite `detach-client` close on a streaming Pane, and Stop
   ending a streaming window (`remain-on-exit off`) or repainting under
   concurrent format reads. Setting `destroy-unattached off` and
-  `detach-on-destroy on` and ending the session via `kill-session -t "=<session>"`
-  (both on polite close and from the Host-side stdin feeder on channel drop)
+  `detach-on-destroy on` in the detached `new-session` queue before attaching
+  `tmux -C`, and ending the created session via `kill-session` (both on polite
+  close and from the Host-side `IFS= read -r` line-only stdin feeder on channel
+  drop, which drops any trailing partial line instead of appending a
+  quote-toggling suffix that would execute one of the three quote states)
   prevented every crash across all five builds, because `cmd_kill_session_exec`
   calls `server_destroy_session`, clearing `c->session` synchronously before
-  `CLIENT_EXIT` and before `session_destroy`. The E2E repro is
-  `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`.
+  `CLIENT_EXIT` and before `session_destroy`. Measured with `LC_ALL=C`, the
+  byte-by-byte pipe `read` loop forwarded 1,000 typing lines in 21 ms
+  (`0.021 ms/line`) and a 1.1 MB `set-buffer` paste line in 267 ms under macOS
+  `/bin/sh`, and in 14.5 ms (`0.015 ms/line`) and 527 ms under Ubuntu 24.04
+  `dash`. The E2E tests are
+  `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`,
+  `aPartialControlLineInAnyQuoteStateIsNeverExecuted`,
+  `aPreExistingSessionWithTheAttachNameSurvives` and
+  `connectingCleansUpUnattachedMarkedAttachSessionsOnly`.
 
 Input, live on 2026-11-10 on the same Mac with tmux 3.7b and with 3.3a built
 from its release tarball. A probe in a pane asked for each keyboard mode in
@@ -419,16 +439,21 @@ session's current window.
   `%session-window-changed` or device placement sync.
 - Heeler's sessions, one per Attach with one window each, show in `tmux ls`,
   in `choose-tree` and to tools that save and restore sessions, and its control
-  clients show in `list-clients`. The user's own sessions read as before, and a
-  bare `tmux attach` picks one of them while any is unattached. Because
-  `destroy-unattached` is `off` on `@heeler-attach` sessions, an external
-  `SIGKILL` on the Host that kills the wrapper shell, stdin feeder and
-  `tmux -C` at once keeps the server alive and leaves an unattached
-  `heeler-attach-*` session (hidden from the Console, visible in `tmux ls`
-  until ended). Upstream tmux 3.3a–3.7b can still crash or abort the server if a
-  Host-local signal kills only the stdin feeder so `tmux -C` sees raw stdin EOF
-  while remaining alive on a streaming pane with queued output blocks, or if a
-  non-Heeler `tmux -C` client detaches under `destroy-unattached on`.
+  clients show in `list-clients`. While every `heeler-attach-*` session has its
+  control client attached, the user's own sessions read as before and a bare
+  `tmux attach` picks one of the user's unattached sessions. With
+  `destroy-unattached off`, however, a Host-side `SIGKILL` of the wrapper shell,
+  the feeder and `tmux -C` together leaves an unattached `heeler-attach-*`
+  session (keeping the server alive): that leftover stays in `tmux ls` until it
+  is killed, and while it exists a bare `tmux attach` may pick it (stories 85
+  and 86). Heeler's next connection to the Host cleans such leftovers up after
+  the initial inventory arrives, ending sessions carrying `@heeler-attach`
+  (matched by that option on the session id and never by session name prefix
+  alone, and only when `#{session_attached}` is `0`). Upstream tmux 3.3a–3.7b can
+  still crash or abort the server if a Host-local signal kills only the stdin
+  feeder so `tmux -C` sees raw stdin EOF while remaining alive on a streaming
+  pane with queued output blocks, or if a non-Heeler `tmux -C` client detaches
+  under `destroy-unattached on`.
 - Inventory lags by up to a second. The Host spends about 1.8% of one core per
   60 Panes on macOS while the app is in the foreground, and more Panes cost
   more; Linux has not been measured.
