@@ -42,19 +42,27 @@ for any size it takes part in sizing every window of that session.
   holding a link to the window of the Pane it shows (`link-window`), with one
   control-mode client attached to it, so that client's output and size reach
   that window alone. The session is opened around a placeholder window that
-  closes once the link is in, gets `destroy-unattached` once its client is
-  attached, so it goes when the client does, and ends when its Attach closes or
-  retention (ADR 0017) lets it go. When the window's last other link goes, as
-  when the user ends its session, Heeler closes the window, which would
-  otherwise live on in Heeler's session. The client runs with `pause-after`, so
-  a slow link pauses the Pane rather than growing tmux's buffer, and a paused
-  Pane resumes with a new first paint. Closing an Attach writes `detach-client`
-  (it is the session's only client, so under `destroy-unattached` the session
-  ends with it) and keeps reading until `%exit` or the channel ends, then
-  closes the channel; what was already queued is written first. The client's
-  standard output is piped through a drain that keeps reading until tmux exits,
-  and the shell that starts it exits in that same group, so a channel that
-  drops still lets the client leave and later input is never a shell command.
+  closes once the link is in, sets `destroy-unattached off` and
+  `detach-on-destroy on` so neither unattached teardown nor window exit destroys
+  the session behind its client or switches the client onto a user session, and
+  ends when its Attach closes or retention (ADR 0017) lets it go. When the
+  window's last other link goes, as when the user ends its session, Heeler
+  closes the window, which would otherwise live on in Heeler's session. The
+  client runs with `pause-after`, so a slow link pauses the Pane rather than
+  growing tmux's buffer, and a paused Pane resumes with a new first paint.
+  Closing an Attach writes `kill-session -t "=<session>"` (`server_destroy_session`
+  clears `c->session` before setting `CLIENT_EXIT` and before destroying the
+  session) and keeps reading until `%exit` or the channel ends, then closes the
+  channel; what was already queued is written first. On the Host, the client's
+  standard input comes through a feeder that forwards the SSH channel and, if
+  the channel drops, breaks any partial control-mode line with an unclosed quote
+  and writes `kill-session -t "=<session>"` while holding the pipe open until
+  tmux exits (when tmux exits first, the pipeline terminates that feeder at
+  once); its standard output is piped through a drain that keeps reading until
+  tmux exits, a fallback `kill-session` runs after the pipeline, and the shell
+  that starts it traps `SIGHUP` and exits in that same parsed group, so a
+  dropped channel still ends the session cleanly and later input is never a
+  shell command.
 - Everything for one Attach goes through its control client, in order: first
   paint, keys, text, pastes, Send's steps and Stop. First paint is built from
   `capture-pane -e -p` with history, of both screens when the Pane is on the
@@ -257,6 +265,47 @@ servers that were killed afterwards:
   (`server_client_get_pane`). The repro is
   `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering` and
   `aDroppedAttachChannelLeavesTheServerAnswering`.
+- Live on 2026-11-12 across tmux 3.3a and 3.7b on macOS 27.0 and tmux 3.3a, 3.4
+  and 3.7b on Ubuntu 24.04 Linux, verified against the 3.3a and 3.7b C sources,
+  draining stdout and sending `detach-client` under `destroy-unattached on`
+  still crashed the server on two upstream teardown paths:
+  1. `server_check_unattached` (`server-fn.c`) is the only caller of
+     `session_destroy` (`s->curw = NULL`) that does not call
+     `server_destroy_session` (`c->session = NULL`) first. Whenever a control
+     client `c` sets `CLIENT_EXIT` while `c->session == s` (both on
+     `detach-client` in `server_client_detach` and on stdin EOF in
+     `control_error_callback`, and while queued `%output` delays
+     `control_all_done(c)` and `MSG_EXIT`), `recalculate_sizes` skips `c`
+     (`CLIENT_UNATTACHEDFLAGS`), leaving `s->attached == 0`; under
+     `destroy-unattached on` (or inherited global `keep-group`),
+     `server_check_unattached` sets `s->curw = NULL` while `c->session` still
+     points to `s` (`notify_session("session-closed", s)` holds a reference).
+     Any concurrent command or disconnect hook that resolves a client's pane
+     (`cmd_find_best_client` → `cmd_find_from_client` →
+     `server_client_get_pane(c)` from `display-message`, `list-panes`,
+     `list-clients` or `set-option` when an unattached user session is newer
+     than an attached desktop session, or `server_client_lost` →
+     `notify_client("client-disconnected", c)`) dereferences
+     `c->session->curw->window` at `0x10` (`SIGSEGV`). A single-session replay
+     survived when `cmd_find_best_client` picked the attached desktop client.
+  2. Even with `destroy-unattached off`, setting `CLIENT_EXIT` while
+     `c->session != NULL` (from `detach-client` or raw stdin EOF) while
+     `cp->blocks` still holds queued `%output` causes `control_write_output`
+     (`control.c`) to take its `CONTROL_IGNORE_FLAGS` branch and advance
+     `cp->offset` to `SIZE_MAX` without `control_discard_pane`; when the pane
+     writes again before the client exits, `server_client_check_backoff` drains
+     input and `control_write_pending` calls `control_append_data`, aborting the
+     server with `fatalx("not enough data: ...")`.
+  All five builds crashed deterministically under abrupt channel drop while
+  retaining Attaches, polite `detach-client` close on a streaming Pane, and Stop
+  ending a streaming window (`remain-on-exit off`) or repainting under
+  concurrent format reads. Setting `destroy-unattached off` and
+  `detach-on-destroy on` and ending the session via `kill-session -t "=<session>"`
+  (both on polite close and from the Host-side stdin feeder on channel drop)
+  prevented every crash across all five builds, because `cmd_kill_session_exec`
+  calls `server_destroy_session`, clearing `c->session` synchronously before
+  `CLIENT_EXIT` and before `session_destroy`. The E2E repro is
+  `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`.
 
 Input, live on 2026-11-10 on the same Mac with tmux 3.7b and with 3.3a built
 from its release tarball. A probe in a pane asked for each keyboard mode in
@@ -371,7 +420,15 @@ session's current window.
 - Heeler's sessions, one per Attach with one window each, show in `tmux ls`,
   in `choose-tree` and to tools that save and restore sessions, and its control
   clients show in `list-clients`. The user's own sessions read as before, and a
-  bare `tmux attach` picks one of them while any is unattached.
+  bare `tmux attach` picks one of them while any is unattached. Because
+  `destroy-unattached` is `off` on `@heeler-attach` sessions, an external
+  `SIGKILL` on the Host that kills the wrapper shell, stdin feeder and
+  `tmux -C` at once keeps the server alive and leaves an unattached
+  `heeler-attach-*` session (hidden from the Console, visible in `tmux ls`
+  until ended). Upstream tmux 3.3a–3.7b can still crash or abort the server if a
+  Host-local signal kills only the stdin feeder so `tmux -C` sees raw stdin EOF
+  while remaining alive on a streaming pane with queued output blocks, or if a
+  non-Heeler `tmux -C` client detaches under `destroy-unattached on`.
 - Inventory lags by up to a second. The Host spends about 1.8% of one core per
   60 Panes on macOS while the app is in the foreground, and more Panes cost
   more; Linux has not been measured.
