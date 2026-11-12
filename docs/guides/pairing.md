@@ -6,7 +6,7 @@ Show a Pairing Code on the machine that runs herdr and scan it in Heeler. The Ho
 
 ## Before you start
 
-- A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
+- A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md). For a herdr-core or tmux Host, add it by hand with [Connect herdr-core](herdr-core.md) or [Connect tmux](tmux.md).
 - Your iPhone or iPad on the same network as the machine, such as the same Wi-Fi, or connected to the same VPN. Pairing doesn't use the networks in Heeler's **Settings > Overlay Networks**; you can add those afterwards for [use away from home](#use-it-away-from-home).
 - About two minutes: a Pairing Code works once and expires after two minutes.
 
