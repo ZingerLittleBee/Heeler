@@ -148,11 +148,14 @@ keeps the Console fallback link.
 The list fits complete entries within 160 pt, including the optional 20 pt
 heading, 6 pt vertical padding on each edge, and one overflow/stale caption.
 It shows at most four entries. One or two entries have a 44 pt minimum target;
-three or four use a 28 pt dense minimum. Three-line configured entries keep
-at least 44 pt, so a named Host fits two of them plus the caption. Lock Screen
-text retains the system Dynamic Type size; only the Dynamic Island caps it
-through `islandTypeSize()`. Overflow uses
-the full plaintext inventory count minus the number of visible entries.
+three or four use a 28 pt dense minimum. Configured entries are budgeted at,
+and held to, their rendered height: their text lines plus 1 pt of padding on
+each edge, so 31 pt for two lines and 44 pt for three. A named Host therefore
+fits four two-line entries without a caption or three with one, and two
+three-line entries plus the caption. Lock Screen text retains the system
+Dynamic Type size; only the Dynamic Island caps it through `islandTypeSize()`.
+Overflow uses the full plaintext inventory count minus the number of visible
+entries.
 Stale content adds "May be out of date", sharing the overflow line when
 needed. Debug decrypt diagnostics remain outside the production height budget.
 
