@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/tmux.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/tmux.md at bb0ae7a6 -->
 # 连接 tmux
 
 通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是各自的 Host，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
@@ -54,14 +54,14 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下检查一
 在 Linux 上当没有 tmux 服务端运行时，在 **New Agent** 或 **New Terminal** 中选择 **New Workspace** 会通过你的交互式登录 shell 启动服务端，使新建窗口继承你的 shell 配置。
 
 > [!NOTE]
-> 如果 tmux 的全局或会话环境中带有 `CLAUDECODE` 或 `HERDR_*` 等残留变量，Host 详情会在 **Core Environment** 下列出它们的名称。请取消设置这些变量或从干净的终端重启 tmux，以免新建窗格继承它们。
+> 如果某个 Agent 会话的变量泄漏到了 tmux 中，Host 详情会发出提醒并说明清理方法。
 
 ## 控制台
 
 Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你原有的全局选项或快捷键绑定：
 
 - **Workspaces、Tabs 与 Panes：** 按 tmux 自身的顺序，每个 tmux 会话（session）是一个 Workspace，每个窗口（window）是一个 Tab，每个窗格（pane）是一个 Pane。链接到多个会话中的同一个窗口只显示一次。
-- **Agents 与 Terminals：** 前台进程为 Claude Code、Codex、Grok Build、OpenCode、Pi 或 Oh My Pi 的窗格显示在 **Agents** 中。Shell 和其他程序显示在 **Terminals** 中，已退出的保留窗格（`remain-on-exit`）不显示为 Agent。
+- **Agents 与 Terminals：** 正在运行 Claude Code、Codex、Grok Build、OpenCode、Pi 或 Oh My Pi 的窗格显示在 **Agents** 中。Shell 和其他程序显示在 **Terminals** 中。
 
 | 状态 | 含义 |
 | --- | --- |
@@ -86,19 +86,19 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 
 即使同一个 tmux 窗口被拆分为多个窗格，实时终端也会单独打开目标 Pane，任何查看者无需 Take Over 步骤即可直接输入：
 
-- **窗口尺寸：** 当你在 iPhone 或 iPad 上查看某个 Pane 时，Heeler 会将该窗口调整为适合屏幕的尺寸，同时绝不会超过当前正在显示同一窗口的任何桌面终端。离开该 Pane 后会立即将窗口尺寸交还给其他客户端，同一会话中的其他窗口则不会被调整尺寸。
+- **窗口尺寸：** 当你在 iPhone 或 iPad 上查看某个 Pane 时，Heeler 会将该窗口调整为适合屏幕的尺寸，并保持在同一窗口已打开的桌面终端范围内。离开该 Pane 后会将窗口尺寸交还给其他客户端，同一会话中的其他窗口则不会被调整尺寸。
 - **Send 与 Stop：** **Send** 在确认同一个 Agent 仍位于窗格前台、未处于 **Blocked** 状态且可接收粘贴后，才会粘贴草稿并按下回车。当状态为 **Working** 或 **Blocked** 且草稿为空时，对所有受支持的 Agent（包括 Grok Build），**Send** 都会变为 **Stop**。
 - **Close：** 关闭 Agent 或终端会关闭其对应的窗格或窗口。
 
 ### Direct Input 中的换行键
 
-在 tmux 默认的 `extended-keys off` 下，tmux 不会把 **Shift-Return** 等带修饰键的回车作为独立按键转发，Heeler 也会扣留 tmux 无法编码的扩展按键，以免将按键名称当作普通文本输入到窗格中：
+在 tmux 默认的 `extended-keys off` 下，tmux 不会把 **Shift-Return** 等带修饰键的回车作为独立按键转发，Heeler 也会扣留 tmux 尚未启用的扩展按键，以免将按键名称当作普通文本输入到窗格中：
 
 | 按键 | 在 tmux 中的行为 |
 | --- | --- |
-| **Control-J** | 无论 `extended-keys` 如何设置，均可在 Claude Code、Codex、Grok Build、OpenCode、Pi 和 Oh My Pi 中换行。 |
+| **Control-J** | 无需修改 tmux 设置，即可在 Claude Code、Codex、Grok Build、OpenCode、Pi 和 Oh My Pi 中换行。 |
 | **Option-Return** | 可在 Claude Code、Codex、Grok Build、OpenCode 和 Oh My Pi 中换行；在 Pi 中会直接提交。 |
-| **Shift-Return** | 仅在 tmux 3.5 或更新版本且 `~/.tmux.conf` 设置了 `set -g extended-keys on` 时，可在 Claude Code、OpenCode、Pi 和 Oh My Pi 中换行。在 Codex 和 Grok Build 中无论何种模式都会直接提交。 |
+| **Shift-Return** | 在 tmux 3.5 或更新版本且 `~/.tmux.conf` 设置了 `set -g extended-keys on` 时，可在 Claude Code、OpenCode、Pi 和 Oh My Pi 中换行。在 Codex 和 Grok Build 中从 Heeler 发送 **Shift-Return** 不会生效，请改用 **Control-J** 或 **Option-Return**。 |
 
 当 Composer 中的 **Send** 或 **Stop** 无法干净地完成时，会保留你的草稿并显示[与 herdr-core 相同的恢复提示](herdr-core.md#使用-agent)。
 
@@ -125,23 +125,23 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 
 | 程序 | 会话说明 |
 | --- | --- |
-| Claude Code | 支持 macOS 和 Linux。在提示符处绑定，并跟随 `/clear` 与 `/resume`（搭配 **New Agent** 或 [Claude Code hooks](#claude-code-hooks)）。 |
-| Codex | 支持 macOS 和 Linux。以 `--no-daemon` 启动时在首条消息后绑定（参见[为什么需要 `--no-daemon`](chat.md#配置-host)）。 |
-| Grok Build | 支持 macOS 和 Linux。当 Grok Build 的进程只列出一个对话时绑定；执行 `/new` 后，请重启或使用 **Choose a Conversation**。 |
-| Pi | 支持 macOS 和 Linux。通过 **New Agent** 启动或搭配 [Host Helper](#host-helper) 时绑定；否则请使用 **Choose a Conversation**。 |
-| Oh My Pi | 支持 macOS 和 Linux。搭配 [Host Helper](#host-helper)，或在首条消息使其持有会话文件后绑定；否则请使用 **Choose a Conversation**。 |
+| Claude Code | 通过 **New Agent** 启动或搭配 [Claude Code hooks](#claude-code-hooks) 时跟随 `/clear` 与 `/resume`；否则请使用 **Choose a Conversation**。 |
+| Codex | 以 `--no-daemon` 启动时在首条消息后绑定（参见[为什么需要 `--no-daemon`](chat.md#配置-host)）。 |
+| Grok Build | 当 Grok Build 只列出一个对话时绑定；执行 `/new` 后，请重启或使用 **Choose a Conversation**。 |
+| Pi | 通过 **New Agent** 启动或搭配 [Host Helper](#host-helper) 时绑定；否则请使用 **Choose a Conversation**。 |
+| Oh My Pi | 搭配 [Host Helper](#host-helper)，或在首条消息打开其会话文件后绑定；否则请使用 **Choose a Conversation**。 |
 | OpenCode | 在 tmux Host 上关闭。仅提供终端视图。 |
 
 当 Chat 无法证实某个 Pane 当前显示的是哪个对话时，会显示 **Can't Tell the Conversation** 以及 **Check Again** 和 **Choose a Conversation**。选择对话并轻点 **Use This Conversation** 后，在该 Agent 或 tmux 服务端结束之前，Heeler 都会为该 Pane 记住这一选择。
 
 ## Host Helper
 
-日常使用终端与 Chat 不需要 Host Helper。在装有 Node.js 20 或更新版本的 macOS（`launchd` LaunchAgent）或 Linux（`systemd` 用户服务）上安装它，可额外启用：
+日常使用终端与 Chat 不需要 Host Helper。在装有 Node.js 20 或更新版本的 macOS 或 Linux 上安装它，可额外启用：
 
 - **Agent Notifications**（**Blocked**、**Error** 与 **Done**）、应用内横幅以及 **Live Activity**；
 - **[Usage](usage.md)**（Token Usage、Usage Limits 以及主屏幕和锁定屏幕小组件）；
-- **Codex、Grok Build 与 OpenCode 2.1+ 状态：** 为尚未使用自定义 `pipe-pane` 的窗格挂载轻量输出读取器（Grok Build 还需开启 `program_status = "on"`）；
-- **Pi 与 Oh My Pi 扩展：** 将 `heeler-session.js` 写入它们的 `agent/extensions` 文件夹，使你手动启动的窗格也能上报 **Idle**、**Working**、**Done**、**Error** 及准确的 Chat 会话；
+- **Codex、Grok Build 与 OpenCode 状态：** 为运行这些程序的窗格上报状态（Grok Build 还需开启 **Turn On Grok Build's Status**）；
+- **Pi 与 Oh My Pi 状态及 Chat：** 安装 Heeler 扩展，使你手动启动的窗格也能上报 **Idle**、**Working**、**Done**、**Error** 及当前 Chat 对话；
 - **Claude Code 桌面端 Esc 清理：** 当你在桌面端按 Esc 拒绝权限提示时自动清除 **Blocked**。
 
 在 **Hosts** 中打开该 Host，轻点 **Host Helper**，查看 **Files This Writes**，轻点 **Install**，并在 **Settings > Notifications** 下开启该 Host，具体步骤与状态说明同[连接 herdr-core](herdr-core.md#host-helper)。移除 Host Helper 后，你已添加的 [Claude Code hooks](#claude-code-hooks) 仍会继续工作。
@@ -149,12 +149,14 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 ## 已知限制
 
 - **仅限装有 tmux 3.3 或更新版本的 macOS 和 Linux：** 不支持原生 Windows，且仅支持通过 `-L` socket 名称而非自定义 `-S` 路径指定 tmux 服务端。
+- **早于 3.5 的 tmux：** **Shift-Return** 不会送达 Agent；请改用 **Control-J**（或在 Pi 之外使用 **Option-Return**）。
+- **`window-size largest` 下缩小桌面终端：** 当其他终端自行改变尺寸时 tmux 不会发出通知，因此在 `window-size largest` 下，若桌面终端未分离或切换窗口而直接缩小，窗口尺寸会在下一次窗口或客户端变动时才重新收紧；若读取客户端尺寸失败，Heeler 不会改动窗口尺寸。
 - **不支持上传图片或文件：** 在 tmux Host 的 Composer 和 Chat 中不提供 **Add Image**、**Paste Image** 与 **Add File**。
 - **不提供 Changes、Skills、Templates、Take Over 或重命名 Agent/Tab：** 不提供 Changes 与 Skills 视图、herdr-core Templates、Take Over、窗格缩放，也不支持从 Heeler 重命名 Agent 或 Tab；窗格标题由程序自身设置，Tab 名称跟随 tmux 窗口名称。
-- **OpenCode Chat 已关闭：** OpenCode Agent 仅提供实时终端视图，且 OpenCode 2.1+ 在 tmux 中的状态支持基于源码审阅，尚未在真实 tmux 中实测。
-- **Pi 与 Oh My Pi 扩展：** 扩展会上报 **Idle**、**Working**、**Done** 与 **Error**，不上报 **Blocked**；通过 `npx` 启动的 Pi 不会加载状态与会话扩展。
-- **已有 `pipe-pane` 的窗格：** 如果你已经自行管道转发某个窗格的输出，Heeler 不会改动该管道，其中的 Codex、Grok Build 或 OpenCode 会保持 **Unknown**。
+- **OpenCode Chat 已关闭：** OpenCode Agent 仅提供实时终端视图，且 OpenCode 在 tmux 中的状态支持来自源码审阅而非实机运行。
+- **Pi 与 Oh My Pi 扩展：** 扩展会上报 **Idle**、**Working**、**Done** 与 **Error**，不上报 **Blocked**；通过 `npx` 启动的 Pi 不会加载扩展。
+- **已重定向输出的窗格：** 如果你已经在 tmux 中自行重定向某个窗格的输出，Heeler 不会改动它，其中的 Codex、Grok Build 或 OpenCode 会保持 **Unknown**。
 - **包装脚本：** 以子进程方式启动 Agent 的脚本会留在 **Terminals** 中；请在脚本末尾使用 `exec`（例如 `exec claude "$@"`），让 Agent 直接主导窗格。
-- **较旧的 tmux 版本：** 在 tmux 3.5 之前，没有传统控制字节的扩展按键（如 **Shift-Return** 或 **Control-Tab**）始终会被扣留。在 tmux 3.7 之前，如果某个 Agent 在你打开 Pane 之前就关闭了括号粘贴模式，发送多行提示词可能会按行逐条提交。
+- **目前的实测范围：** tmux Host 已在搭载 tmux 3.3a 与 3.7b 的 macOS 自动化 SSH 测试夹具上验证；Linux Host（包括通过 **New Workspace** 启动已停止的服务端）以及在真实机器上搭配实时 Agent、**Chat**、Claude Code hooks 和 Host Helper 的完整应用流程尚未实机运行。
 
-最后核对于 2026-11-12，核对依据为 tmux 3.3a 与 3.7b。
+最后核对于 2026-11-12，核对依据为 macOS 测试夹具上的 tmux 3.3a 与 3.7b。
