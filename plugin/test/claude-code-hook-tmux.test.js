@@ -583,3 +583,205 @@ suite("the script in a tmux Pane", { skip }, () => {
     assert.equal(option(pane, "@heeler-status"), "state=blocked:app=claude-code:kind=permission:turn=0:blocked=1");
   });
 });
+
+/**
+ * Stub `tmux` reproducing tmux 3.4's `cmdq_print` -> `utf8_stravisx(..., VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH)`:
+ * control bytes other than TAB/LF become C escapes or 4-byte octal (`0x1f` -> `\037`), and `$` before
+ * `[A-Za-z_{]` becomes `\$` even after `#{q:...}` (`format_quote_shell`) already added a backslash.
+ */
+const TMUX_34_STUB = `#!${process.execPath}
+const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+
+const stateFile = process.env.HEELER_STUB_TMUX_STATE;
+const state = existsSync(stateFile)
+  ? JSON.parse(readFileSync(stateFile, "utf8"))
+  : { pid: "4242", tty: "/dev/pts/7", options: {} };
+
+function quoteShell(text) {
+  let out = "";
+  for (const ch of text) {
+    if ("|&;<>()$\`\\\\\\"'*?[# =%".includes(ch)) out += "\\\\";
+    out += ch;
+  }
+  return out;
+}
+
+function strvisTmux34(text) {
+  const bytes = Buffer.from(text, "utf8");
+  let out = "";
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i];
+    if (b === 0x09 || b === 0x0a) { out += String.fromCharCode(b); i += 1; continue; }
+    if (b === 0x07) { out += "\\\\a"; i += 1; continue; }
+    if (b === 0x08) { out += "\\\\b"; i += 1; continue; }
+    if (b === 0x0b) { out += "\\\\v"; i += 1; continue; }
+    if (b === 0x0c) { out += "\\\\f"; i += 1; continue; }
+    if (b === 0x0d) { out += "\\\\r"; i += 1; continue; }
+    if (b < 0x20 || b === 0x7f) {
+      out += "\\\\" + b.toString(8).padStart(3, "0");
+      i += 1;
+      continue;
+    }
+    if (b === 0x24 && i + 1 < bytes.length) {
+      const next = bytes[i + 1];
+      const isIdent = (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a) || next === 0x5f || next === 0x7b;
+      if (isIdent) { out += "\\\\$"; i += 1; continue; }
+    }
+    if (b < 0x80) { out += String.fromCharCode(b); i += 1; continue; }
+    const width = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+    out += bytes.subarray(i, i + width).toString("utf8");
+    i += width;
+  }
+  return out;
+}
+
+function fieldValue(name) {
+  if (name === "pid") return state.pid;
+  if (name === "pane_tty") return state.tty;
+  return state.options[name] ?? "";
+}
+
+function expandFormat(fmt) {
+  const andMatch = /^#\\{&&:#\\{==:#\\{(@[^}]+)\\},([^}]*)\\},#\\{==:#\\{(@[^}]+)\\},([^}]*)\\}\\}$/.exec(fmt);
+  if (andMatch) {
+    return fieldValue(andMatch[1]) === andMatch[2] && fieldValue(andMatch[3]) === andMatch[4] ? "1" : "0";
+  }
+  return fmt.replace(/#\\{(q:)?([^}]+)\\}/g, (_, quoted, name) => {
+    const raw = fieldValue(name);
+    return quoted ? quoteShell(raw) : raw;
+  });
+}
+
+function parseCommandString(cmd) {
+  return cmd.split(" ; ").map((part) => {
+    const tokens = [];
+    let cur = "", hasToken = false, inSingle = false;
+    for (let i = 0; i < part.length; i += 1) {
+      const ch = part[i];
+      if (ch === "'") { inSingle = !inSingle; hasToken = true; continue; }
+      if (!inSingle && ch === " ") {
+        if (hasToken) { tokens.push(cur); cur = ""; hasToken = false; }
+        continue;
+      }
+      cur += ch;
+      hasToken = true;
+    }
+    if (hasToken) tokens.push(cur);
+    return tokens;
+  });
+}
+
+let args = process.argv.slice(2);
+while (args.length > 0 && (args[0] === "-N" || args[0] === "-u" || args[0] === "-S")) {
+  args = args[0] === "-S" ? args.slice(2) : args.slice(1);
+}
+const groups = [];
+let current = [];
+for (const word of args) {
+  if (word === ";") { groups.push(current); current = []; }
+  else current.push(word);
+}
+if (current.length > 0) groups.push(current);
+
+function runGroup(words) {
+  const sub = words[0];
+  if (sub === "display-message") {
+    const fmt = words[words.length - 1];
+    process.stdout.write(strvisTmux34(expandFormat(fmt)) + "\\n");
+  } else if (sub === "set-option") {
+    const unset = words.includes("-u");
+    const name = words[words.length - (unset ? 1 : 2)];
+    if (unset) delete state.options[name];
+    else state.options[name] = words[words.length - 1];
+  } else if (sub === "if-shell") {
+    const tIdx = words.indexOf("-t");
+    const cond = words[tIdx + 2];
+    const body = words[tIdx + 3];
+    if (expandFormat(cond) === "1") {
+      for (const inner of parseCommandString(body)) runGroup(inner);
+    }
+  }
+}
+
+for (const group of groups) runGroup(group);
+writeFileSync(stateFile, JSON.stringify(state));
+`;
+
+suite("the script against tmux 3.4 output escaping", () => {
+  test("writes Working, Blocked, Done, Error and @heeler-session when display-message escapes 0x1f and $var", () => {
+    for (const hookShell of shells()) {
+      const root = mkdtempSync("/tmp/hkt34-");
+      try {
+        const home = join(root, "home");
+        const bin = join(root, "bin");
+        mkdirSync(home, { recursive: true });
+        mkdirSync(bin, { recursive: true });
+        const socket = join(root, "s");
+        writeFileSync(socket, "");
+        const stubTmux = join(bin, "tmux");
+        writeFileSync(stubTmux, TMUX_34_STUB, { mode: 0o755 });
+        const stubPs = join(bin, "ps");
+        writeFileSync(
+          stubPs,
+          '#!/bin/sh\nif [ "$1" = "-o" ] && [ "$2" = "pgid=" ]; then printf "%s %s pts/7\\n" "$8" "$8"; exit 0; fi\nexec /bin/ps "$@"\n',
+          { mode: 0o755 },
+        );
+        const stateFile = join(root, "state.json");
+        writeFileSync(stateFile, JSON.stringify({ pid: "4242", tty: "/dev/pts/7", options: {} }));
+
+        const data =
+          process.platform === "darwin" ? join(home, "Library", "Application Support") : join(home, ".local", "share");
+        const pathsFolder = join(data, "heeler", "host-helper", "tmux", "s");
+        mkdirSync(pathsFolder, { recursive: true });
+        writeFileSync(join(pathsFolder, "paths.json"), JSON.stringify({ executable: stubTmux, socket }));
+
+        const env = {
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+          TMUX: `${socket},4242,0`,
+          TMUX_PANE: "%0",
+          HEELER_STUB_TMUX_STATE: stateFile,
+        };
+        const invoke = (payload) => {
+          const ran = spawnSync(hookShell, [SCRIPT], {
+            input: JSON.stringify({
+              session_id: "9a7714b3-b2a6-4f8e-b30d-94b5df8fc6fc",
+              transcript_path: "/home/$USER/.claude/projects/-w/9a7714b3.jsonl",
+              cwd: "/w",
+              ...payload,
+            }),
+            env,
+            encoding: "utf8",
+          });
+          assert.equal(ran.status, 0, `${hookShell}: exit 0`);
+          assert.equal(ran.stderr, "", `${hookShell}: no stderr`);
+          return JSON.parse(readFileSync(stateFile, "utf8")).options;
+        };
+
+        let opts = invoke({ hook_event_name: "UserPromptSubmit", prompt: "hello" });
+        assert.equal(opts["@heeler-status"], "state=working:app=claude-code:turn=0:blocked=0", hookShell);
+        const saved = JSON.parse(opts["@heeler-session"]);
+        assert.equal(saved.session, "9a7714b3-b2a6-4f8e-b30d-94b5df8fc6fc");
+        assert.equal(saved.file, "/home/$USER/.claude/projects/-w/9a7714b3.jsonl");
+        assert.equal(saved.pid, process.pid);
+
+        opts = invoke(permission("Bash", { command: "ls" }));
+        assert.equal(opts["@heeler-status"], "state=blocked:app=claude-code:kind=permission:turn=0:blocked=1", hookShell);
+        assert.match(opts["@heeler-ask"], new RegExp(`^${process.pid} \\d+-\\d+$`));
+
+        opts = invoke({ hook_event_name: "Stop", stop_hook_active: false });
+        assert.equal(opts["@heeler-status"], "state=done:app=claude-code:turn=1:blocked=1", hookShell);
+        assert.equal(opts["@heeler-ask"], "");
+
+        opts = invoke({ hook_event_name: "UserPromptSubmit", prompt: "again" });
+        assert.equal(opts["@heeler-status"], "state=working:app=claude-code:turn=1:blocked=1", hookShell);
+
+        opts = invoke({ hook_event_name: "StopFailure", last_assistant_message: "Quota $LIMIT reached" });
+        const expectedMsg = Buffer.from("Quota $LIMIT reached").toString("base64");
+        assert.equal(opts["@heeler-status"], `state=error:app=claude-code:msg=${expectedMsg}:turn=2:blocked=1`, hookShell);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+});

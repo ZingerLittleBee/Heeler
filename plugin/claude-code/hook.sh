@@ -25,7 +25,6 @@ ASK_OPTION=@heeler-ask
 DONE_REPORTERS="claude-code codex pi omp grok-build"
 # Characters, as the Pi extension keeps a message.
 MESSAGE_LIMIT=512
-SEP=$(printf '\037')
 
 # Top-level members of a JSON object read from stdin: one line of
 # `name<TAB>raw value` for each member named in `want`, raw values with their
@@ -94,6 +93,67 @@ END {
     if (substr(text, at, 1) != ",") exit
     at++
   }
+}'
+
+# Five fields from `#{pid} #{q:pane_tty} #{q:@heeler-status} #{q:@heeler-ask} #{q:@heeler-session} .`,
+# unescaping `#{q:...}` (`format_quote_shell`) and tmux 3.4/3.5a `strvis` (`\$`, C escapes, `\ooo`).
+PANE_FIELDS='
+function qf(   r, b, c, d, k) {
+  r = ""
+  while (p <= e) {
+    b = 0
+    while (p <= e && substr(s, p, 1) == "\\") { b++; p++ }
+    if (p > e) return 0
+    c = substr(s, p, 1)
+    if (b == 0) {
+      if (c == " ") { p++; v = r; return 1 }
+      if (index("|&;<>()$`\"\047*?[#=%", c)) return 0
+      r = r c; p++; continue
+    }
+    if (c == "$") {
+      for (k = int((b - 1) / 2); k > 0; k--) r = r "\\"
+      r = r "$"; p++; continue
+    }
+    for (k = int(b / 2); k > 0; k--) r = r "\\"
+    if (b % 2 == 0) continue
+    if (index("|&;<>()`\"\047*?[# =%", c)) { r = r c; p++; continue }
+    if (c == "a") { r = r sprintf("%c", 7); p++; continue }
+    if (c == "b") { r = r sprintf("%c", 8); p++; continue }
+    if (c == "f") { r = r sprintf("%c", 12); p++; continue }
+    if (c == "r") { r = r sprintf("%c", 13); p++; continue }
+    if (c == "v") { r = r sprintf("%c", 11); p++; continue }
+    d = substr(s, p, 3)
+    if (d ~ /^[0-7][0-7][0-7]$/ && d != "000") {
+      r = r sprintf("%c", substr(d, 1, 1) * 64 + substr(d, 2, 1) * 8 + substr(d, 3, 1))
+      p += 3; continue
+    }
+    return 0
+  }
+  return 0
+}
+{ s = NR == 1 ? $0 : s "\n" $0 }
+END {
+  e = length(s)
+  sp = index(s, " ")
+  if (sp <= 1) exit
+  pid = substr(s, 1, sp - 1)
+  if (pid !~ /^[0-9]+$/) exit
+  p = sp + 1
+  if (!qf() || index(v, "\n")) exit
+  tty = v
+  if (!qf()) exit
+  st = v; gsub(/\n/, "\r", st)
+  if (!qf()) exit
+  ask = v; gsub(/\n/, "\r", ask)
+  if (!qf()) exit
+  sess = index(v, "\n") ? "" : v
+  if (substr(s, p) != ".") exit
+  print pid
+  print tty
+  print st
+  print ask
+  print sess
+  print "."
 }'
 
 # A JSON string's text from its literal, for the plain strings a path or a name
@@ -411,11 +471,22 @@ EOF
   attempt=0
   while [ "$attempt" -lt 3 ]; do
     attempt=$((attempt + 1))
-    read=$("$tmux" -N -S "$socket" display-message -p -t "$pane" \
-      "#{pid}$SEP#{pane_tty}$SEP#{$STATUS_OPTION}$SEP#{$ASK_OPTION}$SEP#{$SESSION_OPTION}" 2>/dev/null) || return
-    IFS=$SEP read -r live_pid pane_tty status open saved_session <<EOF
-$read
+    read=$("$tmux" -N -u -S "$socket" display-message -p -t "$pane" \
+      "#{pid} #{q:pane_tty} #{q:$STATUS_OPTION} #{q:$ASK_OPTION} #{q:$SESSION_OPTION} ." 2>/dev/null) || return
+    parsed=$(printf '%s\n' "$read" | awk "$PANE_FIELDS")
+    [ -n "$parsed" ] || return
+    end_mark=
+    {
+      IFS= read -r live_pid
+      IFS= read -r pane_tty
+      IFS= read -r status
+      IFS= read -r open
+      IFS= read -r saved_session
+      IFS= read -r end_mark
+    } <<EOF
+$parsed
 EOF
+    [ "$end_mark" = . ] || return
     [ "$live_pid" = "$server_pid" ] || return
     if [ "$attempt" = 1 ]; then
       # Only the Claude Code that leads the foreground of the Pane's own
@@ -470,11 +541,13 @@ EOF
     if plain_value "$status" && plain_value "$open"; then
       # Written only while the Pane still holds what was read, so a hook
       # running alongside cannot undo this one, nor this one it.
-      result=$("$tmux" -N -S "$socket" \
+      result=$("$tmux" -N -u -S "$socket" \
         if-shell -F -t "$pane" "#{&&:#{==:#{$STATUS_OPTION},$status},#{==:#{$ASK_OPTION},$open}}" \
         "set-option -p -t '$pane' $STATUS_OPTION '$next' ; set-option -p -t '$pane' $ASK_OPTION '$next_open'" \
-        \; display-message -p -t "$pane" "#{$STATUS_OPTION}$SEP#{$ASK_OPTION}" 2>/dev/null) || return
-      [ "$result" = "$next$SEP$next_open" ] && return
+        \; display-message -p -t "$pane" "#{$STATUS_OPTION}
+#{$ASK_OPTION}." 2>/dev/null) || return
+      [ "$result" = "$next
+$next_open." ] && return
     else
       "$tmux" -N -S "$socket" set-option -p -t "$pane" "$STATUS_OPTION" "$next" \; \
         set-option -p -t "$pane" "$ASK_OPTION" "$next_open" >/dev/null 2>&1
