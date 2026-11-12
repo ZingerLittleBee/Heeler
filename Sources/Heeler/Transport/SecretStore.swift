@@ -40,6 +40,14 @@ enum KeychainError: Error, Equatable {
     case unexpectedStatus(OSStatus)
 }
 
+/// Optional hook installed by the main app under `--perf-trace` so synchronous
+/// Keychain IPC is attributed on and off the main thread without pulling
+/// app-only tracing types into app extensions.
+enum KeychainSecretTrace {
+    nonisolated(unsafe) static var wrapRead:
+        (@Sendable (_ service: String, _ isAll: Bool, _ body: () -> OSStatus) -> OSStatus)?
+}
+
 /// Generic-password Keychain items under one service. Items are scoped to
 /// this device only (`ThisDeviceOnly`): the device key must never migrate to
 /// another device via backup or iCloud Keychain.
@@ -56,8 +64,7 @@ struct KeychainSecretStore: SecretStore {
         var query = baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let (status, item) = Self.copyMatching(query: query, service: service, isAll: false)
         switch status {
         case errSecSuccess:
             return item as? Data
@@ -73,8 +80,7 @@ struct KeychainSecretStore: SecretStore {
         query[kSecReturnData as String] = true
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
-        var items: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &items)
+        let (status, items) = Self.copyMatching(query: query, service: service, isAll: true)
         switch status {
         case errSecSuccess:
             var secrets: [String: Data] = [:]
@@ -132,5 +138,18 @@ struct KeychainSecretStore: SecretStore {
             query[kSecAttrAccessGroup as String] = accessGroup
         }
         return query
+    }
+
+    private static func copyMatching(
+        query: [String: Any], service: String, isAll: Bool
+    ) -> (OSStatus, CFTypeRef?) {
+        var result: CFTypeRef?
+        let status: OSStatus
+        if let wrap = KeychainSecretTrace.wrapRead {
+            status = wrap(service, isAll) { SecItemCopyMatching(query as CFDictionary, &result) }
+        } else {
+            status = SecItemCopyMatching(query as CFDictionary, &result)
+        }
+        return (status, result)
     }
 }
