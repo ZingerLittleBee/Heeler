@@ -71,7 +71,7 @@ actor TmuxControlClient {
 
     init(
         channel: any WindowsTerminalExecChannel,
-        closeCommand: TmuxControlCommand = TmuxControlCommand(["detach-client"]),
+        closeCommand: TmuxControlCommand,
         readTimeout: Duration = .seconds(30),
         writeTimeout: Duration = .seconds(10),
         closeTimeout: Duration = .seconds(2),

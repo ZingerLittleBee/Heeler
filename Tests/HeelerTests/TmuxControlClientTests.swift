@@ -8,12 +8,20 @@ import Testing
 /// that waits on it. Every later Attach feature sends through it.
 @Suite("tmux control client")
 struct TmuxControlClientTests {
+    private static let testCloseCommand = TmuxAttachScript.killSession(session: "heeler-attach-0a1b2c3d")
+
     private func client(
+        closeCommand: TmuxControlCommand = Self.testCloseCommand,
         readTimeout: Duration = .seconds(30),
         closeTimeout: Duration = .seconds(2)
     ) -> (TmuxControlClient, ScriptedTmuxLoopChannel) {
         let channel = ScriptedTmuxLoopChannel(onClose: {})
-        return (TmuxControlClient(channel: channel, readTimeout: readTimeout, closeTimeout: closeTimeout), channel)
+        return (
+            TmuxControlClient(
+                channel: channel, closeCommand: closeCommand,
+                readTimeout: readTimeout, closeTimeout: closeTimeout),
+            channel
+        )
     }
 
     private func command(_ words: String...) -> TmuxControlCommand {
@@ -313,15 +321,15 @@ struct TmuxControlClientTests {
         #expect(await drained(client) == [.ended(.failed(.channelFailed(detail: "broken")))])
     }
 
-    /// Close writes detach after what was already queued, and keeps reading
-    /// until tmux says the client exited.
-    @Test func closingWritesDetachAfterQueuedInputAndReadsUntilExit() async throws {
+    /// Close writes the required close command after what was already queued,
+    /// and keeps reading until tmux says the client exited.
+    @Test func closingWritesCloseCommandAfterQueuedInputAndReadsUntilExit() async throws {
         let (client, channel) = client()
         let waiting = Task { try await client.run(command("waits"), timeout: .seconds(5)) }
         try await waitUntil("the command to wait") { await client.waitingCommands == 1 }
         let closing = Task { await client.close() }
-        try await waitUntil("detach after the queued command") {
-            await lines(channel) == ["waits\n", "detach-client\n"]
+        try await waitUntil("close command after the queued command") {
+            await lines(channel) == ["waits\n", #"kill-session -t "=heeler-attach-0a1b2c3d""# + "\n"]
         }
         await channel.send(Data("%exit\n".utf8))
         await closing.value
@@ -331,15 +339,15 @@ struct TmuxControlClientTests {
         #expect(await drained(client) == [.ended(.exited(reason: nil))])
     }
 
-    @Test func closingWritesACustomCloseCommandAfterQueuedInput() async throws {
+    @Test func closingWritesCallerProvidedCloseCommandAfterQueuedInput() async throws {
         let channel = ScriptedTmuxLoopChannel(onClose: {})
         let client = TmuxControlClient(
             channel: channel,
-            closeCommand: TmuxAttachScript.killSession(session: "heeler-attach-0a1b2c3d"))
+            closeCommand: command("kill-session", "-t", "$9"))
         try await client.send(command("queued"), tag: 1)
         let closing = Task { await client.close() }
         try await waitUntil("kill-session after the queued command") {
-            await lines(channel) == ["queued\n", #"kill-session -t "=heeler-attach-0a1b2c3d""# + "\n"]
+            await lines(channel) == ["queued\n", #"kill-session -t "\$9""# + "\n"]
         }
         await channel.send(Data("%exit\n".utf8))
         await closing.value
@@ -348,14 +356,14 @@ struct TmuxControlClientTests {
     }
 
     /// A channel that never ends still closes inside the bound, after the
-    /// detach and anything queued ahead of it.
+    /// close command and anything queued ahead of it.
     @Test func aChannelThatNeverEndsStillClosesWithinTheBound() async throws {
         let (client, channel) = client(closeTimeout: .milliseconds(200))
         try await client.send(command("queued"), tag: 1)
         let started = ContinuousClock.now
         await client.close()
         #expect(ContinuousClock.now - started < .milliseconds(800))
-        #expect(await lines(channel) == ["queued\n", "detach-client\n"])
+        #expect(await lines(channel) == ["queued\n", #"kill-session -t "=heeler-attach-0a1b2c3d""# + "\n"])
         #expect(await client.end == .closed)
         #expect(await channel.isClosed)
         await #expect(throws: TmuxControlClient.Ended(end: .closed)) {
@@ -366,7 +374,10 @@ struct TmuxControlClientTests {
 
     @Test func outputPastTheReadersLimitEndsTheClient() async throws {
         let channel = ScriptedTmuxLoopChannel(onClose: {})
-        let client = TmuxControlClient(channel: channel, reader: TmuxControlReader(lineLimit: 8))
+        let client = TmuxControlClient(
+            channel: channel,
+            closeCommand: Self.testCloseCommand,
+            reader: TmuxControlReader(lineLimit: 8))
         await channel.send(Data("%output %1 more than eight bytes\n".utf8))
         let events = await drained(client)
         guard case .ended(.failed(.malformedResponse)) = events.last else {
