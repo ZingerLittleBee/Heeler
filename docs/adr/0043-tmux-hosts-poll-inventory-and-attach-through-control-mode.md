@@ -168,10 +168,14 @@ for any size it takes part in sizing every window of that session.
   path. Removing one ends the Panes of the session carrying that path, never a
   session that only shares its name, then runs `git worktree remove` under
   ADR 0032's risk checks and force rule.
-- The leaked-environment check (ADR 0034) and Usage's Account variables
-  (ADR 0033) read tmux's global environment (`show-environment -g`), which new
-  panes inherit, and the session's (`show-environment -t`), which overrides it
-  for that session's new panes, by name only.
+- The leaked-environment check (ADR 0034) reads tmux's global environment
+  (`show-environment -g -s`), which new panes inherit, and each user session's
+  (`show-environment -t <session> -s`), which overrides it for that session's
+  new panes, stripping values in POSIX `awk` on the Host so only POSIX variable
+  names and session `-NAME` removals cross SSH. Usage's runtime and Account
+  variables (ADR 0033) are read locally on the Host by the Host Helper through
+  `show-environment -g -s <name>` for each named variable in
+  `ENVIRONMENT_NAMES` only, so unnamed secrets are never dumped there either.
 
 ## Why
 
