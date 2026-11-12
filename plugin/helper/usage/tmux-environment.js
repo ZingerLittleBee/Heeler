@@ -1,9 +1,10 @@
 // The global environment of one tmux server, which new panes inherit, in the
-// shape `writeUsageRuntime` records (ADR 0033). `paths` is `{ executable,
-// socket }` from the Helper's `tmux/<socket name>/paths.json`. A name the
-// server leaves unset is null. The result is null when the server cannot be
-// read, so the recorder keeps its last record. Asking never starts a server,
-// and values are not logged. #697 calls this.
+// shape `writeUsageRuntime` records (ADR 0033, ADR 0043). `paths` is
+// `{ executable, socket }` from the Helper's `tmux/<socket name>/paths.json`.
+// Each variable in `ENVIRONMENT_NAMES` is queried by name so unrelated secrets
+// in the server's environment are never dumped. A name the server leaves unset
+// is null. The result is null when the server cannot be read, so the recorder
+// keeps its last record. Asking never starts a server, and values are not logged.
 
 import { execFile } from "node:child_process";
 
@@ -16,13 +17,24 @@ const UNSET_PREFIX = Buffer.from("unset ", "utf8");
 const EXPORT_PREFIX = Buffer.from("export ", "utf8");
 const SEMICOLON = Buffer.from(";", "utf8");
 
-function run(target) {
+function runNamed(target, name, timeoutMs) {
   return new Promise((resolve) => {
     execFile(
       target.tmux,
-      ["-N", "-S", target.socket, "-u", "show-environment", "-g", "-s"],
-      { timeout: TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: 1 << 20, encoding: "buffer" },
-      (error, stdout) => resolve(error ? null : stdout),
+      ["-N", "-S", target.socket, "-u", "show-environment", "-g", "-s", name],
+      { timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 1 << 20, encoding: "buffer" },
+      (error, stdout, stderr) => {
+        if (!error) {
+          resolve({ ok: true, stdout });
+          return;
+        }
+        const message = Buffer.isBuffer(stderr) ? stderr.toString("utf8").trim() : String(stderr ?? "").trim();
+        if (error.code === 1 && !error.killed && error.signal == null && message === `unknown variable: ${name}`) {
+          resolve({ ok: true, stdout: null });
+          return;
+        }
+        resolve({ ok: false, stdout: null });
+      },
     );
   });
 }
@@ -170,13 +182,26 @@ function parseShellEnvironment(input) {
 export async function readTmuxGlobalEnvironment(paths) {
   if (typeof paths?.executable !== "string" || paths.executable === ""
       || typeof paths?.socket !== "string" || paths.socket === "") return null;
-  const stdout = await run({ tmux: paths.executable, socket: paths.socket });
-  if (stdout === null) return null;
-  let found;
-  try {
-    found = parseShellEnvironment(stdout);
-  } catch {
-    return null;
+  const target = { tmux: paths.executable, socket: paths.socket };
+  const deadline = Date.now() + TIMEOUT_MS;
+  const environment = {};
+  for (const name of ENVIRONMENT_NAMES) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    const step = await runNamed(target, name, remaining);
+    if (!step.ok) return null;
+    if (step.stdout === null) {
+      environment[name] = null;
+      continue;
+    }
+    let found;
+    try {
+      found = parseShellEnvironment(step.stdout);
+    } catch {
+      return null;
+    }
+    if (found.size !== 1 || !found.has(name)) return null;
+    environment[name] = found.get(name);
   }
-  return Object.fromEntries(ENVIRONMENT_NAMES.map((name) => [name, found.has(name) ? found.get(name) : null]));
+  return environment;
 }
