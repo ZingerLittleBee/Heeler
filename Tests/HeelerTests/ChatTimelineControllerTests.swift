@@ -391,6 +391,79 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// Rows arriving while a drag or its bounce holds the list past its
+    /// start wait until it is back too. Applying them puts the reader's row
+    /// back, which clamps the offset to the start and ends the bounce at
+    /// once: letting go of a pull that loads snapped the list back in two
+    /// frames instead of bouncing, as the request itself changes the Load
+    /// Earlier row (live).
+    @Test func rowsArrivingWhileTheListIsPastItsStartWaitUntilItIsBack() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let available = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .available))
+        let loading = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
+        let more = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(100..<260), older: .loading))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(available))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+            let count = view.numberOfItems(inSection: 0)
+
+            controller.scrollViewWillBeginDragging(view)
+            let pulled = view.minOffsetY - ChatTimelineController.pullToLoadDistance - 10
+            view.contentOffset.y = pulled
+            controller.scrollViewDidEndDragging(view, willDecelerate: true)
+            controller.apply(Self.state(loading, revision: 2))
+            #expect(abs(view.contentOffset.y - pulled) <= 0.5)
+            controller.apply(Self.state(more, revision: 3))
+            #expect(abs(view.contentOffset.y - pulled) <= 0.5)
+            #expect(view.numberOfItems(inSection: 0) == count)
+
+            // The bounce brings the list back to its start.
+            view.contentOffset.y = view.minOffsetY
+            #expect(view.numberOfItems(inSection: 0) > count)
+        }
+    }
+
+    /// A page can land before the bounce after a pull is over. The row then
+    /// never showed the request, and shows what the page left: the pull's
+    /// loading ends with it rather than spinning until the next touch.
+    @Test func aPageThatLandsBeforeThePullBouncesBackEndsItsLoading() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let available = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .available))
+        let loading = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
+        let landed = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(100..<260), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(available))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+
+            // Rows built before the request say nothing about it.
+            Self.pull(controller, by: ChatTimelineController.pullToLoadDistance + 10)
+            controller.apply(Self.state(available, revision: 2))
+            view.contentOffset.y = view.minOffsetY
+            #expect(controller.olderPullPhase == .requested)
+
+            Self.pull(controller, by: ChatTimelineController.pullToLoadDistance + 10)
+            controller.apply(Self.state(loading, revision: 3))
+            controller.apply(Self.state(landed, revision: 4))
+            #expect(controller.olderPullPhase == .requested)
+            view.contentOffset.y = view.minOffsetY
+            #expect(controller.olderPullPhase == .idle)
+        }
+    }
+
     @Test func olderRowsLoadedUnderTheLoadEarlierRowKeepTheReadersRowInPlace() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let builder = ChatRowBuilder()
@@ -486,9 +559,12 @@ struct ChatTimelineControllerTests {
             controller.scrollViewDidEndDragging(view, willDecelerate: true)
             #expect(controller.olderPullPhase == .requested)
 
+            // The row shows the request once the bounce is back at the top.
             let loading = await builder.rows(
                 for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
             controller.apply(Self.state(loading, revision: 2))
+            #expect(controller.olderPullPhase == .requested)
+            view.contentOffset.y = view.minOffsetY
             #expect(controller.olderPullPhase == .idle)
         }
     }

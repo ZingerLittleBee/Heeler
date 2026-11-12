@@ -83,8 +83,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private lazy var collectionView = ChatCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, ChatRowID>?
     private var applied: ChatTimelineState?
-    /// The newest update that arrived while the list was held past its end,
-    /// applied once it is back.
+    /// The newest update that arrived while the list was held past its start
+    /// or its end, applied once it is back.
     private var heldState: ChatTimelineState?
     /// Every built row, folded ones included, so what a folded row has
     /// open survives its fold.
@@ -142,6 +142,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// The drag pulled the list past its top far enough to load earlier
     /// history when the finger lifts.
     private var isPullArmed = false
+    /// An update since the pull's request showed it in the Load Earlier row,
+    /// applied or held. The row being available again after that means the
+    /// request is over, not that it has yet to show.
+    private var olderRequestHasShown = false
     private let olderPull = ChatOlderPull()
 
     /// How far past its top the list is pulled to load earlier history.
@@ -302,9 +306,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     func apply(_ state: ChatTimelineState) {
         loadViewIfNeeded()
         guard let dataSource else { return }
+        if olderPull.phase == .requested, !Self.offersOlderHistory(state) { olderRequestHasShown = true }
         // Applying rows clamps an offset past the end to the new end, which
-        // the drag or bounce then undoes on its next frame.
-        if isHeldPastEnd {
+        // the drag or bounce then undoes on its next frame. Past the start
+        // it puts the reader's row back at the start itself, which ends the
+        // bounce there and then.
+        if isHeldPastEnd || isHeldPastStart {
             heldState = state
             return
         }
@@ -381,14 +388,25 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             restore(anchor)
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
-        // Once the row shows the request, its own state takes over.
-        if olderPull.phase == .requested {
-            if case .olderHistory(.available)? = rowsByID[.olderHistory]?.content {} else { olderPull.phase = .idle }
+        // Once the row shows the request, its own state takes over. A page
+        // that landed while the list was held leaves the row available
+        // again, with the request over.
+        if olderPull.phase == .requested, olderRequestHasShown || !Self.offersOlderHistory(state) {
+            olderPull.phase = .idle
         }
         forgetMeasurements()
         reportFirstLayoutIfReady()
         requestOlderIfShort()
         noteCollapseAvailability()
+    }
+
+    /// Whether `state`'s Load Earlier row offers a request rather than
+    /// showing one.
+    private static func offersOlderHistory(_ state: ChatTimelineState) -> Bool {
+        guard case .olderHistory(.available)? = state.rows.first(where: { $0.id == .olderHistory })?.content else {
+            return false
+        }
+        return true
     }
 
     private func rowHeights(_ ids: [ChatRowID]) -> [ChatRowID: CGFloat] {
@@ -965,9 +983,16 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         latch.isUserScrolling && collectionView.contentOffset.y > collectionView.maxOffsetY + 0.5
     }
 
-    /// Catches up on what the list held while it was past its end.
+    /// A drag or its bounce holding the list past its start: a pull for
+    /// earlier history, and the bounce after it. Rows wait as they do past
+    /// the end. No row is above the reader's there, so no height waits.
+    private var isHeldPastStart: Bool {
+        latch.isUserScrolling && collectionView.contentOffset.y < collectionView.minOffsetY - 0.5
+    }
+
+    /// Catches up on what the list held while it was past its start or end.
     private func releaseHoldIfBack() {
-        guard !isHeldPastEnd else { return }
+        guard !isHeldPastEnd, !isHeldPastStart else { return }
         layout.applyHeldHeights()
         if let state = heldState {
             heldState = nil
@@ -1026,6 +1051,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         if isPullArmed {
             isPullArmed = false
             olderPull.phase = .requested
+            olderRequestHasShown = false
             actions.loadOlder()
         }
         guard !decelerate else { return }
