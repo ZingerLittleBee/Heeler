@@ -33,33 +33,28 @@ struct TmuxSessionBinderTests {
     }
 
     private static func record(
-        pid: Int = 4000, foregroundPID: Int = 4000, name: String = "claude", argv: [String] = ["claude"],
+        pid: Int = 4000, name: String = "claude", argv: [String]? = ["claude"],
         cwd: String = "/work/app", labels: [String: String] = [:]
     ) -> HerdrCoreTerminalRecord {
-        let object = JSONValue.object([
-            "address": .string(paneID),
-            "cwd": .string(cwd),
-            "state": .string("live"),
-            "argv": .array(argv.map(JSONValue.string)),
-            "keep": .bool(false),
-            "title": .string(""),
-            "cols": .number(80),
-            "rows": .number(24),
-            "pid": .number(Double(pid)),
-            "foreground": .object([
-                "pid": .number(Double(foregroundPID)),
-                "name": .string(name),
-                "argv": .array(argv.map(JSONValue.string)),
-                "cwd": .string(cwd),
-            ]),
-            "labels": .object(labels.mapValues(JSONValue.string)),
-        ])
-        guard let data = try? JSONEncoder().encode(object),
-            let decoded = try? JSONDecoder().decode(HerdrCoreTerminalRecord.self, from: data)
-        else {
-            preconditionFailure("Invalid scripted terminal record")
-        }
-        return decoded
+        let pane = TmuxInventory.Pane(
+            sessionID: "$0",
+            sessionName: "main",
+            windowID: "@0",
+            windowIndex: 0,
+            windowName: "work",
+            paneID: paneID,
+            paneIndex: 0,
+            processID: pid,
+            command: name,
+            path: cwd,
+            width: 80,
+            height: 24,
+            isDead: false,
+            hasPipe: false,
+            agentSession: labels[HerdrCoreSessionHint.sessionLabel] ?? "",
+            chatPick: labels[HerdrCoreSessionHint.pickLabel] ?? "",
+            foregroundArguments: argv)
+        return HerdrCoreTerminalRecord(tmuxPane: pane)
     }
 
     private static func registryEntry(
@@ -144,7 +139,12 @@ struct TmuxSessionBinderTests {
             hostSystem: .macOS,
             processScope: .tmux(paneID: Self.paneID, socketPath: commaSocket, serverPID: Self.serverPID))
 
-        let evidence = try await binder.check(Self.record(pid: 4000, foregroundPID: 4000, name: "zsh"))
+        let tmuxRecord = Self.record(pid: 4000, name: "claude", argv: ["claude", "--resume"])
+        #expect(tmuxRecord.pid == 4000)
+        #expect(tmuxRecord.foreground?.pid == nil)
+        #expect(tmuxRecord.foreground?.name == "claude")
+        #expect(tmuxRecord.foreground?.argv == ["claude", "--resume"])
+        let evidence = try await binder.check(tmuxRecord)
         #expect(
             evidence
                 == .bound(
@@ -197,7 +197,7 @@ struct TmuxSessionBinderTests {
             hostSystem: .macOS,
             processScope: Self.tmuxScope)
 
-        let evidence = try await binder.check(Self.record(pid: 4000, foregroundPID: 4000, name: "zsh"))
+        let evidence = try await binder.check(Self.record(pid: 4000, name: "zsh"))
         #expect(evidence == .unavailable(.cannotTellSession(.claude)))
     }
 
@@ -301,7 +301,7 @@ struct TmuxSessionBinderTests {
             processScope: Self.tmuxScope)
 
         let ompBound = try await ompBinder.check(
-            Self.record(pid: 5000, foregroundPID: 5000, name: "omp", argv: ["omp"]))
+            Self.record(pid: 5000, name: "omp", argv: ["omp"]))
         #expect(
             ompBound
                 == .bound(
@@ -336,7 +336,7 @@ struct TmuxSessionBinderTests {
             hostSystem: .other,
             processScope: Self.tmuxScope)
         let codexBound = try await codexBinder.check(
-            Self.record(pid: 4100, foregroundPID: 4100, name: "codex", argv: ["codex", "--no-daemon"]))
+            Self.record(pid: 4100, name: "codex", argv: ["codex", "--no-daemon"]))
         #expect(codexBound == .bound(sessionID: Self.first, transcriptRoot: "/home/dev/.codex", directory: "/work/app"))
 
         let grokSessions = """
@@ -353,16 +353,17 @@ struct TmuxSessionBinderTests {
             hostSystem: .other,
             processScope: Self.tmuxScope)
         let grokBound = try await grokBinder.check(
-            Self.record(pid: 4200, foregroundPID: 4200, name: "grok", argv: ["grok"]))
+            Self.record(pid: 4200, name: "grok", argv: ["grok"]))
         #expect(grokBound == .bound(sessionID: Self.second, transcriptRoot: "/home/dev/.grok", directory: "/work/app"))
     }
 
     @Test func macOSSIPWithheldPaneShellStillBindsForegroundAgentInTmuxScope() async throws {
-        let table = ScriptedProcessTable()
+        let table = MacOSProcessTable()
         let files = VirtualHostFiles(home: Self.home)
-        // pid 3999 (the pane's login `/bin/zsh`) is missing from table -> its env reads `.unavailable`,
-        // while foreground pid 4000 (`claude`) carries valid `TMUX` and `TMUX_PANE`.
-        await table.add(.init(pid: 4000, parent: 3999, name: "claude", start: Self.start, environment: Self.tmuxEnvironment()))
+        await table.add(.init(pid: 3999, name: "zsh", start: Self.start, environment: Self.tmuxEnvironment()))
+        await table.withholdEnvironment(of: 3999)
+        await table.add(
+            .init(pid: 4000, parent: 3999, name: "claude", start: Self.start, environment: Self.tmuxEnvironment()))
         await files.write(Self.registryEntry(pid: 4000), at: "\(Self.home)/.claude/sessions/4000.json")
 
         let binder = HerdrCoreSessionBinder(
@@ -373,9 +374,40 @@ struct TmuxSessionBinderTests {
             hostSystem: .macOS,
             processScope: Self.tmuxScope)
 
-        let evidence = try await binder.check(Self.record(pid: 3999, foregroundPID: 4000))
+        let evidence = try await binder.check(Self.record(pid: 3999, name: "claude"))
         #expect(
             evidence
+                == .bound(
+                    sessionID: Self.first,
+                    transcriptRoot: "\(Self.home)/.claude",
+                    directory: "/work/app"))
+    }
+
+    @Test func paneShellWithoutAnAgentUnderItNeverBindsAsTheAgentWhileALeafRuntimeDoes() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        await table.add(.init(pid: 3999, name: "zsh", start: Self.start, environment: Self.tmuxEnvironment()))
+        await files.write(Self.registryEntry(pid: 3999), at: "\(Self.home)/.claude/sessions/3999.json")
+
+        let binder = HerdrCoreSessionBinder(
+            program: .claude,
+            processes: { try await table.read($0) },
+            files: Self.chatFiles(files),
+            clearLabels: { _ in },
+            hostSystem: .macOS,
+            processScope: Self.tmuxScope)
+
+        // When Claude has exited leaving only `zsh` at `pane_pid`, `zsh` is neither
+        // bound nor offered for candidate confirmation.
+        #expect(try await binder.check(Self.record(pid: 3999, name: "claude")) == .unavailable(.cannotTellSession(.claude)))
+        #expect(try await binder.candidates(of: Self.record(pid: 3999, name: "claude")) == .noProcess)
+
+        // A leaf `node` child running `cli.js` under `zsh` binds by its registry entry.
+        await table.add(
+            .init(pid: 4000, parent: 3999, name: "node", start: Self.start, environment: Self.tmuxEnvironment()))
+        await files.write(Self.registryEntry(pid: 4000), at: "\(Self.home)/.claude/sessions/4000.json")
+        #expect(
+            try await binder.check(Self.record(pid: 3999, name: "node"))
                 == .bound(
                     sessionID: Self.first,
                     transcriptRoot: "\(Self.home)/.claude",
@@ -432,7 +464,7 @@ struct TmuxSessionBinderTests {
         // Once a new process replaces it in the pane's scope, the stale pick drops and clears.
         await table.add(.init(pid: 4001, name: "claude", start: Self.start, environment: Self.tmuxEnvironment()))
         let dropped = try await binder.check(
-            Self.record(pid: 4001, foregroundPID: 4001, labels: [HerdrCoreSessionHint.pickLabel: pick]))
+            Self.record(pid: 4001, labels: [HerdrCoreSessionHint.pickLabel: pick]))
         #expect(dropped == .unavailable(.cannotTellSession(.claude)))
         #expect(await cleared.batches == [[HerdrCoreSessionHint.pickLabel: pick]])
     }

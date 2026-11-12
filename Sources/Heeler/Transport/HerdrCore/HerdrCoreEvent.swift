@@ -223,8 +223,13 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
         submit = nil
         stop = nil
         pasteGapMilliseconds = nil
+        // `pane.processID` (`#{pane_pid}`) is the Pane's top process (`self.pid`),
+        // often a login shell, while `command`, `foregroundArguments`, and `path`
+        // describe its foreground job without reporting that job's pid. Leave
+        // `foreground.pid` nil so `HerdrCoreSessionBinder` walks from `record.pid`
+        // and relies on `foreground` only for `name`, `argv`, and `cwd`.
         foreground = !pane.isDead && pid != nil
-            ? HerdrCoreForeground(pid: pid, name: pane.command, argv: argv, cwd: pane.path)
+            ? HerdrCoreForeground(pid: nil, name: pane.command, argv: argv, cwd: pane.path)
             : nil
     }
 }

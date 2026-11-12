@@ -92,7 +92,7 @@ enum CodexLaunch {
     /// shared server has no such option either, so this alone doesn't say a
     /// server is in use.
     static func launchesOnSharedServer(_ info: PaneProcessInfo) -> Bool? {
-        let arguments = (info.foregroundProcesses ?? []).filter(isCodex).compactMap(\.argv)
+        let arguments = (info.foregroundProcesses ?? []).filter(isCodex).compactMap(\.argv).filter { !$0.isEmpty }
         guard !arguments.isEmpty,
             !arguments.contains(where: { $0.dropFirst().first.map(nonInteractiveSubcommands.contains) == true })
         else { return nil }

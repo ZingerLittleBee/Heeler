@@ -64,6 +64,10 @@ struct CodexLaunchTests {
         #expect(CodexLaunch.launchesOnSharedServer(Self.info([])) == nil)
         #expect(CodexLaunch.launchesOnSharedServer(PaneProcessInfo(paneID: "w1:p1")) == nil)
         #expect(CodexLaunch.launchesOnSharedServer(Self.info([Self.codex(nil)])) == nil)
+        #expect(CodexLaunch.launchesOnSharedServer(Self.info([Self.codex([])])) == nil)
+        #expect(
+            CodexLaunch.launchesOnSharedServer(
+                foreground: HerdrCoreForeground(pid: 7, name: "codex", argv: [], cwd: "/work/app")) == nil)
         #expect(
             CodexLaunch.launchesOnSharedServer(Self.info([PaneProcessInfoProcess(name: "zsh", pid: 1, argv: ["zsh"])]))
                 == nil)

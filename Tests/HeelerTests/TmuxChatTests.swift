@@ -232,8 +232,9 @@ struct TmuxChatTests {
             let unoffered = ChatProgram(rawValue: command) ?? .claude
             #expect(rig.store.chatStore(for: agent, program: unoffered) == nil)
         }
-        // Connecting and listing an Agent does not run background process checks.
+        // Connecting and listing an Agent does not run background process or platform checks.
         #expect(await rig.checks == 0)
+        #expect(rig.store.hostPlatforms[host.id] == nil)
     }
 
     // MARK: Binding across programs and macOS SIP shell

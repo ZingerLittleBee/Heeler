@@ -1738,7 +1738,9 @@ final class ConsoleStore {
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
-            let inventoryCore = projection.inventoryCore
+            // Only a tmux Host can restart its server on the same SSH connection and
+            // reuse an address such as `%0` without bumping `transportGeneration`.
+            let tmuxServerInstance = projection.host.serverKind == .tmux ? projection.inventoryCore : nil
             // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
                 + Array(projection.departedAgentsByPane.values)
@@ -1749,9 +1751,10 @@ final class ConsoleStore {
             }
             Task {
                 await terminalConnections.reconcile(
-                    hostID: hostID, identities: identities, inventoryCore: inventoryCore, isCurrent: isCurrent)
+                    hostID: hostID, identities: identities, tmuxServerInstance: tmuxServerInstance,
+                    isCurrent: isCurrent)
                 await agentTerminals.reconcile(
-                    hostID: hostID, agents: agents, inventoryCore: inventoryCore, isCurrent: isCurrent)
+                    hostID: hostID, agents: agents, tmuxServerInstance: tmuxServerInstance, isCurrent: isCurrent)
             }
         }
     }
@@ -1775,7 +1778,7 @@ final class ConsoleStore {
     }
 
     private func mayOfferChat(on projection: any ConsoleHostProjection) -> Bool {
-        (projection.host.capabilities.chat || capabilities(for: projection.host.id).chat)
+        projection.host.capabilities.chat
             && projection.agentsByPane.values.contains(where: {
                 AgentChatAvailability.mayOfferChat(for: $0.agent, hasAdapter: { chatAdapter($0) != nil })
             })

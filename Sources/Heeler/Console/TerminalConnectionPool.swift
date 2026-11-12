@@ -315,10 +315,12 @@ final class TerminalConnectionPool {
     }
 
     /// Reconcile only with an authoritative snapshot from the current Host.
+    /// `tmuxServerInstance` is set only on tmux Hosts, where a server restart over
+    /// the same SSH connection can reuse `%0` without bumping `transportGeneration`.
     func reconcile(
         hostID: Host.ID,
         identities: Set<ShellTerminalIdentity>,
-        inventoryCore: String? = nil,
+        tmuxServerInstance: String? = nil,
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) async {
         await mutate {
@@ -326,9 +328,9 @@ final class TerminalConnectionPool {
             for key in self.entries.keys.filter({ $0.hostID == hostID }) {
                 guard isCurrent() else { return }
                 guard let entry = self.entries[key] else { continue }
-                let leftCore = entry.ownerID == nil
-                    && inventoryCore.flatMap { core in entry.corePin.map { !$0.admits(core) } } == true
-                if leftCore || !identities.contains(key.identity) {
+                let leftServer = entry.ownerID == nil
+                    && tmuxServerInstance.flatMap { server in entry.corePin.map { !$0.admits(server) } } == true
+                if leftServer || !identities.contains(key.identity) {
                     await self.removeEntry(key)
                 }
             }
