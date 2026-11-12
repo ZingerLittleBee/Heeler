@@ -188,8 +188,8 @@ repository root.
 
 `pairing`, `overlay-networks`, `tailscale`, `zerotier`, `easytier`,
 `cloudflare-tunnel`, `vps-jump-host-setup`, `vps-jump-host`, `herdr-core`,
-`host-routes`, `windows-setup`, `selinux`, `chat`, `chat-troubleshooting`,
-`voice-input`, and `usage`.
+`tmux`, `host-routes`, `windows-setup`, `selinux`, `chat`,
+`chat-troubleshooting`, `voice-input`, and `usage`.
 Maintainer documents in `docs/guides/` (`releasing.md`,
 `native-windows-testing.md`, `herdr-core-testing.md`), ADRs, and everything
 else under `docs/` stay GitHub-only; links to them point at GitHub.

@@ -1,13 +1,13 @@
 ---
 title: Heeler Docs
-description: Set up Heeler, an independent herdr mobile client for iPhone and iPad. Use Claude Code and Codex over SSH, with native Chat, notifications, and Usage widgets.
+description: Set up Heeler, a mobile console for herdr and tmux on iPhone and iPad. Use Claude Code and Codex over SSH, with native Chat, notifications, and Usage widgets.
 ---
 
 import { Step, Steps } from '@fumadocs/base-ui/components/steps';
 import { GuideCard } from '@/components/guide-card';
 
-Heeler is an independent [herdr](https://herdr.dev) mobile client for iPhone and iPad, connecting you to Claude Code, Codex, and other coding Agents over SSH.
-Agents run on your Host, the computer running herdr, rather than on your phone.
+Heeler is a mobile console for [herdr](https://herdr.dev), [herdr-core](/herdr-core), and [tmux](/tmux) on iPhone and iPad, connecting you to Claude Code, Codex, and other coding Agents over SSH.
+Agents run on your Host, the computer running herdr or tmux, rather than on your phone.
 Use these guides to connect a Host, send instructions in [native Chat](/chat), and set up [Usage widgets](/usage#add-a-widget).
 
 Explore [Heeler for iPhone and iPad](https://heeler.bybee.dev/) or [download Heeler on the App Store](https://apps.apple.com/app/id6797263135).
@@ -94,6 +94,7 @@ to the internet.
 
 <Cards>
   <GuideCard slug="herdr-core">Connect to the Herdr desktop app or headless herdr-core on macOS, Linux, and Windows.</GuideCard>
+  <GuideCard slug="tmux">Connect to a tmux server you already run on macOS or Linux, with Claude Code hooks and the Host Helper.</GuideCard>
   <GuideCard slug="host-routes">Give a Host its LAN address and a route for away; Heeler keeps the first that connects.</GuideCard>
   <GuideCard slug="windows-setup">SSH login and automatic startup of SSH and herdr on Windows 11.</GuideCard>
   <GuideCard slug="selinux">Let SSH open herdr's socket on Fedora, RHEL, and their derivatives when SELinux blocks it.</GuideCard>
