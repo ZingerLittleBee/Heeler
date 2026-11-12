@@ -80,6 +80,43 @@ struct HostMonogramTests {
         ]) == ["first": "M1", "second": "M2"])
     }
 
+    @Test func numbersContinueAcrossTwoCharacterCollisionGroups() {
+        #expect(labels([
+            ("one", "Laptop"),
+            ("two", "Laptop"),
+            ("three", "Lemon"),
+            ("four", "Lemon"),
+        ]) == ["one": "L1", "two": "L2", "three": "L3", "four": "L4"])
+    }
+
+    @Test func numbersSkipLabelsHeldByUnnumberedHosts() {
+        #expect(labels([
+            ("one", "Laptop"),
+            ("two", "Laptop"),
+            ("literal", "L1"),
+        ]) == ["one": "L2", "two": "L3", "literal": "L1"])
+
+        #expect(labels([
+            ("literal", "L2"),
+            ("one", "Laptop"),
+            ("two", "Laptop"),
+        ]) == ["literal": "L2", "one": "L1", "two": "L3"])
+    }
+
+    @Test(arguments: [
+        ["Laptop", "Laptop", "Lemon", "Lemon"],
+        ["Laptop", "Laptop", "L1", "L2"],
+        ["L1", "L1", "Laptop", "Laptop", "L3"],
+        ["MacBook", "Mac mini", "MacBook", "Mac Mini", "M1"],
+        ["laptop", "Laptop", "lemon", "Lemon", "Oak"],
+        ["Laptop", "Laptop", "l-1"],
+    ])
+    func labelsAreUniqueIgnoringCase(_ names: [String]) {
+        let result = labels(names.enumerated().map { (String($0.offset), $0.element) })
+        #expect(result.count == names.count)
+        #expect(Set(result.values.map { $0.uppercased() }).count == names.count)
+    }
+
     @Test func ipCollisionUsesLastTwoOctets() {
         #expect(labels([
             ("first", "10.0.0.15"),

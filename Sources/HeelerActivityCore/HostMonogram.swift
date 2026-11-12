@@ -18,14 +18,18 @@ enum HostMonogram {
         for index in entries.indices where !entries[index].isIPv4 && !entries[index].isEmpty {
             collisionLabelCounts[labels[index].uppercased(), default: 0] += 1
         }
+        let unnumberedLabels = Set(collisionLabelCounts.filter { $0.value == 1 }.keys)
         var collisionNumbers: [String: Int] = [:]
         for index in entries.indices where !entries[index].isIPv4
             && !entries[index].isEmpty
             && (collisionLabelCounts[labels[index].uppercased()] ?? 0) > 1 {
-            let key = labels[index].uppercased()
-            let number = (collisionNumbers[key] ?? 0) + 1
+            let key = entries[index].base.uppercased()
+            var number = (collisionNumbers[key] ?? 0) + 1
+            while unnumberedLabels.contains(key + String(number)) {
+                number += 1
+            }
             collisionNumbers[key] = number
-            labels[index] = entries[index].base.uppercased() + String(number)
+            labels[index] = key + String(number)
         }
 
         let finalLabelCounts = counts(of: labels) { label in

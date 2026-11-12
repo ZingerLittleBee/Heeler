@@ -212,8 +212,10 @@ Optional `label` is additive v1 metadata. Older files without it still decode
 and supply Host names, but omit Island tiles. On every publish the app computes
 labels with `HostMonogram.labels(for:)` over the full catalog's ids and display
 names, including when there is only one Host. A first letter identifies a
-distinct name; collisions use word initials or two letters, then catalog-order
-numbers. IPv4 names use the last octet, or the last two octets on a collision.
+distinct name; collisions use word initials or two letters, then the first
+letter and a number. Numbers run in catalog order per first letter and skip any
+label an unnumbered Host already holds. IPv4 names use the last octet, or the
+last two octets on a collision.
 The widget never computes labels from the subset of active Hosts, and labels
 never pass through the Push Relay.
 
