@@ -496,10 +496,9 @@ enum AgentActivityRowMetrics {
         agentCount <= 2 ? comfortableMinimumHeight : denseMinimumHeight
     }
 
-    /// Three configured rows render at about 43.5 pt (caption + 2 x caption2
-    /// plus the card's vertical padding), so a three-row card is held to the
-    /// comfortable 44 pt target; two rows or fewer fit the dense target.
-    static let threeRowMinimumHeight: CGFloat = comfortableMinimumHeight
+    /// Vertical padding `AgentActivityRowView` adds on each edge of a
+    /// configured lock-screen entry.
+    static let configuredRowVerticalPadding: CGFloat = 1
 
     /// Vertical padding of the whole lock-screen banner.
     static let lockScreenBannerVerticalPadding: CGFloat = 6
@@ -509,8 +508,19 @@ enum AgentActivityRowMetrics {
     /// ActivityKit's lock-screen presentation height limit.
     static let lockScreenHeightBudget: CGFloat = 160
 
+    /// A configured entry renders its lines plus that padding: about 30 pt for
+    /// two rows and 43.5 pt for three, both taller than the dense target. The
+    /// fitting budgets this height and the row is held to it, so 31 pt and
+    /// 44 pt. Legacy entries are unpadded and fit the dense target.
     static func minimumHeight(for agent: AgentActivityDetails.AgentDetail) -> CGFloat {
-        AgentActivityFields.rows(for: agent).count > 2 ? threeRowMinimumHeight : denseMinimumHeight
+        guard agent.rows != nil else { return denseMinimumHeight }
+        let lines = AgentActivityFields.rows(for: agent).count
+        guard lines > 0 else { return denseMinimumHeight }
+        return max(
+            denseMinimumHeight,
+            AgentActivityIslandMetrics.rowFirstLineHeight
+                + CGFloat(lines - 1) * AgentActivityIslandMetrics.rowLineHeight
+                + configuredRowVerticalPadding * 2)
     }
 }
 
@@ -650,7 +660,10 @@ struct AgentActivityRowView: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
         }
-        .padding(.vertical, agent.rows == nil || surface == .island ? 0 : 1)
+        .padding(
+            .vertical,
+            agent.rows == nil || surface == .island
+                ? 0 : AgentActivityRowMetrics.configuredRowVerticalPadding)
         .layoutPriority(1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent, on: surface))
