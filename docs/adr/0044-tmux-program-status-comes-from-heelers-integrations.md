@@ -78,8 +78,11 @@ them from any terminal attached to it.
   the tools keyboard, or a Blocked Card's decline), therefore write idle at once;
   any other answer from Heeler writes working. A decline at the desktop is
   caught by the Host Helper: while a Claude Code Pane reads working or blocked,
-  it watches the end of the Transcript `@heeler-session` names, and a turn-end
-  entry written after the status changed sets idle. An interrupt at the desktop
+  it watches the end of the Transcript `@heeler-session` names, holds a new
+  `turn_duration` entry for 1 second so a normal turn's Stop hook can write done
+  first, and sets idle on a follow-up check if `@heeler-status` and
+  `@heeler-session` are still unchanged with no new turn activity. An interrupt
+  at the desktop
   while Claude Code waits on its model writes nothing anywhere, so that Agent
   reads Working until Claude Code's next event. After the user approves a
   permission, Claude Code sends nothing until the tool finishes, so a long
@@ -95,9 +98,13 @@ them from any terminal attached to it.
   with the tmux executable and socket path the app writes for it (ADR 0042). Its
   tmux follower carries `-N` on every command, so it never starts a server; it
   waits for one, and starts over with a new server instance. It reads
-  `list-panes -a` every 5 seconds, which is enough to attach and close readers,
-  notice Panes that ended, see status changes and watch Claude Code's
-  Transcripts as above, and from those changes sends Agent Notifications and
+  `list-panes -a` every 5 seconds by default — dropping to every 1 second while
+  any followed Agent Pane reads blocked or while a Claude Code `turn_duration`
+  entry awaits its 1-second confirmation — which attaches and closes readers,
+  notices Panes that ended, sees status changes and clears desktop-declined
+  Claude Code prompts within about 2 seconds once blocked (or about 5 seconds if
+  the prompt opened and was declined between two 5-second looks), and from those
+  changes sends Agent Notifications and
   Live Activity updates as ADR 0033 does, a step of `blocked=<n>` counting as a
   new Blocked. Notification Registrations hold one entry per device for each
   tmux server, and the Helper keeps a tmux server's records under
@@ -129,8 +136,12 @@ session's. The extensions stay inert anywhere else.
   the desktop shows.
 - A script apart from the Helper keeps status working on a Host without one,
   and leaves no failing hook when the Helper is removed from another device.
-- The counts keep Done and Blocked right at a 5-second interval, which spares
-  the Host most of the cost of sampling every second (ADR 0043).
+- The counts keep Done and Blocked right at a 5-second interval while Panes are
+  idle or working, sparing the Host most of the cost of sampling every second
+  (ADR 0043); polling every second only while an Agent Pane reads blocked (or a
+  `turn_duration` confirmation is pending) keeps idle cost unchanged while
+  clearing a declined prompt well within 5 seconds without racing Claude Code's
+  Stop hook.
 
 ## Evidence
 
@@ -182,6 +193,18 @@ model, with nobody signed in:
   alone, `$` before `[A-Za-z_{]` as `\$`. The Claude Code hook and Helper
   readers therefore frame free-text format fields with `#{q:...}` and ` .` rather
   than control-byte separators or `#{n:...}` byte counts.
+- Measured on Ubuntu 24.04 Linux against tmux 3.7b and distro tmux 3.4
+  (acceptance B10, 2026-11-12 to 2026-11-13): because a normal turn's
+  `turn_duration` entry lands slightly before Claude Code's Stop hook updates
+  `@heeler-status`, the transcript watcher holds a new `turn_duration` candidate
+  for 1 second and confirms on a second sample so `Stop -> done` is not
+  overwritten. Under a fixed 5-second poll interval across both samples, a
+  desktop permission decline stayed `blocked` for up to 10 seconds (9.333 s in
+  acceptance on 3.7b; 9.251 s on 3.7b and 9.195 s on 3.4 in stand-in
+  reproduction). Polling every 1 second while an Agent Pane reads `blocked` and
+  scheduling a 1-second follow-up sample while a `turn_duration` candidate is
+  pending brought Blocked-to-Idle recovery down to 1.167–1.770 s on 3.7b and
+  1.144–1.841 s on 3.4 while keeping idle and working polling at 5 seconds.
 
 From Claude Code's hooks reference, as read in the 2026-11-10 review: Stop does
 not run after a user interrupt; a sandboxed command's network request runs the
@@ -215,8 +238,10 @@ compaction with the source `compact`; and a subagent's tool events carry
   Unknown.
 - A Claude Code turn the user interrupts at the desktop while it waits on its
   model reads Working until Claude Code's next event. A decline at the desktop
-  reads Blocked until the Helper's next look, or, without the Helper, until the
-  next event.
+  reads Blocked until the Helper spots `turn_duration` and confirms it 1 second
+  later (about 1 to 2 seconds once the Helper has seen Blocked, or up to about
+  5 seconds if the prompt opened and was declined inside one 5-second interval),
+  or, without the Helper, until the next event.
 - Codex, Grok Build and OpenCode have a status only where the Helper runs, which
   needs Node.js on the Host, and not in a Pane the user already pipes.
 - Claude Code settings carry Heeler's hooks only where the user accepted them,
