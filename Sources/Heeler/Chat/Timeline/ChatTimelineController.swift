@@ -374,6 +374,11 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
             PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
+            // Going back to the reader's row can show rows above it that
+            // nobody measured yet. One that measures off its guess moves
+            // everything under it, so the row goes back once they have.
+            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+            restore(anchor)
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
         // Once the row shows the request, its own state takes over.
