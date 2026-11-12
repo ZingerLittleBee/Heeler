@@ -1,6 +1,16 @@
 import Foundation
 import Observation
 
+/// What a final Blocked Card answer does to the Agent's turn (ADR 0044).
+enum BlockedAnswerKind: Equatable, Sendable {
+    /// Declines, cancels, rejects or stops: writes `idle` on tmux.
+    case decline
+    /// Approves or picks an answer: writes `working` on tmux.
+    case answer
+    /// An intermediate step or an option Heeler cannot classify: writes nothing.
+    case unknown
+}
+
 /// The Agent's pane as a Blocked card reads and answers it: the screen
 /// through `agent.read`, keys through `agent.send_keys` and typed text
 /// through `pane.send_input`. Never the Attach PTY. On herdr-core, a viewer's
@@ -21,9 +31,8 @@ struct BlockedScreenIO: Sendable {
     /// check, and throws why not. nil where a key is one request, and the card's
     /// read just before it stands.
     var typeWhileShowing: (@Sendable (Typing, @escaping @Sendable (ANSIScreen) -> Bool) async throws -> Void)? = nil
-    /// Called once a final answer's keys have left Heeler (ADR 0044): `true`
-    /// when the answer declines or stops, `false` for any other answer.
-    var recordAnswer: (@Sendable (_ declines: Bool) async -> Void)? = nil
+    /// Called once a final answer's keys have left Heeler (ADR 0044).
+    var recordAnswer: (@Sendable (BlockedAnswerKind) async -> Void)? = nil
 
     func type(_ typing: Typing, whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool) async throws {
         if let typeWhileShowing {
@@ -297,13 +306,11 @@ final class BlockedCardStore {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
         let requests = pendingRequests
         var answered: BlockedCard?
-        var declines: Bool?
+        var answerKind: BlockedAnswerKind = .unknown
         let isConfirmed = await act(
             on: shown.dialog.fingerprint,
             onSent: { [io] in
-                if let declines {
-                    await io.recordAnswer?(declines)
-                }
+                await io.recordAnswer?(answerKind)
             }
         ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
@@ -312,7 +319,7 @@ final class BlockedCardStore {
             // confirms the answer.
             let plan = try DialogActionPlanner.plan(action, for: dialog, toolUseID: request?.callID)
             answered = BlockedCard(dialog: dialog, request: request)
-            declines = Self.answerDeclines(action, on: dialog, plan: plan)
+            answerKind = Self.answerKind(action, on: dialog, plan: plan)
             return plan
         }
         if isConfirmed, let answered { record(action, on: answered) }
@@ -412,7 +419,7 @@ final class BlockedCardStore {
             }
             // Codex submits every answer with the last one.
             if index == form.questions.count - 1, program == .codex {
-                await io.recordAnswer?(false)
+                await io.recordAnswer?(.answer)
                 await confirm(plan, on: page.fingerprint)
                 return
             }
@@ -435,7 +442,7 @@ final class BlockedCardStore {
             return
         }
         guard case .sent = await send(plan.steps, to: page.fingerprint) else { return }
-        await io.recordAnswer?(false)
+        await io.recordAnswer?(.answer)
         await confirm(plan, on: page.fingerprint)
     }
 
@@ -443,23 +450,23 @@ final class BlockedCardStore {
     func press(number: Int) async {
         guard progress == .ready, case .generic(let shown) = content else { return }
         let program = program
-        var declines: Bool?
+        let requests = pendingRequests
+        var answerKind: BlockedAnswerKind = .unknown
         await act(
             on: shown.fingerprint,
             onSent: { [io] in
-                if let declines {
-                    await io.recordAnswer?(declines)
-                }
+                await io.recordAnswer?(answerKind)
             }
         ) { [degraded] observation throws(DialogPlanError) in
             let excerpt: GenericDialogExcerpt
             switch observation.result {
             case .unrecognized(let fresh):
                 excerpt = fresh
-                declines = Self.genericOptionDeclines(fresh.numbered[number])
+                answerKind = Self.genericOptionKind(
+                    fresh.numbered[number], in: fresh, pendingRequests: requests)
             case .dialog(let dialog):
                 excerpt = Self.excerpt(of: dialog, on: observation.screen, reason: degraded?.reason ?? "")
-                declines = Self.roleDeclines(dialog.options.first(where: { $0.number == number })?.role)
+                answerKind = Self.dialogOptionKind(number: number, on: dialog)
             case .none:
                 throw .unsupported(Self.changedMessage)
             }
@@ -489,7 +496,7 @@ final class BlockedCardStore {
             TmuxConsoleProjection.toolsEscapeDeclines(
                 kind: program.rawValue, status: activity == .blocked ? .blocked : .unknown)
         {
-            await io.recordAnswer?(true)
+            await io.recordAnswer?(.decline)
         }
         try? await clock.sleep(timing.pollInterval)
         progress = unconfirmedFingerprint == nil ? .ready : .unconfirmed
@@ -623,49 +630,168 @@ final class BlockedCardStore {
         return await confirm(plan, on: shown)
     }
 
-    private static func answerDeclines(
+    static func answerKind(
         _ action: DialogAction, on dialog: BlockedDialog, plan: DialogActionPlan
-    ) -> Bool? {
-        if action == .expandQuestions { return nil }
+    ) -> BlockedAnswerKind {
+        if action == .expandQuestions { return .unknown }
         if plan.steps.contains(where: {
             if case .expect(.page) = $0 { return true }
             return false
         }) {
-            return nil
+            return .unknown
         }
-        if dialog.kind == .grokCancelTurn { return true }
         switch action {
         case .dismiss:
-            return dialog.kind == .ompApproval ? false : true
+            return .decline
         case .choose(let ordinal):
-            return roleDeclines(dialog.option(ordinal)?.role)
-        case .amend, .respond, .approvePlan, .submitSelection, .skipQuestion:
-            return false
+            guard let option = dialog.option(ordinal) else { return .unknown }
+            if dialog.kind == .grokCancelTurn { return .decline }
+            return roleKind(option.role)
+        case .amend(let ordinal, _):
+            guard let option = dialog.option(ordinal),
+                option.role == .approve || option.role == .decline
+            else { return .unknown }
+            return .answer
+        case .respond(let ordinal, _):
+            guard let option = dialog.option(ordinal), option.role == .otherText else { return .unknown }
+            return .answer
+        case .approvePlan:
+            return .answer
+        case .submitSelection(let ordinals):
+            return ordinals.isEmpty ? .unknown : .answer
+        case .skipQuestion:
+            return .answer
         case .expandQuestions:
-            return nil
+            return .unknown
         }
     }
 
-    private static func roleDeclines(_ role: DialogOptionRole?) -> Bool {
-        switch role {
-        case .decline, .cancel, .chat, .exitProgram: true
-        default: false
+    private static func dialogOptionKind(number: Int, on dialog: BlockedDialog) -> BlockedAnswerKind {
+        guard let option = dialog.options.first(where: { $0.number == number }) else { return .unknown }
+        if dialog.kind == .grokCancelTurn { return .decline }
+        if option.role == .answer {
+            if dialog.kind == .claudeQuestion, dialog.options.contains(where: { $0.role == .next }) {
+                return .unknown
+            }
+            if isIntermediateQuestionPage(dialog) {
+                return .unknown
+            }
         }
+        return roleKind(option.role)
     }
 
-    private static func genericOptionDeclines(_ label: String?) -> Bool {
-        guard let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            !trimmed.isEmpty
-        else {
+    private static func isIntermediateQuestionPage(_ dialog: BlockedDialog) -> Bool {
+        switch dialog.kind {
+        case .claudeQuestion, .ompQuestion:
+            return dialog.subject.questionHeaders.count > 1
+        case .codexQuestion:
+            guard let progress = dialog.progress, progress.hasPrefix("Question ") else { return false }
+            let numbers = progress.dropFirst("Question ".count).split(separator: "/").compactMap { Int($0) }
+            return numbers.count == 2 && numbers[0] < numbers[1]
+        default:
             return false
         }
-        if trimmed == "no" || trimmed.hasPrefix("no,") || trimmed.hasPrefix("no ")
-            || trimmed == "cancel" || trimmed == "quit" || trimmed == "reject"
-            || trimmed.contains("(esc)")
+    }
+
+    private static func roleKind(_ role: DialogOptionRole) -> BlockedAnswerKind {
+        switch role {
+        case .decline, .cancel, .chat, .exitProgram:
+            .decline
+        case .approve, .approvePersistent, .approveModeSwitch, .answer, .submit, .trust, .next:
+            .answer
+        case .otherText:
+            .unknown
+        }
+    }
+
+    private static func genericOptionKind(
+        _ label: String?, in excerpt: GenericDialogExcerpt, pendingRequests: [ChatPendingRequest]
+    ) -> BlockedAnswerKind {
+        guard let raw = label?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return .unknown
+        }
+        let (stripped, shortcut) = DialogRowScanner.splitShortcut(raw)
+        if let role = DialogRowScanner.permissionRole(for: stripped, shortcut: shortcut) {
+            return roleKind(role)
+        }
+        if shortcut == "esc" {
+            return .decline
+        }
+        if matchesSingleQuestionOption(stripped, in: excerpt, pendingRequests: pendingRequests) {
+            return .answer
+        }
+        let folded = stripped.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        if matchesPrefixOrExact(
+            folded,
+            phrases: [
+                "deny", "don't allow", "do not allow", "reject", "decline", "cancel",
+                "never allow",
+            ])
+            || folded == "quit"
+            || folded == "exit"
+            || folded == "back to agent command center"
+            || folded == "chat about this"
         {
-            return true
+            return .decline
+        }
+        if matchesPrefixOrExact(
+            folded,
+            phrases: [
+                "allow", "always allow", "approve", "accept",
+            ])
+            || folded == "submit"
+            || folded == "submit answers"
+            || folded == "trust and continue"
+            || folded == "trust this folder"
+        {
+            return .answer
+        }
+        return .unknown
+    }
+
+    private static func matchesPrefixOrExact(_ folded: String, phrases: [String]) -> Bool {
+        for phrase in phrases {
+            if folded == phrase
+                || folded.hasPrefix(phrase + ",")
+                || folded.hasPrefix(phrase + " ")
+                || folded.hasPrefix(phrase + ":")
+            {
+                return true
+            }
         }
         return false
+    }
+
+    private static func matchesSingleQuestionOption(
+        _ label: String, in excerpt: GenericDialogExcerpt, pendingRequests: [ChatPendingRequest]
+    ) -> Bool {
+        guard !label.hasPrefix("["), !label.hasPrefix("☐"), !label.hasPrefix("☒") else { return false }
+        let rawComparable = DialogRowScanner.comparable(label)
+        let baseComparable = DialogRowScanner.comparable(droppingRecommendedSuffix(label))
+        guard !rawComparable.isEmpty else { return false }
+        let screenComparable = DialogRowScanner.comparable(excerpt.rows.map(\.trimmedText).joined())
+        for request in pendingRequests where request.questions.count == 1 {
+            let question = request.questions[0]
+            guard !question.isMultiSelect, !question.options.isEmpty else { continue }
+            let asked = DialogRowScanner.comparable(question.text)
+            guard !asked.isEmpty, screenComparable.contains(String(asked.prefix(min(24, asked.count)))) else {
+                continue
+            }
+            if question.options.contains(where: { option in
+                let candidate = DialogRowScanner.comparable(option.label)
+                return !candidate.isEmpty && (candidate == rawComparable || candidate == baseComparable)
+            }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func droppingRecommendedSuffix(_ label: String) -> String {
+        for suffix in [" (Recommended)", " (recommended)"] where label.hasSuffix(suffix) {
+            return String(label.dropLast(suffix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return label
     }
 
     private enum StepsOutcome {

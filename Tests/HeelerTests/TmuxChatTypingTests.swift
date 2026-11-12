@@ -751,4 +751,157 @@ struct TmuxChatTypingTests {
 
         fixture.finish()
     }
+
+    @Test func blockedCardWritesIdleForDeclinesWorkingForKnownAnswersAndNothingForUnknownChoices() async throws {
+        // 1. Recognized card: dismiss (Esc) writes idle; unknown .choose ordinal writes nothing.
+        do {
+            let fixture = try await Fixture(state: "blocked", turn: 4, blocked: 2, screen: Self.dialogScreen)
+            let initialStatus = try #require(await fixture.tmux.status(of: "%0"))
+            await fixture.tmux.setAsk("4000 ask-dismiss", of: "%0")
+            let card = try await fixture.blockedCard()
+
+            // Unknown .choose ordinal sends nothing and writes nothing.
+            await card.perform(.choose(ordinal: 99))
+            #expect(await fixture.sendWords().isEmpty)
+            #expect(await fixture.tmux.status(of: "%0") == initialStatus)
+            #expect(await fixture.tmux.ask(of: "%0") == "4000 ask-dismiss")
+
+            // Direct .unknown answer on TmuxChatTyping's BlockedScreenIO also writes nothing.
+            let typing = try #require(fixture.console.tmuxProjection(on: fixture.host.id)?.checkedChatTyping(at: "%0"))
+            await typing.blockedScreen.recordAnswer?(.unknown)
+            #expect(await fixture.tmux.status(of: "%0") == initialStatus)
+            #expect(await fixture.tmux.ask(of: "%0") == "4000 ask-dismiss")
+
+            // Dismissing the card sends Escape, writes idle, and clears @heeler-ask.
+            let dismissing = Task { await card.perform(.dismiss) }
+            try await Fixture.waitUntil("Escape sent") {
+                await fixture.sendWords().contains(["send-keys", "-t", "%0", "Escape"])
+            }
+            try await Fixture.setScreen(Self.readyScreen, on: fixture.tmux)
+            await dismissing.value
+            #expect(await fixture.tmux.status(of: "%0") == "state=idle:app=claude-code:turn=4:blocked=2")
+            #expect(await fixture.tmux.ask(of: "%0") == "")
+            fixture.finish()
+        }
+
+        // 2. Generic card on tmux: "Deny", "Don't allow", "Reject", and "No, skip" each write idle.
+        let genericRows = Self.genericClaudeRows(
+            title: "Which database?",
+            options: [
+                "Yes, allow once",
+                "Allow once",
+                "Postgres (Recommended)",
+                "No, skip",
+                "Deny",
+                "Don't allow",
+                "Reject",
+                "Inspect details",
+            ])
+        let genericScreen = genericRows.joined(separator: "\n")
+        for declineNumber in [4, 5, 6, 7] {
+            let fixture = try await Fixture(state: "blocked", turn: 6, blocked: 2, screen: nil)
+            await Fixture.setRawScreen(genericScreen, on: fixture.tmux)
+            await fixture.tmux.setAsk("4000 ask-\(declineNumber)", of: "%0")
+            let card = try await fixture.blockedCard()
+            guard case .generic = card.content else {
+                Issue.record("Expected generic card for option \(declineNumber), got \(card.content)")
+                fixture.finish()
+                return
+            }
+
+            let pressing = Task { await card.press(number: declineNumber) }
+            try await Fixture.waitUntil("digit \(declineNumber) sent") {
+                await fixture.sendWords().contains(["send-keys", "-l", "-t", "%0", "--", String(declineNumber)])
+            }
+            try await Fixture.setScreen(Self.readyScreen, on: fixture.tmux)
+            await pressing.value
+
+            #expect(
+                await fixture.tmux.status(of: "%0") == "state=idle:app=claude-code:turn=6:blocked=2",
+                "option \(declineNumber)")
+            #expect(await fixture.tmux.ask(of: "%0") == "", "option \(declineNumber)")
+            fixture.finish()
+        }
+
+        // 3. Generic card on tmux: "Yes, allow once", "Allow once", and a single-question match write working.
+        let singleQuestion = ChatPendingRequest(
+            entryID: ChatEntryID("q-db"), callID: "toolu_db", kind: .question, toolName: "AskUserQuestion",
+            summary: "Which database?",
+            questions: [ChatQuestion(text: "Which database?", options: ["Postgres", "SQLite"])])
+        for answerNumber in [1, 2, 3] {
+            let fixture = try await Fixture(state: "blocked", turn: 6, blocked: 2, screen: nil)
+            await Fixture.setRawScreen(genericScreen, on: fixture.tmux)
+            await fixture.tmux.setAsk("4000 ask-\(answerNumber)", of: "%0")
+            let card = try await fixture.blockedCard()
+            let entry = ChatEntry(
+                id: singleQuestion.entryID, sourceOffset: 0,
+                content: .tool(
+                    ChatToolActivity(
+                        kind: .question, name: "AskUserQuestion", title: "Which database?",
+                        status: .awaitingApproval, callID: singleQuestion.callID)))
+            card.update(transcript: ChatTranscript(entries: [entry], pendingRequests: [singleQuestion]))
+
+            let pressing = Task { await card.press(number: answerNumber) }
+            try await Fixture.waitUntil("digit \(answerNumber) sent") {
+                await fixture.sendWords().contains(["send-keys", "-l", "-t", "%0", "--", String(answerNumber)])
+            }
+            try await Fixture.setScreen(Self.readyScreen, on: fixture.tmux)
+            await pressing.value
+
+            #expect(
+                await fixture.tmux.status(of: "%0") == "state=working:app=claude-code:turn=6:blocked=2",
+                "option \(answerNumber)")
+            #expect(await fixture.tmux.ask(of: "%0") == "", "option \(answerNumber)")
+            fixture.finish()
+        }
+
+        // 4. Generic card on tmux: unknown ordinal (99) and unrecognised label ("Inspect details", 8)
+        // each write nothing at all to @heeler-status or @heeler-ask.
+        do {
+            let fixture = try await Fixture(state: "blocked", turn: 6, blocked: 2, screen: nil)
+            await Fixture.setRawScreen(genericScreen, on: fixture.tmux)
+            let initialStatus = try #require(await fixture.tmux.status(of: "%0"))
+            await fixture.tmux.setAsk("4000 ask-unknown", of: "%0")
+            let card = try await fixture.blockedCard()
+
+            // Unknown number on generic card sends nothing and writes nothing.
+            await card.press(number: 99)
+            #expect(await fixture.sendWords().isEmpty)
+            #expect(await fixture.tmux.status(of: "%0") == initialStatus)
+            #expect(await fixture.tmux.ask(of: "%0") == "4000 ask-unknown")
+
+            // Unrecognised label ("Inspect details", 8) sends "8" and writes NOTHING to status or ask.
+            let pressing = Task { await card.press(number: 8) }
+            try await Fixture.waitUntil("digit 8 sent") {
+                await fixture.sendWords().contains(["send-keys", "-l", "-t", "%0", "--", "8"])
+            }
+            try await Fixture.setScreen(Self.readyScreen, on: fixture.tmux)
+            await pressing.value
+
+            #expect(await fixture.tmux.status(of: "%0") == initialStatus)
+            #expect(await fixture.tmux.ask(of: "%0") == "4000 ask-unknown")
+            #expect(await fixture.tmux.openControlClients == 0)
+            fixture.finish()
+        }
+    }
+
+    private static func genericClaudeRows(title: String, options: [String]) -> [String] {
+        var rows = [
+            SGR.claudeRule(108),
+            " \(SGR.reset)\(SGR.bold)\(title)\(SGR.reset)",
+            "",
+        ]
+        for (offset, label) in options.enumerated() {
+            let number = offset + 1
+            if offset == 0 {
+                rows.append(
+                    " \(SGR.reset)\(SGR.claudeAccent)❯ \(SGR.reset)\(SGR.claudeInactive)\(number). \(SGR.reset)\(SGR.claudeAccent)\(label)\(SGR.reset)")
+            } else {
+                rows.append("   \(SGR.reset)\(SGR.claudeInactive)\(number). \(SGR.reset)\(label)")
+            }
+        }
+        rows.append("")
+        rows.append(" \(SGR.reset)\(SGR.claudeInactive)Esc to cancel · Enter to confirm\(SGR.reset)")
+        return rows
+    }
 }

@@ -159,9 +159,9 @@ final class TmuxChatTyping: CheckedChatTyping {
             case .paste(let text): try await self.paste(text, heldSinceScreenRead: true, whileShowing: stillShows)
             }
         }
-        screen.recordAnswer = { [weak self] declines in
+        screen.recordAnswer = { [weak self] kind in
             guard let self else { return }
-            await self.recordAnswer(declines: declines)
+            await self.recordAnswer(kind)
         }
         return screen
     }
@@ -266,7 +266,16 @@ final class TmuxChatTyping: CheckedChatTyping {
         await attach.close()
     }
 
-    private func recordAnswer(declines: Bool) async {
+    private func recordAnswer(_ kind: BlockedAnswerKind) async {
+        let declines: Bool
+        switch kind {
+        case .decline:
+            declines = true
+        case .answer:
+            declines = false
+        case .unknown:
+            return
+        }
         guard let projection, projection.admits(corePin) else { return }
         _ = await projection.recordHeelerAnswer(declines: declines, on: paneID)
     }
