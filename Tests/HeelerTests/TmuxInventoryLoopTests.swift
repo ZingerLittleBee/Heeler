@@ -55,7 +55,7 @@ struct TmuxInventoryLoopTests {
             let tail = rest[open.upperBound...]
             guard let close = tail.firstIndex(of: "}") else { break }
             var name = String(tail[..<close])
-            if name.hasPrefix("n:") { name.removeFirst(2) }
+            if name.hasPrefix("q:") { name.removeFirst(2) }
             names.append(name)
             rest = tail[tail.index(after: close)...]
         }
@@ -69,8 +69,8 @@ struct TmuxInventoryLoopTests {
         for word in ["title", "cursor", "activity", "history", "client", "_active", "last"] {
             #expect(!format.contains(word))
         }
-        // Each text is measured once on the row's first line and written once after it.
-        #expect(names.count == 12 + 10 + 10)
+        // Twelve fixed fields on the row's first line and ten shell-quoted text fields after it.
+        #expect(names.count == 12 + 10)
     }
 
     // MARK: Reading
@@ -147,16 +147,58 @@ struct TmuxInventoryLoopTests {
         var text = Data("\(nonce) begin\n".utf8)
         text.append(Data("no server running on /tmp/tmux-501/default\n".utf8))
         text.append(TmuxLoopText.row(good, instance: instance))
-        // Twenty fields, a pane id with no sigil, and a row whose text is shorter than it says.
-        text.append(Data("1\t2\t$0\t@0\t0\t%5\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n".utf8))
-        text.append(Data("1\t2\t$0\t@0\t0\t5\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n".utf8))
-        text.append(Data("4100\t1794000000\t$0\t@0\t0\t%6\t0\t1\t80\t24\t0\t0\t3\t0\t0\t0\t0\t0\t0\t0\t0\nab.\n".utf8))
+        // Eleven fixed fields, a pane id with no sigil, a row with too few quoted fields, and unescaped `$`.
+        text.append(Data("1\t2\t$0\t@0\t0\t%5\t0\t1\t80\t24\t0\n          .\n".utf8))
+        text.append(Data("1\t2\t$0\t@0\t0\t5\t0\t1\t80\t24\t0\t0\n          .\n".utf8))
+        text.append(Data("4100\t1794000000\t$0\t@0\t0\t%6\t0\t1\t80\t24\t0\t0\nab .\n".utf8))
+        text.append(Data("4100\t1794000000\t$0\t@0\t0\t%7\t0\t1\t80\t24\t0\t0\na$b          .\n".utf8))
         text.append(TmuxLoopText.row(other, instance: instance))
+        // Also a truncated row right before the arguments marker.
+        text.append(Data("4100\t1794000000\t$0\t@0\t0\t%8\t0\t1\t80\t24\t0\t0\nab .\n".utf8))
         text.append(Data("\(nonce) argv\n\(nonce) end\n".utf8))
 
         var reader = TmuxInventoryLoop.Reader(nonce: nonce)
         let inventory = try #require(inventories(reader.read(text)).first)
         #expect(inventory.panes == [good, other])
+    }
+
+    @Test func decodesTmux34EscapedDollarVariablesControlBytesAndBackslashes() throws {
+        let panes: [TmuxInventory.Pane] = [
+            .make(
+                sessionName: "my $work",
+                windowName: "echo $HOME\u{001F}sep\u{0007}",
+                command: "claude",
+                path: "/home/$USER/a\\b c",
+                status: "state=working:app=$claude:turn=1:blocked=0",
+                agentSession: "{\"session\":\"s1\",\"file\":\"/home/$USER/.claude/projects/-w/s1.jsonl\"}",
+                chatPick: "{\"file\":\"/work/\\$HOME/rollout.jsonl\"}"),
+            .make(window: 1, windowIndex: 1, windowName: "plain", pane: 1, command: "fish"),
+        ]
+        let data = TmuxLoopText.snapshot(
+            panes, instance: instance, arguments: [("%0", .list(["claude"]))], tmux34Escaped: true)
+
+        for chunkSize in [1, 5, data.count] {
+            var reader = TmuxInventoryLoop.Reader(nonce: nonce)
+            var events: [TmuxInventoryLoop.Event] = []
+            var offset = data.startIndex
+            while offset < data.endIndex {
+                let next = min(offset + chunkSize, data.endIndex)
+                events += reader.read(data.subdata(in: offset..<next))
+                offset = next
+            }
+            var expected = panes
+            expected[0].foregroundArguments = ["claude"]
+            #expect(events == [.inventory(TmuxInventory(instance: instance, panes: expected))])
+        }
+
+        var fg = Data("\(nonce) server 4100 1794000000\n\(nonce) begin\n".utf8)
+        fg.append(TmuxLoopText.row(panes[0], instance: instance, tmux34Escaped: true))
+        fg.append(Data("\(nonce) argv\nA %0 636c61756465 4501\n\(nonce) end\n".utf8))
+        var expectedPane = panes[0]
+        expectedPane.foregroundArguments = ["claude"]
+        #expect(
+            TmuxPaneForeground.parse(stdout: fg, pane: "%0", nonce: nonce)
+                == .live(.init(instance: instance, pane: expectedPane, foregroundPID: 4501)))
     }
 
     @Test func aRowOfAnotherServerIsLeftOutOfOneAnswer() throws {

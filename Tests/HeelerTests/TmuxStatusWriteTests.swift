@@ -65,4 +65,19 @@ import Testing
         #expect(outcome == .superseded(live))
         #expect(await tmux.status(of: "%0") == live)
     }
+
+    @Test func decodesTmux34EscapedStatusFromCompareAndSetDisplay() async {
+        let superseded = "state=blocked:app=$custom:kind=ask\u{001F}x:turn=3:blocked=1"
+        let escaped = TmuxLoopText.quoted(superseded, tmux34Escaped: true)
+        let outcome = await TmuxStatusWrite.apply(
+            TmuxStatusReport(state: "idle", app: "pi"),
+            expecting: "state=working:app=pi:turn=2:blocked=0",
+            pane: "%0",
+            clearAsk: false,
+            paths: ScriptedTmuxHost.paths()
+        ) { _ in
+            GitExecResult(stdout: Data("\(escaped) .\n".utf8), stderr: Data(), exitStatus: 0)
+        }
+        #expect(outcome == .superseded(superseded))
+    }
 }

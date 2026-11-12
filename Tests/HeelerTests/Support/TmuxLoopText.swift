@@ -18,8 +18,58 @@ enum TmuxLoopText {
         case unreadable
     }
 
-    /// One row: the line of ids, numbers and byte lengths, then the text.
-    static func row(_ pane: TmuxInventory.Pane, instance: TmuxServerInstance) -> Data {
+    /// Quotes `value` as tmux's `#{q:...}` (`format_quote_shell`) does, plus
+    /// tmux 3.4's `utf8_stravisx` (`VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH`) when asked.
+    static func quoted(_ value: String, tmux34Escaped: Bool = false) -> String {
+        let shellSpecial = Set("|&;<>()$`\\\"'*?[# =%".utf8)
+        var shellBytes = Data()
+        for byte in value.utf8 {
+            if shellSpecial.contains(byte) { shellBytes.append(UInt8(ascii: "\\")) }
+            shellBytes.append(byte)
+        }
+        guard tmux34Escaped else { return String(decoding: shellBytes, as: UTF8.self) }
+        var out = Data()
+        let bytes = Array(shellBytes)
+        var index = 0
+        while index < bytes.count {
+            let b = bytes[index]
+            if b == 0x09 || b == 0x0a {
+                out.append(b)
+                index += 1
+                continue
+            }
+            if b == 0x07 { out.append(contentsOf: "\\a".utf8); index += 1; continue }
+            if b == 0x08 { out.append(contentsOf: "\\b".utf8); index += 1; continue }
+            if b == 0x0b { out.append(contentsOf: "\\v".utf8); index += 1; continue }
+            if b == 0x0c { out.append(contentsOf: "\\f".utf8); index += 1; continue }
+            if b == 0x0d { out.append(contentsOf: "\\r".utf8); index += 1; continue }
+            if b < 0x20 || b == 0x7f {
+                let octal = String(b, radix: 8)
+                let padded = String(repeating: "0", count: max(0, 3 - octal.count)) + octal
+                out.append(contentsOf: ("\\" + padded).utf8)
+                index += 1
+                continue
+            }
+            if b == UInt8(ascii: "$"), index + 1 < bytes.count {
+                let next = bytes[index + 1]
+                let isIdent =
+                    (next >= UInt8(ascii: "A") && next <= UInt8(ascii: "Z"))
+                    || (next >= UInt8(ascii: "a") && next <= UInt8(ascii: "z"))
+                    || next == UInt8(ascii: "_") || next == UInt8(ascii: "{")
+                if isIdent {
+                    out.append(contentsOf: "\\$".utf8)
+                    index += 1
+                    continue
+                }
+            }
+            out.append(b)
+            index += 1
+        }
+        return String(decoding: out, as: UTF8.self)
+    }
+
+    /// One row: the line of ids and numbers, then the `#{q:...}` text fields.
+    static func row(_ pane: TmuxInventory.Pane, instance: TmuxServerInstance, tmux34Escaped: Bool = false) -> Data {
         let texts = [
             pane.sessionName, pane.windowName, pane.command, pane.path, pane.status, pane.agentSession,
             pane.pipeMark, pane.attachMark, pane.worktree, pane.chatPick,
@@ -29,8 +79,9 @@ enum TmuxLoopText {
             String(pane.windowIndex), pane.paneID, String(pane.paneIndex), String(pane.processID),
             String(pane.width), String(pane.height), pane.isDead ? "1" : "0", pane.hasPipe ? "1" : "0",
         ]
-        let header = (fixed + texts.map { String($0.utf8.count) }).joined(separator: "\t")
-        return Data((header + "\n" + texts.joined() + ".\n").utf8)
+        let header = fixed.joined(separator: "\t")
+        let body = texts.map { quoted($0, tmux34Escaped: tmux34Escaped) }.joined(separator: " ") + " .\n"
+        return Data((header + "\n" + body).utf8)
     }
 
     static func argumentLine(pane: String, _ arguments: Arguments) -> Data {
@@ -47,10 +98,11 @@ enum TmuxLoopText {
     /// A whole snapshot, from its `begin` line to its `end` line.
     static func snapshot(
         _ panes: [TmuxInventory.Pane], instance: TmuxServerInstance,
-        arguments: [(pane: String, arguments: Arguments)] = [], nonce: String = nonce
+        arguments: [(pane: String, arguments: Arguments)] = [], nonce: String = nonce,
+        tmux34Escaped: Bool = false
     ) -> Data {
         var text = Data("\(nonce) begin\n".utf8)
-        for pane in panes { text.append(row(pane, instance: instance)) }
+        for pane in panes { text.append(row(pane, instance: instance, tmux34Escaped: tmux34Escaped)) }
         // The shell's command substitution drops the newline that ends the last row.
         if !panes.isEmpty { text.removeLast() }
         text.append(Data("\n\(nonce) argv\n".utf8))

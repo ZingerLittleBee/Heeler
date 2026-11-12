@@ -33,9 +33,10 @@ enum TmuxStatusWrite {
         } catch {
             return .failed
         }
-        guard result.exitStatus == 0 else { return .failed }
-        let printed = String(decoding: result.stdout, as: UTF8.self)
-        let observed = printed.hasSuffix("\n") ? String(printed.dropLast()) : printed
+        guard result.exitStatus == 0,
+            let decoded = TmuxQuotedField.decodeLine(result.stdout, count: 1),
+            let observed = decoded.first
+        else { return .failed }
         return observed == next ? .applied(next) : .superseded(observed)
     }
 }

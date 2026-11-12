@@ -46,7 +46,7 @@ enum TmuxLaunch {
     }
 
     static let paneFormat = "#{pane_id} #{window_id}"
-    static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{session_name}"
+    static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{q:session_name} ."
 
     /// `hookSettings` is the settings file a Claude Code launch passes. Any
     /// other program ignores it.
@@ -161,7 +161,7 @@ enum TmuxLaunch {
             "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
         ])
         let show = shellArguments([
-            "display-message", "-p", "-t", pane, "#{@heeler-status}",
+            "display-message", "-p", "-t", pane, "#{q:@heeler-status} .",
         ])
         // A quoted `;` is one argv word, so tmux ends if-shell there and runs
         // display-message next. A user's own `;` still goes through oneShot
@@ -276,8 +276,12 @@ enum TmuxLaunch {
         }
         guard let space = afterWindow.firstIndex(of: " ") else { return nil }
         let session = String(afterWindow[..<space])
-        let name = String(afterWindow[afterWindow.index(after: space)...])
-        guard isID(session, prefix: "$"), !name.isEmpty else { return nil }
+        let quotedName = String(afterWindow[afterWindow.index(after: space)...])
+        guard isID(session, prefix: "$"),
+            let decoded = TmuxQuotedField.decodeLine(Data((quotedName + "\n").utf8), count: 1),
+            let name = decoded.first,
+            !name.isEmpty
+        else { return nil }
         return Created(paneID: pane, windowID: window, sessionID: session, sessionName: name)
     }
 

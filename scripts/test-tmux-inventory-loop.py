@@ -356,13 +356,14 @@ class RowTests(LoopTestCase):
         self.assertEqual(Path(first["path"]).resolve(), Path(os.getcwd()).resolve())
 
     def test_text_with_tabs_newlines_and_marker_lines_stays_in_its_field(self) -> None:
-        directory = self.root / "a\tb\nc d"
+        directory = self.root / "a\tb\nc $HOME"
         directory.mkdir()
         self.start_server()
-        self.tmux("new-window", "-d", "-t", "main:", "-n", "odd", "-c", str(directory), "/bin/sleep", "600")
+        self.tmux("new-window", "-d", "-t", "main:", "-n", "echo $HOME", "-c", str(directory), "/bin/sleep", "600")
         # What a row, a marker and the end of a snapshot look like, inside one option.
         forged = (f"state=idle\n{NONCE} argv\n{NONCE} end\n{NONCE} begin\n"
-                  "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n\n")
+                  "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\n"
+                  "main odd sleep /tmp  /home/\\$USER     .\n\n")
         self.tmux("set-option", "-p", "-t", "main:1.0", "@heeler-status", forged)
         loop = self.loop()
         found = loop.wait_for(1)
@@ -370,6 +371,7 @@ class RowTests(LoopTestCase):
         self.assertEqual(len(loop.inventories()), 1)
         panes = found[0]["panes"]
         self.assertEqual([pane["paneID"] for pane in panes], ["%0", "%1"])
+        self.assertEqual(panes[1]["windowName"], "echo $HOME")
         self.assertEqual(Path(panes[1]["path"]), directory)
         self.assertEqual(panes[1]["status"], forged)
         self.assertEqual(panes[1]["arguments"], ["/bin/sleep", "600"])

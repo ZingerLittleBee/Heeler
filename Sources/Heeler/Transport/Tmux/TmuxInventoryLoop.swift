@@ -13,11 +13,12 @@ import Foundation
 /// closes the exec. Every tmux command carries `-N` and `-S`, so it never
 /// starts a server.
 ///
-/// A row is a line of ids, numbers and byte lengths, then the names and other
-/// free text those lengths measure, since a directory or an option can hold a
-/// tab or a newline. The format holds only what changes when something
-/// happens: no title, cursor position or activity time, which would print a
-/// snapshot every second.
+/// A row is a line of ids and numbers, then the names and other free text as
+/// space-separated `#{q:...}` fields ending in ` .`, since a directory or an
+/// option can hold spaces, tabs, newlines, `$` variables or control bytes (and
+/// tmux 3.4/3.5a run `strvis` over printed text). The format holds only what
+/// changes when something happens: no title, cursor position or activity time,
+/// which would print a snapshot every second.
 ///
 /// `scripts/test-tmux-inventory-loop.py` runs the script through real shells
 /// against a real tmux.
@@ -45,23 +46,24 @@ enum TmuxInventoryLoop {
         "#{pane_id}", "#{pane_index}", "#{pane_pid}", "#{pane_width}", "#{pane_height}",
         "#{pane_dead}", "#{pane_pipe}",
     ]
-    /// What follows it, each measured in bytes on that first line.
+    /// What follows it, each shell-quoted (`#{q:...}`) and followed by a space.
     private static let textFields = [
         "session_name", "window_name", "pane_current_command", "pane_current_path",
         "@heeler-status", "@heeler-session", "@heeler-pipe", "@heeler-attach", "@heeler-worktree",
         "@heeler-chat",
     ]
-    fileprivate static var fieldCount: Int { fixedFields.count + textFields.count }
-    fileprivate static var lengthFieldStart: Int { fixedFields.count + 1 }
+    fileprivate static var fixedFieldCount: Int { fixedFields.count }
+    fileprivate static var textFieldCount: Int { textFields.count }
     /// A row whose text is longer than this is not one.
-    private static let rowTextLimit = 1 << 20
+    fileprivate static let rowTextLimit = 1 << 20
 
-    /// What `list-panes -a -F` is given. A `.` ends each row, so text that ends
-    /// in newlines survives the shell's command substitution. A `;` would not
-    /// do: tmux takes one that ends an argument for the end of the command.
+    /// What `list-panes -a -F` is given. A ` .` ends each row, so empty trailing
+    /// fields and trailing newlines survive the shell's command substitution. A
+    /// `;` would not do: tmux takes one that ends an argument for the end of the
+    /// command.
     static let format: String =
-        (fixedFields + textFields.map { "#{n:\($0)}" }).joined(separator: "\t")
-        + "\n" + textFields.map { "#{\($0)}" }.joined() + "."
+        fixedFields.joined(separator: "\t")
+        + "\n" + textFields.map { "#{q:\($0)}" }.joined(separator: " ") + " ."
 
     // MARK: Script
 
@@ -91,15 +93,18 @@ enum TmuxInventoryLoop {
         ]).joined(separator: "\n") + "\n"
     }
 
+    /// POSIX awk helper `qf()` reading one `#{q:...}` + space field from `s` at
+    /// `u`..`e` into `v`, unescaping `format_quote_shell` and tmux 3.4/3.5a `strvis`.
+    fileprivate static let awkQuotedFieldFunction =
+        #"function qf(r,b,c,d,k){r="";while(u<=e){b=0;while(u<=e&&substr(s,u,1)=="\\"){b++;u++}if(u>e)return 0;c=substr(s,u,1);if(b==0){if(c==" "){u++;v=r;return 1}if(index("|&;<>()$`\"\047*?[#=%",c))return 0;r=r c;u++;continue}if(c=="$"){for(k=int((b-1)/2);k>0;k--)r=r"\\";r=r"$";u++;continue}for(k=int(b/2);k>0;k--)r=r"\\";if(b%2==0)continue;if(index("|&;<>()`\"\047*?[# =%",c)){r=r c;u++;continue}if(c=="a"){r=r sprintf("%c",7);u++;continue}if(c=="b"){r=r sprintf("%c",8);u++;continue}if(c=="f"){r=r sprintf("%c",12);u++;continue}if(c=="r"){r=r sprintf("%c",13);u++;continue}if(c=="v"){r=r sprintf("%c",11);u++;continue}d=substr(s,u,3);if(d~/^[0-7][0-7][0-7]$/&&d!="000"){r=r sprintf("%c",substr(d,1,1)*64+substr(d,2,1)*8+substr(d,3,1));u+=3;continue}return 0}return 0}"#
+
     /// `w`: the loop. `g` holds what each pane ran when its arguments were last
-    /// read, one `pane signature` line each, and awk walks the rows by their
-    /// lengths as `Reader` does, in bytes under the C locale.
+    /// read, one `pane signature` line each, and awk walks the `#{q:...}` rows
+    /// as `Reader` does, in bytes under the C locale.
     private static var watcher: [String] {
-        let count = fieldCount
-        let lengths = fixedFields.count + 1
-        // session_name, window_name, pane_current_command, pane_current_path, @heeler-status.
-        let command = "f[\(lengths)]+f[\(lengths + 1)]"
-        let status = "\(command)+f[\(lengths + 2)]+f[\(lengths + 3)]"
+        let fixed = fixedFieldCount
+        let texts = textFieldCount
+        // textFields[3] (1-based) is pane_current_command; textFields[5] is @heeler-status.
         return [
             "w() {",
             "o=",
@@ -111,17 +116,18 @@ enum TmuxInventoryLoop {
             #"c=$("$t" -N -u -S "$s" list-panes -a -F "$F" 2>/dev/null </dev/null) || break"#,
             #"if [ -n "$f" ] || [ "$c" != "$o" ]; then"#,
             #"r=$({ printf '%s\n' "$g"; printf '%s body\n' "$n"; printf '%s\n' "$c"; } | awk -v n="$n" '"#,
+            awkQuotedFieldFunction,
             #"!b{if($0==n" body")b=1;else if(NF==2)G[$1]=$2;next}"#,
             #"{s=s $0 "\n"}"#,
             "END{p=1;e=length(s)",
             #"while(p<=e){j=index(substr(s,p,512),"\n");if(!j)break"#,
             "h=substr(s,p,j-1);p+=j",
-            #"if(split(h,f,"\t")!=\#(count))continue"#,
-            #"k=1;for(q=1;q<=\#(count);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
+            #"if(split(h,f,"\t")!=\#(fixed))continue"#,
+            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
             #"if(!k||f[3]!~/^\$[0-9]+$/||f[4]!~/^@[0-9]+$/||f[6]!~/^%[0-9]+$/)continue"#,
-            "u=0;for(q=\(lengths);q<=\(count);q++)u+=f[q]",
-            #"if(substr(s,p+u,2)!=".\n")continue"#,
-            "c=substr(s,p+\(command),f[\(lengths + 2)]);a=substr(s,p+\(status),f[\(lengths + 4)]);p+=u+2",
+            "u=p;ok=1;for(q=1;q<=\(texts);q++){if(!qf()){ok=0;break}t[q]=v}",
+            #"if(!ok||substr(s,u,2)!=".\n")continue"#,
+            "c=t[3];a=t[5];p=u+2",
             "if(f[6] in D)continue",
             #"D[f[6]]=1;x="";m=split(a,w,/[ :;,\t\n]/);for(q=1;q<=m;q++)if(substr(w[q],1,4)=="app=")x=substr(w[q],5)"#,
             #"gsub(/[^!-~]/,"?",c);gsub(/[^!-~]/,"?",x)"#,
@@ -309,19 +315,21 @@ enum TmuxInventoryLoop {
                         offset = next
                         continue
                     }
-                    // The text and the two bytes that end the row.
-                    let rowEnd = next + row.textLength + 2
-                    guard rowEnd <= buffer.endIndex else {
-                        // More is on its way, or the line only looked like a row.
+                    switch TmuxQuotedField.readRecord(
+                        from: buffer, at: next, count: TmuxInventoryLoop.textFieldCount,
+                        limit: TmuxInventoryLoop.rowTextLimit,
+                        rejectedLines: [begin, argumentsMark, end, alive, gone])
+                    {
+                    case .complete(let fields, let rowEnd):
+                        append(row, fields: fields)
+                        offset = rowEnd
+                    case .incomplete:
+                        // More is on its way.
                         buffer.removeSubrange(buffer.startIndex..<offset)
                         return events
-                    }
-                    guard buffer[(rowEnd - 2)..<rowEnd] == Data(".\n".utf8) else {
+                    case .invalid:
                         offset = next
-                        continue
                     }
-                    append(row, text: buffer[next..<(rowEnd - 2)])
-                    offset = rowEnd
                 case .arguments:
                     if line == end {
                         state = .idle
@@ -336,11 +344,11 @@ enum TmuxInventoryLoop {
             return events
         }
 
-        private mutating func append(_ row: Row, text: Data) {
+        private mutating func append(_ row: Row, fields: [String]) {
             // One answer comes from one server.
             if pending.instance == nil { pending.instance = row.instance }
             guard pending.instance == row.instance else { return }
-            pending.panes.append(row.pane(text: text))
+            pending.panes.append(row.pane(fields: fields))
         }
 
         /// `A %1 6869006f` holds the arguments with a NUL between two, `a %1 …`
@@ -439,12 +447,10 @@ enum TmuxInventoryLoop {
         let height: Int
         let isDead: Bool
         let hasPipe: Bool
-        let lengths: [Int]
-        var textLength: Int { lengths.reduce(0, +) }
 
         init?(line: Data.SubSequence) {
             let fields = line.split(separator: UInt8(ascii: "\t"), omittingEmptySubsequences: false)
-            guard fields.count == fieldCount else { return nil }
+            guard fields.count == fixedFieldCount else { return nil }
             func number(_ index: Int) -> Int? {
                 let field = fields[index]
                 guard !field.isEmpty, field.count <= 18,
@@ -457,12 +463,6 @@ enum TmuxInventoryLoop {
                 let paneID = Self.id(fields[5], sigil: "%"), let paneIndex = number(6), let processID = number(7),
                 let width = number(8), let height = number(9), let dead = number(10), let pipe = number(11)
             else { return nil }
-            var lengths: [Int] = []
-            for index in fixedFields.count..<fieldCount {
-                guard let length = number(index), length <= rowTextLimit else { return nil }
-                lengths.append(length)
-            }
-            guard lengths.reduce(0, +) <= rowTextLimit else { return nil }
             instance = TmuxServerInstance(pid: pid, startTime: startTime)
             self.sessionID = sessionID
             self.windowID = windowID
@@ -474,17 +474,10 @@ enum TmuxInventoryLoop {
             self.height = height
             isDead = dead != 0
             hasPipe = pipe != 0
-            self.lengths = lengths
         }
 
-        func pane(text: Data) -> TmuxInventory.Pane {
-            var fields: [String] = []
-            var start = text.startIndex
-            for length in lengths {
-                fields.append(String(decoding: text[start..<(start + length)], as: UTF8.self))
-                start += length
-            }
-            return TmuxInventory.Pane(
+        func pane(fields: [String]) -> TmuxInventory.Pane {
+            TmuxInventory.Pane(
                 sessionID: sessionID, sessionName: fields[0], windowID: windowID,
                 windowIndex: windowIndex, windowName: fields[1], paneID: paneID,
                 paneIndex: paneIndex, processID: processID, command: fields[2], path: fields[3],
@@ -536,8 +529,8 @@ enum TmuxPaneForeground: Equatable, Sendable {
 
     static func script(executable: String, socket: String, pane: String, nonce: String) -> String? {
         guard TmuxInventoryLoop.Row.id(Data(pane.utf8)[...], sigil: "%") == pane else { return nil }
-        let count = TmuxInventoryLoop.fieldCount
-        let lengths = TmuxInventoryLoop.lengthFieldStart
+        let fixed = TmuxInventoryLoop.fixedFieldCount
+        let texts = TmuxInventoryLoop.textFieldCount
         let header: [String] = [
             "LC_ALL=C",
             "export LC_ALL",
@@ -560,15 +553,16 @@ enum TmuxPaneForeground: Equatable, Sendable {
             "exit 0",
             "}",
             #"r=$(printf '%s\n' "$c" | awk '"#,
+            TmuxInventoryLoop.awkQuotedFieldFunction,
             #"{s=s $0 "\n"}"#,
             "END{p=1;e=length(s)",
             #"while(p<=e){j=index(substr(s,p,512),"\n");if(!j)break"#,
             "h=substr(s,p,j-1);p+=j",
-            #"if(split(h,f,"\t")!=\#(count))continue"#,
-            #"k=1;for(q=1;q<=\#(count);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
+            #"if(split(h,f,"\t")!=\#(fixed))continue"#,
+            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
             #"if(!k||f[3]!~/^\$[0-9]+$/||f[4]!~/^@[0-9]+$/||f[6]!~/^%[0-9]+$/)continue"#,
-            "u=0;for(q=\(lengths);q<=\(count);q++)u+=f[q]",
-            #"if(substr(s,p+u,2)!=".\n")continue"#,
+            "u=p;ok=1;for(q=1;q<=\(texts);q++)if(!qf()){ok=0;break}",
+            #"if(!ok||substr(s,u,2)!=".\n")continue"#,
             #"if(f[11]=="0")print f[6],f[8]"#,
             "break}}",
             "')",
@@ -625,13 +619,17 @@ enum TmuxPaneForeground: Equatable, Sendable {
                     offset = next
                     continue
                 }
-                let rowEnd = next + row.textLength + 2
-                guard rowEnd <= stdout.endIndex, stdout[(rowEnd - 2)..<rowEnd] == Data(".\n".utf8) else {
+                guard
+                    case .complete(let fields, let rowEnd) = TmuxQuotedField.readRecord(
+                        from: stdout, at: next, count: TmuxInventoryLoop.textFieldCount,
+                        limit: TmuxInventoryLoop.rowTextLimit,
+                        rejectedLines: [begin, argumentsMark, end, gone])
+                else {
                     offset = next
                     continue
                 }
                 if foundRow == nil, row.paneID == pane {
-                    foundRow = (row.instance, row.pane(text: Data(stdout[next..<(rowEnd - 2)])))
+                    foundRow = (row.instance, row.pane(fields: fields))
                 }
                 offset = rowEnd
             case .arguments:
@@ -651,5 +649,158 @@ enum TmuxPaneForeground: Equatable, Sendable {
             }
         }
         return nil
+    }
+}
+
+/// Decodes `#{q:...}` format fields printed by tmux 3.3 and later across both
+/// raw UTF-8 releases (3.3a, 3.6+) and `strvis` releases (3.4, 3.5a).
+enum TmuxQuotedField {
+    enum RecordResult: Equatable, Sendable {
+        case complete([String], nextOffset: Int)
+        case incomplete
+        case invalid
+    }
+
+    private static let shellQuotedNonSpace: Set<UInt8> = Set("|&;<>()$`\"'*?[#=%".utf8)
+    private static let shellQuotedEscaped: Set<UInt8> = Set("|&;<>()`\"'*?[# =%".utf8)
+
+    private static func cEscapeByte(_ byte: UInt8) -> UInt8? {
+        switch byte {
+        case UInt8(ascii: "a"): 0x07
+        case UInt8(ascii: "b"): 0x08
+        case UInt8(ascii: "f"): 0x0c
+        case UInt8(ascii: "r"): 0x0d
+        case UInt8(ascii: "v"): 0x0b
+        default: nil
+        }
+    }
+
+    private static func isOctalDigit(_ byte: UInt8) -> Bool {
+        byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "7")
+    }
+
+    private static func isRejectedLine(in buffer: Data, at lineStart: Int, rejectedLines: [Data]) -> Bool {
+        guard !rejectedLines.isEmpty, lineStart < buffer.endIndex,
+            let newline = buffer[lineStart...].firstIndex(of: UInt8(ascii: "\n"))
+        else { return false }
+        let slice = buffer[lineStart..<newline]
+        return rejectedLines.contains { $0 == slice }
+    }
+
+    /// Reads `count` space-terminated `#{q:...}` fields followed by `.\n` starting
+    /// at `startOffset` in `buffer`.
+    static func readRecord(
+        from buffer: Data,
+        at startOffset: Int,
+        count: Int,
+        limit: Int = 1 << 20,
+        rejectedLines: [Data] = []
+    ) -> RecordResult {
+        let end = buffer.endIndex
+        if isRejectedLine(in: buffer, at: startOffset, rejectedLines: rejectedLines) {
+            return .invalid
+        }
+        var cursor = startOffset
+        var values: [String] = []
+        values.reserveCapacity(count)
+
+        for _ in 0..<count {
+            var bytes = Data()
+            var closed = false
+
+            while cursor < end {
+                if cursor - startOffset > limit { return .invalid }
+                var slashes = 0
+                while cursor < end, buffer[cursor] == UInt8(ascii: "\\") {
+                    slashes += 1
+                    cursor += 1
+                    if cursor - startOffset > limit { return .invalid }
+                }
+                if cursor >= end { return .incomplete }
+                let byte = buffer[cursor]
+
+                if slashes == 0 {
+                    if byte == UInt8(ascii: " ") {
+                        cursor += 1
+                        closed = true
+                        break
+                    }
+                    if shellQuotedNonSpace.contains(byte) { return .invalid }
+                    bytes.append(byte)
+                    cursor += 1
+                    if byte == UInt8(ascii: "\n"),
+                        isRejectedLine(in: buffer, at: cursor, rejectedLines: rejectedLines)
+                    {
+                        return .invalid
+                    }
+                    continue
+                }
+
+                if byte == UInt8(ascii: "$") {
+                    let rawSlashes = (slashes - 1) / 2
+                    if rawSlashes > 0 {
+                        bytes.append(contentsOf: repeatElement(UInt8(ascii: "\\"), count: rawSlashes))
+                    }
+                    bytes.append(UInt8(ascii: "$"))
+                    cursor += 1
+                    continue
+                }
+
+                let half = slashes / 2
+                if half > 0 {
+                    bytes.append(contentsOf: repeatElement(UInt8(ascii: "\\"), count: half))
+                }
+                if slashes % 2 == 0 { continue }
+
+                if shellQuotedEscaped.contains(byte) {
+                    bytes.append(byte)
+                    cursor += 1
+                    continue
+                }
+
+                if let escaped = cEscapeByte(byte) {
+                    bytes.append(escaped)
+                    cursor += 1
+                    continue
+                }
+
+                if isOctalDigit(byte) {
+                    if cursor + 2 >= end {
+                        if cursor + 1 < end, !isOctalDigit(buffer[cursor + 1]) { return .invalid }
+                        return .incomplete
+                    }
+                    let d1 = buffer[cursor + 1]
+                    let d2 = buffer[cursor + 2]
+                    guard isOctalDigit(d1), isOctalDigit(d2) else { return .invalid }
+                    let octalValue =
+                        Int(byte - UInt8(ascii: "0")) * 64
+                        + Int(d1 - UInt8(ascii: "0")) * 8
+                        + Int(d2 - UInt8(ascii: "0"))
+                    guard octalValue <= 0xff else { return .invalid }
+                    bytes.append(UInt8(octalValue))
+                    cursor += 3
+                    continue
+                }
+
+                return .invalid
+            }
+
+            if !closed { return .incomplete }
+            values.append(String(decoding: bytes, as: UTF8.self))
+        }
+
+        if cursor >= end { return .incomplete }
+        guard buffer[cursor] == UInt8(ascii: ".") else { return .invalid }
+        if cursor + 1 >= end { return .incomplete }
+        guard buffer[cursor + 1] == UInt8(ascii: "\n") else { return .invalid }
+        return .complete(values, nextOffset: cursor + 2)
+    }
+
+    /// Decodes a complete `display-message -p` output ending in `.\n` into `count` values.
+    static func decodeLine(_ data: Data, count: Int) -> [String]? {
+        guard case .complete(let values, let nextOffset) = readRecord(from: data, at: data.startIndex, count: count),
+            nextOffset == data.endIndex
+        else { return nil }
+        return values
     }
 }

@@ -1985,7 +1985,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         return Self.succeeded(Self.lines(rows))
     }
 
-    /// `display-message -p`: `#{@heeler-status}` or `#{pid}:#{start_time}`, plus a newline.
+    /// `display-message -p`: `#{q:@heeler-status} .` or `#{pid}:#{start_time}`, plus a newline.
     private func displayStatus(
         in listed: [TmuxInventory.Pane], _ invocation: Invocation, socket: String
     ) -> GitExecResult {
@@ -1993,8 +1993,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let pane = listed.first(where: { $0.paneID == target })
         else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
         switch invocation.arguments {
-        case ["#{@heeler-status}"]:
-            return Self.succeeded(pane.status + "\n")
+        case ["#{q:@heeler-status} ."]:
+            return Self.succeeded("\(TmuxLoopText.quoted(pane.status)) .\n")
         case ["#{pid}:#{start_time}"]:
             guard let instance = servers[socket] else { return Self.failed("no server running\n") }
             return Self.succeeded("\(instance.pid):\(instance.startTime)\n")
@@ -2123,7 +2123,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                 sessionID: "$\(Self.nextNumber(prefix: "$", in: listed))", sessionName: sessionName,
                 windowIndex: 0, directory: invocation.directory, program: invocation.program, in: listed)
             listed.append(pane)
-            return Self.succeeded("\(pane.paneID) \(pane.windowID) \(pane.sessionID) \(pane.sessionName)\n")
+            return Self.succeeded(
+                "\(pane.paneID) \(pane.windowID) \(pane.sessionID) \(TmuxLoopText.quoted(pane.sessionName)) .\n")
         case "rename-session":
             guard let target = invocation.target, let label = invocation.name, !label.isEmpty else {
                 return Self.failed("tmux: The command failed.\n")

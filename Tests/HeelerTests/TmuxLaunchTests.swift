@@ -31,7 +31,7 @@ struct TmuxLaunchTests {
     ]
 
     private static let paneFormat = "#{pane_id} #{window_id}"
-    private static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{session_name}"
+    private static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{q:session_name} ."
     private static var uuid: Regex<Substring> {
         #/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/#
     }
@@ -264,7 +264,7 @@ struct TmuxLaunchTests {
         #expect(text(command) == #"""
         __heeler_tmux_start='t='\''/opt/homebrew/bin/tmux'\''
         s='\''/tmp/heeler-t693/sock'\''
-        exec "$t" -S "$s" new-session -d -c '\''/work'\'' -P -F '\''#{pane_id} #{window_id} #{session_id} #{session_name}'\'''
+        exec "$t" -S "$s" new-session -d -c '\''/work'\'' -P -F '\''#{pane_id} #{window_id} #{session_id} #{q:session_name} .'\'''
         export __heeler_tmux_start
         "$SHELL" -lic 'exec /bin/sh -c "$__heeler_tmux_start"'
 
@@ -281,7 +281,7 @@ struct TmuxLaunchTests {
         #expect(text(command) == #"""
         __heeler_tmux_start='t='\''/opt/homebrew/bin/tmux'\''
         s='\''/tmp/heeler-t693/sock'\''
-        exec "$t" -S "$s" new-session -d -s work -c '\''/work'\'' -e '\''CLAUDE_CODE_CHILD_SESSION='\'' -e '\''CLAUDE_CODE_SKIP_PROMPT_HISTORY='\'' -P -F '\''#{pane_id} #{window_id} #{session_id} #{session_name}'\'' -- '\''/bin/zsh'\'' -ic '\''exec "$@"'\'' '\''/bin/zsh'\'' claude --resume abc'
+        exec "$t" -S "$s" new-session -d -s work -c '\''/work'\'' -e '\''CLAUDE_CODE_CHILD_SESSION='\'' -e '\''CLAUDE_CODE_SKIP_PROMPT_HISTORY='\'' -P -F '\''#{pane_id} #{window_id} #{session_id} #{q:session_name} .'\'' -- '\''/bin/zsh'\'' -ic '\''exec "$@"'\'' '\''/bin/zsh'\'' claude --resume abc'
         export __heeler_tmux_start
         "$SHELL" -lic 'exec /bin/sh -c "$__heeler_tmux_start"'
 
@@ -541,8 +541,11 @@ struct TmuxLaunchTests {
             TmuxLaunch.created(from: Data("noise\n%3 @2\n".utf8))
                 == TmuxLaunch.Created(paneID: "%3", windowID: "@2", sessionID: nil, sessionName: nil))
         #expect(
-            TmuxLaunch.created(from: Data("%3 @2 $1 My Work\n".utf8))
+            TmuxLaunch.created(from: Data("%3 @2 $1 My\\ Work .\n".utf8))
                 == TmuxLaunch.Created(paneID: "%3", windowID: "@2", sessionID: "$1", sessionName: "My Work"))
+        #expect(
+            TmuxLaunch.created(from: Data("%3 @2 $1 \\ My\\ \\\\$work\\037\\  .\n".utf8))
+                == TmuxLaunch.Created(paneID: "%3", windowID: "@2", sessionID: "$1", sessionName: " My $work\u{001F} "))
         #expect(TmuxLaunch.created(from: Data("not a pane\n".utf8)) == nil)
     }
 
