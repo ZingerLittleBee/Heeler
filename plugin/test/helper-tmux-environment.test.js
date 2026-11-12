@@ -5,7 +5,7 @@
 import { afterEach, before, suite, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -127,5 +127,60 @@ suite("tmux global environment", { skip }, () => {
     assert.equal(existsSync(socket), false);
     assert.equal(await readTmuxGlobalEnvironment({ executable: join(root, "no-such-tmux"), socket }), null);
     assert.equal(await readTmuxGlobalEnvironment(null), null);
+  });
+});
+
+suite("tmux 3.4 escaped global environment", () => {
+  test("decodes double-escaped $var, literal backslashes, UTF-8 and strvis control bytes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "heeler-tmux-env34-"));
+    roots.push(root);
+    const stubTmux = join(root, "tmux-34");
+    writeFileSync(
+      stubTmux,
+      `#!${process.execPath}
+const args = process.argv.slice(2);
+if (!args.includes("-N") || !args.includes("-u")) process.exit(2);
+function showEnvEscape(v) {
+  return v.replace(/[$\`"\\\\]/g, (m) => "\\\\" + m);
+}
+function strvis34(text) {
+  const bytes = Buffer.from(text, "utf8");
+  let out = "";
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i];
+    if (b === 0x09 || b === 0x0a) { out += String.fromCharCode(b); i += 1; continue; }
+    if (b === 0x07) { out += "\\\\a"; i += 1; continue; }
+    if (b < 0x20 || b === 0x7f) { out += "\\\\" + b.toString(8).padStart(3, "0"); i += 1; continue; }
+    if (b === 0x24 && i + 1 < bytes.length) {
+      const next = bytes[i + 1];
+      const ident = (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a) || next === 0x5f || next === 0x7b;
+      if (ident) { out += "\\\\$"; i += 1; continue; }
+    }
+    if (b < 0x80) { out += String.fromCharCode(b); i += 1; continue; }
+    const w = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+    out += bytes.subarray(i, i + w).toString("utf8");
+    i += w;
+  }
+  return out;
+}
+const entries = [
+  ["XDG_CONFIG_HOME", 'say "hi" and $PATH and \\\\a and \\\\037 and \\x1f\\x07'],
+  ["HTTPS_PROXY", "http://user:p$ss@proxy.example:8080"],
+  ["CODEX_HOME", "/dir/café/$USER"],
+];
+for (const [k, v] of entries) {
+  process.stdout.write(strvis34(\`\${k}="\${showEnvEscape(v)}"; export \${k};\\n\`));
+}
+process.stdout.write("unset USER;\\n");
+`,
+      { mode: 0o755 },
+    );
+
+    const env = await readTmuxGlobalEnvironment({ executable: stubTmux, socket: join(root, "sock") });
+    assert.ok(env);
+    assert.equal(env.XDG_CONFIG_HOME, 'say "hi" and $PATH and \\a and \\037 and \x1f\x07');
+    assert.equal(env.HTTPS_PROXY, "http://user:p$ss@proxy.example:8080");
+    assert.equal(env.CODEX_HOME, "/dir/café/$USER");
+    assert.equal(env.USER, null);
   });
 });

@@ -21,6 +21,7 @@ import { performance } from "node:perf_hooks";
 
 import { transcriptEntries } from "../shared/usage/claude-scanner.js";
 import { runStoredTmux } from "./client.js";
+import { decodeQuotedTmuxLine } from "./quoted-format.js";
 import { continueHeelerStatus, readHeelerStatus, wordForTmuxAgent } from "./status.js";
 
 const PLAIN_STATUS = /^[A-Za-z0-9=:+/._ -]*$/;
@@ -145,16 +146,20 @@ async function setIdleOnPane(target, pane) {
       "-p",
       "-t",
       pane.paneID,
-      "#{@heeler-status}",
+      "#{q:@heeler-status} .",
     ]);
     if (!applied.ok) return "failed";
-    pane.status = applied.stdout.replace(/\n$/, "");
+    const decoded = decodeQuotedTmuxLine(applied.stdout, 1);
+    if (!decoded) return "failed";
+    pane.status = decoded[0];
     return pane.status === next ? "applied" : "superseded";
   }
 
-  const current = await runStoredTmux(target, ["display-message", "-p", "-t", pane.paneID, "#{@heeler-status}"]);
+  const current = await runStoredTmux(target, ["display-message", "-p", "-t", pane.paneID, "#{q:@heeler-status} ."]);
   if (!current.ok) return "failed";
-  const live = current.stdout.replace(/\n$/, "");
+  const decoded = decodeQuotedTmuxLine(current.stdout, 1);
+  if (!decoded) return "failed";
+  const live = decoded[0];
   if (live !== expected) {
     pane.status = live;
     return "superseded";

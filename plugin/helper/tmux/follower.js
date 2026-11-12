@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { agentIn } from "../core/agent-rule.js";
 import { runStoredTmux } from "./client.js";
 import { createForegroundReader } from "./foreground.js";
+import { readQuotedTmuxRecord } from "./quoted-format.js";
 import { storedTmuxServers } from "./socket-name.js";
 
 export const TMUX_POLL_INTERVAL_MS = 5000;
@@ -38,8 +39,8 @@ const TEXT_FIELDS = [
 ];
 
 const LIST_PANES_FORMAT =
-  `${[...FIXED_FIELDS, ...TEXT_FIELDS.map((name) => `#{n:${name}}`)].join("\t")}\n` +
-  `${TEXT_FIELDS.map((name) => `#{${name}}`).join("")}.`;
+  `${FIXED_FIELDS.join("\t")}\n` +
+  `${TEXT_FIELDS.map((name) => `#{q:${name}}`).join(" ")} .`;
 
 /** Combines several tmux follower listeners in order. */
 export function combineTmuxListeners(...listeners) {
@@ -67,7 +68,7 @@ function parseListedPanes(buffer) {
     const header = buffer.subarray(offset, newline).toString("utf8");
     offset = newline + 1;
     const columns = header.split("\t");
-    if (columns.length !== FIXED_FIELDS.length + TEXT_FIELDS.length) continue;
+    if (columns.length !== FIXED_FIELDS.length) continue;
 
     const [pidText, startText, sessionID, windowID, windowIndexText, paneID, panePidText, deadText, pipeText] = columns;
     if (
@@ -84,19 +85,10 @@ function parseListedPanes(buffer) {
       continue;
     }
 
-    const lengths = columns.slice(FIXED_FIELDS.length).map((value) => (/^\d+$/.test(value) ? Number(value) : -1));
-    if (lengths.some((length) => length < 0)) continue;
-    const totalBytes = lengths.reduce((sum, length) => sum + length, 0);
-    if (offset + totalBytes + 2 > buffer.length) break;
-    if (buffer[offset + totalBytes] !== 0x2e || buffer[offset + totalBytes + 1] !== 0x0a) continue;
-
-    const texts = [];
-    let cursor = offset;
-    for (const length of lengths) {
-      texts.push(buffer.subarray(cursor, cursor + length).toString("utf8"));
-      cursor += length;
-    }
-    offset += totalBytes + 2;
+    const record = readQuotedTmuxRecord(buffer, offset, TEXT_FIELDS.length);
+    if (!record) continue;
+    const texts = record.values;
+    offset = record.nextOffset;
 
     const rowInstance = `tmux-${pidText}-${startText}`;
     if (instance === null) {

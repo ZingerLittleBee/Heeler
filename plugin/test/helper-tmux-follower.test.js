@@ -253,4 +253,92 @@ suite("tmux follower", () => {
     rmSync(join(directory, "tmux", "work"), { recursive: true, force: true });
     await waitFor(() => ended.includes("work"), "removed server stopped", PATIENCE_MS);
   });
+
+  test("decodes panes when tmux 3.4 escapes $var and control bytes in list-panes output", async () => {
+    const stubTmux = join(root, "tmux-34-stub");
+    writeFileSync(
+      stubTmux,
+      `#!${process.execPath}
+function quoteShell(text) {
+  let out = "";
+  for (const ch of text) {
+    if ("|&;<>()$\`\\\\\\"'*?[# =%".includes(ch)) out += "\\\\";
+    out += ch;
+  }
+  return out;
+}
+function strvis34(text) {
+  const bytes = Buffer.from(text, "utf8");
+  let out = "";
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i];
+    if (b === 0x09 || b === 0x0a) { out += String.fromCharCode(b); i += 1; continue; }
+    if (b === 0x07) { out += "\\\\a"; i += 1; continue; }
+    if (b < 0x20 || b === 0x7f) { out += "\\\\" + b.toString(8).padStart(3, "0"); i += 1; continue; }
+    if (b === 0x24 && i + 1 < bytes.length) {
+      const next = bytes[i + 1];
+      const ident = (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a) || next === 0x5f || next === 0x7b;
+      if (ident) { out += "\\\\$"; i += 1; continue; }
+    }
+    if (b < 0x80) { out += String.fromCharCode(b); i += 1; continue; }
+    const w = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+    out += bytes.subarray(i, i + w).toString("utf8");
+    i += w;
+  }
+  return out;
+}
+const rows = [
+  {
+    pid: "9001", start_time: "1700000000", session_id: "$0", window_id: "@0", window_index: "0",
+    pane_id: "%0", pane_pid: String(process.ppid), pane_dead: "0", pane_pipe: "0",
+    session_name: "my $work", window_name: "echo $HOME\\x1fsep\\x07", pane_current_command: "sh",
+    pane_current_path: "/home/$USER/proj", pane_tty: "", "@heeler-status": "state=working:app=claude-code:turn=1:blocked=0",
+    "@heeler-session": JSON.stringify({ session: "s1", file: "/home/$USER/.claude/projects/-w/s1.jsonl" }),
+    "@heeler-pipe": "", "@heeler-piped": "", "@heeler-attach": "",
+  },
+  {
+    pid: "9001", start_time: "1700000000", session_id: "$0", window_id: "@1", window_index: "1",
+    pane_id: "%1", pane_pid: String(process.ppid), pane_dead: "0", pane_pipe: "0",
+    session_name: "my $work", window_name: "fish", pane_current_command: "fish",
+    pane_current_path: "/tmp", pane_tty: "", "@heeler-status": "",
+    "@heeler-session": "", "@heeler-pipe": "", "@heeler-piped": "", "@heeler-attach": "",
+  },
+];
+const args = process.argv.slice(2);
+const fmt = args[args.length - 1];
+for (const row of rows) {
+  const expanded = fmt.replace(/#\\{(q:)?([^}]+)\\}/g, (_, q, name) => (q ? quoteShell(row[name] ?? "") : (row[name] ?? "")));
+  process.stdout.write(strvis34(expanded) + "\\n");
+}
+`,
+      { mode: 0o755 },
+    );
+
+    let latest = null;
+    const follower = followTmuxServer(
+      "work",
+      { executable: stubTmux, socket: join(root, "stub.sock") },
+      {
+        pollIntervalMs: 25,
+        listener: {
+          panesUpdated: ({ panes }) => {
+            latest = panes;
+          },
+        },
+      },
+    );
+    cleanups.push(() => follower.stop());
+
+    await waitFor(() => latest?.length === 2, "both panes decoded from tmux 3.4 output", PATIENCE_MS);
+    assert.equal(latest[0].paneID, "%0");
+    assert.equal(latest[0].sessionName, "my $work");
+    assert.equal(latest[0].windowName, "echo $HOME\x1fsep\x07");
+    assert.equal(latest[0].path, "/home/$USER/proj");
+    assert.equal(
+      JSON.parse(latest[0].agentSession).file,
+      "/home/$USER/.claude/projects/-w/s1.jsonl",
+    );
+    assert.equal(latest[1].paneID, "%1");
+    assert.equal(latest[1].windowName, "fish");
+  });
 });

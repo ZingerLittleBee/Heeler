@@ -6,6 +6,7 @@
 
 import { runStoredTmux } from "./client.js";
 import { createOsc7501Parser } from "./osc7501.js";
+import { decodeQuotedTmuxLine } from "./quoted-format.js";
 import { continueHeelerStatus } from "./status.js";
 
 function parseConfig(encoded) {
@@ -74,10 +75,15 @@ function writeReport(report) {
         "-p",
         "-t",
         config.pane,
-        "#{pid}\t#{@heeler-pipe}\t#{@heeler-status}",
+        "#{pid}\t#{q:@heeler-pipe} #{q:@heeler-status} .",
       ]);
       if (!read.ok) return;
-      const [pid = "", pipeMark = "", status = ""] = read.stdout.replace(/\n$/, "").split("\t");
+      const tab = read.stdout.indexOf("\t");
+      if (tab <= 0) return;
+      const pid = read.stdout.slice(0, tab);
+      const decoded = decodeQuotedTmuxLine(read.stdout.slice(tab + 1), 2);
+      if (!decoded) return;
+      const [pipeMark, status] = decoded;
       if (pid !== config.serverPid || pipeMark !== config.mark) return;
       const next = continueHeelerStatus(status, report);
       if (next === status) return;

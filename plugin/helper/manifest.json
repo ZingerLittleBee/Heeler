@@ -207,7 +207,7 @@
     },
     {
       "path": "tmux/follower.js",
-      "sha256": "28ca82a04df49798ff8815d39b2ab840adb82f9722e28b891592136475920291"
+      "sha256": "91432432cd5270a59946eff915abf728fe4e0166ae2c0316a4cf577e25d21670"
     },
     {
       "path": "tmux/foreground.js",
@@ -219,11 +219,15 @@
     },
     {
       "path": "tmux/pipe-pane-worker.js",
-      "sha256": "7dbe6141029bceaae566ae732939d2e94e1840cbc7729008f7e77438dd369aef"
+      "sha256": "28dd2d4fd15a23fcea4107b0d7e9dde704160c8615f0873ebdc84cb09746dbd4"
     },
     {
       "path": "tmux/pipe-reader.js",
       "sha256": "04f85def07de1f3cd359e4dd278ac93eb9ef39e5e2fcf3bed1f5fd80ce61699b"
+    },
+    {
+      "path": "tmux/quoted-format.js",
+      "sha256": "c1521205d9448609c1c7643875c28695184060a555bcb290ddf2b626059a1c5b"
     },
     {
       "path": "tmux/socket-name.js",
@@ -235,7 +239,7 @@
     },
     {
       "path": "tmux/transcript-watcher.js",
-      "sha256": "d09c6ed5525620e91633e2d02cf20e1c9be16c1ebdf98377295577a499fdab05"
+      "sha256": "bc9ab89c082534cd7e5379d1686ca11306e7c7dff9908276a1953d15308d4dfd"
     },
     {
       "path": "tmux/turn-state.js",
@@ -263,7 +267,7 @@
     },
     {
       "path": "usage/tmux-environment.js",
-      "sha256": "218bfcc4d812684d39db0ab69033c2c58bbd9ce16de04e104ccea04ec3915e6b"
+      "sha256": "490a772ffc525bb56eb35f48b9e74607879479d5f90db231e741150702fcd0a5"
     },
     {
       "path": "version.json",
