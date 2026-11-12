@@ -74,6 +74,11 @@ struct ShellTerminalView: View {
     @State private var ownKeyboardInset = TerminalKeyboardInset()
     private var keyboardInset: TerminalKeyboardInset { keyboardInsetOverride ?? ownKeyboardInset }
     @State private var isConfirmingClose = false
+    @State private var passwordPrompts = ShellTerminalPasswordPrompts()
+    @State private var passwordRequest: ShellTerminalPasswordRequest?
+    /// Whether the terminal takes the keyboard back once the password sheet
+    /// has gone: it had it before, or a password went in and Return is next.
+    @State private var passwordReturnsKeyboard = false
     @Environment(\.themeAppearance) private var themeAppearance
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
@@ -118,6 +123,9 @@ struct ShellTerminalView: View {
         }
         screen.onPaste = { text, bracketed in
             store.requestPaste(text, bracketedPaste: bracketed)
+        }
+        screen.onViewportTextChanged = { [passwordPrompts] text in
+            passwordPrompts.viewportDidChange(text)
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
@@ -278,6 +286,8 @@ struct ShellTerminalView: View {
                 isReturning: isReturning,
                 isClosingTerminal: isClosingTerminal,
                 onBack: { Task { await goBack() } },
+                canEnterPassword: store.canInsertPassword,
+                onEnterPassword: openPasswordSheet,
                 isConfirmingClose: $isConfirmingClose,
                 onCloseTerminal: onCloseTerminal == nil
                     ? nil : { closeTerminal() }))
@@ -286,6 +296,7 @@ struct ShellTerminalView: View {
     var body: some View {
         terminalScreen
             .id(store.terminalID)
+            .overlay(alignment: .bottomTrailing) { passwordButton }
             .overlay { statusOverlay }
             // Above the status dialog, whose dim would take every touch
             // meant for the handle, when an ended terminal's next step is
@@ -429,6 +440,13 @@ struct ShellTerminalView: View {
             ) {
                 pasteReviewSheet
             }
+            .sheet(item: $passwordRequest, onDismiss: passwordSheetDidDismiss) { request in
+                ShellTerminalPasswordSheet(
+                    prompt: request.prompt,
+                    canInsert: store.canInsertPassword,
+                    onInsert: insertPassword,
+                    onCancel: { passwordRequest = nil })
+            }
             .alert(
                 "Paste Blocked",
                 isPresented: Binding(
@@ -442,7 +460,7 @@ struct ShellTerminalView: View {
             .modifier(ConsoleDetailPresentationRegistration(
                 agentID: agentID,
                 isPresenting: isConfirmingClose || store.pendingPaste != nil
-                    || store.pasteErrorMessage != nil))
+                    || store.pasteErrorMessage != nil || passwordRequest != nil))
             .onChange(of: activity.activationCount, initial: true) { _, _ in
                 store.didBecomeActive(
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
@@ -453,6 +471,7 @@ struct ShellTerminalView: View {
             // Text without raising anything on its own.
             .onChange(of: store.terminalID) { _, _ in
                 setKeyboardMode(.text, restoresSystemKeyboard: false)
+                passwordPrompts.reset()
             }
             // On iPad the Keys dock stands without a responder, so a tap on
             // the terminal's input row asks for the system keyboard.
@@ -681,6 +700,43 @@ struct ShellTerminalView: View {
     }
 
     @ViewBuilder
+    private var passwordButton: some View {
+        Group {
+            if passwordPrompts.offered != nil, store.canInsertPassword, passwordRequest == nil {
+                ShellTerminalPasswordButton(palette: themePalette, action: openPasswordSheet)
+                    .padding(.trailing, MessageJumpPlacement.trailingPadding)
+                    .padding(.bottom, 4)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: passwordPrompts.offered)
+    }
+
+    private func openPasswordSheet() {
+        guard passwordRequest == nil else { return }
+        passwordReturnsKeyboard = isKeyboardUpForHandoff
+        passwordRequest = ShellTerminalPasswordRequest(prompt: passwordPrompts.onScreen)
+    }
+
+    private func insertPassword(_ password: String) -> Bool {
+        guard store.insertPassword(password) else { return false }
+        passwordPrompts.didFill()
+        passwordReturnsKeyboard = true
+        passwordRequest = nil
+        return true
+    }
+
+    /// The sheet's field took first responder from the terminal. Return is
+    /// the next key after an insert, so the terminal takes the keyboard back;
+    /// iPad's Keys dock stands without a responder and keeps its own Return.
+    private func passwordSheetDidDismiss() {
+        defer { passwordReturnsKeyboard = false }
+        guard passwordReturnsKeyboard, !keyboardControl.isFirstResponder else { return }
+        if keyboardMode == .controls, TerminalKeyboardMode.controlsReleaseFirstResponder { return }
+        keyboardControl.requestKeyboard()
+    }
+
+    @ViewBuilder
     private var statusOverlay: some View {
         if let presentation = TerminalStatusPresentation(status: store.terminalStatus) {
             switch presentation.kind {
@@ -765,6 +821,9 @@ struct ShellTerminalMoreMenu: View {
     let isReturning: Bool
     let isClosingTerminal: Bool
     let onBack: () -> Void
+    var canEnterPassword = false
+    /// Opens the password sheet. Nil hides the entry (previews, tests).
+    var onEnterPassword: (() -> Void)? = nil
     /// The confirmation hangs off this button, so on iOS 26, where it is a
     /// popover, its arrow points at the menu it came from rather than at
     /// the middle of the screen.
@@ -775,6 +834,15 @@ struct ShellTerminalMoreMenu: View {
 
     var body: some View {
         Menu {
+            // First, so it lands nearest the button the menu opens from.
+            if let onEnterPassword {
+                Section {
+                    Button(action: onEnterPassword) {
+                        Label("Enter Password…", systemImage: "key.fill")
+                    }
+                    .disabled(!canEnterPassword)
+                }
+            }
             Section(title) {
                 Button(action: onBack) {
                     Label(backTitle, systemImage: "chevron.left")
@@ -835,16 +903,9 @@ struct ShellTerminalInputRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Painting the fill with the row's own background leaves the
-            // glyph reading as a bare icon, like the row's other buttons.
             HStack(spacing: 0) {
-                PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
-                    .id(colorScheme)
-                    .accessibilityHint("Pastes the clipboard into the terminal")
-                    .frame(
-                        width: InputChromeLayout.shellAccessoryButtonWidth,
-                        height: InputChromeLayout.shortcutRowHeight)
                 more
+                pasteButton
             }
             .frame(width: Self.sideWidth, alignment: .leading)
 
@@ -880,6 +941,25 @@ struct ShellTerminalInputRow: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    /// A system paste control, so a tap needs no Allow Paste prompt. It
+    /// disables itself below 34 points, and its glyph grows with its size,
+    /// so it is laid out at 34 points and scaled down to the row's glyphs.
+    /// Painted in the row's own background, it reads as a bare glyph like
+    /// the row's other buttons.
+    private var pasteButton: some View {
+        PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
+            .id(colorScheme)
+            .frame(
+                width: InputChromeLayout.pasteControlSide,
+                height: InputChromeLayout.pasteControlSide)
+            .scaleEffect(
+                InputChromeLayout.shellPasteVisualSide / InputChromeLayout.pasteControlSide)
+            .frame(
+                width: InputChromeLayout.shellAccessoryButtonWidth,
+                height: InputChromeLayout.shortcutRowHeight)
+            .accessibilityHint("Pastes the clipboard into the terminal")
     }
 
     /// Shows or hides the shortcut row with Agent detail's Direct Input

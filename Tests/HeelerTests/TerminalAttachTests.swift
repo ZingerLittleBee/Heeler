@@ -1048,7 +1048,8 @@ struct TerminalAttachTests {
     @MainActor
     @Test func pinnedPasteControlFillsTheFrameItIsGiven() throws {
         let view = PinnedPasteView(
-            backgroundColor: .secondarySystemBackground, cornerRadius: nil, paste: { _ in })
+            backgroundColor: .secondarySystemBackground, foregroundColor: .label,
+            cornerRadius: nil, paste: { _ in })
         let control = try #require(view.subviews.compactMap { $0 as? UIPasteControl }.first)
 
         view.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
@@ -1064,8 +1065,8 @@ struct TerminalAttachTests {
     @Test func pinnedPasteControlLoadsTextFromItsItemProvider() async throws {
         var pastes: [String] = []
         let view = PinnedPasteView(
-            backgroundColor: .secondarySystemBackground, cornerRadius: nil,
-            paste: { pastes.append($0) })
+            backgroundColor: .secondarySystemBackground, foregroundColor: .label,
+            cornerRadius: nil, paste: { pastes.append($0) })
 
         view.paste(itemProviders: [NSItemProvider(object: "pinned paste" as NSString)])
         let deadline = ContinuousClock.now + .seconds(2)
