@@ -7,8 +7,11 @@ import Foundation
 /// queue, then attaches a control-mode client to that `session_id`, links the
 /// Pane's window and closes the placeholder. tmux stops a command queue at the
 /// first command that fails and never starts a server (`-N`); if `new-session`
-/// fails (for example because a session of that name already exists), the
-/// script neither starts the feeder nor kills anything.
+/// fails (for example because a session of that name already exists), it prints
+/// no `session_id` and the script neither starts the feeder nor kills anything,
+/// while if `new-session` prints a `session_id` and a later setup command fails
+/// (before or after `@heeler-attach` is set), the script ends that `session_id`
+/// by id and never by session name.
 ///
 /// Leaving `destroy-unattached` on lets `server_check_unattached` destroy the
 /// session (`s->curw = NULL`) as soon as `CLIENT_EXIT` marks `s->attached == 0`
@@ -22,15 +25,16 @@ import Foundation
 /// `detach-on-destroy on` keeps window exit from switching the client onto a
 /// user session.
 ///
-/// Once `new-session` has returned the created `session_id`, tmux's standard
-/// input comes through a line-only feeder (`IFS= read -r`) that forwards only
-/// newline-terminated lines, drops any trailing partial line whatever its quote
-/// state, and writes `kill-session -t '<session_id>'` on EOF before closing
-/// tmux's input; when tmux exits first, the pipeline terminates that feeder at
-/// once. tmux's standard output goes through a drain that keeps reading until
-/// tmux exits, a fallback `kill-session -t "$id"` cleans up that same created
-/// session if tmux exited before reading stdin, and the shell exits in the same
-/// group so nothing written later can run as a shell command.
+/// Once the detached setup queue has exited 0 with a valid `session_id`, tmux's
+/// standard input comes through a line-only feeder (`IFS= read -r`) that
+/// forwards only newline-terminated lines, drops any trailing partial line
+/// whatever its quote state, and writes `kill-session -t '<session_id>'` on EOF
+/// before closing tmux's input; when tmux exits first, the pipeline terminates
+/// that feeder at once. tmux's standard output goes through a drain that keeps
+/// reading until tmux exits, `kill-session -t "$id"` cleans up that same created
+/// session on every failure path or if tmux exited before reading stdin, and the
+/// shell exits in the same group so nothing written later can run as a shell
+/// command.
 ///
 /// The client's first reply to a command it wrote answers the barrier, after
 /// every block of the start: it says whether the session came out as meant,
@@ -86,7 +90,9 @@ enum TmuxAttachScript {
         ].joined(separator: " ")
         // Only complete `\n`-terminated lines reach `tmux -C`; on channel drop,
         // any trailing partial line is discarded by `read` and `kill-session`
-        // ends only `$id`, the session created above. If `new-session` fails,
+        // ends only `$id`, the session created above. Whenever `new-session`
+        // printed a `$<digits>` id, `$id` is ended by id even if a later setup
+        // command in `createWords` failed; if `new-session` itself failed,
         // neither the feeder nor any `kill-session` runs.
         return [
             "{",
@@ -95,14 +101,21 @@ enum TmuxAttachScript {
             "s=\(quoted(paths.socket))",
             "n=\(quoted(session))",
             "a=\(quoted(pane))",
-            "if id=$(\"$t\" -u -N -S \"$s\" \(createWords) </dev/null 2>/dev/null) && [ -n \"$id\" ]; then",
+            "rc=0",
+            "id=$(\"$t\" -u -N -S \"$s\" \(createWords) </dev/null 2>/dev/null) || rc=$?",
+            "case \"${id#\\$}\" in",
+            "\"$id\"|''|*[!0-9]*) ;;",
+            "*)",
+            "if [ \"$rc\" -eq 0 ]; then",
             "sh -c \(quoted(feeder)) sh \"$id\" 3<&0 | {",
             "IFS= read -r p",
             "\"$t\" -u -N -S \"$s\" -C \(attachWords)",
             "kill \"$p\" 2>/dev/null || :",
             "} | { cat; cat >/dev/null; }",
-            "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :",
             "fi",
+            "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :",
+            ";;",
+            "esac",
             "exit",
             "}",
             "",

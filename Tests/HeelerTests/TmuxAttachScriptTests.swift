@@ -35,10 +35,10 @@ struct TmuxAttachScriptTests {
         #expect(text.contains("kill-session -t"))
         #expect(text.contains("sh \"$id\" 3<&0 | {\nIFS= read -r p\n"))
         #expect(text.contains("\"$t\" -u -N -S \"$s\" -C "))
-        #expect(text.contains("\nkill \"$p\" 2>/dev/null || :\n} | { cat; cat >/dev/null; }\n"))
+        #expect(text.contains("\nkill \"$p\" 2>/dev/null || :\n} | { cat; cat >/dev/null; }\nfi\n"))
         #expect(
             text.contains(
-                "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :\nfi\nexit\n}"))
+                "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :\n;;\nesac\nexit\n}"))
     }
 
     /// `new-session -d` creates the session, prints `#{session_id}`, and sets
@@ -47,14 +47,14 @@ struct TmuxAttachScriptTests {
     /// window and closes the placeholder.
     @Test func theClientStartsTheSessionMarksItAndLinksThePanesWindow() throws {
         let lines = try script().split(separator: "\n").map(String.init)
-        let createLine = try #require(lines.first { $0.hasPrefix("if id=") })
+        let createLine = try #require(lines.first { $0.hasPrefix("id=$(") })
         let expectedCreate = [
-            "if id=$(\"$t\" -u -N -S \"$s\"",
+            "id=$(\"$t\" -u -N -S \"$s\"",
             "new-session -d -E -s \"$n\" -P -F '#{session_id}' sleep 2147483647",
             "';' set-option -t \"=$n:\" @heeler-attach \"$a\"",
             "';' set-option -t \"=$n:\" destroy-unattached off",
             "';' set-option -t \"=$n:\" detach-on-destroy on",
-            "</dev/null 2>/dev/null) && [ -n \"$id\" ]; then",
+            "</dev/null 2>/dev/null) || rc=$?",
         ].joined(separator: " ")
         #expect(createLine == expectedCreate)
 
@@ -65,6 +65,35 @@ struct TmuxAttachScriptTests {
             "';' kill-window -t \"$id:^\"",
         ].joined(separator: " ")
         #expect(attachLine == expectedAttach)
+    }
+
+    /// If `new-session` succeeded and printed a `$<digits>` id, a failure of a
+    /// later command in the setup queue (`rc != 0`) skips the `tmux -C`
+    /// pipeline and still kills `"$id"` — using the id, never the session name.
+    @Test func anySetupFailureAfterNewSessionPrintedAnIdEndsThatIdAndNeverTheName() throws {
+        let lines = try script().split(separator: "\n").map(String.init)
+        let rcIndex = try #require(lines.firstIndex(of: "rc=0"))
+        let createIndex = try #require(lines.firstIndex { $0.hasPrefix("id=$(") && $0.hasSuffix("|| rc=$?") })
+        let caseIndex = try #require(lines.firstIndex(of: "case \"${id#\\$}\" in"))
+        let skipIndex = try #require(lines.firstIndex(of: "\"$id\"|''|*[!0-9]*) ;;"))
+        let matchIndex = try #require(lines.firstIndex(of: "*)"))
+        let ifOkIndex = try #require(lines.firstIndex(of: "if [ \"$rc\" -eq 0 ]; then"))
+        let fiIndex = try #require(lines.firstIndex(of: "fi"))
+        let killIndex = try #require(
+            lines.firstIndex(of: "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :"))
+        let esacIndex = try #require(lines.firstIndex(of: "esac"))
+        #expect(rcIndex < createIndex)
+        #expect(createIndex < caseIndex)
+        #expect(caseIndex + 1 == skipIndex)
+        #expect(skipIndex + 1 == matchIndex)
+        #expect(matchIndex + 1 == ifOkIndex)
+        #expect(ifOkIndex < fiIndex)
+        #expect(fiIndex + 1 == killIndex)
+        #expect(killIndex < esacIndex)
+
+        for afterCreate in lines[(createIndex + 1)...] {
+            #expect(!afterCreate.contains("$n"))
+        }
     }
 
     @Test func killSessionTargetsTheExactAttachSessionName() {

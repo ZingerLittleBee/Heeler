@@ -76,10 +76,10 @@ struct TmuxPaneAttachTests {
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
         let script = try #require(await tmux.controlScripts.first)
-        #expect(script.contains("if id=$(\"$t\" -u -N -S \"$s\" new-session -d -E -s \"$n\" -P -F '#{session_id}'"))
+        #expect(script.contains("id=$(\"$t\" -u -N -S \"$s\" new-session -d -E -s \"$n\" -P -F '#{session_id}'"))
         #expect(script.contains("\"$t\" -u -N -S \"$s\" -C attach-session -t \"$id\""))
         #expect(script.contains("| { cat; cat >/dev/null; }"))
-        #expect(script.contains("\nfi\nexit\n}"))
+        #expect(script.contains("\n;;\nesac\nexit\n}"))
         #expect(script.contains("a='%0'"))
         #expect(script.contains("@heeler-attach \"$a\""))
         #expect(script.contains("link-window -s \"$a\" -t \"$id:\""))

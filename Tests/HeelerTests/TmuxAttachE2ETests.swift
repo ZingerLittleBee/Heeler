@@ -1577,6 +1577,136 @@ extension TmuxTransportE2ETests {
         }
     }
 
+    /// When `new-session` succeeds and prints a `session_id` (`$<digits>`), any
+    /// later failure in the Attach setup — whether a `set-option` in the initial
+    /// command queue before `@heeler-attach` is set, or `link-window` in
+    /// `tmux -C` when the target Pane is gone — ends that created `session_id`
+    /// by id (never by session name) so no unmarked or marked session leaks.
+    @Test("a failed Attach setup ends the session its new-session created by id and never by name")
+    func aFailedAttachSetupEndsOnlyTheSessionItCreated() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, _) = try await followingPane(["new-window", "-d", "-t", "main:"], on: fixture)
+            let storedPaths = try fixture.paths()
+            let home = fixture.configuration.homePath
+            let token = UUID().uuidString.prefix(8)
+            let attachName = "\(TmuxAttachScript.sessionPrefix)setup-fail"
+            let decoyPane = try await fixture.require(
+                fixture.tmuxLine(["new-session", "-d", "-s", "decoy", "-P", "-F", "#{pane_id}", "/bin/cat"]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let decoyID = try await fixture.tmux(nil, "display-message", "-p", "-t", "=decoy:", "#{session_id}")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Stand-in tmux wrapper: when `createWords` runs (`set-option` in argv),
+            // create the real session, leave `@heeler-attach` unset, rename the created
+            // session away from `attachName` (`leaked-unmarked-$$`), rename the user's
+            // `decoy` session onto `attachName`, print the created `session_id`, and exit 1.
+            let wrapper = "\(home)/bin/tmux-fail-setup-\(token)"
+            let createdLog = "\(home)/created-ids-\(token).log"
+            try await fixture.writeProgram(
+                at: wrapper,
+                """
+                #!/bin/sh
+                real_tmux=\(GitProbe.singleQuoted(storedPaths.executable))
+                log_file=\(GitProbe.singleQuoted(createdLog))
+                has_set=0
+                sock=""
+                name=""
+                prev=""
+                for w in "$@"; do
+                    [ "$w" = "set-option" ] && has_set=1
+                    case "$prev" in
+                    -S) [ -z "$sock" ] && sock=$w ;;
+                    -s) [ -z "$name" ] && name=$w ;;
+                    esac
+                    prev=$w
+                done
+                if [ "$has_set" -eq 1 ]; then
+                    cid=$("$real_tmux" -u -N -S "$sock" new-session -d -E -s "$name" -P -F '#{session_id}' sleep 2147483647) || exit $?
+                    "$real_tmux" -u -N -S "$sock" rename-session -t "$cid" "leaked-unmarked-$$"
+                    "$real_tmux" -u -N -S "$sock" rename-session -t "=decoy" "$name"
+                    printf '%s\\n' "$cid" >> "$log_file"
+                    printf '%s\\n' "$cid"
+                    exit 1
+                fi
+                exec "$real_tmux" "$@"
+                """)
+            let wrapperPaths = try #require(TmuxPaths(executable: wrapper, socket: storedPaths.socket))
+
+            // 1. Direct `/bin/sh -s` execution where `createWords` fails after `new-session` printed `$id`.
+            let script = try #require(
+                TmuxAttachScript.script(
+                    paths: wrapperPaths, session: attachName, pane: pane, pauseAfter: TmuxSSHTransport.pauseAfter))
+            let scriptPath = "\(home)/fail-setup-\(token).sh"
+            let marker = "\(home)/fail-setup-ran-\(token)"
+            try await fixture.writeFile(at: scriptPath, script + "touch \(GitProbe.singleQuoted(marker))\n")
+            let run = try await fixture.run("/bin/sh -s < " + GitProbe.singleQuoted(scriptPath))
+            #expect(run.exitStatus == 0)
+            #expect(String(decoding: run.stdout, as: UTF8.self).isEmpty)
+            #expect(try await !fixture.exists(marker))
+            let loggedFirst = try await fixture.require("cat " + GitProbe.singleQuoted(createdLog))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(loggedFirst.hasPrefix("$"))
+            // `leaked-unmarked` (`$cid`) was killed by id, while `decoy` (now named `attachName`) survived!
+            #expect(try await fixture.sessionNames() == [attachName, "main"].sorted())
+            #expect(
+                try await fixture.tmux(nil, "display-message", "-p", "-t", "=\(attachName):", "#{session_id}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == decoyID)
+            #expect(
+                try await fixture.tmux(nil, "list-panes", "-s", "-t", "=\(attachName):", "-F", "#{pane_id}")
+                    == "\(decoyPane)\n")
+
+            // 2. Full `TmuxSSHTransport.attachPane` over SSH against the same partial `createWords` failure.
+            try await fixture.tmux(nil, "rename-session", "-t", "=\(attachName)", "decoy")
+            let failSSH = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: wrapperPaths))
+            let failTransport = TmuxSSHTransport(
+                connection: failSSH, socketName: fixture.socketName, storedPaths: wrapperPaths,
+                nextAttachSession: { attachName }, attachStartLimit: .seconds(5))
+            do {
+                await #expect(throws: (any Error).self) {
+                    _ = try await failTransport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                }
+                try await failTransport.close()
+            } catch {
+                try? await failTransport.close()
+                throw error
+            }
+            let loggedBoth = try await fixture.require("cat " + GitProbe.singleQuoted(createdLog))
+                .split(whereSeparator: \.isNewline)
+            #expect(loggedBoth.count == 2)
+            #expect(try await fixture.sessionNames() == [attachName, "main"].sorted())
+            #expect(
+                try await fixture.tmux(nil, "display-message", "-p", "-t", "=\(attachName):", "#{session_id}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == decoyID)
+
+            // 3. `link-window` failure inside `tmux -C` (`%999` gone), both via `/bin/sh -s </dev/null`
+            // and via `TmuxSSHTransport.attachPane`, ends the created session and leaves nothing behind.
+            let missingPaneScript = try #require(
+                TmuxAttachScript.script(
+                    paths: storedPaths, session: "\(TmuxAttachScript.sessionPrefix)missing-pane",
+                    pane: "%999", pauseAfter: TmuxSSHTransport.pauseAfter))
+            let missingScriptPath = "\(home)/missing-pane-\(token).sh"
+            try await fixture.writeFile(at: missingScriptPath, missingPaneScript)
+            _ = try await fixture.run("/bin/sh -s < " + GitProbe.singleQuoted(missingScriptPath))
+            #expect(try await fixture.sessionNames() == [attachName, "main"].sorted())
+
+            let realSSH = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: storedPaths))
+            let realTransport = TmuxSSHTransport(
+                connection: realSSH, socketName: fixture.socketName, storedPaths: storedPaths,
+                attachStartLimit: .seconds(5))
+            do {
+                await #expect(throws: TransportError.tmuxPaneGone) {
+                    _ = try await realTransport.attachPane("%999", request: try await request(for: "%999", on: fixture))
+                }
+                try await realTransport.close()
+            } catch {
+                try? await realTransport.close()
+                throw error
+            }
+            #expect(try await fixture.sessionNames() == [attachName, "main"].sorted())
+        }
+    }
+
     /// A Host-side `SIGKILL` of an Attach's wrapper shell, feeder and `tmux -C`
     /// together leaves an unattached `@heeler-attach` session while keeping the
     /// server alive; Heeler's next Host connection ends that leftover while
