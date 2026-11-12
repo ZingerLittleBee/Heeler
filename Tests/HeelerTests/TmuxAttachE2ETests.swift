@@ -1466,6 +1466,117 @@ extension TmuxTransportE2ETests {
         }
     }
 
+    /// A partial control-mode line without a trailing newline must never be
+    /// forwarded or executed when the SSH channel drops, whether the line ends
+    /// unquoted, inside single quotes, or inside double quotes, while complete
+    /// lines before it run and `kill-session` still ends the Attach session.
+    @Test("a partial control-mode line in any quote state is never executed when the channel drops")
+    func aPartialControlLineInAnyQuoteStateIsNeverExecuted() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, _) = try await followingPane(["new-window", "-d", "-t", "main:"], on: fixture)
+            let storedPaths = try fixture.paths()
+
+            let partials: [(label: String, line: String)] = [
+                ("single", "set-option -p -t \(pane) @heeler-partial 'single"),
+                ("double", "set-option -p -t \(pane) @heeler-partial \"double"),
+                ("unquoted", "set-option -p -t \(pane) @heeler-partial unquoted"),
+            ]
+            for (label, partialLine) in partials {
+                try await fixture.tmux(nil, "set-option", "-p", "-u", "-t", pane, "@heeler-complete")
+                try await fixture.tmux(nil, "set-option", "-p", "-u", "-t", pane, "@heeler-partial")
+                let token = "\(label)-\(UUID().uuidString.prefix(8).lowercased())"
+                let attachName = "\(TmuxAttachScript.sessionPrefix)\(token)"
+                let script = try #require(
+                    TmuxAttachScript.script(
+                        paths: storedPaths, session: attachName, pane: pane, pauseAfter: TmuxSSHTransport.pauseAfter))
+                let ssh = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: storedPaths))
+                do {
+                    let channel = try await ssh.openTmuxControlClient(Data(script.utf8))
+                    let startup = try await channel.read(maximumBytes: 64 * 1024, timeout: .seconds(5))
+                    #expect(startup?.isEmpty == false, Comment(rawValue: label))
+                    try await fixture.eventually {
+                        try await clients(on: fixture).contains { $0.hasPrefix("\(attachName) 1 ") }
+                    }
+                    let completeLine = "set-option -p -t \(pane) @heeler-complete \(label)\n"
+                    try await channel.write(Data(completeLine.utf8), timeout: .seconds(5))
+                    try await fixture.eventually {
+                        try await fixture.tmux(nil, "display-message", "-p", "-t", pane, "#{@heeler-complete}") == "\(label)\n"
+                    }
+                    #expect(!partialLine.contains("\n"))
+                    try await channel.write(Data(partialLine.utf8), timeout: .seconds(5))
+                    try await Task.sleep(for: .milliseconds(150))
+                    try await ssh.close()
+                } catch {
+                    try? await ssh.close()
+                    throw error
+                }
+                try await serverStillAnswersWithoutAnAttach(on: fixture)
+                let completed = try await fixture.tmux(nil, "display-message", "-p", "-t", pane, "#{@heeler-complete}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let leaked = try await fixture.tmux(nil, "display-message", "-p", "-t", pane, "#{@heeler-partial}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                #expect(completed == label, Comment(rawValue: label))
+                #expect(leaked.isEmpty, Comment(rawValue: label))
+            }
+        }
+    }
+
+    /// If a session with the generated `heeler-attach-*` name already exists,
+    /// `new-session` fails and the Attach script neither starts the feeder nor
+    /// kills or alters that pre-existing session.
+    @Test("a pre-existing session with the generated Attach name survives untouched")
+    func aPreExistingSessionWithTheAttachNameSurvives() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, _) = try await followingPane(["new-window", "-d", "-t", "main:"], on: fixture)
+            let taken = "\(TmuxAttachScript.sessionPrefix)0a1b2c3d"
+            let takenPane = try await fixture.require(
+                fixture.tmuxLine(["new-session", "-d", "-s", taken, "-P", "-F", "#{pane_id}", "/bin/cat"]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let takenID = try await fixture.tmux(nil, "display-message", "-p", "-t", "=\(taken):", "#{session_id}")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let storedPaths = try fixture.paths()
+            let script = try #require(
+                TmuxAttachScript.script(
+                    paths: storedPaths, session: taken, pane: pane, pauseAfter: TmuxSSHTransport.pauseAfter))
+
+            // 1. Direct `/bin/sh -s` execution with trailing input after the script.
+            let scriptPath = "\(fixture.configuration.homePath)/dup-attach.sh"
+            let marker = "\(fixture.configuration.homePath)/dup-ran"
+            try await fixture.writeFile(at: scriptPath, script + "touch \(GitProbe.singleQuoted(marker))\n")
+            let run = try await fixture.run("/bin/sh -s < " + GitProbe.singleQuoted(scriptPath))
+            #expect(run.exitStatus == 0)
+            #expect(String(decoding: run.stdout, as: UTF8.self).isEmpty)
+            #expect(try await !fixture.exists(marker))
+            #expect(try await fixture.sessionNames() == [taken, "main"].sorted())
+            #expect(
+                try await fixture.tmux(nil, "display-message", "-p", "-t", "=\(taken):", "#{session_id} #{@heeler-attach}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == takenID)
+            #expect(try await fixture.tmux(nil, "list-panes", "-s", "-t", "=\(taken):", "-F", "#{pane_id}") == "\(takenPane)\n")
+
+            // 2. Full `TmuxSSHTransport.attachPane` over SSH against the duplicate name.
+            let ssh = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: storedPaths))
+            let transport = TmuxSSHTransport(
+                connection: ssh, socketName: fixture.socketName, storedPaths: storedPaths,
+                nextAttachSession: { taken }, attachStartLimit: .seconds(5))
+            do {
+                await #expect(throws: (any Error).self) {
+                    _ = try await transport.attachPane(pane, request: try await request(for: pane, on: fixture))
+                }
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+            #expect(try await fixture.sessionNames() == [taken, "main"].sorted())
+            #expect(
+                try await fixture.tmux(nil, "display-message", "-p", "-t", "=\(taken):", "#{session_id} #{@heeler-attach}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == takenID)
+            #expect(try await fixture.tmux(nil, "list-panes", "-s", "-t", "=\(taken):", "-F", "#{pane_id}") == "\(takenPane)\n")
+        }
+    }
+
     /// Chat's actions open an unviewed, zero-geometry control client that sets
     /// `ignore-size` and never sends `-C`, then detach immediately. Under
     /// `window-size latest` with another client attached, the window's size is

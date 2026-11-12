@@ -15,42 +15,56 @@ struct TmuxAttachScriptTests {
             TmuxAttachScript.script(paths: paths, session: "heeler-attach-0a1b2c3d", pane: pane, pauseAfter: 10))
     }
 
-    /// One group, so the shell reads the `exit` before it runs the pipeline.
-    /// tmux's input goes through a feeder that sends `kill-session` on channel
-    /// drop, its output is drained until tmux exits, a fallback `kill-session`
-    /// runs after the pipeline, and nothing in the outer shell execs.
+    /// One group, so the shell reads the `exit` before it runs anything.
+    /// `new-session` runs first and must return the created `session_id` before
+    /// the line-only feeder, `tmux -C`, or any `kill-session` runs; stdout is
+    /// drained until tmux exits, and nothing in the outer shell execs.
     @Test func theScriptDrainsStdoutAndExitsInTheGroup() throws {
         let text = try script()
         #expect(text.hasPrefix("{\n"))
         #expect(text.hasSuffix("\n}\n"))
         #expect(!text.contains("\nexec "))
         #expect(!text.contains("&;"))
+        #expect(!text.contains("x\" \\047x"))
         #expect(text.contains("trap '' HUP\n"))
         #expect(text.contains("t='/opt/home brew/bin/tmux'\n"))
         #expect(text.contains("s='/private/tmp/tmux-501/a $b'\n"))
         #expect(text.contains("n='heeler-attach-0a1b2c3d'\n"))
-        #expect(text.contains("k='kill-session -t \"=heeler-attach-0a1b2c3d\"'\n"))
-        #expect(text.contains("sh \"$k\" 3<&0 | {\nIFS= read -r p\n"))
+        #expect(text.contains("a='%12'\n"))
+        #expect(text.contains("while IFS= read -r l; do printf"))
+        #expect(text.contains("kill-session -t"))
+        #expect(text.contains("sh \"$id\" 3<&0 | {\nIFS= read -r p\n"))
         #expect(text.contains("\"$t\" -u -N -S \"$s\" -C "))
         #expect(text.contains("\nkill \"$p\" 2>/dev/null || :\n} | { cat; cat >/dev/null; }\n"))
-        #expect(text.contains("\"$t\" -u -N -S \"$s\" kill-session -t \"=$n\" >/dev/null 2>&1 || :\nexit\n}"))
+        #expect(
+            text.contains(
+                "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :\nfi\nexit\n}"))
     }
 
-    /// The commands the client starts with, one block each: a failed one stops
-    /// the rest, `destroy-unattached` stays off while `detach-on-destroy` stays
-    /// on, and the placeholder window closes once the Pane's window is linked.
+    /// `new-session -d` creates the session, prints `#{session_id}`, and sets
+    /// `@heeler-attach`, `destroy-unattached off` and `detach-on-destroy on` in
+    /// one command queue before `tmux -C` attaches to `"$id"`, links the Pane's
+    /// window and closes the placeholder.
     @Test func theClientStartsTheSessionMarksItAndLinksThePanesWindow() throws {
-        let line = try #require(try script().split(separator: "\n").first { $0.contains(" -C ") })
-        let expected: [String] = [
-            "\"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-0a1b2c3d -f 'pause-after=10'",
-            "sleep 2147483647",
-            "';' set-option -t '=heeler-attach-0a1b2c3d:' @heeler-attach '%12'",
-            "';' set-option -t '=heeler-attach-0a1b2c3d:' destroy-unattached off",
-            "';' set-option -t '=heeler-attach-0a1b2c3d:' detach-on-destroy on",
-            "';' link-window -s '%12' -t '=heeler-attach-0a1b2c3d:'",
-            "';' kill-window -t '=heeler-attach-0a1b2c3d:^'",
-        ]
-        #expect(String(line) == expected.joined(separator: " "))
+        let lines = try script().split(separator: "\n").map(String.init)
+        let createLine = try #require(lines.first { $0.hasPrefix("if id=") })
+        let expectedCreate = [
+            "if id=$(\"$t\" -u -N -S \"$s\"",
+            "new-session -d -E -s \"$n\" -P -F '#{session_id}' sleep 2147483647",
+            "';' set-option -t \"=$n:\" @heeler-attach \"$a\"",
+            "';' set-option -t \"=$n:\" destroy-unattached off",
+            "';' set-option -t \"=$n:\" detach-on-destroy on",
+            "</dev/null 2>/dev/null) && [ -n \"$id\" ]; then",
+        ].joined(separator: " ")
+        #expect(createLine == expectedCreate)
+
+        let attachLine = try #require(lines.first { $0.contains(" -C ") })
+        let expectedAttach = [
+            "\"$t\" -u -N -S \"$s\" -C attach-session -t \"$id\" -f 'pause-after=10'",
+            "';' link-window -s \"$a\" -t \"$id:\"",
+            "';' kill-window -t \"$id:^\"",
+        ].joined(separator: " ")
+        #expect(attachLine == expectedAttach)
     }
 
     @Test func killSessionTargetsTheExactAttachSessionName() {

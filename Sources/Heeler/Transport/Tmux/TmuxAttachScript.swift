@@ -1,12 +1,14 @@
 import Foundation
 
 /// How an Attach starts on a tmux Host (ADR 0043). One exec runs a script for
-/// `/bin/sh -s` that starts a control-mode client with commands to start with:
-/// a session of Heeler's own around a placeholder window, marked
-/// `@heeler-attach`, with `destroy-unattached off` and `detach-on-destroy on`,
-/// holding a link to the Pane's window, with the placeholder closed. tmux runs
-/// them in order and stops at the first that fails. The client never starts a
-/// server (`-N`).
+/// `/bin/sh -s` that first creates a detached session of Heeler's own around a
+/// placeholder window, prints its `#{session_id}`, and sets `@heeler-attach`,
+/// `destroy-unattached off` and `detach-on-destroy on` in the same command
+/// queue, then attaches a control-mode client to that `session_id`, links the
+/// Pane's window and closes the placeholder. tmux stops a command queue at the
+/// first command that fails and never starts a server (`-N`); if `new-session`
+/// fails (for example because a session of that name already exists), the
+/// script neither starts the feeder nor kills anything.
 ///
 /// Leaving `destroy-unattached` on lets `server_check_unattached` destroy the
 /// session (`s->curw = NULL`) as soon as `CLIENT_EXIT` marks `s->attached == 0`
@@ -15,18 +17,20 @@ import Foundation
 /// stdin EOF or `detach-client` while `c->session != NULL` and output blocks
 /// are queued aborts the server in `control_append_data` when the pane writes
 /// again. Instead, polite close and abrupt SSH stdin EOF both end the session
-/// with `kill-session -t "=<session>"`, whose `server_destroy_session` clears
-/// `c->session` before setting `CLIENT_EXIT` and before destroying `s`, while
+/// with `kill-session`, whose `server_destroy_session` clears `c->session`
+/// before setting `CLIENT_EXIT` and before destroying `s`, while
 /// `detach-on-destroy on` keeps window exit from switching the client onto a
 /// user session.
 ///
-/// tmux's standard input comes through a feeder that forwards the channel and,
-/// if the channel drops, cancels any partial line and writes `kill-session`
-/// before closing tmux's input; when tmux exits first, the pipeline terminates
-/// that feeder at once. tmux's standard output goes through a drain that keeps
-/// reading until tmux exits, a fallback `kill-session` cleans up any session
-/// started before stdin ran, and the shell exits in the same group so nothing
-/// written later can run as a shell command.
+/// Once `new-session` has returned the created `session_id`, tmux's standard
+/// input comes through a line-only feeder (`IFS= read -r`) that forwards only
+/// newline-terminated lines, drops any trailing partial line whatever its quote
+/// state, and writes `kill-session -t '<session_id>'` on EOF before closing
+/// tmux's input; when tmux exits first, the pipeline terminates that feeder at
+/// once. tmux's standard output goes through a drain that keeps reading until
+/// tmux exits, a fallback `kill-session -t "$id"` cleans up that same created
+/// session if tmux exited before reading stdin, and the shell exits in the same
+/// group so nothing written later can run as a shell command.
 ///
 /// The client's first reply to a command it wrote answers the barrier, after
 /// every block of the start: it says whether the session came out as meant,
@@ -58,46 +62,47 @@ enum TmuxAttachScript {
     /// Nil for anything but a pane id.
     static func script(paths: TmuxPaths, session: String, pane: String, pauseAfter: Int) -> String? {
         guard isPaneID(pane) else { return nil }
-        let target = "=\(session):"
-        let commands: [[String]] = [
-            ["new-session", "-E", "-s", session, "-f", "pause-after=\(pauseAfter)", "sleep", "2147483647"],
-            ["set-option", "-t", target, "@heeler-attach", pane],
-            ["set-option", "-t", target, "destroy-unattached", "off"],
-            ["set-option", "-t", target, "detach-on-destroy", "on"],
-            ["link-window", "-s", pane, "-t", target],
-            ["kill-window", "-t", "\(target)^"],
-        ]
-        let words = commands.map { $0.map(shellWord).joined(separator: " ") }.joined(separator: " ';' ")
-        let killLine = killSession(session: session).line
+        let createWords = [
+            "new-session -d -E -s \"$n\" -P -F '#{session_id}' sleep 2147483647",
+            "set-option -t \"=$n:\" @heeler-attach \"$a\"",
+            "set-option -t \"=$n:\" destroy-unattached off",
+            "set-option -t \"=$n:\" detach-on-destroy on",
+        ].joined(separator: " ';' ")
+        let attachWords = [
+            "attach-session -t \"$id\" -f \(shellWord("pause-after=\(pauseAfter)"))",
+            "link-window -s \"$a\" -t \"$id:\"",
+            "kill-window -t \"$id:^\"",
+        ].joined(separator: " ';' ")
         let feeder = [
             "trap 'kill \"$!\" 2>/dev/null || :; exit 0' TERM;",
             "echo \"$$\";",
-            "cat <&3 3<&- &",
+            "(LC_ALL=C; while IFS= read -r l; do printf '%s\\n' \"$l\" || exit 0; done) <&3 3<&- &",
             "exec 3<&-;",
             "wait \"$!\" 2>/dev/null || :;",
             "trap \"\" PIPE;",
-            "printf 'x\" \\047x\\n%s\\n' \"$1\" 2>/dev/null || :;",
+            "printf \"kill-session -t '%s'\\n\" \"$1\" 2>/dev/null || :;",
             "sleep 2 &",
             "wait \"$!\" 2>/dev/null || :",
         ].joined(separator: " ")
-        // On channel drop, the feeder breaks any partial control-mode line with
-        // an unclosed quote and sends `kill-session` while holding the pipe open
-        // until tmux exits; on normal exit, `kill "$p"` ends the feeder at once.
-        // The second cat keeps reading after the channel stops so tmux finishes
-        // writing, and `exit` is already parsed with the group.
+        // Only complete `\n`-terminated lines reach `tmux -C`; on channel drop,
+        // any trailing partial line is discarded by `read` and `kill-session`
+        // ends only `$id`, the session created above. If `new-session` fails,
+        // neither the feeder nor any `kill-session` runs.
         return [
             "{",
             "trap '' HUP",
             "t=\(quoted(paths.executable))",
             "s=\(quoted(paths.socket))",
             "n=\(quoted(session))",
-            "k=\(quoted(killLine))",
-            "sh -c \(quoted(feeder)) sh \"$k\" 3<&0 | {",
+            "a=\(quoted(pane))",
+            "if id=$(\"$t\" -u -N -S \"$s\" \(createWords) </dev/null 2>/dev/null) && [ -n \"$id\" ]; then",
+            "sh -c \(quoted(feeder)) sh \"$id\" 3<&0 | {",
             "IFS= read -r p",
-            "\"$t\" -u -N -S \"$s\" -C \(words)",
+            "\"$t\" -u -N -S \"$s\" -C \(attachWords)",
             "kill \"$p\" 2>/dev/null || :",
             "} | { cat; cat >/dev/null; }",
-            "\"$t\" -u -N -S \"$s\" kill-session -t \"=$n\" >/dev/null 2>&1 || :",
+            "\"$t\" -u -N -S \"$s\" kill-session -t \"$id\" </dev/null >/dev/null 2>&1 || :",
+            "fi",
             "exit",
             "}",
             "",

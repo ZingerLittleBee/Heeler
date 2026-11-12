@@ -118,6 +118,7 @@ actor TmuxSSHTransport: TmuxTransport {
     private nonisolated let connection: any TmuxHostConnection
     private let socketName: String
     private let nonce: @Sendable () -> String
+    private let nextAttachSession: @Sendable () -> String
     private let loopSilenceLimit: Duration
     private let attachStartLimit: Duration
     /// The paths every command runs with: the Host's stored ones, until the
@@ -139,6 +140,9 @@ actor TmuxSSHTransport: TmuxTransport {
         socketName: String,
         storedPaths: TmuxPaths?,
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
+        nextAttachSession: @escaping @Sendable () -> String = {
+            TmuxAttachScript.sessionPrefix + String(format: "%08x", UInt32.random(in: .min ... .max))
+        },
         loopSilenceLimit: Duration = TmuxInventoryLoop.silenceLimit,
         attachStartLimit: Duration = .seconds(15)
     ) {
@@ -146,6 +150,7 @@ actor TmuxSSHTransport: TmuxTransport {
         self.connection = connection
         self.socketName = TmuxSocketName.normalized(socketName)
         self.nonce = nonce
+        self.nextAttachSession = nextAttachSession
         self.loopSilenceLimit = loopSilenceLimit
         self.attachStartLimit = attachStartLimit
         // Paths resolved for another socket name say nothing of this one.
@@ -317,7 +322,7 @@ actor TmuxSSHTransport: TmuxTransport {
     func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {
         try requireOpen()
         guard let paths else { throw TransportError.tmuxServerNotRunning(socketName: socketName) }
-        let session = TmuxAttachScript.sessionPrefix + String(format: "%08x", UInt32.random(in: .min ... .max))
+        let session = nextAttachSession()
         guard
             let script = TmuxAttachScript.script(
                 paths: paths, session: session, pane: pane, pauseAfter: Self.pauseAfter)

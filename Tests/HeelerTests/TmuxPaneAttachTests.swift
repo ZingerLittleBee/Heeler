@@ -76,15 +76,38 @@ struct TmuxPaneAttachTests {
         let session = try await attach(on: tmux)
         defer { Task { await session.end() } }
         let script = try #require(await tmux.controlScripts.first)
-        #expect(script.contains("\"$t\" -u -N -S \"$s\" -C new-session -E -s heeler-attach-"))
+        #expect(script.contains("if id=$(\"$t\" -u -N -S \"$s\" new-session -d -E -s \"$n\" -P -F '#{session_id}'"))
+        #expect(script.contains("\"$t\" -u -N -S \"$s\" -C attach-session -t \"$id\""))
         #expect(script.contains("| { cat; cat >/dev/null; }"))
-        #expect(script.contains("\nexit\n}"))
-        #expect(script.contains("@heeler-attach '%0'"))
-        #expect(script.contains("link-window -s '%0'"))
+        #expect(script.contains("\nfi\nexit\n}"))
+        #expect(script.contains("a='%0'"))
+        #expect(script.contains("@heeler-attach \"$a\""))
+        #expect(script.contains("link-window -s \"$a\" -t \"$id:\""))
         #expect(await tmux.openControlClients == 1)
         let first = try #require(await commands(on: tmux).first)
         #expect(first.prefix(3) == ["list-panes", "-s", "-t"])
         #expect(first.dropFirst(3).first?.hasPrefix("=heeler-attach-") == true)
+    }
+
+    @Test func aPreExistingSessionWithTheAttachNameSurvivesUntouched() async throws {
+        let tmux = await host()
+        let collision = "\(TmuxAttachScript.sessionPrefix)0a1b2c3d"
+        await tmux.setPanes([
+            .make(pane: 0, command: "claude", height: 4),
+            .make(session: 2, sessionName: collision, window: 3, pane: 3, command: "zsh", height: 4),
+        ])
+        let transport = await tmux.transport(
+            socketName: "default", storedPaths: ScriptedTmuxHost.paths(),
+            nextAttachSession: { collision })
+        await #expect(throws: (any Error).self) {
+            try await transport.attachPane("%0", request: request)
+        }
+        #expect(await tmux.openControlClients == 0)
+        #expect(await commands(on: tmux).isEmpty)
+        let listed = try await transport.inventory()
+        var iterator = listed.makeAsyncIterator()
+        let first = try #require(try await iterator.next())
+        #expect(first.panes.contains { $0.sessionName == collision && $0.paneID == "%3" && !$0.isInHeelerSession })
     }
 
     /// What was typed is written, then `kill-session` for this Attach's own

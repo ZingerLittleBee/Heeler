@@ -761,11 +761,20 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
         let socket = Self.assigned("s", in: body)
         let words = Self.controlClientLine(in: body)?.split(separator: " ").map(String.init) ?? []
-        let sessionName = words.firstIndex(of: "-s").map { words[$0 + 1] } ?? ""
-        let paneID = words.firstIndex(of: "@heeler-attach").map { words[$0 + 1].replacingOccurrences(of: "'", with: "") } ?? ""
-        // With `-N` and no server, tmux says so on standard error and exits.
+        let assignedSession = Self.assigned("n", in: body)
+        let sessionName =
+            !assignedSession.isEmpty ? assignedSession : (words.firstIndex(of: "-s").map { words[$0 + 1] } ?? "")
+        let assignedPane = Self.assigned("a", in: body)
+        let paneID =
+            !assignedPane.isEmpty
+            ? assignedPane
+            : (words.firstIndex(of: "@heeler-attach").map { words[$0 + 1].replacingOccurrences(of: "'", with: "") } ?? "")
+        // With `-N` and no server, or a duplicate session name, `new-session`
+        // fails before the feeder or `tmux -C` runs.
         let executable = Self.assigned("t", in: body)
-        guard servers[socket] != nil, executables[executable] != nil else {
+        guard servers[socket] != nil, executables[executable] != nil,
+            !sessionName.isEmpty, !(panes[socket] ?? []).contains(where: { $0.sessionName == sessionName })
+        else {
             await channel.finish()
             return channel
         }
@@ -776,14 +785,15 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             dial: dial, executable: executable, socket: socket, channel: channel, sessionName: sessionName,
             sessionID: sessionID,
             pane: pane ?? .make(pane: Int(paneID.dropFirst()) ?? 0, command: "sleep"), window: pane?.windowID)
-        // One block for each start command, up to the first that fails.
-        var start = (0..<4).map { _ in block([], fromClient: false) }
+        // One block for each `-C` start command (`attach-session`, `link-window`,
+        // `kill-window`), up to the first that fails.
+        var start = [block([], fromClient: false)]
         if pane != nil {
             start += [block([], fromClient: false), block([], fromClient: false)]
         } else {
             start.append(block(["can't find pane: \(paneID)"], succeeded: false, fromClient: false))
         }
-        start.append("%sessions-changed\n%session-changed \(sessionID) \(sessionName)\n")
+        start.append("%session-changed \(sessionID) \(sessionName)\n")
         await channel.send(Data(start.joined().utf8))
         if let hook = onNextControlClientStart {
             onNextControlClientStart = nil
@@ -1268,13 +1278,18 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// A new connection to the Host, which closes apart from any other. A
     /// loop silent for `loopSilenceLimit` is lost, as the app's is after its own.
     func transport(
-        socketName: String, storedPaths: TmuxPaths?, loopSilenceLimit: Duration = .seconds(30),
+        socketName: String, storedPaths: TmuxPaths?,
+        nextAttachSession: @escaping @Sendable () -> String = {
+            TmuxAttachScript.sessionPrefix + String(format: "%08x", UInt32.random(in: .min ... .max))
+        },
+        loopSilenceLimit: Duration = .seconds(30),
         attachStartLimit: Duration = .seconds(5)
     ) -> TmuxSSHTransport {
         nextDial += 1
         return TmuxSSHTransport(
             connection: Dial(host: self, id: nextDial), socketName: socketName, storedPaths: storedPaths,
-            nonce: { Self.nonce }, loopSilenceLimit: loopSilenceLimit, attachStartLimit: attachStartLimit)
+            nonce: { Self.nonce }, nextAttachSession: nextAttachSession,
+            loopSilenceLimit: loopSilenceLimit, attachStartLimit: attachStartLimit)
     }
 
     private var nextDial: UInt64 = 0
