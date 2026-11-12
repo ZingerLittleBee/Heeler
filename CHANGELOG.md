@@ -63,6 +63,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Scroll the Agents list, and read or type in a Chat, without stutter while Agents change status or a Chat streams. Each status change had rebuilt the whole Console, every row of the list and the open Chat with it. Now only the rows that change are rebuilt, and an open Chat is left alone by other Agents' changes. (PR #715)
+- Open a long Chat with less of a pause. It built about twenty messages, most of them long answers above the screen, where it now builds the few that show. (PR #715)
+- Pull down in Chat for earlier messages and have the list bounce back when you let go, rather than snap to the top. Earlier messages that arrive while you still hold the pull no longer move what is under your finger, and arrive with a shorter pause. (PR #715)
+- Keep a Host connected when a command, a file read or a terminal's exit is cut short as it finishes. Heeler could then send one message more for a channel the server had already closed, and OpenSSH dropped the connection, which showed as a reconnect. (PR #715)
 - Draw the paste button in a Shell Terminal's input row and in Direct Input's keys in the terminal theme's light or dark. With a dark theme and the system in light mode, it showed as a white circle. (#703)
 - List an Agent typed into a PowerShell terminal on a Windows herdr-core Host in Agents while it runs, and return it to Terminals when its exit puts PowerShell's path back in the title. Because PowerShell stays the terminal's foreground process on Windows, an Agent started at the prompt had stayed in Terminals. (PR #678)
 - Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (PR #684)
