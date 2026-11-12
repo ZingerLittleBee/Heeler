@@ -1307,4 +1307,171 @@ extension TmuxTransportE2ETests {
             #expect(try await !fixture.exists(marker))
         }
     }
+
+    /// Chat's actions open an unviewed, zero-geometry control client that sets
+    /// `ignore-size` and never sends `-C`, then detach immediately. Under
+    /// `window-size latest` with another client attached, the window's size is
+    /// unchanged throughout and no `heeler-attach` session remains afterwards.
+    @Test("Chat's actions leave a window's size unchanged under window-size latest and close their Attach")
+    func chatActionsLeaveWindowSizeUnchangedAndCloseTheirAttach() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            try await fixture.tmux(nil, "set-option", "-gw", "window-size", "latest")
+            let desktop = try await attachDesktopClient(
+                to: "main", windowColumns: 112, windowRows: 34, on: fixture)
+            do {
+                try await fixture.eventually {
+                    try await windowDimensions("main:0", on: fixture) == "112x34"
+                }
+                let home = fixture.configuration.homePath
+                let program = "\(home)/bin/claude.py"
+                try await fixture.writeProgram(
+                    at: program,
+                    """
+                    #!/usr/bin/python3
+                    import os, sys, tty
+                    capture_path, ready_path = sys.argv[1:3]
+                    tty.setraw(0)
+                    rule = "─" * 112
+                    prompt = (
+                        "\\x1b[?2004h\\x1b[1;36mClaude Code\\x1b[0m\\r\\n"
+                        + rule + "\\r\\n❯\\u00a0\\x1b[7m \\x1b[0m\\r\\n" + rule + "\\r\\n"
+                    )
+                    os.write(1, prompt.encode("utf-8"))
+                    with open(capture_path, "wb"):
+                        pass
+                    with open(ready_path, "w") as handle:
+                        handle.write("ready\\n")
+                    with open(capture_path, "ab", buffering=0) as sink:
+                        while True:
+                            chunk = os.read(0, 65536)
+                            if not chunk:
+                                break
+                            sink.write(chunk)
+                    """)
+                let token = UUID().uuidString.prefix(8)
+                let captureFile = "\(home)/chat-\(token).bin"
+                let readyFile = "\(home)/chat-\(token).ready"
+                let pane = try await fixture.require(
+                    fixture.tmuxLine([
+                        "new-window", "-t", "main:", "-P", "-F", "#{pane_id}",
+                        "/usr/bin/python3", program, captureFile, readyFile,
+                    ]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                #expect(TmuxAttachScript.isPaneID(pane))
+                try await fixture.tmux(
+                    nil, "set-option", "-p", "-t", pane, "@heeler-status",
+                    "state=idle:app=claude-code:turn=1:blocked=0")
+                try await fixture.eventually { try await fixture.exists(readyFile) }
+                try await waitUntilShown("❯", in: pane, on: fixture)
+                #expect(try await windowDimensions(pane, on: fixture) == "112x34")
+
+                try await exerciseChatActions(pane, captureFile: captureFile, on: fixture)
+
+                await desktop.stop()
+            } catch {
+                await desktop.stop()
+                throw error
+            }
+        }
+    }
+
+    @MainActor
+    private func exerciseChatActions(
+        _ pane: String, captureFile: String, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-chat-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+
+        do {
+            try await fixture.eventually {
+                let hasAgent = await store.agents.contains { $0.agent.paneID == pane }
+                let offersChat = await store.capabilities(for: host.id).offersChat(for: .claude)
+                return hasAgent && offersChat
+            }
+            let row = try #require(store.agents.first { $0.agent.paneID == pane })
+            #expect(row.agent.kind == "claude")
+            let session = store.composerSession(for: row)
+            session.composer.open()
+
+            // 1. Screen read uses capture-pane -e -p without opening an Attach or resizing.
+            let screen = try await store.readAgentScreen(pane, on: host.id, keepingTo: session.corePin)
+            #expect(InputBoxStateDetector.detect(screen, program: .claude).isSendable)
+            #expect(screen.rows.contains { $0.runs.contains { $0.style != .plain } })
+            #expect(try await attachSessions(on: fixture).isEmpty)
+            #expect(try await windowDimensions(pane, on: fixture) == "112x34")
+
+            // 2. Chat Send opens a size-less Attach, pastes and submits, detaches, and leaves size 112x34.
+            let hostID = host.id
+            let corePin = session.corePin
+            let policy = ComposerDeliveryPolicy.chat(
+                rules: ChatSendRules(
+                    program: .claude,
+                    commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .claude)),
+                activity: { .idle },
+                readScreen: { try await store.readAgentScreen(pane, on: hostID, keepingTo: corePin) },
+                pause: { _ in })
+            session.composer.replaceDraft(with: "chat send")
+            #expect(await session.composer.send(policy: policy) == .submittedViaAttach)
+            let expectedSend = Data("\u{1B}[200~chat send \u{1B}[201~\r".utf8)
+            try await fixture.eventually {
+                try await Self.captureSummary(of: captureFile, from: 0, on: fixture)?.length == expectedSend.count
+            }
+            #expect(try await fixture.tmux(nil, "list-buffers", "-F", "#{buffer_name}").isEmpty)
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            #expect(try await windowDimensions(pane, on: fixture) == "112x34")
+
+            // 3. Tools-keyboard press opens a size-less Attach, sends the key, detaches, and leaves size 112x34.
+            try await store.sendAgentKeys(["down"], to: pane, on: hostID, keepingTo: corePin)
+            let expectedAfterDown = expectedSend + Data("\u{1B}[B".utf8)
+            try await fixture.eventually {
+                try await Self.captureSummary(of: captureFile, from: 0, on: fixture)?.length == expectedAfterDown.count
+            }
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            #expect(try await windowDimensions(pane, on: fixture) == "112x34")
+
+            // 4. Chat Stop opens a size-less Attach, sends Escape, writes idle, detaches, and leaves size 112x34.
+            try await fixture.tmux(
+                nil, "set-option", "-p", "-t", pane, "@heeler-status",
+                "state=working:app=claude-code:turn=2:blocked=0")
+            try await fixture.eventually {
+                await store.agents.first { $0.agent.paneID == pane }?.agent.status == .working
+            }
+            let agentKeys = ChatAgentKeysStore { keys in
+                try await store.sendAgentKeys(keys, to: pane, on: hostID, keepingTo: corePin)
+            }
+            let interrupt = store.chatInterrupt(
+                for: row,
+                program: .claude,
+                keepingTo: corePin,
+                context: {
+                    let screen = try await store.readAgentScreen(pane, on: hostID, keepingTo: corePin)
+                    return ChatStopContext(screen: screen, activity: .working)
+                },
+                agentKeys: agentKeys)
+            #expect(await interrupt.perform() == .sent)
+            let expectedAfterStop = expectedAfterDown + Data([0x1B])
+            try await fixture.eventually {
+                try await Self.captureSummary(of: captureFile, from: 0, on: fixture)?.length == expectedAfterStop.count
+            }
+            let allHex = try await fixture.require(
+                "od -An -tx1 -v \(GitProbe.singleQuoted(captureFile)) | tr -d ' \\n'")
+            #expect(allHex == Self.hex(expectedAfterStop))
+            let statusAfterStop = try await fixture.tmux(
+                nil, "display-message", "-p", "-t", pane, "#{@heeler-status}"
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(statusAfterStop == "state=idle:app=claude-code:turn=2:blocked=0")
+            try await fixture.eventually { try await attachSessions(on: fixture).isEmpty }
+            #expect(try await windowDimensions(pane, on: fixture) == "112x34")
+
+            store.setHosts([])
+        } catch {
+            store.setHosts([])
+            throw error
+        }
+    }
 }
