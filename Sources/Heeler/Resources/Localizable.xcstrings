@@ -26765,6 +26765,28 @@
         }
       }
     },
+    "Hide Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏密碼"
+          }
+        }
+      }
+    },
     "Hide Sidebar" : {
       "localizations" : {
         "ja" : {
@@ -46768,6 +46790,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示預估 API 費用"
+          }
+        }
+      }
+    },
+    "Show Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示密碼"
           }
         }
       }

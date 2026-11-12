@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Which password prompt a Shell Terminal offers to fill, from what its
 /// viewport shows.
@@ -108,7 +109,7 @@ struct ShellTerminalPasswordSheet: View {
     let onCancel: () -> Void
 
     @State private var password = ""
-    @FocusState private var isFieldFocused: Bool
+    @State private var isRevealed = false
     /// Just tall enough for the field and its notes, so the terminal's
     /// prompt stays in sight above the sheet and the keyboard. Larger text
     /// scrolls the form.
@@ -118,11 +119,11 @@ struct ShellTerminalPasswordSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Password", text: $password)
-                        .textContentType(.password)
-                        .submitLabel(.done)
-                        .focused($isFieldFocused)
-                        .onSubmit(insert)
+                    HStack(spacing: 8) {
+                        ShellTerminalPasswordField(
+                            text: $password, isRevealed: isRevealed, onSubmit: insert)
+                        revealButton
+                    }
                 } header: {
                     if let prompt {
                         Text(verbatim: prompt.line)
@@ -148,7 +149,21 @@ struct ShellTerminalPasswordSheet: View {
             }
         }
         .presentationDetents([.height(sheetHeight)])
-        .onAppear { isFieldFocused = true }
+    }
+
+    private var revealButton: some View {
+        Button {
+            isRevealed.toggle()
+        } label: {
+            Image(systemName: isRevealed ? "eye.slash" : "eye")
+                .foregroundStyle(Color.secondary)
+                .frame(width: 32, height: 32)
+                .contentShape(.rect)
+        }
+        // Borderless, or the whole row would be the button.
+        .buttonStyle(.borderless)
+        .accessibilityLabel(
+            isRevealed ? String(localized: "Hide Password") : String(localized: "Show Password"))
     }
 
     private var footer: String {
@@ -162,5 +177,95 @@ struct ShellTerminalPasswordSheet: View {
     private func insert() {
         guard !password.isEmpty, canInsert else { return }
         if onInsert(password) { password = "" }
+    }
+}
+
+/// The sheet's password field. One UIKit text field rather than SwiftUI's
+/// `SecureField` and `TextField`, so showing the password keeps the same
+/// field, keyboard and AutoFill bar, and nothing rewrites what is typed
+/// while it shows: SwiftUI's `TextField` turned `"`, `--` and `'` into
+/// smart quotes and a dash, which changes the password.
+struct ShellTerminalPasswordField: UIViewRepresentable {
+    @Binding var text: String
+    let isRevealed: Bool
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> ShellTerminalPasswordTextField {
+        let field = ShellTerminalPasswordTextField()
+        field.placeholder = String(localized: "Password")
+        field.textContentType = .password
+        field.isSecureTextEntry = !isRevealed
+        field.autocapitalizationType = .none
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.smartQuotesType = .no
+        field.smartDashesType = .no
+        field.smartInsertDeleteType = .no
+        field.returnKeyType = .done
+        field.font = .preferredFont(forTextStyle: .body)
+        field.adjustsFontForContentSizeCategory = true
+        field.delegate = context.coordinator
+        field.addTarget(
+            context.coordinator, action: #selector(Coordinator.textDidChange(_:)),
+            for: .editingChanged)
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateUIView(_ field: ShellTerminalPasswordTextField, context: Context) {
+        context.coordinator.parent = self
+        if field.text != text { field.text = text }
+        if field.isSecureTextEntry == isRevealed { field.setSecure(!isRevealed) }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize, uiView: ShellTerminalPasswordTextField, context: Context
+    ) -> CGSize? {
+        CGSize(
+            width: proposal.width ?? uiView.intrinsicContentSize.width,
+            height: uiView.intrinsicContentSize.height)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: ShellTerminalPasswordField
+
+        init(_ parent: ShellTerminalPasswordField) {
+            self.parent = parent
+        }
+
+        @objc func textDidChange(_ field: UITextField) {
+            parent.text = field.text ?? ""
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.onSubmit()
+            return false
+        }
+    }
+}
+
+final class ShellTerminalPasswordTextField: UITextField {
+    private var hasTakenFocus = false
+
+    /// Takes the keyboard as the sheet presents, once.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, !hasTakenFocus else { return }
+        hasTakenFocus = true
+        becomeFirstResponder()
+    }
+
+    /// Hiding the text again while editing would make the next keystroke
+    /// replace all of it, as a secure field does when editing begins. Typing
+    /// the text back in counts as that keystroke, so the next one appends.
+    func setSecure(_ secure: Bool) {
+        isSecureTextEntry = secure
+        guard secure, isFirstResponder, let text, !text.isEmpty else { return }
+        self.text = ""
+        insertText(text)
     }
 }
