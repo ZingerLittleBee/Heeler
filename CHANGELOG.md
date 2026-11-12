@@ -38,6 +38,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
 - Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
 - Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list. (PR #661)
@@ -62,6 +63,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Draw the paste button in a Shell Terminal's input row and in Direct Input's keys in the terminal theme's light or dark. With a dark theme and the system in light mode, it showed as a white circle. (#703)
 - List an Agent typed into a PowerShell terminal on a Windows herdr-core Host in Agents while it runs, and return it to Terminals when its exit puts PowerShell's path back in the title. Because PowerShell stays the terminal's foreground process on Windows, an Agent started at the prompt had stayed in Terminals. (PR #678)
 - Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (PR #684)
 - Start a New Agent, New Terminal or Template in a Herdr desktop space on a herdr-core Host where the space's shell is now, as the desktop app does, rather than in the folder the space was made in. A space made while another was shown had started them in that other space's folder, and a new Worktree had come from that folder's repository. (PR #677)

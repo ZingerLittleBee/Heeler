@@ -78,6 +78,9 @@ enum InputChromeLayout {
     static let pasteControlSide: CGFloat = 34
     /// Visual width after scaling the paste control down to the key-cap size.
     static let pasteVisualWidth: CGFloat = 30
+    /// The Shell Terminal input row's paste control after scaling, so its
+    /// glyph matches the row's 12-point symbols.
+    static let shellPasteVisualSide: CGFloat = 26
     static let pinnedFadeWidth: CGFloat = 8
 
     /// Caps Agent and Skills keyboard wells and centers them in wider windows.

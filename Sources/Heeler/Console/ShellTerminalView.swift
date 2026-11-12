@@ -903,16 +903,9 @@ struct ShellTerminalInputRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Painting the fill with the row's own background leaves the
-            // glyph reading as a bare icon, like the row's other buttons.
             HStack(spacing: 0) {
-                PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
-                    .id(colorScheme)
-                    .accessibilityHint("Pastes the clipboard into the terminal")
-                    .frame(
-                        width: InputChromeLayout.shellAccessoryButtonWidth,
-                        height: InputChromeLayout.shortcutRowHeight)
                 more
+                pasteButton
             }
             .frame(width: Self.sideWidth, alignment: .leading)
 
@@ -948,6 +941,25 @@ struct ShellTerminalInputRow: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    /// A system paste control, so a tap needs no Allow Paste prompt. It
+    /// disables itself below 34 points, and its glyph grows with its size,
+    /// so it is laid out at 34 points and scaled down to the row's glyphs.
+    /// Painted in the row's own background, it reads as a bare glyph like
+    /// the row's other buttons.
+    private var pasteButton: some View {
+        PinnedPasteControl(backgroundColor: .secondarySystemBackground, paste: paste)
+            .id(colorScheme)
+            .frame(
+                width: InputChromeLayout.pasteControlSide,
+                height: InputChromeLayout.pasteControlSide)
+            .scaleEffect(
+                InputChromeLayout.shellPasteVisualSide / InputChromeLayout.pasteControlSide)
+            .frame(
+                width: InputChromeLayout.shellAccessoryButtonWidth,
+                height: InputChromeLayout.shortcutRowHeight)
+            .accessibilityHint("Pastes the clipboard into the terminal")
     }
 
     /// Shows or hides the shortcut row with Agent detail's Direct Input

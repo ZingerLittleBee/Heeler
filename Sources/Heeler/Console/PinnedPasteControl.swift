@@ -9,8 +9,11 @@ import UIKit
 /// changes. Its colors are set here too: `PasteButton`'s glyph is always
 /// white, and in light mode iOS darkens a light tint behind it.
 ///
-/// The control resolves its colors once, when it is created, so callers
-/// rebuild it when the color scheme changes.
+/// The control draws dynamic colors in the system's appearance, not in the
+/// window's override that draws Heeler in its terminal theme's (see
+/// `SceneAppearance`), so a dark theme under a light system got a light
+/// capsule. Its colors are resolved here, once, against SwiftUI's color
+/// scheme, and callers rebuild it when that changes.
 struct PinnedPasteControl: UIViewRepresentable {
     /// Painted opaque by the control behind its glyph.
     let backgroundColor: UIColor
@@ -41,8 +44,12 @@ struct PinnedPasteControl: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PinnedPasteView {
-        PinnedPasteView(
-            backgroundColor: backgroundColor, cornerRadius: cornerRadius, paste: paste)
+        let traits = UITraitCollection(
+            userInterfaceStyle: context.environment.colorScheme == .dark ? .dark : .light)
+        return PinnedPasteView(
+            backgroundColor: backgroundColor.resolvedColor(with: traits),
+            foregroundColor: UIColor.label.resolvedColor(with: traits),
+            cornerRadius: cornerRadius, paste: paste)
     }
 
     func updateUIView(_ view: PinnedPasteView, context: Context) {
@@ -54,7 +61,7 @@ final class PinnedPasteView: UIView {
     var onPaste: (String) -> Void
 
     init(
-        backgroundColor: UIColor, cornerRadius: CGFloat?,
+        backgroundColor: UIColor, foregroundColor: UIColor, cornerRadius: CGFloat?,
         paste: @escaping (String) -> Void
     ) {
         onPaste = paste
@@ -69,7 +76,7 @@ final class PinnedPasteView: UIView {
         } else {
             configuration.cornerStyle = .capsule
         }
-        configuration.baseForegroundColor = .label
+        configuration.baseForegroundColor = foregroundColor
         configuration.baseBackgroundColor = backgroundColor
         let control = UIPasteControl(configuration: configuration)
         control.target = self
