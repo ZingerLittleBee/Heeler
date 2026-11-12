@@ -293,7 +293,7 @@ final class HeelerAppModel {
         observe({ console.rowLayouts.hostLayouts }) { [weak self] _ in
             self?.liveActivities.layoutsDidChange()
         }
-        observe({ console.sidebarSnapshots.states }) { [weak self] _ in
+        observe({ console.sidebarSnapshots.loadedSnapshots }) { [weak self] _ in
             self?.liveActivities.layoutsDidChange()
         }
         observe({ console.pins.revision }) { [weak self] _ in

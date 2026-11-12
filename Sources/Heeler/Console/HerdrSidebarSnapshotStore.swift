@@ -19,13 +19,13 @@ final class HerdrSidebarSnapshotStore {
     }
 
     private(set) var states: [Host.ID: HostState] = [:]
+    private(set) var loadedSnapshots: [Host.ID: AgentRowLayoutSnapshot] = [:]
     @ObservationIgnored private var connections: [Host.ID: Connection] = [:]
     @ObservationIgnored private var requests: [Host.ID: UUID] = [:]
     @ObservationIgnored private var tasks: [Host.ID: Task<Void, Never>] = [:]
 
     func snapshot(for hostID: Host.ID) -> AgentRowLayoutSnapshot? {
-        guard case .loaded(let snapshot) = states[hostID] else { return nil }
-        return snapshot
+        loadedSnapshots[hostID]
     }
 
     /// Call synchronously at every Console projection/lifecycle transition.
@@ -49,7 +49,8 @@ final class HerdrSidebarSnapshotStore {
         tasks.removeValue(forKey: hostID)?.cancel()
         requests[hostID] = nil
         connections[hostID] = nil
-        states[hostID] = nil
+        if states[hostID] != nil { states[hostID] = nil }
+        if loadedSnapshots[hostID] != nil { loadedSnapshots[hostID] = nil }
     }
 
     func invalidateAll() {
@@ -98,7 +99,12 @@ final class HerdrSidebarSnapshotStore {
         tasks[id]?.cancel()
         let request = UUID()
         requests[id] = request
-        if clear || states[id] == nil { states[id] = .loading }
+        if clear || states[id] == nil {
+            if states[id] != .loading { states[id] = .loading }
+        }
+        if clear, loadedSnapshots[id] != nil {
+            loadedSnapshots[id] = nil
+        }
         tasks[id] = Task { [weak self] in
             let result: HostState
             do {
@@ -112,9 +118,13 @@ final class HerdrSidebarSnapshotStore {
             guard let self, !Task.isCancelled, requests[id] == request,
                 connections[id] != nil
             else { return }
-            states[id] = result
+            let nextSnapshot: AgentRowLayoutSnapshot? =
+                if case .loaded(let snapshot) = result { snapshot } else { nil }
+            let snapshotChanged = loadedSnapshots[id] != nextSnapshot
+            if snapshotChanged { loadedSnapshots[id] = nextSnapshot }
+            if states[id] != result { states[id] = result }
             tasks[id] = nil
-            didChange()
+            if snapshotChanged { didChange() }
         }
     }
 }

@@ -24,6 +24,7 @@ final class PinnedAgentsStore {
     }
 
     private var entries: [Entry]
+    @ObservationIgnored private var ranksByAgent: [ConsoleAgent.ID: Int] = [:]
     /// Increments on every pin toggle so observers (Live Activity) can
     /// rebuild without waiting for the Console list to change identity.
     private(set) var revision: UInt64 = 0
@@ -44,6 +45,7 @@ final class PinnedAgentsStore {
                 return
             }
             entries = blob.entries
+            rebuildRanks()
         } catch {
             entries = []
         }
@@ -61,6 +63,7 @@ final class PinnedAgentsStore {
         } else {
             pin(hostID: hostID, paneID: paneID)
         }
+        rebuildRanks()
         persist()
         revision += 1
     }
@@ -73,7 +76,8 @@ final class PinnedAgentsStore {
     /// Position in the global pin recency order (lower = more recent).
     /// Comparable across Hosts; not an index into `pinnedPaneIDs(for:)`.
     func pinRank(hostID: Host.ID, paneID: String) -> Int? {
-        entries.firstIndex { $0.hostID == hostID && $0.paneID == paneID }
+        _ = revision
+        return ranksByAgent[ConsoleAgent.ID(hostID: hostID, paneID: paneID)]
     }
 
     /// Drops one pin because the user destroyed its pane on purpose (tab
@@ -83,6 +87,7 @@ final class PinnedAgentsStore {
     func removePin(hostID: Host.ID, paneID: String) {
         guard isPinned(hostID: hostID, paneID: paneID) else { return }
         entries.removeAll { $0.hostID == hostID && $0.paneID == paneID }
+        rebuildRanks()
         persist()
         revision += 1
     }
@@ -103,12 +108,25 @@ final class PinnedAgentsStore {
         let kept = entries.filter { !shouldDrop($0) }
         guard kept.count != entries.count else { return }
         entries = kept
+        rebuildRanks()
         persist()
         revision += 1
     }
 
     private func pin(hostID: Host.ID, paneID: String) {
         entries.insert(Entry(hostID: hostID, paneID: paneID), at: 0)
+    }
+
+    private func rebuildRanks() {
+        var next: [ConsoleAgent.ID: Int] = [:]
+        next.reserveCapacity(entries.count)
+        for (index, entry) in entries.enumerated() {
+            let id = ConsoleAgent.ID(hostID: entry.hostID, paneID: entry.paneID)
+            if next[id] == nil {
+                next[id] = index
+            }
+        }
+        ranksByAgent = next
     }
 
     private func persist() {
