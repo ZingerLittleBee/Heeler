@@ -223,6 +223,37 @@ struct TmuxInventoryConsoleTests {
         store.setHosts([])
     }
 
+    @Test func connectingEndsOnlyUnattachedSessionsMarkedHeelerAttach() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(session: 1, sessionName: "main", window: 2, pane: 2, command: "claude", arguments: Self.claude),
+            // User session whose name starts with `heeler-attach-` without `@heeler-attach`: must survive.
+            .make(session: 2, sessionName: "heeler-attach-user", window: 3, pane: 3, command: "zsh"),
+            // Live attached `@heeler-attach` session: must survive.
+            .make(session: 8, sessionName: "heeler-attach-live", window: 2, pane: 2, command: "claude",
+                  attachMark: "%2", arguments: Self.claude),
+            // Leftover unattached `@heeler-attach` session: must be ended on connect.
+            .make(session: 9, sessionName: "heeler-attach-leftover", window: 2, pane: 2, command: "claude",
+                  attachMark: "%2", arguments: Self.claude),
+        ])
+        await tmux.setDesktopClients([
+            ScriptedTmuxHost.DesktopClient(
+                name: "/dev/ttys009", sessionID: "$8", sessionName: "heeler-attach-live",
+                windowID: "@2", width: 80, height: 24, controlMode: true),
+        ])
+
+        let store = try await launch(on: try device(), over: tmux)
+        defer { store.setHosts([]) }
+
+        try await waitUntil("the leftover session to end") {
+            let ids = Set(await tmux.listedPanes().map(\.sessionID))
+            return !ids.contains("$9")
+        }
+        let remaining = Set(await tmux.listedPanes().map(\.sessionID))
+        #expect(remaining == ["$1", "$2", "$8"])
+        #expect(store.workspacesByHost[host.id]?.map(\.label).sorted() == ["heeler-attach-user", "main"])
+    }
+
     // MARK: The Agent rule
 
     @Test func aPaneIsAnAgentOnlyWhileAKnownProgramHoldsItsForeground() async throws {

@@ -105,6 +105,25 @@ enum TmuxLaunch {
         command(["kill-window", "-t", id], paths: paths, loginShell: false)
     }
 
+    /// Ends a leftover session of Heeler's own (`@heeler-attach`) only while the
+    /// answering server is still `instance`, the session id `$n` still carries a
+    /// non-empty `@heeler-attach` option, and `#{session_attached}` is `0`
+    /// (ADR 0043). Matched by `@heeler-attach` on the session id and never by
+    /// session name prefix, inside tmux's own `if-shell -F` check.
+    static func endUnattachedAttachSession(
+        id: String, instance: TmuxServerInstance, paths: TmuxPaths
+    ) -> Command? {
+        guard isID(id, prefix: "$") else { return nil }
+        let format = [
+            "#{&&:#{==:#{pid}:#{start_time},\(instance.pid):\(instance.startTime)},",
+            "#{&&:#{==:#{session_attached},0},#{!=:#{@heeler-attach},}}}",
+        ].joined()
+        let kill = ["kill-session", "-t", id].map(TmuxControlCommand.quoted).joined(separator: " ")
+        return command(
+            ["if-shell", "-F", "-t", id, format, kill],
+            paths: paths, loginShell: false)
+    }
+
     /// The session name for a Worktree: the branch, with `.` and `:` replaced by
     /// `-` because tmux rejects both in a session name, then `-2`, `-3`, …
     /// while that name is already taken.

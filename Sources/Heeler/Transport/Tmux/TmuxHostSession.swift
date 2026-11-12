@@ -83,6 +83,10 @@ actor TmuxHostSession {
     private var environmentToken: UInt64 = 0
     private var environmentFlight: (server: TmuxServerInstance, sessions: Set<String>)?
     private var environmentRead: (server: TmuxServerInstance, sessions: Set<String>)?
+    /// The server instance whose initial inventory has been checked on this
+    /// connection for leftover unattached `@heeler-attach` sessions.
+    private var leftoverCleanupTask: Task<Void, Never>?
+    private var leftoverCleanupChecked: TmuxServerInstance?
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
@@ -439,10 +443,14 @@ actor TmuxHostSession {
             environmentTask = nil
             environmentFlight = nil
             environmentRead = nil
+            leftoverCleanupTask?.cancel()
+            leftoverCleanupTask = nil
+            leftoverCleanupChecked = nil
             updatesContinuation.yield(.server(replaced))
         }
         updatesContinuation.yield(.inventory(inventory))
         considerEnvironment(of: inventory, generation: generation)
+        considerLeftoverAttachCleanup(of: inventory, generation: generation)
         return true
     }
 
@@ -523,6 +531,42 @@ actor TmuxHostSession {
         environmentTask = nil
         environmentFlight = nil
         environmentRead = nil
+        leftoverCleanupTask?.cancel()
+        leftoverCleanupTask = nil
+        leftoverCleanupChecked = nil
+    }
+
+    /// Ends leftover unattached `@heeler-attach` sessions (such as from a
+    /// Host-side `SIGKILL` of an earlier Attach's wrapper, feeder and `tmux -C`
+    /// together) once per connection and server instance, without blocking the
+    /// inventory loop and running nothing when no `@heeler-attach` session is
+    /// listed. A brief pause lets any concurrent detached-to-attached startup
+    /// attach before tmux checks `#{session_attached} == 0` and `@heeler-attach`.
+    private func considerLeftoverAttachCleanup(of inventory: TmuxInventory, generation: UInt64) {
+        guard let server = liveServer, let transport = inventoryTransport else { return }
+        if leftoverCleanupChecked == server.instance { return }
+        leftoverCleanupChecked = server.instance
+        let sessions = Set(inventory.panes.filter(\.isInHeelerSession).map(\.sessionID)).sorted()
+        guard !sessions.isEmpty else { return }
+        leftoverCleanupTask?.cancel()
+        let instance = server.instance
+        let paths = server.paths
+        leftoverCleanupTask = Task { [weak self, sleep] in
+            try? await sleep(.milliseconds(100))
+            guard !Task.isCancelled, await self?.canCleanLeftovers(for: instance, generation: generation) == true
+            else { return }
+            for session in sessions {
+                guard !Task.isCancelled,
+                    let command = TmuxLaunch.endUnattachedAttachSession(
+                        id: session, instance: instance, paths: paths)
+                else { continue }
+                _ = try? await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+            }
+        }
+    }
+
+    private func canCleanLeftovers(for instance: TmuxServerInstance, generation: UInt64) -> Bool {
+        activationIsCurrent(generation) && liveServer?.instance == instance && inventoryTask != nil
     }
 
     /// The pause between two asks of a server that answers, which a

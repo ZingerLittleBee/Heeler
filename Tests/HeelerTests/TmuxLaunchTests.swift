@@ -501,6 +501,26 @@ struct TmuxLaunchTests {
         #expect(argv.last == Data(path.utf8))
     }
 
+    @Test func endUnattachedAttachSessionChecksServerAttachedCountAndMarkOnSessionId() throws {
+        let instance = TmuxServerInstance(pid: 4242, startTime: 1_700_000_000)
+        #expect(TmuxLaunch.endUnattachedAttachSession(id: "heeler-attach-0a1b2c3d", instance: instance, paths: Self.paths) == nil)
+        #expect(TmuxLaunch.endUnattachedAttachSession(id: "%3", instance: instance, paths: Self.paths) == nil)
+        #expect(TmuxLaunch.endUnattachedAttachSession(id: "$", instance: instance, paths: Self.paths) == nil)
+
+        let command = try #require(
+            TmuxLaunch.endUnattachedAttachSession(id: "$9", instance: instance, paths: Self.paths))
+        #expect(!command.throughLoginShell)
+        let argv = try Self.posixArgv(of: command)
+        let words = argv.map { String(decoding: $0, as: UTF8.self) }
+        #expect(
+            words == [
+                "-N", "-S", Self.paths.socket,
+                "if-shell", "-F", "-t", "$9",
+                "#{&&:#{==:#{pid}:#{start_time},4242:1700000000},#{&&:#{==:#{session_attached},0},#{!=:#{@heeler-attach},}}}",
+                "kill-session -t \"\\$9\"",
+            ])
+    }
+
     @Test func aBranchWithShellCharactersIsQuotedAsTheSessionName() throws {
         let branch = "a;b'c$(id)`x`"
         #expect(TmuxLaunch.sessionName(forBranch: branch, taken: []) == branch)

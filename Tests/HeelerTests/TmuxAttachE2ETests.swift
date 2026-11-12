@@ -1577,6 +1577,139 @@ extension TmuxTransportE2ETests {
         }
     }
 
+    /// A Host-side `SIGKILL` of an Attach's wrapper shell, feeder and `tmux -C`
+    /// together leaves an unattached `@heeler-attach` session while keeping the
+    /// server alive; Heeler's next Host connection ends that leftover while
+    /// preserving both attached `@heeler-attach` sessions and unattached user
+    /// sessions that merely share the `heeler-attach-` name prefix.
+    @Test("connecting cleans up unattached @heeler-attach leftovers without touching attached or unmarked sessions")
+    func connectingCleansUpUnattachedMarkedAttachSessionsOnly() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let (pane, file) = try await followingPane(["new-window", "-d", "-t", "main:"], on: fixture)
+            let userPrefixed = "\(TmuxAttachScript.sessionPrefix)user-owned"
+            _ = try await fixture.require(
+                fixture.tmuxLine(["new-session", "-d", "-s", userPrefixed, "-P", "-F", "#{pane_id}", "/bin/cat"]))
+            let storedPaths = try fixture.paths()
+
+            let deadSSH = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: storedPaths))
+            let deadTransport = TmuxSSHTransport(
+                connection: deadSSH, socketName: fixture.socketName, storedPaths: storedPaths)
+            let liveSSH = try await HeelerSSHTransport.connect(settings: try fixture.settings(storedPaths: storedPaths))
+            let liveTransport = TmuxSSHTransport(
+                connection: liveSSH, socketName: fixture.socketName, storedPaths: storedPaths)
+            do {
+                let doomedAttach = try await deadTransport.attachPane(
+                    pane, request: try await request(for: pane, on: fixture))
+                let clientAfterFirst = try await fixture.tmux(
+                    nil, "list-clients", "-F", "#{session_id} #{session_name} #{client_pid}")
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init)
+                #expect(clientAfterFirst.count == 1)
+                let doomedParts = try #require(clientAfterFirst.first).split(separator: " ").map(String.init)
+                #expect(doomedParts.count == 3)
+                let doomedSessionID = doomedParts[0]
+                let doomedSessionName = doomedParts[1]
+                let doomedClientPID = try #require(Int(doomedParts[2]))
+
+                let liveAttach = try await liveTransport.attachPane(
+                    pane, request: try await request(for: pane, on: fixture))
+                var liveOutput = liveAttach.output.makeAsyncIterator()
+                let clientsBoth = try await fixture.tmux(
+                    nil, "list-clients", "-F", "#{session_id} #{session_name}")
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init)
+                let liveEntry = try #require(clientsBoth.first { !$0.hasPrefix("\(doomedSessionID) ") })
+                let liveParts = liveEntry.split(separator: " ").map(String.init)
+                let liveSessionName = liveParts[1]
+
+                // SIGKILL the entire remote exec subtree of `doomedAttach` at once.
+                _ = try await fixture.require(
+                    """
+                    /usr/bin/python3 -c '
+                    import os, signal, subprocess, sys
+                    target = int(sys.argv[1])
+                    rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,comm="], text=True).splitlines()
+                    parent, children, comm = {}, {}, {}
+                    for r in rows:
+                        parts = r.split(None, 2)
+                        if len(parts) < 3: continue
+                        pid, ppid, name = int(parts[0]), int(parts[1]), parts[2].strip()
+                        parent[pid] = ppid
+                        comm[pid] = os.path.basename(name)
+                        children.setdefault(ppid, []).append(pid)
+                    root = target
+                    while parent.get(root, 0) > 1 and "sshd" not in comm.get(parent[root], ""):
+                        root = parent[root]
+                    stack, tree = [root], []
+                    while stack:
+                        cur = stack.pop()
+                        tree.append(cur)
+                        stack.extend(children.get(cur, []))
+                    for pid in tree:
+                        try: os.kill(pid, signal.SIGKILL)
+                        except ProcessLookupError: pass
+                    ' \(doomedClientPID)
+                    """)
+
+                // Server stays alive, and `doomedSessionName` remains as an unattached `@heeler-attach` leftover.
+                try await fixture.eventually {
+                    let line = try await fixture.tmux(
+                        nil, "display-message", "-p", "-t", "=\(doomedSessionName):",
+                        "#{session_attached} #{@heeler-attach}")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    return line == "0 \(pane)"
+                }
+                #expect(
+                    try await fixture.sessionNames()
+                        == [doomedSessionName, liveSessionName, "main", userPrefixed].sorted())
+
+                // Connecting Heeler cleans up ONLY the unattached `@heeler-attach` leftover.
+                try await cleanLeftoversViaConsole(
+                    expectingGone: doomedSessionName,
+                    preserving: [liveSessionName, "main", userPrefixed].sorted(),
+                    on: fixture)
+
+                // The live Attach was never disturbed and still streams output.
+                try await append("still-streaming\\n", to: file, on: fixture)
+                let received = try await read(until: "still-streaming", from: &liveOutput)
+                #expect(received.contains("still-streaming"))
+                await liveAttach.end()
+                _ = doomedAttach
+                try? await deadTransport.close()
+                try await liveTransport.close()
+            } catch {
+                try? await deadTransport.close()
+                try? await liveTransport.close()
+                throw error
+            }
+            #expect(try await fixture.sessionNames() == ["main", userPrefixed].sorted())
+        }
+    }
+
+    @MainActor
+    private func cleanLeftoversViaConsole(
+        expectingGone gone: String, preserving expected: [String], on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-leftover-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+        do {
+            try await fixture.eventually {
+                try await fixture.sessionNames() == expected
+            }
+            let sesiones = try await fixture.sessionNames()
+            #expect(!sesiones.contains(gone))
+            store.setHosts([])
+        } catch {
+            store.setHosts([])
+            throw error
+        }
+    }
+
     /// Chat's actions open an unviewed, zero-geometry control client that sets
     /// `ignore-size` and never sends `-C`, then detach immediately. Under
     /// `window-size latest` with another client attached, the window's size is

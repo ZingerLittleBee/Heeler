@@ -1990,18 +1990,21 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
     }
 
-    /// `if-shell -F` comparing `@heeler-status` or `#{pid}:#{start_time}`. A false compare
-    /// changes nothing and still succeeds, so the display after it shows who won.
+    /// `if-shell -F` comparing `@heeler-status`, `#{pid}:#{start_time}`, or an
+    /// unattached `@heeler-attach` session check. A false compare changes nothing
+    /// and still succeeds, so the display after it shows who won.
     private func applyIfShell(
         _ listed: inout [TmuxInventory.Pane], _ invocation: Invocation, socket: String
     ) -> GitExecResult {
         guard let target = invocation.target,
-            let index = listed.firstIndex(where: { $0.paneID == target }),
+            let index = listed.firstIndex(where: { $0.paneID == target || $0.sessionID == target }),
             invocation.arguments.count >= 2
-        else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
+        else { return Self.failed("can't find target: \(invocation.target ?? "")\n") }
         let format = invocation.arguments[0]
         let statusPrefix = "#{==:#{@heeler-status},"
         let instancePrefix = "#{==:#{pid}:#{start_time},"
+        let unattachedAttachPrefix = "#{&&:#{==:#{pid}:#{start_time},"
+        let unattachedAttachSuffix = "},#{&&:#{==:#{session_attached},0},#{!=:#{@heeler-attach},}}}"
         let matches: Bool
         if format.hasPrefix(statusPrefix), format.hasSuffix("}") {
             let expected = String(format.dropFirst(statusPrefix.count).dropLast())
@@ -2010,6 +2013,21 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             let expected = String(format.dropFirst(instancePrefix.count).dropLast())
             let actual = servers[socket].map { "\($0.pid):\($0.startTime)" } ?? ""
             matches = actual == expected
+        } else if format.hasPrefix(unattachedAttachPrefix), format.hasSuffix(unattachedAttachSuffix) {
+            let expected = String(
+                format.dropFirst(unattachedAttachPrefix.count).dropLast(unattachedAttachSuffix.count))
+            let actual = servers[socket].map { "\($0.pid):\($0.startTime)" } ?? ""
+            let sessionID = listed[index].sessionID
+            let sessionName = listed[index].sessionName
+            let isAttached =
+                controlClients.values.contains {
+                    $0.socket == socket && ($0.sessionID == sessionID || $0.sessionName == sessionName)
+                }
+                || (desktopClients[socket] ?? []).contains {
+                    $0.sessionID == sessionID || $0.sessionName == sessionName
+                }
+            let hasAttachMark = !listed[index].attachMark.isEmpty
+            matches = actual == expected && !isAttached && hasAttachMark
         } else {
             return Self.failed("unknown command: if-shell\n")
         }
@@ -2154,6 +2172,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             listed.removeAll { $0.windowID == target }
             guard listed.count < before else { return Self.failed("can't find window: \(target)\n") }
             return Self.succeeded("")
+        case "kill-session":
+            guard let target = invocation.target else { return Self.failed("tmux: The command failed.\n") }
+            let before = listed.count
+            listed.removeAll { $0.sessionID == target || "=\($0.sessionName)" == target || $0.sessionName == target }
+            guard listed.count < before else { return Self.failed("can't find session: \(target)\n") }
+            return Self.succeeded("")
         default:
             return Self.failed("unknown command: \(invocation.subcommand)\n")
         }
@@ -2196,8 +2220,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// Anywhere else, `--` starts the program.
     private static func invocation(of words: [String]) -> Invocation? {
         let commands = [
-            "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "show-environment",
-            "set-option", "if-shell", "display-message", "capture-pane",
+            "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "kill-session",
+            "show-environment", "set-option", "if-shell", "display-message", "capture-pane",
         ]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
         var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])
