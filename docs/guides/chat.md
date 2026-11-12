@@ -52,7 +52,7 @@ If there is no **Show Chat**, or Chat shows **Waiting for Conversation**, see [C
 - Your messages are on the right. The Agent's answers, reasoning, and tool steps are on the left.
 - When a turn finishes, its steps fold behind a **Worked for …** line. Tap it to see them, and tap a tool card to see its output or file changes.
 - Touch and hold a message to copy it.
-- Tap an image under a tool step, or a path to an image in a message (shown after a photo symbol), to open it with zoom.
+- Tap an image under a tool step, or a path to an image in a message (shown after a photo symbol, or in color on a line of its own in a code block), to open it with zoom.
 - After scrolling up, tap the round button with a down chevron at the bottom right to jump back to the newest message.
 - Pull down past the top to load earlier messages.
 

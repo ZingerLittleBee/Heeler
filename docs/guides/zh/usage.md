@@ -35,7 +35,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 
 ### 打开 Claude Code limits
 
-Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
+Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件（在 herdr-core Host 上则是 [Host Helper](herdr-core.md#host-helper)）会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
 
 ## 关闭 Usage
 

@@ -38,7 +38,7 @@ struct ClaudeSyntheticTranscriptTests {
 
     // MARK: - Queued prompts
 
-    @Test("A prompt queued mid-turn shows where it was delivered, under its source uuid")
+    @Test("A prompt delivered mid-turn shows where it was delivered, under its source uuid, no longer queued")
     func queuedCommand() {
         let (transcript, lines) = Self.read(
             Self.busyTurn + "\n"
@@ -52,7 +52,9 @@ struct ClaudeSyntheticTranscriptTests {
             transcript.entries.first { $0.id.rawValue == "user:src1" }
                 == ChatEntry(
                     id: ChatEntryID("user:src1"), sourceOffset: lines[5].offset,
-                    content: .user(ChatUserMessage(text: "Also check the README", wasQueued: true))))
+                    content: .user(ChatUserMessage(text: "Also check the README", delivery: .steered))))
+        // It joins the running turn rather than opening one.
+        #expect(transcript.turns.map(\.firstEntryID) == [ChatEntryID("user:p1")])
         // The enqueue points at the bubble its delivery produced.
         #expect(transcript.recordedPrompts == [
             ChatRecordedPrompt(offset: lines[0].offset, text: "Run the tests", entryID: ChatEntryID("user:p1")),
@@ -77,7 +79,7 @@ struct ClaudeSyntheticTranscriptTests {
             waiting.entries.last
                 == ChatEntry(
                     id: bubble, sourceOffset: lines[2].offset,
-                    content: .user(ChatUserMessage(text: "Also check the README", wasQueued: true))))
+                    content: .user(ChatUserMessage(text: "Also check the README", delivery: .queued))))
         #expect(waiting.recordedPrompts.last == ChatRecordedPrompt(
             offset: lines[2].offset, text: "Also check the README", entryID: bubble))
         // The delivery shows it under another id, so it is never saved.
@@ -92,6 +94,9 @@ struct ClaudeSyntheticTranscriptTests {
         let (deliveredTranscript, _) = Self.read(delivered, activity: .working)
         #expect(deliveredTranscript.entries.map(\.id.rawValue) == ["user:p1", "tool:toolu_test", "user:src1"])
         #expect(deliveredTranscript.unrecordedEntryIDs.isEmpty)
+        #expect(
+            ClaudeSample.entry("user:src1", in: deliveredTranscript)
+                == .user(ChatUserMessage(text: "Also check the README", delivery: .steered)))
 
         // Taken back into the input box: no bubble.
         let takenBack = running + "\n" + #"""
@@ -135,7 +140,7 @@ struct ClaudeSyntheticTranscriptTests {
                 == [ChatEntryID("tool:toolu_test")])
     }
 
-    @Test("A queued prompt recorded as a user record shows once")
+    @Test("A queued prompt recorded as a user record shows once, as an opener")
     func queuedUserRecord() {
         let (transcript, lines) = Self.read(
             Self.busyTurn + "\n"
@@ -145,14 +150,43 @@ struct ClaudeSyntheticTranscriptTests {
                 {"type":"assistant","uuid":"a2","parentUuid":"q1","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"Tests pass and the README is current."}]},"apiBlockIndex":0}
                 """#)
         #expect(transcript.entries.map(\.id.rawValue) == ["user:p1", "tool:toolu_test", "user:u2", "text:a2"])
-        #expect(
-            ClaudeSample.entry("user:u2", in: transcript)
-                == .user(ChatUserMessage(text: "Also check the README", wasQueued: true)))
+        #expect(ClaudeSample.entry("user:u2", in: transcript) == .user(ChatUserMessage(text: "Also check the README")))
         #expect(transcript.recordedPrompts == [
             ChatRecordedPrompt(offset: lines[0].offset, text: "Run the tests", entryID: ChatEntryID("user:p1")),
             ChatRecordedPrompt(offset: lines[2].offset, text: "Also check the README", entryID: ChatEntryID("user:u2")),
             ChatRecordedPrompt(offset: lines[5].offset, text: "Also check the README", entryID: ChatEntryID("user:u2")),
         ])
+    }
+
+    @Test("A prompt queued until its turn ended opens the next turn, delivered")
+    func queuedPromptOpensTheNextTurn() {
+        // Enqueued while the Bash call runs; the turn ends without taking
+        // it, and Claude Code then sends it as the next turn's prompt.
+        let running = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            {"type":"queue-operation","operation":"enqueue","content":"Also check the README","sessionId":"s1"}
+            """#
+        let (waiting, waitingLines) = Self.read(running, activity: .working)
+        #expect(
+            waiting.entries.last?.content == .user(ChatUserMessage(text: "Also check the README", delivery: .queued)))
+        #expect(waiting.entries.last?.id == ChatEntryID("queued:\(waitingLines[2].offset)"))
+
+        let (opened, _) = Self.read(
+            running + "\n"
+                + #"""
+                {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+                {"type":"assistant","uuid":"a2","parentUuid":"r1","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"Tests pass."}]},"apiBlockIndex":0}
+                {"type":"system","subtype":"turn_duration","uuid":"t1","parentUuid":"a2","durationMs":900}
+                {"type":"queue-operation","operation":"dequeue","sessionId":"s1"}
+                {"type":"user","uuid":"u2","parentUuid":"t1","message":{"role":"user","content":"Also check the README"},"promptSource":"queued","origin":{"kind":"human"}}
+                {"type":"assistant","uuid":"a3","parentUuid":"u2","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"The README is current."}]},"apiBlockIndex":0}
+                """#,
+            activity: .working)
+        #expect(opened.entries.map(\.id.rawValue) == ["user:p1", "tool:toolu_test", "text:a2", "user:u2", "text:a3"])
+        #expect(ClaudeSample.entry("user:u2", in: opened) == .user(ChatUserMessage(text: "Also check the README")))
+        #expect(opened.turns.map(\.firstEntryID) == [ChatEntryID("user:p1"), ChatEntryID("user:u2")])
+        #expect(opened.unrecordedEntryIDs.isEmpty)
     }
 
     // MARK: - Background agents

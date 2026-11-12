@@ -1,0 +1,14 @@
+name = "heeler-adhoc"
+main = "src/worker.mjs"
+compatibility_date = "2026-07-01"
+workers_dev = true
+preview_urls = false
+
+[[r2_buckets]]
+binding = "BUILDS"
+bucket_name = "heeler-adhoc"
+
+# UPLOAD_TOKEN is a Worker secret, never a source-controlled variable.
+# No request logs: installation URLs are bearer links.
+[observability]
+enabled = false

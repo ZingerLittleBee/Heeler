@@ -236,6 +236,24 @@ final class TerminalInputController {
         return true
     }
 
+    /// Types a password into the live session for the program asking for it.
+    /// Never submits: the user presses Return themselves, after seeing what
+    /// the screen says, so a password cannot run as a command at a shell
+    /// prompt the detection misread. Any control character is refused, line
+    /// breaks above all, since one would submit it.
+    ///
+    /// The bytes go straight to the writer rather than through `write`: the
+    /// message index records keystrokes as submitted text, and a password is
+    /// not a message.
+    @discardableResult
+    func insertSecret(_ text: String) -> Bool {
+        guard isEnabled, let writer, !text.isEmpty,
+            text.unicodeScalars.allSatisfy({ $0.properties.generalCategory != .control })
+        else { return false }
+        writer(Data(text.utf8))
+        return true
+    }
+
     /// Changes returns to a rebuilding Attach. Keep its single-line reference
     /// until the client produces output, then use the same writer as Snippets.
     /// Ordinary Snippets still require a writer and never enter this holding path.

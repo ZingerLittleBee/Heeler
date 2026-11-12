@@ -154,7 +154,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
         /// The run opened the open turn.
         let opensTurn: Bool
         let command: ChatCommandInvocation?
-        let wasQueued: Bool
+        let delivery: ChatUserMessage.Delivery
         var text = ""
         var images = 0
         /// A cut line lost some of its text.
@@ -163,7 +163,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
 
         var content: ChatEntry.Content? {
             if !text.isEmpty || images > 0 {
-                return .user(ChatUserMessage(text: text, imageCount: images, command: command, wasQueued: wasQueued))
+                return .user(ChatUserMessage(text: text, imageCount: images, command: command, delivery: delivery))
             }
             return lostText ? .notice(ChatNotice(kind: .system, title: String(localized: "Message exceeds the preview limit"))) : nil
         }
@@ -340,7 +340,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
             var run = UserRun(
                 last: record, lastChunk: chunk, offset: record.offset, isHidden: chunk.isHidden, opensTurn: isCounted,
                 command: chunk.displayAsSkill ? chunk.displayText.flatMap(Self.skill) : nil,
-                wasQueued: !isCounted)
+                delivery: isCounted ? .direct : .steered)
             if !chunk.isHidden {
                 transcript.latestPromptOffset = record.offset
             }

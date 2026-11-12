@@ -1,5 +1,9 @@
 # TestFlight builds and App Store publication
 
+For feature-branch builds installed over HTTPS on registered devices, use
+[Ad Hoc installation](adhoc-install.md). Its dedicated Xcode Cloud workflow
+publishes verified artifacts to Cloudflare without a TestFlight upload or release tag.
+
 One upload path, one immutable tag per candidate. App Store publication selects
 an existing TestFlight build in App Store Connect; it does not build again,
 create another tag, or run another repository command.

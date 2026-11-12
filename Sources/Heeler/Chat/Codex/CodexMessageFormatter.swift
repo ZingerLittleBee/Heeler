@@ -44,7 +44,7 @@ enum CodexMessageFormatter {
     /// for `$name` prompts the TUI recorded without a skill part (plugin
     /// skills, legacy rollouts).
     static func display(
-        _ content: CodexUserContent, skillNames: Set<String>, wasQueued: Bool = false
+        _ content: CodexUserContent, skillNames: Set<String>, delivery: ChatUserMessage.Delivery = .direct
     ) -> Display {
         if let replies = questionReplies(in: content.text) {
             return .reply(replies)
@@ -60,7 +60,7 @@ enum CodexMessageFormatter {
             ChatUserMessage(
                 text: body, imageCount: content.imageCount, imagePaths: content.localImagePaths,
                 attachmentLabels: labels,
-                command: skillInvocation(in: body, knownSkills: known), wasQueued: wasQueued))
+                command: skillInvocation(in: body, knownSkills: known), delivery: delivery))
     }
 
     /// The request after the last IDE marker, trimmed; nil when the text has

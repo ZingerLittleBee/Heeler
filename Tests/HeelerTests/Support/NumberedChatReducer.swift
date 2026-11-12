@@ -109,7 +109,7 @@ struct NumberedChatReducer: ChatTranscriptReducer {
                 if let waiting = record?.waiting {
                     return ChatEntry(
                         id: ChatEntryID("w-\(line.offset)"), sourceOffset: line.offset,
-                        content: .user(ChatUserMessage(text: waiting, wasQueued: true)))
+                        content: .user(ChatUserMessage(text: waiting, delivery: .queued)))
                 }
                 if record?.compacted == true {
                     return ChatEntry(

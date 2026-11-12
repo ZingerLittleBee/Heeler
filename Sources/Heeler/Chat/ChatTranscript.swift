@@ -99,23 +99,44 @@ struct ChatUserMessage: Equatable, Codable, Sendable {
     /// Set when the prompt invoked a command or skill. Both programs display
     /// as `/name arguments`, whatever the program itself records.
     var command: ChatCommandInvocation?
-    /// True when the program took the prompt while a turn was running.
-    var wasQueued: Bool
+    /// Where the prompt stands against the turn it was sent during.
+    var delivery: Delivery
+
+    /// Whether the program has the prompt yet, and whether it joined a
+    /// running turn rather than opening one.
+    enum Delivery: String, Codable, Sendable {
+        /// Taken when sent, or as the prompt that opened a later turn.
+        case direct
+        /// Sent while a turn ran and held by the program, which has not
+        /// delivered it yet. Only a program that records the wait shows it.
+        case queued
+        /// Delivered into a turn that was running, which it joins instead
+        /// of opening a turn of its own.
+        case steered
+    }
 
     init(
         text: String, imageCount: Int = 0, imagePaths: [String] = [], attachmentLabels: [String] = [],
-        command: ChatCommandInvocation? = nil, wasQueued: Bool = false
+        command: ChatCommandInvocation? = nil, delivery: Delivery = .direct
     ) {
         self.text = text
         self.imageCount = imageCount
         self.imagePaths = imagePaths
         self.attachmentLabels = attachmentLabels
         self.command = command
-        self.wasQueued = wasQueued
+        self.delivery = delivery
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, imageCount, imagePaths, attachmentLabels, command, delivery
+        /// Saved before `delivery`: true for a prompt taken during a turn.
+        case wasQueued
     }
 
     /// A message saved before image paths were kept has none, so other
-    /// programs' cached conversations still read.
+    /// programs' cached conversations still read. One saved before
+    /// `delivery` says only whether it came during a turn; the cache never
+    /// keeps a prompt still queued, so that one was delivered into it.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decode(String.self, forKey: .text)
@@ -123,7 +144,21 @@ struct ChatUserMessage: Equatable, Codable, Sendable {
         imagePaths = try container.decodeIfPresent([String].self, forKey: .imagePaths) ?? []
         attachmentLabels = try container.decode([String].self, forKey: .attachmentLabels)
         command = try container.decodeIfPresent(ChatCommandInvocation.self, forKey: .command)
-        wasQueued = try container.decode(Bool.self, forKey: .wasQueued)
+        if let delivery = try container.decodeIfPresent(Delivery.self, forKey: .delivery) {
+            self.delivery = delivery
+        } else {
+            delivery = try container.decodeIfPresent(Bool.self, forKey: .wasQueued) == true ? .steered : .direct
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(imageCount, forKey: .imageCount)
+        try container.encode(imagePaths, forKey: .imagePaths)
+        try container.encode(attachmentLabels, forKey: .attachmentLabels)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encode(delivery, forKey: .delivery)
     }
 
 

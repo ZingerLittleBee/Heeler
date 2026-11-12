@@ -1,7 +1,7 @@
 <!-- Translated from docs/guides/herdr-core.md at ad6d60ec -->
 # 连接 herdr-core
 
-Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。即使在同一个 SSH 账户下，每个服务端在 Heeler 中都是各自的 Host。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。
+Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。即使在同一个 SSH 账户下，每个服务端在 Heeler 中都是各自的 Host。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
 
 ## 开始之前
 
@@ -122,9 +122,17 @@ Heeler 会在不启动任何服务的情况下检查一次，随后请你确认 
 
 ## Host Helper
 
-连接和日常使用不需要 Host Helper。如需 **Agent Notifications**、应用内横幅、**Live Activity**、**Usage**，以及准确的 **Pi** 与 **Oh My Pi** Chat，请在 macOS 或 Linux 上安装它。
+Host Helper 是 Heeler 安装在 macOS 或 Linux herdr-core Host 上的一个小型后台服务。herdr-core 无法运行插件，因此关闭 Heeler 后，Host 上没有任何程序会把 Agent 的动态告诉你的设备。Host Helper 会跟随 core，并向你的设备发送加密通知。Herdr TUI Host 由 Heeler 插件提供这些功能，不需要 Host Helper。
 
-Host Helper 在 Host 上的 Node.js 20 或更新版本上运行，在 Linux 上作为 `systemd` 用户服务，在 macOS 上作为 `launchd` LaunchAgent，跟随 herdr-core 而不主动启动 core。
+| | 未安装 Helper | 已安装 Helper |
+| --- | --- | --- |
+| 连接、终端，以及 Claude Code、Codex、Grok Build 和 Antigravity CLI 的 Chat | 可用 | 可用 |
+| **Agent Notifications**（含应用内横幅） | 无 | **Blocked**、**Error** 和 **Done**，关闭 Heeler 后也能收到 |
+| **Live Activity** | 无 | 关闭 Heeler 后仍会持续更新 |
+| **Usage** | 无 | Token Usage 和 Usage Limits |
+| **Pi** 与 **Oh My Pi** 的 Chat | Pi 仅在由 Heeler 启动时绑定，Oh My Pi 在首条消息使其持有会话文件后绑定 | 跟随每个 Agent 的会话，包括 `/new` 之后的新会话 |
+
+Host Helper 绝不会启动 core；没有 core 运行时，它会等待。它写入的所有内容都会在安装前列出，**Remove** 会将其全部删除。Heeler 绝不会修改 Claude Code 的设置或 Codex 的 hooks。
 
 ### 1. 查看将写入的文件
 
@@ -134,6 +142,8 @@ Host Helper 在 Host 上的 Node.js 20 或更新版本上运行，在 Linux 上�
 <a href="../images/herdr-core/host-helper-sheet.png"><img src="../images/herdr-core/host-helper-sheet.png" width="300" alt="安装前的 Host Helper 面板：显示 Not Installed 和 Install 按钮，Files This Writes 下列出 Helper、LaunchAgent 和 Pi & Oh My Pi 及其文件数"></a>
 
 ### 2. 安装 Helper
+
+Helper 需要 Host 上装有 Node.js 20 或更新版本，在 Linux 上以 `systemd` 用户服务运行，在 macOS 上以 `launchd` LaunchAgent 运行。
 
 1. 轻点 **Install**。
 2. 在 Linux 上，如果出现 **Systemd Linger**，请轻点 **Turn On Linger** 以在注销后保持 Helper 运行。该按钮会运行不带 `sudo` 的 `loginctl --no-ask-password enable-linger`。当 Host 拒绝时，面板会显示供管理员运行的 `sudo loginctl enable-linger <user>`。

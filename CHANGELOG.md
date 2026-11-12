@@ -9,6 +9,8 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. Its eye button shows the password while you check it. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
+- Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)
 - Read Heeler in Traditional Chinese (Taiwan). On a Traditional Chinese device, or with Traditional Chinese chosen as Heeler's language, everything Japanese and Simplified Chinese cover presents in Traditional Chinese, permission prompts included. (PR #668)
 - Read Heeler in Simplified Chinese. On a Simplified Chinese device, or with Simplified Chinese chosen as Heeler's language, everything Japanese covers presents in Chinese, permission prompts included. (PR #662)
@@ -36,6 +38,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
+- Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
 - Lead the Host Helper sheet with its status and a prominent Install, and list what it writes as Helper, LaunchAgent or systemd Unit, and Pi & Oh My Pi with file counts. Each opens one folder at a time, subfolders first, with the folder's path below, instead of every absolute path in one list. (PR #661)
 - Show each Host in Settings > Notifications as one row with its switch and a line saying what is on or what it needs. Done Notifications, Live Activity and their notes move to the Host's own page, which on a herdr-core Host also shows the Host Helper's status and opens its sheet on the Host's page in Hosts. (PR #661)
@@ -53,9 +57,13 @@ Entries reference the pull request that made the change.
   Agent on an Agent's terminal, takes over once the keyboard has gone down,
   so Chat's own buttons, such as Choose a Conversation, are not left under
   the keyboard. (PR #705)
+- Say what the Host Helper is before it is installed: its sheet now reads as
+  a background service for Agent Notifications, Live Activity, Usage, and Pi
+  and Oh My Pi Chat, rather than naming only the first three. (PR #709)
 
 ### Fixed
 
+- Draw the paste button in a Shell Terminal's input row and in Direct Input's keys in the terminal theme's light or dark. With a dark theme and the system in light mode, it showed as a white circle. (#703)
 - List an Agent typed into a PowerShell terminal on a Windows herdr-core Host in Agents while it runs, and return it to Terminals when its exit puts PowerShell's path back in the title. Because PowerShell stays the terminal's foreground process on Windows, an Agent started at the prompt had stayed in Terminals. (PR #678)
 - Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (PR #684)
 - Start a New Agent, New Terminal or Template in a Herdr desktop space on a herdr-core Host where the space's shell is now, as the desktop app does, rather than in the folder the space was made in. A space made while another was shown had started them in that other space's folder, and a new Worktree had come from that folder's repository. (PR #677)
