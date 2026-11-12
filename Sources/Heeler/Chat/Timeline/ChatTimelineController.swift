@@ -146,11 +146,19 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// applied or held. The row being available again after that means the
     /// request is over, not that it has yet to show.
     private var olderRequestHasShown = false
+    /// True while the data source applies rows. The layout moves the offset
+    /// with them before the collection view has its new content size, so
+    /// what a scroll event concludes then (the list reached its end, say)
+    /// does not hold. `apply` reports the scroll once the rows are in.
+    private var isUpdatingRows = false
+    private var scrolledWhileUpdatingRows = false
     private let olderPull = ChatOlderPull()
 
     /// How far past its top the list is pulled to load earlier history.
     static let pullToLoadDistance: CGFloat = 80
 
+    /// How many times a row was built into a cell, for tests.
+    private(set) var cellBuilds = 0
     /// Whether the list follows its end, for tests.
     var isFollowing: Bool { latch.isFollowing }
     /// What the Load Earlier row shows of a pull, for tests.
@@ -238,6 +246,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             [weak self] cell, _, id in
             guard let self, let row = rowsByID[id] else { return }
             PerfTrace.count("chat.cell.configure")
+            cellBuilds += 1
             cell.rowID = id
             let isExpanded = expanded.contains(id)
             let files = expandedFiles[id] ?? []
@@ -378,7 +387,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         UIView.performWithoutAnimation {
+            // The layout holds the reader's row while the rows change, so
+            // the rows built are the ones that will show.
+            layout.updateAnchor = updateAnchor(anchor, in: snapshot)
+            isUpdatingRows = true
             PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
+            isUpdatingRows = false
+            layout.updateAnchor = nil
             PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
             // Going back to the reader's row can show rows above it that
@@ -386,6 +401,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             // everything under it, so the row goes back once they have.
             PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
+            if scrolledWhileUpdatingRows {
+                scrolledWhileUpdatingRows = false
+                scrollViewDidScroll(collectionView)
+            }
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
         // Once the row shows the request, its own state takes over. A page
@@ -761,6 +780,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         return rows.contains(where: { $0.0 != .olderHistory }) ? .rows(rows) : .end
     }
 
+    /// The reader's first row that `snapshot` still shows, for the layout to
+    /// hold while the rows change. `restore` settles the rest afterwards: a
+    /// row a fold took away, and the Load Earlier row when it holds still.
+    private func updateAnchor(
+        _ anchor: ScrollAnchor, in snapshot: NSDiffableDataSourceSnapshot<Int, ChatRowID>
+    ) -> (id: ChatRowID, distance: CGFloat)? {
+        guard case .rows(let rows) = anchor,
+            let row = rows.first(where: { $0.0 != .olderHistory && snapshot.indexOfItem($0.0) != nil })
+        else { return nil }
+        return (row.0, row.1 + collectionView.adjustedContentInset.top)
+    }
+
     private func restore(_ anchor: ScrollAnchor) {
         switch anchor {
         case .end:
@@ -1036,6 +1067,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if isUpdatingRows {
+            scrolledWhileUpdatingRows = true
+            return
+        }
         let span = PerfTrace.begin("chat.scroll.did-scroll")
         defer { PerfTrace.end(span) }
         if disclosureAnchor == nil { latch.scrolled(isAtEnd: isAtEnd) }

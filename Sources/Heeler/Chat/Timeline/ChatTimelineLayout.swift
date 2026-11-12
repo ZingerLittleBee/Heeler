@@ -37,6 +37,14 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         }
     }
 
+    /// The row an update keeps where it shows, and how far under the content
+    /// offset its top edge is. Rows arriving above the reader move
+    /// everything under them. The collection view asks where its offset goes
+    /// with them and builds the rows that show there; left at the old
+    /// offset it built the rows there first and then, once the controller
+    /// had put the reader's row back, the reader's rows again.
+    var updateAnchor: (id: ChatRowID, distance: CGFloat)?
+
     private(set) var geometry = ChatTimelineGeometry()
     private var ids: [ChatRowID] = []
     private var indexByID: [ChatRowID: Int] = [:]
@@ -117,6 +125,18 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     override func layoutAttributesForItem(at indexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
         guard indexPath.section == 0, indexPath.item < geometry.count else { return nil }
         return attributes(at: indexPath.item)
+    }
+
+    override func targetContentOffset(forProposedContentOffset proposedContentOffset: CGPoint) -> CGPoint {
+        guard let anchor = updateAnchor, let index = indexByID[anchor.id], let collectionView else {
+            return super.targetContentOffset(forProposedContentOffset: proposedContentOffset)
+        }
+        // The collection view's own content size is still the old one.
+        let insets = collectionView.adjustedContentInset
+        let start = -insets.top
+        let end = max(start, geometry.totalHeight + insets.bottom - collectionView.bounds.height)
+        return CGPoint(
+            x: proposedContentOffset.x, y: min(max(geometry.minY(at: index) - anchor.distance, start), end))
     }
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {

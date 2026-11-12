@@ -464,6 +464,38 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// Earlier history landing above the reader builds the rows it brings
+    /// into view and no others. The rows went in with the offset left where
+    /// it was, at the top of what loaded, so the collection view built the
+    /// rows there and then, back at the reader's row, every row the reader
+    /// had been looking at again: a page took 94 ms to land where it now
+    /// takes 49 (live, Release, Simulator).
+    @Test func olderRowsArrivingAboveBuildOnlyTheRowsTheyBringIntoView() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let all = Self.longAnswers(40)
+        let newer = await builder.rows(for: ChatTimelineInput(entries: Array(all.suffix(40)), older: .available))
+        let more = await builder.rows(for: ChatTimelineInput(entries: all, older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(newer))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+            let (anchor, before) = try #require(Self.firstFullyVisibleRow(controller) { $0 != .olderHistory })
+            let shown = Set(controller.visibleRowIDs)
+            let built = controller.cellBuilds
+
+            controller.apply(Self.state(more, revision: 2))
+            let broughtIntoView = Set(controller.visibleRowIDs).subtracting(shown)
+            #expect(!broughtIntoView.isEmpty)
+            #expect(controller.cellBuilds - built <= broughtIntoView.count, "built \(controller.cellBuilds - built)")
+            #expect(!controller.isFollowing)
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: anchor, in: controller)) - before) <= 0.5)
+        }
+    }
+
     @Test func olderRowsLoadedUnderTheLoadEarlierRowKeepTheReadersRowInPlace() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let builder = ChatRowBuilder()
