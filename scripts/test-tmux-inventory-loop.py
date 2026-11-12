@@ -239,9 +239,9 @@ class LoopTestCase(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout.decode()
 
-    def start_server(self, command: str = "exec /bin/sleep 600") -> None:
+    def start_server(self, *command: str) -> None:
         # Named, so tmux does not rename the window after its program a moment later.
-        self.tmux("new-session", "-d", "-s", "main", "-n", "first", "-x", "80", "-y", "24", command)
+        self.tmux("new-session", "-d", "-s", "main", "-n", "first", "-x", "80", "-y", "24", *(command or ("/bin/sleep", "600")))
 
     def script(self, without_perl: bool = False) -> bytes:
         script = subprocess.run(
@@ -278,7 +278,7 @@ class ChangeOnlyTests(LoopTestCase):
                 time.sleep(3)
                 self.assertEqual(len(loop.inventories()), 1)
                 before = len(first[0]["panes"])
-                self.tmux("new-window", "-d", "-t", "main:", "-n", shell.replace("/", "-"), "exec /bin/sleep 600")
+                self.tmux("new-window", "-d", "-t", "main:", "-n", shell.replace("/", "-"), "/bin/sleep", "600")
                 second = loop.wait_for(2)
                 self.assertEqual(len(second[1]["panes"]), before + 1)
                 time.sleep(2)
@@ -290,7 +290,7 @@ class ChangeOnlyTests(LoopTestCase):
         loop = self.loop()
         first = loop.wait_for(1)[0]
         self.assertEqual([pane["windowName"] for pane in first["panes"]], ["first"])
-        self.tmux("new-window", "-d", "-t", "main:", "-n", "build", "exec /bin/sleep 600")
+        self.tmux("new-window", "-d", "-t", "main:", "-n", "build", "/bin/sleep", "600")
         second = loop.wait_for(2)[1]
         self.assertEqual([pane["windowName"] for pane in second["panes"]], ["first", "build"])
         self.assertEqual([pane["windowIndex"] for pane in second["panes"]], [0, 1])
@@ -325,8 +325,8 @@ class ChangeOnlyTests(LoopTestCase):
 class RowTests(LoopTestCase):
     def test_rows_carry_ids_names_sizes_and_the_heeler_options(self) -> None:
         self.start_server()
-        self.tmux("split-window", "-h", "-d", "-t", "main:0", "exec /bin/sleep 600")
-        self.tmux("new-session", "-d", "-s", "other", "-n", "elsewhere", "-x", "100", "-y", "30", "exec /bin/sleep 600")
+        self.tmux("split-window", "-h", "-d", "-t", "main:0", "/bin/sleep", "600")
+        self.tmux("new-session", "-d", "-s", "other", "-n", "elsewhere", "-x", "100", "-y", "30", "/bin/sleep", "600")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-status", "state=working:app=claude-code")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-session", "abc")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-pipe", "1")
@@ -359,7 +359,7 @@ class RowTests(LoopTestCase):
         directory = self.root / "a\tb\nc d"
         directory.mkdir()
         self.start_server()
-        self.tmux("new-window", "-d", "-t", "main:", "-n", "odd", "-c", str(directory), "exec /bin/sleep 600")
+        self.tmux("new-window", "-d", "-t", "main:", "-n", "odd", "-c", str(directory), "/bin/sleep", "600")
         # What a row, a marker and the end of a snapshot look like, inside one option.
         forged = (f"state=idle\n{NONCE} argv\n{NONCE} end\n{NONCE} begin\n"
                   "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n.\n\n")
@@ -376,7 +376,7 @@ class RowTests(LoopTestCase):
 
     def test_a_window_linked_into_two_sessions_is_listed_under_each(self) -> None:
         self.start_server()
-        self.tmux("new-session", "-d", "-s", "second", "-n", "own", "-x", "80", "-y", "24", "exec /bin/sleep 600")
+        self.tmux("new-session", "-d", "-s", "second", "-n", "own", "-x", "80", "-y", "24", "/bin/sleep", "600")
         self.tmux("link-window", "-s", "main:0", "-t", "second:5")
         panes = self.loop().wait_for(1)[0]["panes"]
         self.assertEqual(
@@ -559,7 +559,7 @@ class ForegroundTests(LoopTestCase):
             with self.subTest(shell=shell):
                 self.assertEqual(self.run_foreground(shell=shell), {"kind": "serverNotRunning"})
 
-        self.start_server("exec /bin/sleep 600")
+        self.start_server("/bin/sleep", "600")
         self.tmux("set-option", "-p", "-t", "%0", "@heeler-status", "state=idle:app=claude-code")
         pane_pid = int(self.tmux("display-message", "-p", "-t", "%0", "#{pane_pid}").strip())
         server_pid, start_time = self.instance()
@@ -582,7 +582,7 @@ class ForegroundTests(LoopTestCase):
             self.assertEqual(no_perl["foregroundPID"], pane_pid)
             self.assertEqual(no_perl["arguments"], ["/bin/sleep", "600"])
 
-        self.tmux("new-window", "-t", "main", "exec /bin/sh -c 'exit 0'")
+        self.tmux("new-window", "-t", "main", "/bin/sleep", "600")
         self.tmux("set-option", "-w", "-t", "main:1", "remain-on-exit", "on")
         self.tmux("respawn-pane", "-k", "-t", "%1", "exec /bin/sh -c 'exit 0'")
         deadline = time.monotonic() + 5
