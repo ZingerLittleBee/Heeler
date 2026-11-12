@@ -174,6 +174,14 @@ model, with nobody signed in:
   `turn_duration` entry at once. An Esc 5 s into a model request put the prompt
   back in the input, ran no hook, and added nothing to the Transcript in the
   30 s after.
+- Measured on 2026-11-12 to 2026-11-13 across tmux 3.2a, 3.3a, 3.4, 3.5a, 3.6b
+  and 3.7b (Ubuntu 24.04 distro 3.4 acceptance B09 and macOS builds), tmux 3.4
+  and 3.5a run `utf8_stravisx(..., VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH)` on
+  `display-message -p`, `list-panes -F`, `show-options` and `show-environment`
+  output (raw UTF-8 on 3.3a and 3.6+), escaping `0x1f` as `\037` and, on 3.4
+  alone, `$` before `[A-Za-z_{]` as `\$`. The Claude Code hook and Helper
+  readers therefore frame free-text format fields with `#{q:...}` and ` .` rather
+  than control-byte separators or `#{n:...}` byte counts.
 
 From Claude Code's hooks reference, as read in the 2026-11-10 review: Stop does
 not run after a user interrupt; a sandboxed command's network request runs the
