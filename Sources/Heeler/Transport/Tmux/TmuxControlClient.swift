@@ -50,6 +50,7 @@ actor TmuxControlClient {
     private let lines: AsyncStream<Data>
     private let lineSink: AsyncStream<Data>.Continuation
     private let channel: any WindowsTerminalExecChannel
+    private let closeCommand: TmuxControlCommand
     private let readTimeout: Duration
     private let writeTimeout: Duration
     private let closeTimeout: Duration
@@ -70,12 +71,14 @@ actor TmuxControlClient {
 
     init(
         channel: any WindowsTerminalExecChannel,
+        closeCommand: TmuxControlCommand = TmuxControlCommand(["detach-client"]),
         readTimeout: Duration = .seconds(30),
         writeTimeout: Duration = .seconds(10),
         closeTimeout: Duration = .seconds(2),
         reader: TmuxControlReader = TmuxControlReader()
     ) {
         self.channel = channel
+        self.closeCommand = closeCommand
         self.readTimeout = readTimeout
         self.writeTimeout = writeTimeout
         self.closeTimeout = closeTimeout
@@ -175,20 +178,20 @@ actor TmuxControlClient {
         }
     }
 
-    /// Asks tmux to detach this client, keeps reading until `%exit` or the
-    /// channel ends, then closes the exec.
+    /// Posts `closeCommand`, keeps reading until `%exit` or the channel ends,
+    /// then closes the exec.
     ///
-    /// Under `destroy-unattached on` this client is the session's only one, so
-    /// detaching ends the session with it. A target would name a session the
-    /// client may not have yet; `kill-session` stays for one that started
-    /// wrong. Lines already queued are written first. A client that never ends
-    /// still closes once `closeTimeout` passes: stopping the read earlier, while
-    /// tmux still has output queued, leaves the client in the server and the
-    /// next pane lookup crashes it.
+    /// An Attach passes `kill-session -t "=<session>"` so `server_destroy_session`
+    /// clears `c->session` synchronously before `CLIENT_EXIT` and before
+    /// `session_destroy`: detaching under `destroy-unattached on` leaves
+    /// `c->session` pointing at a session whose `curw` is `NULL`, and `CLIENT_EXIT`
+    /// with `c->session != NULL` while output is queued aborts `control_append_data`.
+    /// Lines already queued are written first. A client that never ends still
+    /// closes once `closeTimeout` passes.
     func close() async {
         if !isClosing, end == nil {
             isClosing = true
-            try? post(TmuxControlCommand(["detach-client"]))
+            try? post(closeCommand)
             startWriting()
         } else {
             isClosing = true

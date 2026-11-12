@@ -18,9 +18,10 @@ import Synchronization
 ///
 /// The output ends with `TransportError.tmuxPaneGone` once the Pane is gone or
 /// Heeler's session no longer holds it, and with the client's own failure when
-/// its exec failed. Ending the session detaches the client and keeps reading
-/// until it exits, then closes the exec. Under `destroy-unattached` the session
-/// ends with that client. What was typed before the end is written first.
+/// its exec failed. Ending the Attach kills Heeler's own session (`kill-session`
+/// clears `c->session` before `CLIENT_EXIT` and before `session_destroy`) and
+/// keeps reading until `%exit` or EOF, then closes the exec. What was typed
+/// before the end is written first.
 ///
 /// What the user types and the view's resizes go through the same client, in
 /// order (`type(_:)`, `resize(columns:rows:)`).
@@ -72,7 +73,8 @@ actor TmuxPaneAttach {
         channel: any WindowsTerminalExecChannel, session: String, pane: String, request: TerminalAttachRequest,
         startLimit: Duration
     ) async throws -> TerminalAttachSession {
-        let client = TmuxControlClient(channel: channel)
+        let client = TmuxControlClient(
+            channel: channel, closeCommand: TmuxAttachScript.killSession(session: session))
         let attach = TmuxPaneAttach(client: client, session: session, pane: pane, request: request)
         try await attach.start(within: startLimit)
         let input = TerminalAttachInputQueue()

@@ -331,6 +331,22 @@ struct TmuxControlClientTests {
         #expect(await drained(client) == [.ended(.exited(reason: nil))])
     }
 
+    @Test func closingWritesACustomCloseCommandAfterQueuedInput() async throws {
+        let channel = ScriptedTmuxLoopChannel(onClose: {})
+        let client = TmuxControlClient(
+            channel: channel,
+            closeCommand: TmuxAttachScript.killSession(session: "heeler-attach-0a1b2c3d"))
+        try await client.send(command("queued"), tag: 1)
+        let closing = Task { await client.close() }
+        try await waitUntil("kill-session after the queued command") {
+            await lines(channel) == ["queued\n", #"kill-session -t "=heeler-attach-0a1b2c3d""# + "\n"]
+        }
+        await channel.send(Data("%exit\n".utf8))
+        await closing.value
+        #expect(await client.end == .exited(reason: nil))
+        #expect(await channel.isClosed)
+    }
+
     /// A channel that never ends still closes inside the bound, after the
     /// detach and anything queued ahead of it.
     @Test func aChannelThatNeverEndsStillClosesWithinTheBound() async throws {

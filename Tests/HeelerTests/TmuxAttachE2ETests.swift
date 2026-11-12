@@ -97,7 +97,8 @@ extension TmuxTransportE2ETests {
                 #expect(try await fixture.sessionNames() == ["main", mine].sorted())
                 let target = "=\(mine):"
                 #expect(try await fixture.tmux(nil, "show-options", "-v", "-t", target, "@heeler-attach") == "\(pane)\n")
-                #expect(try await fixture.tmux(nil, "show-options", "-v", "-t", target, "destroy-unattached") == "on\n")
+                #expect(try await fixture.tmux(nil, "show-options", "-v", "-t", target, "destroy-unattached") == "off\n")
+                #expect(try await fixture.tmux(nil, "show-options", "-v", "-t", target, "detach-on-destroy") == "on\n")
                 #expect(try await fixture.tmux(nil, "list-windows", "-t", "=\(mine)", "-F", "#{window_id}") == "\(window)\n")
                 let client = try #require(try await clients(on: fixture).first)
                 #expect(try await clients(on: fixture).count == 1)
@@ -1240,6 +1241,163 @@ extension TmuxTransportE2ETests {
                 _ = session
             } catch {
                 try? await transport.close()
+                throw error
+            }
+        }
+    }
+
+    /// With a desktop client on one session, a newer unattached user session
+    /// holding a streaming Pane, and concurrent one-shot format reads, both
+    /// dropping an Attach connection outright and closing Attaches cleanly keep
+    /// the same tmux server and user sessions alive with no Attach left behind.
+    @Test(
+        "closing or dropping streaming Attaches under concurrent reads keeps the server and user sessions intact",
+        .timeLimit(.minutes(2)))
+    func closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let desktop = try await attachDesktopClient(
+                to: "main", windowColumns: 120, windowRows: 40, on: fixture)
+            let home = fixture.configuration.homePath
+            let readerProgram = "\(home)/bin/concurrent-readers"
+            let readerPIDFile = "\(home)/readers-\(UUID().uuidString.prefix(8)).pid"
+            try await fixture.writeProgram(
+                at: readerProgram,
+                """
+                #!/usr/bin/python3
+                import os, signal, subprocess, sys, threading
+                tmux_exec, sock, pane, pid_file = sys.argv[1:5]
+                if os.fork() > 0:
+                    os._exit(0)
+                os.setsid()
+                devnull = os.open("/dev/null", os.O_RDWR)
+                for fd in (0, 1, 2):
+                    os.dup2(devnull, fd)
+                if devnull > 2:
+                    os.close(devnull)
+                stop = threading.Event()
+                def shutdown(_sig, _frame):
+                    stop.set()
+                    os._exit(0)
+                for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    signal.signal(sig, shutdown)
+                env = {
+                    "HOME": os.environ["HOME"],
+                    "TMUX_TMPDIR": os.environ["TMUX_TMPDIR"],
+                    "PATH": "/usr/bin:/bin",
+                }
+                cmds = [
+                    [tmux_exec, "-u", "-N", "-S", sock, "display-message", "-p", "-t", pane, "#{pid} #{pane_id} #{@heeler-status}"],
+                    [tmux_exec, "-u", "-N", "-S", sock, "list-panes", "-a", "-F", "#{session_id} #{window_id} #{pane_id} #{@heeler-attach}"],
+                    [tmux_exec, "-u", "-N", "-S", sock, "list-clients", "-F", "#{client_control_mode} #{window_id} #{client_width} #{client_height} #{status} #{client_flags}"],
+                ]
+                def loop(cmd):
+                    while not stop.is_set():
+                        subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                for cmd in cmds:
+                    threading.Thread(target=loop, args=(cmd,), daemon=True).start()
+                with open(pid_file, "w") as handle:
+                    handle.write(f"{os.getpid()}\\n")
+                stop.wait()
+                """)
+
+            func stopReaders() async {
+                guard let text = try? await fixture.require("cat \(GitProbe.singleQuoted(readerPIDFile)) 2>/dev/null || true"),
+                    let pid = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                else { return }
+                _ = try? await fixture.run("kill \(pid) 2>/dev/null; true")
+                try? await fixture.eventually {
+                    let ps = (try? await fixture.require("ps -p \(pid) -o pid= || true")) ?? ""
+                    return ps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+            }
+
+            do {
+                let keepPane = try await fixture.require(
+                    fixture.tmuxLine([
+                        "new-session", "-d", "-s", "work", "-n", "keep", "-P", "-F", "#{pane_id}", "/bin/cat",
+                    ]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let streaming = try await fixture.require(
+                    fixture.tmuxLine([
+                        "new-window", "-d", "-t", "work:", "-P", "-F", "#{pane_id}",
+                        "/bin/sh", "-c", "trap '' INT; while :; do cat /usr/share/dict/words; done",
+                    ]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let initialInstance = try await fixture.serverInstance()
+
+                let startReaders = [
+                    "/usr/bin/python3", readerProgram, fixture.configuration.tmuxExecutable,
+                    fixture.socketPath(), keepPane, readerPIDFile,
+                ].map(GitProbe.singleQuoted).joined(separator: " ")
+                try await fixture.require(startReaders)
+                try await fixture.eventually { try await fixture.exists(readerPIDFile) }
+
+                let storedPaths = try fixture.paths()
+                for round in 0..<8 {
+                    let transport = try await fixture.connectTmux(storedPaths: storedPaths)
+                    do {
+                        var retainedRequest = TerminalAttachRequest(
+                            target: .terminal(keepPane), isViewed: false, surfaceHasHistory: false, cols: 80, rows: 24)
+                        retainedRequest.coreID = initialInstance.id
+                        let retained = try await transport.attachPane(keepPane, request: retainedRequest)
+                        let viewed = try await transport.attachPane(
+                            streaming, request: try await request(for: streaming, on: fixture))
+                        var output = viewed.output.makeAsyncIterator()
+                        _ = try await read(from: &output) { $0.utf8.count >= 8_192 }
+
+                        if round.isMultiple(of: 2) {
+                            try await transport.close()
+                            _ = (retained, viewed)
+                        } else {
+                            let stopping = try await fixture.require(
+                                fixture.tmuxLine([
+                                    "new-window", "-d", "-t", "work:", "-P", "-F", "#{pane_id}",
+                                    "/bin/sh", "-c", "trap 'exit 0' INT; while :; do cat /usr/share/dict/words; done",
+                                ]))
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            var retainedStoppingRequest = TerminalAttachRequest(
+                                target: .terminal(stopping), isViewed: false, surfaceHasHistory: false, cols: 80, rows: 24)
+                            retainedStoppingRequest.coreID = initialInstance.id
+                            let retainedStopping = try await transport.attachPane(stopping, request: retainedStoppingRequest)
+                            var stopActionRequest = TerminalAttachRequest(
+                                target: .terminal(stopping), isViewed: false, surfaceHasHistory: false, cols: 0, rows: 0)
+                            stopActionRequest.coreID = initialInstance.id
+                            let stopAttach = try await transport.attachPane(stopping, request: stopActionRequest)
+                            _ = await stopAttach.tmuxSend?.sendKey("C-c", { try await Task.sleep(for: $0) })
+                            async let statusWrite: Void = {
+                                _ = try? await fixture.tmux(
+                                    nil, "set-option", "-p", "-t", stopping, "@heeler-status", "state=idle:app=grok")
+                            }()
+                            await stopAttach.end()
+                            await retainedStopping.end()
+                            await viewed.end()
+                            await retained.end()
+                            _ = await statusWrite
+                            try await transport.close()
+                        }
+                    } catch {
+                        try? await transport.close()
+                        throw error
+                    }
+                    #expect(try await fixture.answers())
+                    #expect(try await fixture.serverInstance() == initialInstance)
+                }
+
+                await stopReaders()
+                await desktop.stop()
+                try await fixture.eventually {
+                    let names = try await fixture.sessionNames()
+                    let attached = try await clients(on: fixture)
+                    return names == ["main", "work"]
+                        && attached.allSatisfy { !$0.hasPrefix(TmuxAttachScript.sessionPrefix) }
+                }
+                #expect(try await fixture.serverInstance() == initialInstance)
+                #expect(try await fixture.sessionNames() == ["main", "work"])
+                #expect(try await clients(on: fixture).isEmpty)
+            } catch {
+                await stopReaders()
+                await desktop.stop()
                 throw error
             }
         }

@@ -3,17 +3,30 @@ import Foundation
 /// How an Attach starts on a tmux Host (ADR 0043). One exec runs a script for
 /// `/bin/sh -s` that starts a control-mode client with commands to start with:
 /// a session of Heeler's own around a placeholder window, marked
-/// `@heeler-attach`, set to end with its client, holding a link to the Pane's
-/// window, with the placeholder closed. tmux runs them in order and stops at
-/// the first that fails, so once the third ran the session ends with its
-/// client whatever fails after it. The client never starts a server (`-N`).
+/// `@heeler-attach`, with `destroy-unattached off` and `detach-on-destroy on`,
+/// holding a link to the Pane's window, with the placeholder closed. tmux runs
+/// them in order and stops at the first that fails. The client never starts a
+/// server (`-N`).
 ///
-/// tmux's standard output goes through a drain that keeps reading until tmux
-/// exits. A channel that drops then still lets tmux finish writing and leave:
-/// a control client exits only once its queued output is written, and one left
-/// behind crashes the server on the next command that looks up a client's pane.
-/// The shell exits in the same group, which it reads whole before running, so
-/// what Heeler writes next is tmux's and is never a shell command.
+/// Leaving `destroy-unattached` on lets `server_check_unattached` destroy the
+/// session (`s->curw = NULL`) as soon as `CLIENT_EXIT` marks `s->attached == 0`
+/// while `c->session` still points to `s`, crashing the server on any command or
+/// disconnect hook that reads a client's pane; and setting `CLIENT_EXIT` on
+/// stdin EOF or `detach-client` while `c->session != NULL` and output blocks
+/// are queued aborts the server in `control_append_data` when the pane writes
+/// again. Instead, polite close and abrupt SSH stdin EOF both end the session
+/// with `kill-session -t "=<session>"`, whose `server_destroy_session` clears
+/// `c->session` before setting `CLIENT_EXIT` and before destroying `s`, while
+/// `detach-on-destroy on` keeps window exit from switching the client onto a
+/// user session.
+///
+/// tmux's standard input comes through a feeder that forwards the channel and,
+/// if the channel drops, cancels any partial line and writes `kill-session`
+/// before closing tmux's input; when tmux exits first, the pipeline terminates
+/// that feeder at once. tmux's standard output goes through a drain that keeps
+/// reading until tmux exits, a fallback `kill-session` cleans up any session
+/// started before stdin ran, and the shell exits in the same group so nothing
+/// written later can run as a shell command.
 ///
 /// The client's first reply to a command it wrote answers the barrier, after
 /// every block of the start: it says whether the session came out as meant,
@@ -34,29 +47,57 @@ enum TmuxAttachScript {
     /// sessions with their mark, and the Console shows none of them.
     static let sessionPrefix = "heeler-attach-"
 
+    /// Ends the Attach's session by exact name (`server_destroy_session` clears
+    /// `c->session` before `CLIENT_EXIT` and before `session_destroy`).
+    static func killSession(session: String) -> TmuxControlCommand {
+        TmuxControlCommand(["kill-session", "-t", "=\(session)"])
+    }
+
     /// A script for `/bin/sh -s`. It is one group, so the shell reads all of
     /// it, including the `exit` after the pipeline, before it runs anything.
-    /// The pipeline does not redirect tmux's standard input. Nil for anything
-    /// but a pane id.
+    /// Nil for anything but a pane id.
     static func script(paths: TmuxPaths, session: String, pane: String, pauseAfter: Int) -> String? {
         guard isPaneID(pane) else { return nil }
         let target = "=\(session):"
         let commands: [[String]] = [
             ["new-session", "-E", "-s", session, "-f", "pause-after=\(pauseAfter)", "sleep", "2147483647"],
             ["set-option", "-t", target, "@heeler-attach", pane],
-            ["set-option", "-t", target, "destroy-unattached", "on"],
+            ["set-option", "-t", target, "destroy-unattached", "off"],
+            ["set-option", "-t", target, "detach-on-destroy", "on"],
             ["link-window", "-s", pane, "-t", target],
             ["kill-window", "-t", "\(target)^"],
         ]
         let words = commands.map { $0.map(shellWord).joined(separator: " ") }.joined(separator: " ';' ")
-        // The second cat keeps reading after the channel stops, so tmux can
-        // finish writing and exit. `exit` is already parsed with the group:
-        // without it the shell would run the next control line as a command.
+        let killLine = killSession(session: session).line
+        let feeder = [
+            "trap 'kill \"$!\" 2>/dev/null || :; exit 0' TERM;",
+            "echo \"$$\";",
+            "cat <&3 3<&- &",
+            "exec 3<&-;",
+            "wait \"$!\" 2>/dev/null || :;",
+            "trap \"\" PIPE;",
+            "printf 'x\" \\047x\\n%s\\n' \"$1\" 2>/dev/null || :;",
+            "sleep 2 &",
+            "wait \"$!\" 2>/dev/null || :",
+        ].joined(separator: " ")
+        // On channel drop, the feeder breaks any partial control-mode line with
+        // an unclosed quote and sends `kill-session` while holding the pipe open
+        // until tmux exits; on normal exit, `kill "$p"` ends the feeder at once.
+        // The second cat keeps reading after the channel stops so tmux finishes
+        // writing, and `exit` is already parsed with the group.
         return [
             "{",
+            "trap '' HUP",
             "t=\(quoted(paths.executable))",
             "s=\(quoted(paths.socket))",
-            "\"$t\" -u -N -S \"$s\" -C \(words) | { cat; cat >/dev/null; }",
+            "n=\(quoted(session))",
+            "k=\(quoted(killLine))",
+            "sh -c \(quoted(feeder)) sh \"$k\" 3<&0 | {",
+            "IFS= read -r p",
+            "\"$t\" -u -N -S \"$s\" -C \(words)",
+            "kill \"$p\" 2>/dev/null || :",
+            "} | { cat; cat >/dev/null; }",
+            "\"$t\" -u -N -S \"$s\" kill-session -t \"=$n\" >/dev/null 2>&1 || :",
             "exit",
             "}",
             "",

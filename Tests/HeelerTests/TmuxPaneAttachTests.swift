@@ -87,8 +87,9 @@ struct TmuxPaneAttachTests {
         #expect(first.dropFirst(3).first?.hasPrefix("=heeler-attach-") == true)
     }
 
-    /// What was typed is written, then detach, and the output ends without the
-    /// Pane-gone failure a detach's `%exit` would otherwise be.
+    /// What was typed is written, then `kill-session` for this Attach's own
+    /// session, and the output ends without the Pane-gone failure `%exit`
+    /// would otherwise be.
     @Test func closingDetachesAfterQueuedInputAndTheOutputEndsCleanly() async throws {
         let tmux = await host()
         let session = try await attach(on: tmux)
@@ -99,8 +100,12 @@ struct TmuxPaneAttachTests {
         await session.end()
         let written = await commands(on: tmux)
         let textAt = try #require(written.firstIndex(of: Self.text("ab")))
-        let detachAt = try #require(written.lastIndex(of: ["detach-client"]))
-        #expect(textAt < detachAt)
+        let killAt = try #require(
+            written.lastIndex { words in
+                words.count == 3 && words[0] == "kill-session" && words[1] == "-t"
+                    && words[2].hasPrefix("=\(TmuxAttachScript.sessionPrefix)")
+            })
+        #expect(textAt < killAt)
         #expect(await tmux.openControlClients == 0)
         #expect(await ending(of: &output) == nil)
     }

@@ -777,7 +777,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             sessionID: sessionID,
             pane: pane ?? .make(pane: Int(paneID.dropFirst()) ?? 0, command: "sleep"), window: pane?.windowID)
         // One block for each start command, up to the first that fails.
-        var start = (0..<3).map { _ in block([], fromClient: false) }
+        var start = (0..<4).map { _ in block([], fromClient: false) }
         if pane != nil {
             start += [block([], fromClient: false), block([], fromClient: false)]
         } else {
@@ -1096,7 +1096,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             panes[client.socket]?.removeAll { $0.windowID == target }
             return controlClients.filter { $0.value.socket == client.socket && $0.value.window == target }.map(\.key)
         case "kill-session":
-            return controlClients.filter { $0.value.sessionID == target }.map(\.key)
+            return controlClients.filter {
+                $0.value.sessionID == target
+                    || "=\($0.value.sessionName)" == target
+                    || $0.value.sessionName == target
+            }.map(\.key)
         default:
             return nil
         }
