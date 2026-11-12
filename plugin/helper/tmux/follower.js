@@ -9,8 +9,10 @@ import { runStoredTmux } from "./client.js";
 import { createForegroundReader } from "./foreground.js";
 import { readQuotedTmuxRecord } from "./quoted-format.js";
 import { storedTmuxServers } from "./socket-name.js";
+import { readHeelerStatus, wordForTmuxAgent } from "./status.js";
 
 export const TMUX_POLL_INTERVAL_MS = 5000;
+export const TMUX_BLOCKED_POLL_INTERVAL_MS = 1000;
 const RECONCILE_MS = 3000;
 
 const FIXED_FIELDS = [
@@ -42,10 +44,23 @@ const LIST_PANES_FORMAT =
   `${FIXED_FIELDS.join("\t")}\n` +
   `${TEXT_FIELDS.map((name) => `#{q:${name}}`).join(" ")} .`;
 
+function requestedPollDelay(result) {
+  if (!result || typeof result !== "object") return null;
+  const { nextPollMs } = result;
+  return Number.isFinite(nextPollMs) && nextPollMs >= 0 ? nextPollMs : null;
+}
+
 /** Combines several tmux follower listeners in order. */
 export function combineTmuxListeners(...listeners) {
   const tell = (name) => async (report) => {
-    for (const listener of listeners) await listener[name]?.(report);
+    let nextPollMs = null;
+    for (const listener of listeners) {
+      const requested = requestedPollDelay(await listener[name]?.(report));
+      if (requested !== null) {
+        nextPollMs = nextPollMs === null ? requested : Math.min(nextPollMs, requested);
+      }
+    }
+    return nextPollMs === null ? undefined : { nextPollMs };
   };
   return {
     serverStarted: tell("serverStarted"),
@@ -170,6 +185,30 @@ function knownAgentKind(pane) {
   return agent?.known ? agent.kind : null;
 }
 
+function hasBlockedAgentPane(panes) {
+  for (const pane of panes) {
+    if (pane.isDead || pane.agentKind === null) continue;
+    if (wordForTmuxAgent(readHeelerStatus(pane.status), pane.agentKind) === "blocked") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function abortableSleep(sleepFn, ms, signal) {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(sleepFn(ms, signal))
+      .catch(() => {})
+      .finally(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      });
+  });
+}
+
 /**
  * Follows one tmux server on `paths` (`{ executable, socket }`) until `stop()`.
  */
@@ -180,8 +219,15 @@ export function followTmuxServer(
     listener = {},
     log = () => {},
     pollIntervalMs = TMUX_POLL_INTERVAL_MS,
+    blockedPollIntervalMs,
+    sleep = (ms, signal) => delay(ms, undefined, { signal }),
   } = {},
 ) {
+  const pollDelay = Number.isFinite(pollIntervalMs) && pollIntervalMs >= 0 ? pollIntervalMs : TMUX_POLL_INTERVAL_MS;
+  const blockedDelay =
+    Number.isFinite(blockedPollIntervalMs) && blockedPollIntervalMs >= 0
+      ? blockedPollIntervalMs
+      : Math.min(pollDelay, TMUX_BLOCKED_POLL_INTERVAL_MS);
   const stopping = new AbortController();
   const { signal } = stopping;
   const target = { tmux: paths.executable, socket: paths.socket };
@@ -261,15 +307,26 @@ export function followTmuxServer(
   const run = async () => {
     while (!signal.aborted) {
       const snapshot = await sample();
+      let waitMs = pollDelay;
       if (!signal.aborted && snapshot) {
+        let started;
         if (startedInstance !== snapshot.instance) {
           startedInstance = snapshot.instance;
-          await listener.serverStarted?.({ socket, paths, ...snapshot });
+          started = await listener.serverStarted?.({ socket, paths, ...snapshot });
         }
-        await listener.panesUpdated?.({ socket, paths, ...snapshot });
+        const updated = listener.panesUpdated
+          ? await listener.panesUpdated({ socket, paths, ...snapshot })
+          : started;
+        if (hasBlockedAgentPane(snapshot.panes)) {
+          waitMs = Math.min(waitMs, blockedDelay);
+        }
+        const requested = requestedPollDelay(updated);
+        if (requested !== null) {
+          waitMs = Math.min(waitMs, requested);
+        }
       }
       if (currentInstance === null) startedInstance = null;
-      await delay(pollIntervalMs, undefined, { signal }).catch(() => {});
+      await abortableSleep(sleep, waitMs, signal);
     }
     await listener.followerStopped?.({ socket, instance: currentInstance, paths });
   };

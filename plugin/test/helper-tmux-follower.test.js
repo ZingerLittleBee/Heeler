@@ -1,5 +1,6 @@
-// The Helper's tmux follower reads `list-panes -a` every 5 seconds through the
-// tmux executable and socket the app stored under `tmux/<socket>/paths.json`
+// The Helper's tmux follower reads `list-panes -a` every 5 seconds by default
+// (1 second while a followed Agent Pane reads `blocked`) through the tmux
+// executable and socket the app stored under `tmux/<socket>/paths.json`
 // (ADRs 0042 and 0044). Every test runs a private `-S` server under a temporary
 // directory and never touches the user's tmux.
 
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, delimiter, join } from "node:path";
 
 import {
+  TMUX_BLOCKED_POLL_INTERVAL_MS,
   TMUX_POLL_INTERVAL_MS,
   combineTmuxListeners,
   followStoredTmuxServers,
@@ -112,8 +114,9 @@ suite("tmux test resolver", () => {
 });
 
 suite("tmux follower", () => {
-  test("samples every 5 seconds by default", () => {
+  test("samples every 5 seconds by default and every 1 second while an Agent Pane reads blocked", () => {
     assert.equal(TMUX_POLL_INTERVAL_MS, 5000);
+    assert.equal(TMUX_BLOCKED_POLL_INTERVAL_MS, 1000);
   });
 
   test("waits while no server runs without starting one, then follows it and starts over on a new instance", { skip }, async () => {
@@ -340,5 +343,108 @@ for (const row of rows) {
     );
     assert.equal(latest[1].paneID, "%1");
     assert.equal(latest[1].windowName, "fish");
+  });
+
+  test("polls every 1 second on a fake clock only while a live Agent Pane reads blocked or a listener requests a shorter follow-up", async () => {
+    const stateFile = join(root, "stub-state.json");
+    const stubTmux = join(root, "tmux-clock-stub");
+    writeFileSync(
+      stateFile,
+      JSON.stringify({ command: "claude", dead: "0", status: "state=idle:app=claude-code:turn=1:blocked=0" }),
+    );
+    writeFileSync(
+      stubTmux,
+      `#!${process.execPath}
+const { readFileSync } = require("node:fs");
+function quoteShell(text) {
+  let out = "";
+  for (const ch of text) {
+    if ("|&;<>()$\`\\\\\\"'*?[# =%".includes(ch)) out += "\\\\";
+    out += ch;
+  }
+  return out;
+}
+const state = JSON.parse(readFileSync(${JSON.stringify(stateFile)}, "utf8"));
+const row = {
+  pid: "9100", start_time: "1700000100", session_id: "$0", window_id: "@0", window_index: "0",
+  pane_id: "%0", pane_pid: "2147483640", pane_dead: state.dead, pane_pipe: "0",
+  session_name: "main", window_name: "agent", pane_current_command: state.command,
+  pane_current_path: "/tmp", pane_tty: "", "@heeler-status": state.status,
+  "@heeler-session": "", "@heeler-pipe": "", "@heeler-piped": "", "@heeler-attach": "",
+};
+const args = process.argv.slice(2);
+const fmt = args[args.length - 1];
+const expanded = fmt.replace(/#\\{(q:)?([^}]+)\\}/g, (_, q, name) => (q ? quoteShell(row[name] ?? "") : (row[name] ?? "")));
+process.stdout.write(expanded + "\\n");
+`,
+      { mode: 0o755 },
+    );
+
+    const sleeps = [];
+    let pendingSleep = null;
+    let nextFollowUp = undefined;
+    const pushed = [];
+
+    const follower = followTmuxServer(
+      "work",
+      { executable: stubTmux, socket: join(root, "clock.sock") },
+      {
+        sleep(ms) {
+          sleeps.push(ms);
+          return new Promise((resolve) => {
+            pendingSleep = resolve;
+          });
+        },
+        listener: combineTmuxListeners(
+          // Array.prototype.push returns a number; combineTmuxListeners must ignore non-object returns.
+          { panesUpdated: ({ panes }) => pushed.push(panes[0]?.status) },
+          { panesUpdated: () => nextFollowUp },
+        ),
+      },
+    );
+    cleanups.push(() => follower.stop());
+
+    const step = async (nextState, followUp = undefined) => {
+      await waitFor(() => pendingSleep !== null, "follower entered sleep", PATIENCE_MS);
+      const seen = sleeps.at(-1);
+      writeFileSync(stateFile, JSON.stringify(nextState));
+      nextFollowUp = followUp;
+      const wake = pendingSleep;
+      pendingSleep = null;
+      wake();
+      return seen;
+    };
+
+    // Idle Agent Pane: 5000 ms.
+    assert.equal(
+      await step({ command: "claude", dead: "0", status: "state=working:app=claude-code:turn=1:blocked=0" }),
+      5000,
+    );
+    // Working Agent Pane: still 5000 ms.
+    assert.equal(
+      await step({ command: "claude", dead: "0", status: "state=blocked:app=claude-code:kind=permission:turn=1:blocked=1" }),
+      5000,
+    );
+    // Live Agent Pane reading blocked: 1000 ms.
+    assert.equal(
+      await step({ command: "codex", dead: "0", status: "state=blocked:app=claude-code:kind=permission:turn=1:blocked=1" }),
+      1000,
+    );
+    // Foreign `app` on another foreground Agent reads null, not blocked: back to 5000 ms.
+    assert.equal(
+      await step(
+        { command: "claude", dead: "0", status: "state=working:app=claude-code:turn=1:blocked=1" },
+        { nextPollMs: 750 },
+      ),
+      5000,
+    );
+    // Listener follow-up request caps the next sleep to 750 ms, then returns to 5000 ms once cleared.
+    assert.equal(
+      await step({ command: "claude", dead: "0", status: "state=done:app=claude-code:turn=2:blocked=1" }),
+      750,
+    );
+    await waitFor(() => pendingSleep !== null, "final sleep", PATIENCE_MS);
+    assert.equal(sleeps.at(-1), 5000);
+    assert.equal(pushed.length, 6);
   });
 });

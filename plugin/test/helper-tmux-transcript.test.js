@@ -644,4 +644,148 @@ suite("tmux Claude Code transcript watcher", () => {
     assert.equal(server.option(pane, "@heeler-status"), "state=working:app=claude-code:turn=3:blocked=0");
     assert.equal(watcher.trackedPaneCount("work"), 0);
   });
+
+  test("recovers a desktop-declined Blocked turn within 5 seconds on a fake clock at production defaults while preserving the Stop-hook settle window", { skip }, async () => {
+    const fakeClaude = makeAgentBinary("claude");
+    const server = startPrivateServer([fakeClaude, "--ide"]);
+    const pane = "%0";
+    const pid = Number(server.run("display-message", "-p", "-t", pane, "#{pane_pid}").trim());
+    const transcript = join(home, "fake-clock.jsonl");
+    const sessionId = "s-fake-clock";
+
+    writeFileSync(transcript, "");
+    server.run("set-option", "-p", "-t", pane, "@heeler-session", JSON.stringify({ session: sessionId, file: transcript, pid }));
+    server.run("set-option", "-p", "-t", pane, "@heeler-status", "state=idle:app=claude-code:turn=1:blocked=0");
+
+    let clockMs = 0;
+    const sleeps = [];
+    let pendingSleep = null;
+    const waitForSleep = async () => {
+      await waitFor(() => pendingSleep !== null, "follower entered sleep", PATIENCE_MS);
+      return pendingSleep.ms;
+    };
+    const advanceWithinSleep = (ms) => {
+      assert.notEqual(pendingSleep, null, "expected follower to be sleeping");
+      assert.ok(clockMs + ms <= pendingSleep.wakeAt, "cannot advance past wakeAt");
+      clockMs += ms;
+    };
+    const wakeNextPoll = () => {
+      assert.notEqual(pendingSleep, null, "expected follower to be sleeping");
+      const { wakeAt, resolve } = pendingSleep;
+      pendingSleep = null;
+      clockMs = wakeAt;
+      resolve();
+    };
+
+    const downstream = [];
+    const follower = followTmuxServer(
+      "work",
+      { executable: server.executable, socket: server.socket },
+      {
+        sleep(ms) {
+          sleeps.push(ms);
+          return new Promise((resolve) => {
+            pendingSleep = { ms, wakeAt: clockMs + ms, resolve };
+          });
+        },
+        listener: combineTmuxListeners(tmuxTranscriptListener({ now: () => clockMs }), {
+          panesUpdated: ({ panes }) => downstream.push({ at: clockMs, status: panes[0]?.status }),
+        }),
+      },
+    );
+    cleanups.push(() => follower.stop());
+
+    // Initial idle sample sleeps the full 5000 ms.
+    assert.equal(await waitForSleep(), 5000);
+
+    // PermissionRequest lands while idle; next sample sees Blocked and switches to 1000 ms polling.
+    advanceWithinSleep(4400);
+    appendFileSync(
+      transcript,
+      jsonl(
+        { type: "user", uuid: "u1", sessionId, message: { role: "user", content: "rm -rf scratch" } },
+        { type: "assistant", uuid: "a1", parentUuid: "u1", sessionId, message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "tu1", name: "Bash" }] } },
+      ),
+    );
+    server.run("set-option", "-p", "-t", pane, "@heeler-status", "state=blocked:app=claude-code:kind=permission:turn=1:blocked=1");
+    server.run("set-option", "-p", "-t", pane, "@heeler-ask", `${pid} u`);
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 1000);
+
+    // Worst-case phase while Blocked: user declines at the desktop 1 ms after a sample.
+    // Under the old 5000 ms fixed interval this took 9999 ms (> 5000 ms); here it takes 1999 ms.
+    advanceWithinSleep(1);
+    const declineAt = clockMs;
+    appendFileSync(
+      transcript,
+      jsonl(
+        { type: "user", uuid: "u2", parentUuid: "a1", sessionId, message: { role: "user", content: [{ type: "tool_result", is_error: true }] } },
+        { type: "user", uuid: "u3", parentUuid: "u2", sessionId, message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user for tool use]" }] } },
+        { type: "system", subtype: "turn_duration", uuid: "t1", parentUuid: "u3", durationMs: 650, sessionId },
+      ),
+    );
+
+    // First post-decline poll (999 ms later): holds pending turn-end so a racing Stop hook could still win.
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 1000);
+    assert.equal(server.option(pane, "@heeler-status"), "state=blocked:app=claude-code:kind=permission:turn=1:blocked=1");
+
+    // Confirmation poll (1999 ms after decline): sets idle, clears @heeler-ask, updates downstream, and resumes 5000 ms polling.
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 5000);
+    const blockedRecoveryMs = clockMs - declineAt;
+    assert.equal(blockedRecoveryMs, 1999);
+    assert.ok(blockedRecoveryMs <= 5000, `expected Blocked decline recovery <= 5000 ms, got ${blockedRecoveryMs} ms`);
+    assert.equal(server.option(pane, "@heeler-status"), "state=idle:app=claude-code:turn=1:blocked=1");
+    assert.equal(server.option(pane, "@heeler-ask"), "");
+    assert.equal(downstream.at(-1)?.status, "state=idle:app=claude-code:turn=1:blocked=1");
+
+    // Fast PermissionRequest + decline inside one 5000 ms idle sleep (1000 ms after prompt): follow-up poll confirms in <= 5000 ms.
+    advanceWithinSleep(1000);
+    const fastDeclineAt = clockMs;
+    server.run("set-option", "-p", "-t", pane, "@heeler-status", "state=blocked:app=claude-code:kind=permission:turn=1:blocked=2");
+    appendFileSync(
+      transcript,
+      jsonl(
+        { type: "user", uuid: "u4", sessionId, message: { role: "user", content: "rm temp2" } },
+        { type: "assistant", uuid: "a2", parentUuid: "u4", sessionId, message: { id: "m2", role: "assistant", content: [{ type: "tool_use", id: "tu2", name: "Bash" }] } },
+        { type: "user", uuid: "u5", parentUuid: "a2", sessionId, message: { role: "user", content: [{ type: "tool_result", is_error: true }] } },
+        { type: "system", subtype: "turn_duration", uuid: "t2", parentUuid: "u5", durationMs: 300, sessionId },
+      ),
+    );
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 1000);
+    assert.equal(server.option(pane, "@heeler-status"), "state=blocked:app=claude-code:kind=permission:turn=1:blocked=2");
+
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 5000);
+    const fastRecoveryMs = clockMs - fastDeclineAt;
+    assert.equal(fastRecoveryMs, 5000);
+    assert.ok(fastRecoveryMs <= 5000);
+    assert.equal(server.option(pane, "@heeler-status"), "state=idle:app=claude-code:turn=1:blocked=2");
+
+    // Normal working turn where turn_duration lands before Stop: watcher schedules a 1000 ms settle check, and Stop within 1000 ms wins.
+    server.run("set-option", "-p", "-t", pane, "@heeler-status", "state=working:app=claude-code:turn=1:blocked=2");
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 5000);
+
+    advanceWithinSleep(4900);
+    appendFileSync(
+      transcript,
+      jsonl(
+        { type: "user", uuid: "u6", sessionId, message: { role: "user", content: "ship" } },
+        { type: "assistant", uuid: "a3", parentUuid: "u6", sessionId, message: { id: "m3", role: "assistant", content: [] } },
+        { type: "system", subtype: "turn_duration", uuid: "t3", parentUuid: "a3", durationMs: 400, sessionId },
+      ),
+    );
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 1000);
+    assert.equal(server.option(pane, "@heeler-status"), "state=working:app=claude-code:turn=1:blocked=2");
+
+    advanceWithinSleep(150);
+    server.run("set-option", "-p", "-t", pane, "@heeler-status", "state=done:app=claude-code:turn=2:blocked=2");
+    wakeNextPoll();
+    assert.equal(await waitForSleep(), 5000);
+    assert.equal(server.option(pane, "@heeler-status"), "state=done:app=claude-code:turn=2:blocked=2");
+  });
 });

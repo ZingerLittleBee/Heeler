@@ -9,12 +9,14 @@
 // `turn_duration` would turn `working` into `idle` (no `turn` step for a
 // done-reporting program) and leave the hook's `idle` -> `done` without a
 // `turn` step either, eating `Done`. We therefore hold a candidate turn-end in
-// memory until a later poll sees both the identical `@heeler-status` (same
-// state and counts, with no new user/assistant Transcript entries) and at least
-// `settleMs` on a monotonic clock (`performance.now()`). Monotonic elapsed time
-// avoids filesystem `mtime` granularity/clock skew and trailing non-turn writes
-// while giving `hook.sh` time to run even under fast polling; `setIdleOnPane`
-// keeps a tmux compare-and-set so a hook landing at the same instant still wins.
+// memory, ask `followTmuxServer` for a follow-up poll once `settleMs` elapses,
+// and write `idle` only when that later poll sees the identical `@heeler-status`
+// (same state and counts, with no new user/assistant Transcript entries) and at
+// least `settleMs` on a monotonic clock (`performance.now()`). Monotonic elapsed
+// time avoids filesystem `mtime` granularity/clock skew and trailing non-turn
+// writes while giving `hook.sh` time to run even under fast polling;
+// `setIdleOnPane` keeps a tmux compare-and-set so a hook landing at the same
+// instant still wins.
 
 import { open, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
@@ -198,6 +200,13 @@ export function tmuxTranscriptListener({ settleMs = DEFAULT_SETTLE_MS, now = () 
 
     const target = { tmux: paths.executable, socket: paths.socket };
     const present = new Set();
+    let nextPollMs = null;
+    const notePending = (pending) => {
+      if (pending === null) return;
+      const elapsed = Math.max(0, now() - pending.seenAt);
+      const remaining = elapsed >= settleDelay ? 0 : Math.ceil(settleDelay - elapsed);
+      nextPollMs = nextPollMs === null ? remaining : Math.min(nextPollMs, remaining);
+    };
 
     for (const pane of panes) {
       if (pane.isDead || pane.agentKind !== "claude") continue;
@@ -293,11 +302,13 @@ export function tmuxTranscriptListener({ settleMs = DEFAULT_SETTLE_MS, now = () 
         watching: true,
         pending,
       });
+      notePending(pending);
     }
 
     for (const paneID of tracked.panes.keys()) {
       if (!present.has(paneID)) tracked.panes.delete(paneID);
     }
+    return nextPollMs === null ? undefined : { nextPollMs };
   };
 
   return {

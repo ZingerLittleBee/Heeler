@@ -207,7 +207,7 @@
     },
     {
       "path": "tmux/follower.js",
-      "sha256": "91432432cd5270a59946eff915abf728fe4e0166ae2c0316a4cf577e25d21670"
+      "sha256": "2df04b8b982b1e8d82ebd976fd20df0cde54c9fb18a4972e30491965fc799ad7"
     },
     {
       "path": "tmux/foreground.js",
@@ -239,7 +239,7 @@
     },
     {
       "path": "tmux/transcript-watcher.js",
-      "sha256": "bc9ab89c082534cd7e5379d1686ca11306e7c7dff9908276a1953d15308d4dfd"
+      "sha256": "11c09cd74979fd39c72d5acde48d73e1ea22fed6302878b9869b7004ea172928"
     },
     {
       "path": "tmux/turn-state.js",
