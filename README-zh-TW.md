@@ -58,10 +58,10 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
   與新增 Workspace 在那裡也都能使用
   （[了解更多](https://docs.heeler.bybee.dev/herdr-core)）。
 - **tmux**——可連線到 macOS 或 Linux 上的 tmux 3.3+ 伺服器。工作階段、
-  視窗與窗格會出現在主控台中，即時終端機會配合你的螢幕調整大小且不超過
-  已開啟的桌面終端機，對話、輸入框、新增 Agent、新增 Workspace 與工作樹
-  同樣可用，並透過 Claude Code hooks 與選用的 Host Helper 加入 Agent
-  狀態、通知、即時動態與用量
+  視窗與窗格會出現在主控台中，即時終端機會配合你的螢幕調整大小並保持在同一
+  視窗已開啟的桌面終端機範圍內，對話、輸入框、新增 Agent、新增 Workspace
+  與工作樹同樣可用，並透過 Claude Code hooks 與選用的 Host Helper 加入
+  Agent 狀態、通知、即時動態與用量
   （[了解更多](https://docs.heeler.bybee.dev/tmux)）。
 - **接入**——以 libghostty 繪製 Agent 的真實終端機：原生捲動回溯、
   同樣能操作全螢幕 TUI 的慣性觸控捲動、長按選取、接管已失效的
@@ -102,7 +102,7 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
 
 herdr-core 主機（包括執行 Herdr 桌面應用程式的機器）需手動新增，並確認其伺服器類型。Heeler 與 core 之間使用一條分幀連線：在 macOS 與 Linux 上是通往其 socket 的 direct-streamlocal 通道，在原生 Windows 上則是透過 SSH exec 執行 `herdr-core connect`。連線時絕不會在 macOS 或 Linux 上啟動 core。選用的 Host Helper 可在 macOS 與 Linux 上加入通知、即時動態與用量功能（[連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core)）。
 
-tmux 主機（macOS 與 Linux 上的 tmux >= 3.3）同樣需手動新增，並確認其伺服器類型與 socket 名稱。連線時絕不會啟動 tmux 伺服器；在 Linux 上可依你的指示透過新增 Workspace 啟動。即時終端機以 tmux 控制模式按窗格接入，不會中斷桌面用戶端，也不會超過已開啟的桌面終端機大小。Claude Code hooks 可回報受阻、完成與對話 ID，選用的 Host Helper 則加入狀態讀取、Pi 與 Oh My Pi 擴充功能、通知、即時動態與用量功能（[連線到 tmux](https://docs.heeler.bybee.dev/tmux)）。
+tmux 主機（macOS 與 Linux 上的 tmux >= 3.3）同樣需手動新增，並確認其伺服器類型與 socket 名稱。連線時絕不會啟動 tmux 伺服器；在 Linux 上可依你的指示透過新增 Workspace 啟動。即時終端機以 tmux 控制模式與桌面用戶端並存接入，配合螢幕調整大小並保持在同一視窗已開啟的桌面終端機範圍內。Claude Code hooks 可回報受阻、完成與對話 ID，選用的 Host Helper 則加入狀態讀取、Pi 與 Oh My Pi 擴充功能、通知、即時動態與用量功能（[連線到 tmux](https://docs.heeler.bybee.dev/tmux)）。
 
 若要透過 Tailscale、ZeroTier 或 EasyTier 連線，請參考[覆蓋網路設定指南](docs/guides/overlay-networks.md)。內容涵蓋 macOS 安裝、Mac 上不使用 VPN 的 Tailscale、Heeler 設定與連線檢查。Heeler 在應用程式內加入這些網路，不需要 iOS 的 VPN 設定；你需要含有 **設定 > 覆蓋網路** 的 Heeler 版本。
 

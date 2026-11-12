@@ -14,7 +14,7 @@ export const steerCopy = {
 };
 
 export const connect = {
-  lede: 'Heeler connects over SSH to Herdr TUI, the Herdr desktop app (<a class="text-link" href="https://docs.heeler.bybee.dev/herdr-core">herdr-core</a>), or a running <a class="text-link" href="https://docs.heeler.bybee.dev/tmux">tmux</a> server, without starting a server behind your back.',
+  lede: 'Heeler connects over SSH to Herdr TUI, the Herdr desktop app (<a class="text-link" href="https://docs.heeler.bybee.dev/herdr-core">herdr-core</a>), or a running <a class="text-link" href="https://docs.heeler.bybee.dev/tmux">tmux</a> server. SSH access plus your running server is the whole prerequisite.',
   pairNote:
     'The <span class="mono">pair</span> action opens a Pairing Code QR. Scan it and the machine is added as a Host. Nothing to type.',
 };

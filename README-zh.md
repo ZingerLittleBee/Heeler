@@ -57,10 +57,10 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   Chat、Composer、New Agent 和 New Workspace 同样可用
   （[了解更多](https://docs.heeler.bybee.dev/zh/herdr-core)）。
 - **tmux** —— 连接 macOS 或 Linux 上的 tmux 3.3+ 服务器。会话、窗口与窗格直接
-  呈现在 Console 中，实时终端自适应你的屏幕且不会超过桌面上已打开终端的尺寸，
-  Chat、Composer、New Agent、New Workspace 和 Worktrees 同样可用，配合
-  Claude Code 钩子与可选的 Host Helper 提供 Agent 状态、通知、实时活动与
-  Usage（[了解更多](https://docs.heeler.bybee.dev/zh/tmux)）。
+  呈现在 Console 中，实时终端会调整为适合屏幕的尺寸并保持在同一窗口已打开的
+  桌面终端范围内，Chat、Composer、New Agent、New Workspace 和 Worktrees
+  同样可用，配合 Claude Code 钩子与可选的 Host Helper 提供 Agent 状态、
+  通知、实时活动与 Usage（[了解更多](https://docs.heeler.bybee.dev/zh/tmux)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
@@ -99,7 +99,7 @@ Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 
 herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并确认 Server Kind。Heeler 与 core 之间只有一条分帧链路：macOS 和 Linux 上经 direct-streamlocal 通道直连 core 的套接字，Windows 原生环境上经 SSH exec 运行 `herdr-core connect`。在 macOS 和 Linux 上，连接本身绝不会启动 core。可选的 Host Helper 在 macOS 和 Linux 上提供通知、实时活动和 Usage（[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)）。
 
-tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式按窗格接入，不会挤掉桌面客户端，也不会超过桌面终端的窗口尺寸。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
+tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式与桌面客户端并存接入，调整为适合屏幕的尺寸并保持在同一窗口已打开的桌面终端范围内。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
 
 如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 

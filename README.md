@@ -58,11 +58,11 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   Composer, New Agent, and New Workspace work there too
   ([Read more](https://docs.heeler.bybee.dev/herdr-core)).
 - **tmux** — connect to a tmux 3.3+ server on macOS or Linux. Sessions,
-  windows, and panes appear in the Console, live terminals size to your
-  screen without exceeding an open desktop terminal, Chat, the Composer,
-  New Agent, New Workspace, and Worktrees work there too, and Claude Code
-  hooks plus the optional Host Helper add Agent Status, notifications,
-  Live Activities, and Usage
+  windows, and panes appear in the Console, live terminals size to fit your
+  screen and stay within an open desktop terminal on the same window, Chat,
+  the Composer, New Agent, New Workspace, and Worktrees work there too, and
+  Claude Code hooks plus the optional Host Helper add Agent Status,
+  notifications, Live Activities, and Usage
   ([Read more](https://docs.heeler.bybee.dev/tmux)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
@@ -115,7 +115,7 @@ Native Windows Hosts (herdr >= 0.9.3) connect over SSH and are added manually.
 
 herdr-core Hosts, including machines running the Herdr desktop app, are added manually with their Server Kind confirmed. Heeler carries one framed link to the core: a direct-streamlocal channel onto its socket on macOS and Linux, or `herdr-core connect` over SSH exec on native Windows. Connecting never starts a core on macOS or Linux. The optional Host Helper adds notifications, Live Activities, and Usage on macOS and Linux ([Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core)).
 
-tmux Hosts (tmux >= 3.3 on macOS and Linux) are added manually with their Server Kind and socket name confirmed. Connecting never starts a tmux server; on Linux, New Workspace can start one when you ask. Live terminals attach per Pane in tmux control mode without detaching desktop clients or exceeding an open desktop terminal's size. Claude Code hooks report Blocked, Done, and conversation ids, and the optional Host Helper adds status readers, Pi and Oh My Pi extensions, notifications, Live Activities, and Usage ([Connect tmux](https://docs.heeler.bybee.dev/tmux)).
+tmux Hosts (tmux >= 3.3 on macOS and Linux) are added manually with their Server Kind and socket name confirmed. Connecting never starts a tmux server; on Linux, New Workspace can start one when you ask. Live terminals attach per Pane in tmux control mode alongside desktop clients, sizing to fit your screen and staying within an open desktop terminal on the same window. Claude Code hooks report Blocked, Done, and conversation ids, and the optional Host Helper adds status readers, Pi and Oh My Pi extensions, notifications, Live Activities, and Usage ([Connect tmux](https://docs.heeler.bybee.dev/tmux)).
 
 For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
 
