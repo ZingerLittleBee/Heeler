@@ -403,6 +403,28 @@ class RowTests(LoopTestCase):
         self.assertEqual([pane["isDead"] for pane in panes], [False, True])
         self.assertIsNone(panes[1]["arguments"])
 
+    def test_heeler_chat_json_with_quotes_braces_semicolons_format_openers_and_backslashes_round_trips(self) -> None:
+        self.start_server()
+        pick = json.dumps(
+            {
+                "file": '/work/semi;colon/#{pane_id}\\back"quote/rollout.jsonl;',
+                "pid": 4242,
+                "session": "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11",
+                "start": "Thu Nov 12 06:00:00 2026",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for token in ('"', "{", "}", ";", "#{", "\\"):
+            self.assertIn(token, pick)
+        loop = self.loop()
+        first = loop.wait_for(1)[0]
+        self.assertEqual(first["panes"][0]["chatPick"], "")
+        self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-chat", pick)
+        second = loop.wait_for(2)[1]
+        self.assertEqual(second["panes"][0]["chatPick"], pick)
+        self.assertEqual(json.loads(second["panes"][0]["chatPick"]), json.loads(pick))
+
 
 class ArgumentTests(LoopTestCase):
     def test_arguments_come_with_the_first_snapshot_and_then_only_for_a_changed_program(self) -> None:

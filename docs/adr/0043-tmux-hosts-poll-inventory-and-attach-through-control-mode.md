@@ -137,7 +137,11 @@ for any size it takes part in sizing every window of that session.
   when it exits.
 - Chat binds as ADR 0034 describes, finding a Pane's processes by their
   `TMUX_PANE` together with the socket path and server pid in their `TMUX`,
-  which must name the Host's server instance, in place of `HC_SCOPE`.
+  which must name the Host's server instance, in place of `HC_SCOPE`. A
+  confirmed candidate is written by Heeler to the Pane's `@heeler-chat` option,
+  in place of `heeler.chat`, holding that label's JSON (the session id, its
+  file when the program goes by file, and the process's pid and start), gated
+  to the server instance so it lives and ends with that one instance.
 - Worktrees: a branch the user names is checked out at
   `~/.heeler/worktrees/<repository>/<branch>`, with ADR 0032's branch slug and
   git commands, and opens as a new session named after the branch, numbered

@@ -1474,4 +1474,242 @@ extension TmuxTransportE2ETests {
             throw error
         }
     }
+
+    /// A stand-in `claude` running in a real tmux Pane exposes its real `TMUX`
+    /// (`<socket>,<pid>,<session index>`) and `TMUX_PANE` to the Host process
+    /// reader: the Chat binder matches it only when both the socket path and
+    /// server pid match the Host's stored paths and server instance, and
+    /// `@heeler-chat` JSON holding quotes, braces, `;`, `#{` and a backslash
+    /// round-trips byte for byte through `TmuxLaunch.setPaneOptions` and the
+    /// live inventory loop before Chat binds the Transcript and clears the
+    /// superseded pick.
+    @Test("Chat's binder matches a Pane's process only on its real tmux server and reads back @heeler-chat")
+    func chatBinderMatchesOnlyThePanesRealTmuxServerAndReadsBackHeelerChat() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            let otherSocket = fixture.socketName + "-2"
+            try await fixture.startServer()
+            try await fixture.startServer(otherSocket)
+
+            let home = fixture.configuration.homePath
+            let agentsDirectory = "\(home)/agents"
+            let claudeDirectory = "\(home)/.claude"
+            let cleanupPaths = "\(GitProbe.singleQuoted(claudeDirectory)) \(GitProbe.singleQuoted(agentsDirectory))"
+            do {
+                let waiter = "\(agentsDirectory)/stand-in-agent"
+                let claudeLink = "\(agentsDirectory)/claude"
+                // A non-platform binary under a `claude` symlink, so macOS SIP does
+                // not withhold its real `TMUX` and `TMUX_PANE` from `ps eww`.
+                try await fixture.require(
+                    """
+                    mkdir -p \(GitProbe.singleQuoted(agentsDirectory))
+                    printf '#include <unistd.h>\\nint main(void) { pause(); return 0; }\\n' \
+                    | /usr/bin/cc -x c - -o \(GitProbe.singleQuoted(waiter))
+                    ln -sf \(GitProbe.singleQuoted(waiter)) \(GitProbe.singleQuoted(claudeLink))
+                    """)
+
+                let pane = try await fixture.require(
+                    fixture.tmuxLine([
+                        "new-window", "-d", "-t", "main:", "-c", home, "-P", "-F", "#{pane_id}",
+                        claudeLink, "--stand-in",
+                    ]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                #expect(TmuxAttachScript.isPaneID(pane))
+
+                let storedPaths = try fixture.paths()
+                let instance = try await fixture.serverInstance()
+                let otherPaths = try fixture.paths(otherSocket)
+                let otherInstance = try await fixture.serverInstance(otherSocket)
+                #expect(otherPaths.socket != storedPaths.socket)
+                #expect(otherInstance.pid != instance.pid)
+
+                let sessionUUID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+                let pickUUID = "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
+
+                let transport = try await fixture.connectTmux(storedPaths: storedPaths)
+                do {
+                    let status = try await transport.status()
+                    #expect(status.paths == storedPaths)
+                    #expect(status.instance == instance)
+
+                    do {
+                        let inventory = try await transport.inventory()
+                        var iterator = inventory.makeAsyncIterator()
+                        let firstSnapshot = try #require(try await iterator.next())
+                        #expect(firstSnapshot.instance == instance)
+                        let paneRow = try #require(firstSnapshot.panes.first { $0.paneID == pane })
+                        #expect(paneRow.foregroundArguments == [claudeLink, "--stand-in"])
+                        #expect(TmuxAgentRule.agentKind(in: paneRow) == "claude")
+
+                        let pid = String(paneRow.processID)
+                        let facts = try await transport.hostServices.readProcesses(
+                            HostProcessReader.Request(
+                                pids: [pid],
+                                readsStart: true,
+                                valuesOf: [
+                                    HerdrCoreTerminalProcesses.tmuxVariable,
+                                    HerdrCoreTerminalProcesses.tmuxPaneVariable,
+                                    HerdrCoreSessionBinder.homeVariable,
+                                ],
+                                descendantsOf: pid))
+                        let processFacts = try #require(facts[pid])
+                        #expect(processFacts.name == "claude")
+                        #expect(processFacts.variables[HerdrCoreTerminalProcesses.tmuxPaneVariable] == .value(pane))
+                        guard case .value(let rawTmux)? = processFacts.variables[HerdrCoreTerminalProcesses.tmuxVariable],
+                            case .value(let realStart) = processFacts.start
+                        else {
+                            Issue.record("The stand-in agent process did not expose TMUX and start: \(processFacts)")
+                            try await transport.close()
+                            try await fixture.require("rm -rf \(cleanupPaths)")
+                            return
+                        }
+
+                        // Real `TMUX` is `<socket>,<pid>,<session index>` and parses to exact socket + server pid.
+                        let sessionIndex = String(paneRow.sessionID.dropFirst())
+                        #expect(
+                            paneRow.sessionID.hasPrefix("$") && !sessionIndex.isEmpty
+                                && sessionIndex.allSatisfy(\.isNumber))
+                        #expect(rawTmux == "\(storedPaths.socket),\(instance.pid),\(sessionIndex)")
+                        #expect(
+                            HerdrCoreTerminalProcesses.parseTmuxEnvironment(rawTmux)
+                                == .init(socketPath: storedPaths.socket, serverPID: instance.pid))
+
+                        // Plant Claude Code's session registry entry and Transcript for this real pid + procStart.
+                        let sessionsDir = "\(claudeDirectory)/sessions"
+                        let projectDir = "\(claudeDirectory)/projects/\(ClaudeProjectKey.key(forDirectory: home))"
+                        let registryFields: [String: JSONValue] = [
+                            "pid": .number(Double(paneRow.processID)),
+                            "sessionId": .string(sessionUUID),
+                            "cwd": .string(home),
+                            "procStart": .string(realStart),
+                            "startedAt": .number(1_780_000_000_000),
+                            "updatedAt": .number(1_780_000_000_000),
+                        ]
+                        let registryJSON = try #require(
+                            String(data: JSONEncoder().encode(JSONValue.object(registryFields)), encoding: .utf8))
+                        let transcriptText = try ChatFixture.text("claude/probe2-transcript.jsonl")
+                            .replacingOccurrences(of: "e951205e-24af-4a5e-baa7-3ccbebd2de2c", with: sessionUUID)
+                            .split(separator: "\n").prefix(5).joined(separator: "\n")
+                        try await fixture.require(
+                            "mkdir -p \(GitProbe.singleQuoted(sessionsDir)) \(GitProbe.singleQuoted(projectDir))")
+                        try await fixture.writeFile(at: "\(sessionsDir)/\(pid).json", registryJSON)
+                        try await fixture.writeFile(at: "\(projectDir)/\(sessionUUID).jsonl", transcriptText)
+
+                        let hostFiles = ChatHostFiles(
+                            status: { try await transport.hostServices.fileStatus(atPath: $0) },
+                            list: { try await transport.hostServices.listFiles($0) },
+                            read: { try await transport.hostServices.readHostFileRange($0) },
+                            home: { try await transport.hostServices.hostHomeDirectory() })
+                        let hostSystem = HerdrCoreHostSystem(kernel: await transport.hostFacts().kernel)
+                        let cannotTell = hostSystem.cannotTellSession(.claude)
+                        func binder(socketPath: String, serverPID: Int) -> HerdrCoreSessionBinder {
+                            HerdrCoreSessionBinder(
+                                program: .claude,
+                                processes: { try await transport.hostServices.readProcesses($0) },
+                                files: hostFiles,
+                                clearLabels: { _ in },
+                                hostSystem: hostSystem,
+                                processScope: .tmux(paneID: pane, socketPath: socketPath, serverPID: serverPID))
+                        }
+
+                        let record = HerdrCoreTerminalRecord(tmuxPane: paneRow)
+                        #expect(
+                            try await binder(socketPath: storedPaths.socket, serverPID: instance.pid).check(record)
+                                == .bound(sessionID: sessionUUID, transcriptRoot: claudeDirectory, directory: home))
+                        #expect(
+                            try await binder(socketPath: otherPaths.socket, serverPID: instance.pid).check(record)
+                                == .unavailable(cannotTell))
+                        #expect(
+                            try await binder(socketPath: storedPaths.socket, serverPID: otherInstance.pid).check(record)
+                                == .unavailable(cannotTell))
+                        #expect(
+                            try await binder(socketPath: otherPaths.socket, serverPID: otherInstance.pid).check(record)
+                                == .unavailable(cannotTell))
+
+                        // Write `@heeler-chat` with quotes, braces, `;`, `#{` and `\` and read it back via the loop.
+                        let trickyFile = #"/work/semi;colon/#{pane_id}\back"quote/rollout.jsonl;"#
+                        let trickyPick = try #require(
+                            HerdrCoreSessionHint.pickLabelValue(
+                                session: pickUUID, file: trickyFile, pid: paneRow.processID, start: realStart))
+                        #expect(trickyPick.contains("\""))
+                        #expect(trickyPick.contains("{") && trickyPick.contains("}"))
+                        #expect(trickyPick.contains(";"))
+                        #expect(trickyPick.contains("#{"))
+                        #expect(trickyPick.contains("\\"))
+
+                        let setCommand = TmuxLaunch.setPaneOptions(
+                            pane: pane,
+                            instance: instance,
+                            options: [("@heeler-chat", trickyPick)],
+                            paths: storedPaths)
+                        let setResult = try await transport.runTmuxScript(
+                            setCommand.script, throughLoginShell: setCommand.throughLoginShell)
+                        #expect(setResult.exitStatus == 0)
+                        #expect(TmuxLaunch.serverInstanceMatches(instance, stdout: setResult.stdout))
+
+                        let updatedSnapshot = try #require(try await iterator.next())
+                        let updatedPane = try #require(updatedSnapshot.panes.first { $0.paneID == pane })
+                        #expect(updatedPane.chatPick == trickyPick)
+                        let decodedPick = try #require(HerdrCoreSessionHint(label: updatedPane.chatPick))
+                        #expect(decodedPick.session == pickUUID)
+                        #expect(decodedPick.file == trickyFile)
+                        #expect(decodedPick.pid == paneRow.processID)
+                        #expect(decodedPick.start == realStart)
+                    }
+
+                    try await transport.close()
+                } catch {
+                    try? await transport.close()
+                    throw error
+                }
+
+                try await exerciseChatBinding(pane, sessionUUID: sessionUUID, on: fixture)
+                try await fixture.require("rm -rf \(cleanupPaths)")
+            } catch {
+                _ = try? await fixture.require("rm -rf \(cleanupPaths)")
+                throw error
+            }
+        }
+    }
+
+    @MainActor
+    private func exerciseChatBinding(
+        _ pane: String, sessionUUID: String, on fixture: TmuxSSHFixture
+    ) async throws {
+        let suite = "tmux-chat-bind-e2e-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (store, host) = try console(over: fixture, on: defaults)
+        store.setHosts([host])
+        await store.resume()
+
+        var openedChat: AgentChatStore?
+        do {
+            try await fixture.eventually {
+                let hasAgent = await store.agents.contains { $0.agent.paneID == pane }
+                let offersChat = await store.capabilities(for: host.id).offersChat(for: .claude)
+                return hasAgent && offersChat
+            }
+            let row = try #require(store.agents.first { $0.agent.paneID == pane })
+            let chat = try #require(store.chatStore(for: row, program: .claude))
+            openedChat = chat
+            chat.show()
+
+            try await fixture.eventually {
+                guard case .following(let path) = await chat.conversation.phase else { return false }
+                return path.hasSuffix("/\(sessionUUID).jsonl")
+            }
+            // Exact process evidence clears the superseded `@heeler-chat` pick on the server.
+            try await fixture.eventually {
+                try await fixture.tmux(nil, "display-message", "-p", "-t", pane, "#{@heeler-chat}")
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+
+            chat.end()
+            store.setHosts([])
+        } catch {
+            openedChat?.end()
+            store.setHosts([])
+            throw error
+        }
+    }
 }
