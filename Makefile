@@ -21,6 +21,7 @@ TEST_FLAGS ?=
 TEST_SELECTOR ?=
 export TEST_FLAGS TEST_SELECTOR
 export VERSION BUILD TAG DRY_RUN YES
+export ADHOC_DIR ADHOC_URL ADHOC_UDID ADHOC_IPA ADHOC_PUBLISH_URL
 BUILD_FLAGS ?=
 IOS_WATCH_DEBOUNCE ?= 1s
 
@@ -119,6 +120,7 @@ check-test-membership: ## Check that the committed project compiles every app te
 	python3 scripts/check-test-target-membership.py
 
 test-tools: check-agent-docs check-test-membership ## Test agent tooling without Xcode or a simulator
+	$(MAKE) test-adhoc
 	python3 scripts/test-format-release-notes.py
 	python3 scripts/test-testflight.py
 	python3 scripts/test-native-test-lifecycle.py
@@ -247,6 +249,21 @@ archive: generate ## Archive locally for inspection (no distribution upload)
 
 # Options are make variables, not flags: make eats `--dry-run` as its own -n and
 # rejects unknown long options, so a flag would never reach the recipe.
+.PHONY: adhoc adhoc-page adhoc-publish test-adhoc
+adhoc: ## Export a local Ad Hoc IPA and page (ADHOC_URL, ADHOC_UDID)
+	@python3 scripts/adhoc.py build
+
+adhoc-page: ## Prepare an existing IPA's installation page (ADHOC_DIR, ADHOC_URL)
+	@python3 scripts/adhoc.py page
+
+adhoc-publish: ## Verify and publish an IPA to Cloudflare (ADHOC_IPA, ADHOC_PUBLISH_URL)
+	@python3 -u scripts/adhoc-publish.py
+
+test-adhoc: ## Verify Ad Hoc packaging, publishing and download service
+	python3 scripts/test-adhoc.py
+	python3 scripts/test-adhoc-publish.py
+	node --test adhoc-host/test/*.test.mjs
+
 testflight: ## Cut and push a build tag; CI uploads (VERSION=X.Y.Z DRY_RUN=1 YES=1)
 	@python3 scripts/testflight.py cut
 

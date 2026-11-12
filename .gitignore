@@ -20,6 +20,10 @@ plugin/node_modules/
 relay/.dev.vars
 relay/.wrangler/
 relay/node_modules/
+adhoc-host/node_modules/
+adhoc-host/.wrangler/
+adhoc-host/.dev.vars
+.wrangler/
 *.p8
 
 # Python (test fixtures under scripts/fixtures)
