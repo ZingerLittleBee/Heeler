@@ -386,7 +386,10 @@ struct TmuxTransportE2ETests {
 
     /// A Console over the fixture, on a device of its own.
     @MainActor
-    func console(over fixture: TmuxSSHFixture, on defaults: UserDefaults) throws -> (ConsoleStore, Host) {
+    func console(
+        over fixture: TmuxSSHFixture, on defaults: UserDefaults,
+        onScriptResult: (@Sendable (GitExecResult) -> Void)? = nil
+    ) throws -> (ConsoleStore, Host) {
         let pace = Duration.milliseconds(200)
         let host = Host(
             address: fixture.configuration.host, port: Int(fixture.configuration.port),
@@ -403,7 +406,13 @@ struct TmuxTransportE2ETests {
             makeTmuxSession: { host in
                 TmuxHostSession(
                     storedPaths: host.storedTmuxPaths,
-                    connect: { paths in try await fixture.connectTmux(storedPaths: paths) },
+                    connect: { paths in
+                        let transport = try await fixture.connectTmux(storedPaths: paths)
+                        if let onScriptResult {
+                            return RecordingTmuxTransport(transport, onScriptResult: onScriptResult)
+                        }
+                        return transport
+                    },
                     reconnectPolicy: ReconnectPolicy(initialDelay: pace, multiplier: 1, maxDelay: pace),
                     keepalive: KeepalivePolicy(interval: pace))
             },
@@ -533,27 +542,87 @@ struct TmuxTransportE2ETests {
     @Test("a variable set in the global and session environment is found by name")
     func aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName() async throws {
         try await TmuxSSHFixture.with { fixture in
+            let loginShell = trimmed(try await fixture.require(#"printf '%s' "$SHELL""#))
+            #expect(loginShell.hasSuffix("/fish"))
+
             try await fixture.startServer()
             let session = trimmed(
                 try await fixture.tmux(nil, "display-message", "-p", "-t", "main", "#{session_id}"))
             // Values stay on the Host. These strings are the fixture's own, and
-            // the published notice must not contain them.
-            let claudeValue = "/fixture/claude-token"
-            let threadValue = "/fixture/codex-thread"
+            // neither the raw stdout crossing SSH nor the published notice may
+            // contain them.
+            let claudeValue = "/fixture/claude-token=secret"
+            let threadValue = "/fixture/codex-thread\nHERDR_PLANTED=fake\n-TMUX"
+            let apiKeyValue = "sk-fixture-global-secret"
             try await fixture.tmux(nil, "set-environment", "-g", "CLAUDECODE", claudeValue)
+            try await fixture.tmux(nil, "set-environment", "-g", "ANTHROPIC_API_KEY", apiKeyValue)
+            try await fixture.tmux(nil, "set-environment", "-g", "EMPTY_FIXTURE_VAR", "")
+            try await fixture.tmux(nil, "set-environment", "-g", "--", "A;B", "semi-secret-marker")
             try await fixture.tmux(nil, "set-environment", "-t", session, "CODEX_THREAD_ID", threadValue)
+            try await fixture.tmux(nil, "set-environment", "-t", session, "-r", "PI_PROGRAM_STATUS")
+
+            let paths = try fixture.paths()
+            let transport = try await fixture.connectTmux(storedPaths: paths)
+            do {
+                let globalCommand = TmuxLaunch.showEnvironment(paths: paths)
+                let globalResult = try await transport.runTmuxScript(
+                    globalCommand.script, throughLoginShell: globalCommand.throughLoginShell)
+                #expect(globalResult.exitStatus == 0)
+                let globalRaw = String(decoding: globalResult.stdout, as: UTF8.self)
+                let globalLines = Set(globalRaw.split(whereSeparator: \.isNewline).map(String.init))
+                #expect(globalLines.contains("CLAUDECODE"))
+                #expect(globalLines.contains("ANTHROPIC_API_KEY"))
+                #expect(globalLines.contains("EMPTY_FIXTURE_VAR"))
+                #expect(!globalLines.contains("HERDR_PLANTED"))
+                #expect(!globalRaw.contains("="))
+                #expect(!globalRaw.contains("/fixture"))
+                #expect(!globalRaw.contains(apiKeyValue))
+                #expect(!globalRaw.contains("semi-secret-marker"))
+
+                let sessionCommand = TmuxLaunch.showEnvironment(session: session, paths: paths)
+                let sessionResult = try await transport.runTmuxScript(
+                    sessionCommand.script, throughLoginShell: sessionCommand.throughLoginShell)
+                #expect(sessionResult.exitStatus == 0)
+                let sessionRaw = String(decoding: sessionResult.stdout, as: UTF8.self)
+                let sessionLines = Set(sessionRaw.split(whereSeparator: \.isNewline).map(String.init))
+                #expect(sessionLines.contains("CODEX_THREAD_ID"))
+                #expect(sessionLines.contains("-PI_PROGRAM_STATUS"))
+                #expect(!sessionLines.contains("HERDR_PLANTED"))
+                #expect(!sessionLines.contains("-TMUX"))
+                #expect(!sessionRaw.contains("="))
+                #expect(!sessionRaw.contains("/fixture"))
+
+                let missingCommand = TmuxLaunch.showEnvironment(session: "$999", paths: paths)
+                let missingResult = try await transport.runTmuxScript(
+                    missingCommand.script, throughLoginShell: missingCommand.throughLoginShell)
+                #expect(missingResult.exitStatus != 0)
+                #expect(missingResult.stdout.isEmpty)
+                try await transport.close()
+            } catch {
+                try? await transport.close()
+                throw error
+            }
+
             try await environmentReachesTheConsole(
-                fixture, claudeValue: claudeValue, threadValue: threadValue)
+                fixture,
+                secrets: [claudeValue, "/fixture", "HERDR_PLANTED", apiKeyValue, "semi-secret-marker"])
         }
     }
 
     /// The server may already carry other names, so this checks the planted
-    /// leaked names are present. Values stay on the Host.
+    /// leaked names are present and no planted value crosses SSH into Swift.
     @MainActor
     private func environmentReachesTheConsole(
-        _ fixture: TmuxSSHFixture, claudeValue: String, threadValue: String
+        _ fixture: TmuxSSHFixture, secrets: [String]
     ) async throws {
-        try await withConsole(fixture) { store, host in
+        let rawOutputs = Mutex<[String]>([])
+        try await withConsole(
+            fixture,
+            onScriptResult: { result in
+                let text = String(decoding: result.stdout, as: UTF8.self)
+                rawOutputs.withLock { $0.append(text) }
+            }
+        ) { store, host in
             try await fixture.eventually {
                 let names = await store.hostCoreEnvironmentNotices[host.id]?.variables.map(\.name) ?? []
                 return names.contains("CLAUDECODE") && names.contains("CODEX_THREAD_ID")
@@ -563,10 +632,14 @@ struct TmuxTransportE2ETests {
             let variable = try #require(notice.variables.first { $0.name == "CLAUDECODE" })
             #expect(variable == expected.variables[0])
             #expect(notice.variables.contains { $0.name == "CODEX_THREAD_ID" })
+            #expect(!notice.variables.contains { $0.name == "HERDR_PLANTED" })
             let published = (notice.variables.map(\.name) + notice.variables.map(\.breaks)).joined(separator: "\n")
-            #expect(!published.contains(claudeValue))
-            #expect(!published.contains(threadValue))
-            #expect(!published.contains("/fixture"))
+            let wire = rawOutputs.withLock { $0.joined(separator: "\n") }
+            #expect(!wire.isEmpty)
+            for secret in secrets {
+                #expect(!published.contains(secret))
+                #expect(!wire.contains(secret))
+            }
         }
     }
 
@@ -639,12 +712,14 @@ struct TmuxTransportE2ETests {
 
     @MainActor
     private func withConsole(
-        _ fixture: TmuxSSHFixture, _ body: (ConsoleStore, Host) async throws -> Void
+        _ fixture: TmuxSSHFixture,
+        onScriptResult: (@Sendable (GitExecResult) -> Void)? = nil,
+        _ body: (ConsoleStore, Host) async throws -> Void
     ) async throws {
         let suite = "tmux-e2e-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let (store, host) = try console(over: fixture, on: defaults)
+        let (store, host) = try console(over: fixture, on: defaults, onScriptResult: onScriptResult)
         store.setHosts([host])
         await store.resume()
         do {
@@ -1062,4 +1137,35 @@ struct TmuxTransportE2ETests {
             #expect(ref.exitStatus == 0)
         }
     }
+}
+
+private struct RecordingTmuxTransport: TmuxTransport {
+    private let base: any TmuxTransport
+    private let onScriptResult: @Sendable (GitExecResult) -> Void
+
+    init(_ base: any TmuxTransport, onScriptResult: @escaping @Sendable (GitExecResult) -> Void) {
+        self.base = base
+        self.onScriptResult = onScriptResult
+    }
+
+    var routeID: UUID? { base.routeID }
+    var hostServices: any HostServices { base.hostServices }
+    var hostHelperHost: any HostHelperHost { base.hostHelperHost }
+    var isConnected: Bool { get async { await base.isConnected } }
+    func status() async throws -> TmuxServerStatus { try await base.status() }
+    func resolvedPaths() async -> TmuxPaths? { await base.resolvedPaths() }
+    func hostFacts() async -> TmuxHostFacts { await base.hostFacts() }
+    func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        let result = try await base.runTmuxScript(script, throughLoginShell: throughLoginShell)
+        onScriptResult(result)
+        return result
+    }
+    func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error> { try await base.inventory() }
+    func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        try await base.attachPane(pane, request: request)
+    }
+    func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground {
+        try await base.readPaneForeground(pane)
+    }
+    func close() async throws { try await base.close() }
 }

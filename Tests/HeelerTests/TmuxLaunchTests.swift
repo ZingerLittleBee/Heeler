@@ -352,13 +352,100 @@ struct TmuxLaunchTests {
         #expect(text(window) == script("exec \"$t\" -N -S \"$s\" kill-window -t @4"))
     }
 
-    @Test func showEnvironmentAsksTheGlobalListAndASessionById() {
+    @Test func showEnvironmentAsksTheGlobalListAndASessionById() throws {
         let global = TmuxLaunch.showEnvironment(paths: Self.paths)
-        #expect(text(global) == script("exec \"$t\" -N -S \"$s\" show-environment -g"))
+        #expect(text(global).hasPrefix(
+            """
+            t='/opt/homebrew/bin/tmux'
+            s='/tmp/heeler-t693/sock'
+            e=$("$t" -N -S "$s" -u show-environment -g -s) || exit "$?"
+            [ -n "$e" ] || exit 0
+            printf '%s\\n' "$e" | LC_ALL=C awk '
+            """
+        ))
         #expect(!global.throughLoginShell)
+        #expect(
+            try Self.posixArgv(of: global).map { String(decoding: $0, as: UTF8.self) }
+                == ["-N", "-S", Self.paths.socket, "-u", "show-environment", "-g", "-s"])
+
         let session = TmuxLaunch.showEnvironment(session: "$0", paths: Self.paths)
-        #expect(text(session) == script("exec \"$t\" -N -S \"$s\" show-environment -t '$0'"))
+        #expect(text(session).hasPrefix(
+            """
+            t='/opt/homebrew/bin/tmux'
+            s='/tmp/heeler-t693/sock'
+            e=$("$t" -N -S "$s" -u show-environment -t '$0' -s) || exit "$?"
+            [ -n "$e" ] || exit 0
+            printf '%s\\n' "$e" | LC_ALL=C awk '
+            """
+        ))
         #expect(!session.throughLoginShell)
+        #expect(
+            try Self.posixArgv(of: session).map { String(decoding: $0, as: UTF8.self) }
+                == ["-N", "-S", Self.paths.socket, "-u", "show-environment", "-t", "$0", "-s"])
+    }
+
+    @Test func showEnvironmentFiltersValuesOnTheHostAndKeepsExitStatus() throws {
+        let globalSample = #"""
+            -DASH="secret-dash"; export -DASH;
+             LEAD_SPACE="secret-space"; export  LEAD_SPACE;
+            1BAD="secret-digit"; export 1BAD;
+            A"B="secret-quote"; export A"B;
+            A\$B="secret-dollar-34"; export A\$B;
+            A;B="secret-semi"; export A;B;
+            ANTHROPIC_API_KEY="sk-ant-secret=token"; export ANTHROPIC_API_KEY;
+            BASH_FUNC_mod%%="() {
+            CLAUDECODE=\"planted\"; export CLAUDECODE;
+            unset TMUX;
+            }"; export BASH_FUNC_mod%%;
+            CLAUDECODE="secret-claude-token"; export CLAUDECODE;
+            EMPTY_VAR=""; export EMPTY_VAR;
+            MULTI_VAR="line1=secret-line
+            HERDR_FAKE=\"planted\"; export HERDR_FAKE;
+            unset TMUX;
+            MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A=
+            end\\"; export MULTI_VAR;
+            unset tricky="line1
+            HERDR_TRICKY=\"planted\"; export HERDR_TRICKY"; export unset tricky;
+            Z_LAST="secret-z"; export Z_LAST;
+
+            """#
+        let globalResult = try Self.runEnvironmentScript(
+            TmuxLaunch.showEnvironment(paths: Self.paths), tmuxOutput: globalSample, tmuxStatus: 0)
+        #expect(globalResult.status == 0)
+        #expect(!globalResult.stdout.contains("secret"))
+        #expect(!globalResult.stdout.contains("planted"))
+        #expect(!globalResult.stdout.contains("MIIBIj"))
+        #expect(!globalResult.stdout.contains("="))
+        #expect(
+            globalResult.stdout.split(separator: "\n").map(String.init)
+                == ["ANTHROPIC_API_KEY", "CLAUDECODE", "EMPTY_VAR", "MULTI_VAR", "Z_LAST"])
+
+        let sessionSample = """
+            CODEX_THREAD_ID="secret-session-thread"; export CODEX_THREAD_ID;
+            unset A;B;
+            unset CLAUDECODE;
+            unset unset foo;
+
+            """
+        let sessionResult = try Self.runEnvironmentScript(
+            TmuxLaunch.showEnvironment(session: "$0", paths: Self.paths),
+            tmuxOutput: sessionSample, tmuxStatus: 0)
+        #expect(sessionResult.status == 0)
+        #expect(!sessionResult.stdout.contains("secret"))
+        #expect(!sessionResult.stdout.contains("="))
+        #expect(
+            sessionResult.stdout.split(separator: "\n").map(String.init)
+                == ["CODEX_THREAD_ID", "-CLAUDECODE"])
+
+        let emptyResult = try Self.runEnvironmentScript(
+            TmuxLaunch.showEnvironment(session: "$0", paths: Self.paths), tmuxOutput: "", tmuxStatus: 0)
+        #expect(emptyResult.status == 0)
+        #expect(emptyResult.stdout.isEmpty)
+
+        let failedResult = try Self.runEnvironmentScript(
+            TmuxLaunch.showEnvironment(session: "$99", paths: Self.paths), tmuxOutput: "", tmuxStatus: 1)
+        #expect(failedResult.status == 1)
+        #expect(failedResult.stdout.isEmpty)
     }
 
     // MARK: Quoting
@@ -602,6 +689,53 @@ struct TmuxLaunchTests {
         return try names.sorted {
             (Int($0.lastPathComponent) ?? 0) < (Int($1.lastPathComponent) ?? 0)
         }.map { try Data(contentsOf: $0) }
+    }
+
+    private static func runEnvironmentScript(
+        _ command: TmuxLaunch.Command, tmuxOutput: String, tmuxStatus: Int32
+    ) throws -> (status: Int32, stdout: String) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("heeler-env-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sampleFile = root.appendingPathComponent("sample.txt")
+        let stdoutFile = root.appendingPathComponent("stdout.txt")
+        let stub = root.appendingPathComponent("tmux")
+        guard !stub.path.contains("'"), !stub.path.contains(paths.executable),
+            !stdoutFile.path.contains("'")
+        else {
+            throw ShellRoundTrip.unquotablePath
+        }
+        try Data(tmuxOutput.utf8).write(to: sampleFile)
+        try Data(
+            """
+            #!/bin/sh
+            if [ "$HEELER_TMUX_STATUS" != "0" ]; then
+              printf 'tmux failed\\n' >&2
+              exit "$HEELER_TMUX_STATUS"
+            fi
+            cat "$HEELER_TMUX_SAMPLE"
+            """.utf8
+        ).write(to: stub)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
+
+        var script = String(decoding: command.script, as: UTF8.self)
+        guard script.contains(paths.executable) else { throw ShellRoundTrip.missingExecutable }
+        script = script.replacingOccurrences(of: paths.executable, with: stub.path)
+        let runner = root.appendingPathComponent("runner.sh")
+        let wrapped = "exec > '\(stdoutFile.path)'\n" + script
+        try Data(wrapped.utf8).write(to: runner)
+
+        let status = try HostShell.run(
+            "/bin/sh",
+            arguments: [runner.path],
+            environment: [
+                "HEELER_TMUX_SAMPLE": sampleFile.path,
+                "HEELER_TMUX_STATUS": String(tmuxStatus),
+            ])
+        let output = (try? Data(contentsOf: stdoutFile)) ?? Data()
+        return (status, String(decoding: output, as: UTF8.self))
     }
 
     private static func argument(_ argv: [Data], after flag: String) -> Data? {

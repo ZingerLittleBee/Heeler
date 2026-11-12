@@ -1,13 +1,13 @@
 import Foundation
 
-/// Names from `show-environment`, never values (ADR 0043).
+/// Names from `show-environment -s`, filtered on the Host so no value crosses
+/// SSH (ADR 0043).
 ///
-/// A line is `NAME=value` or, in a session listing, `-NAME` for a name that
-/// session removed. The value is dropped at the first `=`. An empty `NAME=`
-/// still counts as set: once the value is gone, empty cannot be told apart
-/// from a value. A continuation line of a multi-line value is another line,
-/// so one that looks like `NAME=` or `-NAME` counts as that name. Junk, and a
-/// name `UsageAccountFile.isVariable` rejects, is ignored.
+/// The Host script strips values from Bourne shell output (`NAME="..."; export NAME;`
+/// and `unset NAME;`) and prints one `NAME` per assigned POSIX variable name, or
+/// `-NAME` for a name a session removed. Empty assignments (`NAME=""`) still
+/// count as set. Any line with `=` or a name `UsageAccountFile.isVariable`
+/// rejects is ignored.
 enum TmuxEnvironment {
     struct Scope: Equatable, Sendable {
         var assigned: Set<String>
@@ -23,12 +23,9 @@ enum TmuxEnvironment {
             if row.hasPrefix("-") {
                 let name = String(row.dropFirst())
                 if UsageAccountFile.isVariable(name) { removed.insert(name) }
-                continue
+            } else if UsageAccountFile.isVariable(row) {
+                assigned.insert(row)
             }
-            guard let equals = row.firstIndex(of: "=") else { continue }
-            let name = String(row[..<equals])
-            guard UsageAccountFile.isVariable(name) else { continue }
-            assigned.insert(name)
         }
         return Scope(assigned: assigned, removed: removed)
     }

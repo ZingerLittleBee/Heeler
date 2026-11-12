@@ -240,15 +240,16 @@ enum TmuxLaunch {
         ["set-option", "-p", "-t", pane, name, value].map(TmuxControlCommand.quoted).joined(separator: " ")
     }
 
-    /// The server's global environment, which a new session inherits.
-    /// `show-environment -g` prints `NAME=value`; the caller keeps names only.
+    /// The server's global environment names, which a new session inherits,
+    /// filtered on the Host so no value crosses SSH (ADR 0043).
     static func showEnvironment(paths: TmuxPaths) -> Command {
-        command(["show-environment", "-g"], paths: paths, loginShell: false)
+        environmentNamesCommand(["-u", "show-environment", "-g", "-s"], paths: paths)
     }
 
-    /// One session's environment delta, addressed by its id (`$n`), never its name.
+    /// One session's environment delta names (`NAME` and `-NAME`), addressed by
+    /// its id (`$n`), never its name, and filtered on the Host so no value crosses SSH.
     static func showEnvironment(session: String, paths: TmuxPaths) -> Command {
-        command(["show-environment", "-t", session], paths: paths, loginShell: false)
+        environmentNamesCommand(["-u", "show-environment", "-t", session, "-s"], paths: paths)
     }
 
     /// The last non-empty line. A login shell's startup files may print before it.
@@ -385,6 +386,51 @@ enum TmuxLaunch {
             """
             : body + "\n"
         return Command(script: Data(script.utf8), throughLoginShell: loginShell)
+    }
+
+    /// Runs `show-environment -s` and strips values on the Host under `LC_ALL=C`,
+    /// printing only `NAME` and `-NAME` for POSIX variable names while keeping
+    /// tmux's exit status when the server or session is missing.
+    private static let environmentNamesAwk = #"""
+        {s=s $0 "\n"}
+        END{
+        p=1;e=length(s)
+        while(p<=e){
+        if(substr(s,p,6)=="unset "){
+        u=p+6;while(u<=e&&substr(s,u,1)!="\n")u++
+        l=substr(s,p,u-p);if(substr(l,length(l),1)=="\r")l=substr(l,1,length(l)-1)
+        if(!index(l,"=")&&substr(l,length(l),1)==";"){
+        k=substr(l,7,length(l)-7)
+        if(k~/^[A-Za-z_][A-Za-z0-9_]*$/&&length(k)<=64)print "-"k
+        p=u+1;continue}}
+        u=p;while(u<e&&substr(s,u,2)!="=\"")u++
+        if(u>=e)break
+        k=substr(s,p,u-p);p=u+2;ok=0
+        while(p<=e){
+        b=0;while(p<=e&&substr(s,p,1)=="\\"){b++;p++}
+        if(p>e)break
+        c=substr(s,p,1);p++
+        if(c=="\""&&b%2==0){ok=1;break}}
+        if(!ok)break
+        t="; export "k";"
+        if(substr(s,p,length(t))!=t)break
+        p+=length(t)
+        if(substr(s,p,1)=="\r")p++
+        if(substr(s,p,1)=="\n")p++
+        if(k~/^[A-Za-z_][A-Za-z0-9_]*$/&&length(k)<=64)print k}}
+        """#
+
+    private static func environmentNamesCommand(_ words: [String], paths: TmuxPaths) -> Command {
+        let ask = (["\"$t\"", "-N", "-S", "\"$s\""] + shellArguments(words)).joined(separator: " ")
+        let script = """
+            t=\(HerdrCoreLocator.quoted(paths.executable))
+            s=\(HerdrCoreLocator.quoted(paths.socket))
+            e=$(\(ask)) || exit "$?"
+            [ -n "$e" ] || exit 0
+            printf '%s\\n' "$e" | LC_ALL=C awk \(HerdrCoreLocator.quoted(environmentNamesAwk))
+
+            """
+        return Command(script: Data(script.utf8), throughLoginShell: false)
     }
 
     /// A word `/bin/sh` will not split or expand. `@` stays bare so a window id

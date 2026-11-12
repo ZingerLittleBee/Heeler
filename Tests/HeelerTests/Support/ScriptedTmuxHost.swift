@@ -13,9 +13,10 @@ import Foundation
 /// the app's reader is the one under test. A `runTmuxCommand` applies
 /// `new-window`, `new-session`, `rename-session`, `kill-pane`,
 /// `kill-window`, `set-option`, `if-shell` and `display-message` to those panes, and a discovery script lists
-/// `installedExecutables`. `show-environment -g` prints the global lines a
-/// test planted, and `show-environment -t` prints a session delta only when
-/// the target is a session id (`$n`). The Helper's `locate` script prints the
+/// `installedExecutables`. `show-environment -g -s` and `show-environment -t`
+/// filter planted global and session entries on the Host so only `NAME` and
+/// `-NAME` cross SSH, answering `-t` only when the target is a session id (`$n`).
+/// The Helper's `locate` script prints the
 /// Host's home and data home, a script placing Heeler's Claude Code hook files
 /// writes each here-document into `hostFiles`, and the connection reads those
 /// files back as SFTP would.
@@ -165,13 +166,14 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         await printChanges(on: socket)
     }
 
-    /// Lines `show-environment -g` prints. Values stay in the answer, as tmux
-    /// prints them; the app is what must drop them.
+    /// Planted global environment entries (`NAME=value`), by socket; the
+    /// Host-filtered `show-environment` script strips values before replying.
+    /// Raw entries stay in `globalEnvironment` and `sessionEnvironment`.
     func setGlobalEnvironment(_ lines: [String], on name: String = "default") {
         globalEnvironment[Self.socketPath(name, in: loginDirectory)] = lines
     }
 
-    /// Lines `show-environment -t` prints for one session id.
+    /// Planted session environment entries (`NAME=value` or `-NAME`) for one session id.
     func setSessionEnvironment(_ lines: [String], session: String, on name: String = "default") {
         let socket = Self.socketPath(name, in: loginDirectory)
         var sessions = sessionEnvironment[socket] ?? [:]
@@ -1917,10 +1919,22 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let body = Self.commandBody(script)
         let socket = Self.assigned("s", in: body)
         let executable = Self.assigned("t", in: body)
-        guard let line = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }) else {
+        let capturePrefix = "e=$("
+        let captureSuffix = ") || exit \"$?\""
+        let commandLine: String
+        let filtersEnvironmentOnHost: Bool
+        if let execLine = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }) {
+            commandLine = String(execLine)
+            filtersEnvironmentOnHost = false
+        } else if let capturedLine = body.split(separator: "\n").first(where: {
+            $0.hasPrefix(capturePrefix) && $0.hasSuffix(captureSuffix)
+        }) {
+            commandLine = String(capturedLine.dropFirst(capturePrefix.count).dropLast(captureSuffix.count))
+            filtersEnvironmentOnHost = body.contains("LC_ALL=C awk ")
+        } else {
             return Self.failed("tmux: The command failed.\n")
         }
-        let groups = Self.commandGroups(of: String(line))
+        let groups = Self.commandGroups(of: commandLine)
         guard let first = groups.first, let invocation = Self.invocation(of: first) else {
             return Self.failed("tmux: The command failed.\n")
         }
@@ -1933,7 +1947,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             if panes[socket] == nil { panes[socket] = [] }
         }
         if groups.count == 1, invocation.subcommand == "show-environment" {
-            return environmentListing(on: socket, invocation: invocation)
+            return environmentListing(
+                on: socket, invocation: invocation, filteredOnHost: filtersEnvironmentOnHost)
         }
         var listed = panes[socket] ?? []
         var stdout = ""
@@ -2076,18 +2091,38 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     /// `show-environment` does not change the panes. `-g` is the global list.
     /// `-t` answers only for a session id that is listed or planted; a name
-    /// is `can't find session`.
-    private func environmentListing(on socket: String, invocation: Invocation) -> GitExecResult {
+    /// is `can't find session`. When the script filters `show-environment -s`
+    /// on the Host, only POSIX `NAME` and `-NAME` lines cross back.
+    private func environmentListing(
+        on socket: String, invocation: Invocation, filteredOnHost: Bool
+    ) -> GitExecResult {
         if let status = showEnvironmentStatus {
             return GitExecResult(stdout: Data(), stderr: Data("show-environment failed\n".utf8), exitStatus: status)
         }
+        let entries: [String]
         if invocation.global, invocation.target == nil {
-            return Self.succeeded(Self.lines(globalEnvironment[socket] ?? []))
+            entries = globalEnvironment[socket] ?? []
+        } else {
+            guard let target = invocation.target, target.hasPrefix("$"),
+                (panes[socket] ?? []).contains(where: { $0.sessionID == target })
+                    || sessionEnvironment[socket]?[target] != nil
+            else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
+            entries = sessionEnvironment[socket]?[target] ?? []
         }
-        guard let target = invocation.target, target.hasPrefix("$"),
-            (panes[socket] ?? []).contains(where: { $0.sessionID == target }) || sessionEnvironment[socket]?[target] != nil
-        else { return Self.failed("can't find session: \(invocation.target ?? "")\n") }
-        return Self.succeeded(Self.lines(sessionEnvironment[socket]?[target] ?? []))
+        guard filteredOnHost, invocation.shellFormat else {
+            return Self.succeeded(Self.lines(entries))
+        }
+        return Self.succeeded(Self.lines(entries.compactMap(Self.filteredEnvironmentEntry)))
+    }
+
+    private static func filteredEnvironmentEntry(_ entry: String) -> String? {
+        if let equals = entry.firstIndex(of: "=") {
+            let name = String(entry[..<equals])
+            return UsageAccountFile.isVariable(name) ? name : nil
+        }
+        guard entry.hasPrefix("-") else { return nil }
+        let name = String(entry.dropFirst())
+        return UsageAccountFile.isVariable(name) ? "-\(name)" : nil
     }
 
     private static func lines(_ lines: [String]) -> String {
@@ -2219,6 +2254,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private struct Invocation {
         var hasN = false
         var global = false
+        var shellFormat = false
         var paneOption = false
         var subcommand = ""
         var target: String?
@@ -2256,6 +2292,9 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
                 cursor += 1
             case "-p":
                 parsed.paneOption = true
+                cursor += 1
+            case "-s" where parsed.subcommand == "show-environment":
+                parsed.shellFormat = true
                 cursor += 1
             case "-t", "-c", "-s":
                 guard cursor + 1 < words.count else { return parsed }
