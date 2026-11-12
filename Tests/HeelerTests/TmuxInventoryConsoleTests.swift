@@ -254,6 +254,84 @@ struct TmuxInventoryConsoleTests {
         #expect(store.workspacesByHost[host.id]?.map(\.label).sorted() == ["heeler-attach-user", "main"])
     }
 
+    @Test func aFailedLeftoverCleanupRetriesOnALaterInventoryAndRunsOncePerConnectionOnSuccess() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(session: 1, sessionName: "main", window: 2, pane: 2, command: "claude", arguments: Self.claude),
+            .make(session: 9, sessionName: "heeler-attach-leftover", window: 2, pane: 2, command: "claude",
+                  attachMark: "%2", arguments: Self.claude),
+        ])
+        await tmux.failLeftoverCleanups(1, throwing: .channelFailed(detail: "exec dropped"))
+
+        let store = try await launch(on: try device(), over: tmux)
+        defer { store.setHosts([]) }
+
+        try await waitUntil("the failed cleanup attempt") {
+            await tmux.commands.filter { $0.contains("#{session_attached},0") }.count == 1
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(Set(await tmux.listedPanes().map(\.sessionID)).contains("$9"))
+
+        // A later inventory retries the failed cleanup and removes `$9`.
+        await tmux.changePanes {
+            $0.append(.make(session: 1, sessionName: "main", window: 4, windowIndex: 1, pane: 4))
+        }
+        try await waitUntil("the retried cleanup to end $9") {
+            !Set(await tmux.listedPanes().map(\.sessionID)).contains("$9")
+        }
+        #expect(await tmux.commands.filter { $0.contains("#{session_attached},0") }.count == 2)
+
+        // Once succeeded on this connection and instance, leftovers created later
+        // wait for the next connection instead of re-running on every inventory.
+        await tmux.changePanes {
+            $0.append(
+                .make(session: 10, sessionName: "heeler-attach-later", window: 2, pane: 2, command: "claude",
+                      attachMark: "%2", arguments: Self.claude))
+            $0.append(.make(session: 1, sessionName: "main", window: 5, windowIndex: 2, pane: 5))
+        }
+        try await waitUntil("pane %5") { panes(store).contains("%5") }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(await tmux.commands.filter { $0.contains("#{session_attached},0") }.count == 2)
+        #expect(Set(await tmux.listedPanes().map(\.sessionID)).contains("$10"))
+
+        // Reconnecting starts a fresh connection, which cleans up `$10`.
+        await store.suspend()
+        await store.resume()
+        try await waitUntil("the next connection to end $10") {
+            !Set(await tmux.listedPanes().map(\.sessionID)).contains("$10")
+        }
+    }
+
+    @Test func repeatedLeftoverCleanupFailuresStopAfterTheRetryBound() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(session: 1, sessionName: "main", window: 2, pane: 2, command: "claude", arguments: Self.claude),
+            .make(session: 9, sessionName: "heeler-attach-leftover", window: 2, pane: 2, command: "claude",
+                  attachMark: "%2", arguments: Self.claude),
+        ])
+        await tmux.failLeftoverCleanups(10)
+
+        let store = try await launch(on: try device(), over: tmux)
+        defer { store.setHosts([]) }
+
+        try await waitUntil("attempt 1") {
+            await tmux.commands.filter { $0.contains("#{session_attached},0") }.count == 1
+        }
+        try await Task.sleep(for: .milliseconds(30))
+
+        for nextPane in 10...14 {
+            await tmux.changePanes {
+                $0.append(.make(session: 1, sessionName: "main", window: nextPane, windowIndex: nextPane, pane: nextPane))
+            }
+            try await waitUntil("pane %\(nextPane)") { panes(store).contains("%\(nextPane)") }
+            try await Task.sleep(for: .milliseconds(140))
+        }
+
+        let attempts = await tmux.commands.filter { $0.contains("#{session_attached},0") }.count
+        #expect(attempts == 3)
+        #expect(Set(await tmux.listedPanes().map(\.sessionID)).contains("$9"))
+    }
+
     // MARK: The Agent rule
 
     @Test func aPaneIsAnAgentOnlyWhileAKnownProgramHoldsItsForeground() async throws {

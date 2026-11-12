@@ -516,6 +516,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// Successful `send-keys` to let through before `failingSendKeys` applies.
     private var sendKeysBeforeFailure = 0
     private var failingCaptures = 0
+    private var leftoverCleanupFailures: [TransportError?] = []
     /// When true, outgoing control-mode replies wait in FIFO order while
     /// incoming commands still arrive in `controlCommands`.
     private var holdingControlReplies = false
@@ -668,6 +669,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// The next `capture-pane` fails, as it does when its pane went away.
     func failNextCapture() {
         failingCaptures += 1
+    }
+
+    /// Fails the next `count` leftover-Attach cleanup commands: throwing `error`
+    /// when given, or exiting 1 when nil.
+    func failLeftoverCleanups(_ count: Int, throwing error: TransportError? = nil) {
+        leftoverCleanupFailures.append(contentsOf: Array(repeating: error, count: count))
     }
 
     /// Sets `@heeler-status` without telling an inventory loop, as another
@@ -1468,6 +1475,12 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let text = String(decoding: script, as: UTF8.self)
         log.append(throughLoginShell ? "command login" : "command")
         commands.append(text)
+        if text.contains("#{==:#{session_attached},0},#{!=:#{@heeler-attach},}"),
+            !leftoverCleanupFailures.isEmpty
+        {
+            if let error = leftoverCleanupFailures.removeFirst() { throw error }
+            return Self.failed("cleanup exec failed\n")
+        }
         if let files = await hookFilesAnswer(to: text) { return files }
         if let discovery = discoveryAnswer(in: text) {
             return GitExecResult(stdout: Data(discovery.utf8), stderr: Data(), exitStatus: 0)

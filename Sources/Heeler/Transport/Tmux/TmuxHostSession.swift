@@ -83,10 +83,14 @@ actor TmuxHostSession {
     private var environmentToken: UInt64 = 0
     private var environmentFlight: (server: TmuxServerInstance, sessions: Set<String>)?
     private var environmentRead: (server: TmuxServerInstance, sessions: Set<String>)?
-    /// The server instance whose initial inventory has been checked on this
-    /// connection for leftover unattached `@heeler-attach` sessions.
+    /// The server instance whose leftover unattached `@heeler-attach` sessions
+    /// have been checked on this connection, or whose retry budget ran out.
+    private static let maxLeftoverCleanupAttempts = 3
     private var leftoverCleanupTask: Task<Void, Never>?
+    private var leftoverCleanupToken: UInt64 = 0
+    private var leftoverCleanupFlight: TmuxServerInstance?
     private var leftoverCleanupChecked: TmuxServerInstance?
+    private var leftoverCleanupFailures: (server: TmuxServerInstance, count: Int)?
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
@@ -443,9 +447,7 @@ actor TmuxHostSession {
             environmentTask = nil
             environmentFlight = nil
             environmentRead = nil
-            leftoverCleanupTask?.cancel()
-            leftoverCleanupTask = nil
-            leftoverCleanupChecked = nil
+            resetLeftoverCleanup()
             updatesContinuation.yield(.server(replaced))
         }
         updatesContinuation.yield(.inventory(inventory))
@@ -531,42 +533,119 @@ actor TmuxHostSession {
         environmentTask = nil
         environmentFlight = nil
         environmentRead = nil
+        resetLeftoverCleanup()
+    }
+
+    private func resetLeftoverCleanup() {
+        leftoverCleanupToken &+= 1
         leftoverCleanupTask?.cancel()
         leftoverCleanupTask = nil
+        leftoverCleanupFlight = nil
         leftoverCleanupChecked = nil
+        leftoverCleanupFailures = nil
     }
 
     /// Ends leftover unattached `@heeler-attach` sessions (such as from a
     /// Host-side `SIGKILL` of an earlier Attach's wrapper, feeder and `tmux -C`
-    /// together) once per connection and server instance, without blocking the
-    /// inventory loop and running nothing when no `@heeler-attach` session is
-    /// listed. A brief pause lets any concurrent detached-to-attached startup
-    /// attach before tmux checks `#{session_attached} == 0` and `@heeler-attach`.
+    /// together) once per connection and server instance once it succeeds,
+    /// without blocking the inventory loop and running nothing when no
+    /// `@heeler-attach` session is listed. A failed cleanup exec retries on a
+    /// later inventory up to `maxLeftoverCleanupAttempts` so it never loops. A
+    /// brief pause lets any concurrent detached-to-attached startup attach
+    /// before tmux checks `#{session_attached} == 0` and `@heeler-attach`.
     private func considerLeftoverAttachCleanup(of inventory: TmuxInventory, generation: UInt64) {
         guard let server = liveServer, let transport = inventoryTransport else { return }
         if leftoverCleanupChecked == server.instance { return }
-        leftoverCleanupChecked = server.instance
+        if leftoverCleanupFlight == server.instance { return }
         let sessions = Set(inventory.panes.filter(\.isInHeelerSession).map(\.sessionID)).sorted()
-        guard !sessions.isEmpty else { return }
+        guard !sessions.isEmpty else {
+            leftoverCleanupChecked = server.instance
+            leftoverCleanupFailures = nil
+            return
+        }
+        leftoverCleanupToken &+= 1
+        let token = leftoverCleanupToken
         leftoverCleanupTask?.cancel()
+        leftoverCleanupFlight = server.instance
         let instance = server.instance
         let paths = server.paths
         leftoverCleanupTask = Task { [weak self, sleep] in
-            try? await sleep(.milliseconds(100))
-            guard !Task.isCancelled, await self?.canCleanLeftovers(for: instance, generation: generation) == true
-            else { return }
-            for session in sessions {
-                guard !Task.isCancelled,
-                    let command = TmuxLaunch.endUnattachedAttachSession(
-                        id: session, instance: instance, paths: paths)
-                else { continue }
-                _ = try? await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+            do {
+                try await sleep(.milliseconds(100))
+            } catch {
+                await self?.clearLeftoverCleanupFlight(token: token)
+                return
             }
+            guard !Task.isCancelled,
+                await self?.canCleanLeftovers(for: instance, generation: generation, token: token) == true
+            else {
+                await self?.clearLeftoverCleanupFlight(token: token)
+                return
+            }
+            var succeeded = true
+            for session in sessions {
+                guard !Task.isCancelled else {
+                    await self?.clearLeftoverCleanupFlight(token: token)
+                    return
+                }
+                guard let command = TmuxLaunch.endUnattachedAttachSession(
+                    id: session, instance: instance, paths: paths)
+                else { continue }
+                if !(await Self.cleanLeftoverAttachSession(command, on: transport)) {
+                    succeeded = false
+                }
+            }
+            await self?.noteLeftoverAttachCleanup(
+                succeeded: succeeded, token: token, instance: instance, generation: generation)
         }
     }
 
-    private func canCleanLeftovers(for instance: TmuxServerInstance, generation: UInt64) -> Bool {
-        activationIsCurrent(generation) && liveServer?.instance == instance && inventoryTask != nil
+    private func clearLeftoverCleanupFlight(token: UInt64) {
+        guard token == leftoverCleanupToken else { return }
+        leftoverCleanupFlight = nil
+        leftoverCleanupTask = nil
+    }
+
+    private func noteLeftoverAttachCleanup(
+        succeeded: Bool, token: UInt64, instance: TmuxServerInstance, generation: UInt64
+    ) {
+        guard token == leftoverCleanupToken else { return }
+        leftoverCleanupFlight = nil
+        leftoverCleanupTask = nil
+        guard activationIsCurrent(generation), liveServer?.instance == instance else { return }
+        if succeeded {
+            leftoverCleanupChecked = instance
+            leftoverCleanupFailures = nil
+            return
+        }
+        let count = (leftoverCleanupFailures?.server == instance ? leftoverCleanupFailures?.count ?? 0 : 0) + 1
+        leftoverCleanupFailures = (server: instance, count: count)
+        if count >= Self.maxLeftoverCleanupAttempts {
+            leftoverCleanupChecked = instance
+        }
+    }
+
+    private static func cleanLeftoverAttachSession(
+        _ command: TmuxLaunch.Command, on transport: any TmuxTransport
+    ) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        let result: GitExecResult
+        do {
+            result = try await transport.runTmuxScript(
+                command.script, throughLoginShell: command.throughLoginShell)
+        } catch {
+            return false
+        }
+        if result.exitStatus == 0 { return true }
+        let stderr = String(decoding: result.stderr, as: UTF8.self)
+        return stderr.contains("can't find session:") || stderr.contains("can't find target:")
+    }
+
+    private func canCleanLeftovers(
+        for instance: TmuxServerInstance, generation: UInt64, token: UInt64
+    ) -> Bool {
+        token == leftoverCleanupToken && activationIsCurrent(generation)
+            && liveServer?.instance == instance && currentTransport != nil
     }
 
     /// The pause between two asks of a server that answers, which a
