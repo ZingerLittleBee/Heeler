@@ -2566,7 +2566,7 @@ extension ConsoleStore {
         }
     }
 
-    private static func consoleSettings(
+    nonisolated private static func consoleSettings(
         for host: Host, knownHosts: any KnownHostsStore, credentials: HostCredentialsProvider,
         overlays: OverlayNetworkRuntime
     ) throws -> SSHTransportSettings {

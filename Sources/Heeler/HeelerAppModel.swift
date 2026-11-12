@@ -216,8 +216,11 @@ final class HeelerAppModel {
         }
         Task { await pushRegistration.refresh() }
         // Existing installs' Notification Keys predate the app-group
-        // mirror; refresh it before a locked widget render needs it.
-        NotificationKeyStore().refreshMirror()
+        // mirror; refresh it off the main actor before a locked widget
+        // render needs it, warming `NotificationKeyStore.appShared` too.
+        Task.detached(priority: .utility) {
+            NotificationKeyStore.appShared.refreshMirror()
+        }
         liveActivities.start()
 
         observeStores()
