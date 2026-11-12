@@ -48,6 +48,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Scroll the Agents list without stutter while an offline or slow Host retries in the background. Each connection attempt had re-evaluated the Console's tabs and every visible Agent row across Hosts, built lifted card previews upfront, and read credentials and Notification Keys from the Keychain on the main thread. Now other Hosts' rows stay untouched, row menus build only when opened, and Keychain reads stay off the main thread. (PR #717)
 - Scroll the Agents list, and read or type in a Chat, without stutter while Agents change status or a Chat streams. Each status change had rebuilt the whole Console, every row of the list and the open Chat with it. Now only the rows that change are rebuilt, and an open Chat is left alone by other Agents' changes. (PR #715)
 - Open a long Chat with less of a pause. It built about twenty messages, most of them long answers above the screen, where it now builds the few that show. (PR #715)
 - Pull down in Chat for earlier messages and have the list bounce back when you let go, rather than snap to the top. Earlier messages that arrive while you still hold the pull no longer move what is under your finger, and arrive with a shorter pause. (PR #715)
