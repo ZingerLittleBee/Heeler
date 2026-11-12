@@ -27,19 +27,27 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ConsoleView(
-            hosts: app.hostStore, console: app.console, terminal: app.terminal,
-            inputMode: app.inputMode,
-            detailSurface: app.detailSurface,
-            appearance: app.appearance,
-            pushRegistration: app.pushRegistration,
-            notificationPreferences: app.notificationPreferences,
-            relaySettings: app.relaySettings,
-            notificationRouter: notificationRouter,
-            bannerStore: app.bannerStore,
-            liveActivities: app.liveActivities,
-            activity: app.activity
-        )
+        // Every navigation runs this body three times: for the router's
+        // path, for `windowRoute` written back, and for the window handing
+        // that value in again. The Console is handed the same stores each
+        // time, so it is built once; a new one would rebuild every row and
+        // the detail on screen.
+        KeyedContent(key: ConsoleKey(app: ObjectIdentifier(app), router: ObjectIdentifier(notificationRouter))) {
+            ConsoleView(
+                hosts: app.hostStore, console: app.console, terminal: app.terminal,
+                inputMode: app.inputMode,
+                detailSurface: app.detailSurface,
+                appearance: app.appearance,
+                pushRegistration: app.pushRegistration,
+                notificationPreferences: app.notificationPreferences,
+                relaySettings: app.relaySettings,
+                notificationRouter: notificationRouter,
+                bannerStore: app.bannerStore,
+                liveActivities: app.liveActivities,
+                activity: app.activity
+            )
+        }
+        .equatable()
         // Settings › Overlay Networks and the Host form read the catalog here.
         .environment(app.overlayNetworks)
         // The Composer's mic and Settings › Voice Input.
@@ -184,6 +192,13 @@ struct ContentView: View {
             for: UISceneSessionActivationRequest(session: scene.session),
             errorHandler: nil)
     }
+}
+
+/// What the window hands its Console: the app's stores and its own router,
+/// the same objects for as long as the window lives.
+private struct ConsoleKey: Equatable, Sendable {
+    let app: ObjectIdentifier
+    let router: ObjectIdentifier
 }
 
 /// Hands the Console's Agents on as they change, from a body of its own.
