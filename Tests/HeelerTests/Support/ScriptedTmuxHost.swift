@@ -80,6 +80,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private var foregroundPIDs: [String: [String: Int?]] = [:]
     private(set) var foregroundScripts: [String] = []
     private var onNextPaste: (@Sendable () async -> Void)?
+    private var onNextControlClientStart: (@Sendable () async -> Void)?
     private var connected = true
     /// The Host Helper seam on the same scripted file tree, rooted at `Self.home`.
     nonisolated let helper: ScriptedHelperHost
@@ -267,6 +268,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     /// Runs right after the next `paste-buffer` executes, before its reply leaves.
     func afterNextPaste(_ hook: @escaping @Sendable () async -> Void) {
         onNextPaste = hook
+    }
+
+    /// Runs once the next control client's session has started, as it finishes opening.
+    func afterNextControlClientStart(_ hook: @escaping @Sendable () async -> Void) {
+        onNextControlClientStart = hook
     }
 
     func clearLog() {
@@ -779,6 +785,10 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
         start.append("%sessions-changed\n%session-changed \(sessionID) \(sessionName)\n")
         await channel.send(Data(start.joined().utf8))
+        if let hook = onNextControlClientStart {
+            onNextControlClientStart = nil
+            await hook()
+        }
         return channel
     }
 
@@ -1895,6 +1905,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
         var listed = panes[socket] ?? []
         var stdout = ""
+        var didMutate = false
         for group in groups {
             guard let invocation = Self.invocation(of: group) else {
                 return Self.failed("tmux: The command failed.\n")
@@ -1903,17 +1914,43 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             switch invocation.subcommand {
             case "display-message":
                 result = displayStatus(in: listed, invocation, socket: socket)
+            case "capture-pane":
+                result = capturePane(in: listed, invocation, socket: socket)
             case "if-shell":
+                didMutate = true
                 result = applyIfShell(&listed, invocation, socket: socket)
             default:
+                didMutate = true
                 result = mutate(&listed, invocation, socket: socket)
             }
             guard result.exitStatus == 0 else { return result }
             stdout += String(decoding: result.stdout, as: UTF8.self)
         }
-        panes[socket] = listed
-        await printChanges(on: socket)
+        if didMutate {
+            panes[socket] = listed
+            await printChanges(on: socket)
+        }
         return Self.succeeded(stdout)
+    }
+
+    private func capturePane(
+        in listed: [TmuxInventory.Pane], _ invocation: Invocation, socket: String
+    ) -> GitExecResult {
+        if failingCaptures > 0 {
+            failingCaptures -= 1
+            return Self.failed("can't find pane: \(invocation.target ?? "")\n")
+        }
+        guard let target = invocation.target,
+            let pane = listed.first(where: { $0.paneID == target })
+        else { return Self.failed("can't find pane: \(invocation.target ?? "")\n") }
+        let rows: [String]
+        if let explicit = screens[socket]?[pane.paneID] {
+            rows = Array(explicit.prefix(pane.height))
+                + Array(repeating: "", count: max(0, pane.height - explicit.count))
+        } else {
+            rows = Array(repeating: "", count: pane.height)
+        }
+        return Self.succeeded(Self.lines(rows))
     }
 
     /// `display-message -p`: `#{@heeler-status}` or `#{pid}:#{start_time}`, plus a newline.
@@ -2141,7 +2178,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private static func invocation(of words: [String]) -> Invocation? {
         let commands = [
             "new-window", "new-session", "rename-session", "kill-pane", "kill-window", "show-environment",
-            "set-option", "if-shell", "display-message",
+            "set-option", "if-shell", "display-message", "capture-pane",
         ]
         guard let index = words.firstIndex(where: { commands.contains($0) }) else { return nil }
         var parsed = Invocation(hasN: words[..<index].contains("-N"), subcommand: words[index])

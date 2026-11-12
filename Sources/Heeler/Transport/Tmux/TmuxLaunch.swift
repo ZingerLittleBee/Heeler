@@ -178,6 +178,43 @@ enum TmuxLaunch {
         return line == "\(instance.pid):\(instance.startTime)"
     }
 
+    /// Reads a Pane's visible screen with escape sequences kept (`capture-pane -e -p`),
+    /// prefixed by the answering server's `pid:start_time` so a replaced server is
+    /// never mistaken for the one Chat keeps to (ADRs 0042 and 0043).
+    static func capturePaneScreen(pane: String, paths: TmuxPaths) -> Command {
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{pid}:#{start_time}",
+        ])
+        let capture = shellArguments([
+            "capture-pane", "-e", "-p", "-t", pane,
+        ])
+        return command(shellArguments: show + ["';'"] + capture, paths: paths, loginShell: false)
+    }
+
+    /// Splits `capturePaneScreen`'s stdout into the server instance header and the
+    /// captured screen text.
+    static func capturedPaneScreen(from stdout: Data) -> (instance: TmuxServerInstance, text: String)? {
+        let raw = String(decoding: stdout, as: UTF8.self)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+        let header: Substring
+        let body: Substring
+        if let newline = raw.firstIndex(of: "\n") {
+            header = raw[..<newline]
+            body = raw[raw.index(after: newline)...]
+        } else {
+            header = raw[...]
+            body = ""
+        }
+        let parts = header.trimmingCharacters(in: .whitespaces).split(separator: ":", maxSplits: 1)
+        guard parts.count == 2,
+            let pid = Int(parts[0]), pid > 0,
+            let startTime = Int(parts[1]), startTime > 0
+        else {
+            return nil
+        }
+        return (TmuxServerInstance(pid: pid, startTime: startTime), String(body))
+    }
+
     /// One `set-option -p` as tmux parses a command string: the text of the
     /// option, not a shell word.
     private static func paneOption(pane: String, name: String, value: String) -> String {

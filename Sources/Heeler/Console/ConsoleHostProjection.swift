@@ -159,6 +159,16 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// `sendAgentKeys` and `pasteIntoAgent`.
     func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)?
 
+    /// Chat's Stop for this Pane when the projection runs the Stop plan itself
+    /// (as tmux does over Chat's own Attach), or nil to run `ChatStopPlan`
+    /// through `agentKeys`.
+    func checkedChatStop(
+        for paneID: String,
+        program: ChatProgram,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt?
+
     // MARK: Process-bound Chat (ADR 0034)
 
     var kernel: String? { get }
@@ -254,6 +264,13 @@ extension ConsoleHostProjection {
     ) -> TerminalStopOffer? { nil }
 
     func checkedChatTyping(at _: String) -> (any CheckedChatTyping)? { nil }
+
+    func checkedChatStop(
+        for _: String,
+        program _: ChatProgram,
+        keepingTo _: TerminalCorePin,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt? { nil }
 
     var kernel: String? { nil }
 

@@ -72,22 +72,83 @@ final class TmuxComposerSend: CheckedComposerSend {
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection, attach: attach) }
 
-        guard route == .terminal, let attach else { return .failed(Self.notConnected) }
-        if hasEnded(in: projection, attach: attach) { return .refused(.inputNotReady(Self.agentEnded)) }
-        guard let (session, tmuxSend) = await liveSend(of: attach) else {
-            if !projection.admits(corePin) { return .refused(.inputNotReady(Self.serverGone)) }
-            return hasEnded(in: projection, attach: attach)
-                ? .refused(.inputNotReady(Self.agentEnded))
-                : .failed(Self.noLiveAttach)
+        switch route {
+        case .terminal:
+            guard let attach else { return .failed(Self.notConnected) }
+            if hasEnded(in: projection, attach: attach) { return .refused(.inputNotReady(Self.agentEnded)) }
+            guard let (session, tmuxSend) = await liveSend(of: attach) else {
+                if !projection.admits(corePin) { return .refused(.inputNotReady(Self.serverGone)) }
+                return hasEnded(in: projection, attach: attach)
+                    ? .refused(.inputNotReady(Self.agentEnded))
+                    : .failed(Self.noLiveAttach)
+            }
+            guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
+
+            let held: HeldAgent
+            switch await readHeldAgent(in: projection, route: .terminal) {
+            case .held(let agent): held = agent
+            case .outcome(let outcome): return outcome
+            }
+
+            return await pasteAndSubmit(
+                text, held: held, on: tmuxSend, in: projection,
+                onSubmitted: { attach.input.recordSubmitted(text, generation: session) })
+
+        case .chat:
+            if projection.hasPaneEnded(paneID) { return .refused(.inputNotReady(Self.agentEnded)) }
+
+            let held: HeldAgent
+            switch await readHeldAgent(in: projection, route: .chat) {
+            case .held(let agent): held = agent
+            case .outcome(let outcome): return outcome
+            }
+
+            let chatAttach: TmuxChatAttach
+            do {
+                let paneID = paneID
+                let corePin = corePin
+                chatAttach = try await AsyncDeadline.run(for: Self.liveAttachTimeout, sleep: clock.sleep) {
+                    try await projection.openChatAttach(at: paneID, keepingTo: corePin)
+                }
+            } catch TransportError.tmuxServerGone {
+                return .refused(.inputNotReady(Self.serverGone))
+            } catch TransportError.tmuxPaneGone {
+                return .refused(.inputNotReady(Self.agentEnded))
+            } catch {
+                if !projection.admits(corePin) { return .refused(.inputNotReady(Self.serverGone)) }
+                return projection.hasPaneEnded(paneID)
+                    ? .refused(.inputNotReady(Self.agentEnded))
+                    : .failed(Self.notConnected)
+            }
+
+            let outcome = await deliverThroughChatAttach(
+                text, held: held, chatAttach: chatAttach, in: projection)
+            await chatAttach.close()
+            return outcome
         }
+    }
+
+    private func deliverThroughChatAttach(
+        _ text: String,
+        held: HeldAgent,
+        chatAttach: TmuxChatAttach,
+        in projection: TmuxConsoleProjection
+    ) async -> Outcome {
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
-
-        let held: HeldAgent
-        switch await readHeldAgent(in: projection) {
-        case .held(let agent): held = agent
-        case .outcome(let outcome): return outcome
+        if let changed = await changeWhileAttachOpened(from: held, in: projection) {
+            return changed
         }
+        return await pasteAndSubmit(
+            text, held: held, on: chatAttach.tmuxSend, in: projection, onSubmitted: nil)
+    }
 
+    private func pasteAndSubmit(
+        _ text: String,
+        held: HeldAgent,
+        on tmuxSend: TmuxAttachSend,
+        in projection: TmuxConsoleProjection,
+        onSubmitted: (@MainActor () -> Void)?
+    ) async -> Outcome {
         if await tmuxSend.bracketedPaste() == .disabled {
             return .refused(.programNotAcceptingPaste)
         }
@@ -124,7 +185,7 @@ final class TmuxComposerSend: CheckedComposerSend {
                 }
                 switch await tmuxSend.sendKey("Enter", clock.sleep) {
                 case .left:
-                    attach.input.recordSubmitted(text, generation: session)
+                    onSubmitted?()
                     return .submitted
                 case .notLeft:
                     return .refused(.notSubmitted(Self.submitKeyLost))
@@ -192,7 +253,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         return (ready, send)
     }
 
-    private func readHeldAgent(in projection: TmuxConsoleProjection) async -> PrePasteRead {
+    private func readHeldAgent(in projection: TmuxConsoleProjection, route: ComposerRoute) async -> PrePasteRead {
         let foreground: TmuxPaneForeground
         do {
             foreground = try await readForeground(in: projection)
@@ -201,7 +262,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         }
         switch foreground {
         case .serverNotRunning:
-            return .outcome(.refused(.inputNotReady(Self.agentEnded)))
+            return .outcome(.refused(.inputNotReady(projection.admits(corePin) ? Self.agentEnded : Self.serverGone)))
         case .paneGone(let instance), .dead(let instance):
             return .outcome(.refused(.inputNotReady(corePin.admits(instance.id) ? Self.agentEnded : Self.serverGone)))
         case .live(let sample):
@@ -217,9 +278,42 @@ final class TmuxComposerSend: CheckedComposerSend {
                 return .outcome(.refused(.inputNotReady(Self.notSampledYet)))
             }
             if Self.isBlocked(sample.pane, kind: kind) {
-                return .outcome(.refused(.inputNotReady(Self.answerTheQuestionFirst)))
+                return .outcome(
+                    route == .chat
+                        ? .refused(.agentBlocked)
+                        : .refused(.inputNotReady(Self.answerTheQuestionFirst)))
             }
             return .held(HeldAgent(kind: kind, pid: pid))
+        }
+    }
+
+    private func changeWhileAttachOpened(
+        from held: HeldAgent, in projection: TmuxConsoleProjection
+    ) async -> Outcome? {
+        let foreground: TmuxPaneForeground
+        do {
+            foreground = try await readForeground(in: projection)
+        } catch {
+            return .failed(Self.noAnswerBeforePaste)
+        }
+        switch foreground {
+        case .serverNotRunning:
+            return .refused(.inputNotReady(projection.admits(corePin) ? Self.agentEnded : Self.serverGone))
+        case .paneGone(let instance), .dead(let instance):
+            return .refused(.inputNotReady(corePin.admits(instance.id) ? Self.agentEnded : Self.serverGone))
+        case .live(let sample):
+            guard corePin.admits(sample.instance.id) else {
+                return .refused(.inputNotReady(Self.serverGone))
+            }
+            let program = HerdrCoreAgentRule.program(
+                arguments: sample.pane.foregroundArguments ?? [], name: sample.pane.command)
+            guard sample.foregroundPID == held.pid, program == .known(held.kind) else {
+                return .refused(.inputNotReady(Self.holderChangedWhileOpening))
+            }
+            if Self.isBlocked(sample.pane, kind: held.kind) {
+                return .refused(.agentBlocked)
+            }
+            return nil
         }
     }
 
@@ -280,6 +374,8 @@ final class TmuxComposerSend: CheckedComposerSend {
         localized:
             "The Agent is waiting on its question on screen, so nothing was sent. Answer it with the tools keyboard first, then send again."
     )
+    private static let holderChangedWhileOpening =
+        String(localized: "Another process took over the terminal as Heeler reached it, so nothing was sent.")
     private static let notSampledYet = String(
         localized: "The Agent is still starting, so nothing was sent. Try again in a moment.")
     private static let windowPassed = String(

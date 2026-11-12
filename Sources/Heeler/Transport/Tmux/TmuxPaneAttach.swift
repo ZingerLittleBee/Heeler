@@ -101,9 +101,19 @@ actor TmuxPaneAttach {
                     await attach.sendKey(name, sleep: sleep)
                 }
             },
+            sendText: { text, sleep in
+                await Self.runOrdered(on: input) {
+                    await attach.sendText(text, sleep: sleep)
+                }
+            },
             sendHexByte: { byte, sleep in
                 await Self.runOrdered(on: input) {
                     await attach.sendHexByte(byte, sleep: sleep)
+                }
+            },
+            canSendKey: { key, sleep in
+                await Self.runOrderedFlag(on: input) {
+                    await attach.canSendKey(key, sleep: sleep)
                 }
             },
             capturePane: { sleep in
@@ -130,6 +140,22 @@ actor TmuxPaneAttach {
             await pump.value
             await attach.close()
         }
+    }
+
+    static func runOrderedFlag(
+        on input: TerminalAttachInputQueue,
+        _ operation: @escaping @Sendable () async throws -> Bool?
+    ) async -> Bool? {
+        let outcome = Mutex<Bool?>(nil)
+        do {
+            try await input.performAcknowledged {
+                let result = try await operation()
+                outcome.withLock { $0 = result }
+            }
+        } catch {
+            return outcome.withLock { $0 }
+        }
+        return outcome.withLock { $0 }
     }
 
     static func runOrdered(
@@ -637,6 +663,35 @@ actor TmuxPaneAttach {
         sleep: @escaping @Sendable (Duration) async throws -> Void
     ) async -> TmuxSendWriteOutcome {
         await runSendCommand(["send-keys", "-t", pane, name], sleep: sleep)
+    }
+
+    func sendText(
+        _ text: String,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> TmuxSendWriteOutcome {
+        guard !text.isEmpty else { return .left }
+        return await runSendCommand(["send-keys", "-l", "-t", pane, "--", text], sleep: sleep)
+    }
+
+    func canSendKey(
+        _ key: TmuxKey,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) async -> Bool? {
+        guard key.isExtended else { return true }
+        guard await client.end == nil else { return nil }
+        do {
+            let reply = try await client.run(
+                TmuxControlCommand(["display-message", "-p", "-t", pane, TmuxKey.paneKeyModeFormat]),
+                timeout: Self.answerTimeout,
+                sleep: sleep)
+            guard reply.succeeded else { return false }
+            let mode = reply.lines.map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n")
+            return key.isSent(whilePaneKeyModeReads: mode)
+        } catch TransportError.timedOut {
+            return false
+        } catch {
+            return nil
+        }
     }
 
     /// `capture-pane -e -p`: the screen a Stop guard reads, escape sequences kept.

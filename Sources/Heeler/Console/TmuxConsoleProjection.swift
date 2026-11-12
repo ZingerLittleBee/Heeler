@@ -85,6 +85,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var droppedPicks: [String: Set<String>] = [:]
     private var pickLabelsBetweenSnapshots: [String: String] = [:]
     private(set) var pickRemoval: Task<Void, Never>?
+    private var chatTypings: [String: TmuxChatTyping] = [:]
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -335,6 +336,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             sessionEventCounts = [:]
             droppedPicks = [:]
             pickLabelsBetweenSnapshots = [:]
+            chatTypings = [:]
             inventory = nil
         }
         memory.noteCore(instance.id, for: host.id)
@@ -367,6 +369,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let listed = Set(inventory.panes.map(\.paneID))
         pins.retainPins(hostID: host.id, paneIDs: listed)
         memory.retainTmuxPanes(listed, for: host.id)
+        chatTypings = chatTypings.filter { listed.contains($0.key) }
         noteSessionEvidence(in: inventory, previous: previousInventory)
         noteTurns(in: inventory)
         let coreAfter = memory.coreID(for: host.id)
@@ -1002,9 +1005,110 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     func agentInfo(paneID: String) async throws -> Agent { throw unavailable }
     func processInfo(paneID: String) async throws -> PaneProcessInfo { throw unavailable }
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent { throw unavailable }
-    func readAgentScreen(_ paneID: String) async throws -> ANSIScreen { throw unavailable }
-    func sendAgentKeys(_ keys: [String], to paneID: String) async throws { throw unavailable }
-    func pasteIntoAgent(_ text: String, paneID: String) async throws { throw unavailable }
+
+    func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
+        try await chatTyping(at: paneID).readScreen()
+    }
+
+    func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
+        try await chatTyping(at: paneID).press(keys)
+    }
+
+    func pasteIntoAgent(_ text: String, paneID: String) async throws {
+        try await chatTyping(at: paneID).paste(text)
+    }
+
+    func chatTyping(at paneID: String) -> TmuxChatTyping {
+        if let existing = chatTypings[paneID] { return existing }
+        let created = TmuxChatTyping(paneID: paneID, projection: self, clock: sendClock)
+        chatTypings[paneID] = created
+        return created
+    }
+
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)? {
+        chatTyping(at: paneID)
+    }
+
+    /// Reads `capture-pane -e -p` on the Host's socket, verifying that the
+    /// answering server is still the instance Chat keeps to (ADRs 0042 and 0043).
+    func capturePaneScreen(_ paneID: String, keepingTo pin: TerminalCorePin? = nil) async throws -> ANSIScreen {
+        if let pin, !admits(pin) {
+            throw TransportError.tmuxServerGone
+        }
+        let paths = try runningPaths()
+        let command = TmuxLaunch.capturePaneScreen(pane: paneID, paths: paths)
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(command.script, throughLoginShell: command.throughLoginShell)
+        }
+        guard result.exitStatus == 0 else {
+            let stderr = String(decoding: result.stderr, as: UTF8.self)
+            if stderr.contains("can't find pane") {
+                throw TransportError.tmuxPaneGone
+            }
+            if stderr.contains("no server running") || stderr.contains("error connecting") {
+                throw TransportError.tmuxServerGone
+            }
+            let detail = stderr
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .last { !$0.isEmpty }
+            if let detail {
+                throw TransportError.malformedResponse(String(localized: "tmux: \(detail)"))
+            }
+            throw TransportError.malformedResponse(String(localized: "tmux: The command failed."))
+        }
+        guard let captured = TmuxLaunch.capturedPaneScreen(from: result.stdout) else {
+            throw TransportError.malformedResponse(String(localized: "tmux: The Pane's screen could not be read."))
+        }
+        if let pin, !pin.admits(captured.instance.id) {
+            throw TransportError.tmuxServerGone
+        }
+        if let current = inventoryCore, current != captured.instance.id {
+            throw TransportError.tmuxServerGone
+        }
+        return ANSIScreenDecoder.decode(captured.text)
+    }
+
+    /// Opens Chat's own size-less Attach to `paneID` (ADR 0043). Never asks for a
+    /// client size; the caller closes it as soon as the action finishes.
+    func openChatAttach(at paneID: String, keepingTo pin: TerminalCorePin? = nil) async throws -> TmuxChatAttach {
+        if let pin, !admits(pin) {
+            throw TransportError.tmuxServerGone
+        }
+        return try await session.withAttachTransport { transport, _, server in
+            if let pin, !(await pin.admits(server.instance.id)) {
+                throw TransportError.tmuxServerGone
+            }
+            var request = TerminalAttachRequest(
+                target: .agentPane(paneID),
+                viewer: .observe,
+                isViewed: false,
+                surfaceHasHistory: true,
+                cols: 0,
+                rows: 0)
+            request.coreID = server.instance.id
+            let attached = try await transport.attachPane(paneID, request: request)
+            return try await TmuxChatAttach.open(session: attached)
+        }
+    }
+
+    func checkedChatStop(
+        for paneID: String,
+        program: ChatProgram,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt? {
+        let plan = ChatStopPlan.standard(for: program)
+        let stop = TmuxComposerStop(
+            paneID: paneID, program: program, plan: plan,
+            projection: { live() as? TmuxConsoleProjection },
+            corePin: corePin, clock: sendClock, seat: .chat)
+        return AgentComposerInterrupt(
+            wait: plan.wait, accessibilityHint: plan.accessibilityHint
+        ) {
+            await stop.perform()
+        }
+    }
 
     /// Checked Composer Send (ADRs 0035 and 0043). `live` follows a projection
     /// replaced after the Composer was opened.

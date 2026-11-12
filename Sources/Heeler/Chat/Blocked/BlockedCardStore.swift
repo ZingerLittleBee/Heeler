@@ -21,6 +21,9 @@ struct BlockedScreenIO: Sendable {
     /// check, and throws why not. nil where a key is one request, and the card's
     /// read just before it stands.
     var typeWhileShowing: (@Sendable (Typing, @escaping @Sendable (ANSIScreen) -> Bool) async throws -> Void)? = nil
+    /// Called once a final answer's keys have left Heeler (ADR 0044): `true`
+    /// when the answer declines or stops, `false` for any other answer.
+    var recordAnswer: (@Sendable (_ declines: Bool) async -> Void)? = nil
 
     func type(_ typing: Typing, whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool) async throws {
         if let typeWhileShowing {
@@ -294,13 +297,23 @@ final class BlockedCardStore {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
         let requests = pendingRequests
         var answered: BlockedCard?
-        let isConfirmed = await act(on: shown.dialog.fingerprint) { observation throws(DialogPlanError) in
+        var declines: Bool?
+        let isConfirmed = await act(
+            on: shown.dialog.fingerprint,
+            onSent: { [io] in
+                if let declines {
+                    await io.recordAnswer?(declines)
+                }
+            }
+        ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = BlockedRequestMatch.request(for: dialog, in: requests)
-            answered = BlockedCard(dialog: dialog, request: request)
             // Each program's planner decides whether the call's result
             // confirms the answer.
-            return try DialogActionPlanner.plan(action, for: dialog, toolUseID: request?.callID)
+            let plan = try DialogActionPlanner.plan(action, for: dialog, toolUseID: request?.callID)
+            answered = BlockedCard(dialog: dialog, request: request)
+            declines = Self.answerDeclines(action, on: dialog, plan: plan)
+            return plan
         }
         if isConfirmed, let answered { record(action, on: answered) }
     }
@@ -399,6 +412,7 @@ final class BlockedCardStore {
             }
             // Codex submits every answer with the last one.
             if index == form.questions.count - 1, program == .codex {
+                await io.recordAnswer?(false)
                 await confirm(plan, on: page.fingerprint)
                 return
             }
@@ -421,6 +435,7 @@ final class BlockedCardStore {
             return
         }
         guard case .sent = await send(plan.steps, to: page.fingerprint) else { return }
+        await io.recordAnswer?(false)
         await confirm(plan, on: page.fingerprint)
     }
 
@@ -428,13 +443,23 @@ final class BlockedCardStore {
     func press(number: Int) async {
         guard progress == .ready, case .generic(let shown) = content else { return }
         let program = program
-        await act(on: shown.fingerprint) { [degraded] observation throws(DialogPlanError) in
+        var declines: Bool?
+        await act(
+            on: shown.fingerprint,
+            onSent: { [io] in
+                if let declines {
+                    await io.recordAnswer?(declines)
+                }
+            }
+        ) { [degraded] observation throws(DialogPlanError) in
             let excerpt: GenericDialogExcerpt
             switch observation.result {
             case .unrecognized(let fresh):
                 excerpt = fresh
+                declines = Self.genericOptionDeclines(fresh.numbered[number])
             case .dialog(let dialog):
                 excerpt = Self.excerpt(of: dialog, on: observation.screen, reason: degraded?.reason ?? "")
+                declines = Self.roleDeclines(dialog.options.first(where: { $0.number == number })?.role)
             case .none:
                 throw .unsupported(Self.changedMessage)
             }
@@ -450,12 +475,21 @@ final class BlockedCardStore {
         progress = .acting
         notice = nil
         var refusal: String?
+        var didSend = false
         do {
             try await type(.keys(keys), over: shownFingerprint)
+            didSend = true
         } catch let error as HerdrCoreChatTyping.Refusal {
             refusal = error.message
         } catch {
             notice = Self.sendFailure(error)
+        }
+        if didSend,
+            keys == ["esc"],
+            TmuxConsoleProjection.toolsEscapeDeclines(
+                kind: program.rawValue, status: activity == .blocked ? .blocked : .unknown)
+        {
+            await io.recordAnswer?(true)
         }
         try? await clock.sleep(timing.pollInterval)
         progress = unconfirmedFingerprint == nil ? .ready : .unconfirmed
@@ -561,6 +595,7 @@ final class BlockedCardStore {
     @discardableResult
     private func act(
         on shown: DialogFingerprint,
+        onSent: (@MainActor () async -> Void)? = nil,
         plan makePlan: (DialogObservation) throws(DialogPlanError) -> DialogActionPlan
     ) async -> Bool {
         progress = .acting
@@ -584,7 +619,53 @@ final class BlockedCardStore {
         await waitOutGrace(for: shown, kind: fresh.result.dialog?.kind)
         waitingWhenSent = waitingCalls(answering: fresh.result.dialog)
         guard case .sent = await send(plan.steps, to: shown) else { return false }
+        await onSent?()
         return await confirm(plan, on: shown)
+    }
+
+    private static func answerDeclines(
+        _ action: DialogAction, on dialog: BlockedDialog, plan: DialogActionPlan
+    ) -> Bool? {
+        if action == .expandQuestions { return nil }
+        if plan.steps.contains(where: {
+            if case .expect(.page) = $0 { return true }
+            return false
+        }) {
+            return nil
+        }
+        if dialog.kind == .grokCancelTurn { return true }
+        switch action {
+        case .dismiss:
+            return dialog.kind == .ompApproval ? false : true
+        case .choose(let ordinal):
+            return roleDeclines(dialog.option(ordinal)?.role)
+        case .amend, .respond, .approvePlan, .submitSelection, .skipQuestion:
+            return false
+        case .expandQuestions:
+            return nil
+        }
+    }
+
+    private static func roleDeclines(_ role: DialogOptionRole?) -> Bool {
+        switch role {
+        case .decline, .cancel, .chat, .exitProgram: true
+        default: false
+        }
+    }
+
+    private static func genericOptionDeclines(_ label: String?) -> Bool {
+        guard let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            !trimmed.isEmpty
+        else {
+            return false
+        }
+        if trimmed == "no" || trimmed.hasPrefix("no,") || trimmed.hasPrefix("no ")
+            || trimmed == "cancel" || trimmed == "quit" || trimmed == "reject"
+            || trimmed.contains("(esc)")
+        {
+            return true
+        }
+        return false
     }
 
     private enum StepsOutcome {

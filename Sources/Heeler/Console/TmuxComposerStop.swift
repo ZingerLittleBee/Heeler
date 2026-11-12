@@ -17,6 +17,11 @@ enum TmuxNamedKey {
 /// every key leaves, Heeler writes idle at once.
 @MainActor
 final class TmuxComposerStop {
+    enum Seat {
+        case terminal(AgentAttachStore?)
+        case chat
+    }
+
     static let notSent = String(localized: "The terminal isn't connected, so Stop wasn't sent.")
 
     private static let liveAttachTimeout: Duration = .seconds(5)
@@ -27,7 +32,7 @@ final class TmuxComposerStop {
     private let projection: @MainActor () -> TmuxConsoleProjection?
     private let corePin: TerminalCorePin
     private let clock: BlockedCardClock
-    private let attach: AgentAttachStore?
+    private let seat: Seat
 
     init(
         paneID: String,
@@ -36,7 +41,7 @@ final class TmuxComposerStop {
         projection: @escaping @MainActor () -> TmuxConsoleProjection?,
         corePin: TerminalCorePin,
         clock: BlockedCardClock,
-        attach: AgentAttachStore?
+        seat: Seat
     ) {
         self.paneID = paneID
         self.program = program
@@ -44,16 +49,74 @@ final class TmuxComposerStop {
         self.projection = projection
         self.corePin = corePin
         self.clock = clock
-        self.attach = attach
+        self.seat = seat
+    }
+
+    convenience init(
+        paneID: String,
+        program: ChatProgram,
+        plan: ChatStopPlan,
+        projection: @escaping @MainActor () -> TmuxConsoleProjection?,
+        corePin: TerminalCorePin,
+        clock: BlockedCardClock,
+        attach: AgentAttachStore?
+    ) {
+        self.init(
+            paneID: paneID, program: program, plan: plan, projection: projection,
+            corePin: corePin, clock: clock, seat: .terminal(attach))
     }
 
     func perform() async -> AgentInterruptOutcome {
         guard let projection = projection(), projection.admits(corePin) else { return .failed(Self.notSent) }
-        guard let attach else { return .failed(Self.notSent) }
-        guard stillTheProgram(in: projection) else { return .failed(Self.notSent) }
-        guard let send = await liveSend(of: attach, in: projection) else { return .failed(Self.notSent) }
-        guard projection.admits(corePin), stillTheProgram(in: projection) else { return .failed(Self.notSent) }
+        switch seat {
+        case .terminal(let attach):
+            guard let attach else { return .failed(Self.notSent) }
+            guard stillTheProgram(in: projection) else { return .failed(Self.notSent) }
+            guard let send = await liveSend(of: attach, in: projection) else { return .failed(Self.notSent) }
+            guard projection.admits(corePin), stillTheProgram(in: projection) else { return .failed(Self.notSent) }
+            return await runStopPlan(on: send, in: projection)
 
+        case .chat:
+            guard let heldPID = await foregroundProgramPID(in: projection) else { return .failed(Self.notSent) }
+            if let screenGuard = plan.screenGuard {
+                let paneID = paneID
+                let corePin = corePin
+                guard let screen = try? await AsyncDeadline.run(
+                    for: TmuxComposerSend.stepTimeout, sleep: clock.sleep,
+                    operation: { try await projection.capturePaneScreen(paneID, keepingTo: corePin) })
+                else {
+                    return .failed(ChatStopPlan.unreadableScreenMessage)
+                }
+                let context = ChatStopContext(
+                    screen: screen,
+                    activity: Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown))
+                if case .refuse(let reason) = screenGuard(context) {
+                    return .failed(reason)
+                }
+            }
+            let chatAttach: TmuxChatAttach
+            do {
+                let paneID = paneID
+                let corePin = corePin
+                chatAttach = try await AsyncDeadline.run(for: Self.liveAttachTimeout, sleep: clock.sleep) {
+                    try await projection.openChatAttach(at: paneID, keepingTo: corePin)
+                }
+            } catch {
+                return .failed(Self.notSent)
+            }
+            guard projection.admits(corePin), await foregroundProgramPID(in: projection) == heldPID else {
+                await chatAttach.close()
+                return .failed(Self.notSent)
+            }
+            let outcome = await runStopPlan(on: chatAttach.tmuxSend, in: projection)
+            await chatAttach.close()
+            return outcome
+        }
+    }
+
+    private func runStopPlan(
+        on send: TmuxAttachSend, in projection: TmuxConsoleProjection
+    ) async -> AgentInterruptOutcome {
         if let screenGuard = plan.screenGuard {
             switch await send.capturePane(clock.sleep) {
             case .text(let text):
@@ -86,6 +149,22 @@ final class TmuxComposerStop {
         _ = await projection.writeHeelerStatus(
             TmuxStatusReport(state: "idle", app: Self.reportedApp(program)), on: paneID)
         return .sent
+    }
+
+    private func foregroundProgramPID(in projection: TmuxConsoleProjection) async -> Int? {
+        let paneID = paneID
+        guard let foreground = try? await AsyncDeadline.run(
+            for: TmuxComposerSend.stepTimeout, sleep: clock.sleep,
+            operation: { try await projection.readPaneForeground(paneID) }),
+            case .live(let sample) = foreground,
+            corePin.admits(sample.instance.id),
+            let pid = sample.foregroundPID,
+            HerdrCoreAgentRule.program(
+                arguments: sample.pane.foregroundArguments ?? [], name: sample.pane.command) == .known(program.rawValue)
+        else {
+            return nil
+        }
+        return pid
     }
 
     private func stillTheProgram(in projection: TmuxConsoleProjection) -> Bool {

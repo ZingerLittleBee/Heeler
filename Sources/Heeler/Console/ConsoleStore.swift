@@ -797,7 +797,17 @@ final class ConsoleStore {
             throw HerdrCoreChatTyping.Refusal(message: leftCoreError(on: hostID).presentation.message)
         }
         try requireReadyForInput(hostID)
+        let currentAgent = (projections[hostID] as? TmuxConsoleProjection)?.agentsByPane[paneID]?.agent
+        let declines =
+            keys == ["esc"]
+            && TmuxConsoleProjection.toolsEscapeDeclines(
+                kind: currentAgent?.kind, status: currentAgent?.status ?? .unknown)
         try await projection(for: hostID).sendAgentKeys(keys, to: paneID)
+        if declines, !hasLeftCore(corePin, on: hostID),
+            let tmux = projections[hostID] as? TmuxConsoleProjection
+        {
+            _ = await tmux.recordHeelerAnswer(declines: true, on: paneID)
+        }
     }
 
     /// Types one line of text into the Agent's pane (`pane.send_input`): a
@@ -997,6 +1007,26 @@ final class ConsoleStore {
             let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
         else { return plan }
         return plan.pressing(templateStopKey: stopKey)
+    }
+
+    /// Chat's Stop interrupt for this Agent, keeping to `corePin`.
+    func chatInterrupt(
+        for agent: ConsoleAgent,
+        program: ChatProgram,
+        keepingTo corePin: TerminalCorePin,
+        context: @escaping @MainActor () async throws -> ChatStopContext,
+        agentKeys: ChatAgentKeysStore
+    ) -> AgentComposerInterrupt {
+        let hostID = agent.hostID
+        if let stop = projections[hostID]?.checkedChatStop(
+            for: agent.agent.paneID,
+            program: program,
+            keepingTo: corePin,
+            live: { [weak self] in self?.projections[hostID] })
+        {
+            return stop
+        }
+        return chatStopPlan(for: agent, program: program).composerInterrupt(context: context, agentKeys: agentKeys)
     }
 
     /// A confirmation is an action a detail takes on an address, so it keeps to the

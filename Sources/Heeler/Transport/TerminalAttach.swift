@@ -543,7 +543,11 @@ struct TmuxAttachSend: Sendable {
     let bracketedPaste: @Sendable () async -> TmuxPaneFeed.BracketedPaste
     let paste: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
     let sendKey: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendText: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
     let sendHexByte: @Sendable (UInt8, @escaping Sleep) async -> TmuxSendWriteOutcome
+    /// Whether tmux can encode `key` for the Pane's program now (`nil` once the
+    /// control client has ended).
+    let canSendKey: @Sendable (TmuxKey, @escaping Sleep) async -> Bool?
     /// The Pane's screen, after anything already queued on this Attach.
     let capturePane: @Sendable (@escaping Sleep) async -> TmuxPaneCapture
     let settle: @Sendable (@escaping Sleep) async -> TmuxSendWriteOutcome
