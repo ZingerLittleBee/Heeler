@@ -178,6 +178,7 @@ struct AgentChatSurfaceView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentChatSurfaceView.body")
         GeometryReader { proxy in
             presentedSurface
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
@@ -362,6 +363,8 @@ struct AgentChatSurfaceView: View {
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
+            let span = PerfTrace.begin("chat.surface.feed")
+            defer { PerfTrace.end(span) }
             let transcript = chat?.conversation.transcript
             let entries = feed.history.marking(transcript?.entries ?? [])
             timeline.update(
@@ -457,7 +460,11 @@ struct AgentChatSurfaceView: View {
             // its bottom inset, as resizing it each frame is slow and leaves it
             // out of step with the edge it measures against. The tools dock is
             // not a keyboard that moves.
-            composerChrome
+            //
+            // In a body of its own: its switcher lists every Agent, and read
+            // in the surface's body each one's status change would
+            // re-evaluate the conversation with the Composer.
+            MainActorContent { composerChrome }
                 .keyboardLiftPadding(
                     keyboardInset, restingInset: composerKeyboardLayout.contentInset,
                     isEnabled: composerKeyboardPresentation != .tools)
@@ -885,6 +892,8 @@ struct AgentChatSurfaceView: View {
     }
 
     private var timelineFeed: TimelineFeed {
+        let span = PerfTrace.begin("chat.surface.timeline-feed")
+        defer { PerfTrace.end(span) }
         guard let chat else {
             return TimelineFeed(
                 generation: 0, revision: 0, older: .reachedStart, pending: [], history: BlockedHistory(),
@@ -1493,10 +1502,13 @@ struct AgentChatSurfaceView: View {
     }
 
     private var agentSwitcher: TerminalAgentSwitcher {
-        TerminalAgentSwitcher(
-            items: TerminalAgentSwitcherItem.items(
+        let items = PerfTrace.span("switcher.items") {
+            TerminalAgentSwitcherItem.items(
                 for: console.chatDisplayAgents, pins: console.pins,
-                layout: { console.rowLayout(for: $0) }),
+                layout: { console.rowLayout(for: $0) })
+        }
+        return TerminalAgentSwitcher(
+            items: items,
             selectedID: agent.id,
             onSelect: switchToAgent,
             onTogglePin: { id in

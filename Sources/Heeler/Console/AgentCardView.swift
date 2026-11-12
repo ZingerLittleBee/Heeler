@@ -58,6 +58,7 @@ struct AgentCardView: View {
     private var showsStatusBadge: Bool { saved == nil && agent.agent.status.displayTitle != nil }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentCardView.body")
         let presentation = presentation
         let lines = AgentCardLines(
             presentation: presentation, headingTakesTitle: heading != nil,

@@ -731,6 +731,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func publish() {
+        PerfTrace.count("core.publish")
         wakeProgramWaiters()
         if !isAwaitingSnapshot { lastKnownAgentsByPane = agentsByPane }
         onChange()

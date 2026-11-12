@@ -266,23 +266,96 @@ struct ChatTimelineGeometryTests {
             Self.cached.isExact(
                 width: cacheCase.width, contentSizeCategory: cacheCase.category,
                 revision: cacheCase.revision) == cacheCase.isExact)
+        // A measurement outranks what the row's text comes to.
         let estimate = ChatHeightEstimate(
-            cached: Self.cached, seed: .assistant, width: cacheCase.width,
+            cached: Self.cached, seed: .assistant, extent: Self.longAnswer, textWidth: cacheCase.width - 32,
+            metrics: .standard, width: cacheCase.width,
             contentSizeCategory: cacheCase.category, revision: cacheCase.revision)
         #expect(estimate == (cacheCase.isExact ? .exact(88) : .stale(88)))
         #expect(estimate.height == 88)
         #expect(estimate.isExact == cacheCase.isExact)
     }
 
-    @Test("An unmeasured row starts at its family's seed")
+    @Test("An unmeasured row that does not follow its text starts at its family's seed")
     func seedEstimate() {
         for seed in ChatRowSeed.allCases {
             let estimate = ChatHeightEstimate(
-                cached: nil, seed: seed, width: 390, contentSizeCategory: Self.large, revision: 0)
+                cached: nil, seed: seed, extent: nil, textWidth: 358, metrics: .standard,
+                width: 390, contentSizeCategory: Self.large, revision: 0)
             #expect(estimate == .seed(seed.height))
             #expect(!estimate.isExact)
             #expect(seed.height > 0)
         }
+    }
+
+    static let longAnswer = ChatRowExtent(textBytes: 4_200, blocks: 11, chrome: 8)
+
+    @Test("An unmeasured row that wraps text starts at the lines its text comes to")
+    func textEstimate() {
+        // 358 points hold 42 half-em letters of 17-point text: 100 lines,
+        // five more for the ten blocks that end a line short, and half a
+        // line between each two blocks.
+        let estimate = ChatHeightEstimate(
+            cached: nil, seed: .assistant, extent: Self.longAnswer, textWidth: 358, metrics: .standard,
+            width: 390, contentSizeCategory: Self.large, revision: 0)
+        let lines: CGFloat = 105 * 22
+        let gaps: CGFloat = 10 * 11
+        #expect(estimate == .seed(8 + lines + gaps))
+        #expect(!estimate.isExact)
+    }
+
+    @Test("A row's text stands taller in a narrower column, in larger text and with more of it")
+    func textEstimateFollowsItsConditions() {
+        let height = Self.longAnswer.height(textWidth: 358, metrics: .standard)
+        #expect(Self.longAnswer.height(textWidth: 250, metrics: .standard) > height)
+        #expect(Self.longAnswer.height(textWidth: 800, metrics: .standard) < height)
+        #expect(
+            Self.longAnswer.height(textWidth: 358, metrics: ChatTextMetrics(pointSize: 23, lineHeight: 29)) > height)
+        var longer = Self.longAnswer
+        longer.textBytes *= 2
+        #expect(longer.height(textWidth: 358, metrics: .standard) > height)
+        var inBubble = Self.longAnswer
+        inBubble.inset = 76
+        #expect(inBubble.height(textWidth: 358, metrics: .standard) > height)
+    }
+
+    @Test("A row's text comes to whole points, whatever the line height")
+    func textEstimateIsWholePoints() {
+        let metrics = ChatTextMetrics(pointSize: 19, lineHeight: 24.3)
+        for bytes in [1, 90, 777, 4_200] {
+            let extent = ChatRowExtent(textBytes: bytes, blocks: 3, chrome: 8)
+            let height = extent.height(textWidth: 358, metrics: metrics)
+            #expect(height == height.rounded(), "\(bytes) bytes")
+        }
+    }
+
+    @Test("A row with no text, or no room for any, still stands a line tall")
+    func textEstimateNeverCollapses() {
+        let empty = ChatRowExtent(textBytes: 0, blocks: 0, chrome: 4)
+        let chromeAndOneLine: CGFloat = 4 + 22
+        #expect(empty.height(textWidth: 358, metrics: .standard) == chromeAndOneLine)
+        let squeezed = Self.longAnswer.height(textWidth: 0, metrics: .standard)
+        #expect(squeezed.isFinite && squeezed > 0)
+    }
+
+    @Test("Answers, plans and typed prompts are sized by their text; other rows by their family")
+    func rowExtent() {
+        let text = "One line.\n\nAnother, a little longer than the first."
+        let answer = ChatRow(
+            id: .entry(ChatEntryID("a")), content: .assistant(source: text, blocks: ChatMarkdown.blocks(from: text)),
+            revision: 1, topSpacing: 8)
+        #expect(answer.extent == ChatRowExtent(textBytes: text.utf8.count, blocks: 2, chrome: 8))
+
+        let prompt = ChatRow(
+            id: .entry(ChatEntryID("u")), content: .user(ChatUserMessage(text: text)), revision: 1, topSpacing: 16)
+        #expect(prompt.extent?.textBytes == text.utf8.count)
+        #expect(prompt.extent?.blocks == 1)
+
+        let tool = ChatRow(
+            id: .entry(ChatEntryID("t")),
+            content: .tool(ChatToolActivity(kind: .command, name: "Bash", title: "ls", status: .succeeded)),
+            revision: 1, topSpacing: 8)
+        #expect(tool.extent == nil)
     }
 }
 

@@ -23,6 +23,9 @@ final class ConsoleStore {
     }
 
     private(set) var agents: [ConsoleAgent] = []
+    /// Who `agents` lists. A view that only asks whether an Agent is there
+    /// reads this, and is left alone by every change to what an Agent is doing.
+    private(set) var listedAgentIDs: Set<ConsoleAgent.ID> = []
     /// Agents off the list whose program was lost or ended. Only a detail
     /// already open on one reads them, through `detailAgent(for:)`.
     private(set) var departedAgents: [ConsoleAgent] = []
@@ -1466,6 +1469,8 @@ final class ConsoleStore {
     }
 
     private func rebuild() {
+        let span = PerfTrace.begin("console.rebuild")
+        defer { PerfTrace.end(span) }
         let current = Array(projections.values)
         reconcileTerminalConnections(current)
         requestHostPlatforms(current)
@@ -1889,6 +1894,8 @@ final class ConsoleStore {
     }
 
     private func rebuildAgentOrder() {
+        let span = PerfTrace.begin("console.rebuild.order")
+        defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
@@ -1902,6 +1909,8 @@ final class ConsoleStore {
                 .map { (agent.id, $0) }
         })
         agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        let listed = Set(unsorted.map(\.id))
+        if listedAgentIDs != listed { listedAgentIDs = listed }
     }
 
     /// What a detail column shows for this selection: an Agent on the list, the
@@ -1975,10 +1984,12 @@ final class ConsoleStore {
     }
 
     /// One row's answer to `savedChatEntries`, cheap enough for a detail
-    /// screen to ask on every render.
+    /// screen to ask on every render. It asks who is listed, not what they
+    /// are doing, so a detail that asks is left alone by other Agents'
+    /// status changes.
     func isSavedChat(_ id: ConsoleAgent.ID) -> Bool {
         guard let projection = projections[id.hostID], projection.showsSavedChats,
-            !agents.contains(where: { $0.id == id })
+            !listedAgentIDs.contains(id)
         else { return false }
         return cachedChats.agents(on: projection.host).contains { $0.id == id }
     }
@@ -2250,6 +2261,8 @@ final class ConsoleStore {
     }
 
     private func reconcileChatCache() {
+        let span = PerfTrace.begin("console.rebuild.chat-cache")
+        defer { PerfTrace.end(span) }
         for projection in projections.values {
             let host = projection.host
             guard host.capabilities.chat, isActive,
@@ -2290,7 +2303,10 @@ final class ConsoleStore {
                         let chat = chatStore(for: agent, program: program) else { continue }
                     let key = chatPrefetchKey(agent, generation: generation)
                     chatPrefetched[agent.id] = key
+                    let read = PerfTrace.beginInterval("chat.prefetch", "pane=\(agent.agent.paneID)")
                     let prefetched = await chat.prefetch()
+                    PerfTrace.endInterval(
+                        read, "ok=\(prefetched) entries=\(chat.conversation.transcript.entries.count)")
                     guard !Task.isCancelled else { return }
                     let snapshot = chat.conversation
                     let retries = chatPrefetchRetries[agent.id].flatMap { $0.key == key ? $0.count : nil } ?? 0
@@ -2339,6 +2355,8 @@ final class ConsoleStore {
     /// stays open, and its Chat with it, until the Agent is back or gone.
     private func publishChatAgents() {
         guard !chatStores.isEmpty else { return }
+        let span = PerfTrace.begin("console.rebuild.chat-agents")
+        defer { PerfTrace.end(span) }
         let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
         for (id, store) in chatStores {
             let core = projections[id.hostID] as? HerdrCoreConsoleProjection

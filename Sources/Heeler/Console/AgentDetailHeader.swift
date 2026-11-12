@@ -98,6 +98,7 @@ struct AgentDetailHeader: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentDetailHeader.body")
         HStack(alignment: .top, spacing: 8) {
             leadingSlot
             if showsTitle, let title {

@@ -308,6 +308,14 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   checks the compiled tables of every language; `xcodebuild -testLanguage <language>`
   runs a suite under a translation. Settings › Language opens iOS Settings,
   where iOS keeps the app's language.
+- **Dropped frames and main-thread stalls:** [PerfTrace](../../Sources/Heeler/Support/PerfTrace.swift)
+  is the opt-in frame clock (`--perf-trace`), with spans and counts in the
+  Console's rebuild and list and in Chat's store, timeline and cells;
+  [PerfMainThreadSampler](../../Sources/Heeler/Support/PerfMainThreadSampler.swift)
+  takes the main thread's stack while a frame is overdue, and
+  [perf-trace-summary.py](../../scripts/perf-trace-summary.py) reads the file.
+  [performance-tracing.md](performance-tracing.md) is the runbook. Coverage:
+  [PerfTraceTests](../../Tests/HeelerTests/PerfTraceTests.swift).
 
 ## Sibling deliverables and generated files
 

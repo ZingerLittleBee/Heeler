@@ -942,6 +942,7 @@ final class AgentChatStore {
         var readOlder = false
         let pollsFirst = pollsBeforeNextOlderPage
         pollsBeforeNextOlderPage = false
+        let engineRead = PerfTrace.beginInterval("chat.read", "pane=\(agent.paneID)")
         if let request = olderRequest, !pollsFirst {
             snapshot = await engine.loadOlder(context: context, automatic: request == .automatic)
             readOlder = true
@@ -964,6 +965,10 @@ final class AgentChatStore {
             snapshot = await engine.reproject(context: context)
             didRead = false
         }
+        PerfTrace.endInterval(
+            engineRead,
+            "kind=\(readOlder ? "older" : polled ? "poll" : opened ? "open" : "reproject") entries=\(snapshot.transcript.entries.count)"
+        )
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         if didRead { countTimeout(snapshot.readFailure) }
         // The request is done, even with nothing new to read: the row shows
@@ -1868,6 +1873,8 @@ final class AgentChatStore {
         guard origin === engine, snapshot.revision != appliedRevision,
             !isAwaitingSession || snapshot.isFromCache
         else { return }
+        let span = PerfTrace.begin("chat.store.apply")
+        defer { PerfTrace.end(span) }
         if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
         transcriptReadFailure = snapshot.readFailure
@@ -1996,6 +2003,8 @@ final class AgentChatStore {
     /// is no longer the conversation's latest message. A send from before it
     /// recorded late does not overtake it.
     private func matchSends() {
+        let span = PerfTrace.begin("chat.store.match-sends")
+        defer { PerfTrace.end(span) }
         let byEntry = source.adapter.echoesByEntry
         let layout = conversation.layoutGeneration
         if claimedGeneration != conversationGeneration || (!byEntry && claimedLayout != layout) {

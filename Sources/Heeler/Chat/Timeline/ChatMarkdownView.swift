@@ -20,6 +20,8 @@ struct ChatMarkdownView: View {
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
+        let _ = PerfTrace.count("ChatMarkdownView.body")
+        let _ = PerfTrace.count("ChatMarkdownView.blocks", blocks.count)
         VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks.indices, id: \.self) { @Sendable index in
                 MainActorContent {
@@ -125,6 +127,8 @@ struct ChatMarkdownView: View {
     /// photo symbol before each path that opens an image, so the link reads
     /// as a picture rather than as code or a web page.
     static func text(_ content: AttributedString, in font: Font, opensImages: Bool) -> Text {
+        let span = PerfTrace.begin("chat.markdown.text")
+        defer { PerfTrace.end(span) }
         let styled = styled(content, in: font, opensImages: opensImages)
         guard opensImages, styled.runs.contains(where: { $0[ChatImageLink.PathAttribute.self] != nil }) else {
             return Text(styled)

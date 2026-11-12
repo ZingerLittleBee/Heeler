@@ -27,19 +27,27 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ConsoleView(
-            hosts: app.hostStore, console: app.console, terminal: app.terminal,
-            inputMode: app.inputMode,
-            detailSurface: app.detailSurface,
-            appearance: app.appearance,
-            pushRegistration: app.pushRegistration,
-            notificationPreferences: app.notificationPreferences,
-            relaySettings: app.relaySettings,
-            notificationRouter: notificationRouter,
-            bannerStore: app.bannerStore,
-            liveActivities: app.liveActivities,
-            activity: app.activity
-        )
+        // Every navigation runs this body three times: for the router's
+        // path, for `windowRoute` written back, and for the window handing
+        // that value in again. The Console is handed the same stores each
+        // time, so it is built once; a new one would rebuild every row and
+        // the detail on screen.
+        KeyedContent(key: ConsoleKey(app: ObjectIdentifier(app), router: ObjectIdentifier(notificationRouter))) {
+            ConsoleView(
+                hosts: app.hostStore, console: app.console, terminal: app.terminal,
+                inputMode: app.inputMode,
+                detailSurface: app.detailSurface,
+                appearance: app.appearance,
+                pushRegistration: app.pushRegistration,
+                notificationPreferences: app.notificationPreferences,
+                relaySettings: app.relaySettings,
+                notificationRouter: notificationRouter,
+                bannerStore: app.bannerStore,
+                liveActivities: app.liveActivities,
+                activity: app.activity
+            )
+        }
+        .equatable()
         // Settings › Overlay Networks and the Host form read the catalog here.
         .environment(app.overlayNetworks)
         // The Composer's mic and Settings › Voice Input.
@@ -99,10 +107,10 @@ struct ContentView: View {
         // Feeds the Console's Agent list to this window's router, so a
         // notification tap that arrived before the Hosts synced (killed-state
         // launch) routes the moment its pane appears.
-        .onChange(of: app.console.agents, initial: true) {
-            notificationRouter.agentsDidChange(app.console.agents)
+        .modifier(ConsoleAgentsFeed(console: app.console) { agents in
+            notificationRouter.agentsDidChange(agents)
             app.sceneDirectory.sceneRouteDidChange(sceneID: sceneID)
-        }
+        })
         // Every navigation is written back, so a relaunch restores the Agent
         // this window was last on.
         .onChange(of: notificationRouter.path) { _, path in
@@ -183,6 +191,30 @@ struct ContentView: View {
         UIApplication.shared.activateSceneSession(
             for: UISceneSessionActivationRequest(session: scene.session),
             errorHandler: nil)
+    }
+}
+
+/// What the window hands its Console: the app's stores and its own router,
+/// the same objects for as long as the window lives.
+private struct ConsoleKey: Equatable, Sendable {
+    let app: ObjectIdentifier
+    let router: ObjectIdentifier
+}
+
+/// Hands the Console's Agents on as they change, from a body of its own.
+///
+/// Read in `ContentView.body`, the Agents would re-evaluate the window's root
+/// on every status change, and each pass builds a `ConsoleView` whose state
+/// defaults are new objects: SwiftUI takes that for a changed view and
+/// re-evaluates the whole Console.
+private struct ConsoleAgentsFeed: ViewModifier {
+    let console: ConsoleStore
+    let agentsDidChange: @MainActor ([ConsoleAgent]) -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: console.agents, initial: true) { _, agents in
+            agentsDidChange(agents)
+        }
     }
 }
 

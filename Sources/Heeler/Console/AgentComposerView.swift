@@ -324,6 +324,7 @@ struct AgentComposerView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentComposerView.body")
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 AgentDetailStatusChrome(
@@ -1320,13 +1321,19 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         context _: Context
     ) -> CGSize? {
         guard let width = proposal.width else { return nil }
-        let measured = uiView.sizeThatFits(
-            CGSize(width: width, height: .greatestFiniteMagnitude))
+        let span = PerfTrace.begin("chat.composer.size")
+        defer { PerfTrace.end(span) }
+        let measured = uiView.draftSize(fitting: width)
         let maximumHeight = uiView.draftLineHeight * CGFloat(lineLimit)
             + uiView.textContainerInset.top
             + uiView.textContainerInset.bottom
         let height = min(max(36, measured.height), maximumHeight)
-        uiView.isScrollEnabled = lineLimit > 1 && measured.height > maximumHeight
+        // Written only when it changes: SwiftUI asks for this size many
+        // times a layout, and the write alone has the text view lay out.
+        let scrolls = lineLimit > 1 && measured.height > maximumHeight
+        if uiView.isScrollEnabled != scrolls {
+            uiView.isScrollEnabled = scrolls
+        }
         return CGSize(width: width, height: height)
     }
 
@@ -1545,12 +1552,14 @@ final class AgentComposerUITextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
         applyComposerInputTraits()
         installKeyboardObservers()
+        installDraftObserver()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         applyComposerInputTraits()
         installKeyboardObservers()
+        installDraftObserver()
     }
 
     /// The draft is local text until Send, so it autocorrects and spell
@@ -1638,6 +1647,10 @@ final class AgentComposerUITextView: UITextView {
     /// body font, so a limit counted in body lines cut its lines short.
     var draftLineHeight: CGFloat {
         guard let font else { return 20 }
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
+        if let lineHeight, lineHeight.font == font, lineHeight.scale == scale {
+            return lineHeight.height
+        }
         func pitch(_ sample: String) -> CGFloat {
             func height(_ text: String) -> CGFloat {
                 NSAttributedString(string: text, attributes: [.font: font]).boundingRect(
@@ -1647,8 +1660,51 @@ final class AgentComposerUITextView: UITextView {
             }
             return height(sample + "\n" + sample) - height(sample)
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
-        return (max(font.lineHeight, pitch("Ag"), pitch("中")) * scale).rounded(.up) / scale
+        let height = (max(font.lineHeight, pitch("Ag"), pitch("中")) * scale).rounded(.up) / scale
+        lineHeight = (font, scale, height)
+        return height
+    }
+
+    /// `draftLineHeight` as last worked out, for the font and scale it was
+    /// worked out in.
+    private var lineHeight: (font: UIFont, scale: CGFloat, height: CGFloat)?
+
+    /// The size the whole draft takes at `width`, measured again only after
+    /// the draft, its font, or how it wraps has changed. SwiftUI asks for it
+    /// many times in one layout, and again whenever a view around the
+    /// Composer updates, and each measurement lays the text out.
+    func draftSize(fitting width: CGFloat) -> CGSize {
+        let key = DraftFitting(
+            width: width, revision: draftRevision, font: font, inset: textContainerInset,
+            padding: textContainer.lineFragmentPadding, maximumLines: textContainer.maximumNumberOfLines)
+        if let fitted, fitted.key == key { return fitted.size }
+        let size = sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        fitted = (key, size)
+        return size
+    }
+
+    /// What a measurement of the draft depends on.
+    private struct DraftFitting: Equatable {
+        let width: CGFloat
+        let revision: Int
+        let font: UIFont?
+        let inset: UIEdgeInsets
+        let padding: CGFloat
+        let maximumLines: Int
+    }
+
+    private var fitted: (key: DraftFitting, size: CGSize)?
+    /// Counts the draft's edits, to its text and to how it is styled.
+    private var draftRevision = 0
+
+    private func installDraftObserver() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(draftDidChange),
+            name: NSTextStorage.didProcessEditingNotification, object: textStorage)
+    }
+
+    @objc private func draftDidChange() {
+        draftRevision &+= 1
     }
 
     /// The caret keeps the inset's padding around it, so the line it is on

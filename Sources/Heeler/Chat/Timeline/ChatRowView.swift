@@ -26,6 +26,7 @@ struct ChatRowView: View {
     let actions: ChatRowActions
 
     var body: some View {
+        let _ = PerfTrace.count("ChatRowView.body")
         content
             // The cell, measured to fit the row, offers exactly that height
             // as a limit. A stack held to a limit shares it out by
