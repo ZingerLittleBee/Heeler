@@ -33,7 +33,7 @@ struct AgentDetailView: View {
     /// opens: a choice made in another window leaves this one alone.
     @State private var surface: AgentDetailSurface
     @State private var focus = AgentFocusCoordinator()
-    @State private var hasAppeared = false
+    @State private var mount = AgentDetailMount()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.themeColors) private var themeColors
     @State private var session: AgentComposerSession
@@ -405,7 +405,7 @@ struct AgentDetailView: View {
             isHostReady: console.hostStatuses[agent.hostID] == .connected
                 && !console.hostsAwaitingSnapshot.contains(agent.hostID),
             isSceneActive: scenePhase == .active,
-            isOnStage: hasAppeared && isOnStage(),
+            isOnStage: mount.hasAppeared && isOnStage(),
             showsShellTerminal: openTerminal.shell != nil || openTerminal.isOpening
                 || shellRoute != nil)
     }
@@ -544,7 +544,7 @@ struct AgentDetailView: View {
             notificationCenter: keyboardInset.notificationCenter,
             complete: completeDeparture))
         .onAppear {
-            hasAppeared = true
+            mount.hasAppeared = true
             // A detail mounted afresh covers nothing, whatever the last one
             // in this window left behind.
             sceneRouting?.agentCoverDidChange(agent: shellRoute == nil ? nil : agent.id)
@@ -554,7 +554,7 @@ struct AgentDetailView: View {
         }
         .modifier(AgentFocusFeed(state: { focusViewingState }, update: { updateFocus() }))
         .onDisappear {
-            hasAppeared = false
+            mount.hasAppeared = false
             focus.leave()
             console.setAgentShown(nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
             // The router's truth, not SwiftUI's: a spurious disappear, or
@@ -923,6 +923,18 @@ struct AgentShellRoute: Equatable {
 }
 
 private final class AgentDetailRetentionHolder {}
+
+/// Whether SwiftUI has the detail mounted, for the focus state.
+///
+/// A push appears the detail, disappears it and appears it again within one
+/// frame. As the detail's own state, each flip re-evaluated the detail's
+/// body and the surface it builds. Here only what reads it follows it
+/// (`AgentFocusFeed`).
+@MainActor
+@Observable
+private final class AgentDetailMount {
+    var hasAppeared = false
+}
 
 @MainActor
 private final class AgentDetailAttachReference {
