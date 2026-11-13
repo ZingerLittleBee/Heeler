@@ -107,10 +107,9 @@ extension ChatProgram {
     /// queues or steers the message.
     var inputBoxWhileWorking: InputBoxState? {
         switch self {
-        case .agy: .disabled(AgyInputBoxDetector.working)
         case .omp: .disabled(PiInputBoxDetector.ompWorking)
         case .opencode: .disabled(OpenCodeScreenReader.working)
-        case .claude, .codex, .pi, .grok: nil
+        case .claude, .codex, .pi, .grok, .agy: nil
         }
     }
 }

@@ -20,15 +20,16 @@ Entries reference the pull request that made the change.
   Chat or the terminal, and answers its command, file edit and file
   creation permissions, its questions (several at once, multi-select or
   written) and its trust prompt from cards. It holds a
-  message, with the reason, while Antigravity CLI is working or its screen
-  shows no empty input box, since a permission dialog that opened as the
-  message went in would take it as its answer. macOS and Linux herdr-core
+  message, with the reason, while Antigravity CLI's screen
+  shows no empty input box, since a permission dialog on screen would
+  take it as its answer. macOS and Linux herdr-core
   Hosts offer it too, following the conversation from its first message,
   sent from Chat or the terminal. Windows herdr-core Hosts don't offer it.
   (PR #705)
 
 ### Changed
 
+- Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)
 - Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
 - Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)
 - Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
