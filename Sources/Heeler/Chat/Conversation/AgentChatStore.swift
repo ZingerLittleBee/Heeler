@@ -264,6 +264,13 @@ final class AgentChatStore {
     /// herdr reports a session of its own.
     @ObservationIgnored private var continuedSession: ConversationReference?
     @ObservationIgnored private var followed: ConversationReference?
+    /// The root conversation's id for the Antigravity CLI transcript now
+    /// followed, and every session id (root or subagent) already found to
+    /// resolve to it. herdr's `PreInvocation` hook reports each subagent step
+    /// under the subagent's own `conversationId` while the terminal stays in
+    /// the root conversation.
+    @ObservationIgnored private var agyRootSessionID: String?
+    @ObservationIgnored private var agySessionFamily: Set<String> = []
     /// The conversation herdr still reports after the program left it for
     /// its home screen, and the terminal title it had there. Reports of it
     /// read as no report until the program shows it again or herdr reports
@@ -920,6 +927,8 @@ final class AgentChatStore {
             await checkStartScreen(fresh)
         }
         guard !Task.isCancelled else { return }
+        await resolvePendingAgySessionIfNeeded()
+        guard !Task.isCancelled, !hasUnresolvedAgySession else { return }
         // The query may select another session. Restore that session's own
         // document before waiting for its transcript, too.
         await restoreIfNeeded()
@@ -1396,8 +1405,60 @@ final class AgentChatStore {
             refreshBackgroundWork()
             return
         }
+        if !replacingAgent, program == .agy, agyRootSessionID != nil,
+            case .bound(let reference) = next, reference.program == .agy
+        {
+            if showsAwaitingReason {
+                conversation.phase = .locating
+                appliedRevision = nil
+                nextOpen = nil
+                failedOpens = 0
+            }
+            return
+        }
         continuedSession = nil
         followReference(force: replacingAgent)
+    }
+
+    private var hasUnresolvedAgySession: Bool {
+        guard program == .agy, agyRootSessionID != nil,
+            case .bound(let reported) = resolution, reported.program == .agy
+        else { return false }
+        return !agySessionFamily.contains(reported.sessionID)
+    }
+
+    /// Checks whether a newly reported Antigravity CLI session still resolves
+    /// to the root conversation already followed, before replacing the engine.
+    private func resolvePendingAgySessionIfNeeded() async {
+        guard program == .agy, let rootID = agyRootSessionID,
+            case .bound(let reported) = resolution, reported.program == .agy,
+            !agySessionFamily.contains(reported.sessionID)
+        else { return }
+        let recordRevision = sessionRecordRevision
+        let configRoot = source.sessionEvidence == nil ? nil : evidenceRoot
+        do {
+            switch try await AgyTranscriptLocator(files: source.files).locate(
+                sessionID: reported.sessionID, configRoot: configRoot)
+            {
+            case .success(let path) where AgyTranscriptLocator.sessionID(ofTranscript: path) == rootID:
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return }
+                agySessionFamily.insert(reported.sessionID)
+                transcriptReadFailure = nil
+                updateReadFailure()
+            case .success, .failure(.notWritten), .failure(.notFound):
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return }
+                continuedSession = nil
+                followReference(force: true)
+            }
+        } catch {
+            guard !Task.isCancelled, recordRevision == sessionRecordRevision,
+                !(error is CancellationError), error as? TransportError != .cancelled
+            else { return }
+            transcriptReadFailure =
+                error as? TransportError
+                ?? .channelFailed(detail: String(describing: type(of: error)))
+            updateReadFailure()
+        }
     }
 
     /// Points the engine at the conversation to follow, starting a new one
@@ -1422,6 +1483,8 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        agyRootSessionID = nil
+        agySessionFamily = []
         // What was sent went into the last conversation.
         pickGuardSends = []
         pickGuardTurnEnd = nil
@@ -1891,6 +1954,16 @@ final class AgentChatStore {
             sessionConcern = nil
         }
         blocked.update(transcript: next.transcript)
+        if program == .agy, case .following(let path) = next.phase,
+            let rootID = AgyTranscriptLocator.sessionID(ofTranscript: path)
+        {
+            agyRootSessionID = rootID
+            agySessionFamily.insert(rootID)
+            if let followedID = followed?.sessionID { agySessionFamily.insert(followedID) }
+            if case .bound(let reported) = resolution, reported.program == .agy {
+                agySessionFamily.insert(reported.sessionID)
+            }
+        }
         if case .following = next.phase, !waitingOutputs.isEmpty {
             let waiting = waitingOutputs
             waitingOutputs = []
@@ -2234,7 +2307,9 @@ final class AgentChatStore {
     /// read counts once it returns, timed out or not: one a cancelled step
     /// cut short is the next step's to take.
     private func checkSendWitnesses() async {
-        guard let witness = source.adapter.sendWitness, let sessionID = followed?.sessionID else { return }
+        guard let witness = source.adapter.sendWitness,
+            let sessionID = agyRootSessionID ?? followed?.sessionID
+        else { return }
         let date = now()
         var due: [(send: TrackedSend, mark: ChatSendWitnessMark, isLast: Bool)] = []
         for send in sends where send.generation == conversationGeneration {

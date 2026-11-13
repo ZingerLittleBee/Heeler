@@ -104,8 +104,13 @@ one (median 1.91); its longest line was 69,703 bytes, one line passed
 
 A forked conversation's file does not copy its parent: the one observed
 starts at `step_index` 2. Subagents have folders and transcripts of their
-own that start with a `SYSTEM_MESSAGE`; they have no `USER_INPUT`, presence
-lock or history line, and herdr reports only the top-level conversation.
+own that start with a `SYSTEM_MESSAGE` (`[Message] timestamp=… sender=<parent-id> …`,
+sometimes after a `step_index: 0` `SYSTEM_SDK` reminder); they have no
+`USER_INPUT`, presence lock or history line. Because subagents run in the
+same `agy` process, each subagent step fires herdr's `PreInvocation` hook
+with the subagent's own `conversationId` while the terminal stays in the
+top-level conversation, so `AgyTranscriptLocator` walks `sender=<parent-id>`
+up to the top-level conversation's transcript.
 
 `history.jsonl` is not a send witness: the first prompt after a fresh launch
 has no `conversationId` (7 ordinary prompts in the census lack it), and a

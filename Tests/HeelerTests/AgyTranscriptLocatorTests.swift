@@ -6,8 +6,19 @@ import Testing
 @Suite("Antigravity CLI transcript locator")
 struct AgyTranscriptLocatorTests {
     private static let id = "00000000-0000-4000-8000-000000000001"
+    private static let subagentID = "00000000-0000-4000-8000-000000000002"
+    private static let nestedSubagentID = "00000000-0000-4000-8000-000000000003"
     private static let root = "/home/dev/.gemini/antigravity-cli"
     private static let line = #"{"step_index": 0, "source": "USER_EXPLICIT", "type": "USER_INPUT", "status": "DONE"}"# + "\n"
+
+    private static func subagentLine(stepIndex: Int = 0, sender: String, prompt: String = "task") -> String {
+        #"{"step_index":\#(stepIndex),"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","created_at":"2026-11-12T18:23:33Z","content":"The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-12T18:23:33Z sender=\#(sender) priority=MESSAGE_PRIORITY_HIGH content=\#(prompt)"}"#
+            + "\n"
+    }
+
+    private static let sdkReminderLine =
+        #"{"step_index":0,"source":"SYSTEM_SDK","type":"SYSTEM_MESSAGE","status":"DONE","created_at":"2026-11-12T17:27:05Z","content":"The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\nThis is a periodic system reminder."}"#
+        + "\n"
 
     private static func transcriptPath(root: String = root, id: String = id) -> String {
         "\(root)/brain/\(id)/.system_generated/logs/transcript_full.jsonl"
@@ -101,6 +112,60 @@ struct AgyTranscriptLocatorTests {
     @Test func anAccountIsADirectoryWithABrainFolder() {
         #expect(SupportedAgentKind.antigravity.accountMarkers.map(\.label) == ["a brain folder"])
         #expect(SupportedAgentKind.antigravity.configDirectoryVariable == nil)
+    }
+
+    // MARK: Subagents
+
+    /// herdr's `PreInvocation` hook reports a subagent's own `conversationId`
+    /// while the terminal stays in the top-level conversation. Locating walks
+    /// `sender=<id>` in the opening `SYSTEM_MESSAGE` steps up to the root.
+    @Test func aSubagentSessionFollowsTheParentChainToTheRootConversation() async throws {
+        let files = VirtualHostFiles()
+        let rootPath = Self.transcriptPath(id: Self.id)
+        await files.write(Self.line, at: rootPath)
+        await files.write(
+            Self.sdkReminderLine + Self.subagentLine(stepIndex: 1, sender: Self.id),
+            at: Self.transcriptPath(id: Self.subagentID))
+        let longPrompt = String(repeating: "x", count: 8_192)
+        await files.write(
+            Self.subagentLine(sender: Self.subagentID, prompt: longPrompt),
+            at: Self.transcriptPath(id: Self.nestedSubagentID))
+
+        #expect(try await Self.locate(files, sessionID: Self.subagentID) == .success(rootPath))
+        #expect(try await Self.locate(files, sessionID: Self.nestedSubagentID) == .success(rootPath))
+        #expect(AgyTranscriptLocator.sessionID(ofTranscript: rootPath) == Self.id)
+    }
+
+    /// A top-level conversation starts with `USER_INPUT`, so a subagent reply
+    /// recorded later in its first 4 KiB does not make the root look like a
+    /// subagent of its own child.
+    @Test func aRootConversationThatReceivesASubagentReplyStaysAtTheRoot() async throws {
+        let files = VirtualHostFiles()
+        let rootPath = Self.transcriptPath(id: Self.id)
+        await files.write(
+            Self.line + Self.subagentLine(stepIndex: 1, sender: Self.subagentID, prompt: "done"),
+            at: rootPath)
+        await files.write(
+            Self.subagentLine(sender: Self.id),
+            at: Self.transcriptPath(id: Self.subagentID))
+
+        #expect(try await Self.locate(files, sessionID: Self.id) == .success(rootPath))
+        #expect(try await Self.locate(files, sessionID: Self.subagentID) == .success(rootPath))
+    }
+
+    /// A subagent whose parent transcript is missing or cyclic never falls
+    /// back to showing the subagent's own transcript as the conversation.
+    @Test func aSubagentWithoutAReachableRootIsNotFound() async throws {
+        let files = VirtualHostFiles()
+        await files.write(
+            Self.subagentLine(sender: Self.id),
+            at: Self.transcriptPath(id: Self.subagentID))
+        #expect(try await Self.locate(files, sessionID: Self.subagentID) == .failure(.notFound))
+
+        await files.write(
+            Self.subagentLine(sender: Self.subagentID),
+            at: Self.transcriptPath(id: Self.id))
+        #expect(try await Self.locate(files, sessionID: Self.subagentID) == .failure(.notFound))
     }
 
     // MARK: Engine
