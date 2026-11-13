@@ -1,12 +1,12 @@
 import Foundation
 
-/// Which tmux Pane is an Agent (ADR 0043). A Pane is one while a known agent
+/// Which tmux Pane is an Agent (ADR 0044). A Pane is one while a known agent
 /// program holds its foreground, read as `HerdrCoreAgentRule` reads a
 /// herdr-core Terminal's: past launch wrappers, `sh -c` lines, interpreters
 /// and `npx`. A shell in the foreground ends it, a dead Pane hosts none, and
 /// any other program is a terminal only, whatever its `@heeler-status` says:
 /// on tmux every Program Status comes from Heeler's integrations for known
-/// programs (ADR 0044).
+/// programs (ADR 0045).
 ///
 /// The foreground is the process leading the Pane's foreground process group.
 /// Its arguments come from the inventory loop, and where the Host could not

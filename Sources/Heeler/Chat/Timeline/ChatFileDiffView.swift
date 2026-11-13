@@ -414,16 +414,17 @@ struct ChatFileDiffRows: View {
 /// The unchanged lines between two hunks.
 private struct ChatDiffGap: View {
     let count: Int
+    @Environment(\.diffSurface) private var surface
 
     var body: some View {
         Text(verbatim: "⋯ " + FileDiffHunkBand.unchangedSummary(count))
             .font(.caption2)
             .monospacedDigit()
-            .foregroundStyle(Color(uiColor: DiffPalette.hunkText))
+            .foregroundStyle(Color(uiColor: surface.secondaryText))
             .padding(.horizontal, DiffLayoutPolicy.numberSpacing)
             .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: DiffPalette.hunkBand))
+            .background(Color(uiColor: surface.hunkBand))
     }
 }
 
@@ -455,7 +456,7 @@ struct ChatFileDiffSheet: View {
                 }
             }
         }
-        .background(Color(uiColor: DiffPalette.background))
+        .background(Color(uiColor: DiffSurface.system.background))
         .accessibilityIdentifier("chat.file-diff")
     }
 }

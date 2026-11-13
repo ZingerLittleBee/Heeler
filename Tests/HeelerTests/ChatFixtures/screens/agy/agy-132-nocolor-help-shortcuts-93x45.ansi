@@ -1,0 +1,45 @@
+  ▄▀▀      ▀▀▄
+
+  [0m[1mAntigravity CLI 1.5.3[0m
+  developer (Google AI Ultra)
+  Gemini 4 Argon (High)
+  /Users/developer/projects/heeler-acceptance/mac-core-2026-11-08/no-color-captures-agy-153-h
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+>
+─────────────────────────────────────────────────────────────────────────────────────────────
+Antigravity CLI   general    commands    [0m[1m[4mshortcuts[0m   (←/→ or tab to cycle)
+[0m[1mKeyboard Shortcuts[0m
+  /keybindings to customize
+
+> /                               [0m[2mOpen slash commands[0m
+  \ + enter                       Insert newline fallback
+  alt+enter, ctrl+j, shift+enter  Insert newline
+  alt+j                           Manage subagent
+  alt+m                           Send with opposite Queued Messages setting
+  alt+v, ctrl+v                   Paste image/video
+  ctrl+_, ctrl+shift+-            Undo
+  ctrl+c, esc                     Go back / dismiss
+  ctrl+d                          Exit
+  ctrl+end                        Go to bottom
+  ctrl+g                          Open prompt in $EDITOR
+  ctrl+home                       Go to top
+  ctrl+k                          Approve subagent fast
+  ctrl+l                          Clear CLI screen
+  ctrl+o                          Toggle trajectory view
+  ctrl+r                          Review artifact
+  ctrl+shift+z                    Redo
+  ctrl+y                          Yank (paste from kill ring)
+  ctrl+z                          Suspend CLI
+  enter                           Send message or confirm
+  f2                              Rename
+  f4                              Delete
+  f5                              Start voice dictation
+  shift+down                      Half page down
+  shift+tab                       Cycle mode
+  shift+up                        Half page up
+  shift/alt+click                 Select and copy text
+
+[0m[1mKeyboard: [0m↑/↓ Navigate  ←/→ Switch View  esc Close
+
+                                                                        [0m[2mGemini 4 Argon · high[0m

@@ -1,0 +1,40 @@
+[90m────────────────────────────────────────────────────────────
+[1m[34m> Use your question tool to ask me which fruits I like, allowing several answers: apple, banana, cherry.[0m
+
+[1m[33m?[0m Which fruits do you like?
+[1m[34m> apple, mango[0m
+
+  You selected [1mapple[0m and [1mmango[0m.
+
+[90m────────────────────────────────────────────────────────────[39m
+[1m[34m> Use your question tool to ask me which fruits I like, allowing several answers: apple, banana, cherry.[0m
+
+[1m[33m?[0m Which fruits do you like?
+[1m[34m> mango[0m
+
+  You selected [1mmango[0m.
+
+[90m────────────────────────────────────────────────────────────[39m
+[1m[34m> Use your question tool once to ask me two questions in one form: first, which fruits I like, allowing several answers[0m
+[1m[34m  (apple, banana, cherry); second, which size (small, large).[0m
+
+[1m[33m?[0m Which fruits do you like?
+[1m[33m?[0m Which size?
+
+[1m[33mQuestion[0m
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[1m[39mQuestion 1/2: Which fruits do you like?[0m
+
+  1. [x] apple
+  2. [ ] banana
+  3. [ ] cherry
+[94m> 4. Write-in...[39m
+
+[37m  Your answer:[39m
+  [7m[37m [0m
+
+
+
+  [1m[94menter[0m[90m Submit · [1m[94mesc[0m[90m Back[39m
+[90mesc to cancel[39m                                                                                    [2mGemini 4 Argon · medium

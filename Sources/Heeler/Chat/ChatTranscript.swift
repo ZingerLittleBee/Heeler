@@ -3,7 +3,8 @@ import Foundation
 /// The program that writes the transcript a Chat reads. Each one gets its own
 /// adapter: the files share nothing beyond being JSON Lines, and herdr, not
 /// the file, says which program an Agent runs. OpenCode keeps its
-/// conversations in a store Chat reads by query instead (ADR 0025).
+/// conversations in a store Chat reads by query instead (ADR 0025). `agy` is
+/// Antigravity CLI, which herdr names `antigravity_cli`.
 enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case claude
     case codex
@@ -11,6 +12,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case omp
     case grok
     case opencode
+    case agy
 }
 
 /// What herdr last reported the Agent doing. Adapters need it only to tell a
@@ -97,23 +99,44 @@ struct ChatUserMessage: Equatable, Codable, Sendable {
     /// Set when the prompt invoked a command or skill. Both programs display
     /// as `/name arguments`, whatever the program itself records.
     var command: ChatCommandInvocation?
-    /// True when the program took the prompt while a turn was running.
-    var wasQueued: Bool
+    /// Where the prompt stands against the turn it was sent during.
+    var delivery: Delivery
+
+    /// Whether the program has the prompt yet, and whether it joined a
+    /// running turn rather than opening one.
+    enum Delivery: String, Codable, Sendable {
+        /// Taken when sent, or as the prompt that opened a later turn.
+        case direct
+        /// Sent while a turn ran and held by the program, which has not
+        /// delivered it yet. Only a program that records the wait shows it.
+        case queued
+        /// Delivered into a turn that was running, which it joins instead
+        /// of opening a turn of its own.
+        case steered
+    }
 
     init(
         text: String, imageCount: Int = 0, imagePaths: [String] = [], attachmentLabels: [String] = [],
-        command: ChatCommandInvocation? = nil, wasQueued: Bool = false
+        command: ChatCommandInvocation? = nil, delivery: Delivery = .direct
     ) {
         self.text = text
         self.imageCount = imageCount
         self.imagePaths = imagePaths
         self.attachmentLabels = attachmentLabels
         self.command = command
-        self.wasQueued = wasQueued
+        self.delivery = delivery
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, imageCount, imagePaths, attachmentLabels, command, delivery
+        /// Saved before `delivery`: true for a prompt taken during a turn.
+        case wasQueued
     }
 
     /// A message saved before image paths were kept has none, so other
-    /// programs' cached conversations still read.
+    /// programs' cached conversations still read. One saved before
+    /// `delivery` says only whether it came during a turn; the cache never
+    /// keeps a prompt still queued, so that one was delivered into it.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decode(String.self, forKey: .text)
@@ -121,7 +144,21 @@ struct ChatUserMessage: Equatable, Codable, Sendable {
         imagePaths = try container.decodeIfPresent([String].self, forKey: .imagePaths) ?? []
         attachmentLabels = try container.decode([String].self, forKey: .attachmentLabels)
         command = try container.decodeIfPresent(ChatCommandInvocation.self, forKey: .command)
-        wasQueued = try container.decode(Bool.self, forKey: .wasQueued)
+        if let delivery = try container.decodeIfPresent(Delivery.self, forKey: .delivery) {
+            self.delivery = delivery
+        } else {
+            delivery = try container.decodeIfPresent(Bool.self, forKey: .wasQueued) == true ? .steered : .direct
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(imageCount, forKey: .imageCount)
+        try container.encode(imagePaths, forKey: .imagePaths)
+        try container.encode(attachmentLabels, forKey: .attachmentLabels)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encode(delivery, forKey: .delivery)
     }
 
 
@@ -766,6 +803,10 @@ struct ChatQuestion: Equatable, Codable, Sendable {
     /// My Pi's `recommended`).
     var recommendedIndex: Int?
     var answer: String?
+    /// The user skipped the question, so it has no answer by choice:
+    /// Antigravity CLI records each skip (`User Skipped`), where other
+    /// programs leave an unanswered question without one.
+    var isSkipped = false
     /// An answer given in Chat that the program holds back: Codex records
     /// an asynchronous answer only once it sends it, after its next tool
     /// call. Held in memory only.
@@ -773,7 +814,7 @@ struct ChatQuestion: Equatable, Codable, Sendable {
 
     init(
         id: String? = nil, header: String? = nil, text: String, options: [Option] = [],
-        isMultiSelect: Bool = false, recommendedIndex: Int? = nil, answer: String? = nil
+        isMultiSelect: Bool = false, recommendedIndex: Int? = nil, answer: String? = nil, isSkipped: Bool = false
     ) {
         self.id = id
         self.header = header
@@ -782,12 +823,27 @@ struct ChatQuestion: Equatable, Codable, Sendable {
         self.isMultiSelect = isMultiSelect
         self.recommendedIndex = recommendedIndex
         self.answer = answer
+        self.isSkipped = isSkipped
     }
 
     // `queuedAnswer` is deliberately absent: decoding leaves it nil. An
     // entry cached before `recommendedIndex` decodes without one.
     private enum CodingKeys: String, CodingKey {
-        case id, header, text, options, isMultiSelect, recommendedIndex, answer
+        case id, header, text, options, isMultiSelect, recommendedIndex, answer, isSkipped
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        header = try container.decodeIfPresent(String.self, forKey: .header)
+        text = try container.decode(String.self, forKey: .text)
+        options = try container.decode([Option].self, forKey: .options)
+        isMultiSelect = try container.decode(Bool.self, forKey: .isMultiSelect)
+        recommendedIndex = try container.decodeIfPresent(Int.self, forKey: .recommendedIndex)
+        answer = try container.decodeIfPresent(String.self, forKey: .answer)
+        // An entry cached before `isSkipped` decodes as not skipped, rather
+        // than failing and dropping every program's cached document.
+        isSkipped = try container.decodeIfPresent(Bool.self, forKey: .isSkipped) ?? false
     }
 }
 
@@ -916,11 +972,14 @@ struct ChatPendingRequest: Equatable, Sendable {
     var detail: String?
     var questions: [ChatQuestion]
     var planFilePath: String?
+    /// The change a file call would make, for a card whose dialog the
+    /// screen cuts short: Antigravity CLI's edit and write calls.
+    var fileChanges: ChatFileChanges?
 
     init(
         entryID: ChatEntryID, callID: String?, kind: ChatToolActivity.Kind, toolName: String,
         summary: String, detail: String? = nil, questions: [ChatQuestion] = [],
-        planFilePath: String? = nil
+        planFilePath: String? = nil, fileChanges: ChatFileChanges? = nil
     ) {
         self.entryID = entryID
         self.callID = callID
@@ -930,6 +989,7 @@ struct ChatPendingRequest: Equatable, Sendable {
         self.detail = detail
         self.questions = questions
         self.planFilePath = planFilePath
+        self.fileChanges = fileChanges
     }
 }
 
@@ -1193,6 +1253,24 @@ struct ChatBackgroundWorkEnd: Equatable, Sendable {
     }
 }
 
+/// A command Antigravity CLI sent to a background task, as the transcript
+/// shows it. agy delivers a task's end only with the next prompt once its
+/// turn was stopped, so a command can read running after it ended.
+struct ChatBackgroundCommand: Equatable, Sendable {
+    /// The call's entry id.
+    let callID: String
+    /// `CommandLine`, which agy's `/tasks` panel names the task by.
+    let command: String?
+    /// Neither the task's end nor a restart has come.
+    let isRunning: Bool
+    /// `IsDaemon`: a server or watcher meant to outlive the turn, which agy's
+    /// own headless runs leave running too.
+    let isDaemon: Bool
+
+    /// What Chat's Stop ends.
+    var isStoppable: Bool { isRunning && !isDaemon }
+}
+
 extension ChatBackgroundWorkItem {
     mutating func apply(_ end: ChatBackgroundWorkEnd) {
         state = end.state
@@ -1270,6 +1348,11 @@ struct ChatTranscript: Equatable, Sendable {
     /// yet, such as a queued prompt's waiting bubble. A later record shows
     /// it under another id, so the cache never keeps them.
     var unrecordedEntryIDs: Set<ChatEntryID>
+    /// Antigravity CLI: the commands the turn still open at the end of the
+    /// loaded lines sent to the background, oldest first, which Chat's Stop
+    /// ends after its Esc (ADR 0024). The next prompt closes the turn and
+    /// empties it.
+    var openTurnBackgroundCommands: [ChatBackgroundCommand] = []
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,

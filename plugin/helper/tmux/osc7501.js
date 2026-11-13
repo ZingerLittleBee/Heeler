@@ -1,4 +1,4 @@
-// Streaming OSC 7501 parser for a tmux Pane's output stream (ADR 0044).
+// Streaming OSC 7501 parser for a tmux Pane's output stream (ADR 0045).
 // Reads both bare sequences (`ESC ] 7501 ; ... BEL` / `ESC \`) and Grok Build's
 // tmux DCS passthrough (`ESC P tmux; ESC ESC ] 7501 ; ... ESC ESC \ ESC \`),
 // ignoring capability queries (`?`) and child-session records (`id=...`).

@@ -530,6 +530,12 @@ public final class SSHConnection: Sendable {
         await driver.holdNextChannelTeardownForTesting(hold)
     }
 
+    func holdNextChannelCloseSentForTesting(
+        _ hold: @escaping @Sendable () async -> Void
+    ) async {
+        await driver.holdNextChannelCloseSentForTesting(hold)
+    }
+
     func failNextResumedChannelOpenWaiterForTesting(_ error: SSHError) async {
         await driver.failNextResumedChannelOpenWaiterForTesting(error)
     }

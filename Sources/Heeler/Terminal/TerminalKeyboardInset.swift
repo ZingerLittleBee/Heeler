@@ -137,6 +137,10 @@ final class TerminalKeyboardInset {
 
     var isHoldingHandoffHeight: Bool { activeResponderHandoffID != nil }
 
+    /// Where this inset hears the keyboard: UIKit's center in the app, and a
+    /// test's own where the test posts the keyboard's notifications.
+    let notificationCenter: NotificationCenter
+
     /// `measure` and `measureWindowKeyboard` replace the window measurements
     /// in tests; production leaves them nil and attaches the terminal's
     /// window instead. `sleep` and `handoffSleep` let tests move time
@@ -152,6 +156,7 @@ final class TerminalKeyboardInset {
             try await Task.sleep(for: $0)
         }
     ) {
+        self.notificationCenter = notificationCenter
         measureOverride = measure
         measureWindowKeyboardOverride = measureWindowKeyboard
         self.sleep = sleep

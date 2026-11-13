@@ -1,6 +1,6 @@
 import Foundation
 
-/// Composer Send on a tmux Agent (ADRs 0035 and 0043): pastes the draft into
+/// Composer Send on a tmux Agent (ADRs 0035 and 0044): pastes the draft into
 /// the viewed Attach's named buffer (`set-buffer`, `paste-buffer -p -r -d`) and
 /// presses `Enter` once, all through that Attach's control client, only while
 /// the same known Agent process still leads the Pane's foreground before and

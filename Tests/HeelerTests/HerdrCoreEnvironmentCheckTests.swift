@@ -57,15 +57,95 @@ struct HerdrCoreEnvironmentCheckTests {
     }
 
     @Test func theRequestAsksForNamesAndNeverForAValue() {
-        let request = HerdrCoreEnvironmentCheck.request(pid: 9001)
-        #expect(request.pids == ["9001"])
+        let request = HerdrCoreEnvironmentCheck.request(pids: [9001, 9002])
+        #expect(request.pids == ["9001", "9002"])
         #expect(request.valuesOf.isEmpty)
         #expect(!request.readsStart && !request.readsOpenFiles)
+        #expect(request.descendantsOf == nil)
         #expect(request.namesWithPrefix == ["HERDR_"])
+        // NO_COLOR only changes how a program draws, and agy's readers read both.
         #expect(Set(request.namesOf) == [
             "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SKIP_PROMPT_HISTORY", "CLAUDECODE", "TMUX", "STY", "ZELLIJ",
             "CURSOR_TRACE_ID", "VSCODE_GIT_ASKPASS_MAIN", "CODEX_THREAD_ID", "OMPCODE", "PI_PROGRAM_STATUS",
         ])
+    }
+
+    @Test func theCoreComesFirstThenEachHoldOnceAndNoPidTheReaderRefuses() {
+        #expect(HerdrCoreEnvironmentCheck.processIDs(core: 9001, holders: [9002, 9001, 9003, 9002]) == [
+            9001, 9002, 9003,
+        ])
+        // A pid the reader refuses would refuse the whole read.
+        #expect(HerdrCoreEnvironmentCheck.processIDs(core: 0, holders: [9002]) == [9002])
+        #expect(HerdrCoreEnvironmentCheck.processIDs(core: 9001, holders: [-4, 99_999_999_999]) == [9001])
+        #expect(HerdrCoreEnvironmentCheck.processIDs(core: 0, holders: []).isEmpty)
+        let many = HerdrCoreEnvironmentCheck.processIDs(core: 1, holders: Array(2...40))
+        #expect(many == Array(1...HerdrCoreEnvironmentCheck.processCap))
+    }
+
+    /// A Mac core started under launchd held 19 names and none that leak, while
+    /// its hold, which every Terminal inherits from, held the starter's (#644).
+    @Test func theCheckReadsTheHoldsTerminalsStartFrom() async throws {
+        let host = ScriptedCoreHost(
+            processRead: .namesByPID([9001: [], 9002: ["TMUX", "HERDR_PANE_ID"]]),
+            channel: .core(.init(pid: 9001, holders: [9002])))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+
+        await reader.nextAnswer()
+        #expect(session.currentLeakedEnvironment == ["TMUX", "HERDR_PANE_ID"])
+        #expect(await reads(host) == 1)
+        let script = try #require(await host.scripts.last)
+        #expect(script.contains("\ne 9001\n"))
+        #expect(script.contains("\ne 9002\n"))
+        await session.end()
+    }
+
+    @Test func aHoldThatCannotBeReadLeavesTheCoresNames() async throws {
+        let host = ScriptedCoreHost(
+            processRead: .namesByPID([9001: ["CLAUDECODE"]]),
+            channel: .core(.init(pid: 9001, holders: [9002])))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+
+        await reader.nextAnswer()
+        #expect(session.currentLeakedEnvironment == ["CLAUDECODE"])
+        await session.end()
+    }
+
+    /// `holder` is null and `holders` empty until a first Terminal, which can come
+    /// long after the link's first read.
+    @Test func aHoldThatAppearsWithTheFirstTerminalIsChecked() async throws {
+        let host = ScriptedCoreHost(
+            processRead: .namesByPID([9001: [], 9002: ["CODEX_THREAD_ID"]]),
+            channel: .core(.init(pid: 9001)))
+        let session = session(on: host)
+        let reader = Reader(session)
+        await session.resume()
+        await reader.nextSnapshot()
+        await reader.nextAnswer()
+        #expect(session.currentLeakedEnvironment.isEmpty)
+
+        await host.setHolders([9002])
+        try await host.deliverEvent(Self.created("t1", sequence: 1))
+        await reader.nextAnswer()
+        #expect(session.currentLeakedEnvironment == ["CODEX_THREAD_ID"])
+        #expect(await reads(host) == 2)
+        #expect(await host.sockets.count == 1)
+
+        // Another Terminal under the same hold asks again and runs no exec.
+        try await host.deliverEvent(Self.created("t2", sequence: 2))
+        await reader.nextAnswer()
+        #expect(session.currentLeakedEnvironment == ["CODEX_THREAD_ID"])
+        #expect(await reads(host) == 2)
+        await session.end()
+    }
+
+    private static func created(_ address: String, sequence: Int) -> Data {
+        Data(
+            #"{"jsonrpc":"2.0","method":"event","params":{"seq":\#(sequence),"type":"created","terminal":"\#(address)","data":{"address":"\#(address)","cwd":"/work","state":"live","pid":7}}}"#
+                .utf8)
     }
 
     @Test func theCheckRunsAfterHelloInOneExecAgainstTheStatusPid() async throws {

@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// The 2026-11-10 input measurements on tmux 3.3a and 3.7b (ADR 0043's
+/// The 2026-11-10 input measurements on tmux 3.3a and 3.7b (ADR 0044's
 /// Evidence), from `plugin/test-vectors/tmux-input-v1.json`: what Heeler sends
 /// for each key and text, and what the Pane's program read for it, per
 /// version, `extended-keys` setting and program keyboard mode.

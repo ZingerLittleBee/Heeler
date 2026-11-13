@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-/// One Attach on a tmux Pane (ADR 0043): a control client in a session of
+/// One Attach on a tmux Pane (ADR 0044): a control client in a session of
 /// Heeler's own, whose events `TmuxPaneFeed` turns into the bytes of a
 /// terminal that shows only that Pane.
 ///
@@ -568,7 +568,7 @@ actor TmuxPaneAttach {
     private static let answerTimeout = Duration.seconds(5)
 
     /// Types the terminal view's bytes into the Pane through the client, in
-    /// order (ADR 0043): text with `send-keys -l`, each key by its tmux name,
+    /// order (ADR 0044): text with `send-keys -l`, each key by its tmux name,
     /// and a paste through a buffer named for this Attach, so it arrives
     /// exactly and bracketed only if the program asked for that. A paste goes
     /// on across writes (`TmuxInputStream`); `moreQueued` says whether another

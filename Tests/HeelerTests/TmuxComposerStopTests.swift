@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Composer Stop on a tmux Host (ADRs 0024, 0043 and 0044), from
+/// Composer Stop on a tmux Host (ADRs 0024, 0044 and 0045), from
 /// `ConsoleStore.terminalInterrupt` through the Attach's control client and
 /// Heeler's own compare-and-set of `@heeler-status`.
 @MainActor

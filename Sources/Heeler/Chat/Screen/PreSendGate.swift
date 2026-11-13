@@ -95,8 +95,21 @@ extension ChatProgram {
     /// is not necessarily the message.
     var mayRefillInputBoxAfterSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .opencode: false
+        case .claude, .codex, .pi, .omp, .opencode, .agy: false
         case .grok: true
+        }
+    }
+
+    /// What the input box reads as while the program runs a turn, for one
+    /// Chat never sends to then (ADR 0024): a dialog the turn opens before
+    /// herdr's Enter would take it as its answer, and an Oh My Pi steer can
+    /// move a running command to the background. Nil for a program that
+    /// queues or steers the message.
+    var inputBoxWhileWorking: InputBoxState? {
+        switch self {
+        case .omp: .disabled(PiInputBoxDetector.ompWorking)
+        case .opencode: .disabled(OpenCodeScreenReader.working)
+        case .claude, .codex, .pi, .grok, .agy: nil
         }
     }
 }

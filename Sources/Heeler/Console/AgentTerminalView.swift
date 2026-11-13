@@ -220,6 +220,27 @@ struct AgentTerminalView: View {
     /// Edge-docked Workspace navigation; nil where the detail cannot route
     /// to other terminals.
     private let workspaceDrawer: WorkspaceTerminalDrawer?
+    /// Which other Agents' screens open on Chat rather than their terminal,
+    /// and where a departure for one waits for the keyboard to go down; nil
+    /// counts every Agent as opening on its terminal. See `leave(_:)`.
+    private let chatDepartures: AgentChatDepartures<AgentDeparture>?
+
+    /// Another Agent's screen this one leaves for: one picked in the switcher
+    /// strip or started from the new-agent sheet, or an Agent row picked in
+    /// the Workspace drawer.
+    enum AgentDeparture: Equatable {
+        case switched(ConsoleAgent.ID)
+        case drawer(ConsoleTerminal, agentID: ConsoleAgent.ID)
+
+        var agentID: ConsoleAgent.ID {
+            switch self {
+            case .switched(let id), .drawer(_, agentID: let id): id
+            }
+        }
+    }
+
+    /// Bumped to put the Composer's keyboard away.
+    @State private var composerKeyboardDismissRequest = 0
     /// Follows the Agent's own session file for the usage strip (#325).
     @State private var sessionUsage = AgentSessionUsageStore()
     @State private var attach: AgentAttachStore
@@ -275,7 +296,7 @@ struct AgentTerminalView: View {
     /// The control that opened Attach Links, which its popover anchors to.
     @State private var attachLinksOrigin: AttachLinksOrigin?
     @State private var closeErrorMessage: String?
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -337,6 +358,7 @@ struct AgentTerminalView: View {
         retainedSurface: TerminalSurfaceRetention? = nil,
         onRetainDeparture: ((_ keepingKeyboard: Bool) -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer? = nil,
+        chatDepartures: AgentChatDepartures<AgentDeparture>? = nil,
         inheritsKeyboardHandoff: Bool = true,
         interactionProbe: AgentTerminalInteractionProbe? = nil
     ) {
@@ -366,6 +388,7 @@ struct AgentTerminalView: View {
         self.retainedSurface = retainedSurface
         self.onRetainDeparture = onRetainDeparture
         self.workspaceDrawer = workspaceDrawer
+        self.chatDepartures = chatDepartures
         _attach = State(
             initialValue: attachStore ?? AgentAttachStore(
                 target: agent.agent.paneID,
@@ -390,8 +413,9 @@ struct AgentTerminalView: View {
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills
-    /// source catalog. Captures launch-time context on purpose: the project
-    /// root is the worktree checkout or launch cwd, never the live cwd.
+    /// source catalog. Captures its context once, on purpose: the project
+    /// root is `skillsProjectRoot` when the store is made, never the pane's
+    /// live foreground cwd.
     /// `include` narrows what the store lists.
     static func makeSkillsStore(
         for agent: ConsoleAgent, console: ConsoleStore,
@@ -542,8 +566,8 @@ struct AgentTerminalView: View {
                 cancelKeyboardHandoff(id)
             }
         }
-        screen.theme = terminal.themes.theme
-        screen.displayColors = terminal.themes.colors(for: colorScheme)
+        screen.theme = terminal.themes.terminalTheme(for: themeAppearance)
+        screen.displayColors = terminal.themes.colors(for: themeAppearance)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
@@ -1088,7 +1112,11 @@ struct AgentTerminalView: View {
         .overlay(alignment: .bottomTrailing) {
             attachLinksChrome
         }
-        // Above the floating buttons: the open panel covers them.
+        .overlay { statusOverlay }
+        // Above the floating buttons and the status dialog: the open panel
+        // covers them, and an ended terminal's dim would take every touch
+        // meant for the handle, when the next step is often another of the
+        // Workspace's terminals.
         .overlay {
             if let workspaceDrawer {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
@@ -1103,7 +1131,6 @@ struct AgentTerminalView: View {
                 }
             }
         }
-        .overlay { statusOverlay }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
                 .ridesKeyboard(
@@ -1170,7 +1197,7 @@ struct AgentTerminalView: View {
                 controlPlacement: headerControlPlacement)
             .environment(
                 \.colorScheme,
-                terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+                terminal.themes.selection(for: themeAppearance).chromeColorScheme(for: themeAppearance))
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -1199,14 +1226,14 @@ struct AgentTerminalView: View {
         // can take the home-indicator inset for a keyboard's, and a
         // container-only background then leaves it the app's own color.
         .background {
-            terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme)
+            terminal.themes.selection(for: themeAppearance)
+                .surfaceBackground(for: themeAppearance)
                 .ignoresSafeArea(.all, edges: surfaceEdges)
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .interactivePopGestureEnabled(showsBackButton)
@@ -1324,8 +1351,8 @@ struct AgentTerminalView: View {
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
                     changes: statusChanges,
-                    chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                        .chromeColorScheme(for: colorScheme),
+                    chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                        .chromeColorScheme(for: themeAppearance),
                     isKeyboardUp: directSwitcherKeyboardIsUp,
                     isToolsKeyboardPresented: usesDirectToolsKeyboard),
                 interactions: .init(
@@ -1357,17 +1384,7 @@ struct AgentTerminalView: View {
 
     /// This window's Attach, since another window can show the same Agent's Composer.
     private var sendPolicy: ComposerDeliveryPolicy {
-        var policy = ComposerDeliveryPolicy.terminal
-        policy.coreAttach = attach
-        let settings = session.settingOverrides
-        policy.preflight = { _ in
-            if settings.switchingSetting != nil {
-                return .inputNotReady(
-                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
-            }
-            return nil
-        }
-        return policy
+        session.terminalSendPolicy(attach: attach)
     }
 
     private var composerChrome: some View {
@@ -1376,8 +1393,8 @@ struct AgentTerminalView: View {
             status: agent.agent.status,
             hostTelemetry: hostTelemetry,
             changes: statusChanges,
-            chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
             inheritsKeyboardHandoff: inheritsKeyboardHandoff,
@@ -1397,6 +1414,7 @@ struct AgentTerminalView: View {
             onFirstResponderRequest: composerFirstResponderRequest,
             onKeyboardHandoffSettled: composerKeyboardHandoffSettled,
             sendPolicy: sendPolicy,
+            keyboardDismissRequest: composerKeyboardDismissRequest,
             collapsesWithoutKeyboard: false,
             interrupt: stopInterrupt,
             offersSend: console.capabilities(for: agent.hostID).composerSend)
@@ -1682,6 +1700,15 @@ struct AgentTerminalView: View {
 
     private func toggleDirectKeyboard() {
         guard isOnStage() else { return }
+        if usesDirectToolsKeyboard || keyboardControl.isKeyboardUp {
+            hideDirectKeyboard()
+        } else {
+            directKeyboardIntent.setWantsKeyboard(true)
+            keyboardControl.requestKeyboard()
+        }
+    }
+
+    private func hideDirectKeyboard() {
         if usesDirectToolsKeyboard {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -1691,16 +1718,11 @@ struct AgentTerminalView: View {
                 keyboardInset.resumeHeightCapture()
                 keyboardControl.setKeyboardMode(.text)
             }
-            directKeyboardIntent.setWantsKeyboard(false)
-            keyboardControl.dismissKeyboard()
-        } else if keyboardControl.isKeyboardUp {
-            expectsDirectSystemKeyboard = false
-            directKeyboardIntent.setWantsKeyboard(false)
-            keyboardControl.dismissKeyboard()
         } else {
-            directKeyboardIntent.setWantsKeyboard(true)
-            keyboardControl.requestKeyboard()
+            expectsDirectSystemKeyboard = false
         }
+        directKeyboardIntent.setWantsKeyboard(false)
+        keyboardControl.dismissKeyboard()
     }
 
     /// See `TerminalKeyboardMode.controlsReleaseFirstResponder`.
@@ -1794,14 +1816,56 @@ struct AgentTerminalView: View {
         }
     }
 
-    /// Opens another Agent from the switcher strip or the new-agent sheet.
-    /// The keyboard is armed first:
-    /// the selection change rebuilds this screen from scratch, and the new
-    /// terminal claims the handoff as it comes up.
+    /// Opens another Agent from the switcher strip or the new-agent sheet;
+    /// see `leave(_:)`.
     private func switchToAgent(_ id: ConsoleAgent.ID) {
         guard id != agent.id else { return }
-        armAgentKeyboardHandoffIfKeyboardIsUp(for: id)
-        onSwitch(id)
+        leave(.switched(id))
+    }
+
+    /// Another Agent's screen takes this one over. The selection change
+    /// rebuilds this screen from scratch: an Agent that opens on its terminal
+    /// claims the keyboard through the handoff as it comes up, and one that
+    /// opens on Chat comes in once the keyboard has gone down here, brought
+    /// in by the detail around this screen (`AgentKeyboardDeparture`).
+    private func leave(_ departure: AgentDeparture) {
+        chatDepartures?.awaitingKeyboardHide.wrappedValue = nil
+        guard departure.agentID != agent.id, let chatDepartures,
+              chatDepartures.opensOnChat(departure.agentID), keyboardIsUpForHandoff
+        else {
+            armAgentKeyboardHandoffIfKeyboardIsUp(for: departure.agentID)
+            complete(departure)
+            return
+        }
+        // A focused Composer's own switcher arms the handoff before it asks
+        // for the switch.
+        keyboardHandoff.cancel(for: departure.agentID)
+        // A hardware keyboard, or a tools dock without a responder, leaves
+        // nothing for UIKit to animate. Waiting is set before the hide.
+        let animatesHide = keyboardInset.height > 0
+        if animatesHide { chatDepartures.awaitingKeyboardHide.wrappedValue = departure }
+        hideKeyboard()
+        if !animatesHide { complete(departure) }
+    }
+
+    /// Routes a departure that has nothing to wait for.
+    private func complete(_ departure: AgentDeparture) {
+        switch departure {
+        case .switched(let id):
+            onSwitch(id)
+        case .drawer(let target, _):
+            workspaceDrawer?.onSelect(target)
+        }
+    }
+
+    /// Hides whichever keyboard is up, the tools dock included, as the
+    /// switcher row's keyboard button does.
+    private func hideKeyboard() {
+        if isDirectInput {
+            hideDirectKeyboard()
+        } else {
+            composerKeyboardDismissRequest += 1
+        }
     }
 
     /// Whether leaving this screen should bring the keyboard up on the next
@@ -1842,16 +1906,17 @@ struct AgentTerminalView: View {
     }
 
     /// The drawer's routes rebuild this screen or replace it with a Shell
-    /// Terminal; each captures the keyboard state before it leaves.
+    /// Terminal; each captures the keyboard state before it leaves, and an
+    /// Agent leaves as a switch does (`leave(_:)`).
     private func keyboardCarryingDrawer(_ drawer: WorkspaceTerminalDrawer) -> WorkspaceTerminalDrawer {
         var carrying = drawer
         let onSelect = drawer.onSelect
         carrying.onSelect = { target in
             if let agentID = target.agentID {
-                armAgentKeyboardHandoffIfKeyboardIsUp(for: agentID)
-            } else {
-                armShellTerminalKeyboardHandoffIfKeyboardIsUp()
+                leave(.drawer(target, agentID: agentID))
+                return
             }
+            armShellTerminalKeyboardHandoffIfKeyboardIsUp()
             onSelect(target)
         }
         if let onNewTerminal = drawer.onNewTerminal {
@@ -1873,7 +1938,7 @@ struct AgentTerminalView: View {
 
     /// The dialog wears the terminal's theme, not the system's.
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     private var messageJumpAvailability: MessageJumpControlAvailability {

@@ -4,11 +4,12 @@ import Foundation
 /// the path as a link that opens the file in the image preview, as an image
 /// row's thumbnail does; nothing is read before the tap.
 ///
-/// A message names an image in one of four ways: an inline code span that
-/// is a path, a link or a Markdown image whose destination is a path, or an
-/// absolute or home path spelled out in the text. Paths stay as written,
-/// which may be relative to the Agent's directory or start at `~`; the
-/// Agent's Chat resolves them when one is opened (`ChatImagePath.resolve`).
+/// A message names an image in one of five ways: an inline code span or a
+/// line of a code block that is a path, a link or a Markdown image whose
+/// destination is a path, or an absolute or home path spelled out in the
+/// text. Paths stay as written, which may be relative to the Agent's
+/// directory or start at `~`; the Agent's Chat resolves them when one is
+/// opened (`ChatImagePath.resolve`).
 enum ChatImageLink {
     /// The path as written, on the runs of message text that name an image.
     enum PathAttribute: AttributedStringKey {
@@ -104,6 +105,31 @@ enum ChatImageLink {
             start = range.upperBound
         }
         append(String(text[start...]), attributes: AttributeContainer(), to: &result)
+        return result
+    }
+
+    /// A code block's `text` with each line that is, on its own, a path to
+    /// one image file marked, as `path(written:)` decides for a code span.
+    /// Agents list files one per line in a block; a line that only mentions
+    /// one, as `cp a.png b.png` does, stays code. Whatever surrounds the
+    /// path on its line stays outside the mark.
+    static func markingLines(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        var plain = ""
+        for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            if index > 0 { plain += "\n" }
+            guard let path = path(written: String(line)), let range = line.range(of: path, options: .literal) else {
+                plain += line
+                continue
+            }
+            plain += line[..<range.lowerBound]
+            result.append(AttributedString(plain))
+            plain = String(line[range.upperBound...])
+            var piece = AttributedString(path)
+            piece[PathAttribute.self] = path
+            result.append(piece)
+        }
+        result.append(AttributedString(plain))
         return result
     }
 

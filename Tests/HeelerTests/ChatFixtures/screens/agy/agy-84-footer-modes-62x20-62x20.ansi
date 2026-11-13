@@ -1,0 +1,20 @@
+  proceed.
+
+[0m[1m[38;5;4m> /artifact[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mReview submitted[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> [Approved] implementation_plan.md[0m
+[0m[1m[38;5;4m  [0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 10.4s[0m [0m[38;5;7m(Adding the approved functionality to...)[0m
+[0m[38;5;1m●[0m [0m[1m[38;5;3mEdited[0m 1 file [0m[38;5;7m(calc.py)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4mPending edit[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m  ⎿  Interrupted · What should Antigravity CLI do instead?[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m [0m[38;5;8mPlan mode: research & plan only (shift+tab to cycle)[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+[0m[38;5;8m? for shortcuts           [0m        [0m[38;5;12mplan[0m[2m · Gemini 4 Argon · high[0m

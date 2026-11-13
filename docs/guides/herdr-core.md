@@ -1,6 +1,6 @@
 # Connect herdr-core
 
-Agents in the Herdr desktop app belong to herdr-core, a server separate from Herdr TUI. Each server is its own Host in Heeler even under one SSH account. Most people run herdr-core with the Herdr desktop app on a Mac, and Heeler also connects to Linux herdr-core and [native Windows](#native-windows) `herdr-core.exe`.
+Agents in the Herdr desktop app belong to herdr-core, a server separate from Herdr TUI. Each server is its own Host in Heeler even under one SSH account. Most people run herdr-core with the Herdr desktop app on a Mac, and Heeler also connects to Linux herdr-core and [native Windows](#native-windows) `herdr-core.exe`. On macOS and Linux, Agent Notifications, Live Activity, and Usage need the [Host Helper](#host-helper).
 
 ## Before you start
 
@@ -113,6 +113,7 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 | Grok Build | Opens on macOS, Linux, and Windows. Binds while Grok Build's process lists one conversation. After `/new`, restart or use **Choose a Conversation** on macOS and Linux. |
 | Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or when Heeler started it. Otherwise use **Choose a Conversation**. |
 | Oh My Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or once the first message makes it hold its session file. Otherwise use **Choose a Conversation**. |
+| Antigravity CLI | Opens on macOS and Linux. Waits for its first message, from Chat or the terminal, then follows it and `/clear`. |
 | OpenCode | Off for herdr-core Hosts. Offers the terminal only. |
 
 - **Can't Tell the Conversation:** When Chat cannot prove the conversation, it shows **Can't Tell the Conversation** with the fix and **Check Again**. On macOS and Linux, tap **Choose a Conversation**, preview a conversation, and tap **Use This Conversation**.
@@ -120,9 +121,17 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 
 ## Host Helper
 
-Connecting and everyday use do not need the Host Helper. Install it on macOS or Linux for **Agent Notifications**, in-app banners, **Live Activity**, **Usage**, and exact **Pi** and **Oh My Pi** Chat.
+The Host Helper is a small background service Heeler installs on a macOS or Linux herdr-core Host. herdr-core cannot run plugins, so with Heeler closed nothing on the Host tells your devices about your Agents. The Helper follows the core and sends them encrypted notifications. Herdr TUI Hosts get this from the Heeler plugin and need no Helper.
 
-The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS, following herdr-core without starting a core.
+| | Without the Helper | With the Helper |
+| --- | --- | --- |
+| Connecting, terminals, and Chat for Claude Code, Codex, Grok Build, and Antigravity CLI | Works | Works |
+| **Agent Notifications**, in-app banners included | None | **Blocked**, **Error**, and **Done**, also with Heeler closed |
+| **Live Activity** | None | Keeps updating with Heeler closed |
+| **Usage** | None | Token Usage and Usage Limits |
+| **Pi** and **Oh My Pi** Chat | Pi binds only when Heeler started it, Oh My Pi once its first message makes it hold its session file | Follows each Agent's session, `/new` included |
+
+The Helper never starts a core; while none runs, it waits. Everything it writes is listed before you install, and **Remove** deletes it. Heeler never edits Claude Code's settings or Codex's hooks.
 
 ### 1. Review the files
 
@@ -132,6 +141,8 @@ The Host Helper runs on the Host's Node.js 20 or newer as a `systemd` user servi
 <a href="images/herdr-core/host-helper-sheet.png"><img src="images/herdr-core/host-helper-sheet.png" width="300" alt="Host Helper sheet before install: Not Installed, an Install button, and Files This Writes listing Helper, LaunchAgent, and Pi & Oh My Pi with file counts"></a>
 
 ### 2. Install the Helper
+
+The Helper needs Node.js 20 or newer on the Host, and runs as a `systemd` user service on Linux or a `launchd` LaunchAgent on macOS.
 
 1. Tap **Install**.
 2. On Linux, if **Systemd Linger** appears, tap **Turn On Linger** to keep the Helper running after logout. The button runs `loginctl --no-ask-password enable-linger` without `sudo`. When the Host refuses, the sheet shows `sudo loginctl enable-linger <user>` for an administrator.

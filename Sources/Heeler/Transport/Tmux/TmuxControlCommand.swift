@@ -1,7 +1,7 @@
 import Foundation
 
 /// One tmux command as a control-mode client writes it: one line, its words
-/// quoted so that tmux's parser reads each back exactly (ADR 0043).
+/// quoted so that tmux's parser reads each back exactly (ADR 0044).
 ///
 /// A control client matches each reply to the line that asked by order alone,
 /// so a command must make exactly one reply: no `;` between commands, and no

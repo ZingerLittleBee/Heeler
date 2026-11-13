@@ -1,0 +1,30 @@
+   [0m[38;2;109;198;148m▄[0m[38;2;97;195;125m[48;2;98;186;213m▀[0m[38;2;67;174;171m[48;2;71;168;220m▀[0m    [0m[38;2;74;128;234m[48;2;61;137;251m▀[0m[38;2;108;115;216m[48;2;74;129;240m▀[0m[38;2;101;121;225m▄[0m
+  [0m[38;2;103;185;244m▄[0m[38;2;107;199;163m[48;2;100;182;246m▀[0m[38;2;100;182;246m▀[0m      [0m[38;2;56;134;251m▀[0m[38;2;72;129;244m[48;2;56;131;249m▀[0m[38;2;61;133;252m▄[0m
+
+  [0m[1m[38;5;12mAntigravity CLI 1.5.3[0m
+  [0m[38;5;8mdeveloper (Google AI Ultra)[0m
+  [0m[38;5;8mGemini 4 Argon (High)[0m
+  [0m[38;5;8m/Users/developer/projects/fruits2[0m
+
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Using your file write tool (not a[0m
+[0m[1m[38;5;4m  shell command), create a new file[0m
+[0m[1m[38;5;4m  named a3note.txt in this folder[0m
+[0m[1m[38;5;4m  containing exactly one line: hello[0m
+[0m[1m[38;5;4m  a3. Nothing else.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 17.6s[0m [0m[38;5;7m(I'm thinking t...)[0m
+[0m[38;5;3m●[0m [0m[1m[38;5;3mEdited[0m 1 file [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;3mCreate file[0m
+[0m[38;5;8m────────────────────────────────────────[0m
+
+[0m[1m[38;5;7m/Users/developer/projects/fruits2/a3note[0m
+[0m[38;5;7m  [0m[38;5;8m1 [0m[48;2;14;52;15m [0m[38;5;2m[48;2;14;52;15m+  [0m[48;2;14;52;15mhello a3                        [0m
+
+[0m[1mAllow creation of this file?[0m
+[0m[38;5;12m> 1. Yes, allow creation[0m
+  2. No, deny creation
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Navigate · [0m[1m[38;5;12mf[0m[38;5;8m full diff[0m
+[0m[38;5;8mesc to cancel[0m      [0m[2mGemini 4 Argon · high[0m

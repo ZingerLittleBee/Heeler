@@ -4,14 +4,15 @@ status: accepted
 
 # Native Chat from the Agent's own transcript
 
-A Claude Code, Codex, Pi, Oh My Pi, Grok Build or OpenCode Agent's detail can
-show Chat in its terminal's place: the Agent's conversation as native rows,
-read from the transcript its program writes on the Host. Heeler reads that
-file read-only over SFTP on the Host's existing SSH connection, with one
-adapter per program: Claude Code's project JSONL, with its subagent
-transcripts under `<session>/subagents/`; Codex's rollout in its paginated and
-legacy forms; Pi/Oh My Pi's v2-v3 tree JSONL; and Grok Build's
-`updates.jsonl`. OpenCode 2.x writes no transcript file, so Chat reads its
+A Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode or Antigravity CLI
+Agent's detail can show Chat in its terminal's place: the Agent's
+conversation as native rows, read from the transcript its program writes on
+the Host. Heeler reads that file read-only over SFTP on the Host's existing
+SSH connection, with one adapter per program: Claude Code's project JSONL,
+with its subagent transcripts under `<session>/subagents/`; Codex's rollout
+in its paginated and legacy forms; Pi/Oh My Pi's v2-v3 tree JSONL; Grok
+Build's `updates.jsonl`; and Antigravity CLI's `transcript_full.jsonl`.
+OpenCode 2.x writes no transcript file, so Chat reads its
 session's rows from OpenCode's own SQLite database with a bounded read-only
 query on the Host instead;
 [ADR 0025](0025-opencode-chat-reads-its-session-store.md) records that read
@@ -21,7 +22,8 @@ and herdr is unchanged. herdr still owns the Agent's identity and Agent
 Status, submission through `agent.prompt`, and keys through `agent.send_keys`;
 its `agent_session` names the transcript by a Claude Code session id, a
 Codex thread id or a Grok Build session id, or Pi/OMP's exact absolute JSONL
-path (with UUID lookup for older integrations), or an OpenCode `ses_` id.
+path (with UUID lookup for older integrations), or an OpenCode `ses_` id,
+or an Antigravity CLI conversation id.
 Other Agents, and every Agent on a native Windows Host, hide the entry.
 
 The formats as observed are recorded in
@@ -58,8 +60,11 @@ first bytes, and Chat's sends are confirmed by entry: a rewrite neither
 drops the saved conversation nor confirms a send twice.
 A message that steers a running turn (Oh My Pi's `steering` flag, or a Pi
 prompt written within moments of the turn's tool results) shows inside that
-turn, marked Sent while working, instead of interrupting it, and still
-confirms Chat's send.
+turn instead of interrupting it, and still confirms Chat's send. Once
+delivered it carries no mark, as in the program's own terminal; only a
+prompt the program records as waiting and not yet delivered (Claude Code's
+enqueue, an OpenCode inbox row) is marked Queued until its delivery
+replaces it.
 A prompt typed after resuming a turn whose process died opens a turn of its
 own.
 
@@ -182,6 +187,146 @@ directory's group, such as a worktree fork, records its prompts in that
 group's file, so a message sent to it only goes overdue. Chat doesn't watch
 the screen between sends.
 
+Antigravity CLI (`agy`) observations are in
+[Antigravity CLI transcripts](../research/antigravity-cli-transcript-format.md).
+herdr reports an agy conversation by the lowercase UUIDv4 that names its
+folder, and only from a prompt: a fresh launch, and one resumed with
+`--conversation` or `-c`, reports none until its next prompt, and after
+`/clear` herdr keeps the earlier conversation until the next prompt, so Chat
+shows that one until then. Chat reads only a UUID, lowercased. The adapter
+follows `brain/<id>/.system_generated/logs/transcript_full.jsonl` under
+`~/.gemini/antigravity-cli`, then under each added Account's directory; a
+folder without that file is a conversation still to start, as `/clear`
+leaves one. agy writes the same steps to `transcript.jsonl` beside it, but
+that file encodes every tool argument as a JSON string and cuts a long field
+or argument to its ends around a `<truncated N bytes>` marker, which can
+leave an argument unreadable. The full file keeps arguments as JSON values
+and cuts nothing, so Chat reads it, though it runs about twice the size (1
+to 4.4 times in a census of 28 conversations). A turn of large reads can
+fill several MB, so a request the list makes by itself reads at most 4 MiB
+there, as in Grok Build.
+
+agy's tool calls carry no id. Their results follow the planner response that
+made them, one step each in call order, so the reducer pairs each result
+with the oldest call still waiting for one, as all 1,917 results in the
+census pair across 305 batches of several calls. A call the next planner
+response finds without a result never gets one. No step marks a turn's end,
+and Esc or Ctrl+C writes nothing, so a prompt that follows a turn with no
+reply ends that turn as interrupted, along with a call it left open. A
+step's `created_at` is when it started, so agy turns show no time worked. A
+command sent to the background writes one `RUNNING` result and ends with a
+later system message from its task, and the notice agy adds when a
+conversation resumes marks a task still running as stopped. That result is
+agy's instructions to the model, so the row reads no output from it. A
+`schedule` wait's result reads the same, but no end ever comes, so a wait
+is no task: its row reads done once agy goes on past it, and a restart
+neither stops it nor adds a notice. A `/compact` checkpoint a window starts
+at counts as its turn's reply, since the prompt above it is cut off and agy
+writes nothing after it. agy writes a
+prompt sent while it works only when it takes that prompt, so a sent
+message's 10 seconds count only while herdr reports the Agent neither
+Working nor Blocked, as for Grok Build. After a send, Chat reads what agy
+appended to the data root's `history.jsonl` since just before the send, up
+to 64 KiB, and a line with the message's text under another conversation's
+id raises the same hold as Grok Build's prompt log (above). Every agy on the
+data root writes to that log, a fresh launch's first prompt carries no id
+there, and a queued prompt is logged at Enter, so it can only tell that
+another conversation took a message.
+
+agy's input box is two full-width grey rules with a `>` row between them,
+drawn inline on the normal screen; under `NO_COLOR` agy 1.5.3 draws no
+colors but keeps bold, dim, italic and underline, so the rules and the `>`
+are plain and Chat reads a box only when its rules and marker share one
+palette. Chat sends only into an empty box with nothing under it and an
+idle or running-turn footer it knows (`? for shortcuts`, nothing at the
+left, an armed exit, `esc to cancel`, or `Press up to edit queued
+messages`); a mode's hint is not a draft, and an armed exit does not hold,
+since the paste disarms it. A draft, bash mode, a popup or panel under the
+box, another footer, an exited agy and any screen without the
+box hold the message, whatever herdr reports. Vim mode (`/settings` >
+Editor Mode) draws `-- INSERT --` or `-- VISUAL --` before the footer's
+hint, a footer Chat doesn't know, and nothing in Normal mode, whose box
+reads as idle. herdr 0.9.5's `agent.prompt` into Normal mode was submitted
+as typed and started a turn (2026-11-08), so Chat need not tell Normal
+mode from idle. Every agy dialog takes the box's place, and herdr
+0.9.5 reports some of them done or idle (see Blocked cards), where the
+prompt's Enter answers the dialog: an `agent.prompt` sent into a file edit
+dialog was swallowed, and its Enter accepted the edit (1.5.3). Because a
+dialog draws no box, the screen check holds whenever one is open, while a
+turn with an empty box queues the message until the turn ends, and
+Stop's Esc puts an untaken queued message back in the box. agy takes `exit`,
+`quit`, `:q`, a leading `?` or `:` and a `/btw` after the start as text, so
+Chat refuses none of them. The `/` menu offers agy's skills as `/name`,
+except one named like a built-in command or alias, since which of the two
+runs is not known, and one whose `SKILL.md` frontmatter says
+`disable-slash-command: true`, which agy hides from `/` and `/name`.
+`/compact` goes with its trailing space, which agy trims. Stop presses one
+Esc, which stops a running turn and puts a queued message back in the box;
+Ctrl+C is never sent, since on an idle box it arms exit. Esc in bash mode
+leaves it and drops the command typed there (captured idle), so Stop reads
+the screen first and presses nothing while bash mode holds a command.
+A command still running when its `WaitMsBeforeAsync` passes (10 s on every
+call seen, even when the prompt asks for the foreground) becomes a
+background task, which Esc and Ctrl+C leave running; only `k` in agy's
+`/tasks` panel ends one, with no confirmation. So Chat's Stop follows its Esc
+through when the stopped turn has such a command running: once the screen
+shows the turn ended, it types `/tasks` into the empty idle box, presses
+Enter while the `/` popup selects `/tasks`, presses `k` in the panel on each
+of the turn's running commands, moving one row at a time, and closes it with
+Esc. The panel lists the conversation's tasks newest first with the Host's
+local start times, so its top rows must name the turn's background commands
+in order, matched by command. A daemon (`IsDaemon`), which agy's own
+headless runs leave running, and a task from an earlier turn are never
+selected. Each key goes only after the latest read passes its check, which
+herdr-core's typing makes again. That read is the one its step waited for
+when it shows what the key needs, else a fresh one: a second herdr TUI read
+before every key made each step 3 to 4.5 s live. A step gives agy 3 s,
+reading once more after them whatever a read takes, and a read that fails is
+tried again within it. A failed check takes back only what the follow-through
+typed: Esc closes the panel, and in the box six Backspaces in one send erase
+its own `/tasks` and close the popup, since Esc there closes the popup but
+keeps the text and a second Esc opens it again; any other draft stays.
+Chat then says what still runs and how to end it in the terminal, with
+Open in Terminal. The commands are the transcript's open turn's as Stop is
+tapped, since agy writes nothing on Esc, and none while a send of Chat's
+waits for its record, when the open turn it shows may be the one before.
+An overdue send does not count: its echo clock stops while agy works, so
+it ran out on a send no turn began with. A prompt from elsewhere (the
+terminal, another client) starts a turn Chat reads seconds later, while a
+turn an Esc ended still reads as open with its commands running. So unless
+a transcript read that reached its end began after herdr last reported the
+turn starting, Chat reads again first, and follows through only once such
+a read shows the tapped turn still open; a turn it cannot place gets
+nothing pressed and a notice of what may still run. agy names a command's
+task only in the step it writes 10 s after the command starts, and a
+transcript read bringing that step took up to 5.8 s live, so a tap can
+come before Chat knows the command. When it knows none, the follow-through
+reads the screen after the Esc and, unless that read shows no task (its
+row under the box or the footer's task count), wakes the transcript read
+and waits up to 8 s for the tapped turn's commands, never another turn's,
+ending the wait once such a read shows another turn open. When no read in
+that time places the open turn, as over a stalled link, nothing is pressed
+and Chat says a command may still run. A Composer send,
+from Chat or the terminal page in any window, is held while the
+follow-through reads and types, since it would land between two of its
+keys: the keys queue is the Agent's, as the Composer is. The draft stays
+and nothing resends it. The follow-through ends as its last step returns,
+so a send just after goes. Its hold's notice, if still shown, then gives
+way to one saying Stop has finished and nothing was sent, which ends as
+any notice does: agy is Idle by then, so no status change would end the
+hold's, and ending it with the follow-through hid a send held at its end
+(live). agy records a kill only with the next prompt, so the row reads
+Started until then (1.5.3, live). It writes the kill just after that
+prompt, but Chat shows its notice at the end of the stopped turn, where a
+finish agy held falls (written before the prompt), not at the top of the
+next turn. A task that ends during a later turn's work still shows there.
+agy's model sometimes ends a turn itself seconds after sending a command
+to the background, saying it waits for it. Stop then no longer shows, and
+the command is Background Work, which this version neither lists nor stops
+(Not in this version, below): it runs to its end unless the user ends it
+in the terminal with `/tasks` and `k`. The terminal's own Stop stays one
+Esc.
+
 ## Entry and the terminal
 
 A button for the surface not showing, sharing the detail header's More-menu
@@ -221,7 +366,12 @@ Pi's `/new` and `/resume`, and Grok Build's `/new` and `/clear` typed in the
 terminal move the Agent to another session, and no event says so. Codex
 reports a new thread only with its
 first prompt, when the Agent is working again. Hidden and working Chats
-don't read it on that pace. The
+don't read it on that pace. A status change reads the record again and
+looks for a Codex thread's file again, which an undo moves, except a
+dialog opening inside a turn or its answer. So on Herdr TUI, Chat's only
+request beside the card's screen read is then its transcript read; the
+Console still takes a `session.snapshot` for the status change over the
+same SSH connection. The
 list is a `UICollectionView`
 of hosted SwiftUI rows with its own single-column layout: it opens at the
 newest row and keeps the reader's place while rows above it measure, which
@@ -309,8 +459,10 @@ result is an image, Codex's image views and generated images, a Grok Build
 `read_file` whose result holds an image, a Pi or Oh My Pi `read` whose result
 says it read an image file (Oh My Pi names the resolved file in
 `details.mediaPath`), an OpenCode 2 read whose result returns an image (named
-as the path it read), and an OpenCode 1.x read of a file with an image
-extension. Paths come from transcript metadata, resolving relative paths only
+as the path it read), an OpenCode 1.x read of a file with an image
+extension, and an Antigravity CLI read whose result attaches an image as
+`media` (agy's copy, named by a `file:` URL or an absolute path). Paths come
+from transcript metadata, resolving relative paths only
 against the recorded working directory; display titles are never treated as
 paths. An OpenCode session records only the folder it is in now, so a read
 before a move resolves against the folder that move left, and against none
@@ -412,13 +564,18 @@ system red. In Chat, Stop presses the program's Stop keys in one
 Grok Build (below), or Esc twice for OpenCode, whose first Esc only arms its
 interrupt. Before OpenCode's, Chat reads the screen and presses nothing unless
 it shows the conversation's prompt with a turn running and no dialog, menu or
-shell mode over it, where Esc would do something else. The terminal's
+shell mode over it, where Esc would do something else; before Antigravity
+CLI's, it presses nothing while bash mode holds a command. The terminal's
 Composer sends one Esc on the Attach PTY (ADR 0013). Then Stop waits. The
 acknowledgement means only that the keys reached the PTY, and an Esc that
 lands after the turn ended can open the program's own history menus, so Stop
 shows a spinner until Agent Status leaves Working. After three seconds it
 works again and says the Agent still shows Working; background agents and
-shells, which Esc does not end, can keep it there. OpenCode's interrupt
+shells, which Esc does not end, can keep it there. Antigravity CLI's
+background commands are the exception: Chat's Stop ends the stopped turn's
+own after its Esc (Antigravity CLI above), and says which still run when it
+could not, a notice that stays after the status leaves Working, until the
+next tap or turn. OpenCode's interrupt
 resumes with a message that waited during the turn: OpenCode records the
 stopped turn as interrupted and starts that message within milliseconds, and
 herdr 0.9.5 reports idle for about 105 ms before Working again. That idle
@@ -430,14 +587,19 @@ again at once. The wait belongs to the Agent's Composer, not to a surface:
 switching between Chat and the terminal, or a rebuilt detail, keeps it. With
 text in the draft the button stays Send, so a prompt still queues behind the
 running turn (Pi and Codex 0.162.1 steer the turn with it), and ⌘↩ only
-ever sends. Oh My Pi
-and OpenCode are the exceptions. A steer in Oh My Pi can move a running
-command to the background, and herdr writes Enter 300 ms after the paste
-whatever OpenCode shows by then, so a permission or question OpenCode raises
-in between would take it as its answer (ADR 0025). While Oh My Pi's status
-band or OpenCode's footer shows a turn running, Chat holds the message and
-says to send once it is idle or steer from the terminal. Esc in
-Pi or Oh My Pi puts a steer the turn has not taken back into the input box,
+ever sends. Oh My Pi and
+OpenCode are the exceptions. A steer in Oh My Pi can
+move a running command to the background, and herdr writes Enter 300 ms
+after the paste whatever OpenCode shows by then, so a
+permission or question it raises in between would take it as its answer
+(ADR 0025). While Oh My Pi's status band or
+OpenCode's footer shows a turn
+running, Chat holds the message and says to send once it is idle or steer
+from the terminal. A reported Working holds it the same way before Chat
+reads the screen: on a herdr-core Host the session check and screen read
+wait for an exec and an attach's first paint, and the message otherwise
+showed as Sending before the screen's hold took it back. Esc in
+Pi, Oh My Pi or Antigravity CLI puts a steer or queued message the turn has not taken back into the input box,
 and Esc in Codex 0.162.1 does the same with a follow-up queued with Tab, so
 a draft found there says Stop may have left it. A send that empties the draft keeps Stop
 back for a second, so the second tap of a double tap cannot interrupt the turn
@@ -470,10 +632,13 @@ the Agent switcher row stay in both.
 
 While Agent Status is Blocked, Chat answers the dialog on the Agent's screen
 with a native card in the Composer's place instead of sending the user to the
-terminal. The screen decides what a card offers. Chat reads the visible screen
-through `agent.read` with its ANSI colors, which also tell a narrow pane's
-leftover text apart, and joins it with the main conversation's pending
-request in the transcript; a subagent's dialog is read from the screen alone.
+terminal. The Composer gives way as herdr reports Blocked, since a Blocked
+Agent takes no message, and a progress indicator holds its place until the
+first read decides the card. The screen decides what a card offers. Chat
+reads the visible screen through `agent.read` with its ANSI colors, which
+also tell a narrow pane's leftover text apart, and joins it with the main
+conversation's pending request in the transcript; a subagent's dialog is
+read from the screen alone.
 Labels are the program's own text. herdr reports Claude Code idle on some of
 its question pages, the review page of a question form and a question with
 previews, so while the transcript holds an open AskUserQuestion call, an idle
@@ -594,6 +759,74 @@ an empty box sends a queued prompt. OpenCode's card for a screen with no
 dialog therefore shows no keys. It says why OpenCode is Blocked, the subagent
 panel covering the request, the turn's error, or a likely failed model
 request, and points to the terminal.
+
+Antigravity CLI draws each dialog in its input box's place: a command's, a
+file edit's or a file creation's permission, single and multi-select
+questions, and the trust prompt at start. herdr 0.9.5 reports the command
+dialog and the questions Blocked, but the file dialogs, a command's Amend
+field, the `Write-in...` answer field and a multi-select page whose cut hint
+row lost `esc Skip` done or idle, and the trust prompt idle once its
+question wraps at 40 columns. agy writes a call that asks the user as its
+dialog opens and its result only once answered. So, as Claude Code's open
+AskUserQuestion call does, an open call of a tool agy asks about
+(`run_command`, `ask_question`, and the edit and write tools) in the open
+turn stands in for Blocked: an idle agy's screen is read for a card then.
+The reducer offers every open call to the card whatever herdr reports,
+since an idle command row reads as without a result while its Amend field
+shows; a command sent to the background has its result and keeps no card.
+The transcript shows such a call only a poll after herdr's idle, so an agy
+that herdr has just moved from Working to idle is read once too, and a read
+that names no dialog ends it. An idle agy that has reported no session is
+read for the trust prompt alone, as Codex is, and so is one herdr reports
+no status for yet: herdr 0.9.5 keeps a new agy without one for about 3 s
+past its drawn prompt. That agy is read at once, with the progress indicator
+in the Composer's place until the read decides; a read that finds no
+prompt, fails or runs past 5 s gives the Composer back. That includes a
+read made before agy has drawn its prompt, as a Chat New Agent opens at
+once can make: the Composer then shows until the next read, a second after
+that one ends, finds the prompt, or herdr reports Blocked. On Herdr TUI,
+where a read takes 0.8 to 1.65 s, that is about 1.8 to 2.7 s. The card matches a
+command or a file by the whole command or path the screen shows, or by its
+start where the screen cut it
+(a command then ends in `…`, a path reaches the screen's edge), and a
+question by its text. It shows the command, the path and the changed lines
+as the screen draws them, and takes from the call only what the screen cut:
+the command or path, and for a changed line cut at the edge the call's
+change, a line diff of its target and replacement that can draw
+differently (agy draws the whole target removed and the whole replacement
+added). agy can draw the next dialog, such as a second edit of the same
+file, before Chat reads the first call's result, wherever the first was
+answered. So until the transcript resolves it, a call a confirmed answer
+went to matches no later card, and a call whose dialog a card showed
+matches only a read of that dialog, so one answered in the terminal or
+another client doesn't take the next card either. A read that fails, or
+shows no dialog or one Heeler can't read, changes nothing, and the dialog
+read again at another width, its path or a changed line cut at the new
+edge, keeps its call. After an answer outside the card, a next dialog just
+like the answered one still goes to the first call, since the screen can't
+tell them apart. Whether agy shortens a tall diff is not captured. A
+permission's option presses its digit, which picks and confirms at once; the two `always
+allow` rows carry captions saying whether the rule lasts for the
+conversation or is saved in agy's settings, and No ends the turn, so the card then focuses the Composer. A note with
+the command's Yes or No moves to that row, opens Amend with Tab, pastes the
+note and presses Enter, checking the screen after each step. Stop on a
+permission presses Esc, which stops the whole turn and joins the history
+as Stopped, since agy records nothing. A single answer presses its digit,
+a multi-select set toggles each answer whose check must change and then
+presses Enter, and a written answer opens `Write-in...` by its digit and
+pastes into the field. On a multi-select question the field keeps the
+checks and its Enter submits them with the text, so the card and a form's
+multi-select page take a written answer beside the checks; several
+questions fill in on one card, page by page, and the last page's key
+submits them all. Skip presses Esc, which agy
+records as `User Skipped`, never while the answer field is open, where Esc
+goes back. Esc skips the question on screen, which stays the first while
+the card turns its pages, so a form's Skip marks the page the card shows and
+presses Esc when that page's turn comes. While a field is open no digit is pressed, since it would be
+typed there. The trust prompt is answered with arrows, each checked, then
+Enter, and offers no Stop. Every answer is confirmed only by the dialog
+leaving the screen, since herdr reports the fields idle and no record shows
+an approval; an answer that showed no effect waits for its call's result.
 
 ## Background Work
 
@@ -819,6 +1052,11 @@ no Attach at all.
   Earlier Messages, and the loaded part of that turn folds under the time its
   end record gives, or "Details" without one. The other programs' lists keep
   loading by themselves as Load Earlier Messages does.
+- Antigravity CLI reports no session to herdr until its first prompt, also
+  after a resume, and keeps the earlier one after `/clear` until the next
+  prompt. Its earlier history loads by itself at most 4 MiB a request, as
+  Grok Build's does, and its turns show no time worked, since no record
+  says when one ended.
 - Conversation text now rests on the device, in the protected cache that
   [PRIVACY.md](../../PRIVACY.md) describes.
 - Not in this version:
@@ -842,6 +1080,19 @@ no Attach at all.
     Composer Stop that presses the second Esc; and, as ADR 0025 records,
     stores other than the default one and tool output OpenCode moved to a
     file of its own.
+  - For Antigravity CLI: Background Work, so a background command shows
+    only as its call's row until its task ends, and its subagents'
+    conversations; its working directory, so the absolute paths it records
+    are shown as they are; its plan artifacts, shown as a file write;
+    `/rewind`; the dialogs no capture shows that the card refuses (Tab on
+    an `always allow` row, Esc on the trust prompt), which stay in the
+    terminal;
+    `multi_replace_file_content`'s edit, which no capture shows either and
+    the card answers as any edit, on the inference that it asks in the same
+    `Pending edit` dialog; and
+    Chat on Windows herdr-core Hosts. Linux and macOS ones offer it, binding
+    its conversation from its presence lock, or waiting for its first
+    message (ADR 0034).
   - The segment before a Codex undo. After one, Chat shows only the turns
     written since; the reducer accepts the earlier segment, but nothing loads
     it yet.

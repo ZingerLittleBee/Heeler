@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// Chat's Send, Stop, tools keyboard and Blocked Card answers on a tmux Host
-/// (ADRs 0035, 0043 and 0044), from `AgentComposerStore`, `BlockedCardStore` and
+/// (ADRs 0035, 0044 and 0045), from `AgentComposerStore`, `BlockedCardStore` and
 /// `ChatAgentKeysStore` down through `ConsoleStore`, `TmuxConsoleProjection`,
 /// `TmuxChatTyping` and `TmuxSSHTransport` over `ScriptedTmuxHost`.
 @MainActor
@@ -136,12 +136,14 @@ struct TmuxChatTypingTests {
 
         func chatStop(
             program: ChatProgram = .claude,
-            activity: ChatAgentActivity = .working
+            activity: ChatAgentActivity = .working,
+            agentKeys: ChatAgentKeysStore? = nil,
+            followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
         ) -> AgentComposerInterrupt {
             let console = console
             let hostID = host.id
             let corePin = corePin
-            let keys = agentKeys()
+            let keys = agentKeys ?? self.agentKeys()
             return console.chatInterrupt(
                 for: agent,
                 program: program,
@@ -150,7 +152,8 @@ struct TmuxChatTypingTests {
                     let screen = try await console.readAgentScreen("%0", on: hostID, keepingTo: corePin)
                     return ChatStopContext(screen: screen, activity: activity)
                 },
-                agentKeys: keys)
+                agentKeys: keys,
+                followThrough: followThrough)
         }
 
         func blockedCard(program: ChatProgram = .claude) async throws -> BlockedCardStore {
@@ -883,6 +886,60 @@ struct TmuxChatTypingTests {
             #expect(await fixture.tmux.openControlClients == 0)
             fixture.finish()
         }
+    }
+
+    @Test func agyChatStopFollowsThroughAfterEscHoldsQueuedWorkAndSkipsWhenRefused() async throws {
+        let fixture = try await Fixture(
+            command: "agy", app: "antigravity", state: "working",
+            screen: "agy-169-plain-working-background-task-120x40")
+        let session = fixture.console.composerSession(for: fixture.agent)
+        let gate = ScriptedTransportCallGate()
+        var events: [String] = []
+
+        let interrupt = fixture.chatStop(
+            program: .agy,
+            agentKeys: session.agentKeys,
+            followThrough: {
+                events.append("tap")
+                return {
+                    events.append("panel")
+                    await gate.waitUntilOpen()
+                    return "sleep 40 still runs."
+                }
+            })
+
+        let stopping = Task { await interrupt.perform() }
+        await gate.waitForEntry()
+        #expect(events == ["tap", "panel"])
+        #expect(await fixture.sendWords().contains(["send-keys", "-t", "%0", "Escape"]))
+        #expect(session.agentKeys.isRunningQueuedWork)
+        #expect(session.heldSend() == .inputNotReady(AgyBackgroundTaskStop.sendHold))
+
+        await gate.open()
+        let outcome = await stopping.value
+        #expect(outcome == .sentLeavingWork("sleep 40 still runs."))
+        #expect(!session.agentKeys.isRunningQueuedWork)
+
+        // When AgyStopGuard refuses (bash mode with a command typed), Stop sends no Esc and runs no follow-through.
+        await fixture.tmux.clearLog()
+        try await Fixture.setScreen("agy-93-bash-mode-with-text-62x41", on: fixture.tmux)
+        var refusedEvents: [String] = []
+        let refused = await fixture.chatStop(
+            program: .agy,
+            agentKeys: session.agentKeys,
+            followThrough: {
+                refusedEvents.append("tap")
+                return {
+                    refusedEvents.append("panel")
+                    return "unexpected"
+                }
+            }
+        ).perform()
+        #expect(refused == .failed(AgyStopGuard.bashCommand))
+        #expect(await fixture.sendWords().isEmpty)
+        #expect(refusedEvents == ["tap"])
+
+        fixture.finish()
     }
 
     private static func genericClaudeRows(title: String, options: [String]) -> [String] {

@@ -55,6 +55,12 @@ uses the user's live server needs authorization for its writes.
 prints the Host settings and `knownHostFingerprints` entry to seed; `stop`
 removes it. See its `--help`.
 
+An Agent detail opens on the surface last chosen anywhere in the app, Terminal
+by default, and so does the screen a Shell Terminal swaps to when its command
+starts an Agent. A UI script whose steps expect one surface sets that choice,
+the `agent.detail-surface` default (`chat` or `terminal`), before it launches
+Heeler, as `scripts/store-shots.py` does.
+
 For App Store and README images, follow [the store screenshot runbook](store-screenshots.md).
 
 ## Capture and inspect

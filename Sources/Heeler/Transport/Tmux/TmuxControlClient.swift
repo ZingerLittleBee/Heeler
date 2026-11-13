@@ -1,6 +1,6 @@
 import Foundation
 
-/// One tmux control-mode client on one exec (ADR 0043). Commands go out a
+/// One tmux control-mode client on one exec (ADR 0044). Commands go out a
 /// line each in the order they were sent; tmux replies in that order, so the
 /// client hands each reply to the command that asked by order alone. The
 /// pane output and notifications between replies are delivered in between,

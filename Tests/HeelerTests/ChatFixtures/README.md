@@ -35,10 +35,17 @@ below.
 | `grok/pending-permission.jsonl` | The same (2026-10-19), lines 90–92 of a capture taken while Grok waited for permission to run a command: herdr's `session_start` record, the prompt, and the bare `tool_call` |
 | `grok/background-tasks.jsonl` | Written for the test, not captured: a command started in the background, a command Grok moved to the background while it ran, and a subagent spawned in the background, with their `task_backgrounded` and `subagent_spawned` records, then the commands' `task_completed` records (one exited 0, one was killed) and the subagent's `subagent_finished`; then a monitor, whose `task_backgrounded` comes before its input update, whose result holds no output, and whose output comes with a `task_completed` of kind `monitor`. The records take the shapes Grok Build's source writes |
 | `grok/failed-tools.jsonl` | Written for the test, not captured: one turn of failed calls, a `tool_execution_failed` error, the tagged failures `FileNotFound`, `FileTooLarge`, `NotADirectory`, `NotFound`, `NoMatchesFound`, `MultipleMatchesFound` and `InvalidInput`, and an MCP call that returned an error. The records take the shapes a census of real failures found; some carry no content |
+| `agy/core-turns.jsonl` | Antigravity CLI 1.5.3 on herdr 0.9.5 (2026-11-07): steps 0–31 of a scratch conversation's `transcript_full.jsonl`, every line in that range: one-line and two-line prompts, long replies, a turn with a `read_file` and a `run_command` call and their results, a `write_file` that created `notes.txt` and an `edit_file` that changed it, and two foreground `sleep` commands, one stopped with Esc and one with Ctrl+C. agy wrote nothing for either stop and skipped a step number after each (24 and 27) |
+| `agy/tasks-question-compact.jsonl` | The same conversation, steps 32–60: a background `run_command` and a `manage_task` call, each task's end in a `SYSTEM_MESSAGE` (one inside its turn, one after the reply), an `ask_question` call answered with an option, a manual `/compact` and its `CHECKPOINT`, a `read_file` of a long file, and two prompts each followed by a restart notice that stopped no running task |
+| `agy/approvals.jsonl` | The same agy and herdr (2026-11-07), steps 0–68 of another scratch conversation, every line in that range: a background command and a prompt queued while it ran, three prompts in a row with no reply between them, two `ask_question` calls (one with two questions), an `edit_file`, command permission dialogs left with Esc, with Esc from the Amend field and with Ctrl+C (none writes a step) and one declined (`GENERIC` with status `ERROR`), a `/compact`, a `/plan` prompt whose plan `write_file` was approved as `[Approved] implementation_plan.md`, and a declined edit of `calc.py` |
+| `agy/fork-head.jsonl` | Antigravity CLI 1.5.3 outside herdr (2026-11-07): the whole file of a conversation made with `/fork`, two lines that start at step 2 |
+| `agy/written-for-tests.jsonl` | Written for the test, not captured: a `view_file` of an image with its `media`, a failed `replace_file_content`, an `ERROR_MESSAGE`, a background command and its end, an unknown tool, a reminder, an `EPHEMERAL_MESSAGE`, a step type agy never wrote, a restart notice that stopped a running task, a canceled task, and a command that exited 1. The steps take the shapes the captures show |
 
 `host-evidence/` is a separate recording, for the herdr-core session binding of
-ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`
-and `opencode/`, `OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
+ADR 0034. `HerdrCoreProgramBinderTests` reads the `.json` scenes of `codex/`, `grok/`,
+`opencode/` and `agy/`, which the macOS and Linux binder suites also read, the Linux one
+with its paths moved under that Host's home since the Linux run of agy kept no recording,
+`OpenCodeStoreQueryTests` the schemas, and the Pi and Oh My Pi binder
 tests the scenes and core event streams of `pi/` and `omp/` through `PiHostEvidence`.
 No test reads `reply-held.json`, `omp/session-lock-by-id.json`, since no check reads a
 lock, or the Codex, Grok Build and OpenCode core event streams, whose captures start
@@ -70,6 +77,7 @@ process rows shaped for `ScriptedProcessTable.Process`, plus the files as read.
 | `host-evidence/omp/session-lock-by-id.json` | Oh My Pi 18.13.3: the lock its process holds while the title is held, and the names its own `tryAcquireSessionLease` binds for the same ids and for invented ids and homes. The hash is not identified |
 | `host-evidence/macos/vm-26.5.json` | herdr-core 0.1.13 on macOS 26.5 in a throwaway VM with SIP off, no sign-in and a fake model: each program's rows as `HostProcessReader`'s macOS script read them, trimmed to terminals and session files, the core's record, and the files as read. Rollouts keep their first line's identifying fields. Its `record` field is the core's `terminal.get` |
 | `host-evidence/linux/hc-lab-signed-in.json` | herdr-core 0.1.13 on hc-lab (Debian 13, Linux 6.18 x86_64), Codex and Grok Build signed in and the others on an API-key provider, real `HOME` `/data/home`: Codex CLI 0.165.0 `--no-daemon` before its first prompt and after its reply, plain `codex` on the box's 0.160.0 app-server daemon, Grok Build 1.0.70 `-s`, OpenCode 2.2.2 `-s ses…`, Pi 1.4.0 `--session-id` and two Oh My Pi 18.13.3 on bun 1.4.4, all without the Host Helper's extension. Rows are a watcher's samples of each Terminal's process and its descendants by parent; `record` is the core's reply to `terminal.run` with the foreground its events named. Its `method` and `observed` fields say what was rebuilt and what the run saw beyond the rows |
+| `host-evidence/agy/presence-lock-1.5.3.json` | Antigravity CLI 1.5.3 signed in on macOS 27.0.1 (2026-11-07), in a plain PTY with no herdr or herdr-core, from the #644 probes' scratch conversations: the presence locks, brain folders and databases its process held at the prompt, after the first reply, after `/clear` and `/fork`, when resumed by id and after `/clear` from there, and for two agy on one conversation. `after-first-prompt` is `HostProcessReader`'s macOS open-file read itself; `at-prompt` is plain `lsof` cut to that read's rows; the other scenes kept only `presence/`, `brain/` and `conversations/` paths. No core ran, so `parent`, `start` and `HC_SCOPE` were written for the tests and there is no `record`. The account name became `developer` and the scratch directory `/Users/developer/lab`, and every UUID a synthetic `00000000-0000-4000-8000-…` id, consistent within the file and in sort order: conversations end `0101` to `0105`, `~/.gemini/config/projects` files `0201` to `0207` and the crash log `0301`; its `method` and `observed` fields say the rest |
 | `host-evidence/reply-held.json` | All five with the fake model holding each reply, Pi on 0.85.1 and 1.4.0 and OpenCode on 2.0.32 and 2.2.5: what existed during the hold |
 | `host-evidence/*/*-core-events.ndjson` | The core's event stream for the same runs, from `scripts/lab/herdr-core-capture.py` |
 
@@ -117,6 +125,22 @@ the one `cancel-takeover.jsonl` keeps under a renamed run; herdr's
 from the same range only. Searching `grok/` for a UUID outside that range, a
 `global/settings` run or the account name, in text or in a byte array, finds
 nothing.
+
+Antigravity CLI captures keep whole steps byte for byte, apart from these
+replacements:
+
+- Each conversation id becomes `00000000-0000-4000-8000-00000000000N`
+  (1 for the conversation of `core-turns.jsonl` and
+  `tasks-question-compact.jsonl`, 2 for `approvals.jsonl`, 3 for
+  `fork-head.jsonl`), wherever it appears: in `brain/` paths and in task ids
+  like `<id>/task-4`. `written-for-tests.jsonl` uses 4.
+- The account name becomes `developer`.
+- The scratch projects the probes ran in become `/Users/developer/projects/demo`
+  and `/Users/developer/projects/fruits`. These are shorter than captured, so
+  byte counts in a tool result no longer match its paths.
+
+Searching `agy/` for a UUID outside that range, a `/Users/` path other than
+`/Users/developer`, or the account name finds nothing.
 
 Host evidence captures were rebuilt from raw recordings, so unlike the above
 they are not byte for byte and offsets do not hold:
@@ -273,6 +297,25 @@ replays: the program set the alternate screen, bracketed paste, kitty flags 9
 and application cursor keys, or nothing. These are provisional until a live
 Agent on a core is captured.
 
+`agy-186` to `agy-199` are live: the first paint Heeler's own observing
+attach got from herdr-core 0.1.18 on Ubuntu 24.04.5 in a boxd VM
+(2026-11-09), a 200×120 Terminal running Antigravity CLI 1.5.3 signed in;
+the stem's size is the screen it decodes to. 186 to 191 are in agy's
+colors: a turn running with a `sleep 60` agy made a task, the idle box
+after Esc with the task listed under it, the `/` popup over a pasted
+`/tasks`, the `/tasks` panel with the task running and after `k`
+cancelled it, and the idle box after Esc closed it. The paint sends no
+color for a blank, so the box row holding `/tasks` is one blue run,
+`> /tasks` (188). 192 and 193 are the idle box and the popup of an
+earlier run, whose scrollback holds an exited agy's box and resume line.
+194 to 199 are 186 to 191 under `NO_COLOR`. The probe kept each paint's
+bytes up to its win32 mode sequence; these end with `CSI ?9001l` as the
+replays do. Scrubbing replaced the account's email with `<email>`, which
+had taken the `8m` of its grey before it, restored as `agy-01` draws the
+banner, and the conversation id with
+`00000000-0000-4000-8000-000000000006`. `boxd@heeler-agy-644` in the
+shell's prompt and the title is the throwaway VM's.
+
 ### Grok Build screens
 
 `screens/grok/grok-*.ansi` are visible-screen reads from Grok Build 1.0.62 on
@@ -384,6 +427,86 @@ added at the end of its row, so every row keeps its captured width. The
 under the stores' scrubbing cover `screens/opencode/` as well. Together the
 files are about 570 KB. These screens are not part of `ScreenFixture.all`
 either.
+
+### Antigravity CLI screens
+
+`screens/agy/agy-*.ansi` are visible-screen reads of Antigravity CLI 1.5.3 on
+herdr 0.9.5 (2026-11-07), kept as herdr returned them apart from the
+scrubbing below: CRLF rows, SGR styling only. Stems keep the capture's
+number, state and grid. Agents ran in a scratch git repository with
+`README.md`, `calc.py` and `fruits.txt` and answered scratch prompts; a
+holder attached to each Agent at the grid the stem names, 120×40 or the
+phone's 62×41, 62×20 and 40×30. Two grids came from other clients: `agy-54`
+is the Heeler app's own 59×41 attach, and `agy-00`, `agy-09`, `agy-10`,
+`agy-55` and `agy-56` are the desktop's unsized pane, 190 or 191 by 49.
+
+| Fixtures | Captures |
+|---|---|
+| `agy-00` to `agy-12` | The trust prompt at 191×49 and, in another scratch repository, with `No, exit` selected at 190×49, 62×41 and 40×30, where its question wraps; the welcome screen after another client answered it; the idle box empty, after one Ctrl+C (`press ctrl+c again to exit`), after a key typed then, and with a draft after Esc, Esc Esc and Ctrl+C |
+| `agy-13` to `agy-20` | The first screen, drafts on one row, wrapped and on four lines, the box just after a two-line prompt went, idle after a reply, and the `?` help's shortcuts and commands tabs |
+| `agy-25` to `agy-29` | The `/` popup, filtered by `/co`, the `/co` draft after Esc closed it, and the `@` popup with no matches after `/co@` and with its list |
+| `agy-30` to `agy-36`, `agy-38`, `agy-39` | A command's permission dialog at every grid and after `2` answered it; a turn running with a draft, the draft queued, the queued prompt's turn and the final reply; a turn stopped with Esc and with Ctrl+C |
+| `agy-41` to `agy-46` | `ask_question` with one question at every grid and after `2` answered it, and with two questions on each page and after Esc skipped them |
+| `agy-47` to `agy-52`, `agy-54` to `agy-56` | The file edit dialog at every grid, which herdr reports idle; the box after `agent prompt` sent into it, whose Enter accepted the edit; a command's dialog after Esc, its Amend field, the box after Esc from it at the app's grid, and the dialog at the desktop's grid and after `4` declined it |
+| `agy-57` to `agy-65` | The phone's grids: the idle box empty and with drafts, the `/` and `@` popups and the help |
+| `agy-66` to `agy-75` | A turn at 62×41: running, a command running, a draft, the draft entered, then a permission dialog, queued after the approval, back in the box with Up, sent at once with Alt+M with a background task listed under the box, done, compacting and compacted |
+| `agy-76` to `agy-85` | The empty box in each mode Shift+Tab cycles through, with the mode's grey hint; a command's dialog in accept-edits mode; auto and plan mode results; the artifact review panel Ctrl+R opens and the box after `y`; the plan's file edit dialog after its approval; a rejected edit; the plan mode footer at the phone's grids; the `/model` picker |
+| `agy-87` to `agy-98` | The box after Ctrl+C left a permission dialog; agy after it exited, with its resume line and the shell's prompt; a warning above the box for an unknown `--model`; the first screen at the phone's grids; `!` and a command in bash mode; Up on an empty box; a turn at 40×30 running, with a draft, with it queued, and after Esc put it back; a turn at 62×20 |
+| `agy-99` to `agy-107` | Captured 2026-11-08 in the trusted `fruits2` repository: the file creation dialog at 120×40, 62×41 and 40×30; `ask_question` with a multi-select question, after `2` checked an answer, after `3` and `2`, and after Enter submitted it; `Write-in...` after its digit opened the field and with an answer pasted in; two questions after Esc skipped the first, and the second after `2` |
+| `agy-108` to `agy-111`, `agy-113` to `agy-115` | The same day and repository: a command's dialog, its Amend field after Tab, with a note pasted in, and after Down three times and Tab on `No`; a multi-select question on page 1 of 2, whose cut hint row herdr reports done, and after Enter turned the page; a single question after Esc skipped it |
+| `agy-154` to `agy-168` | Captured 2026-11-09 through tmux, not herdr (below): a multi-select question, `apple` checked with Space, `Write-in...`'s digit opening `Your answer:` with the check kept, `mango` typed, Esc closing the field, and the turn after Enter submitted both (`A1: apple, mango`); Down to `Write-in...`, Enter on it opening the field, and `mango` pasted with nothing checked; the first of two questions with `apple` checked, the field opened, Enter in it empty turning the page, `mango` pasted after Left and the digit again, Enter turning the page, and the idle box after Esc skipped the second |
+| `agy-169` to `agy-180` | Captured 2026-11-09 through tmux without styles (below): a turn running with `sleep 40` sent to the background and listed under the box, and the idle box after Esc left it running; the `/` popup over `/tasks`, pasted into the idle box and typed during a turn; the `/tasks` panel with the task running, after `k` cancelled it, with the second row selected, during a turn, and at 62×41 and 40×41; the idle box after Esc closed it; Down on an empty box selecting the task listed under it |
+| `agy-181` to `agy-185` | Captured 2026-11-09 through herdr 0.9.5 on Linux, in agy's colors (below): the idle box after Esc with a `sleep 60` agy made a task still listed under it, the `/` popup over a pasted `/tasks`, the `/tasks` panel with the task running and after `k` cancelled it, and the idle box after Esc closed it |
+| `agy-200` | Captured 2026-11-09 through herdr 0.9.5 on Linux, in agy's colors (below): a command's dialog from an agy started in the pane an earlier agy exited in, under that agy's last frame, its empty box and its resume line |
+
+`agy-154` to `agy-168` are `tmux capture-pane -p -e` reads of a 120×40 tmux 3.4
+pane running agy 1.5.3 on Ubuntu 24.04.5. tmux writes agy's 16 colors as SGR
+30–37 and 90–97, which the decoder reads as the indexed colors herdr's `38;5;n`
+gives. Their LF rows became CRLF rows, and the empty rows under agy's footer
+were dropped, as herdr's reads end at the last drawn row. The account became
+`developer`, and the banner keeps the scratch folder, `~/heeler-probe/question`.
+The read of the first of two questions before any key was taken while agy
+still drew `Working...`, so no fixture shows that page untouched.
+
+`agy-169` to `agy-180` come from another such pane, in `~/heeler-probe/stop`,
+read with `tmux capture-pane -p` without `-e`: plain text with no styles,
+which agy's readers take as its colorless palette, in CRLF rows as well.
+Each keeps the bottom of the read, from a rule above the box or a past
+prompt down. `agy-178` and `agy-179` were read after the pane was resized
+to 62×41 and 40×41. The account became `developer`.
+
+`agy-181` to `agy-185` are herdr 0.9.5's `agent.read` of a 62×46 pane on
+Ubuntu 24.04.5 in a boxd VM, as received, while Heeler's Stop ended the
+task. herdr keeps the uncolored blank between the box's blue `>` and a
+blue `/tasks`, so the marker reads as a run of its own (182), as it does
+not in herdr-core's paint of the same screen (Core paints, above). No row
+names the account.
+
+`agy-200` is a visible-screen read of the same pane while Chat showed the
+dialog as its key pad. Scrubbing replaced the account's email with
+`<email>`, which had taken the `8m` of its grey before it, restored as
+`agy-01` draws the banner, and the earlier conversation's id with
+`00000000-0000-4000-8000-000000000200`. `boxd@heeler-agy-644` in the
+shell's prompt is the throwaway VM's.
+
+Help's general tab (it shows the conversation id and the log's path), its
+command pages and a 200-row scrollback read are not kept.
+
+Scrubbing replaced the account's email with `developer`, the scratch
+repository's path with `/Users/developer/projects/fruits` (`fruits2` and
+`fruits3` for the trust tests' repositories) and the two conversation ids
+with `00000000-0000-4000-8000-000000000002` and `…005`. A dialog's file row
+names its file under that path, and the `@` popup's descriptions the file's
+full path, cut with `...` as agy cuts one that does not fit. These rows are
+shorter than captured. At 62×41 and 40×30 the trust prompt's path wrapped
+over several rows; the scrubbed path keeps the first and drops the rest.
+
+The tests also build synthetic screens for states no capture shows: a
+footer agy's strings hold (code search mode, a Vim badge, a background
+command's double press, `press ctrl+d again to exit`), the background-task
+panel without a queue, the full-width `Conversation compacted` rule a live
+`/compact` left above the box, and past prompts with no box. These screens
+are not part of `ScreenFixture.all` either.
 
 ## OpenCode stores
 

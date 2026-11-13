@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Agent Status and Done per device on a tmux Host (ADR 0044), through
+/// Agent Status and Done per device on a tmux Host (ADR 0045), through
 /// `ConsoleStore` and the real tmux transport over a scripted Host: what the
 /// Agents list reads as a Pane's `@heeler-status` changes between looks.
 @MainActor

@@ -8,7 +8,7 @@ Many people run coding agents in tmux sessions they started themselves, over
 SSH or on a desktop. tmux is neither Herdr TUI nor herdr-core: it has no API
 socket Heeler can speak, no plugins, and no Program Status of its own. Heeler
 adds tmux Hosts beside Herdr TUI and herdr-core Hosts, whose support stays as it
-is. ADR 0043 covers the Console on a tmux Host and ADR 0044 its Agent Status.
+is. ADR 0044 covers the Console on a tmux Host and ADR 0045 its Agent Status.
 
 ## Decision
 
@@ -19,13 +19,13 @@ is. ADR 0043 covers the Console on a tmux Host and ADR 0044 its Agent Status.
   builds before this change never read.
 - A tmux Host targets one tmux server, named by its socket name
   (`tmux -L <name>`, `default` unless the user names another). Heeler never
-  calls it a session: a tmux session is a Workspace (ADR 0043). When the Host is
+  calls it a session: a tmux session is a Workspace (ADR 0044). When the Host is
   confirmed, and again whenever the stored paths stop answering, Heeler resolves
   the tmux executable and the socket path through the user's interactive login
   shell (`$SHELL -lic`, as in ADR 0031), because an SSH exec's `PATH` often
   lacks a Homebrew tmux and the user's shell files may set `TMUX_TMPDIR`. The
   Host stores both, every command runs the stored executable with
-  `-S <path>`, and the Host Helper gets them from the app (ADR 0044). A socket
+  `-S <path>`, and the Host Helper gets them from the app (ADR 0045). A socket
   path typed by the user is not supported.
 - Heeler talks to tmux only through its command-line client, over SSH exec:
   one-shot commands, a polling loop, and control-mode clients
@@ -51,9 +51,9 @@ is. ADR 0043 covers the Console on a tmux Host and ADR 0044 its Agent Status.
 - What Heeler changes in the user's tmux without being asked is limited to:
   pane user options named `@heeler-*`; the size of a window while a device
   shows one of its Panes; sessions of its own, one per Attach, each holding a
-  link to the window it shows, with their own options (ADR 0043); and its own
+  link to the window it shows, with their own options (ADR 0044); and its own
   `pipe-pane` reader on a Pane that runs Codex, Grok Build or OpenCode and has
-  no pipe (ADR 0044). Everything else, such as typing into a Pane or opening,
+  no pipe (ADR 0045). Everything else, such as typing into a Pane or opening,
   renaming or ending a window or session, happens because the user asked for it
   in Heeler, and a session opened for a Worktree carries a `@heeler-worktree`
   option. Heeler never sets a global or window option, an option of a session
@@ -80,7 +80,7 @@ unrelated Pane after it. Resolving paths once per Host, not per connection,
 spares every connection an interactive shell's startup.
 
 3.3 is the first release that lets a control-mode client size one window, which
-is how a device sizes the Pane it shows (ADR 0043). 3.2 can only size the whole
+is how a device sizes the Pane it shows (ADR 0044). 3.2 can only size the whole
 client, and that size flips back whenever a desktop client types. It also brings
 what 3.2 added for control mode: client flags, `pause-after`, and fair limits on
 control-mode output.
@@ -99,7 +99,7 @@ servers (`-L`) that were killed afterwards:
   servers started within the same second had equal `#{start_time}` values and
   different `#{pid}` values. The killed server's socket file stayed in place.
 - `pipe-pane -o` on a Pane that already had a pipe closed that pipe
-  (`#{pane_pipe}` went from 1 to 0) instead of leaving it, which is why ADR 0044
+  (`#{pane_pipe}` went from 1 to 0) instead of leaving it, which is why ADR 0045
   reads `#{pane_pipe}` before attaching anything.
 
 From tmux's sources and release notes:
@@ -110,7 +110,7 @@ From tmux's sources and release notes:
   and the `ignore-size` client flag.
 - [CHANGES](https://github.com/tmux/tmux/blob/master/CHANGES) for 3.2 add client
   flags for any client, the `pause-after` flag and fair limits on control-mode
-  output; the 3.7 entry adds the `bracket_paste_flag` format, so ADR 0043 copes
+  output; the 3.7 entry adds the `bracket_paste_flag` format, so ADR 0044 copes
   without it before 3.7.
 
 Distribution packages as [Repology](https://repology.org/project/tmux/versions)

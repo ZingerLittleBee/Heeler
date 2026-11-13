@@ -118,6 +118,47 @@ struct ChatImageLinkTests {
         #expect(rows.first?.hasInnerControls == false)
     }
 
+    @Test("A code block's line names an image only when it is one image's path", arguments: [
+        ("/tmp/a.png", ["/tmp/a.png"]),
+        ("\t/tmp/b c.png  ", ["/tmp/b c.png"]),
+        ("shots/d.png", ["shots/d.png"]),
+        ("cp a.png b.png", []),
+        (#"UIImage(named: "a.png")"#, []),
+        ("/tmp/report.pdf", []),
+        ("open /tmp/e.png", []),
+    ])
+    func codeBlockLines(_ line: String, _ expected: [String]) {
+        let marked = ChatImageLink.markingLines("before\n\(line)\nafter")
+        #expect(String(marked.characters) == "before\n\(line)\nafter")
+        #expect(ChatImageLink.paths(in: marked) == expected)
+    }
+
+    @Test func aMessagesCodeBlockPathsArePreviewedFromItsMenu() async {
+        let text = """
+            The screenshots:
+
+            ```
+            /tmp/shots/a.png
+            /tmp/shots/b 2.png
+            ```
+
+            ```swift
+            let image = UIImage(named: "c.png")
+            ```
+
+            ```sh
+            cp c.png d.png
+            shots/e.png
+            /tmp/notes.txt
+            /tmp/shots/a.png
+            ```
+            """
+        let entry = ChatEntry(
+            id: ChatEntryID("reply"), sourceOffset: 0, content: .assistant(ChatAssistantMessage(text: text)))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        #expect(rows.first?.messageImagePaths == ["/tmp/shots/a.png", "/tmp/shots/b 2.png", "shots/e.png"])
+    }
+
     @Test func aHomePathResolvesOnlyWithTheHome() {
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w", home: "/home/dev") == "/home/dev/a/b.png")
         #expect(ChatImagePath.resolve("~/a/b.png", cwd: "/w") == nil)
@@ -507,5 +548,54 @@ struct ChatToolTitleLayoutTests {
             .environment(\.colorScheme, scheme),
             proposedSize: .unspecified, scale: 3)
         Attachment.record(try rendered.image(), named: "chat-image-rows-\(scheme)", as: .png)
+    }
+}
+
+@MainActor
+@Suite("Chat code block image paths")
+struct ChatCodeBlockImagePathTests {
+    /// The lines of a code block that are image paths draw in the tint, on
+    /// the block's background in its face; a block whose lines name no
+    /// image draws no tint. The render is attached for review.
+    @Test(arguments: [ColorScheme.light, .dark])
+    func imagePathLinesDrawInTheTint(scheme: ColorScheme) throws {
+        func render(_ lines: [String]) throws -> RenderedBitmap {
+            let text = "Saved:\n\n```\n" + lines.joined(separator: "\n") + "\n```"
+            let row = ChatRow(
+                id: .entry(ChatEntryID("reply")), content: .assistant(source: text, blocks: ChatMarkdown.blocks(from: text)),
+                revision: 1, topSpacing: 8)
+            let actions = ChatRowActions(
+                toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
+            return try RenderedBitmap(
+                ChatRowView(row: row, isExpanded: false, actions: actions)
+                    .padding(.vertical, 16).frame(width: 390).background(Color(uiColor: .systemBackground))
+                    .environment(\.colorScheme, scheme),
+                proposedSize: .unspecified, scale: 3)
+        }
+        let images = try render([
+            "/Users/dev/Desktop/Screenshot 2026-11-11 at 10.00.00.png", "ls -la /tmp/shots", "/tmp/shots/b.png",
+            #"UIImage(named: "c.png")"#,
+        ])
+        Attachment.record(try images.image(), named: "chat-code-block-image-paths-\(scheme)", as: .png)
+        let documents = try render([
+            "/Users/dev/Desktop/Screenshot 2026-11-11 at 10.00.00.pdf", "ls -la /tmp/shots", "/tmp/shots/b.pdf",
+            #"UIImage(named: "c.png")"#,
+        ])
+        #expect(Self.tintedPixels(in: images) > 0)
+        #expect(Self.tintedPixels(in: documents) == 0)
+    }
+
+    /// Pixels of a saturated color. Text in the primary color, the
+    /// background and the block's raised fill are all gray.
+    private static func tintedPixels(in bitmap: RenderedBitmap) -> Int {
+        var count = 0
+        for y in 0..<bitmap.height {
+            for x in 0..<bitmap.width {
+                let pixel = bitmap.pixel(x: x, y: y)
+                let channels = [pixel.red, pixel.green, pixel.blue]
+                if let high = channels.max(), let low = channels.min(), high - low > 80 { count += 1 }
+            }
+        }
+        return count
     }
 }

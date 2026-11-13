@@ -98,6 +98,7 @@ struct AgentDetailHeader: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentDetailHeader.body")
         HStack(alignment: .top, spacing: 8) {
             leadingSlot
             if showsTitle, let title {
@@ -467,8 +468,8 @@ struct AgentDetailHeaderTitle: Equatable {
 
 extension AgentDetailHeaderTitle {
     /// The task title as the Console list shows it, the harness's kind for
-    /// its mark, and the reported launch directory. Keep the home folder's
-    /// name rather than shortening it to `~`.
+    /// its mark, and the directory its program runs in (`agent.cwd`). Keep
+    /// the home folder's name rather than shortening it to `~`.
     init(_ agent: ConsoleAgent) {
         self.init(
             title: AgentTerminalView.displayTitle(for: agent),

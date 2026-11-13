@@ -3,10 +3,16 @@ import Observation
 
 /// Native conversation titles, separate from herdr's restricted Agent aliases.
 enum AgentTitleNaming {
+    static func supportsRename(_ program: ChatProgram) -> Bool {
+        switch program {
+        case .claude, .codex, .pi, .omp, .grok, .opencode, .agy: true
+        }
+    }
+
     static func supportsGeneration(_ program: ChatProgram) -> Bool {
         switch program {
         case .claude, .codex, .omp: true
-        case .pi, .grok, .opencode: false
+        case .pi, .grok, .opencode, .agy: false
         }
     }
 
@@ -36,6 +42,8 @@ enum AgentTitleNaming {
             if title.hasSuffix(" - grok") { title.removeLast(7) }
         case .opencode:
             if title.hasPrefix("OC | ") { title.removeFirst(5) }
+        case .agy:
+            break
         }
         return title
     }
@@ -255,14 +263,16 @@ final class AgentTitleRenameStore: Identifiable {
                 !AgentTitleNaming.title(of: fresh, program: program).isEmpty,
                 fresh.status == .idle || fresh.status == .done { return }
             let text = try await io.screen().rows.map(\.text).joined(separator: "\n")
-            if target == nil, fresh.status == .idle || fresh.status == .done,
-                let acknowledgement = Self.nativeAcknowledgement(program: program, title: fresh.title),
+            if (target == nil || program == .agy), fresh.status == .idle || fresh.status == .done,
+                let acknowledgement = Self.nativeAcknowledgement(program: program, title: target ?? fresh.title),
                 acknowledgementCount(acknowledgement, in: text)
                     > acknowledgementCount(acknowledgement, in: oldText) {
-                // Generating again can legitimately produce the current title.
+                // Generating again can legitimately produce the current title, and
+                // Antigravity CLI confirms a rename on screen without setting a
+                // terminal title by default.
                 return
             }
-            if ["Could not generate a session title", "Rename failed:"].contains(where: {
+            if ["Could not generate a session title", "Rename failed:", "Failed to rename conversation:"].contains(where: {
                 text.contains($0) && !oldText.contains($0)
             }) {
                 throw AgentTitleRenameError(message: String(localized: "The Agent could not generate or save the title."), confirmedFailure: true)
@@ -280,6 +290,8 @@ final class AgentTitleRenameStore: Identifiable {
         case .omp:
             let card = title.hasPrefix("π > ") ? String(title.dropFirst(4)) : title
             return "Session renamed to \"" + card + "\"."
+        case .agy:
+            return "Conversation renamed to: " + title
         default: return nil
         }
     }

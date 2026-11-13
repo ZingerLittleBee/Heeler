@@ -1,6 +1,6 @@
 import Foundation
 
-/// A tmux Host's share of the Console (ADRs 0042 and 0043): its connection,
+/// A tmux Host's share of the Console (ADRs 0043 and 0044): its connection,
 /// the server that answers on its socket, and what that server lists. A
 /// session is a Workspace, a window a Tab and a pane a Pane, as
 /// `TmuxOrganization` reads them.
@@ -11,7 +11,7 @@ import Foundation
 /// the last one's Panes, and a detail open on one of them keeps to it through
 /// the same pin.
 ///
-/// An Agent's status is its Pane's `@heeler-status` (ADR 0044), and Done is
+/// An Agent's status is its Pane's `@heeler-status` (ADR 0045), and Done is
 /// per device: this device's seen marks and each Pane's turns are kept by
 /// server instance, and written to the Host Helper's directory while this
 /// device is registered there (ADR 0033).
@@ -78,7 +78,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// A newer inventory supersedes a checkout read still on its way.
     private var checkoutRefresh = 0
     private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
-    /// Per-instance Chat binding revisions and dropped candidate picks (ADRs 0034 and 0042).
+    /// Per-instance Chat binding revisions and dropped candidate picks (ADRs 0034 and 0043).
     private var inventoryReplacements: UInt64 = 0
     private var leakAnswers: UInt64 = 0
     private var sessionEventCounts: [String: UInt64] = [:]
@@ -277,7 +277,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         kind == ChatProgram.claude.rawValue && status == .blocked
     }
 
-    /// Heeler's own answer on this Pane (ADR 0044). A decline writes idle;
+    /// Heeler's own answer on this Pane (ADR 0045). A decline writes idle;
     /// any other answer writes working. Navigation keys are not answers, and
     /// neither is an Enter whose selected option this caller does not know.
     /// Claude Code idle and working also clear `@heeler-ask`.
@@ -291,7 +291,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             on: paneID)
     }
 
-    /// Heeler's own write of this Pane's `@heeler-status` (ADR 0044). Idle and
+    /// Heeler's own write of this Pane's `@heeler-status` (ADR 0045). Idle and
     /// working for Claude Code also clear `@heeler-ask`. One compare: a value
     /// that changed first is left as it is.
     func writeHeelerStatus(_ report: TmuxStatusReport, on paneID: String) async -> TmuxStatusWrite.Outcome {
@@ -460,7 +460,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let statuses = memory.tmuxTurnStates(for: host.id).mapValues(\.agentStatus)
         let organization = TmuxOrganization.build(inventory, statuses: statuses, checkouts: knownCheckouts)
         let builder = ConsolePaneRowBuilder(host: host, inventory: organization.snapshot)
-        let agents = builder.agentRows(lastOutputSnippet: { _ in nil }, liveChange: { _ in nil })
+        let agents = builder.agentRows(liveChange: { _ in nil })
         var rows = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         for pane in organization.panes {
             rows[pane.paneID]?.gridColumns = pane.width
@@ -959,7 +959,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
     }
 
-    // MARK: Claude Code hooks (ADR 0044)
+    // MARK: Claude Code hooks (ADR 0045)
 
     /// Places Heeler's Claude Code hook script, the settings a launch passes and
     /// the stored tmux paths the script runs, and answers where they went.
@@ -1102,7 +1102,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     /// Reads `capture-pane -e -p` on the Host's socket, verifying that the
-    /// answering server is still the instance Chat keeps to (ADRs 0042 and 0043).
+    /// answering server is still the instance Chat keeps to (ADRs 0043 and 0044).
     func capturePaneScreen(_ paneID: String, keepingTo pin: TerminalCorePin? = nil) async throws -> ANSIScreen {
         if let pin, !admits(pin) {
             throw TransportError.tmuxServerGone
@@ -1141,7 +1141,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         return ANSIScreenDecoder.decode(captured.text)
     }
 
-    /// Opens Chat's own size-less Attach to `paneID` (ADR 0043). Never asks for a
+    /// Opens Chat's own size-less Attach to `paneID` (ADR 0044). Never asks for a
     /// client size; the caller closes it as soon as the action finishes.
     func openChatAttach(at paneID: String, keepingTo pin: TerminalCorePin? = nil) async throws -> TmuxChatAttach {
         if let pin, !admits(pin) {
@@ -1168,6 +1168,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         for paneID: String,
         program: ChatProgram,
         keepingTo corePin: TerminalCorePin,
+        agentKeys: ChatAgentKeysStore? = nil,
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? {
         let plan = ChatStopPlan.standard(for: program)
@@ -1178,11 +1180,25 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         return AgentComposerInterrupt(
             wait: plan.wait, accessibilityHint: plan.accessibilityHint
         ) {
-            await stop.perform()
+            let after = followThrough?()
+            let outcome: AgentInterruptOutcome =
+                if let agentKeys {
+                    await agentKeys.inOrder { await stop.perform() }
+                } else {
+                    await stop.perform()
+                }
+            guard outcome == .sent, let after else { return outcome }
+            let left =
+                if let agentKeys {
+                    await agentKeys.afterQueued(after)
+                } else {
+                    await after()
+                }
+            return left.map(AgentInterruptOutcome.sentLeavingWork) ?? .sent
         }
     }
 
-    /// Checked Composer Send (ADRs 0035 and 0043). `live` follows a projection
+    /// Checked Composer Send (ADRs 0035 and 0044). `live` follows a projection
     /// replaced after the Composer was opened.
     /// Terminal Stop for a known Agent: Chat's keys for that program, including
     /// Grok Build's Ctrl+C. An unlisted program keeps Send.
@@ -1219,7 +1235,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             clock: sendClock)
     }
 
-    /// Each Attach is a control client in a session of Heeler's own (ADR 0043),
+    /// Each Attach is a control client in a session of Heeler's own (ADR 0044),
     /// on whichever server answers once the connection is up. Another instance
     /// than the one the Terminal first joined has only the same pane ids: that
     /// Terminal is as good as ended, as is one whose Pane is gone.
@@ -1255,7 +1271,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         { _ in nil }
     }
 
-    // MARK: Process-bound Chat (ADRs 0034, 0042 and 0044)
+    // MARK: Process-bound Chat (ADRs 0034, 0043 and 0045)
 
     var chatCacheScope: String? {
         memory.coreID(for: host.id).map {

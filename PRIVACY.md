@@ -45,25 +45,34 @@ you choose, as described below.
   your device and your Host, and Heeler keeps them in memory while the
   Agent stays in the list and does not save them.
 - **Chat.** When you show Chat for a Claude Code, Codex, Pi, Oh My Pi, Grok
-  Build or OpenCode agent, Heeler reads the conversation that agent's own
-  program records on your Host: the transcript file Claude Code, Codex, Pi,
-  Oh My Pi and Grok Build write. For OpenCode, Heeler runs a short read-only
-  query on your Host, with the sqlite3 or python3 already there, that reads
-  only the conversation Chat shows from OpenCode's database. It never reads
-  OpenCode's settings or credentials and never changes the database. Through
-  herdr Heeler also reads the agent's screen, to check its input box before
-  sending a message and to show a dialog the agent is waiting on. Both travel
-  only over the direct SSH connection between your device and your Host, and
-  Heeler never changes or deletes the transcript. Heeler saves the
-  conversation it has read, without tool output, in a cache on your device.
-  The cache uses iOS Complete file protection, so it cannot be read while the
-  device is locked, is excluded from backups, holds at most 300 MB, and drops
-  a conversation not opened for 30 days. For Grok Build, right after you send
+  Build, OpenCode or Antigravity CLI agent, Heeler reads the conversation
+  that agent's own program records on your Host: the transcript file Claude
+  Code, Codex, Pi, Oh My Pi and Grok Build write, and the
+  `transcript_full.jsonl` Antigravity CLI writes for each conversation in its
+  data folder, `~/.gemini/antigravity-cli` by default. For OpenCode, Heeler
+  runs a short read-only query on your Host, with the sqlite3 or python3
+  already there, that reads only the conversation Chat shows from OpenCode's
+  database. It never reads OpenCode's settings or credentials and never
+  changes the database. Through herdr Heeler also reads the agent's screen,
+  to check its input box before sending a message and to show a dialog the
+  agent is waiting on. Both travel only over the direct SSH connection
+  between your device and your Host, and Heeler never changes or deletes the
+  transcript. Heeler saves the conversation it has read, without tool
+  output, in a cache on your device. The cache uses iOS Complete file
+  protection, so it cannot be read while the device is locked, is excluded
+  from backups, holds at most 300 MB, and drops a conversation not opened
+  for 30 days. For Grok Build, right after you send
   from Chat, Heeler reads the lines Grok Build added to the
   `prompt_history.jsonl` it keeps for the agent's working folder, to check
   which session recorded your message. Those lines can include prompts from
   other Grok Build sessions in the same folder; Heeler compares and discards
-  them, without storing or showing them.
+  them, without storing or showing them. For Antigravity CLI, after you send
+  from Chat, Heeler reads up to 64 KiB of the lines Antigravity CLI added to
+  the `history.jsonl` in its data folder, to check which conversation
+  recorded your message. Every Antigravity CLI using that data folder writes
+  its prompts there, so those lines can include prompts from your other
+  Antigravity CLI conversations, in any working folder; Heeler compares and
+  discards them, without storing or showing them.
 
 - **Overlay Networks.** Network settings are stored locally. Tailscale auth
   keys, EasyTier network secrets, and the device's ZeroTier identity are

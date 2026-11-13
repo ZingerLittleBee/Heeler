@@ -1,0 +1,30 @@
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo[0m
+[0m[1m[38;5;4m  probe-esc . If it is declined, just[0m
+[0m[1m[38;5;4m  reply "declined" and stop.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo pr...)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo[0m
+[0m[1m[38;5;4m  probe-amend . If it is declined, just[0m
+[0m[1m[38;5;4m  reply "declined" and stop.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo pr...)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m─────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo[0m
+[0m[1m[38;5;4m  probe-four . If it is declined, just[0m
+[0m[1m[38;5;4m  reply "declined" and stop.[0m
+
+[0m[38;5;1m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7mfailed[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4mCommand[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m  ⎿  Interrupted · What should Antigravi[0m
+[0m[38;5;8m────────────────────────────────────────[0m
+[0m[38;5;12m>[0m This draft wraps on narrow phone
+  screens for sure
+[0m[38;5;8m────────────────────────────────────────[0m
+                   [0m[2mGemini 4 Argon · high[0m

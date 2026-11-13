@@ -172,7 +172,7 @@ final class HeelerAppModel {
         // connections still wait for start() to resume the Console.
         console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
         // A connection that resolved a tmux Host's paths again has the catalog
-        // keep them (ADR 0042). A catalog that cannot be written asks again.
+        // keep them (ADR 0043). A catalog that cannot be written asks again.
         console.onTmuxPathsResolved = { [weak hostStore] id, paths in
             try? hostStore?.noteTmuxPaths(paths, for: id)
         }
@@ -223,8 +223,11 @@ final class HeelerAppModel {
         }
         Task { await pushRegistration.refresh() }
         // Existing installs' Notification Keys predate the app-group
-        // mirror; refresh it before a locked widget render needs it.
-        NotificationKeyStore().refreshMirror()
+        // mirror; refresh it off the main actor before a locked widget
+        // render needs it, warming `NotificationKeyStore.appShared` too.
+        Task.detached(priority: .utility) {
+            NotificationKeyStore.appShared.refreshMirror()
+        }
         liveActivities.start()
 
         observeStores()
@@ -297,7 +300,7 @@ final class HeelerAppModel {
         observe({ console.rowLayouts.hostLayouts }) { [weak self] _ in
             self?.liveActivities.layoutsDidChange()
         }
-        observe({ console.sidebarSnapshots.states }) { [weak self] _ in
+        observe({ console.sidebarSnapshots.loadedSnapshots }) { [weak self] _ in
             self?.liveActivities.layoutsDidChange()
         }
         observe({ console.pins.revision }) { [weak self] _ in

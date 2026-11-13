@@ -124,6 +124,33 @@ struct SkillFrontmatterTests {
         #expect(SkillFrontmatter.parse("---\nname: plain\n---\n").isUserInvocable)
     }
 
+    /// Antigravity CLI's key: only an explicit true hides the skill's
+    /// command, whatever its case or quotes.
+    @Test func readsDisableSlashCommandTrue() {
+        let hidden = SkillFrontmatter.parse(
+            """
+            ---
+            name: swarm_monitor
+            description: >-
+              Only for the swarm's monitor.
+            disable-slash-command: true
+            ---
+            """)
+        let quoted = SkillFrontmatter.parse("---\ndisable-slash-command: \"True\"\n---\n")
+        let shown = SkillFrontmatter.parse("---\ndisable-slash-command: false\n---\n")
+        let unclear = SkillFrontmatter.parse("---\ndisable-slash-command: maybe\n---\n")
+        let empty = SkillFrontmatter.parse("---\ndisable-slash-command:\n---\n")
+
+        #expect(hidden.isSlashCommandDisabled)
+        #expect(hidden.description == "Only for the swarm's monitor.")
+        #expect(quoted.isSlashCommandDisabled)
+        #expect(!shown.isSlashCommandDisabled)
+        #expect(!unclear.isSlashCommandDisabled)
+        #expect(!empty.isSlashCommandDisabled)
+        #expect(!SkillFrontmatter.parse("---\nname: plain\n---\n").isSlashCommandDisabled)
+        #expect(!SkillFrontmatter.parse("disable-slash-command: true\n").isSlashCommandDisabled)
+    }
+
     @Test func emptyValuesReadAsMissing() {
         let parsed = SkillFrontmatter.parse(
             """

@@ -36,9 +36,10 @@ struct NotificationKeyStore: Sendable {
     /// app groups in `kSecAttrAccessGroup` without the team prefix), granted
     /// to the app and the service extension by their entitlements.
     static let sharedAccessGroup = "group.dev.bybee.heeler.shared"
+    static let service = "dev.bybee.heeler.notifications"
 
-    private static let service = "dev.bybee.heeler.notifications"
     private static let keyBytes = 32
+    private static let mirrorLock = NSLock()
 
     private let secrets: any SecretStore
     /// Kept in sync on every mutation so the Live Activity widget can
@@ -77,8 +78,11 @@ struct NotificationKeyStore: Sendable {
     /// Called after every mutation and once at app start, so installs whose
     /// keys predate the mirror gain one without re-registering.
     func refreshMirror() {
-        guard let mirror, let records = try? allRecords() else { return }
-        mirror.write(records)
+        guard let mirror else { return }
+        Self.mirrorLock.withLock {
+            guard let records = try? allRecords() else { return }
+            mirror.write(records)
+        }
     }
 
     func record(forHost hostID: UUID) throws -> NotificationKeyRecord? {

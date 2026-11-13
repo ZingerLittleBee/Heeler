@@ -211,10 +211,14 @@ final class ChangesStore {
         guard !Task.isCancelled, readID == id else { return }
         autoRefresh.readSawWorking = autoRefresh.status == .working
         dispatchedReadID = id
+        let trace = PerfTrace.beginInterval("changes.read", "automatic=\(automatic)")
+        defer { PerfTrace.endInterval(trace) }
         do {
             let result = try await read(ChangesReadRequest(directory: directory))
             try Task.checkCancellation()
             guard readID == id else { return }
+            let span = PerfTrace.begin("changes.apply")
+            defer { PerfTrace.end(span) }
             let previous = phase
             let hadRead = hasRead
             untrackedDirectories.collapseAll()

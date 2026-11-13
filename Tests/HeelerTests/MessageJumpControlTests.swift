@@ -338,6 +338,23 @@ struct MessageJumpControlTests {
         }
     }
 
+    /// Antigravity CLI draws a past prompt flush left behind `> `, which the
+    /// default profile reads; its empty box's `>` names nothing.
+    @MainActor
+    @Test func theDefaultProfileReadsAntigravityCLIPrompts() throws {
+        let profile = AgentMessageJumpProfile.forAgentKind("agy")
+        #expect(profile.policy == .neighborAppearance)
+        let wiring = AgentMessageJumpWiring(profile: profile)
+        let frame = try ScreenFixture.screen("agy-36-done-final-120x40").rows.map(\.text)
+            .joined(separator: "\n")
+
+        #expect(
+            wiring.messageIndex.visibleMessageKeys(frame) == [
+                "line:Reply with only the word pear.", "line:Also reply with the word kiwi",
+                "line:Run exactly this shell command in the current directory: sleep 40; echo probe-done . Then reply with its output only.",
+            ])
+    }
+
     @MainActor
     @Test func wiringForwardsTheJumpPolicy() {
         let sticky = AgentMessageJumpWiring(policy: .stickyPromptOvershoot)

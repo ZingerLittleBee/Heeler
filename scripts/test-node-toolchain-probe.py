@@ -11,6 +11,7 @@ whose /bin/sh is dash); uses only Python's standard library.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,6 +48,9 @@ SYSTEM_PREFIXES = (
     "/snap/bin",
     "/opt/local/bin",
 )
+# The system's own bin among them, moved only where the probe names it whole,
+# not in the /usr/bin/env it runs.
+SYSTEM_BIN = re.compile(r"(?<![\w/.-])/usr/bin(?![\w/.-])")
 
 HERDR = """#!/bin/sh
 echo "herdr=$0"
@@ -122,6 +126,8 @@ class ProbeTests(unittest.TestCase):
         for prefix in SYSTEM_PREFIXES:
             self.assertIn(prefix, wrapped)
             wrapped = wrapped.replace(prefix, f"{self.root}/abs{prefix}")
+        self.assertRegex(wrapped, SYSTEM_BIN)
+        wrapped = SYSTEM_BIN.sub(f"{self.root}/abs/usr/bin", wrapped)
         if shell != "/bin/sh":
             wrapped = shell + wrapped[len("/bin/sh"):]
         return subprocess.run(
@@ -216,6 +222,12 @@ class ProbeTests(unittest.TestCase):
 
     def test_the_path_is_used_when_nothing_else_is_there(self) -> None:
         self.assert_found(self.node(self.system, "20.5.0"), "20.5.0")
+
+    def test_an_old_npm_first_on_the_path_gives_way_to_a_later_one(self) -> None:
+        self.node(self.system, "18.19.0")
+        later = self.node(self.root / "later/bin")
+        self.env["PATH"] = f"{self.system}:{later}:/usr/bin:/bin"
+        self.assert_found(later)
 
     def login_shell(self, name: str, path: str) -> None:
         """A login shell whose rc files set `path` and print noise."""

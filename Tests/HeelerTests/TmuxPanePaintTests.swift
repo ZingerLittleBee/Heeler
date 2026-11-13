@@ -5,7 +5,7 @@ import UIKit
 
 @testable import Heeler
 
-/// A tmux Pane's first paint (ADR 0043): its modes and captured screens, as
+/// A tmux Pane's first paint (ADR 0044): its modes and captured screens, as
 /// bytes that put a terminal showing only that Pane where tmux has it.
 @Suite("tmux pane paint")
 struct TmuxPanePaintTests {

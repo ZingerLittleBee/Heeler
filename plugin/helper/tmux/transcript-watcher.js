@@ -1,5 +1,5 @@
 // Watches Claude Code Transcripts named by `@heeler-session` while a Claude
-// Code Pane reads `working` or `blocked` (ADR 0044). Declining a permission
+// Code Pane reads `working` or `blocked` (ADR 0045). Declining a permission
 // prompt with Esc at the desktop runs no Claude Code hook, but appends a
 // `system` / `turn_duration` entry to the Transcript; seeing one written after
 // the status changed sets `idle` while continuing the Pane's counts.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The one script that reads a tmux Host (ADR 0042): where tmux is, its version,
+/// The one script that reads a tmux Host (ADR 0043): where tmux is, its version,
 /// and whether a server answers on a socket. Pure: it builds a script for one
 /// bounded exec and reads what the script prints.
 ///

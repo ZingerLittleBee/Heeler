@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-/// Chat's own size-less Attach to one tmux Pane (ADR 0043).
+/// Chat's own size-less Attach to one tmux Pane (ADR 0044).
 ///
 /// Opens as an unviewed, zero-geometry control client so `TmuxPaneAttach` posts
 /// `refresh-client -f ignore-size` and never asks for a client size (`-C`),
@@ -102,7 +102,7 @@ final class TmuxChatAttach: Sendable {
     }
 }
 
-/// How Chat reads and types into a tmux Pane (ADRs 0035, 0043 and 0044).
+/// How Chat reads and types into a tmux Pane (ADRs 0035, 0044 and 0045).
 ///
 /// Screen reads run `capture-pane -e -p` on the Host's socket without opening a
 /// control client. Typing opens an Attach of Chat's own that asks for no size

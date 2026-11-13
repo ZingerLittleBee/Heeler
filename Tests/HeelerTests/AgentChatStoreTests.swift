@@ -24,7 +24,7 @@ struct AgentChatStoreTests {
             tabID: "t1", paneID: "w1:p1", cwd: cwd, revision: 1,
             agentSession: session.map {
                 AgentSessionInfo(
-                    agent: program.rawValue, kind: .id, source: "herdr:\(program.rawValue)", value: $0)
+                    agent: program.sessionNaming.agent, kind: .id, source: program.sessionNaming.source, value: $0)
             })
     }
 
@@ -73,6 +73,25 @@ struct AgentChatStoreTests {
         var now = Date(timeIntervalSince1970: 1_791_266_400)
     }
 
+    /// Once armed, holds the next file status until its gate opens, so a
+    /// read can be under way while the Agent changes.
+    private final class HeldStatus: @unchecked Sendable {
+        private let lock = NSLock()
+        private var gate: ScriptedTransportCallGate?
+
+        func arm(_ gate: ScriptedTransportCallGate) {
+            lock.withLock { self.gate = gate }
+        }
+
+        func pass() async {
+            let gate: ScriptedTransportCallGate? = lock.withLock {
+                defer { self.gate = nil }
+                return self.gate
+            }
+            await gate?.waitUntilOpen()
+        }
+    }
+
     @MainActor
     private struct Fixture {
         let files = VirtualHostFiles()
@@ -81,8 +100,10 @@ struct AgentChatStoreTests {
         let server: Server
         let store: AgentChatStore
 
-        /// - Parameter adapter: how the conversation is read; nil reads
-        ///   `NumberedChatReducer` transcript files.
+        /// - Parameters:
+        ///   - adapter: how the conversation is read; nil reads
+        ///     `NumberedChatReducer` transcript files.
+        ///   - heldStatus: holds a file status the store asks for once armed.
         init(
             session: String?, program: ChatProgram = .claude,
             limits: TranscriptFollower.Limits = TranscriptFollower.Limits(),
@@ -91,18 +112,30 @@ struct AgentChatStoreTests {
             adapter: ChatTranscriptAdapter? = nil,
             cachedSession: @escaping @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil },
             screen: BlockedScreenIO = .unavailable,
-            processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil
+            processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil,
+            heldStatus: HeldStatus? = nil
         ) {
             let agent = AgentChatStoreTests.agent(session: session, program: program)
             let server = Server(agent)
             let clock = clock
             self.server = server
+            var hostFiles = files.hostFiles()
+            if let heldStatus {
+                let files = hostFiles
+                hostFiles = ChatHostFiles(
+                    status: { path in
+                        await heldStatus.pass()
+                        return try await files.status(path)
+                    },
+                    list: files.list, read: files.read, home: files.home, queryOpenCode: files.queryOpenCode,
+                    accountDirectories: files.accountDirectories)
+            }
             store = AgentChatStore(
                 agentID: ConsoleAgent.ID(hostID: AgentChatStoreTests.host, paneID: agent.paneID),
                 agent: agent, program: program,
                 source: AgentChatSource(
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
-                    files: files.hostFiles(), agentInfo: { try await server.read() }, cache: cache,
+                    files: hostFiles, agentInfo: { try await server.read() }, cache: cache,
                     adapter: adapter ?? NumberedChatReducer.adapter(limits: limits, wantsFirstLine: program == .codex),
                     cachedSession: cachedSession, processInfo: processInfo, screen: screen),
                 timing: timing, now: { clock.now })
@@ -429,6 +462,69 @@ struct AgentChatStoreTests {
         #expect(await fixture.server.reads == 1)
     }
 
+    /// Antigravity CLI's Stop needs lines written just before it: a read
+    /// again wakes the loop from its idle pace and waits for a read that
+    /// began after it asked.
+    @Test func aReadAgainWakesTheLoopAndWaitsForAFreshRead() async throws {
+        let fixture = Fixture(
+            session: Self.first, timing: AgentChatStore.Timing(activeInterval: .seconds(60), idleInterval: .seconds(60)))
+        defer { fixture.store.end() }
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        fixture.store.show()
+        try await Self.waitUntil { Self.ids(fixture.store) == NumberedChatReducer.ids(0..<2) }
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+
+        #expect(await fixture.store.readAgain(within: .seconds(5)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    /// Antigravity CLI's Stop ends a turn's commands only once a read that
+    /// reached the transcript's end began after herdr reported that turn
+    /// starting. One begun before can show the turn before, which a prompt
+    /// from the terminal has since replaced.
+    @Test func aReadBegunBeforeATurnStartsDoesNotCoverIt() async throws {
+        let held = HeldStatus()
+        let fixture = Fixture(session: Self.first, heldStatus: held)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        #expect(!fixture.store.hasReadSinceTurnStarted, "nothing read yet")
+        await fixture.store.step()
+        #expect(fixture.store.hasReadSinceTurnStarted)
+
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        let gate = ScriptedTransportCallGate()
+        held.arm(gate)
+        let begunBefore = Task { await fixture.store.step() }
+        await gate.waitForEntry()
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .working))
+        #expect(!fixture.store.hasReadSinceTurnStarted)
+        await gate.open()
+        await begunBefore.value
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3), "the read reached the end")
+        #expect(!fixture.store.hasReadSinceTurnStarted, "the read began before the turn")
+
+        fixture.advance(1)
+        await fixture.store.step()
+        #expect(fixture.store.hasReadSinceTurnStarted)
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .idle))
+        #expect(fixture.store.hasReadSinceTurnStarted, "an idle Agent starts no turn")
+        fixture.advance(1)
+        fixture.store.agentDidChange(Self.agent(session: Self.first, status: .working))
+        #expect(!fixture.store.hasReadSinceTurnStarted)
+    }
+
+    /// With no loop to read, a read again gives up at its window, unless
+    /// what it waits for holds.
+    @Test func aReadAgainWithNoReadComingGivesUp() async {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(await fixture.store.readAgain(within: .milliseconds(200)) == false)
+        #expect(await fixture.store.readAgain(within: .seconds(5), until: { true }))
+    }
+
     @Test func noSessionIsExplainedWithoutReadingTheHost() async throws {
         let fixture = Fixture(session: nil)
 
@@ -439,7 +535,7 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
-    @Test(arguments: [ChatProgram.claude, .codex, .grok])
+    @Test(arguments: [ChatProgram.claude, .codex, .grok, .agy])
     func missingSessionExplainsTheMissingIdentityWithoutAnInstallDiagnosis(program: ChatProgram) {
         let reason = ChatUnavailableReason.noSession(program)
         #expect(reason.title == "Waiting for Conversation")
@@ -1855,6 +1951,43 @@ struct AgentChatStoreTests {
         await fixture.store.step()
         #expect(fixture.store.conversation.phase == .following(path: segment(2)))
         #expect(fixture.store.sendStatuses[id] == .recorded)
+    }
+
+    /// A dialog opening inside a turn, or its answer, is no turn start or
+    /// end: Chat neither asks herdr for the Agent again nor looks for its
+    /// transcript again, which on herdr TUI went out beside the card's own
+    /// screen read, but still reads the transcript for the request. The
+    /// turn's end does both. A look again would follow the undo's sibling.
+    @Test func aDialogInsideATurnNeitherRefreshesTheAgentNorLooksAgain() async throws {
+        let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
+        let directory = "/home/dev/.codex/sessions/2026/10/06"
+        let base = "\(directory)/rollout-2026-10-06T12-45-25-\(thread).jsonl"
+        let sibling = "\(directory)/rollout-2026-10-06T13-01-00-\(thread)_01a10f9a-0000-7000-8000-000000000001.jsonl"
+        let meta = #"{"type":"session_meta","payload":{"id":"\#(thread)"}}"# + "\n"
+        let fixture = Fixture(session: thread, program: .codex)
+        await fixture.files.write(meta + NumberedChatReducer.lines(0..<2), at: base)
+        await fixture.store.step()
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .working, program: .codex))
+        await fixture.store.step()
+        let asked = await fixture.server.reads
+        await fixture.files.write(meta + NumberedChatReducer.lines(40..<42), at: sibling)
+
+        await fixture.files.append(NumberedChatReducer.lines(2..<3), to: base)
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .blocked, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked)
+        #expect(fixture.store.conversation.phase == .following(path: base))
+        #expect(Self.ids(fixture.store).last == "n-2", "the poll still read the transcript")
+
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .working, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked)
+        #expect(fixture.store.conversation.phase == .following(path: base))
+
+        fixture.store.agentDidChange(Self.agent(session: thread, status: .idle, program: .codex))
+        await fixture.store.step()
+        #expect(await fixture.server.reads == asked + 1)
+        #expect(fixture.store.conversation.phase == .following(path: sibling))
     }
 
     @Test func twoIdenticalSendsNeedTwoRecordedCopies() async throws {
@@ -3921,6 +4054,67 @@ struct AgentChatStoreTests {
         await fixture.store.outputReadsSettled()
 
         #expect(fixture.store.outputs.isEmpty)
+    }
+
+    @Test func anAgySubagentSessionFollowsTheRootConversationWithoutResetting() async throws {
+        let rootID = "a6e482a6-e126-4699-96d8-ecdc66a91f60"
+        let firstSubagentID = "7b8895e7-6825-49bb-a9ff-9867399df377"
+        let nestedSubagentID = "e9d8e247-0c17-4913-8ec7-e3ef928a20a2"
+        let otherRootID = "0b9e4a7c-6f12-4d38-8c5a-3e1f7a2d9b02"
+        func agyPath(_ id: String) -> String {
+            "/home/dev/.gemini/antigravity-cli/brain/\(id)/.system_generated/logs/transcript_full.jsonl"
+        }
+        func subagentHeader(sender: String) -> String {
+            #"{"step_index":0,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","created_at":"2026-11-12T18:23:33Z","content":"The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-12T18:23:33Z sender=\#(sender) priority=MESSAGE_PRIORITY_HIGH content=task"}"#
+                + "\n"
+        }
+
+        // Opening while herdr reports a nested subagent follows the root
+        // conversation.
+        let fixture = Fixture(session: nestedSubagentID, program: .agy)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: agyPath(rootID))
+        await fixture.files.write(subagentHeader(sender: rootID), at: agyPath(firstSubagentID))
+        await fixture.files.write(subagentHeader(sender: firstSubagentID), at: agyPath(nestedSubagentID))
+
+        await fixture.store.step()
+
+        let generation = fixture.store.conversationGeneration
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(rootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+
+        // Bouncing between the root conversation and its subagents keeps the
+        // same timeline and generation while polling new root entries.
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: agyPath(rootID))
+        await fixture.server.set(Self.agent(session: rootID, status: .working, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: rootID, status: .working, program: .agy))
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+
+        await fixture.files.append(NumberedChatReducer.lines(4..<5), to: agyPath(rootID))
+        await fixture.server.set(Self.agent(session: firstSubagentID, status: .working, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: firstSubagentID, status: .working, program: .agy))
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(rootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<5))
+
+        // Switching to a genuinely different root conversation replaces the
+        // timeline and increments the generation.
+        await fixture.files.write(NumberedChatReducer.lines(10..<12), at: agyPath(otherRootID))
+        await fixture.server.set(Self.agent(session: otherRootID, status: .idle, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: otherRootID, status: .idle, program: .agy))
+        await fixture.store.step()
+
+        #expect(fixture.store.conversationGeneration == generation + 1)
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(otherRootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {

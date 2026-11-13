@@ -1,4 +1,4 @@
-// Heeler's Claude Code hook script in a tmux Pane (ADR 0044): the
+// Heeler's Claude Code hook script in a tmux Pane (ADR 0045): the
 // `@heeler-status` counts from the shared vector through every shell here,
 // then the script run by a stand-in Claude Code in a Pane of a private tmux
 // server, with a home of its own, for each event Heeler's entries name.

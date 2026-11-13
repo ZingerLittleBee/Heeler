@@ -437,6 +437,10 @@ actor HerdrCoreHostSession {
                         // Deltas can no longer be trusted: start over from a snapshot.
                         resubscribeRequested = true
                         await stream.end()
+                    case .created:
+                        yieldUpdate(.event(event))
+                        // The link's first Terminal starts the hold it inherits from.
+                        checkLeakedEnvironment(on: transport, generation: generation)
                     default:
                         yieldUpdate(.event(event))
                     }
@@ -479,9 +483,11 @@ actor HerdrCoreHostSession {
         kernelBox.withLock { $0 = kernel }
     }
 
-    /// Asked after every `hello`; the transport runs the exec once per link. The
-    /// connection neither waits for the answer nor depends on it. Not cancelled:
-    /// its own deadlines bound it, and the generation makes a late answer harmless.
+    /// Asked after every `hello` and each Terminal's creation; the transport runs
+    /// the exec once per link and set of holds. The connection neither waits for
+    /// the answer nor depends on it. Not cancelled: its own deadlines bound it,
+    /// the generation makes a late answer harmless, and the transport answers
+    /// only its newest read.
     private func checkLeakedEnvironment(on transport: any HerdrCoreTransport, generation: UInt64) {
         Task { [weak self] in
             guard let names = await transport.leakedEnvironmentNames() else { return }

@@ -406,7 +406,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         }
     }
 
-    // MARK: Control clients (ADR 0043)
+    // MARK: Control clients (ADR 0044)
 
     /// A terminal client of the user's attached to a session on the Host.
     struct DesktopClient: Equatable, Sendable {

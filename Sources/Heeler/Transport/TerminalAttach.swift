@@ -536,7 +536,7 @@ enum TmuxPaneCapture: Equatable, Sendable {
     case unknown
 }
 
-/// Checked Send's control-client operations on one tmux Attach (ADR 0043).
+/// Checked Send's control-client operations on one tmux Attach (ADR 0044).
 struct TmuxAttachSend: Sendable {
     typealias Sleep = @Sendable (Duration) async throws -> Void
 

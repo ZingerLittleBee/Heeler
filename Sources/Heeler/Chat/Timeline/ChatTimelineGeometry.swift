@@ -221,15 +221,18 @@ enum ChatHeightEstimate: Sendable, Equatable {
     /// little between those, so a stale height still lands far closer than
     /// a seed and keeps scroll positions steadier until the cell re-measures.
     case stale(CGFloat)
-    /// Never measured: the row family's first guess.
+    /// Never measured: the lines the row's text comes to, or for a row
+    /// that does not follow its text, the family's first guess.
     case seed(CGFloat)
 
+    /// `textWidth` is the reading column's, which `extent` wraps in.
     init(
-        cached: ChatMeasuredHeight?, seed: ChatRowSeed,
+        cached: ChatMeasuredHeight?, seed: ChatRowSeed, extent: ChatRowExtent?,
+        textWidth: CGFloat, metrics: ChatTextMetrics,
         width: CGFloat, contentSizeCategory: String, revision: Int
     ) {
         guard let cached else {
-            self = .seed(seed.height)
+            self = .seed(extent?.height(textWidth: textWidth, metrics: metrics) ?? seed.height)
             return
         }
         self = cached.isExact(width: width, contentSizeCategory: contentSizeCategory, revision: revision)
@@ -248,7 +251,55 @@ enum ChatHeightEstimate: Sendable, Equatable {
     }
 }
 
-/// Row families with their own first guess at a height. A seed only places
+/// How much text a row wraps: what tells a one-line answer from one
+/// several screens long before either is measured.
+///
+/// A family's seed put both at the same height. A list opened at its end
+/// then took a dozen long answers to fill the screen that the last one
+/// fills, and built and measured them all.
+struct ChatRowExtent: Sendable, Equatable {
+    /// The text's UTF-8 length, which a string knows without reading
+    /// itself.
+    var textBytes: Int
+    /// Blocks the text comes in. Each ends its last line short and stands
+    /// apart from the next.
+    var blocks: Int
+    /// Height around the text: the space above the row, a bubble's or a
+    /// card's padding.
+    var chrome: CGFloat = 0
+    /// Width the row keeps from its text, within the reading column.
+    var inset: CGFloat = 0
+
+    /// The height the text comes to in a column `textWidth` wide.
+    ///
+    /// Latin text averages half an em a letter. A CJK character is a whole
+    /// em and three bytes, so its text comes out half again too tall. That
+    /// way round costs a correction when the row measures; too short costs
+    /// rows built for nothing.
+    ///
+    /// Whole points, as measured heights are whole pixels: a fraction here
+    /// would put every row below off the pixel grid.
+    func height(textWidth: CGFloat, metrics: ChatTextMetrics) -> CGFloat {
+        let bytesPerLine = max(1, ((textWidth - inset) / (metrics.pointSize / 2)).rounded(.down))
+        let breaks = CGFloat(max(0, blocks - 1))
+        let lines = max(1, (CGFloat(textBytes) / bytesPerLine).rounded(.up) + breaks / 2)
+        return (chrome + lines * metrics.lineHeight + breaks * metrics.lineHeight / 2).rounded(.up)
+    }
+}
+
+/// The body text's size, which an unmeasured row's lines are counted in.
+struct ChatTextMetrics: Sendable, Equatable {
+    var pointSize: CGFloat
+    /// From one line of a paragraph to the next, which is more than the
+    /// font's own line height.
+    var lineHeight: CGFloat
+
+    /// The default text size.
+    static let standard = ChatTextMetrics(pointSize: 17, lineHeight: 22)
+}
+
+/// Row families with their own first guess at a height, for rows whose
+/// height does not follow their text (`ChatRowExtent`). A seed only places
 /// a row until it is measured once; afterwards even a stale measurement
 /// wins. The values are rough guesses at the default text size: a better
 /// guess only means a smaller correction when the row first measures.
@@ -265,8 +316,8 @@ enum ChatRowSeed: Sendable, CaseIterable {
         switch self {
         case .user: 72
         case .assistant: 120
-        case .tool: 52
-        case .reasoning: 44
+        case .tool: 28
+        case .reasoning: 28
         case .system: 36
         case .pending: 72
         case .olderStatus: 44

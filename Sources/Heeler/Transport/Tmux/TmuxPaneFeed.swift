@@ -1,6 +1,6 @@
 import Foundation
 
-/// What one Attach makes of its control client's events (ADR 0043): the
+/// What one Attach makes of its control client's events (ADR 0044): the
 /// bytes for a terminal that shows only its Pane, and the commands that get
 /// them. Pure: the Attach sends each command with its tag and hands back
 /// every event, the replies to those tags among them.

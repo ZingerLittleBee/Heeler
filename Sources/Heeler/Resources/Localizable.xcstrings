@@ -1041,6 +1041,9 @@
         }
       }
     },
+    "%@ hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal." : {
+      "comment" : "Why a Chat send went nowhere: the program's name"
+    },
     "%@ in %@" : {
       "comment" : "Tool row title for a find-in-page search; the first %@ is the pattern, the second the URL",
       "localizations" : {
@@ -1306,6 +1309,9 @@
           }
         }
       }
+    },
+    "%@ is still starting, so Heeler sent nothing. Send again once it's running." : {
+      "comment" : "Why a Chat send went nowhere: the program's name"
     },
     "%@ joins the tailnet as its own device. Its address and the tailnet's machines appear here afterwards." : {
       "comment" : "Tailscale sign-in footer. %@ is this device's name. Replaces a translation that called machines 機械.",
@@ -1796,6 +1802,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 個已暫存"
+          }
+        }
+      }
+    },
+    "%@ starts a conversation with its first message. Send one here or in the terminal, and Chat follows it." : {
+      "comment" : "In Chat's place before the program started a conversation: the program's name",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は最初のメッセージで会話を開始します。ここかターミナルで送ると、チャットが追従します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在收到第一条消息后开始对话。在此处或终端发送一条消息即可在此处显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在收到第一則訊息後開始對話。在這裡或終端機傳送一則訊息即可在此處跟隨顯示。"
           }
         }
       }
@@ -2868,6 +2897,47 @@
         }
       }
     },
+    "%lld background tasks stopped" : {
+      "comment" : "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Background task stopped"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld background tasks stopped"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドタスクが %lld 件停止しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个后台任务已停止"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個背景任務已停止"
+          }
+        }
+      }
+    },
     "%lld blocked" : {
       "comment" : "Pill counting a Host's Agents by status.",
       "localizations" : {
@@ -3726,6 +3796,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld / %lld 個節點上線中"
+          }
+        }
+      }
+    },
+    "%lld of %lld, skipped" : {
+      "comment" : "Question card header: the current question of the total, which is skipped",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld, skipped"
           }
         }
       }
@@ -5180,6 +5261,28 @@
         }
       }
     },
+    "A background service for Agent Notifications, Live Activity, Usage, and Pi and Oh My Pi Chat." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント通知、ライブアクティビティ、使用量、Pi と Oh My Pi のチャットのためのバックグラウンドサービスです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一项后台服务，用于 Agent 通知、实时活动、用量，以及 Pi 和 Oh My Pi 的“对话”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一項背景服務，用於 Agent 通知、即時動態、用量，以及 Pi 與 Oh My Pi 的對話檢視。"
+          }
+        }
+      }
+    },
     "A calm arctic palette for both appearances" : {
       "localizations" : {
         "ja" : {
@@ -5717,6 +5820,7 @@
         }
       }
     },
+    "A multi-select question takes its written answer with Submit." : {},
     "A newer version of Heeler installed this Host Helper. Update the app to change it." : {
       "localizations" : {
         "ja" : {
@@ -7596,28 +7700,6 @@
         }
       }
     },
-    "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホストのエージェント通知・ライブアクティビティ・使用量は Host Helper と共に提供されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主机上的 Agent 通知、实时活动和用量由 Host Helper 提供。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主機上的 Agent 通知、即時動態與用量都隨 Host Helper 提供。"
-          }
-        }
-      }
-    },
     "Agent Status" : {
       "comment" : "Heading of the status section in the Agent filter popover.",
       "localizations" : {
@@ -8942,6 +9024,47 @@
         }
       }
     },
+    "Antigravity CLI has exited. Start it again in the terminal first." : {},
+    "Antigravity CLI hit an error" : {},
+    "Antigravity CLI is waiting for a second key press (“%@”). Finish it in the terminal first." : {
+      "comment" : "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+b again to send command to background"
+    },
+    "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither." : {},
+    "Antigravity CLI reports its conversation after a message. Send one to show it here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI はメッセージのあとに会話を報告します。送るとここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI 会在收到消息后报告其对话。发送一条消息即可在此处显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI 會在收到訊息後才回報它的對話。傳送一則訊息即可顯示在這裡。"
+          }
+        }
+      }
+    },
+    "Antigravity CLI restarted." : {
+      "comment" : "Under a Chat notice that counts the background tasks Antigravity CLI stopped"
+    },
+    "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it." : {},
+    "Antigravity CLI takes a note only with a command's Yes or No." : {},
+    "Antigravity CLI won't ask again in this conversation for commands that start this way." : {},
+    "Antigravity CLI's answer field is open, so keys would be typed into it." : {},
+    "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first." : {},
+    "Antigravity CLI's input box is in bash mode with a command typed, and Esc would drop it. Stop it in the terminal." : {
+      "comment" : "Why Chat's Stop pressed nothing in Antigravity CLI"
+    },
+    "Antigravity CLI's note field is open on another row. Finish it in the terminal." : {},
+    "Antigravity CLI's note field is open, so a digit would be typed into it. Answer in the terminal." : {},
     "Any local branch is kept." : {
       "localizations" : {
         "ja" : {
@@ -10135,6 +10258,9 @@
           }
         }
       }
+    },
+    "Background command canceled" : {
+      "comment" : "Title of a Chat notice when Antigravity CLI cancels a background command"
     },
     "Background command finished" : {
       "comment" : "Title of a notice when a background command finishes.",
@@ -11560,6 +11686,9 @@
         }
       }
     },
+    "Canceled in the background" : {
+      "comment" : "Under a Chat tool row: Antigravity CLI canceled the command it sent to the background"
+    },
     "Cancelled" : {
       "comment" : "Status of an overlay peer search the user cancelled.",
       "localizations" : {
@@ -11671,24 +11800,24 @@
         }
       }
     },
-    "Changes apply instantly to current and future Attach terminals without reconnecting." : {
+    "Changes apply instantly to terminals, Chat and the app, without reconnecting." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "変更は再接続なしで、現在および今後の接続（Attach）ターミナルに即座に適用されます。"
+            "value" : "変更は再接続なしで、ターミナル、チャット、アプリに即座に適用されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更改会立即应用于当前及之后的连接终端，无需重新连接。"
+            "value" : "更改会立即应用于终端、对话和 App，无需重新连接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "變更會立即套用到目前與之後的 Attach 終端機，不需重新連線。"
+            "value" : "變更會立即套用到終端機、對話與 App，不需重新連線。"
           }
         }
       }
@@ -18410,6 +18539,9 @@
         }
       }
     },
+    "Declining ended the turn" : {
+      "comment" : "Under a Chat tool row the user declined: declining also ended the agent's turn"
+    },
     "Default" : {
       "localizations" : {
         "ja" : {
@@ -19784,6 +19916,9 @@
         }
       }
     },
+    "Earlier messages are in the conversation this one was forked from." : {
+      "comment" : "Under the divider atop a forked Antigravity CLI conversation in Chat"
+    },
     "Earlier messages could not be read" : {
       "localizations" : {
         "ja" : {
@@ -20583,6 +20718,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enter"
+          }
+        }
+      }
+    },
+    "Enter Password…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを入力…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入密码…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸入密碼…"
           }
         }
       }
@@ -22450,6 +22607,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "填入"
+          }
+        }
+      }
+    },
+    "Fill Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを入力"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "填入密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "填入密碼"
           }
         }
       }
@@ -24635,6 +24814,7 @@
         }
       }
     },
+    "Heeler can't find Antigravity CLI's input box on screen." : {},
     "Heeler can't find Grok Build's input box on screen." : {
       "localizations" : {
         "ja" : {
@@ -24679,6 +24859,7 @@
         }
       }
     },
+    "Heeler can't find the top of Antigravity CLI's dialog." : {},
     "Heeler can't press this key in this terminal, so it pressed nothing." : {
       "localizations" : {
         "ja" : {
@@ -25548,6 +25729,47 @@
         }
       }
     },
+    "Heeler couldn't read the Agent's screen after Stop, so %lld background commands may still run: %@. Stop them in the terminal: /tasks, then k." : {
+      "comment" : "Under the Composer after Stop in Antigravity CLI: how many commands may still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler couldn't read the Agent's screen after Stop, so %2$@ may still run in the background. Stop it in the terminal: /tasks, then k."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler couldn't read the Agent's screen after Stop, so %1$lld background commands may still run: %2$@. Stop them in the terminal: /tasks, then k."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」の後に Heeler がエージェントの画面を読み取れなかったため、%1$lld 件のバックグラウンドコマンドがまだ実行中の可能性があります: %2$@。ターミナルで /tasks を入力してから k を押して止めてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“停止”后 Heeler 无法读取 Agent 的屏幕，因此可能仍有 %1$lld 个后台命令在运行：%2$@。请在终端中输入 /tasks，然后按 k 停止它们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」後 Heeler 無法讀取 Agent 的畫面，因此可能仍有 %1$lld 個背景指令在執行：%2$@。請在終端機中輸入 /tasks，然後按 k 停止它們。"
+          }
+        }
+      }
+    },
     "Heeler couldn't read the Agent's screen, so nothing was sent." : {
       "localizations" : {
         "ja" : {
@@ -25659,6 +25881,9 @@
           }
         }
       }
+    },
+    "Heeler couldn't tell after Stop which background commands the turn started, so one may still run. Check in the terminal: /tasks, then k." : {
+      "comment" : "Under the Composer after Stop in Antigravity CLI: /tasks and k are typed in Antigravity CLI"
     },
     "Heeler creates this device's node ID when it connects. The network's screen then shows it, ready to authorize." : {
       "localizations" : {
@@ -25836,6 +26061,9 @@
           }
         }
       }
+    },
+    "Heeler doesn't know this Antigravity CLI dialog. Answer it with these keys or in the terminal." : {
+      "comment" : "On a Blocked card that shows an excerpt of the screen with keys to press"
     },
     "Heeler doesn't know this Grok Build card. Answer it with these keys or in the terminal." : {
       "localizations" : {
@@ -26696,6 +26924,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隱藏按鍵"
+          }
+        }
+      }
+    },
+    "Hide Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏密碼"
           }
         }
       }
@@ -31628,6 +31878,9 @@
         }
       }
     },
+    "Message to %@" : {
+      "comment" : "Title of an Antigravity CLI tool row that sends a message to another agent: its name"
+    },
     "Messages you and the Agent send show here." : {
       "localizations" : {
         "ja" : {
@@ -31734,6 +31987,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定有誤"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
           }
         }
       }
@@ -32253,6 +32528,7 @@
         }
       }
     },
+    "Named on the program's command line" : {},
     "Names and terms you say, separated by commas, so the service spells them right." : {
       "localizations" : {
         "ja" : {
@@ -34114,6 +34390,28 @@
         }
       }
     },
+    "No password prompt is on screen. If nothing is asking for one, the password will show in the terminal. It’s typed in without Return." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面にパスワードの入力要求がありません。何も要求していなければ、パスワードはターミナルに表示されます。入力後に Return キーは押されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上没有密码提示。如果没有程序在要密码，密码会显示在终端里。输入后不会自动回车。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "畫面上沒有密碼提示。如果沒有程式在要求密碼，密碼會顯示在終端機裡。輸入後不會自動按下 Return 鍵。"
+          }
+        }
+      }
+    },
     "No peers with an address" : {
       "localizations" : {
         "ja" : {
@@ -34758,6 +35056,7 @@
         }
       }
     },
+    "Not an Antigravity CLI dialog." : {},
     "Not an Oh My Pi dialog." : {
       "localizations" : {
         "ja" : {
@@ -37777,6 +38076,28 @@
         }
       }
     },
+    "Opens a secure field for the password prompt on screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面のパスワード入力要求に答える安全な入力欄を開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开安全输入框，回应屏幕上的密码提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟安全輸入欄位，回應畫面上的密碼提示"
+          }
+        }
+      }
+    },
     "Opens field actions" : {
       "localizations" : {
         "ja" : {
@@ -39490,24 +39811,24 @@
         }
       }
     },
-    "Pinching a terminal to zoom changes its text size too, and it sticks. Each appearance has its own theme: a dark theme for Light Mode keeps the terminal dark under a light system." : {
+    "Pinching a terminal to zoom changes its text size too, and it sticks." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。外観（ライト/ダーク）ごとにテーマを設定できます: ライトモード用のダークテーマは、ターミナルをダークのままに保ちます。"
+            "value" : "ターミナルをピンチで拡大すると文字サイズも変更され、そのまま維持されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。浅色和深色外观各有独立的主题：为浅色模式选择深色主题，可在浅色系统下让终端保持深色。"
+            "value" : "在终端中双指缩放也会改变文字大小，并保持该设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。每種外觀都有各自的主題：為淺色模式選擇深色主題，即使系統是淺色，終端機也會維持深色。"
+            "value" : "在終端機上用兩指縮放時，文字大小也會一併改變，而且會保留下來。"
           }
         }
       }
@@ -40706,6 +41027,29 @@
         }
       }
     },
+    "Queued" : {
+      "comment" : "Chat: on a message the Agent's program holds in its queue and has not received yet.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キュー済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排队中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排隊中"
+          }
+        }
+      }
+    },
     "Queued. Codex sends it after its next tool call." : {
       "localizations" : {
         "ja" : {
@@ -41390,6 +41734,7 @@
         }
       }
     },
+    "Reading the Agent's screen" : {},
     "Reading the conversation timed out" : {
       "localizations" : {
         "ja" : {
@@ -41544,6 +41889,9 @@
           }
         }
       }
+    },
+    "Recommended" : {
+      "comment" : "Under the answer the agent recommends on a question card"
     },
     "Reconnect" : {
       "localizations" : {
@@ -44837,6 +45185,7 @@
         }
       }
     },
+    "Saves a rule in Antigravity CLI's settings, so commands that start this way aren't asked about again." : {},
     "Saves a rule, so this isn't asked again." : {
       "localizations" : {
         "ja" : {
@@ -45765,28 +46114,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已送到背景"
-          }
-        }
-      }
-    },
-    "Sent while working" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業中に送信済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在工作中发送"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在工作時傳送"
           }
         }
       }
@@ -46782,6 +47109,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示預估 API 費用"
+          }
+        }
+      }
+    },
+    "Show Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示密碼"
           }
         }
       }
@@ -48002,6 +48351,9 @@
         }
       }
     },
+    "Skip" : {
+      "comment" : "On an Antigravity CLI question card: skips the question shown"
+    },
     "Skip Grok Build's question in the terminal." : {
       "localizations" : {
         "ja" : {
@@ -48068,6 +48420,9 @@
           }
         }
       }
+    },
+    "Skipped" : {
+      "comment" : "In a question's answer place under a Chat tool row: the question was skipped"
     },
     "Sleep" : {
       "comment" : "Tool row title for a sleep with no duration",
@@ -49178,6 +49533,56 @@
         }
       }
     },
+    "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc." : {
+      "comment" : "Under the Composer after Stop in Antigravity CLI"
+    },
+    "Stop ended the turn, but %lld background commands still run: %@. Stop them in the terminal: /tasks, then k." : {
+      "comment" : "Under the Composer after Stop in Antigravity CLI: how many commands still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stop ended the turn, but %2$@ still runs in the background. Stop it in the terminal: /tasks, then k."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stop ended the turn, but %1$lld background commands still run: %2$@. Stop them in the terminal: /tasks, then k."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」でターンは終了しましたが、%1$lld 件のバックグラウンドコマンドがまだ実行中です: %2$@。ターミナルで /tasks を入力してから k を押して止めてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“停止”已结束本轮，但仍有 %1$lld 个后台命令在运行：%2$@。请在终端中输入 /tasks，然后按 k 停止它们。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「停止」已結束這一輪，但仍有 %1$lld 個背景指令在執行：%2$@。請在終端機中輸入 /tasks，然後按 k 停止它們。"
+          }
+        }
+      }
+    },
+    "Stop has finished in Antigravity CLI, but nothing was sent, so send again." : {
+      "comment" : "Replaces the held send's notice once Stop's typing in Antigravity CLI ended"
+    },
+    "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment." : {
+      "comment" : "Why a Chat or terminal send waits while Stop types into Antigravity CLI's task list"
+    },
     "Stop running" : {
       "localizations" : {
         "ja" : {
@@ -49379,6 +49784,9 @@
           }
         }
       }
+    },
+    "Stopped when Antigravity CLI restarted" : {
+      "comment" : "Under a Chat tool row: the background command stopped when Antigravity CLI restarted"
     },
     "Stopping" : {
       "localizations" : {
@@ -49666,6 +50074,9 @@
           }
         }
       }
+    },
+    "Submit" : {
+      "comment" : "Sends the checked answers on a multi-select question's last page"
     },
     "Submit Answers" : {
       "localizations" : {
@@ -50658,6 +51069,29 @@
         }
       }
     },
+    "Tell %@ what to do" : {
+      "comment" : "Placeholder of the note field on a permission card: the program's name",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に指示する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告诉 %@ 怎么做"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告訴 %@ 要做什麼"
+          }
+        }
+      }
+    },
     "Tell Claude what to change" : {
       "localizations" : {
         "ja" : {
@@ -50676,28 +51110,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "告訴 Claude 要修改什麼"
-          }
-        }
-      }
-    },
-    "Tell Claude what to do" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude に指示する"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "告诉 Claude 怎么做"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "告訴 Claude 要做什麼"
           }
         }
       }
@@ -57279,6 +57691,28 @@
         }
       }
     },
+    "The password is typed in without Return. Press Return in the terminal to submit it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードは Return キーなしで入力されます。ターミナルで Return キーを押して送信してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码输入后不会自动回车。请在终端里按回车键提交。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼輸入後不會自動按下 Return 鍵。請在終端機裡按下 Return 鍵送出。"
+          }
+        }
+      }
+    },
     "The permission has no reject row." : {
       "comment" : "Planner refusal for Grok Build's permission",
       "localizations" : {
@@ -57660,6 +58094,7 @@
         }
       }
     },
+    "The question has no Write-in row." : {},
     "The question has no answers Heeler can read." : {
       "localizations" : {
         "ja" : {
@@ -59169,6 +59604,7 @@
         }
       }
     },
+    "The trust prompt has no such action." : {},
     "The trust screen has no such action." : {
       "comment" : "Planner refusal for Codex's trust screen",
       "localizations" : {
@@ -65553,6 +65989,9 @@
         }
       }
     },
+    "Wait up to %@" : {
+      "comment" : "Title of an Antigravity CLI tool row that waits: the longest wait, such as 30s"
+    },
     "Waited for subagents" : {
       "localizations" : {
         "ja" : {
@@ -65596,6 +66035,12 @@
           }
         }
       }
+    },
+    "Waiting for %@ to start the conversation." : {
+      "comment" : "Chat's banner: the program's name"
+    },
+    "Waiting for %@ to start the conversation. Showing saved messages." : {
+      "comment" : "Chat's banner over messages saved earlier: the program's name"
     },
     "Waiting for Conversation" : {
       "localizations" : {
@@ -67155,6 +67600,9 @@
           }
         }
       }
+    },
+    "a command" : {
+      "comment" : "Stands for a background command whose command line Heeler doesn't know, in the list of commands Stop left running"
     },
     "a rollout from Codex 0.30 or earlier" : {
       "localizations" : {
@@ -68822,6 +69270,7 @@
         }
       }
     },
+    "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's." : {},
     "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's." : {
       "localizations" : {
         "ja" : {
@@ -71375,6 +71824,9 @@
     },
     "· %@" : {
       "shouldTranslate" : false
+    },
+    "“%@”" : {
+      "comment" : "A command line in quotes, in the list of background commands Stop left running"
     },
     "“%@” is not a peer such as tcp://host:11010 or udp://host:11010." : {
       "localizations" : {

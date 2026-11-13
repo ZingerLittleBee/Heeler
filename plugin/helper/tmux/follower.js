@@ -1,5 +1,5 @@
 // Follows the tmux servers whose paths the app stored under `tmux/<socket>/`
-// (ADRs 0042, 0043 and 0044). Every command passes `-N` and `-S`, so a stopped
+// (ADRs 0043, 0044 and 0045). Every command passes `-N` and `-S`, so a stopped
 // server stays stopped; a server that starts or restarts gets a fresh instance.
 
 import { setTimeout as delay } from "node:timers/promises";

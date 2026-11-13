@@ -11,6 +11,28 @@ import UIKit
 struct ChatTimelineControllerTests {
     private static let frame = CGRect(x: 0, y: 0, width: 390, height: 640)
 
+    /// A row the list drops, as a refused Send's echo, leaves nothing of
+    /// itself in the cell UIKit keeps hidden for reuse, which UI tests'
+    /// accessibility tree still lists: a "Sending…" stayed there under
+    /// Waiting for Conversation until the next Send (live).
+    @Test func aDroppedRowLeavesNothingInTheCellUIKitKeeps() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let echo = ChatPendingEcho(id: UUID(), text: "Reply with the single word gamma.", state: .sending)
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(pending: [echo]))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(controller.timeline.visibleCells.count == 1)
+
+            controller.apply(Self.state([], revision: 2))
+            await Self.settle(controller)
+
+            let view = controller.timeline
+            let kept = view.subviews.compactMap { $0 as? UICollectionViewCell }.filter { !view.visibleCells.contains($0) }
+            #expect(kept.allSatisfy { $0.contentConfiguration == nil })
+        }
+    }
+
     @Test func imageContextMenuUsesRecordedPathAndCommitsToPreviewSheet() async throws {
         let path = "/tmp/actual.png"
         let controller = ChatTimelineController(actions: ChatTimelineActions())
@@ -170,6 +192,42 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// Chrome resting on the list's trailing edge, such as the Workspace
+    /// terminals handle, keeps rows short of it: they end before it and
+    /// measure at the width left, whether it is there from the start or goes
+    /// later. The list itself still runs to the edge.
+    @Test func rowsEndShortOfATrailingReserveAndMeasureAtTheWidthLeft() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<12)))
+        // A paragraph of a few lines, which a narrower row wraps onto more.
+        let answer = ChatRowID.entry(ChatEntryID("e11"))
+        let reserve: CGFloat = 120
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            let view = controller.timeline
+            @MainActor func expectRows(endingAt edge: CGFloat) {
+                #expect(!view.visibleCells.isEmpty)
+                for cell in view.visibleCells {
+                    #expect(abs(cell.frame.maxX - edge) <= 0.5)
+                    let fitted = cell.contentView.systemLayoutSizeFitting(
+                        CGSize(width: cell.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+                        withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
+                    #expect(abs(cell.bounds.height - fitted.height) <= 1)
+                }
+            }
+            controller.setTrailingReserve(reserve)
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            #expect(view.bounds.width == Self.frame.width)
+            expectRows(endingAt: Self.frame.width - reserve)
+            let narrow = try #require(controller.cellFrame(of: answer)).height
+
+            controller.setTrailingReserve(0)
+            await Self.settle(controller)
+            expectRows(endingAt: Self.frame.width)
+            #expect(try #require(controller.cellFrame(of: answer)).height < narrow)
+        }
+    }
+
     @Test func opensAtTheNewestRowWithVisibleRowsMeasured() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.entries(0..<60)))
@@ -187,6 +245,47 @@ struct ChatTimelineControllerTests {
                     withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
                 #expect(abs(cell.bounds.height - fitted.height) <= 1)
             }
+        }
+    }
+
+    /// At one guess for every answer, a list opened at its end took a
+    /// dozen long answers to fill the screen that the last one fills, and
+    /// built and measured them all (perf lab: 20 cells, of them 5 long
+    /// answers nobody saw).
+    @Test func aListOfLongAnswersOpensWithOnlyTheRowsThatShow() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.longAnswers(14)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            #expect(controller.visibleRowIDs.last == rows.last?.id)
+            // Cells UIKit keeps for reuse stay in the view, hidden. At one
+            // guess for every answer this built 11.
+            let built = view.subviews.filter { $0 is ChatHostingCell }.count
+            #expect(built <= controller.visibleRowIDs.count + 3, "built \(built)")
+        }
+    }
+
+    /// The other half of the same guess: where an unmeasured answer is
+    /// placed is about where it measures, so the list is about as long
+    /// before the reader walks it as after.
+    @Test func unmeasuredAnswersStandAboutAsTallAsTheyMeasure() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: Self.longAnswers(14)))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            let guessed = view.contentSize.height
+            for _ in 0..<200 where view.contentOffset.y > view.minOffsetY + 0.5 {
+                Self.drag(controller, to: view.contentOffset.y - view.bounds.height * 0.8)
+                await Self.settle(controller)
+            }
+            #expect(view.contentOffset.y <= view.minOffsetY + 0.5)
+            let measured = view.contentSize.height
+            #expect(measured > view.bounds.height * 10)
+            #expect(guessed > measured * 0.7 && guessed < measured * 1.4, "guessed \(guessed), measured \(measured)")
         }
     }
 
@@ -292,6 +391,111 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    /// Rows arriving while a drag or its bounce holds the list past its
+    /// start wait until it is back too. Applying them puts the reader's row
+    /// back, which clamps the offset to the start and ends the bounce at
+    /// once: letting go of a pull that loads snapped the list back in two
+    /// frames instead of bouncing, as the request itself changes the Load
+    /// Earlier row (live).
+    @Test func rowsArrivingWhileTheListIsPastItsStartWaitUntilItIsBack() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let available = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .available))
+        let loading = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
+        let more = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(100..<260), older: .loading))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(available))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+            let count = view.numberOfItems(inSection: 0)
+
+            controller.scrollViewWillBeginDragging(view)
+            let pulled = view.minOffsetY - ChatTimelineController.pullToLoadDistance - 10
+            view.contentOffset.y = pulled
+            controller.scrollViewDidEndDragging(view, willDecelerate: true)
+            controller.apply(Self.state(loading, revision: 2))
+            #expect(abs(view.contentOffset.y - pulled) <= 0.5)
+            controller.apply(Self.state(more, revision: 3))
+            #expect(abs(view.contentOffset.y - pulled) <= 0.5)
+            #expect(view.numberOfItems(inSection: 0) == count)
+
+            // The bounce brings the list back to its start.
+            view.contentOffset.y = view.minOffsetY
+            #expect(view.numberOfItems(inSection: 0) > count)
+        }
+    }
+
+    /// A page can land before the bounce after a pull is over. The row then
+    /// never showed the request, and shows what the page left: the pull's
+    /// loading ends with it rather than spinning until the next touch.
+    @Test func aPageThatLandsBeforeThePullBouncesBackEndsItsLoading() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let available = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .available))
+        let loading = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
+        let landed = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(100..<260), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(available))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+
+            // Rows built before the request say nothing about it.
+            Self.pull(controller, by: ChatTimelineController.pullToLoadDistance + 10)
+            controller.apply(Self.state(available, revision: 2))
+            view.contentOffset.y = view.minOffsetY
+            #expect(controller.olderPullPhase == .requested)
+
+            Self.pull(controller, by: ChatTimelineController.pullToLoadDistance + 10)
+            controller.apply(Self.state(loading, revision: 3))
+            controller.apply(Self.state(landed, revision: 4))
+            #expect(controller.olderPullPhase == .requested)
+            view.contentOffset.y = view.minOffsetY
+            #expect(controller.olderPullPhase == .idle)
+        }
+    }
+
+    /// Earlier history landing above the reader builds the rows it brings
+    /// into view and no others. The rows went in with the offset left where
+    /// it was, at the top of what loaded, so the collection view built the
+    /// rows there and then, back at the reader's row, every row the reader
+    /// had been looking at again: a page took 94 ms to land where it now
+    /// takes 49 (live, Release, Simulator).
+    @Test func olderRowsArrivingAboveBuildOnlyTheRowsTheyBringIntoView() async throws {
+        let controller = ChatTimelineController(actions: ChatTimelineActions())
+        let builder = ChatRowBuilder()
+        let all = Self.longAnswers(40)
+        let newer = await builder.rows(for: ChatTimelineInput(entries: Array(all.suffix(40)), older: .available))
+        let more = await builder.rows(for: ChatTimelineInput(entries: all, older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(newer))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+            let (anchor, before) = try #require(Self.firstFullyVisibleRow(controller) { $0 != .olderHistory })
+            let shown = Set(controller.visibleRowIDs)
+            let built = controller.cellBuilds
+
+            controller.apply(Self.state(more, revision: 2))
+            let broughtIntoView = Set(controller.visibleRowIDs).subtracting(shown)
+            #expect(!broughtIntoView.isEmpty)
+            #expect(controller.cellBuilds - built <= broughtIntoView.count, "built \(controller.cellBuilds - built)")
+            #expect(!controller.isFollowing)
+            await Self.settle(controller)
+            #expect(abs(try #require(Self.screenY(of: anchor, in: controller)) - before) <= 0.5)
+        }
+    }
+
     @Test func olderRowsLoadedUnderTheLoadEarlierRowKeepTheReadersRowInPlace() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
         let builder = ChatRowBuilder()
@@ -387,9 +591,12 @@ struct ChatTimelineControllerTests {
             controller.scrollViewDidEndDragging(view, willDecelerate: true)
             #expect(controller.olderPullPhase == .requested)
 
+            // The row shows the request once the bounce is back at the top.
             let loading = await builder.rows(
                 for: ChatTimelineInput(entries: Self.entries(200..<260), older: .loading))
             controller.apply(Self.state(loading, revision: 2))
+            #expect(controller.olderPullPhase == .requested)
+            view.contentOffset.y = view.minOffsetY
             #expect(controller.olderPullPhase == .idle)
         }
     }
@@ -1040,7 +1247,7 @@ struct ChatTimelineControllerTests {
 
     @Test func aTurnThatFinishesUnderTheReaderPutsItsHeaderWhereTheyWere() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
-        let (rows, turns) = await Self.turns(0..<3, steps: 16, answerLength: 120)
+        let (rows, turns) = await Self.turns(0..<3, steps: 24, answerLength: 120)
         var running = turns
         running[running.count - 1].endedAt = nil
         running[running.count - 1].ending = nil
@@ -1639,6 +1846,28 @@ struct ChatTimelineControllerTests {
 
     /// Lays out until the content size and offset hold still: measuring a
     /// row can change the rows shown, which then measure in turn.
+    /// Prompts with answers from a few lines to several screens: prose,
+    /// a list and code, as an Agent writes them.
+    nonisolated static func longAnswers(_ count: Int) -> [ChatEntry] {
+        (0..<count).flatMap { index in
+            let paragraphs = (0..<(2 + index % 5 * 3)).map { paragraph in
+                "Paragraph \(paragraph) of answer \(index). "
+                    + String(repeating: "The change keeps what the reader sees where it was. ", count: 2 + paragraph % 4)
+            }
+            let list = (1...(3 + index % 4)).map { "- Step \($0) of the plan for answer \(index)" }
+            let code = "```swift\n" + (1...(4 + index % 6)).map { "let value\($0) = compute(\($0))" }.joined(separator: "\n") + "\n```"
+            let text = (paragraphs + [list.joined(separator: "\n"), code]).joined(separator: "\n\n")
+            return [
+                ChatEntry(
+                    id: ChatEntryID("q\(index)"), sourceOffset: UInt64(index) * 200,
+                    content: .user(ChatUserMessage(text: "Question \(index): what changed in this part?"))),
+                ChatEntry(
+                    id: ChatEntryID("a\(index)"), sourceOffset: UInt64(index) * 200 + 100,
+                    content: .assistant(ChatAssistantMessage(text: text))),
+            ]
+        }
+    }
+
     private static func settle(_ controller: ChatTimelineController) async {
         let view = controller.timeline
         var last: (size: CGSize, offset: CGPoint)?
@@ -1900,9 +2129,11 @@ struct ChatRowViewTests {
 
     /// VoiceOver reads a user bubble once, chips included. A label set on the
     /// bubble's stack alone once went to each of its children, so a bubble
-    /// with a chip read "You: …, You: …" and never named the chip.
+    /// with a chip read "You: …, You: …" and never named the chip. A queued
+    /// prompt says so; once delivered it reads like any other.
     @Test(arguments: [
-        (ChatUserMessage(text: "also say PINEAPPLE", wasQueued: true), "You: also say PINEAPPLE, Sent while working"),
+        (ChatUserMessage(text: "also say PINEAPPLE", delivery: .queued), "You: also say PINEAPPLE, Queued"),
+        (ChatUserMessage(text: "also say PINEAPPLE", delivery: .steered), "You: also say PINEAPPLE"),
         (
             ChatUserMessage(text: "look", imageCount: 2, attachmentLabels: ["notes.md"]),
             "You: look, 2 images, notes.md"
@@ -1924,6 +2155,16 @@ struct ChatRowViewTests {
         controller.view.layoutIfNeeded()
         let labels = AccessibilityProbe.labels(in: controller.view).filter { $0.contains("You") }
         #expect(labels == [expected])
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            controller.view.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds).image { _ in
+                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(
+                image, named: "user-bubble-\(message.delivery.rawValue)-\(message.imageCount)-\(style.rawValue)",
+                as: .png)
+        }
     }
 
     private static let connectedActions = ChatRowActions(
@@ -1967,6 +2208,25 @@ struct ChatRowViewTests {
         let expanded = try await Self.labels(of: tool, isExpanded: true)
         #expect(expanded.contains { $0.contains("No output when last seen.") }, "\(expanded)")
         #expect(!expanded.contains("No output."), "\(expanded)")
+    }
+
+    /// A question the user skipped reads `Skipped` in its answer's place;
+    /// one with no answer and no skip shows nothing there.
+    @Test func anExpandedQuestionSaysWhichWasSkipped() async throws {
+        let tool = ChatToolActivity(
+            kind: .question, name: "ask_question", title: "Which color? · Which size? · Which shape?",
+            status: .succeeded,
+            questions: [
+                ChatQuestion(text: "Which color?", options: ["red", "green"], answer: "green"),
+                ChatQuestion(text: "Which size?", options: ["small", "large"], isSkipped: true),
+                ChatQuestion(text: "Which shape?", options: ["round", "square"]),
+            ])
+        let labels = try await Self.labels(of: tool, isExpanded: true)
+        // The row reads as one element, each question followed by what
+        // answered it.
+        #expect(labels.joined().components(separatedBy: "Skipped").count == 2, "\(labels)")
+        #expect(
+            labels.contains { $0.hasSuffix("Which color?, green, Which size?, Skipped, Which shape?") }, "\(labels)")
     }
 
     /// A call that never ran says nothing about output it has none of

@@ -66,7 +66,7 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   供稍后打开。
 - **Chat** —— 以原生消息而不是终端画面阅读 Agent 的对话，在 Composer 里
   回复，并用按钮回答 Blocked 的 Agent；支持 Claude Code、Codex、Pi、
-  Oh My Pi、Grok Build 和 OpenCode（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
+  Oh My Pi、Grok Build、OpenCode 和 Antigravity CLI（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
 - **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
   一次 Send 投递；工具键盘另有 Agent 控制键、Agent Skills、可复用的
   Snippets 和终端外观。
@@ -83,8 +83,9 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   30 天的 Token Usage 和估算 API 费用，可汇总所有 Host 或只看一台；主屏和
   锁屏小组件随时可见（[了解更多](https://docs.heeler.bybee.dev/zh/usage)）。
 - **Worktrees** —— 让 Agent 从工作区仓库的干净检出上启动。
-- **外观** —— 跟随系统 / 浅色 / 深色；30 个终端主题，浅色深色各有独立
-  槽位；内置 JetBrains Mono 与 IBM Plex Mono；双指缩放字号。
+- **外观** —— 跟随系统 / 浅色 / 深色；30 个主题，浅色深色各有独立槽位，
+  终端、Chat 和整个 App 都使用它；内置 JetBrains Mono 与 IBM Plex Mono；
+  双指缩放字号。
 - **跳板机** —— 经 SSH 跳板访问不可直连的机器，两跳各自校验密钥。
 
 ## 连接原理

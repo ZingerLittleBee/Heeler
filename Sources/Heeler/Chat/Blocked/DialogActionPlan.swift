@@ -15,9 +15,12 @@ enum DialogAction: Sendable, Hashable {
     /// Claude plan: types `note` into the feedback row and approves with
     /// shift+tab, which takes the first approval option.
     case approvePlan(note: String)
-    /// Claude multi-select question: leaves exactly these answers checked,
-    /// then presses the page's `Next` or `Submit` button.
-    case submitSelection(Set<Int>)
+    /// A multi-select question: leaves exactly these answers checked, then
+    /// presses Claude's `Next` or `Submit` button, or Antigravity CLI's
+    /// Enter. On Antigravity CLI `text` goes into the `Write-in...` field
+    /// first and is submitted with the checked answers; Claude's planner
+    /// refuses it.
+    case submitSelection(Set<Int>, text: String? = nil)
     /// Esc. Claude declines and stops the turn, and quits on the trust
     /// dialog; Codex declines an approval or interrupts the turn.
     case dismiss

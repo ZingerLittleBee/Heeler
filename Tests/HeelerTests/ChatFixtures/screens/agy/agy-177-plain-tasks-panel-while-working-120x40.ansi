@@ -1,0 +1,14 @@
+> Run the shell command sleep 40 in the foreground and wait until it exits, then reply finished.
+● Running (sleep 40) (ctrl+o to expand)
+⣷  Running command...
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Tasks
+Agent Backgrounded
+> ● [03:08:03] sleep 40                                                                                          running
+  ● [03:00:33] sleep 40                                                                               completed (exit 0)
+  ● [02:54:02] sleep 40                                                                                        cancelled
+  ● [02:43:45] sleep 40                                                                               completed (exit 0)
+Keyboard: ↑/↓ Navigate  ←/→ Page  enter View output  k Kill Task  x Remove Task From List
+esc to cancel                                                               Gemini 4 Argon · medium · 1 task(s) · /tasks

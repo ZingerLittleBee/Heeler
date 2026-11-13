@@ -1,0 +1,448 @@
+import Foundation
+import os
+
+/// What Chat's Stop presses in Antigravity CLI after its Esc, for the
+/// commands the stopped turn sent to the background (ADR 0024). agy 1.5.3
+/// makes a command a background task once its WaitMsBeforeAsync passes,
+/// 10 s on every call seen, and from then on Esc and Ctrl+C leave it
+/// running; only `k` in agy's `/tasks` panel ends it, with no confirmation.
+///
+/// Once the screen shows the turn ended, this types `/tasks` into the empty
+/// box, presses Enter on the `/` popup's `/tasks` row, and then, in the
+/// panel, `k` on each of the turn's running commands that is not a daemon,
+/// moving one row at a time, and Esc to close it. Every key goes only after
+/// the latest read passes its check: the one its step waited for, when that
+/// shows what the key needs, else a fresh one. The panel's top rows must
+/// name all of the turn's background commands, newest first, so a task from
+/// an earlier turn is never selected: rows match by command, since their
+/// times are the Host's local time. A check that fails presses nothing more
+/// than what takes `/tasks` back out, and says what still runs.
+@MainActor
+struct AgyBackgroundTaskStop {
+    struct Timing: Sendable {
+        /// How long the turn may take to end after the Esc; past it Stop's
+        /// own wait says the Agent still works.
+        var turnEnd: Duration = .seconds(3)
+        /// How long the popup, the panel or a move may take to show. A read's
+        /// own time, 0.8 to 1.65 s through herdr live, does not count
+        /// against it (`poll`).
+        var step: Duration = .seconds(3)
+        /// How long a killed row may take to stop reading `running`: under
+        /// a second, twice, live.
+        var kill: Duration = .seconds(2)
+        var poll: Duration = .milliseconds(150)
+        /// How long Chat's transcript may take to bring a command's task:
+        /// the read under way may have begun before agy wrote it, and a read
+        /// that found new lines took up to 5.8 s over SFTP (live, 31 reads).
+        var transcript: Duration = .seconds(8)
+    }
+
+    /// The turn Chat's transcript leaves open, as last read.
+    struct OpenTurn: Equatable, Sendable {
+        /// The conversation Chat follows (`AgentChatStore.conversationGeneration`).
+        var conversation: Int
+        /// The turn's first entry; nil for a turn opened above the loaded
+        /// lines. A prompt, or a task's end after a reply, opens another.
+        var firstEntry: ChatEntryID?
+        /// Its background commands, oldest first
+        /// (`ChatTranscript.openTurnBackgroundCommands`).
+        var commands: [ChatBackgroundCommand]
+
+        func isSameTurn(as other: OpenTurn) -> Bool {
+            conversation == other.conversation && firstEntry == other.firstEntry
+        }
+    }
+
+    /// What the follow-through reads of Chat's conversation.
+    struct Transcript {
+        /// A send of Chat's waits for its record, so the open turn the
+        /// transcript shows may be the one before.
+        var awaitsRecord: @MainActor () -> Bool
+        var openTurn: @MainActor () -> OpenTurn
+        /// Whether the open turn read is the running one
+        /// (`AgentChatStore.hasReadSinceTurnStarted`).
+        var isCurrent: @MainActor () -> Bool
+        /// `AgentChatStore.readAgain(within:until:)`.
+        var readAgain: @MainActor (Duration, @MainActor () -> Bool) async -> Bool
+    }
+
+    /// What Chat's Stop presses after its Esc, built as Stop is tapped so it
+    /// stops the turn the tap saw (`ChatStopPlan.composerInterrupt`); nil
+    /// while a send of Chat's waits for its record. Only a send whose echo
+    /// still waits can be that turn's prompt; an overdue one would otherwise
+    /// keep Stop from every later turn.
+    ///
+    /// A prompt from elsewhere (the terminal page, typing in the terminal,
+    /// another client) starts a turn Chat reads seconds later, while the
+    /// turn before it, ended by an Esc agy records nothing for, still reads
+    /// as open with its commands running. So unless the open turn at the tap
+    /// is current, Chat reads again first, and ends commands only of a turn
+    /// that is then current and still the tapped one; one Chat cannot place
+    /// gets nothing pressed and a notice of what may still run.
+    ///
+    /// agy writes the step that makes a command a task as it lists the task
+    /// under the box, but Chat's read can bring it seconds later, after a
+    /// tap (live). So with none of the open turn's commands read at the tap,
+    /// Chat reads again unless the screen after the Esc lists no task, and
+    /// the commands that turn then has, if it is still the open one, are
+    /// ended. A read that never places the turn presses nothing and says a
+    /// command may still run.
+    static func followThrough(
+        reading transcript: Transcript, io: BlockedScreenIO, mayContinue: @escaping @MainActor () -> Bool,
+        timing: Timing = Timing(), clock: BlockedCardClock = .live
+    ) -> ChatStopFollowThrough? {
+        guard !transcript.awaitsRecord() else { return nil }
+        let tapped = transcript.openTurn()
+        let tappedIsCurrent = transcript.isCurrent()
+        func stop(_ turn: OpenTurn) -> AgyBackgroundTaskStop? {
+            guard turn.isSameTurn(as: tapped) else { return nil }
+            return AgyBackgroundTaskStop(
+                commands: turn.commands, io: io, mayContinue: mayContinue, timing: timing, clock: clock)
+        }
+        if let stop = stop(tapped) {
+            if tappedIsCurrent { return { await stop.run() } }
+            return {
+                _ = await transcript.readAgain(timing.transcript) { transcript.isCurrent() }
+                guard transcript.isCurrent() else { return Self.notice(for: tapped.commands.filter(\.isStoppable)) }
+                // The Esc stopped a turn Chat had not read.
+                guard transcript.openTurn().isSameTurn(as: tapped) else { return nil }
+                return await stop.run()
+            }
+        }
+        return {
+            // Only a screen that shows no task spares the wait; one that
+            // could not be read says nothing of what runs.
+            if let screen = try? await io.readScreen(), !AgyScreen(screen).showsRunningTasks { return nil }
+            let placed = await transcript.readAgain(timing.transcript) {
+                guard transcript.isCurrent() else { return false }
+                let turn = transcript.openTurn()
+                return stop(turn) != nil || !turn.isSameTurn(as: tapped)
+            }
+            // A read begun before the turn's prompt can bring the turn
+            // before, and a stalled link brings none, which leaves current
+            // a read made in the turn before its command became a task: the
+            // screen showed a task, or could not be read, so one of the
+            // turn's may run.
+            guard placed, transcript.isCurrent() else { return Self.unplacedNotice }
+            return await stop(transcript.openTurn())?.run()
+        }
+    }
+
+    /// Why a step stopped: what it waited for and did not see.
+    private struct Halt: Error {
+        let step: String
+    }
+
+    private static let logger = Logger(subsystem: "dev.bybee.heeler", category: "ChatStop")
+
+    /// The turn's background commands, newest first as the panel lists them.
+    private let listed: [ChatBackgroundCommand]
+    /// What the panel's top rows read: the commands, newest first.
+    private let names: [String?]
+    private let io: BlockedScreenIO
+    private let mayContinue: @MainActor () -> Bool
+    private let timing: Timing
+    private let clock: BlockedCardClock
+
+    /// - Parameters:
+    ///   - commands: The stopped turn's background commands, oldest first
+    ///     (`ChatTranscript.openTurnBackgroundCommands`; see
+    ///     `followThrough`). Nil when none is a running command other than
+    ///     a daemon.
+    ///   - mayContinue: Checked before every key: false while a Composer
+    ///     send types, which could land in the box between two of them.
+    init?(
+        commands: [ChatBackgroundCommand], io: BlockedScreenIO, mayContinue: @escaping @MainActor () -> Bool,
+        timing: Timing = Timing(), clock: BlockedCardClock = .live
+    ) {
+        guard commands.contains(where: \.isStoppable) else { return nil }
+        listed = commands.reversed()
+        names = listed.map { $0.command?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        self.io = io
+        self.mayContinue = mayContinue
+        self.timing = timing
+        self.clock = clock
+    }
+
+    /// Ends the turn's running commands; returns what still runs and how to
+    /// end it, or nil when they ended or the turn did not.
+    func run() async -> String? {
+        let stoppable = listed.filter(\.isStoppable)
+        do {
+            // A turn that keeps running is Stop's own wait's to report, and a
+            // second tap follows through again.
+            guard let afterTurn = try await poll(within: timing.turnEnd, until: { !AgyScreen($0).showsRunningTurn })
+            else { return nil }
+            let box = try await latest(afterTurn, passing: Self.showsIdleBox)
+            guard mayContinue(), Self.showsIdleBox(box) else { throw Halt(step: "the idle box") }
+        } catch {
+            Self.log(error)
+            return error is Halt ? Self.notice(for: stoppable) : Self.unreadNotice(for: stoppable)
+        }
+        var ended: Set<Int> = []
+        do {
+            try await io.type(.paste(Self.tasksCommand), whileShowing: Self.showsIdleBox)
+            let popup = try await screen(within: timing.step, step: "the popup", showing: Self.showsTasksPopup)
+            try await press(.keys(["enter"]), after: popup, step: "the popup", when: Self.showsTasksPopup)
+            let names = names
+            var shown = try await self.panel(within: timing.step, step: "the panel") { _ in true }
+            for index in listed.indices where listed[index].isStoppable {
+                let row = shown.panel.rows[index]
+                if row.hasEnded {
+                    ended.insert(index)
+                    continue
+                }
+                guard row.isRunning else { throw Halt(step: "a running row") }
+                while let from = shown.panel.selected, from != index {
+                    let to = from < index ? from + 1 : from - 1
+                    let move = from < index ? "down" : "up"
+                    try await press(.keys([move]), after: shown.screen, step: "the selected row") {
+                        Self.panel(on: $0, naming: names)?.selected == from
+                    }
+                    shown = try await self.panel(within: timing.step, step: "the next row") { $0.selected == to }
+                }
+                try await press(.keys(["k"]), after: shown.screen, step: "the row to kill") { screen in
+                    guard let panel = Self.panel(on: screen, naming: names), panel.selected == index else { return false }
+                    return panel.rows[index].isRunning
+                }
+                shown = try await self.panel(within: timing.kill, step: "the row ended") { $0.rows[index].hasEnded }
+                ended.insert(index)
+            }
+            try await press(.keys(["esc"]), after: shown.screen, step: "the panel", when: Self.showsPanel)
+            guard try await poll(within: timing.step, until: { !Self.showsPanel($0) }) != nil else {
+                return Self.panelLeftOpen
+            }
+            return nil
+        } catch {
+            Self.log(error)
+            let undone = await undoTasks()
+            let left = listed.indices.filter { listed[$0].isStoppable && !ended.contains($0) }
+            if left.isEmpty { return undone ? nil : Self.panelLeftOpen }
+            return Self.notice(for: left.map { listed[$0] })
+        }
+    }
+
+    // MARK: Steps
+
+    /// The read a key that needs `check` goes on: `screen`, which a step's
+    /// wait just returned, when it passes, else a fresh one. A herdr TUI
+    /// read took 0.8 to 1.65 s live, and a second one before every key made
+    /// each step 3 to 4.5 s.
+    private func latest(_ screen: ANSIScreen, passing check: (ANSIScreen) -> Bool) async throws -> ANSIScreen {
+        if check(screen) { return screen }
+        return try await io.readScreen()
+    }
+
+    /// Types once the latest read passes `check` (`latest`). Where the typing
+    /// checks the screen again itself (`BlockedScreenIO.typeWhileShowing`),
+    /// that read is the one it holds to.
+    private func press(
+        _ typing: BlockedScreenIO.Typing, after screen: ANSIScreen, step: String,
+        when check: @escaping @Sendable (ANSIScreen) -> Bool
+    ) async throws {
+        try await press(typing, on: try await latest(screen, passing: check), step: step, when: check)
+    }
+
+    /// Types if `screen`, just read, passes `check`, unless a send types.
+    private func press(
+        _ typing: BlockedScreenIO.Typing, on screen: ANSIScreen, step: String,
+        when check: @escaping @Sendable (ANSIScreen) -> Bool
+    ) async throws {
+        guard mayContinue(), check(screen) else { throw Halt(step: step) }
+        try await io.type(typing, whileShowing: check)
+    }
+
+    /// Reads the screen until one passes `isDone`, for up to `window`. The
+    /// window is agy's to draw in: a read shows the screen as it reaches
+    /// herdr, and the first one after a key often showed agy before it
+    /// drew (live), so the last read is the first to begin once the
+    /// window passed, however long a read takes. A read that fails is
+    /// tried again until then, so one failing herdr read does not stop a
+    /// step the next would see.
+    private func poll(
+        within window: Duration, until isDone: (ANSIScreen) -> Bool
+    ) async throws -> ANSIScreen? {
+        let deadline = clock.now() + window
+        while true {
+            let begun = clock.now()
+            do {
+                let screen = try await io.readScreen()
+                if isDone(screen) { return screen }
+            } catch {
+                guard begun < deadline else { throw error }
+            }
+            guard begun < deadline else { return nil }
+            try await clock.sleep(timing.poll)
+        }
+    }
+
+    private func screen(
+        within window: Duration, step: String, showing isDone: (ANSIScreen) -> Bool
+    ) async throws -> ANSIScreen {
+        guard let screen = try await poll(within: window, until: isDone) else { throw Halt(step: step) }
+        return screen
+    }
+
+    /// The panel naming the turn's commands, once it also passes `isDone`,
+    /// and the read showing it.
+    private func panel(
+        within window: Duration, step: String, until isDone: (AgyScreen.TaskPanel) -> Bool
+    ) async throws -> (screen: ANSIScreen, panel: AgyScreen.TaskPanel) {
+        let names = names
+        let screen = try await screen(within: window, step: step) { screen in
+            Self.panel(on: screen, naming: names).map(isDone) == true
+        }
+        guard let panel = Self.panel(on: screen, naming: names) else { throw Halt(step: step) }
+        return (screen, panel)
+    }
+
+    /// After a failed check or key: takes back what this typed, unless a
+    /// send types. Esc closes the panel, which leaves the box empty; in the
+    /// box, a Backspace for each of `/tasks`'s characters, sent at once,
+    /// clears it and closes its popup. Esc would close the popup but keep
+    /// `/tasks`, and a second Esc open the popup again (agy 1.5.3, live).
+    /// Returns whether neither shows.
+    private func undoTasks() async -> Bool {
+        do {
+            var screen = try await io.readScreen()
+            if Self.showsPanel(screen) {
+                try await press(.keys(["esc"]), on: screen, step: "the panel to close", when: Self.showsPanel)
+                guard let closed = try await poll(within: timing.step, until: { !Self.showsPanel($0) }) else {
+                    return false
+                }
+                screen = closed
+            }
+            guard Self.holdsTasks(screen) else { return true }
+            try await press(.keys(Self.eraseTasks), on: screen, step: "/tasks to erase", when: Self.holdsTasks)
+            return try await poll(within: timing.step, until: { !Self.holdsTasks($0) }) != nil
+        } catch {
+            Self.log(error)
+            return false
+        }
+    }
+
+    private static func log(_ error: any Error) {
+        if let halt = error as? Halt {
+            logger.notice("Stop's follow-through did not see \(halt.step, privacy: .public)")
+        } else {
+            logger.error("Stop's follow-through could not read or type: \(String(describing: error))")
+        }
+    }
+
+    // MARK: Screens
+
+    nonisolated static let tasksCommand = "/tasks"
+    nonisolated static let eraseTasks = Array(repeating: "backspace", count: tasksCommand.count)
+
+    /// agy's empty idle box, with no dialog, popup or running turn.
+    nonisolated static func showsIdleBox(_ screen: ANSIScreen) -> Bool {
+        !AgyScreen(screen).showsRunningTurn && InputBoxStateDetector.detect(screen, program: .agy).isSendable
+    }
+
+    /// `> /tasks  View background tasks` under the box holding `/tasks`.
+    nonisolated static func showsTasksPopup(_ screen: ANSIScreen) -> Bool {
+        let agy = AgyScreen(screen)
+        return agy.composer?.mode == .prompt && agy.composer?.draft == tasksCommand
+            && agy.slashSelection == AgyScreen.SlashSelection(command: tasksCommand, description: "View background tasks")
+    }
+
+    /// The panel, whether or not its rows read: `Tasks` under the box, as
+    /// over `No background tasks.`.
+    nonisolated static func showsPanel(_ screen: ANSIScreen) -> Bool {
+        let agy = AgyScreen(screen)
+        return agy.taskPanel != nil || agy.below == "Tasks"
+    }
+
+    /// The box holding the `/tasks` this typed, with its popup or not.
+    nonisolated static func holdsTasks(_ screen: ANSIScreen) -> Bool {
+        let box = AgyScreen(screen).composer
+        return box?.mode == .prompt && box?.draft == tasksCommand
+    }
+
+    /// The panel when its top rows name `names` in order.
+    nonisolated static func panel(on screen: ANSIScreen, naming names: [String?]) -> AgyScreen.TaskPanel? {
+        guard let panel = AgyScreen(screen).taskPanel, panel.rows.count >= names.count,
+            zip(panel.rows, names).allSatisfy({ $0.command == $1 })
+        else { return nil }
+        return panel
+    }
+
+    // MARK: Notices
+
+    /// Why a Composer send waits while this types.
+    static let sendHold = String(
+        localized: "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment.",
+        comment: "Why a Chat or terminal send waits while Stop types into Antigravity CLI's task list")
+
+    /// What a held send's notice says once this ended: nothing sends the
+    /// draft by itself.
+    static let sendHoldEnded = String(
+        localized: "Stop has finished in Antigravity CLI, but nothing was sent, so send again.",
+        comment: "Replaces the held send's notice once Stop's typing in Antigravity CLI ended")
+
+    static let panelLeftOpen = String(
+        localized: "Stop ended the turn and its background commands, but Antigravity CLI's task list may still be open. Close it in the terminal with Esc.",
+        comment: "Under the Composer after Stop in Antigravity CLI")
+
+    /// What still runs once the turn ended, and how to end it in the
+    /// terminal. The count picks the wording; the catalog's English
+    /// singular names the one command without it.
+    static func notice(for commands: [ChatBackgroundCommand]) -> String {
+        String(
+            localized: "Stop ended the turn, but \(commands.count) background commands still run: \(list(commands)). Stop them in the terminal: /tasks, then k.",
+            comment: "Under the Composer after Stop in Antigravity CLI: how many commands still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI")
+    }
+
+    /// What may still run when no command of the turn was known at the tap
+    /// and no transcript read placed the turn by the wait's end.
+    static let unplacedNotice = String(
+        localized: "Heeler couldn't tell after Stop which background commands the turn started, so one may still run. Check in the terminal: /tasks, then k.",
+        comment: "Under the Composer after Stop in Antigravity CLI: /tasks and k are typed in Antigravity CLI")
+
+    /// What may still run when no screen showed the turn's end.
+    static func unreadNotice(for commands: [ChatBackgroundCommand]) -> String {
+        String(
+            localized: "Heeler couldn't read the Agent's screen after Stop, so \(commands.count) background commands may still run: \(list(commands)). Stop them in the terminal: /tasks, then k.",
+            comment: "Under the Composer after Stop in Antigravity CLI: how many commands may still run, then the commands, each in quotes. /tasks and k are typed in Antigravity CLI")
+    }
+
+    /// `“a”` or `“a”, “b”`: each command quoted, joined as the user's
+    /// language lists phrases.
+    private static func list(_ commands: [ChatBackgroundCommand]) -> String {
+        commands.map { command in
+            command.command.map { command in
+                String(
+                    localized: "\u{201C}\(short(command))\u{201D}",
+                    comment: "A command line in quotes, in the list of background commands Stop left running")
+            }
+                ?? String(
+                    localized: "a command",
+                    comment: "Stands for a background command whose command line Heeler doesn't know, in the list of commands Stop left running")
+        }
+        .joinedAsPhrases()
+    }
+
+    /// A command short enough to read in a notice.
+    private static func short(_ command: String) -> String {
+        let line = command.split(whereSeparator: \.isNewline).first.map(String.init) ?? command
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count > 40 || line != command else { return trimmed }
+        return String(trimmed.prefix(39)) + "\u{2026}"
+    }
+}
+
+extension AgyBackgroundTaskStop.Transcript {
+    /// The conversation `chat` follows.
+    init(chat: AgentChatStore, awaitsRecord: @escaping @MainActor () -> Bool) {
+        self.init(
+            awaitsRecord: awaitsRecord,
+            openTurn: {
+                let transcript = chat.conversation.transcript
+                return AgyBackgroundTaskStop.OpenTurn(
+                    conversation: chat.conversationGeneration, firstEntry: transcript.turns.last?.firstEntryID,
+                    commands: transcript.openTurnBackgroundCommands)
+            },
+            isCurrent: { chat.hasReadSinceTurnStarted },
+            readAgain: { await chat.readAgain(within: $0, until: $1) })
+    }
+}

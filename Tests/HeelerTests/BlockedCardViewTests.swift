@@ -36,6 +36,49 @@ struct BlockedCardViewTests {
         #expect(labels.filter { $0 == title || $0 == "\(title)?" } == [title], "\(labels)")
     }
 
+    /// A question card names its page once. Codex's and Antigravity CLI's
+    /// `Question i/n` shows in the header as `i of n`, as a question form
+    /// shows it, and a single question shows none. Claude Code's tab
+    /// header stays above the question: it names the page without
+    /// repeating the title.
+    @Test(arguments: [
+        ("agy-100-ask-question-multiselect-62x41", nil, nil),
+        ("agy-41-ask-question-single-120x40", nil, nil),
+        ("agy-44-ask-question-multi-120x40", "1 of 2", nil),
+        ("agy-45-ask-question-multi-q2-120x40", "2 of 2", nil),
+        ("codex-04-x3-q1", "1 of 2", nil),
+        ("codex-16-x7-phone-question-pointed", nil, nil),
+        ("claude-08-c4-auq-q1", nil, "Colors"),
+    ] as [(String, String?, String?)])
+    func aQuestionCardNamesItsPageOnce(stem: String, page: String?, caption: String?) async throws {
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        let progress = try #require(card.dialog.progress)
+        let question = card.dialog.subject.question ?? card.dialog.title
+
+        let labels = try await Self.labels(
+            of: BlockedCardView(store: store, maxHeight: 600, openTerminal: {}), showing: question)
+
+        #expect(labels.filter { $0 == "Question" } == ["Question"], "\(labels)")
+        let pages = labels.filter { $0.wholeMatch(of: /\d+ of \d+/) != nil }
+        #expect(pages == (page.map { [$0] } ?? []), "\(labels)")
+        if let caption {
+            #expect(progress == caption)
+            #expect(labels.contains(caption), "\(labels)")
+        } else {
+            #expect(!labels.contains(progress), "\(labels)")
+        }
+    }
+
     /// A subagent's question titles its card with every line it wraps to:
     /// at a phone's width a fourth line adds as much height as a third. A
     /// second adds less, since a one-line header is as tall as its
@@ -134,7 +177,156 @@ struct BlockedCardViewTests {
         }
     }
 
+    /// A flat cut reads as the card's end. Where an option runs past the
+    /// scroll edge, it fades into the card instead, while the rest of it
+    /// draws at full strength; the edge with nothing past it stays sharp,
+    /// and a card that fits draws its last option as it is.
+    @Test func aCutOptionFadesAtTheScrollEdge() async throws {
+        let stem = "agy-30-perm-run-command-default-120x40"
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        for budget: CGFloat in [290, 600] {
+            let controller = UIHostingController(
+                rootView: BlockedCardView(store: store, maxHeight: budget, openTerminal: {})
+                    .padding(.horizontal, 24))
+            controller.safeAreaRegions = []
+            try await withTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+            ) { _ in
+                // The scroll bar flashes once the options run past the
+                // edge; a card that fits shows none.
+                let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1.5))
+                #expect(flashes == (budget < 600), "scroll bar flash at \(budget)")
+                let scroll = try await Self.settledScrollView(in: controller)
+                let range = (
+                    lower: -scroll.adjustedContentInset.top,
+                    upper: scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                @MainActor func render(_ name: String) -> UIImage {
+                    let image = UIGraphicsImageRenderer(bounds: controller.view.bounds).image { _ in
+                        controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+                    }
+                    Attachment.record(image, named: "blocked-edge-\(Int(budget))-\(name)", as: .png)
+                    return image
+                }
+                @MainActor func move(to offset: CGFloat) async throws {
+                    try #require(range.lower...range.upper ~= offset, "\(offset) outside \(range)")
+                    scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+                    try await Task.sleep(for: .milliseconds(150))
+                    controller.view.layoutIfNeeded()
+                }
+                @MainActor func answer(_ prefix: String) throws -> CGRect {
+                    try #require(Self.elements(in: controller.view).first {
+                        $0.accessibilityTraits.contains(.button) && ($0.accessibilityLabel ?? "").hasPrefix(prefix)
+                    }).accessibilityFrame
+                }
+                let viewport = { UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll) }
+                let decline = try answer("No, cancel")
+
+                guard budget < 600 else {
+                    try #require(range.upper <= range.lower + 1, "the card should fit at \(budget)")
+                    let last = try Self.contrast(render("fits"), band: decline.maxY - 6, across: decline)
+                    #expect(last > 0.06)
+                    return
+                }
+                try #require(range.upper > range.lower + 1, "the card should scroll at \(budget)")
+
+                // The decline crosses the bottom edge 4 pt above its own end,
+                // inside its padding, where only its red fill would draw.
+                try await move(to: scroll.contentOffset.y + decline.maxY - 4 - viewport().maxY)
+                var image = render("decline-cut")
+                var edge = try Self.contrast(image, band: viewport().maxY - 1, across: decline)
+                var inside = try Self.contrast(image, band: viewport().maxY - 31, across: decline)
+                #expect(edge < 0.03)
+                #expect(inside > 0.06)
+
+                // The lead option crosses the top edge 4 pt below its start.
+                let lead = try answer("Yes, run command")
+                try await move(to: scroll.contentOffset.y + lead.minY + 4 - viewport().minY)
+                image = render("lead-cut")
+                edge = try Self.contrast(image, band: viewport().minY, across: lead)
+                inside = try Self.contrast(image, band: viewport().minY + 30, across: lead)
+                #expect(edge < 0.03)
+                #expect(inside > 0.06)
+
+                // At the end, nothing waits below: the decline shows whole.
+                try await move(to: range.upper)
+                image = render("end")
+                let end = try answer("No, cancel")
+                #expect(viewport().insetBy(dx: -1, dy: -1).contains(end), "\(end) in \(viewport())")
+                edge = try Self.contrast(image, band: end.maxY - 6, across: end)
+                #expect(edge > 0.06)
+            }
+        }
+    }
+
+    /// In Chat the card is inserted into a window that already shows: by
+    /// Show after Minimize, or by the first read while Blocked. Its scroll
+    /// view's first layout already overflows, and the bar still flashes
+    /// once; a card that fits shows none.
+    @Test(arguments: [(true, CGFloat(290)), (true, 600), (false, 290), (false, 600)])
+    func aCardShownInAnOpenWindowFlashesItsScrollBar(afterMinimize: Bool, budget: CGFloat) async throws {
+        let screen = try ScreenFixture.screen("agy-30-perm-run-command-default-120x40")
+        let store = BlockedCardStore(
+            program: .agy, io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        if afterMinimize {
+            store.update(activity: .blocked)
+            await store.refresh()
+            store.isCollapsed = true
+        }
+        let controller = UIHostingController(
+            rootView: BlockedCardView(store: store, maxHeight: budget, openTerminal: {}).padding(.horizontal, 24))
+        controller.safeAreaRegions = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { _ in
+            #expect(await !Self.showsScrollIndicator(in: controller, within: .milliseconds(300)))
+            if afterMinimize {
+                store.isCollapsed = false
+            } else {
+                store.update(activity: .blocked)
+                await store.refresh()
+            }
+
+            let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1.5))
+
+            #expect(flashes == (budget < 600), "scroll bar flash at \(budget)")
+        }
+    }
+
     // MARK: Helpers
+
+    /// How far the 1 pt band at `y`, across `xs` clear of its rounded
+    /// corners and outline, is from the window's color above the card: the
+    /// largest difference of a channel's mean, 0...1.
+    private static func contrast(_ image: UIImage, band y: CGFloat, across xs: CGRect) throws -> Double {
+        let band = try color(of: image, in: CGRect(x: xs.minX + 16, y: y, width: xs.width - 32, height: 1))
+        let background = try color(of: image, in: CGRect(x: 16, y: 4, width: 32, height: 2))
+        return zip(band, background).map { abs($0 - $1) }.max() ?? 0
+    }
+
+    /// The mean RGB, 0...1, of `rect`, in points.
+    private static func color(of image: UIImage, in rect: CGRect) throws -> [Double] {
+        let pixels = rect.applying(CGAffineTransform(scaleX: image.scale, y: image.scale)).integral
+        let crop = try #require(image.cgImage?.cropping(to: pixels), "\(rect) outside the render")
+        var bytes = [UInt8](repeating: 0, count: crop.width * crop.height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress, width: crop.width, height: crop.height, bitsPerComponent: 8,
+                bytesPerRow: crop.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.draw(crop, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
+        }
+        let count = Double(crop.width * crop.height)
+        return (0..<3).map { channel in
+            stride(from: channel, to: bytes.count, by: 4).reduce(0.0) { $0 + Double(bytes[$1]) } / count / 255
+        }
+    }
 
     private static func checkAnswers(
         stem: String, size: CGSize, textSize: DynamicTypeSize, answers: [String]
@@ -152,22 +344,7 @@ struct BlockedCardViewTests {
         try await withTestWindow(
             frame: CGRect(origin: .zero, size: size), rootViewController: controller
         ) { _ in
-            var foundScroll: UIScrollView?
-            var previousGeometry: [CGFloat] = []
-            var stablePasses = 0
-            for _ in 0..<40 {
-                controller.view.layoutIfNeeded()
-                foundScroll = Self.scrollView(in: controller.view)
-                if let scroll = foundScroll, scroll.contentSize.height > 1, scroll.bounds.height > 1 {
-                    let geometry = [scroll.contentSize.height, scroll.bounds.height, scroll.frame.minY]
-                    stablePasses = geometry == previousGeometry ? stablePasses + 1 : 0
-                    previousGeometry = geometry
-                    if stablePasses >= 2 { break }
-                }
-                try await Task.sleep(for: .milliseconds(50))
-            }
-            try #require(stablePasses >= 2, "The card must finish laying out before measuring its answers")
-            let scroll = try #require(foundScroll)
+            let scroll = try await Self.settledScrollView(in: controller)
             let visible = UIAccessibility.convertToScreenCoordinates(controller.view.bounds, in: controller.view)
             let viewport = UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll)
             #expect(visible.insetBy(dx: -1, dy: -1).contains(viewport),
@@ -199,6 +376,45 @@ struct BlockedCardViewTests {
                     "\(stem), \(size), \(textSize): \(label) must be fully reachable: \(shown.accessibilityFrame)")
             }
         }
+    }
+
+    /// The card's scroll view, once its content and viewport stop changing.
+    private static func settledScrollView(in controller: UIViewController) async throws -> UIScrollView {
+        var foundScroll: UIScrollView?
+        var previousGeometry: [CGFloat] = []
+        var stablePasses = 0
+        for _ in 0..<40 {
+            controller.view.layoutIfNeeded()
+            foundScroll = Self.scrollView(in: controller.view)
+            if let scroll = foundScroll, scroll.contentSize.height > 1, scroll.bounds.height > 1 {
+                let geometry = [scroll.contentSize.height, scroll.bounds.height, scroll.frame.minY]
+                stablePasses = geometry == previousGeometry ? stablePasses + 1 : 0
+                previousGeometry = geometry
+                if stablePasses >= 2 { break }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try #require(stablePasses >= 2, "The card must finish laying out before measuring its answers")
+        return try #require(foundScroll)
+    }
+
+    /// Whether the card's scroll view shows its vertical scroll indicator
+    /// within `limit`. Nothing scrolls it meanwhile, so only a flash does.
+    /// UIKit draws the indicator as a private `_UIScrollViewScrollIndicator`
+    /// subview, transparent while it rests. It reads without forcing
+    /// layout: forced passes split the card's first layout over separate
+    /// updates, which shows a flash Chat's single commit never did.
+    private static func showsScrollIndicator(in controller: UIViewController, within limit: Duration) async -> Bool {
+        var budget = PollBudget(limit)
+        while budget.hasTimeLeft {
+            let indicators = Self.scrollView(in: controller.view)?.subviews.filter {
+                String(describing: type(of: $0)).contains("ScrollIndicator") && $0.bounds.height > $0.bounds.width
+            }
+            if indicators?.contains(where: { !$0.isHidden && $0.alpha > 0.01 }) == true { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        return false
     }
 
     private static func scrollView(in root: UIView) -> UIScrollView? {

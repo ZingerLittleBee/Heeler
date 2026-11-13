@@ -309,7 +309,7 @@ private struct Projection {
                 content: .user(
                     ChatUserMessage(
                         text: Self.shown(Self.trimmed(text), isCut: isCut), attachmentLabels: item.files,
-                        wasQueued: true))))
+                        delivery: .queued))))
         transcript.unrecordedEntryIDs.insert(id)
         // A long one echoes once its row holds the whole text.
         if !isCut {
@@ -329,7 +329,7 @@ private struct Projection {
             .user(
                 ChatUserMessage(
                     text: Self.shown(Self.trimmed(text), isCut: Self.isCut(text, length: message.length)),
-                    attachmentLabels: labels, wasQueued: steers)))
+                    attachmentLabels: labels, delivery: steers ? .steered : .direct)))
         // A prompt of only an image or a PDF records no text to match a send.
         let attachesOnly =
             Self.trimmed(text).isEmpty

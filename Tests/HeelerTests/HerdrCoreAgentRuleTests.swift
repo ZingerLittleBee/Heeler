@@ -67,11 +67,12 @@ import Testing
         #expect(Set(file.cases.map(\.name)).count == file.cases.count)
     }
 
-    @Test func theAppTableIsTheSixReportingHarnesses() throws {
+    /// agy reports `app=antigravity` (1.5.3, #644), not its own name.
+    @Test func theAppTableIsTheSevenReportingHarnesses() throws {
         let file = try Self.vectors()
         #expect(file.apps == [
             "claude-code": "claude", "codex": "codex", "opencode": "opencode", "pi": "pi",
-            "omp": "omp", "grok-build": "grok",
+            "omp": "omp", "grok-build": "grok", "antigravity": "agy",
         ])
         #expect(HerdrCoreAgentRule.reportedApps == file.apps)
         // Each one reads as a kind the app can start, so its rows have its name.

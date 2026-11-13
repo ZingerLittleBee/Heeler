@@ -81,13 +81,14 @@ places, in the order an interactive shell usually ends up with:
 1. Version managers' defaults: mise, Volta, fnm, nvm (`nvm which default`),
    asdf, nodenv, nvs, nodebrew, n, proto and pnpm, each at its own
    environment override or default location.
-2. The exec's `PATH` with the app's prefixes (`HerdrHostPath`): Homebrew and
-   system packages.
+2. Each directory on the exec's `PATH` with the app's prefixes
+   (`HerdrHostPath`), in order: Homebrew and system packages.
 3. Homebrew's own directories (an endpoint launcher gets no prefixes) and
    versioned formulae, Nix profiles, snap and MacPorts.
-4. The login shell's `PATH` (`$SHELL -lic /usr/bin/env` for bash, zsh, fish
-   or ksh), kept whole behind npm's directory because shims may need other
-   tools on it, with a 10 s watchdog because rc files can wait for input.
+4. Each directory on the login shell's `PATH` (`$SHELL -lic /usr/bin/env`
+   for bash, zsh, fish or ksh), with that `PATH` kept whole behind it because
+   shims may need other tools on it, with a 10 s watchdog because rc files
+   can wait for input.
    The watchdog ends the login shell and the commands it started directly;
    without a terminal, dash and busybox have no job control, so anything
    those started in turn runs on.

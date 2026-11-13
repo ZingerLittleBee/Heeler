@@ -35,6 +35,22 @@ enum HerdrCoreShellLaunch {
             : [shell, "-ic", "exec \"$@\"", shell] + program
     }
 
+    /// What a POSIX launch's `argv` holds: the shell, which the Terminal's own process
+    /// is while it reads its startup files, and the program its `exec` replaces it
+    /// with under the same pid. Nil for any argv `argv(shell:program:)` did not build.
+    static func launch(in argv: [String]) -> (shell: String, program: [String])? {
+        guard argv.count > 4, let shell = argv.first, shell != windowsShell else { return nil }
+        let body = isFish(shell) ? ["-ic", "exec $argv[2..]", "fish"] : ["-ic", "exec \"$@\"", shell]
+        guard Array(argv[1...3]) == body else { return nil }
+        return (shell, Array(argv.dropFirst(4)))
+    }
+
+    /// The name a process running `shell` goes by, as `HostProcessReader` reads it:
+    /// the kernel's name on Linux, argv[0]'s last path part on macOS.
+    static func processName(of shell: String) -> String {
+        shell.split(separator: "/").last.map(String.init) ?? shell
+    }
+
     /// A script for `/bin/sh`, for one bounded exec: the interactive shell looks
     /// for each program and asks one for its version in that same run. The inner
     /// script parses under POSIX shells and fish alike. Its markers start their
@@ -134,7 +150,7 @@ enum HerdrCoreShellLaunch {
     }
 
     private static func isFish(_ shell: String) -> Bool {
-        shell.split(separator: "/").last == "fish"
+        processName(of: shell) == "fish"
     }
 
     private static func beginMarker(_ nonce: String) -> String { "__HEELER_AGENTS_BEGIN_\(nonce)" }

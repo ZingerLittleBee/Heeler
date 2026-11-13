@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Composer Send on a tmux Host (ADRs 0035 and 0043), from `AgentComposerStore`
+/// Composer Send on a tmux Host (ADRs 0035 and 0044), from `AgentComposerStore`
 /// down through `ConsoleStore`, `TmuxConsoleProjection`, `AgentAttachStore` and
 /// `TmuxSSHTransport` over `ScriptedTmuxHost`, with time on `ManualClock`.
 @MainActor

@@ -369,8 +369,7 @@ struct AgentRowChangesTests {
                 status: .idle, workspaceID: "w1", tabID: "w1:t1", paneID: pane,
                 cwd: directory ?? "", revision: 1, name: nil),
             workspaceLabel: nil,
-            repositoryCheckout: nil,
-            lastOutputSnippet: nil)
+            repositoryCheckout: nil)
     }
 
     private static func badge(_ store: ChangesStore?) -> ChangesBadge? {

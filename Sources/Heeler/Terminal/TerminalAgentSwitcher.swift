@@ -197,6 +197,8 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
 
     func update(items: [TerminalAgentSwitcherItem], selectedID: ConsoleAgent.ID?) {
         guard items != self.items || selectedID != self.selectedID else { return }
+        let span = PerfTrace.begin("switcher.update")
+        defer { PerfTrace.end(span) }
         let selectionChanged = selectedID != self.selectedID
         let previousIDs = chips.map(\.id)
         let previousPinByID = Dictionary(
@@ -540,7 +542,7 @@ final class TerminalAgentChip: UIControl {
             + (item.qualifier == nil
                 ? 0 : qualifierLabel.intrinsicContentSize.width + Self.qualifierSpacing)
         dot.backgroundColor = item.status.inkUIColor
-        backgroundColor = selected ? .tertiarySystemBackground : .clear
+        backgroundColor = selected ? ThemeVeil.selection : .clear
         isWorking = item.status == .working
         updatePulse()
 
@@ -694,7 +696,7 @@ struct TerminalAgentSwitcherRow: View {
                 .fill(Color(uiColor: .separator))
                 .frame(height: hairline)
         }
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(ThemeVeil.strip)
     }
 
     @ViewBuilder

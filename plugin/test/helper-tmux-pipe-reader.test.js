@@ -1,5 +1,5 @@
 // The Helper's `pipe-pane` status reader for Codex, Grok Build and OpenCode
-// 2.1+ on tmux Hosts (ADR 0044). Runs against a private `-S` tmux server with
+// 2.1+ on tmux Hosts (ADR 0045). Runs against a private `-S` tmux server with
 // temporary HOME and fake agent programs writing bare and `ESC P tmux;`
 // wrapped OSC 7501 reports.
 

@@ -52,6 +52,37 @@ struct AgentComposerTextViewTests {
 
         #expect(abs(editor.contentOffset.y - overflow) < 0.5)
     }
+
+    /// The draft's size is kept between layouts, so it has to follow
+    /// everything that changes it.
+    @Test func theKeptDraftSizeFollowsTheDraft() {
+        let editor = Self.makeEditor()
+        func measured(_ width: CGFloat = Self.width) -> CGSize {
+            editor.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
+        editor.text = "one line"
+        let oneLine = editor.draftSize(fitting: Self.width)
+        #expect(oneLine == measured())
+
+        editor.text = "one line\nand another"
+        #expect(editor.draftSize(fitting: Self.width).height > oneLine.height)
+        #expect(editor.draftSize(fitting: Self.width) == measured())
+
+        // An edit the input system makes, not a write to `text`.
+        editor.textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "a third\n")
+        #expect(editor.draftSize(fitting: Self.width) == measured())
+
+        editor.font = .preferredFont(forTextStyle: .largeTitle)
+        #expect(editor.draftSize(fitting: Self.width) == measured())
+
+        editor.text = String(repeating: "wraps at a narrower width ", count: 4)
+        let wide = editor.draftSize(fitting: Self.width)
+        #expect(editor.draftSize(fitting: 120).height > wide.height)
+        #expect(editor.draftSize(fitting: 120) == measured(120))
+
+        editor.updateLineLimit(1)
+        #expect(editor.draftSize(fitting: 120) == measured(120))
+    }
 }
 
 // On a hardware keyboard Return sends the draft and Shift-Return starts a new

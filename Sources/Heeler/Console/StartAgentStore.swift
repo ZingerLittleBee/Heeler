@@ -362,7 +362,7 @@ final class StartAgentStore {
 
     /// A herdr-core Host, and a tmux Host, have no generated branch: Heeler makes
     /// the Worktree on the branch the user names, from the Workspace's HEAD
-    /// (ADR 0032, ADR 0043).
+    /// (ADR 0032, ADR 0044).
     var worktreeNeedsBranch: Bool {
         selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
     }

@@ -1,9 +1,9 @@
-<!-- Translated from docs/guides/chat.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/chat.md at d56d0c0f -->
 # 在 Chat 中使用 Agent
 
 在 iPhone 或 iPad 上通过 Heeler 的原生 Chat 使用 Claude Code 和 Codex。你可以阅读对话并通过 SSH 回复，Agent 继续在 Host 上运行。
 
-你需要一台运行 herdr、[herdr-core](herdr-core.md#chat) 或 [tmux](tmux.md#chat) 的 Host，并在上面运行受支持的编程 Agent。
+你需要一台运行 herdr、[herdr-core](herdr-core.md#chat) 或 [tmux](tmux.md#chat) 的 Host，并在上面运行受支持的编程 Agent（Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 或 Antigravity CLI）。
 
 ## 配置 Host
 
@@ -21,7 +21,7 @@ herdr integration status
 herdr integration install claude
 ```
 
-按需把 `claude` 换成 `codex`、`pi`、`omp`、`grok` 或 `opencode`。OpenCode 需要 2.x 版本，并且 Host 上要有 `sqlite3` 或 `python3`。
+按需把 `claude` 换成 `codex`、`pi`、`omp`、`grok`、`opencode` 或 `antigravity-cli`。OpenCode 需要 2.x 版本，并且 Host 上要有 `sqlite3` 或 `python3`。
 
 启动 Codex 时加上 `--no-daemon`，继续原来的对话用 `codex --no-daemon resume`：
 
@@ -53,7 +53,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - 你的消息在右侧，Agent 的回答、推理和工具步骤在左侧。
 - 一轮对话结束后，其中的步骤会折叠到一行 **Worked for …** 后面。轻点这一行可以展开，轻点工具卡片可以查看输出或文件改动。
 - 按住一条消息即可复制。
-- 轻点工具步骤下的图片，或消息里的图片路径（前面带照片图标），可以打开并缩放查看。
+- 轻点工具步骤下的图片，或消息里的图片路径（前面带照片图标；代码块里独占一行的路径显示为彩色），可以打开并缩放查看。
 - 向上滚动后，轻点右下角带向下 V 形箭头的圆形按钮，可回到最新消息。
 - 在顶部继续下拉可加载更早的消息。
 
@@ -63,7 +63,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 
 在 **Message Agent** 中输入内容，然后轻点 **Send**。Chat 会替你把消息输入到 Agent 的终端并按下 Enter，同一条消息绝不会发送两次。
 
-- **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi 和 OpenCode 要等这一轮结束。
+- **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi、OpenCode 和 Antigravity CLI 要等这一轮结束。
 - **停止。** Agent 工作时，如果输入框是空的，**Send** 会变成 **Stop**。轻点它可以中断这一轮。
 - **命令。** 输入 `/` 可以选择 `/compact` 或 Agent 的技能。其他命令（例如 `/model`）请在终端中运行。
 - **图片和文件。** 在 Herdr TUI 和 herdr-core Host 上，轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。

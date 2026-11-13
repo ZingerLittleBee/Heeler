@@ -14,7 +14,7 @@ protocol ServerKindDetectionConnection: Sendable {
 }
 
 /// Which servers an SSH target runs, for the user to confirm one (ADRs 0031
-/// and 0042).
+/// and 0043).
 struct ServerKindDetection: Equatable, Sendable {
     enum HerdrTUIFinding: Equatable, Sendable {
         case found(sessions: [HerdrSession])
@@ -189,7 +189,7 @@ struct ServerKindDetection: Equatable, Sendable {
     /// the user may be about to install one, and its preflight says how. A refused
     /// session name keeps herdr-core on offer, since only the name stands in its way
     /// and confirming says why. A tmux with no server running stays on offer beside
-    /// whatever was found: its Host connects once the user starts one (ADR 0042).
+    /// whatever was found: its Host connects once the user starts one (ADR 0043).
     var offeredKinds: [ServerKind] {
         if case .sessionRefused = herdrCore { return supportedKinds }
         let found = foundKinds

@@ -83,8 +83,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private lazy var collectionView = ChatCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, ChatRowID>?
     private var applied: ChatTimelineState?
-    /// The newest update that arrived while the list was held past its end,
-    /// applied once it is back.
+    /// The newest update that arrived while the list was held past its start
+    /// or its end, applied once it is back.
     private var heldState: ChatTimelineState?
     /// Every built row, folded ones included, so what a folded row has
     /// open survives its fold.
@@ -142,11 +142,23 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// The drag pulled the list past its top far enough to load earlier
     /// history when the finger lifts.
     private var isPullArmed = false
+    /// An update since the pull's request showed it in the Load Earlier row,
+    /// applied or held. The row being available again after that means the
+    /// request is over, not that it has yet to show.
+    private var olderRequestHasShown = false
+    /// True while the data source applies rows. The layout moves the offset
+    /// with them before the collection view has its new content size, so
+    /// what a scroll event concludes then (the list reached its end, say)
+    /// does not hold. `apply` reports the scroll once the rows are in.
+    private var isUpdatingRows = false
+    private var scrolledWhileUpdatingRows = false
     private let olderPull = ChatOlderPull()
 
     /// How far past its top the list is pulled to load earlier history.
     static let pullToLoadDistance: CGFloat = 80
 
+    /// How many times a row was built into a cell, for tests.
+    private(set) var cellBuilds = 0
     /// Whether the list follows its end, for tests.
     var isFollowing: Bool { latch.isFollowing }
     /// What the Load Earlier row shows of a pull, for tests.
@@ -224,7 +236,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             key.combine(disclosures[id] ?? 0)
             key.combine(row.topSpacing)
             key.combine(row.isNested)
-            return (row.seed, key.finalize())
+            return (row.seed, row.extent, key.finalize())
         }
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
         layout.disclosureAnchor = { [weak self] in self?.disclosureAnchor }
@@ -233,6 +245,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let registration = UICollectionView.CellRegistration<ChatHostingCell, ChatRowID> {
             [weak self] cell, _, id in
             guard let self, let row = rowsByID[id] else { return }
+            PerfTrace.count("chat.cell.configure")
+            cellBuilds += 1
+            cell.rowID = id
             let isExpanded = expanded.contains(id)
             let files = expandedFiles[id] ?? []
             let actions = rowActions
@@ -255,8 +270,20 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        PerfTrace.setContext("chat", "shown")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        PerfTrace.setContext("chat", nil)
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        let span = PerfTrace.begin("chat.did-layout")
+        defer { PerfTrace.end(span) }
         updateBottomObstruction()
         liftEndClearOfCollapseControl()
         requestOlderIfShort()
@@ -288,9 +315,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     func apply(_ state: ChatTimelineState) {
         loadViewIfNeeded()
         guard let dataSource else { return }
+        if olderPull.phase == .requested, !Self.offersOlderHistory(state) { olderRequestHasShown = true }
         // Applying rows clamps an offset past the end to the new end, which
-        // the drag or bounce then undoes on its next frame.
-        if isHeldPastEnd {
+        // the drag or bounce then undoes on its next frame. Past the start
+        // it puts the reader's row back at the start itself, which ends the
+        // bounce there and then.
+        if isHeldPastEnd || isHeldPastStart {
             heldState = state
             return
         }
@@ -298,6 +328,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         if let applied, applied.generation == state.generation, applied.revision == state.revision {
             return
         }
+        let span = PerfTrace.begin("chat.apply")
+        defer { PerfTrace.end(span) }
+        PerfTrace.count("chat.apply.rows", state.rows.count)
         let previous = applied
         let oldRows = rowsByID
         applied = state
@@ -317,8 +350,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             noteFollowing()
             let snapshot = projectedSnapshot()
             UIView.performWithoutAnimation {
-                dataSource.applySnapshotUsingReloadData(snapshot)
-                collectionView.layoutIfNeeded()
+                PerfTrace.span("chat.apply.reload") { dataSource.applySnapshotUsingReloadData(snapshot) }
+                PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
                 pinToEnd()
             }
             forgetMeasurements()
@@ -339,7 +372,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         var snapshot = projectedSnapshot()
-        let changed = changedRows(since: oldRows, in: snapshot)
+        let changed = PerfTrace.span("chat.apply.changed") { changedRows(since: oldRows, in: snapshot) }
+        PerfTrace.count("chat.apply.changed-rows", changed.count)
         // The layout still holds the shown rows' last heights.
         let heightsBefore = rowHeights(changed)
         snapshot.reconfigureItems(changed)
@@ -353,19 +387,45 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         UIView.performWithoutAnimation {
-            dataSource.apply(snapshot, animatingDifferences: false)
-            collectionView.layoutIfNeeded()
+            // The layout holds the reader's row while the rows change, so
+            // the rows built are the ones that will show.
+            layout.updateAnchor = updateAnchor(anchor, in: snapshot)
+            isUpdatingRows = true
+            PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
+            isUpdatingRows = false
+            layout.updateAnchor = nil
+            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
+            // Going back to the reader's row can show rows above it that
+            // nobody measured yet. One that measures off its guess moves
+            // everything under it, so the row goes back once they have.
+            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+            restore(anchor)
+            if scrolledWhileUpdatingRows {
+                scrolledWhileUpdatingRows = false
+                scrollViewDidScroll(collectionView)
+            }
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
-        // Once the row shows the request, its own state takes over.
-        if olderPull.phase == .requested {
-            if case .olderHistory(.available)? = rowsByID[.olderHistory]?.content {} else { olderPull.phase = .idle }
+        // Once the row shows the request, its own state takes over. A page
+        // that landed while the list was held leaves the row available
+        // again, with the request over.
+        if olderPull.phase == .requested, olderRequestHasShown || !Self.offersOlderHistory(state) {
+            olderPull.phase = .idle
         }
         forgetMeasurements()
         reportFirstLayoutIfReady()
         requestOlderIfShort()
         noteCollapseAvailability()
+    }
+
+    /// Whether `state`'s Load Earlier row offers a request rather than
+    /// showing one.
+    private static func offersOlderHistory(_ state: ChatTimelineState) -> Bool {
+        guard case .olderHistory(.available)? = state.rows.first(where: { $0.id == .olderHistory })?.content else {
+            return false
+        }
+        return true
     }
 
     private func rowHeights(_ ids: [ChatRowID]) -> [ChatRowID: CGFloat] {
@@ -402,6 +462,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Folds the applied rows as the open headers say, and makes the
     /// result what the list shows.
     private func projectedSnapshot() -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
+        let span = PerfTrace.begin("chat.apply.project")
+        defer { PerfTrace.end(span) }
         let output = ChatTimelineProjection.project(
             applied?.rows ?? [], turns: applied?.turns ?? [], precedingTurnEnd: applied?.precedingTurnEnd,
             signals: applied?.signals ?? ChatTurnSignals(), open: openHeaders)
@@ -534,6 +596,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard collapseControlClearance != height else { return }
         collapseControlClearance = height
         reserveCollapseControlRoom()
+    }
+
+    /// Keeps `width` at the trailing edge clear of rows, for chrome that
+    /// floats over it, such as the Workspace terminals handle.
+    func setTrailingReserve(_ width: CGFloat) {
+        loadViewIfNeeded()
+        guard layout.trailingReserve != width else { return }
+        layout.trailingReserve = width
+        collectionView.setNeedsLayout()
     }
 
     private func reserveCollapseControlRoom() {
@@ -707,6 +778,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             return (id, layout.geometry.minY(at: index) - visibleTop)
         }
         return rows.contains(where: { $0.0 != .olderHistory }) ? .rows(rows) : .end
+    }
+
+    /// The reader's first row that `snapshot` still shows, for the layout to
+    /// hold while the rows change. `restore` settles the rest afterwards: a
+    /// row a fold took away, and the Load Earlier row when it holds still.
+    private func updateAnchor(
+        _ anchor: ScrollAnchor, in snapshot: NSDiffableDataSourceSnapshot<Int, ChatRowID>
+    ) -> (id: ChatRowID, distance: CGFloat)? {
+        guard case .rows(let rows) = anchor,
+            let row = rows.first(where: { $0.0 != .olderHistory && snapshot.indexOfItem($0.0) != nil })
+        else { return nil }
+        return (row.0, row.1 + collectionView.adjustedContentInset.top)
     }
 
     private func restore(_ anchor: ScrollAnchor) {
@@ -931,9 +1014,16 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         latch.isUserScrolling && collectionView.contentOffset.y > collectionView.maxOffsetY + 0.5
     }
 
-    /// Catches up on what the list held while it was past its end.
+    /// A drag or its bounce holding the list past its start: a pull for
+    /// earlier history, and the bounce after it. Rows wait as they do past
+    /// the end. No row is above the reader's there, so no height waits.
+    private var isHeldPastStart: Bool {
+        latch.isUserScrolling && collectionView.contentOffset.y < collectionView.minOffsetY - 0.5
+    }
+
+    /// Catches up on what the list held while it was past its start or end.
     private func releaseHoldIfBack() {
-        guard !isHeldPastEnd else { return }
+        guard !isHeldPastEnd, !isHeldPastStart else { return }
         layout.applyHeldHeights()
         if let state = heldState {
             heldState = nil
@@ -977,6 +1067,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if isUpdatingRows {
+            scrolledWhileUpdatingRows = true
+            return
+        }
+        let span = PerfTrace.begin("chat.scroll.did-scroll")
+        defer { PerfTrace.end(span) }
         if disclosureAnchor == nil { latch.scrolled(isAtEnd: isAtEnd) }
         noteFollowing()
         releaseHoldIfBack()
@@ -990,6 +1086,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         if isPullArmed {
             isPullArmed = false
             olderPull.phase = .requested
+            olderRequestHasShown = false
             actions.loadOlder()
         }
         guard !decelerate else { return }
@@ -1071,6 +1168,24 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         Task { @MainActor [weak self] in
             self?.actions.loadOlderAutomatically()
         }
+    }
+
+    // MARK: Cells
+
+    /// UIKit keeps the cell of a row the list dropped, hidden, for reuse,
+    /// with the row still in it, and the automation tree UI tests read
+    /// still lists it: a refused Send's "Sending…" stayed there under
+    /// Waiting for Conversation until the next Send (live). Such a cell lets
+    /// its row go. One that only scrolled away keeps it, since UIKit may
+    /// show it again without configuring it.
+    func collectionView(
+        _ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath
+    ) {
+        guard let cell = cell as? ChatHostingCell, let id = cell.rowID, dataSource?.indexPath(for: id) == nil else {
+            return
+        }
+        cell.rowID = nil
+        cell.contentConfiguration = nil
     }
 
     // MARK: Menus
@@ -1164,8 +1279,11 @@ final class ChatCollectionView: UICollectionView {
     }
 }
 
-/// Measures its hosted row at the column's full width.
+/// Measures its hosted row at the width the layout gives it.
 final class ChatHostingCell: UICollectionViewCell {
+    /// The row the cell was last configured with.
+    var rowID: ChatRowID?
+
     /// A hosted row pads itself by the safe area it overlaps, which for a
     /// row scrolling under the status bar or home indicator changes with
     /// every position, and so would its measured height. Rows only keep the
@@ -1181,6 +1299,8 @@ final class ChatHostingCell: UICollectionViewCell {
         guard let fitted = layoutAttributes.copy() as? UICollectionViewLayoutAttributes else {
             return layoutAttributes
         }
+        let span = PerfTrace.begin("chat.cell.measure")
+        defer { PerfTrace.end(span) }
         let size = contentView.systemLayoutSizeFitting(
             CGSize(width: layoutAttributes.size.width, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)

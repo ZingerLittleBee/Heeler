@@ -31,7 +31,7 @@ PLUGIN_DIR="plugin"
 SHIPPED="herdr-plugin.toml package.json package-lock.json README.md src"
 DEV_ONLY="test test-vectors"
 # The Host Helper and Heeler's Claude Code hook script ship inside the app,
-# never on the plugin branch (ADRs 0033 and 0044), so their files never count
+# never on the plugin branch (ADRs 0033 and 0045), so their files never count
 # as plugin changes. Optional: earlier sources lack them.
 HELPER_ONLY="helper claude-code"
 # Repository tools the plugin tests run, placed where they sit on main.

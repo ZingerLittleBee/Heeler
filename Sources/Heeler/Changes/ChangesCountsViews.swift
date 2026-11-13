@@ -6,6 +6,7 @@ struct ChangesLineCounts: View {
     let counts: LineCounts
     var font: Font = .footnote.weight(.semibold)
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.diffSurface) private var surface
 
     /// The visible text of each side, nil for a side left out. The minus
     /// sign is U+2212.
@@ -17,7 +18,8 @@ struct ChangesLineCounts: View {
     }
 
     var body: some View {
-        let palette = DiffPalette.current(differentiatingWithoutColor: differentiateWithoutColor)
+        let palette = DiffPalette.current(
+            differentiatingWithoutColor: differentiateWithoutColor, on: surface)
         Group {
             switch counts {
             case .lines(let added, let removed) where added > 0 || removed > 0:

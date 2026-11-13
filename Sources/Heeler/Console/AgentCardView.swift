@@ -58,6 +58,7 @@ struct AgentCardView: View {
     private var showsStatusBadge: Bool { saved == nil && agent.agent.status.displayTitle != nil }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentCardView.body")
         let presentation = presentation
         let lines = AgentCardLines(
             presentation: presentation, headingTakesTitle: heading != nil,
@@ -616,8 +617,7 @@ struct AgentStatusBadge: View {
                     repoName: "proj",
                     repoRoot: "/work/proj",
                     checkoutPath: "/work/proj-wt",
-                    isLinkedWorktree: true),
-                lastOutputSnippet: "Allow Claude to run rm -rf? 1. Yes 2. No"))
+                    isLinkedWorktree: true)))
         // No workspace in the snapshot: the Agent's own name takes the lead.
         AgentCardView(
             agent: ConsoleAgent(
@@ -628,7 +628,6 @@ struct AgentStatusBadge: View {
                     status: .working, workspaceID: "w2", tabID: "w2:t1", paneID: "w2:p1",
                     cwd: "/tmp", revision: 1),
                 workspaceLabel: nil,
-                repositoryCheckout: nil,
-                lastOutputSnippet: nil))
+                repositoryCheckout: nil))
     }
 }

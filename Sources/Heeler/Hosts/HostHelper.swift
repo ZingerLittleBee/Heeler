@@ -5,7 +5,7 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 5, 4)
+    static let bundled = PluginVersion(0, 5, 6)
     /// The first Helper that sends Agent Notifications.
     static let firstWithNotifications = PluginVersion(0, 4, 0)
     /// The first Helper that drives a Live Activity through the Push Relay.
@@ -453,7 +453,7 @@ struct HostHelperPresentation: Sendable, Equatable {
     let needsAttention: Bool
 
     static let featuresSentence =
-        String(localized: "Agent Notifications, Live Activity and Usage on this Host come with the Host Helper.")
+        String(localized: "A background service for Agent Notifications, Live Activity, Usage, and Pi and Oh My Pi Chat.")
 
     /// `canRepair` is false when this device offers no Repair for that status,
     /// so the copy names what does change it.

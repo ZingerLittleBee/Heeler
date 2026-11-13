@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Host detail's Claude Code hooks on a tmux Host (ADR 0044): each configuration
+/// Host detail's Claude Code hooks on a tmux Host (ADR 0045): each configuration
 /// root, the default one and each Claude Code Account's (ADR 0037), whether its
 /// user settings run Heeler's script, and the change that adds or removes them,
 /// shown before anything is written. Both go through the harness configuration

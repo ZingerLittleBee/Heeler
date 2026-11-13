@@ -1,5 +1,5 @@
 // Agent Notifications for Blocked, Error and Done, from what a herdr-core
-// session or tmux server reports (ADRs 0033 and 0044). Folds turns as the app
+// session or tmux server reports (ADRs 0033 and 0045). Folds turns as the app
 // does, and after a debounce sends what the current state calls for to the
 // devices registered for that session or server, sealed with each device's
 // Notification Key, exactly as the plugin's notify hook does on Herdr TUI.

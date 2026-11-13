@@ -1,0 +1,120 @@
+[!p[?2026l[?9l[?1000l[?1001l[?1002l[?1003l[?1004l[?1005l[?1006l[?1015l[?1016l[?2004l[?1l[?66l[?2031l[?2048l[=0;1u[?1049l[?1047l[?47l[H[2J[?25l[?2004h[3g[9GH[17GH[25GH[33GH[41GH[49GH[57GH[65GH[73GH[81GH[89GH[97GH[105GH[113GH[121GH[129GH[137GH[145GH[153GH[161GH[169GH[177GH[185GH[193GH[H[0m[1m[38;5;4m> Reply with the single word ready.[0m
+
+  ready
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 13.5s[0m [0m[38;5;7m(`? I have to avoid that.)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  Running [0m[38;5;12msleep 60[0m and waiting for it to finish...
+
+  finished
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Reply with the single word ok.[0m
+
+  ok
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 58 in the foreground and wait until it exits, then reply done.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 58)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 57 in the foreground and wait until it exits, then reply done.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 57)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 55 in the foreground and wait until it exits, then reply done.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 55)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Please run the shell command sleep 24 in the foreground and wait until it exits, then reply done.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 24)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  Running [0m[38;5;12msleep 24[0m and waiting for it to finish...
+
+  done
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run the shell command sleep 60 in the foreground and wait until it exits, then reply finished.[0m
+
+[0m[38;5;3m●[0m [0m[1m[38;5;3mRunning[0m [0m[38;5;7m(sleep 60)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[1mTasks[0m
+[0m[1mAgent Backgrounded[0m
+[0m[38;5;12m> [0m[38;5;3m●[0m [0m[38;5;8m[10:00:16][0m [0m[38;5;12msleep 60                                                                                                                                                                          [0m[38;5;3mrunning[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[09:48:26][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[09:45:02][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[09:39:22][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[09:34:50][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[08:39:24][0m [0m[38;5;12msleep 24                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:56:37][0m [0m[38;5;12msleep 57                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:53:51][0m [0m[38;5;12msleep 58                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:50:44][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:46:34][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:43:05][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:36:58][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+  [0m[38;5;2m●[0m [0m[38;5;8m[07:29:47][0m [0m[38;5;12msleep 60                                                                                                                                                               [0m[38;5;2mcompleted (exit 0)[0m
+
+[0m[1mKeyboard: [0m[38;5;12m↑/↓[0m [0m[38;5;8mNavigate[0m  [0m[38;5;12m←/→[0m [0m[38;5;8mPage[0m  [0m[38;5;12menter[0m [0m[38;5;8mView output[0m  [0m[38;5;12mk[0m [0m[38;5;8mKill Task[0m  [0m[38;5;12mx[0m [0m[38;5;8mRemove Task From List[0m
+
+                                                                                                                                                            [0m[2mGemini 4 Argon · medium · 1 task(s) · /tasks[0m[>4;2m[120;1H[0m[=5;1u]2;boxd@heeler-agy-644: ~/heeler-fix/proj-core2\[?9001l

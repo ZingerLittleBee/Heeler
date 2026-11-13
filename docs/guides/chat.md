@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), or [tmux](tmux.md#chat), and a supported coding Agent running there.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), or [tmux](tmux.md#chat), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
 
 ## Set up the Host
 
@@ -20,7 +20,7 @@ If a program doesn't read `current`, install its integration, then restart that 
 herdr integration install claude
 ```
 
-Replace `claude` with `codex`, `pi`, `omp`, `grok`, or `opencode` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
+Replace `claude` with `codex`, `pi`, `omp`, `grok`, `opencode`, or `antigravity-cli` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
 
 Start Codex with `--no-daemon`, and continue a conversation with `codex --no-daemon resume`:
 
@@ -52,7 +52,7 @@ If there is no **Show Chat**, or Chat shows **Waiting for Conversation**, see [C
 - Your messages are on the right. The Agent's answers, reasoning, and tool steps are on the left.
 - When a turn finishes, its steps fold behind a **Worked for …** line. Tap it to see them, and tap a tool card to see its output or file changes.
 - Touch and hold a message to copy it.
-- Tap an image under a tool step, or a path to an image in a message (shown after a photo symbol), to open it with zoom.
+- Tap an image under a tool step, or a path to an image in a message (shown after a photo symbol, or in color on a line of its own in a code block), to open it with zoom.
 - After scrolling up, tap the round button with a down chevron at the bottom right to jump back to the newest message.
 - Pull down past the top to load earlier messages.
 
@@ -62,7 +62,7 @@ To change the font or text size, go to **Settings > Appearance**.
 
 Type in **Message Agent** and tap **Send**. Chat types the message into the Agent's terminal and presses Enter for you, and never sends a message twice.
 
-- **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi and OpenCode need the turn to finish first.
+- **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi, OpenCode, and Antigravity CLI need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
 - **Images and files.** On Herdr TUI and herdr-core Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.

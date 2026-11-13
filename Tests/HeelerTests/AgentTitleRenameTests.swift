@@ -6,7 +6,7 @@ import Testing
 @MainActor
 @Suite("Native Agent title rename")
 struct AgentTitleRenameTests {
-    @Test(arguments: ChatProgram.allCases)
+    @Test(arguments: ChatProgram.allCases.filter(AgentTitleNaming.supportsRename))
     func savesNativeTitleAndRefreshes(program: ChatProgram) async throws {
         let rig = try Rig(program)
         let store = rig.store()
@@ -34,7 +34,39 @@ struct AgentTitleRenameTests {
         #expect(rig.refreshes == 1)
     }
 
-    @Test(arguments: [ChatProgram.pi, .grok, .opencode])
+    /// Antigravity CLI prints its rename confirmation on screen without setting
+    /// a terminal title by default, and `/rename` with no argument is an error.
+    @Test func antigravityConfirmsRenameOnScreenWithoutGeneration() async throws {
+        #expect(ChatProgram.allCases.allSatisfy(AgentTitleNaming.supportsRename))
+        #expect(!AgentTitleNaming.supportsGeneration(.agy))
+        let rig = try Rig(.agy)
+        rig.apply = false
+        rig.afterCommand = {
+            rig.screenOverride = ANSIScreenDecoder.decode("> /rename Updated guide ✅\n  ⎿  Conversation renamed to: Updated guide ✅")
+        }
+        let store = rig.store()
+        store.input = "Updated guide ✅"
+        await store.save()
+        #expect(store.state == .renamed)
+        #expect(rig.commands == ["/rename Updated guide ✅"])
+        #expect(rig.refreshes == 1)
+    }
+
+    @Test func antigravityRenameFailureKeepsManualDraft() async throws {
+        let rig = try Rig(.agy)
+        rig.apply = false
+        rig.afterCommand = {
+            rig.screenOverride = ANSIScreenDecoder.decode("> /rename Keep my draft\n  ⎿  Error: Failed to rename conversation: no active conversation")
+        }
+        let store = rig.store()
+        store.input = "Keep my draft"
+        await store.save()
+        #expect(store.input == "Keep my draft")
+        #expect(!store.outcomeUncertain)
+        #expect(store.canSave)
+    }
+
+    @Test(arguments: [ChatProgram.pi, .grok, .opencode, .agy])
     func unsupportedGenerationSendsNothing(program: ChatProgram) async throws {
         let rig = try Rig(program)
         let store = rig.store()
@@ -136,6 +168,9 @@ struct AgentTitleRenameTests {
         #expect(
             AgentTitleRenameStore.nativeAcknowledgement(program: .omp, title: "π > 📝 MANUAL: Original")
                 == "Session renamed to \"📝 MANUAL: Original\".")
+        #expect(
+            AgentTitleRenameStore.nativeAcknowledgement(program: .agy, title: "Original")
+                == "Conversation renamed to: Original")
         for program in [ChatProgram.codex, .pi, .grok, .opencode] {
             #expect(AgentTitleRenameStore.nativeAcknowledgement(program: program, title: "Original") == nil)
         }
@@ -236,6 +271,7 @@ struct AgentTitleRenameTests {
             case .omp: "omp-08-empty-120-after-first"
             case .grok: "grok-01-idle-empty"
             case .opencode: "opencode-02-session-empty-180"
+            case .agy: "agy-02-idle-empty-120x40"
             }
             empty = try ScreenFixture.screen(fixture)
         }
@@ -248,6 +284,7 @@ struct AgentTitleRenameTests {
             case .omp: "π > 📝 MANUAL: " + title
             case .grok: title + " - grok"
             case .opencode: OpenCodeTerminalTitle.expected(sessionTitle: title)
+            case .agy: title
             }
             return Agent(terminalID: "term-one", kind: program.rawValue, title: displayed, status: status,
                 workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/project", revision: 1,

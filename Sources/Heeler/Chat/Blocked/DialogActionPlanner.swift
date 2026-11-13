@@ -12,7 +12,8 @@ enum DialogActionPlanner {
     /// - Parameter toolUseID: The matched request's `tool_use` id. Each
     ///   program's planner decides what it is for: a Claude card or an
     ///   Oh My Pi question confirms by the request's result, OpenCode sends
-    ///   Esc only for a matched call, and Codex and Grok Build ignore it.
+    ///   Esc only for a matched call, and Codex, Grok Build and Antigravity
+    ///   CLI ignore it.
     static func plan(
         _ action: DialogAction, for dialog: BlockedDialog, toolUseID: String? = nil
     ) throws(DialogPlanError) -> DialogActionPlan {
@@ -21,6 +22,7 @@ enum DialogActionPlanner {
         case .codex: try CodexDialogPlanner(dialog: dialog).plan(action)
         case .omp: try OMPDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
+        case .agy: try AgyDialogPlanner(dialog: dialog).plan(action)
         case .pi: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
@@ -190,8 +192,8 @@ private struct ClaudeDialogPlanner {
             try respond(ordinal, text: text, submitKey: "enter")
         case .approvePlan(let note):
             try approvePlan(note: note)
-        case .submitSelection(let ordinals):
-            try submitSelection(ordinals)
+        case .submitSelection(let ordinals, let text):
+            try submitSelection(ordinals, text: text)
         case .expandQuestions, .skipQuestion:
             throw .unsupported(String(localized: "Only Codex queues questions."))
         }
@@ -274,10 +276,14 @@ private struct ClaudeDialogPlanner {
     }
 
     /// Toggles answers by digit (focus stays put), then moves to the page's
-    /// button and presses Enter.
-    private func submitSelection(_ ordinals: Set<Int>) throws(DialogPlanError) -> DialogActionPlan {
+    /// button and presses Enter. A written answer stays in the terminal, as
+    /// `respond` leaves the page's Other row.
+    private func submitSelection(_ ordinals: Set<Int>, text: String?) throws(DialogPlanError) -> DialogActionPlan {
         guard isMultiSelect, let button = dialog.options.first(where: { $0.role == .next }) else {
             throw .unsupported(String(localized: "Only a multi-select question takes a set of answers."))
+        }
+        guard text == nil else {
+            throw .unsupported(String(localized: "Heeler does not type into a multi-select question's Other row."))
         }
         guard !ordinals.isEmpty else { throw .emptySelection }
         for ordinal in ordinals.sorted() {
@@ -338,7 +344,7 @@ private struct CodexDialogPlanner {
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
-            .openCodeQuestion:
+            .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
             throw .unsupported(String(localized: "Not a Codex dialog."))
         }
     }

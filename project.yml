@@ -71,7 +71,7 @@ targets:
         type: folder
         buildPhase: resources
       # Heeler's Claude Code hook script, placed on a tmux Host apart from the
-      # Helper (ADR 0044).
+      # Helper (ADR 0045).
       - path: plugin/claude-code
         type: folder
         buildPhase: resources

@@ -92,9 +92,9 @@ suite("Host Helper closure", () => {
 
   test("the service runs nothing but /bin/ps and the stored tmux with -N, so it can never start a core or a tmux server", () => {
     // The Usage environment's read on macOS, a Usage lock's owner check there,
-    // and a tmux Pane's foreground group on macOS (ADR 0044).
+    // and a tmux Pane's foreground group on macOS (ADR 0045).
     const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js", "tmux/foreground.js"]);
-    // The stored tmux, always with `-N` and `-S` (ADR 0044).
+    // The stored tmux, always with `-N` and `-S` (ADR 0045).
     const mayRunStoredTmux = new Set(["usage/tmux-environment.js", "tmux/client.js"]);
     for (const path of serviceModules()) {
       const source = readFileSync(join(HELPER, path), "utf8");
@@ -116,7 +116,7 @@ suite("Host Helper closure", () => {
     // recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
     // `powerShell` is the session extension's on native Windows, and
-    // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0044);
+    // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0045);
     // both are pinned below.
     assert.deepEqual([...started].sort(), [
       '"/bin/ps"',

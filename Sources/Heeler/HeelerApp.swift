@@ -12,6 +12,7 @@ struct HeelerApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        PerfTrace.startIfEnabled()
         try? ImagePreparer.cleanupRemnants()
         try? FilePreparer.cleanupRemnants()
     }

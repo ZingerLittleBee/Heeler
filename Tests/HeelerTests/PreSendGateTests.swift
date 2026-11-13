@@ -83,6 +83,65 @@ struct PreSendGateTests {
         }
         #expect(PreSendGate.check(screen, program: .opencode, activity: .blocked) == .holdBlocked)
     }
+
+    /// Antigravity CLI takes a message into an empty box with nothing drawn
+    /// under it, idle or while a turn runs. herdr 0.9.5 reports its file
+    /// edit dialog and popups idle, so the screen holds those.
+    @Test(arguments: ScreenFixture.agy)
+    func agyScreensHoldOrSend(stem: String) throws {
+        let sendable: Set = [
+            "agy-01-welcome-after-attach-120x40", "agy-02-idle-empty-120x40", "agy-03-ctrlc-idle-once-120x40",
+            "agy-06-esc-esc-idle-draft-120x40",
+            "agy-09-welcome-after-trust-answered-elsewhere-190x49", "agy-13-first-screen-welcome-120x40",
+            "agy-17-prompt-newline-just-sent-120x40", "agy-18-idle-after-reply-120x40",
+            "agy-32-perm-after-digit2-120x40", "agy-34-working-submitted-while-working-120x40",
+            "agy-35-done-after-queued-120x40", "agy-36-done-final-120x40", "agy-38-esc-while-working-120x40",
+            "agy-39-ctrlc-while-working-120x40", "agy-43-ask-question-after-digit2-120x40",
+            "agy-46-ask-question-multi-after-esc-120x40", "agy-49-prompt-sent-into-edit-dialog-120x40",
+            "agy-50-after-edit-accepted-by-prompt-120x40",
+            "agy-51-perm-run-command-after-esc-120x40", "agy-54-idle-after-esc-amend-heeler-client-59x41",
+            "agy-56-perm-run-command-after-digit4-190x49", "agy-57-idle-empty-62x41", "agy-63-idle-empty-40x30",
+            "agy-63-idle-empty-62x20", "agy-66-working-nodraft-62x41", "agy-67-working-tool-running-62x41",
+            "agy-70-working-queued-after-approve-62x41", "agy-72-working-altm-send-now-62x41",
+            "agy-73-done-after-altm-62x41", "agy-74-compacting-or-after-62x41", "agy-75-after-compact-62x41",
+            "agy-76-mode-cycle-1-120x40", "agy-76-mode-cycle-2-120x40", "agy-76-mode-cycle-3-120x40",
+            "agy-76-mode-cycle-4-120x40", "agy-78-auto-mode-result-120x40", "agy-79-plan-mode-result-120x40",
+            "agy-81-artifact-review-after-y-120x40", "agy-83-plan-edit-rejected-120x40",
+            "agy-84-footer-modes-40x30-40x30", "agy-84-footer-modes-62x20-62x20", "agy-84-footer-modes-62x41-62x41",
+            "agy-87-perm-after-ctrlc-120x40", "agy-89-warning-notice-bad-model-120x40",
+            "agy-90-first-screen-welcome-40x30", "agy-90-first-screen-welcome-62x20",
+            "agy-90-first-screen-welcome-62x41", "agy-94-working-nodraft-40x30", "agy-96-working-queued-40x30",
+            "agy-98-working-nodraft-62x20", "agy-103-ask-question-multiselect-after-enter-62x41",
+            "agy-107-ask-question-multi-q2-after-digit2-62x41", "agy-115-ask-question-single-after-esc-62x41",
+            // agy under `NO_COLOR`.
+            "agy-116-nocolor-idle-empty-45x45", "agy-118-nocolor-draft-cleared-45x45",
+            "agy-121-nocolor-after-bash-mode-45x45", "agy-122-nocolor-accept-edits-hint-cut-45x45",
+            "agy-123-nocolor-mode-cycle-accept-edits-92x47", "agy-124-nocolor-mode-cycle-auto-92x47",
+            "agy-125-nocolor-mode-cycle-plan-92x47", "agy-126-nocolor-mode-cycle-default-92x47",
+            "agy-127-nocolor-mode-cycle-accept-edits-again-92x47", "agy-128-nocolor-idle-accept-edits-92x47",
+            "agy-130-nocolor-back-to-default-92x47", "agy-133-nocolor-after-help-92x47",
+            "agy-134-nocolor-working-nodraft-92x47", "agy-136-nocolor-working-after-run-command-92x47",
+            "agy-137-nocolor-working-markdown-prompt-92x47",
+            "agy-138-nocolor-idle-after-markdown-reply-92x47", "agy-140-nocolor-working-after-file-create-92x47",
+            "agy-143-nocolor-idle-after-file-edit-declined-92x47", "agy-147-nocolor-working-after-questions-92x47",
+            "agy-150-nocolor-idle-after-multiselect-92x47",
+            // Read through tmux.
+            "agy-159-working-after-multiselect-writein-120x40",
+            "agy-168-idle-after-writein-and-skipped-question-120x40",
+            // A command still running in the background lists its task under
+            // the box; the footer under it decides.
+            "agy-169-plain-working-background-task-120x40",
+            "agy-170-plain-idle-background-task-after-esc-120x40", "agy-175-plain-idle-after-tasks-120x40",
+            "agy-181-idle-background-task-after-esc-62x46", "agy-185-idle-after-tasks-62x46",
+        ]
+        let screen = try ScreenFixture.screen(stem)
+        let state = InputBoxStateDetector.detect(screen, program: .agy)
+        let decision: PreSendDecision = sendable.contains(stem) ? .send : .hold(state)
+        for activity in [ChatAgentActivity.idle, .working, .unknown] {
+            #expect(PreSendGate.check(screen, program: .agy, activity: activity) == decision)
+        }
+        #expect(PreSendGate.check(screen, program: .agy, activity: .blocked) == .holdBlocked)
+    }
 }
 
 @Suite("Delivery check")

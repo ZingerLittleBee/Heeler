@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// What one Attach makes of its control client's events (ADR 0043): a first
+/// What one Attach makes of its control client's events (ADR 0044): a first
 /// paint that lines up with the Pane's `%output`, a new one after a pause, no
 /// output from other Panes, and the window closed once only Heeler holds it.
 @Suite("tmux pane feed")

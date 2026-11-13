@@ -11,7 +11,7 @@ enum TmuxNamedKey {
     }
 }
 
-/// Composer Stop on a tmux Agent (ADRs 0024 and 0043): Chat's keys for the
+/// Composer Stop on a tmux Agent (ADRs 0024 and 0044): Chat's keys for the
 /// program, through the Attach's control client, after anything already typed.
 /// A guard reads `capture-pane` on that same queue and can press nothing. When
 /// every key leaves, Heeler writes idle at once.

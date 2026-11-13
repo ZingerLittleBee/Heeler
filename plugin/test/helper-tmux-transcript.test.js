@@ -1,6 +1,6 @@
 // While a Claude Code Pane reads `working` or `blocked`, the Host Helper watches
 // the end of the Transcript `@heeler-session` names, and a `system` /
-// `turn_duration` entry written after the status changed sets `idle` (ADR 0044).
+// `turn_duration` entry written after the status changed sets `idle` (ADR 0045).
 
 import { afterEach, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";

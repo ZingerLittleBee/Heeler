@@ -65,6 +65,8 @@ final actor ScriptedTransport: Transport {
         return try await chatFiles.read(range)
     }
     private(set) var agentPromptParams: [AgentPromptParams] = []
+    /// Every `agent.send_keys` received, in order.
+    private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -130,7 +132,6 @@ final actor ScriptedTransport: Transport {
     private var nextSnapshotGate: ScriptedTransportCallGate?
     private var paneTexts: [String: String] = [:]
     private var paneReadFailure: TransportError?
-    private var nextPaneReadGate: ScriptedTransportCallGate?
     private var agentPromptFailure: (any Error)?
     private var agentPromptFailures: [any Error] = []
     private var nextAgentPromptGate: ScriptedTransportCallGate?
@@ -240,11 +241,6 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent `readPane` throw `failure`.
     func setPaneReadFailure(_ failure: TransportError?) {
         paneReadFailure = failure
-    }
-
-    /// Pauses the next pane read after capturing its response.
-    func gateNextPaneRead(using gate: ScriptedTransportCallGate) {
-        nextPaneReadGate = gate
     }
 
     /// Makes every subsequent `promptAgent` throw `failure`.
@@ -644,11 +640,7 @@ final actor ScriptedTransport: Transport {
     func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
         paneReadParams.append(params)
         let responseText = paneTexts[params.paneID] ?? ""
-        let failure = paneReadFailure
-        let gate = nextPaneReadGate
-        nextPaneReadGate = nil
-        await gate?.waitUntilOpen()
-        if let failure { throw failure }
+        if let failure = paneReadFailure { throw failure }
         return PaneReadResult(
             format: .text, paneID: params.paneID, revision: 0,
             source: params.source, tabID: "t", text: responseText,
@@ -675,7 +667,9 @@ final actor ScriptedTransport: Transport {
         return Agent(.fixture(paneID: params.target, status: .working))
     }
 
-    func sendAgentKeys(_: AgentSendKeysParams) async throws {}
+    func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
+        agentSendKeysParams.append(params)
+    }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         agentStarts.append(request)

@@ -5,7 +5,7 @@ import UIKit
 
 @testable import Heeler
 
-/// Host detail's Claude Code hooks on a tmux Host (ADR 0044): the default root
+/// Host detail's Claude Code hooks on a tmux Host (ADR 0045): the default root
 /// and each Account's, each change shown before it is written, and an undo any
 /// device can make.
 @MainActor

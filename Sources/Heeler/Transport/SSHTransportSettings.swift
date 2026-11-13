@@ -95,7 +95,7 @@ struct SSHTransportSettings: Sendable {
     /// Core's session name; its default session is named "default".
     var coreSessionName = "default"
     /// A tmux Host's socket name, and the paths resolved for it earlier, if any
-    /// (ADR 0042).
+    /// (ADR 0043).
     var tmuxSocketName = TmuxSocketName.defaultName
     var tmuxPaths: TmuxPaths?
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).

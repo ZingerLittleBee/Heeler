@@ -1,5 +1,5 @@
 // Live Activity updates and the end, from what a herdr-core session or tmux
-// server reports (ADRs 0033 and 0044, docs/agents/live-activity-contract.md).
+// server reports (ADRs 0033 and 0045, docs/agents/live-activity-contract.md).
 // The app starts an activity and writes its push token into the Helper's
 // registrations, and once the app has suspended this keeps it current through
 // the Push Relay.

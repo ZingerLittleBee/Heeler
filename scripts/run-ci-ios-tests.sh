@@ -2675,13 +2675,13 @@ assert_behavior "Changes untracked directory: lists its files" \
 # against a Linux Host with fish and POSIX sh login shells (#395).
 assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ETests \
     '"Changes, file patches and an untracked directory read correctly on every configured field Host"'
-# A tmux Host is only ever reached, never started (ADR 0042). The fixture's
+# A tmux Host is only ever reached, never started (ADR 0043). The fixture's
 # configuration creates a session on start, so a client that could start a
 # server would leave one behind for this test to find.
 assert_behavior "tmux Host connects without starting a server" TmuxTransportE2ETests \
     '"connecting and detecting start no server, with a configuration that creates a session on start"'
 # The inventory loop is one long exec that speaks only when something changed
-# (ADR 0043): a loop that printed every second would fail this test's count.
+# (ADR 0044): a loop that printed every second would fail this test's count.
 assert_behavior "tmux inventory loop prints only on change" TmuxTransportE2ETests \
     '"the inventory loop prints once and then only on change, in one ordinary SSH session"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \

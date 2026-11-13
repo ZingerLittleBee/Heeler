@@ -285,6 +285,9 @@ struct AgentComposerView: View {
     var inputReplacement: AnyView? = nil
     /// Bumped to put the caret in the input.
     var focusRequest = 0
+    /// Bumped to put the keyboard away, as the switcher row's keyboard
+    /// button does.
+    var keyboardDismissRequest = 0
     /// Chat folds the input to one line while the keyboard is down; see
     /// `AgentComposerCollapse`. The terminal keeps its height, since every
     /// fold would resize the PTY, so each surface says which it wants.
@@ -307,6 +310,7 @@ struct AgentComposerView: View {
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
     @State private var isDropTargeted = false
+    @Environment(\.themeColors) private var themeColors
     /// The finger's travel from where it took the grabber.
     @GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.35, bounce: 0.4)))
     private var keyboardPull: CGFloat = 0
@@ -320,6 +324,7 @@ struct AgentComposerView: View {
     }
 
     var body: some View {
+        let _ = PerfTrace.count("AgentComposerView.body")
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 AgentDetailStatusChrome(
@@ -343,10 +348,16 @@ struct AgentComposerView: View {
                         switchKeyboard: keyboardSwitchAction,
                         modeControl: modeControl)
                 }
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                )
+                // Opaque in the theme's background, so Chat scrolling under
+                // it stays out of the way, then veiled.
+                .background {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(themeColors.background)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(ThemeVeil.card)
+                        }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -390,6 +401,9 @@ struct AgentComposerView: View {
         .onChange(of: focusRequest) { _, _ in
             // A card still in the input's place keeps the keyboard down.
             if inputReplacement == nil { isInputFocused = true }
+        }
+        .onChange(of: keyboardDismissRequest) { _, _ in
+            if isKeyboardPresented { hideKeyboard() }
         }
         .onChange(of: isInputFocused) { _, isFocused in
             keyboardPresentationFollowsFocus(isFocused)
@@ -474,12 +488,15 @@ struct AgentComposerView: View {
                     openVoiceInputSettings: { isVoiceSetupPresented = true },
                     dismiss: { store.voice.dismissFailure() })
             }
-            if let notice = store.notice, notice.route == sendPolicy.route, failureIsHidden {
+            if let notice = store.notice, notice.route == sendPolicy.route {
                 noticeRow(notice)
             }
             if status == .working, let stopNotice = store.stop.notice {
                 noticeLabel(stopNotice)
                     .accessibilityIdentifier("composer.stop-notice")
+            }
+            if let leftRunning = store.stop.leftRunning {
+                leftRunningRow(leftRunning)
             }
             if !isCollapsed {
                 actionRow
@@ -622,6 +639,21 @@ struct AgentComposerView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("composer.notice")
+    }
+
+    /// What a Stop that ended the turn left running, which the terminal can
+    /// end.
+    private func leftRunningRow(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            noticeLabel(text)
+            if let openAgentTerminal {
+                Button("Open in Terminal", action: openAgentTerminal)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("composer.stop-left-running")
     }
 
     /// Why a send was refused, or why Stop pressed nothing or the Agent
@@ -909,9 +941,6 @@ struct AgentComposerView: View {
         else { return nil }
         return matches
     }
-
-    /// The notice gives way to a failure, which has its own row and Retry.
-    private var failureIsHidden: Bool { latestFailure == nil }
 
     /// Blocked delivery types into Attach without Enter; the tools keyboard
     /// is what submits or cancels. A refusal stays as the store's notice and
@@ -1293,13 +1322,19 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         context _: Context
     ) -> CGSize? {
         guard let width = proposal.width else { return nil }
-        let measured = uiView.sizeThatFits(
-            CGSize(width: width, height: .greatestFiniteMagnitude))
+        let span = PerfTrace.begin("chat.composer.size")
+        defer { PerfTrace.end(span) }
+        let measured = uiView.draftSize(fitting: width)
         let maximumHeight = uiView.draftLineHeight * CGFloat(lineLimit)
             + uiView.textContainerInset.top
             + uiView.textContainerInset.bottom
         let height = min(max(36, measured.height), maximumHeight)
-        uiView.isScrollEnabled = lineLimit > 1 && measured.height > maximumHeight
+        // Written only when it changes: SwiftUI asks for this size many
+        // times a layout, and the write alone has the text view lay out.
+        let scrolls = lineLimit > 1 && measured.height > maximumHeight
+        if uiView.isScrollEnabled != scrolls {
+            uiView.isScrollEnabled = scrolls
+        }
         return CGSize(width: width, height: height)
     }
 
@@ -1518,12 +1553,14 @@ final class AgentComposerUITextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
         applyComposerInputTraits()
         installKeyboardObservers()
+        installDraftObserver()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         applyComposerInputTraits()
         installKeyboardObservers()
+        installDraftObserver()
     }
 
     /// The draft is local text until Send, so it autocorrects and spell
@@ -1611,6 +1648,10 @@ final class AgentComposerUITextView: UITextView {
     /// body font, so a limit counted in body lines cut its lines short.
     var draftLineHeight: CGFloat {
         guard let font else { return 20 }
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
+        if let lineHeight, lineHeight.font == font, lineHeight.scale == scale {
+            return lineHeight.height
+        }
         func pitch(_ sample: String) -> CGFloat {
             func height(_ text: String) -> CGFloat {
                 NSAttributedString(string: text, attributes: [.font: font]).boundingRect(
@@ -1620,8 +1661,51 @@ final class AgentComposerUITextView: UITextView {
             }
             return height(sample + "\n" + sample) - height(sample)
         }
-        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
-        return (max(font.lineHeight, pitch("Ag"), pitch("中")) * scale).rounded(.up) / scale
+        let height = (max(font.lineHeight, pitch("Ag"), pitch("中")) * scale).rounded(.up) / scale
+        lineHeight = (font, scale, height)
+        return height
+    }
+
+    /// `draftLineHeight` as last worked out, for the font and scale it was
+    /// worked out in.
+    private var lineHeight: (font: UIFont, scale: CGFloat, height: CGFloat)?
+
+    /// The size the whole draft takes at `width`, measured again only after
+    /// the draft, its font, or how it wraps has changed. SwiftUI asks for it
+    /// many times in one layout, and again whenever a view around the
+    /// Composer updates, and each measurement lays the text out.
+    func draftSize(fitting width: CGFloat) -> CGSize {
+        let key = DraftFitting(
+            width: width, revision: draftRevision, font: font, inset: textContainerInset,
+            padding: textContainer.lineFragmentPadding, maximumLines: textContainer.maximumNumberOfLines)
+        if let fitted, fitted.key == key { return fitted.size }
+        let size = sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        fitted = (key, size)
+        return size
+    }
+
+    /// What a measurement of the draft depends on.
+    private struct DraftFitting: Equatable {
+        let width: CGFloat
+        let revision: Int
+        let font: UIFont?
+        let inset: UIEdgeInsets
+        let padding: CGFloat
+        let maximumLines: Int
+    }
+
+    private var fitted: (key: DraftFitting, size: CGSize)?
+    /// Counts the draft's edits, to its text and to how it is styled.
+    private var draftRevision = 0
+
+    private func installDraftObserver() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(draftDidChange),
+            name: NSTextStorage.didProcessEditingNotification, object: textStorage)
+    }
+
+    @objc private func draftDidChange() {
+        draftRevision &+= 1
     }
 
     /// The caret keeps the inset's padding around it, so the line it is on

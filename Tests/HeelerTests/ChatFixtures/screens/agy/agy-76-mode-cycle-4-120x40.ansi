@@ -1,0 +1,40 @@
+
+[0m[38;5;8m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo probe-amend)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo probe-four . If it is declined, just reply "declined" and stop.[0m
+
+[0m[38;5;1m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo probe-four)[0m [0m[38;5;7mfailed[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;4mCommand[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command and wait for it: sleep 30; echo probe-two . Then reply with its output only.[0m
+
+[0m[38;5;7m○[0m [0m[38;5;7mThought for 10.8s[0m [0m[38;5;7m(Running the command as specified. Expecting the command to sleep for 30 seconds before printin...)[0m
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(sleep 30; echo probe-two)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  The command has been launched and I will wait for it to finish before replying with its output.
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Also reply with the word plum[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mChecked[0m 1 task [0m[38;5;7m(task-38)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[38;5;7m▸ Thought for 15s, 133 tokens[0m
+
+  plum
+
+  probe-two
+
+[0m[38;5;8m────────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> /compact[0m
+
+[0m[38;5;7m─────────────────────────────────────────────── Conversation compacted ────────────────────────────────────────────────[0m
+                        [0m[2m47 steps summarized · context 14.2k → ~11.5k (1.0k summary) · took 20s[0m
+
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;8m? for shortcuts                                                                     [0m               [0m[2mGemini 4 Argon · high[0m

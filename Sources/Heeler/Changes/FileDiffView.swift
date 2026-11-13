@@ -5,6 +5,7 @@ import SwiftUI
 struct FileDiffView: View {
     let store: FileDiffStore
     @State private var action: Task<Void, Never>?
+    @Environment(\.diffSurface) private var surface
 
     var body: some View {
         ZStack {
@@ -34,7 +35,7 @@ struct FileDiffView: View {
                 }
             }
         }
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: surface.background))
         .safeAreaInset(edge: .bottom) {
             if case .loaded = store.phase, let readAt = store.readAt {
                 FileDiffListChangeNotice(

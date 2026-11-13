@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// One control-mode client over one exec (ADR 0043): its commands in order,
+/// One control-mode client over one exec (ADR 0044): its commands in order,
 /// each reply matched to the command that asked, and one end for everything
 /// that waits on it. Every later Attach feature sends through it.
 @Suite("tmux control client")
@@ -388,7 +388,7 @@ struct TmuxControlClientTests {
 }
 
 /// Commands as a control client writes them: words tmux reads back exactly,
-/// whatever they hold (ADR 0043).
+/// whatever they hold (ADR 0044).
 @Suite("tmux control command")
 struct TmuxControlCommandTests {
     @Test func plainWordsAreWrittenAsTheyAre() {

@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// How a tmux Pane's `@heeler-status` reads, and the Agent Status and Done it
-/// gives on one device (ADR 0044), from the shared vector the hook script's
+/// gives on one device (ADR 0045), from the shared vector the hook script's
 /// and the Helper's tests read too.
 @Suite struct TmuxHeelerStatusTests {
     struct VectorFile: Decodable {

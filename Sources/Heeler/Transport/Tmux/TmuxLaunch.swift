@@ -1,6 +1,6 @@
 import Foundation
 
-/// The tmux commands a user asks for on a tmux Host (ADR 0042, ADR 0043).
+/// The tmux commands a user asks for on a tmux Host (ADR 0043, ADR 0044).
 /// Pure: it builds one `/bin/sh` script and reads the ids tmux prints back.
 ///
 /// A window opens detached in the session the user chose, so that session's
@@ -11,7 +11,7 @@ import Foundation
 /// same program herdr-core runs: the user's shell replaces itself with it,
 /// with ADR 0034's session flags, and a Claude Code under a configuration root
 /// without Heeler's hooks gets them for that launch alone through `--settings`
-/// (ADR 0044).
+/// (ADR 0045).
 enum TmuxLaunch {
     struct Server: Equatable, Sendable {
         var paths: TmuxPaths
@@ -108,7 +108,7 @@ enum TmuxLaunch {
     /// Ends a leftover session of Heeler's own (`@heeler-attach`) only while the
     /// answering server is still `instance`, the session id `$n` still carries a
     /// non-empty `@heeler-attach` option, and `#{session_attached}` is `0`
-    /// (ADR 0043). Matched by `@heeler-attach` on the session id and never by
+    /// (ADR 0044). Matched by `@heeler-attach` on the session id and never by
     /// session name prefix, inside tmux's own `if-shell -F` check.
     static func endUnattachedAttachSession(
         id: String, instance: TmuxServerInstance, paths: TmuxPaths
@@ -145,7 +145,7 @@ enum TmuxLaunch {
 
     /// Sets the Pane's `@heeler-status` to `next` only while it still reads
     /// `expected`, then prints whatever it reads now. One attempt: a value that
-    /// changed is left to the writer that changed it (ADR 0044). `clearAsk`
+    /// changed is left to the writer that changed it (ADR 0045). `clearAsk`
     /// also clears `@heeler-ask`, which a Claude Code Pane's idle or working
     /// write does. Both sets are inside the compare, so a lost compare clears
     /// nothing.
@@ -199,7 +199,7 @@ enum TmuxLaunch {
 
     /// Reads a Pane's visible screen with escape sequences kept (`capture-pane -e -p`),
     /// prefixed by the answering server's `pid:start_time` so a replaced server is
-    /// never mistaken for the one Chat keeps to (ADRs 0042 and 0043).
+    /// never mistaken for the one Chat keeps to (ADRs 0043 and 0044).
     static func capturePaneScreen(pane: String, paths: TmuxPaths) -> Command {
         let show = shellArguments([
             "display-message", "-p", "-t", pane, "#{pid}:#{start_time}",
@@ -241,7 +241,7 @@ enum TmuxLaunch {
     }
 
     /// The server's global environment names, which a new session inherits,
-    /// filtered on the Host so no value crosses SSH (ADR 0043).
+    /// filtered on the Host so no value crosses SSH (ADR 0044).
     static func showEnvironment(paths: TmuxPaths) -> Command {
         environmentNamesCommand(["-u", "show-environment", "-g", "-s"], paths: paths)
     }

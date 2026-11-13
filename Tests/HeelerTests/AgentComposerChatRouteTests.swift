@@ -120,6 +120,109 @@ struct AgentComposerChatRouteTests {
         #expect(store.draft == "next step")
     }
 
+    @MainActor
+    private final class Seen {
+        var steps: [String] = []
+        var echoes: [[AgentComposerStore.DeliveryState]] = []
+    }
+
+    /// The herdr-core run: a Send while a program that holds on Working ran
+    /// showed "Sending" for 1.5 to 2.5 s, while the session check's exec and
+    /// the screen read's paint ran, before the same hold took it back. A
+    /// reported Working now holds before either, so the echo leaves in the
+    /// main-actor turn it came in: a job queued behind the Send never sees
+    /// it, and nothing renders it.
+    @Test func aWorkingHoldNeverShowsTheEcho() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport, status: .working)
+        let ready = try ScreenFixture.screen("opencode-02-session-empty-180")
+        let seen = Seen()
+        let policy = ComposerDeliveryPolicy.chat(
+            rules: ChatSendRules(
+                program: .opencode,
+                commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .opencode)),
+            activity: { .working },
+            readScreen: {
+                seen.steps.append("read")
+                // Each is a Host round trip on herdr-core.
+                await Task.yield()
+                return ready
+            },
+            confirmSession: {
+                seen.steps.append("check")
+                await Task.yield()
+                return nil
+            },
+            pause: { _ in })
+        let hold = ComposerRefusal.inputNotReady(
+            "The Agent isn't taking messages: OpenCode is working. Send once it's idle, or steer from the terminal."
+        )
+        store.replaceDraft(with: "hello")
+
+        let send = Task { await store.send(policy: policy) }
+        let look = Task { seen.echoes.append(store.messages.map(\.state)) }
+        let result = await send.value
+        await look.value
+
+        #expect(result == .refused(hold))
+        #expect(seen.echoes == [[]])
+        #expect(seen.steps.isEmpty)
+        #expect(store.draft == "hello")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        store.agentStatusDidChange(.idle)
+        #expect(store.notice == nil)
+    }
+
+    /// The herdr-core runs: a Send from a Chat that couldn't tell showed the
+    /// timeline with the message as Sending through the session check's exec,
+    /// then the Can't Tell page again. Chat knows that check would refuse, so
+    /// the refusal comes before it, in the main-actor turn the Send came in.
+    @Test func aSessionRefusalChatAlreadyKnowsNeverShowsTheEcho() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let ready = try ScreenFixture.screen("agy-02-idle-empty-120x40")
+        let seen = Seen()
+        let refusal = "Heeler can't tell which conversation Antigravity CLI shows, so it sent nothing."
+        func policy(held: String?) -> ComposerDeliveryPolicy {
+            ComposerDeliveryPolicy.chat(
+                rules: ChatSendRules(
+                    program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .agy)),
+                activity: { .idle },
+                readScreen: {
+                    seen.steps.append("read")
+                    await Task.yield()
+                    return ready
+                },
+                confirmSession: {
+                    seen.steps.append("check")
+                    await Task.yield()
+                    return nil
+                },
+                heldSession: { held },
+                pause: { _ in })
+        }
+        store.replaceDraft(with: "hello")
+
+        let send = Task { await store.send(policy: policy(held: refusal)) }
+        let look = Task { seen.echoes.append(store.messages.map(\.state)) }
+        let result = await send.value
+        await look.value
+
+        #expect(result == .refused(.inputNotReady(refusal)))
+        #expect(seen.echoes == [[]])
+        #expect(seen.steps.isEmpty)
+        #expect(store.draft == "hello")
+        #expect(store.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        // With nothing known, the check runs before the read as ever.
+        #expect(await store.send(policy: policy(held: nil)) == .deliveredViaPrompt)
+        #expect(seen.steps.prefix(2) == ["check", "read"])
+        #expect(await transport.agentPromptParams.count == 1)
+    }
+
     /// The Mac pick run: "can't tell" stayed in the Composer after the pick
     /// it asked for. A hold about the conversation Chat followed ends once
     /// it follows another; one noted after the Send's own check moved Chat
@@ -223,8 +326,10 @@ struct AgentComposerChatRouteTests {
         #expect(store.notice == nil)
     }
 
-    /// A retry's refusal shows on the message it failed, with its own words.
-    @Test func aRetryRefusedUnderAStatusChangeKeepsItsReason() async throws {
+    /// A held retry keeps the failure it was retried for and says why in
+    /// the notice, even under a status change. Written into the message,
+    /// a passing hold outlasted itself as the message's failure.
+    @Test func aHeldRetryKeepsItsFailureAndSaysWhyInTheNotice() async throws {
         let transport = ScriptedTransport()
         let store = Self.store(transport, status: .working)
         store.replaceDraft(with: "next step")
@@ -232,6 +337,10 @@ struct AgentComposerChatRouteTests {
         await transport.setAgentPromptFailure(TransportError.sshUnreachable(detail: "offline"))
         _ = await store.send(policy: Self.chatPolicy())
         let failed = try #require(store.messages.first)
+        guard case .failed(let reason) = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
 
         let result = await store.retry(failed.id, policy: Self.chatPolicy(preflight: { _ in
             store.agentStatusDidChange(.idle)
@@ -239,7 +348,11 @@ struct AgentComposerChatRouteTests {
         }))
 
         #expect(result == .refused(hold))
-        #expect(store.messages.first?.state == .failed(hold.message))
+        #expect(store.messages.map(\.state) == [.failed(reason)])
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        store.agentStatusDidChange(.working)
+        #expect(store.notice == nil)
+        #expect(store.messages.map(\.state) == [.failed(reason)])
     }
 
     @Test func aHoldThatAStatusChangeUnderTheSendKeepsStillShows() async {

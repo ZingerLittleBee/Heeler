@@ -113,6 +113,30 @@ struct ChatTranscriptCacheTests {
         #expect(await fixture.cache.load(Self.key()) == .hit(document))
     }
 
+    /// Only Antigravity CLI marks a question skipped. A question cached
+    /// before the mark existed still decodes, as not skipped, so no
+    /// program's cached document is dropped for it.
+    @Test func skippedQuestionsSurviveTheDiskCache() async throws {
+        let json = #"{"text":"Which size?","options":[{"label":"small"}],"isMultiSelect":false,"answer":"small"}"#
+        let older = try JSONDecoder().decode(ChatQuestion.self, from: Data(json.utf8))
+        #expect(older.answer == "small")
+        #expect(!older.isSkipped)
+
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        var document = Self.document(Self.key())
+        document.entries = [ChatEntry(
+            id: ChatEntryID("ask"), sourceOffset: 100,
+            content: .tool(ChatToolActivity(
+                kind: .question, name: "ask_question", title: "Which color? · Which size?", status: .succeeded,
+                questions: [
+                    ChatQuestion(text: "Which color?", options: ["red", "green"], answer: "green"),
+                    ChatQuestion(text: "Which size?", options: ["small", "large"], isSkipped: true),
+                ])))]
+        await fixture.cache.save(document)
+        #expect(await fixture.cache.load(Self.key()) == .hit(document))
+    }
+
     @Test func documentsSavedBeforeChatRecordedALanguageLoadAsEnglish() async throws {
         let fixture = Fixture()
         defer { fixture.cleanUp() }
@@ -149,6 +173,26 @@ struct ChatTranscriptCacheTests {
         let json = #"{"text":"[Image #1]look","imageCount":1,"attachmentLabels":[],"wasQueued":false}"#
         let message = try JSONDecoder().decode(ChatUserMessage.self, from: Data(json.utf8))
         #expect(message == ChatUserMessage(text: "[Image #1]look", imageCount: 1))
+    }
+
+    /// A message saved before Chat told a queued prompt from a delivered
+    /// one was marked only as sent during a turn. The cache never keeps a
+    /// prompt still queued, so it reads as delivered into that turn.
+    @Test func olderCachedQueuedMessagesDecodeAsDelivered() throws {
+        let json = #"{"text":"Also check the README","imageCount":0,"attachmentLabels":[],"wasQueued":true}"#
+        let message = try JSONDecoder().decode(ChatUserMessage.self, from: Data(json.utf8))
+        #expect(message == ChatUserMessage(text: "Also check the README", delivery: .steered))
+    }
+
+    @Test(arguments: [ChatUserMessage.Delivery.direct, .queued, .steered])
+    func userMessagesKeepTheirDelivery(_ delivery: ChatUserMessage.Delivery) throws {
+        let message = ChatUserMessage(
+            text: "look", imageCount: 1, imagePaths: ["/tmp/a.png"], attachmentLabels: ["notes.md"],
+            command: ChatCommandInvocation(name: "review"), delivery: delivery)
+        let data = try JSONEncoder().encode(message)
+        #expect(try JSONDecoder().decode(ChatUserMessage.self, from: data) == message)
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(json["wasQueued"] == nil)
     }
 
     @Test func fileNamesRevealNoIdentifiers() {

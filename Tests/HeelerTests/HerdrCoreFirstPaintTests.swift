@@ -95,4 +95,69 @@ import Testing
         #expect(!modes.usesBracketedPaste)
         #expect(modes.kittyKeyboardFlags == 0)
     }
+
+    // MARK: Holding the paint for one write
+
+    /// Every output `hold` gives for `reads`, and the credit it returned on its own.
+    private static func drain(
+        _ hold: HerdrCoreFirstPaintHold, reads: [Data]
+    ) async throws -> (outputs: [Data], credited: [Int]) {
+        var pending = reads
+        var outputs: [Data] = []
+        var credited: [Int] = []
+        while let output = try await hold.next(
+            read: { pending.isEmpty ? nil : pending.removeFirst() }, credit: { credited.append($0) })
+        {
+            outputs.append(output)
+        }
+        return (outputs, credited)
+    }
+
+    @Test func aPaintCutInsideItsCloseComesOutWholeAndWhatSharedItsLastReadFollows() async throws {
+        let paint = Data([0x18]) + Data("\u{1B}[!p\u{1B}[H\u{1B}[2Jrow one\r\nrow two\u{1B}[?9001l".utf8)
+        let close = paint.count - 8
+        let reads = [
+            Data(paint[..<3]), Data(paint[3..<(close + 4)]),
+            Data(paint[(close + 4)...]) + Data("live".utf8), Data("more".utf8),
+        ]
+        let hold = HerdrCoreFirstPaintHold()
+
+        let (outputs, credited) = try await Self.drain(hold, reads: reads)
+
+        #expect(outputs == [paint, Data("live".utf8), Data("more".utf8)])
+        // Held reads return their credit on arrival, so the core keeps sending;
+        // the consumer's report of them is not credited again.
+        #expect(credited == [3, close + 1])
+        #expect(hold.consumed(paint.count) == paint.count - (close + 4))
+        #expect(hold.consumed(4) == 4)
+    }
+
+    @Test func outputThatDoesNotOpenAsAPaintPassesAsItComesAndCreditsAsConsumed() async throws {
+        let hold = HerdrCoreFirstPaintHold()
+
+        let (outputs, credited) = try await Self.drain(
+            hold, reads: [Data("hello\r\n".utf8), Data("\u{1B}[!p".utf8)])
+
+        #expect(outputs == [Data("hello\r\n".utf8), Data("\u{1B}[!p".utf8)])
+        #expect(credited.isEmpty)
+        #expect(hold.consumed(7) == 7)
+    }
+
+    @Test func aPaintThatOutgrowsTheLimitBeforeItsClosePassesAsItComes() async throws {
+        let hold = HerdrCoreFirstPaintHold(limit: 8)
+
+        let (outputs, credited) = try await Self.drain(
+            hold, reads: [Data("\u{1B}[!p".utf8), Data("row\r\n".utf8), Data("more".utf8)])
+
+        #expect(outputs == [Data("\u{1B}[!prow\r\n".utf8), Data("more".utf8)])
+        #expect(credited == [4])
+    }
+
+    @Test func outputThatEndsBeforeThePaintClosesHandsOverWhatCame() async throws {
+        let hold = HerdrCoreFirstPaintHold()
+
+        let (outputs, _) = try await Self.drain(hold, reads: [Data("\u{1B}[!prow".utf8)])
+
+        #expect(outputs == [Data("\u{1B}[!prow".utf8)])
+    }
 }

@@ -92,7 +92,7 @@ actor FakeQuestionTUI {
         case .claude: return ScreenFixture.synthetic(claudeRows())
         case .codex: return ScreenFixture.synthetic(codexRows())
         case .omp: return ScreenFixture.synthetic(ompRows())
-        case .pi, .grok, .opencode:
+        case .pi, .grok, .opencode, .agy:
             Issue.record("FakeQuestionTUI does not model \(program.chatName)")
             return ScreenFixture.synthetic(doneRows)
         }
@@ -105,7 +105,7 @@ actor FakeQuestionTUI {
             case .claude: claudePress(key)
             case .codex: codexPress(key)
             case .omp: ompPress(key)
-            case .pi, .grok, .opencode: Issue.record("FakeQuestionTUI does not model \(program.chatName)")
+            case .pi, .grok, .opencode, .agy: Issue.record("FakeQuestionTUI does not model \(program.chatName)")
             }
         }
     }
@@ -124,7 +124,7 @@ actor FakeQuestionTUI {
         case .omp:
             // Text goes to the prompt below the panel.
             draft = (draft ?? "") + text
-        case .pi, .grok, .opencode:
+        case .pi, .grok, .opencode, .agy:
             Issue.record("FakeQuestionTUI does not model \(program.chatName)")
         }
     }

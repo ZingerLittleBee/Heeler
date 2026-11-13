@@ -70,8 +70,8 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   collected web links to open later.
 - **Chat** — read an Agent's conversation as native messages instead of a
   terminal screen, reply from the Composer, and answer a Blocked Agent with
-  buttons; for Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode
-  ([Read more](https://docs.heeler.bybee.dev/chat)).
+  buttons; for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and
+  Antigravity CLI ([Read more](https://docs.heeler.bybee.dev/chat)).
 - **Composer** — draft locally with the full iOS keyboard (autocorrect, IME,
   dictation), then Send once; the tools keyboard adds Agent control keys,
   Agent Skills, reusable Snippets, and terminal appearance. Voice Input lets
@@ -93,9 +93,9 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   or one; Home Screen and Lock Screen widgets keep them in view
   ([Read more](https://docs.heeler.bybee.dev/usage)).
 - **Worktrees** — start an Agent on a clean checkout of the workspace's repo.
-- **Appearance** — System, Light, or Dark; 30 terminal themes with separate
-  Light and Dark slots; bundled JetBrains Mono and IBM Plex Mono; pinch to
-  zoom.
+- **Appearance** — System, Light, or Dark; 30 themes with separate Light and
+  Dark slots, worn by terminals, Chat and the app; bundled JetBrains Mono and
+  IBM Plex Mono; pinch to zoom.
 - **Jump Host** — reach unroutable machines through an SSH jump, with keys
   verified at both hops.
 

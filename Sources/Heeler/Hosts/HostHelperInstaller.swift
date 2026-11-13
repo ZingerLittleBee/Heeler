@@ -19,7 +19,7 @@ protocol HostHelperHost: Sendable {
 }
 
 /// An SSH connection that carries Host Helper reads, installs and removals:
-/// either a herdr-core Host's or a tmux Host's (ADRs 0033 and 0044).
+/// either a herdr-core Host's or a tmux Host's (ADRs 0033 and 0045).
 protocol HostHelperConnection: Sendable {
     nonisolated var hostServices: any HostServices { get }
     nonisolated var hostHelperHost: any HostHelperHost { get }
@@ -280,7 +280,7 @@ struct HostHelperInstaller: Sendable {
 
     /// Writes `paths` into an already-installed Helper directory so a Helper set up
     /// for another Host on the same machine, or before `tmux` moved or its socket
-    /// changed, follows this Host's server without another install (ADRs 0042 and 0044).
+    /// changed, follows this Host's server without another install (ADRs 0043 and 0045).
     func writeTmuxPaths(_ paths: TmuxPaths, over reading: HostHelperReading) async throws {
         guard reading.hasInstalledHelper, let layout = reading.layout,
             let dataHome = reading.probe?.locations.dataHome, !dataHome.isEmpty
@@ -298,7 +298,7 @@ struct HostHelperInstaller: Sendable {
     /// Stops the service, deletes the recorded files and then the created folders
     /// that are now empty, undoes the harness edits that go with the Helper, and
     /// finally deletes the Helper directory's own files, keeping `tmux/` so
-    /// Claude Code's hooks continue to find the stored tmux (ADR 0044).
+    /// Claude Code's hooks continue to find the stored tmux (ADR 0045).
     /// Linger stays as it is.
     func remove(
         over reading: HostHelperReading, undoingEdits: @Sendable () async throws -> Void = {}

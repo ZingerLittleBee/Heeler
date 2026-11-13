@@ -49,6 +49,20 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
     /// OpenCode's form with a single single-select question, answered by
     /// digit.
     case openCodeQuestion
+    /// Antigravity CLI's `Run this command?`, answered by a row's digit.
+    case agyCommand
+    /// Antigravity CLI's `Accept this file edit?`, which herdr 0.9.5
+    /// reports idle.
+    case agyFileEdit
+    /// Antigravity CLI's `Allow creation of this file?`, which herdr 0.9.5
+    /// reports idle.
+    case agyFileCreate
+    /// One page of Antigravity CLI's questions, single-select or
+    /// multi-select, with its `Write-in...` row.
+    case agyQuestion
+    /// Antigravity CLI's `Accessing workspace:` at start, before its first
+    /// prompt: `Yes, I trust this folder`, or `No, exit`.
+    case agyWorkspaceTrust
 
     var program: ChatProgram {
         switch self {
@@ -64,6 +78,8 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
             .grok
         case .openCodePermission, .openCodeQuestion:
             .opencode
+        case .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
+            .agy
         }
     }
 }
@@ -240,6 +256,16 @@ struct DialogSubject: Sendable, Hashable {
     /// rule would allow while `Always allow` has focus, so the fingerprint
     /// carries them apart from the body (`DialogFingerprint.matches`).
     var notes: [String] = []
+    /// Antigravity CLI permission: the screen cut the command (it ends in
+    /// `…`) or the file's path (it reaches the dialog's right edge), so the
+    /// call it asks about only starts with it.
+    var isRequestCut = false
+    /// Antigravity CLI file permission: the changed lines, by their place
+    /// among them, that reach the dialog's right edge, where agy cuts a
+    /// line without a mark.
+    var cutChanges: Set<Int> = []
+    /// Antigravity CLI file permission: the screen cut a changed line.
+    var changesAreCut: Bool { !cutChanges.isEmpty }
 
     struct ReviewAnswer: Sendable, Hashable {
         var question: String
@@ -287,6 +313,25 @@ struct BlockedDialog: Sendable, Hashable {
     /// the current prompt to answer`) takes no answer, only Stop.
     var answersHeldByDraft: Bool {
         [.ompQuestion, .ompQuestionReview].contains(kind) && focus.composerDraftGuard
+    }
+
+    /// A multi-select question's page: Claude's, with a `Next` or `Submit`
+    /// button under its answers, and Antigravity CLI's, whose answers have
+    /// check boxes.
+    var isMultiSelect: Bool {
+        switch kind {
+        case .claudeQuestion: options.contains { $0.role == .next }
+        case .agyQuestion: options.contains { $0.isChecked != nil }
+        default: false
+        }
+    }
+
+    /// Codex's and Antigravity CLI's `Question i/n`, as numbers.
+    var questionPage: (index: Int, count: Int)? {
+        guard let progress, let match = progress.wholeMatch(of: /Question (\d+)\/(\d+)/),
+            let index = Int(match.1), let count = Int(match.2)
+        else { return nil }
+        return (index, count)
     }
 
     /// A Grok Build permission titled with the card's own question, as
@@ -359,6 +404,8 @@ enum BlockedDialogParser {
         case .omp: OMPDialogParser.parse(screen)
         case .grok: GrokDialogParser.parse(screen)
         case .opencode: OpenCodeDialogParser.parse(screen)
+        case .agy: AgyDialogParser.parse(screen)
+        // Pi has no dialog parser yet.
         case .pi: .none
         }
     }

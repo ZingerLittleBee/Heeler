@@ -2,7 +2,7 @@ import Foundation
 
 /// Notification and Usage files on a herdr-core or tmux Host, rooted at the Host
 /// Helper's directory and never at the plugin's configuration directory (ADRs
-/// 0033 and 0044). Each file call finds the directory afresh, in one small exec,
+/// 0033 and 0045). Each file call finds the directory afresh, in one small exec,
 /// and a Usage read runs the Helper's own query in one bounded exec.
 struct HostHelperFiles: HostNotificationFiles {
     enum Target: Sendable, Equatable {

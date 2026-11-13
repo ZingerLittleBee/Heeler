@@ -1,4 +1,4 @@
-// A tmux Pane's `@heeler-status` option (ADR 0044), shared with
+// A tmux Pane's `@heeler-status` option (ADR 0045), shared with
 // `plugin/test-vectors/tmux-heeler-status-v1.json`.
 
 import { REPORTED_APPS } from "../core/agent-rule.js";

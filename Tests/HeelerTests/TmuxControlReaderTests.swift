@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// What a tmux control-mode client prints, read as tmux 3.3a and 3.7b print it
-/// (ADR 0043): command blocks, pane output with its octal escapes, and the
+/// (ADR 0044): command blocks, pane output with its octal escapes, and the
 /// notifications an Attach acts on.
 @Suite("tmux control-mode reader")
 struct TmuxControlReaderTests {

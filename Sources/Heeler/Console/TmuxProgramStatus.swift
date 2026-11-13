@@ -1,7 +1,7 @@
 import Foundation
 
 /// A tmux Pane's Program Status as its `@heeler-status` option holds it
-/// (ADR 0044): OSC 7501's words joined by `:`, then the Pane's two counts. Only
+/// (ADR 0045): OSC 7501's words joined by `:`, then the Pane's two counts. Only
 /// Heeler's integrations write it, and each continues the counts it found:
 /// `turn` moves when a turn ends and `blocked` on each entry into blocked, so a
 /// look every few seconds still sees two turns or two questions between looks.

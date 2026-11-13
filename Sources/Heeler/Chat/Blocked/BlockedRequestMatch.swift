@@ -66,7 +66,19 @@ enum BlockedRequestMatch {
             return openCodePermission(request, subject)
         case .openCodeQuestion:
             return request.kind == .question && asks(request, subject.question ?? dialog.title)
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork:
+        case .agyCommand:
+            return request.toolName == "run_command" && agyShows(request.summary, subject.command, subject)
+        case .agyFileEdit:
+            // A write over a file may ask as an edit.
+            let tools = AgyToolCall.editTools.union(AgyToolCall.writeTools)
+            return tools.contains(request.toolName) && agyShows(request.summary, subject.filePath, subject)
+        case .agyFileCreate:
+            return AgyToolCall.writeTools.contains(request.toolName)
+                && agyShows(request.summary, subject.filePath, subject)
+        case .agyQuestion:
+            return request.toolName == "ask_question" && asks(request, subject.question ?? dialog.title)
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .codexNetwork, .grokCancelTurn, .grokFork,
+            .agyWorkspaceTrust:
             return false
         }
     }
@@ -131,6 +143,112 @@ enum BlockedRequestMatch {
         return disagrees ? shown : call
     }
 
+    /// The command or path an Antigravity CLI permission card shows: the
+    /// screen's, or where the screen cut it, the matched call's, which
+    /// starts with it.
+    static func agyRequest(on dialog: BlockedDialog, call: ChatPendingRequest?) -> String {
+        let shown = dialog.subject.command ?? dialog.subject.filePath ?? ""
+        guard dialog.subject.isRequestCut else { return shown }
+        return call?.summary ?? dialog.body.first ?? shown
+    }
+
+    /// The changed lines an Antigravity CLI file card shows: the screen's,
+    /// unless the screen cut one at its edge and the matched call records
+    /// the change, whose rows then stand in (`agyChangeRows`).
+    static func agyChanges(on dialog: BlockedDialog, call: ChatPendingRequest?) -> [String] {
+        let shown = Array(dialog.body.dropFirst())
+        guard dialog.subject.changesAreCut, let changes = call?.fileChanges else { return shown }
+        let rows = agyChangeRows(changes)
+        return rows.isEmpty ? shown : rows
+    }
+
+    /// A file call's change in the row format of Antigravity CLI's dialog,
+    /// for a card whose screen cut a changed line: the line's number, its
+    /// mark and its text, `N  -  old` and `N  +  new`; a context line has
+    /// no mark. The rows come from a line diff of the call's target and
+    /// replacement, numbered from the line the call names or else 1, so
+    /// they can differ from the dialog's: for `cherry` becoming `cherry`
+    /// and `date`, agy draws `1  -  cherry`, `1  +  cherry`, `2  +  date`
+    /// and the diff `1     cherry`, `2  +  date`.
+    static func agyChangeRows(_ changes: ChatFileChanges) -> [String] {
+        var rows: [String] = []
+        for hunk in changes.files.flatMap(\.hunks) {
+            var old = hunk.oldStart
+            var new = hunk.newStart
+            for line in hunk.lines where !ChatDiffHunk.isNewlineMarker(line) {
+                let text = line.dropFirst()
+                switch line.first {
+                case "-":
+                    rows.append("\(old)  -  \(text)")
+                    old += 1
+                case "+":
+                    rows.append("\(new)  +  \(text)")
+                    new += 1
+                default:
+                    rows.append("\(new)     \(text)")
+                    old += 1
+                    new += 1
+                }
+            }
+        }
+        return rows
+    }
+
+    /// Whether two reads of Antigravity CLI permissions can show one
+    /// dialog: alike fingerprints, or the same kind and rows, each row the
+    /// same or, where a read cut that row at the screen's edge, the start
+    /// of the other's. A pane resized between the reads cuts the path and
+    /// the changed lines at another column, which changes the fingerprint;
+    /// the next call's dialog differs in a row both reads show whole or
+    /// cut at the same place.
+    static func agyMayShowOneDialog(_ one: BlockedDialog, _ other: BlockedDialog) -> Bool {
+        if one.fingerprint.matches(other.fingerprint) { return true }
+        guard one.kind == other.kind, one.title == other.title else { return false }
+        let a = agyShownRows(one)
+        let b = agyShownRows(other)
+        return a.count == b.count && zip(a, b).allSatisfy { $0.agrees(with: $1) }
+    }
+
+    /// Whether `read`, a read of the permission `kept` showed, shows each
+    /// of its rows at least as far: whole, or cut no sooner. A wider pane
+    /// cuts every row later.
+    static func agyRead(_ read: BlockedDialog, showsAsMuchAs kept: BlockedDialog) -> Bool {
+        let new = agyShownRows(read)
+        let old = agyShownRows(kept)
+        return new.count == old.count && zip(new, old).allSatisfy { $0.reaches($1) }
+    }
+
+    /// A row of an Antigravity CLI permission as one read shows it: its
+    /// text without spaces, which wrapping moves, and whether the screen
+    /// cut it.
+    private struct AgyShownRow {
+        let text: String
+        let isCut: Bool
+
+        /// Two reads of a row agree: the same text, or where a read cut
+        /// it, the start of the other's.
+        func agrees(with other: AgyShownRow) -> Bool {
+            text == other.text || (isCut && other.text.hasPrefix(text)) || (other.isCut && text.hasPrefix(other.text))
+        }
+
+        /// This read shows the row as far as `other` does: whole, or both
+        /// cut and this one no sooner.
+        func reaches(_ other: AgyShownRow) -> Bool {
+            !isCut || (other.isCut && text.count >= other.text.count)
+        }
+    }
+
+    /// The request, then each changed line.
+    private static func agyShownRows(_ dialog: BlockedDialog) -> [AgyShownRow] {
+        let subject = dialog.subject
+        let request = AgyShownRow(
+            text: DialogRowScanner.comparable(subject.command ?? subject.filePath ?? ""), isCut: subject.isRequestCut)
+        let changes = dialog.body.dropFirst().enumerated().map { index, row in
+            AgyShownRow(text: DialogRowScanner.comparable(row), isCut: subject.cutChanges.contains(index))
+        }
+        return [request] + changes
+    }
+
     /// `text` without a leading `12.` or `12)`.
     private static func droppingListNumber(_ text: String) -> Substring {
         let trimmed = text.drop(while: \.isWhitespace)
@@ -143,6 +261,16 @@ enum BlockedRequestMatch {
 
     private static func lettersAndDigits(_ text: String) -> String {
         String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains)))
+    }
+
+    /// An Antigravity CLI dialog shows the call's whole command or path,
+    /// or its start where the screen cut it. Another call that only starts
+    /// the same way, `rm -rf build/tmp` for `rm -rf build`, is another
+    /// call. Wrapping moves spaces, so they do not count.
+    private static func agyShows(_ full: String, _ shown: String?, _ subject: DialogSubject) -> Bool {
+        guard !subject.isRequestCut else { return begins(full, with: shown) }
+        let screen = DialogRowScanner.comparable(shown ?? "")
+        return !screen.isEmpty && DialogRowScanner.comparable(full) == screen
     }
 
     /// The screen's text is the request's, or its start where the dialog

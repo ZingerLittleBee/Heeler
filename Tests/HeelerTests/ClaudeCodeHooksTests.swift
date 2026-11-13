@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Heeler's Claude Code hook entries (ADR 0044): the command and entries the
+/// Heeler's Claude Code hook entries (ADR 0045): the command and entries the
 /// shared vector names, and the edits that add them to a configuration root's
 /// `settings.json` and take them out again, keeping every other byte.
 @Suite struct ClaudeCodeHooksTests {

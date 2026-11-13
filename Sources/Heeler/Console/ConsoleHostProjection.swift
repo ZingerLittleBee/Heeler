@@ -34,7 +34,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Display-only metadata for a selected detail during recovery. Never used
     /// as live inventory, and replaced even by an empty fresh snapshot.
     var lastKnownAgentsByPane: [String: ConsoleAgent] { get }
-    /// Why each Agent reading Unknown does, by Pane id (ADRs 0034 and 0044).
+    /// Why each Agent reading Unknown does, by Pane id (ADRs 0034 and 0045).
     var statusExplanations: [String: HerdrCoreStatusExplanation] { get }
     /// What this inventory's Pane ids belong to, on a Host whose ids repeat
     /// under another: a herdr-core Host's core, a tmux Host's server instance.
@@ -166,6 +166,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         for paneID: String,
         program: ChatProgram,
         keepingTo corePin: TerminalCorePin,
+        agentKeys: ChatAgentKeysStore?,
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)?,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt?
 
@@ -269,6 +271,8 @@ extension ConsoleHostProjection {
         for _: String,
         program _: ChatProgram,
         keepingTo _: TerminalCorePin,
+        agentKeys _: ChatAgentKeysStore? = nil,
+        followThrough _: (@MainActor () -> ChatStopFollowThrough?)? = nil,
         live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? { nil }
 

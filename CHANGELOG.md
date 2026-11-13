@@ -14,6 +14,75 @@ Entries reference the pull request that made the change.
 - Open a live terminal on one tmux Pane alongside your desktop clients, sizing the window to fit your screen and staying within an open desktop terminal on the same window, then handing sizing back when you leave. Direct Input withholds modified Return and Escape chords that tmux or the Agent has not enabled extended keys for, so their names are never typed as text; Control-J and Option-Return insert a new line without extra setup. (#683)
 - Send and Stop from the Composer on tmux Hosts, pasting and submitting only while the same Agent holds the pane, and stopping Grok Build or a Blocked Agent too. Open Chat on macOS and Linux tmux Hosts for Claude Code, Codex (`--no-daemon`), Grok Build, Pi, and Oh My Pi (OpenCode stays terminal-only), with Send, Stop, Blocked prompt buttons that do not resize the window, and Choose a Conversation. (#683)
 - See Agent Status on tmux Hosts from Claude Code hooks (passed automatically for New Agent, and reviewable or removable per Account under **Claude Code Hooks** on Host detail), Grok Build's status edit from **Unknown** (undoable under **Harness Edits**), and the optional Host Helper, which adds status reading for Codex, Grok Build, and OpenCode (OpenCode from source review), Pi and Oh My Pi extensions for status and Chat binding, desktop Esc cleanup for Claude Code, Agent Notifications, Live Activities, and Usage. (#683)
+- Rename an Antigravity CLI conversation from its More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save sends `/rename <title>` and confirms the rename from Antigravity CLI's screen reply or updated terminal title; automatic title generation stays disabled because `/rename` with no title is not supported by Antigravity CLI. (PR #723)
+- Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. Its eye button shows the password while you check it. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
+- Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
+- Chat shows Antigravity CLI conversations on macOS and Linux Herdr TUI
+  Hosts: messages, reasoning, tools with their file changes, background
+  commands and compactions. Chat sends prompts and the skills Antigravity
+  CLI offers as commands, stops a turn with Esc and then the background
+  commands that turn left running, holding a message sent meanwhile from
+  Chat or the terminal, and answers its command, file edit and file
+  creation permissions, its questions (several at once, multi-select or
+  written) and its trust prompt from cards. It holds a
+  message, with the reason, while Antigravity CLI's screen
+  shows no empty input box, since a permission dialog on screen would
+  take it as its answer. macOS and Linux herdr-core
+  Hosts offer it too, following the conversation from its first message,
+  sent from Chat or the terminal. Windows herdr-core Hosts don't offer it.
+  (PR #705)
+
+### Changed
+
+- Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)
+- Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
+- Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)
+- Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
+- Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
+- See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
+- Codex's question card names its page beside its title, `1 of 2` as a
+  question form does, and none for a single question, instead of a
+  `Question 1/2` line above the question. (PR #705)
+- When a command in a Shell Terminal starts an Agent, the Agent's terminal
+  keeps the keyboard up as it takes the screen over, as Back and the
+  Terminals drawer already do. An Agent that opens on Chat, whether it
+  starts in the shell, is chosen from the Terminals drawer of a Shell
+  Terminal or an Agent's terminal, or comes from the Agent switcher or New
+  Agent on an Agent's terminal, takes over once the keyboard has gone down,
+  so Chat's own buttons, such as Choose a Conversation, are not left under
+  the keyboard. (PR #705)
+- Say what the Host Helper is before it is installed: its sheet now reads as
+  a background service for Agent Notifications, Live Activity, Usage, and Pi
+  and Oh My Pi Chat, rather than naming only the first three. (PR #709)
+
+### Fixed
+
+- Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
+- Scroll the Agents list without stutter while an offline or slow Host retries in the background. Each connection attempt had re-evaluated the Console's tabs and every visible Agent row across Hosts, built lifted card previews upfront, and read credentials and Notification Keys from the Keychain on the main thread. Now other Hosts' rows stay untouched, row menus build only when opened, and Keychain reads stay off the main thread. (PR #717)
+- Scroll the Agents list, and read or type in a Chat, without stutter while Agents change status or a Chat streams. Each status change had rebuilt the whole Console, every row of the list and the open Chat with it. Now only the rows that change are rebuilt, and an open Chat is left alone by other Agents' changes. (PR #715)
+- Open a long Chat with less of a pause. It built about twenty messages, most of them long answers above the screen, where it now builds the few that show. (PR #715)
+- Pull down in Chat for earlier messages and have the list bounce back when you let go, rather than snap to the top. Earlier messages that arrive while you still hold the pull no longer move what is under your finger, and arrive with a shorter pause. (PR #715)
+- Keep a Host connected when a command, a file read or a terminal's exit is cut short as it finishes. Heeler could then send one message more for a channel the server had already closed, and OpenSSH dropped the connection, which showed as a reconnect. (PR #715)
+- Draw the paste button in a Shell Terminal's input row and in Direct Input's keys in the terminal theme's light or dark. With a dark theme and the system in light mode, it showed as a white circle. (#703)
+- List an Agent typed into a PowerShell terminal on a Windows herdr-core Host in Agents while it runs, and return it to Terminals when its exit puts PowerShell's path back in the title. Because PowerShell stays the terminal's foreground process on Windows, an Agent started at the prompt had stayed in Terminals. (PR #678)
+- Open a herdr-core Agent or Terminal at its latest screen. A long session that never leaves the main screen, such as Antigravity's, scrolled through its history for seconds before it could be used, because that history was drawn piece by piece as it arrived. It now appears once it has all arrived, with Connecting… shown until then. (PR #684)
+- Start a New Agent, New Terminal or Template in a Herdr desktop space on a herdr-core Host where the space's shell is now, as the desktop app does, rather than in the folder the space was made in. A space made while another was shown had started them in that other space's folder, and a new Worktree had come from that folder's repository. (PR #677)
+- Hold a Chat message at once while Oh My Pi or OpenCode reports Working, instead of showing it as Sending until Heeler has read the Agent's screen. The notice clears on the next status change. (PR #705)
+- On a herdr-core Host, a Chat that can't tell the conversation and shows none refuses a message at once, instead of showing it as Sending while Heeler checks the Host. (PR #705)
+- Fade a Blocked card's options where they run past its scroll edge, and flash its scroll bar as they start to, instead of cutting an option off flat with no sign of the answers below it. (PR #705)
+- Show why a Send or Retry was held even while an earlier message's failure shows. A held Retry keeps its own failure, instead of showing the passing reason as its error after the hold ended. (PR #705)
+- Replace Chat's Composer with a progress indicator as soon as an Agent reports Blocked, or as soon as a new Antigravity CLI shows before herdr reports its status, until Chat has read the dialog for its card, instead of showing the Composer for a few seconds first, as before Antigravity CLI's trust prompt. (PR #705)
+- When a Blocked card's answer can't read the Agent's screen, as a herdr-core Host's first read can miss its time limit over a slow link, read it once more instead of refusing the first tap. A second failure still says nothing was sent. (PR #705)
+- Keep Chat's messages and its Collapse Steps and Jump to Latest buttons clear of the Workspace terminals handle, instead of the handle covering their right-hand ends, such as a tool's check mark or Allowed. (PR #705)
+- Open the Workspace terminals handle, and pick from the panel it or the header's Terminals menu opens, on an Agent Ended, Terminal Ended or Session Ended page, instead of the page's dimmed background taking every tap and drag. (PR #705)
+- On herdr-core Hosts, an Agent started by typing its command in a Terminal shows the directory it runs in, in its Agents row and its header, rather than the one the Terminal started in. Its Workspace still follows where the Terminal started. (PR #705)
+- On herdr-core Hosts, the Core Environment notice also names a variable the core's Terminals inherit from its `herdr-core hold`, which can carry the environment of whoever started the core when the core's own process does not, as on a Mac whose core launchd runs. Heeler checks again when a Terminal starts, so a hold that came with the first Terminal is read without reconnecting. (PR #705)
+- The Host Helper is set up on a Node.js install, passing over another program's bundled runtime that a version manager's shim or the `PATH` leads to first, as mise's did to cursor-agent's, for one later on the `PATH`. It names fnm's default alias, Homebrew's `bin`, `/usr/bin` or another manager's stable link where it finds one, rather than the versioned binary that link leads to, so an upgrade no longer strands it on a removed version. A plugin install likewise goes on past an `npm` on the `PATH` whose Node.js is too old. A Helper already installed changes at its next Install, Update or Repair. When the Node.js the Helper recorded has gone, Usage runs its query with the service's Node.js, but the Helper still starts its background refresh with the recorded one, so once the last refresh is a minute old Token Usage reads as failed and Usage counts nothing for that Host, until the Helper restarts, as a Repair makes it. Keeping that refresh running needs the Helper's next version. (PR #705)
+
+## [0.1.19]
+
+### Added
+
 - Open an image you sent to Claude Code or Codex by tapping its `[Image #N]` in your message, or with Preview Image in the message's menu, when it was pasted from a file, as Heeler's attached images are. (PR #674)
 - Read Heeler in Traditional Chinese (Taiwan). On a Traditional Chinese device, or with Traditional Chinese chosen as Heeler's language, everything Japanese and Simplified Chinese cover presents in Traditional Chinese, permission prompts included. (PR #668)
 - Read Heeler in Simplified Chinese. On a Simplified Chinese device, or with Simplified Chinese chosen as Heeler's language, everything Japanese covers presents in Chinese, permission prompts included. (PR #662)

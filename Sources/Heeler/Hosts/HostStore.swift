@@ -24,7 +24,7 @@ enum HostStoreError: Error, Equatable {
 /// yet confirmed stay in the shared one every build reads. herdr-core Hosts live
 /// in a second one, and tmux Hosts in a third, each with the merged Host order,
 /// that builds before its kind never read, so such a build can neither show one
-/// nor re-save it as another kind (ADRs 0031 and 0042).
+/// nor re-save it as another kind (ADRs 0031 and 0043).
 @MainActor
 @Observable
 final class HostStore {
@@ -326,7 +326,7 @@ final class HostStore {
     ///
     /// `sessionName` replaces the typed one, for a kind whose detection offered
     /// the name, as a tmux Host's socket is. `tmuxPaths` is what that detection
-    /// resolved, kept only by a tmux Host (ADR 0042).
+    /// resolved, kept only by a tmux Host (ADR 0043).
     @discardableResult
     func confirmServerKind(
         _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil
@@ -367,7 +367,7 @@ final class HostStore {
     }
 
     /// Stores what a tmux Host's login shell last resolved, for its next
-    /// connections to run without asking that shell again (ADR 0042). Paths the
+    /// connections to run without asking that shell again (ADR 0043). Paths the
     /// Host already holds write nothing.
     func noteTmuxPaths(_ paths: TmuxPaths, for id: Host.ID) throws {
         try ensureCatalogIsWritable()

@@ -816,7 +816,9 @@ struct Agent: Sendable, Equatable {
     let paneID: String
     let cwd: String
     /// The Agent process's directory in the last snapshot, separate from
-    /// the launch directory used by Open Terminal, Skills and Agent rows.
+    /// `cwd`, which Open Terminal, Skills and Agent rows use: herdr's launch
+    /// directory on a Herdr TUI Host, and on herdr-core this same sample
+    /// once there is one.
     let foregroundCwd: String?
     let revision: Int
 
@@ -1043,7 +1045,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// Terminal and the Host now serves another, whose Terminal has that address.
     /// Unlike `.herdrCoreInventoryStale` no snapshot mends it (ADR 0031).
     case herdrCoreTerminalGone
-    /// The Host's login shell finds no program that says it is tmux (ADR 0042).
+    /// The Host's login shell finds no program that says it is tmux (ADR 0043).
     case tmuxNotInstalled
     /// The Host's tmux is older than `TmuxVersion.minimum`. `version` is the one
     /// found. Never retried: the same tmux gives the same answer.
@@ -1052,10 +1054,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// and the user starting one is all it takes, so it is retried.
     case tmuxServerNotRunning(socketName: String)
     /// New Workspace on a Mac whose server is not running. A server started
-    /// over SSH would sit outside the Mac's login session (ADR 0042).
+    /// over SSH would sit outside the Mac's login session (ADR 0043).
     case tmuxStartOnMac
     /// The Pane an Attach showed is gone, or Heeler's session no longer holds
-    /// it: its window closed, or it moved to another (ADR 0043).
+    /// it: its window closed, or it moved to another (ADR 0044).
     case tmuxPaneGone
     /// Nothing was sent: the action came from a detail opened on one tmux
     /// server's Pane, and the Host now runs another server, whose pane ids

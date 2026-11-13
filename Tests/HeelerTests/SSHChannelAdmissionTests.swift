@@ -52,7 +52,7 @@ struct SSHChannelAdmissionTests {
     }
 
     /// A tmux Host's inventory loop is one long exec among the ordinary
-    /// sessions (ADR 0043), which leaves three for one-shot commands.
+    /// sessions (ADR 0044), which leaves three for one-shot commands.
     @Test func aLongSessionExecHoldsOneOrdinarySessionUntilItsChannelCloses() async throws {
         let admission = SSHChannelAdmission()
         let loop = try await admission.admitSessionExec { FakeCoreSocket() }

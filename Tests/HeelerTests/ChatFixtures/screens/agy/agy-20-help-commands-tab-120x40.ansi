@@ -1,0 +1,40 @@
+
+  pear
+
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;66;133;244mAntigravity CLI[0m   [0m[38;5;8mgeneral[0m    [0m[1m[4m[38;5;12mcommands[0m    [0m[38;5;8mshortcuts[0m [0m[38;5;8m  (←/→ or tab to cycle)[0m
+[0m[1m[38;5;7mAvailable Commands[0m
+
+[0m[38;5;12m> /add-dir                      [0m  [0m[2mAdd a directory to the workspace[0m
+  /agents                         [0m[2mList available custom agents[0m
+  /artifact                       [0m[2mView and review artifacts[0m
+  /btw                            [0m[2mAsk a side question without interrupting the current task[0m
+  /changelog                      [0m[2mShow release notes and changes[0m
+  /clear (new)                    [0m[2mClear conversation and start a new one[0m
+  /codesearch (cs, search)        [0m[2mSearch code in the workspace (usage: /codesearch <query>)[0m
+  /config (settings)              [0m[2mOpen settings panel[0m
+  /context                        [0m[2mVisualize current context usage[0m
+  /copy                           [0m[2mCopy the last planner response to the clipboard, the n-th with '/copy n', or the /...[0m
+  /credits                        [0m[2mShow remaining G1 credits and purchase link[0m
+  /diff                           [0m[2mView uncommitted changes and per-turn diffs[0m
+  /effort                         [0m[2mSet the reasoning effort[0m
+  /exit (quit)                    [0m[2mExit the CLI[0m
+  /feedback                       [0m[2mSubmit qualitative feedback to improve the agent[0m
+  /fork (branch)                  [0m[2mCreate a branch of the current conversation at this point, optionally specifying a...[0m
+  /help                           [0m[2mShow available commands and keybindings[0m
+  /hooks                          [0m[2mManage hook configurations for tool events[0m
+  /keybindings                    [0m[2mSet custom keybindings[0m
+  /logout                         [0m[2mLog out[0m
+  /mcp                            [0m[2mManage MCP servers[0m
+  /model                          [0m[2mSet a model, or run a single prompt on another model[0m
+  /open                           [0m[2mOpen a file or view opened/edited files[0m
+  /permissions                    [0m[2mManage tool permissions[0m
+  /plugin                         [0m[2mManage, discover, install, uninstall, enable, and disable plugins[0m
+  /projects                       [0m[2mCreate and edit projects[0m
+[0m[38;5;8m  [1-26 of 49 items][0m
+
+[0m[1mKeyboard: [0m[38;5;12m↑/↓[0m [0m[38;5;8mNavigate[0m  [0m[38;5;12m←/→[0m [0m[38;5;8mSwitch View[0m  [0m[38;5;12mesc[0m [0m[38;5;8mClose[0m
+
+                                                                                                   [0m[2mGemini 4 Argon · high[0m

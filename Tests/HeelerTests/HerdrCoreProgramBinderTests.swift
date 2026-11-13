@@ -3,7 +3,8 @@ import Testing
 
 @testable import Heeler
 
-/// Binding Codex, Grok Build and OpenCode from what a Host shows (ADR 0034). The
+/// Binding Codex, Grok Build, OpenCode and Antigravity CLI from what a Host shows
+/// (ADR 0034). The
 /// process rows and files are the recordings in `ChatFixtures/host-evidence`,
 /// which never saw a signed-in account. They scrubbed everything from a process's
 /// environment but its scope, so each test adds the home variable its recording's
@@ -822,9 +823,245 @@ struct HerdrCoreProgramBinderTests {
         #expect(request.namesOf.isEmpty && !request.readsOpenFiles && request.argumentsAmong.isEmpty)
     }
 
+    // MARK: Antigravity CLI
+
+    private static let agyHome = "/Users/developer"
+    private static let agyRoot = "\(agyHome)/.gemini/antigravity-cli"
+
+    private static func agyLock(_ session: String, root: String = agyRoot) -> String {
+        "\(root)/presence/\(session).lock"
+    }
+
+    /// One scene of agy's macOS recording, with its rows as recorded, or the Agent's
+    /// open files replaced.
+    private static func agyRig(
+        _ name: String, holding files: (([String]) -> [String])? = nil
+    ) async throws -> (Rig, HerdrCoreTerminalRecord) {
+        let scene = try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene(name)
+        var row = try firstRow(scene)
+        if let files { row.files = files(row.files) }
+        let rig = Rig(program: .agy)
+        await rig.add([row])
+        return (rig, try record(for: row))
+    }
+
+    private static func agyEvidence(
+        _ name: String, holding files: (([String]) -> [String])? = nil
+    ) async throws -> ChatSessionEvidence {
+        let (rig, record) = try await agyRig(name, holding: files)
+        return try await rig.binder.check(record)
+    }
+
+    private static func agyBound(_ session: String, root: String = agyRoot) -> ChatSessionEvidence {
+        .bound(sessionID: session, transcriptRoot: root, directory: nil)
+    }
+
+    /// The reader's own macOS read of a probe's agy after its first reply: one lock
+    /// among 79 open files, and the check reads none of them.
+    @Test func anAntigravityCLIBindsTheOneLockItHolds() async throws {
+        let (rig, record) = try await Self.agyRig("after-first-prompt")
+
+        let evidence = try await rig.binder.check(record)
+
+        #expect(evidence == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+        #expect(await rig.table.requests.count == 1)
+        #expect(await rig.reads.isEmpty)
+        #expect(await rig.files.statuses.isEmpty)
+        #expect(await rig.files.listings.isEmpty)
+    }
+
+    /// A new conversation exists only from its first prompt, so the same process two
+    /// minutes earlier, a bare `agy` in the core's record, has none yet. The recording
+    /// kept no argv, and a foreground whose argv the core does not give says nothing
+    /// of how agy started, so that one cannot tell.
+    @Test func atItsPromptABareAntigravityCLIHasNoConversationYet() async throws {
+        let (rig, unnamed) = try await Self.agyRig("at-prompt")
+        let row = try Self.firstRow(try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene("at-prompt"))
+        let bare = try Self.record(pid: row.pid, argv: ["agy"], name: row.name)
+
+        #expect(unnamed.foreground?.argv == [])
+        #expect(try await rig.binder.check(bare) == .unavailable(.noConversationYet(.agy)))
+        #expect(try await rig.binder.check(unnamed) == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// `/clear` and `/fork` move the lock at once, and the conversation left behind
+    /// keeps its folder and database open.
+    @Test(arguments: [
+        ("follow-after-reply", "00000000-0000-4000-8000-000000000102"),
+        ("follow-after-clear", "00000000-0000-4000-8000-000000000101"),
+        ("follow-after-fork", "00000000-0000-4000-8000-000000000105"),
+        ("resumed-by-id", "00000000-0000-4000-8000-000000000101"),
+        ("resumed-then-clear", "00000000-0000-4000-8000-000000000104"),
+        ("first-instance", "00000000-0000-4000-8000-000000000102"),
+    ])
+    func theConversationOnScreenIsTheOneWhoseLockIsHeld(_ scene: String, _ session: String) async throws {
+        #expect(try await Self.agyEvidence(scene) == Self.agyBound(session))
+    }
+
+    /// A second agy on a conversation already open holds its folder and database and
+    /// never the lock, and neither says which agy shows it. Its `--conversation`
+    /// names the same one, which lists once, ranks as held open, and is dated by its
+    /// transcript.
+    @Test func aSecondAntigravityCLIOnAnOpenConversationCannotTell() async throws {
+        let (rig, record) = try await Self.agyRig("second-instance")
+        let session = "00000000-0000-4000-8000-000000000102"
+        let transcript = AgyTranscriptLocator.transcriptPath(
+            inFolder: AgyTranscriptLocator.folder(in: Self.agyRoot, id: session))
+        await rig.files.write(Data("{}\n".utf8), at: transcript)
+        let written = try #require(try await rig.files.fileStatus(atPath: transcript)?.modificationTime)
+
+        #expect(record.foreground?.argv == ["agy", "--conversation", session])
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
+        let answer = try await rig.binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(list.transcriptRoot == Self.agyRoot)
+        #expect(list.candidates.map(\.sessionID) == [session])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen, .commandLine]])
+        #expect(list.candidates.map(\.modified) == [Date(timeIntervalSince1970: TimeInterval(written))])
+        // agy files conversations by id, so there is no directory to list.
+        #expect(await rig.files.listings.isEmpty)
+        #expect(await rig.reads.isEmpty)
+    }
+
+    /// Edited: the second agy also holds another conversation's folder, whose id
+    /// sorts after the named one's. Held open and named, the named one ranks with
+    /// what is held open, not below it.
+    @Test func aConversationHeldOpenAndNamedRanksAsHeldOpen() async throws {
+        let held = "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
+        let (rig, record) = try await Self.agyRig("second-instance") { $0 + ["\(Self.agyRoot)/brain/\(held)"] }
+
+        let answer = try await rig.binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000102", held])
+        #expect(list.candidates.map(\.origins) == [[.heldOpen, .commandLine], [.heldOpen]])
+    }
+
+    /// The recording after `/clear`, with the new lock let go: the folder and database
+    /// of the conversation left behind bind nothing.
+    @Test func aClearedConversationsFolderAndDatabaseAloneBindNothing() async throws {
+        let evidence = try await Self.agyEvidence("follow-after-clear") { $0.filter { !$0.contains("/presence/") } }
+
+        #expect(evidence == .unavailable(.cannotTellSession(.agy)))
+    }
+
+    /// Edited: a second held lock, which one process never showed. Nothing says which
+    /// is on screen. lsof's second row for the same lock is still one.
+    @Test func twoHeldLocksBindNothing() async throws {
+        let other = Self.agyLock("0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11")
+
+        #expect(
+            try await Self.agyEvidence("after-first-prompt") { $0 + [other] }
+                == .unavailable(.cannotTellSession(.agy)))
+        #expect(
+            try await Self.agyEvidence("after-first-prompt") { $0 + [Self.agyLock("00000000-0000-4000-8000-000000000103")] }
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+    }
+
+    /// Lock files stay after their process exits. One on disk that the Agent does not
+    /// hold counts for nothing, and the check never looks at the folder.
+    @Test func aStaleLockFileThatIsNotHeldCountsForNothing() async throws {
+        let (rig, record) = try await Self.agyRig("at-prompt")
+        for session in ["00000000-0000-4000-8000-000000000102", "00000000-0000-4000-8000-000000000103"] {
+            await rig.files.write("", at: Self.agyLock(session))
+        }
+
+        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.agy)))
+        #expect(await rig.files.statuses.isEmpty)
+        #expect(await rig.files.listings.isEmpty)
+    }
+
+    /// Written for the test: held files that are no conversation's lock. Alone they
+    /// bind nothing, and beside the real lock they are no second one.
+    @Test(arguments: [
+        "\(agyRoot)/presence/not-a-conversation.lock",
+        "\(agyRoot)/presence/00000000000040008000000000000103.lock",
+        "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock.tmp",
+        "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11",
+        "\(agyRoot)/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11/held.lock",
+        "\(agyRoot)/locks/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+        "\(agyHome)/.gemini/config/projects/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.json",
+        "\(agyRoot)/brain/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11",
+        "\(agyRoot)/conversations/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.db",
+    ])
+    func aHeldFileThatIsNoLockIsIgnored(_ path: String) async throws {
+        let withoutLock: ([String]) -> [String] = { $0.filter { !$0.contains("/presence/") } + [path] }
+        #expect(try await Self.agyEvidence("after-first-prompt", holding: withoutLock) == .unavailable(.cannotTellSession(.agy)))
+        #expect(
+            try await Self.agyEvidence("after-first-prompt") { $0 + [path] }
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+    }
+
+    /// Written for the test: a lock whose root a read cannot take names no root to
+    /// read, so it counts for nothing, beside the real lock too.
+    @Test(arguments: [
+        "/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+        "presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+        "relative/root/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+        "\(agyHome)/../other/.gemini/antigravity-cli/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+        "\(agyHome)/line\nbreak/presence/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.lock",
+    ])
+    func aLockUnderARootNoReadCanTakeIsIgnored(_ path: String) async throws {
+        #expect(HerdrCoreSessionBinder.antigravityLock(held: path) == nil)
+        #expect(
+            try await Self.agyEvidence("after-first-prompt") { $0 + [path] }
+                == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+    }
+
+    /// The bound root is the one the lock names, which is what the process writes
+    /// under. A pick and the list look under the Agent's own `HOME`.
+    @Test func theBoundRootIsTheLocksAndTheListsIsTheAgentsHome() async throws {
+        let scene = try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene("after-first-prompt")
+        var row = try Self.firstRow(scene)
+        row.environment["HOME"] = "/home/link"
+        let rig = Rig(program: .agy)
+        await rig.add([row])
+        let record = try Self.record(for: row)
+
+        #expect(try await rig.binder.check(record) == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+        let answer = try await rig.binder.candidates(of: record)
+        guard case .listed(let list) = answer else {
+            Issue.record("Expected a list, got \(answer)")
+            return
+        }
+        #expect(list.transcriptRoot == "/home/link/.gemini/antigravity-cli")
+        #expect(list.candidates.map(\.sessionID) == ["00000000-0000-4000-8000-000000000103"])
+    }
+
+    /// Without `HOME` there is no root for a list or a pick, though a held lock still
+    /// names its own.
+    @Test func anAntigravityCLIWithNoHomeStillBindsAndListsNothing() async throws {
+        let scene = try HostEvidenceFixture.named("agy/presence-lock-1.5.3").scene("after-first-prompt")
+        var row = try Self.firstRow(scene)
+        row.environment["HOME"] = nil
+        let rig = Rig(program: .agy)
+        await rig.add([row])
+        let record = try Self.record(for: row)
+
+        #expect(try await rig.binder.check(record) == Self.agyBound("00000000-0000-4000-8000-000000000103"))
+        #expect(try await rig.binder.candidates(of: record) == .noProcess)
+    }
+
+    @Test func theAntigravityCheckAsksOnlyWhatItNames() async throws {
+        let (rig, record) = try await Self.agyRig("at-prompt")
+
+        _ = try await rig.binder.check(record)
+
+        let request = try #require(await rig.table.requests.first)
+        #expect(Set(request.valuesOf) == ["HC_SCOPE", "HOME"])
+        #expect(request.namesOf.isEmpty && request.namesWithPrefix.isEmpty)
+        #expect(request.readsOpenFiles)
+        #expect(request.argumentsAmong.isEmpty)
+    }
+
     // MARK: The rest
 
-    @Test(arguments: [ChatProgram.codex, .grok, .opencode])
+    @Test(arguments: [ChatProgram.codex, .grok, .opencode, .agy])
     func aFailedExecBindsNothingAndReadsNothing(_ program: ChatProgram) async throws {
         let rig = Rig(program: program)
 
@@ -834,7 +1071,7 @@ struct HerdrCoreProgramBinderTests {
         #expect(await rig.reads.isEmpty)
     }
 
-    @Test(arguments: [ChatProgram.codex, .grok, .opencode])
+    @Test(arguments: [ChatProgram.codex, .grok, .opencode, .agy])
     func aDescendantOfAnotherScopeIsNotFollowed(_ program: ChatProgram) async throws {
         let rig = Rig(program: program)
         await rig.table.add(

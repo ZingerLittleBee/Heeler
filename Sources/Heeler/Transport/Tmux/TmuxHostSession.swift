@@ -11,7 +11,7 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
     /// A connection resolved the Host's tmux paths again, for the catalog to keep.
     case paths(TmuxPaths)
     /// Every pane the server lists: once after each `server`, and again each
-    /// time something changed (ADR 0043).
+    /// time something changed (ADR 0044).
     case inventory(TmuxInventory)
     /// Leaked names from `show-environment`, after the inventory's user
     /// sessions are known. A failed read yields nothing, so nothing new is shown.
@@ -25,9 +25,9 @@ enum TmuxHostSessionUpdate: Sendable, Equatable {
 /// Connected means a tmux server answered on the Host's socket. A Host with no
 /// server running stays retryable with backoff, on the SSH connection it has;
 /// a missing or too old tmux is never retried. Every ask carries `-N`, so
-/// nothing here ever starts a server (ADR 0042).
+/// nothing here ever starts a server (ADR 0043).
 ///
-/// While a server answers, one long exec follows its inventory (ADR 0043). A
+/// While a server answers, one long exec follows its inventory (ADR 0044). A
 /// loop that ends, as it does when its server stops, is followed by an ask of
 /// the server, and the next answer starts another.
 actor TmuxHostSession {
@@ -202,7 +202,7 @@ actor TmuxHostSession {
         await transport.adoptStoredPaths(adopted)
     }
 
-    /// Runs an Attach once a server answers on the connection (ADR 0043),
+    /// Runs an Attach once a server answers on the connection (ADR 0044),
     /// waiting through a reconnect. Throws when the session ends, or its run
     /// stops for good, before one does. A connection the Attach finds closed
     /// is asked again at once, on a new one, rather than handed out.

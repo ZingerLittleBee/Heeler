@@ -18,11 +18,16 @@ extension ComposerDeliveryPolicy {
     /// and for any on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
+    /// A reported Working holds a program Chat never sends to during a turn
+    /// (`ChatProgram.inputBoxWhileWorking`) before either, as Blocked does, and
+    /// so does `heldSession`: the refusal Chat already knows `confirmSession`
+    /// would give (`AgentChatStore.sessionRefusalBeforeCheck`).
     static func chat(
         rules: ChatSendRules,
         activity: @escaping @MainActor () -> ChatAgentActivity,
         readScreen: @escaping @MainActor () async throws -> ANSIScreen,
         confirmSession: (@MainActor () async -> String?)? = nil,
+        heldSession: (@MainActor () -> String?)? = nil,
         sendConcern: @escaping @MainActor (_ outgoing: String, _ screen: ANSIScreen) -> String? = { _, _ in nil },
         willReadScreen: @escaping @MainActor () -> Void = {},
         conversation: (@MainActor () -> Int)? = nil,
@@ -35,7 +40,19 @@ extension ComposerDeliveryPolicy {
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },
             preflight: { text in
-                if activity() == .blocked { return .agentBlocked }
+                let reported = activity()
+                if reported == .blocked { return .agentBlocked }
+                // The screen would hold too, but on herdr-core the session
+                // check's exec and the read's first paint come first, and
+                // the echo showed Sending until they ended. Returning before
+                // any await takes it back before it renders. A report that
+                // lags the turn's end costs a hold the next status ends.
+                if reported == .working, let working = program.inputBoxWhileWorking {
+                    return .inputNotReady(working.holdReason(for: program))
+                }
+                // The same for a herdr-core Chat that can't tell, whose
+                // Can't Tell page gave way to Sending through the exec.
+                if let reason = heldSession?() { return .inputNotReady(reason) }
                 if let confirmSession, let reason = await confirmSession() { return .inputNotReady(reason) }
                 willReadScreen()
                 let screen: ANSIScreen
@@ -103,6 +120,10 @@ extension InputBoxState {
                 // OpenCode's `/undo` puts the undone prompt back in the box,
                 // and Up recalls an earlier one.
                 String(localized: "The Agent's input box already has text, such as a draft, a prompt /undo put back, or one recalled with Up. Send or clear it in the terminal first.")
+            case .agy:
+                // Esc puts a message queued during the turn back in the box
+                // (Antigravity CLI 1.5.3).
+                String(localized: "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first.")
             }
         case .shellMode:
             String(localized: "The Agent's input box is in shell mode. Leave it in the terminal first.")

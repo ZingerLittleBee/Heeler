@@ -163,7 +163,7 @@ actor SSHChannelAdmission {
     }
 
     /// One Attach's long exec under an attach slot, as a tmux Host's control
-    /// client is (ADR 0043). The slot stays taken until the channel closes.
+    /// client is (ADR 0044). The slot stays taken until the channel closes.
     func admitAttachExec(
         open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel
     ) async throws -> any WindowsTerminalExecChannel {
@@ -171,7 +171,7 @@ actor SSHChannelAdmission {
     }
 
     /// One long exec under an ordinary session slot, as a tmux Host's inventory
-    /// loop is (ADR 0043). The slot stays taken until the channel closes, which
+    /// loop is (ADR 0044). The slot stays taken until the channel closes, which
     /// leaves three for one-shot commands.
     func admitSessionExec(
         open: @escaping @Sendable () async throws -> any WindowsTerminalExecChannel

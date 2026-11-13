@@ -37,7 +37,10 @@ literal is decided in
    specifiers differ from the English, and on a permission prompt missing in a
    language. `make test-tools` runs the same check.
 4. Translations may land in the same pull request or a later one; until then
-   the key shows its English text.
+   the key shows its English text. A count key is the exception: a language
+   without its value shows the key itself, English's plural form even for
+   one, so a count key lands with every shipped language's value
+   (`LocalizationBundleTests` checks this).
 
 ## Translating
 

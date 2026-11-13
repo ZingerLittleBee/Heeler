@@ -1,6 +1,6 @@
 import Foundation
 
-/// How an Attach starts on a tmux Host (ADR 0043). One exec runs a script for
+/// How an Attach starts on a tmux Host (ADR 0044). One exec runs a script for
 /// `/bin/sh -s` that first creates a detached session of Heeler's own around a
 /// placeholder window, prints its `#{session_id}`, and sets `@heeler-attach`,
 /// `destroy-unattached off` and `detach-on-destroy on` in the same command

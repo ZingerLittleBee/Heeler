@@ -6,7 +6,7 @@ import Testing
 /// What a tmux server lists, through `ConsoleStore` and the real tmux
 /// transport over a scripted Host, on a device whose defaults outlive each
 /// launch: sessions, windows and panes as Workspaces, Tabs and Panes, which
-/// Panes are Agents, and what goes with a server instance (ADR 0043).
+/// Panes are Agents, and what goes with a server instance (ADR 0044).
 @MainActor
 @Suite("tmux inventory in the Console", .timeLimit(.minutes(1)))
 struct TmuxInventoryConsoleTests {

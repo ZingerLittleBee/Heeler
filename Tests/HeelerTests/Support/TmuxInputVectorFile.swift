@@ -1,7 +1,7 @@
 import Foundation
 
 /// The shared tmux input vectors from `plugin/test-vectors/tmux-input-v1.json`
-/// (ADR 0043's input measurements), bundled into the test target as a
+/// (ADR 0044's input measurements), bundled into the test target as a
 /// resource. Byte strings are hex.
 struct TmuxInputVectorFile: Decodable, Sendable {
     let description: String

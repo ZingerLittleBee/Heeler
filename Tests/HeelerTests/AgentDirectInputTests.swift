@@ -1923,8 +1923,7 @@ struct AgentDirectInputTests {
                 status: status, workspaceID: "w", tabID: "w:t", paneID: "w1:p1",
                 cwd: "/work", revision: 1, name: nil),
             workspaceLabel: nil,
-            repositoryCheckout: nil,
-            lastOutputSnippet: nil)
+            repositoryCheckout: nil)
     }
 
     private static func terminals(in root: UIView) -> [HeelerTerminalView] {

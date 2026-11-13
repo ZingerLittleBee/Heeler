@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// Names from tmux `show-environment -s` after the Host strips values
-/// (ADR 0043). Each line crossing SSH is `NAME` or `-NAME` for a session
+/// (ADR 0044). Each line crossing SSH is `NAME` or `-NAME` for a session
 /// removal; any line carrying `=` or a non-POSIX name is ignored.
 @Suite("tmux environment names", .timeLimit(.minutes(1)))
 struct TmuxEnvironmentTests {

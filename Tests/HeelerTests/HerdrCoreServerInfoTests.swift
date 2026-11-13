@@ -106,6 +106,32 @@ import Testing
         #expect(status.uptimeMilliseconds > 0)
         #expect(status.live == 1)
         #expect(status.finished == 1)
+        // The hold the core's Terminals run under, named twice.
+        #expect(status.holderPIDs == [8788])
+        #expect(status.holderPIDs != [status.pid])
+    }
+
+    @Test func aStatusNamesEachHoldOnceAndSkipsWhatIsNoPid() throws {
+        func status(_ fields: [String: JSONValue]) throws -> HerdrCoreServerStatus {
+            try HerdrCoreServerStatus(
+                result: .object(
+                    ["core": .object(["id": .string("c1")]), "pid": .number(10), "uptime_ms": .number(1)]
+                        .merging(fields) { $1 }))
+        }
+        // Before a first Terminal, and from a core that names no hold.
+        #expect(try status(["holder": .null, "holders": .array([])]).holderPIDs.isEmpty)
+        #expect(try status([:]).holderPIDs.isEmpty)
+        #expect(
+            try status([
+                "holder": .object(["pid": .number(12)]),
+                "holders": .array([
+                    .object(["pid": .number(11)]), .string("hold"), .object(["pid": .string("13")]),
+                    .object(["pid": .number(-1)]), .object(["pid": .number(0)]), .object(["pid": .number(1.5)]),
+                    .object(["instance": .string("x")]), .object(["pid": .number(12)]),
+                ]),
+            ]).holderPIDs == [11, 12])
+        // An older core with only the current hold.
+        #expect(try status(["holder": .object(["pid": .number(12)])]).holderPIDs == [12])
     }
 
     @Test func aStatusWithoutItsPidOrUptimeIsMalformed() {

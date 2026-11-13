@@ -893,7 +893,7 @@ struct SessionDriverE2ETests {
             if site == .pty {
                 let lines = recorder.lines(startingWith: "PTY close channel ")
                 #expect(lines.count == 1)
-                #expect(lines.first?.contains("send EOF timed out") == true)
+                #expect(lines.first?.contains("channel close timed out") == true)
                 #expect(lines.first?.contains("elapsed=") == true)
             }
             #expect(await connection.isConnected, "\(site.rawValue) invalidated the session")
@@ -976,6 +976,61 @@ struct SessionDriverE2ETests {
             try? await connection.close(timeout: .seconds(2))
         }
         try await proxy.reset()
+    }
+
+    /// A teardown interrupted after its CLOSE went out must not send anything
+    /// more for that channel. sshd frees a channel once it has sent and
+    /// received CLOSE, and an EOF naming a freed channel makes it disconnect
+    /// the whole session: "ieof packet referred to nonexistent channel". The
+    /// interruption is real: cancellation, or a deadline, reaching the wait
+    /// for the server's CLOSE or the step after it. Each site's owner then
+    /// tears the channel down again, and the cleanup it used to run started
+    /// with an EOF that libssh2 sends whatever it has sent before.
+    ///
+    /// The pause between the hold and the retry stands in for the link: on a
+    /// real one whatever follows the CLOSE reaches sshd at least a round trip
+    /// later, after it has freed the channel. Loopback separates them too, but
+    /// sshd handles every packet of one read before it frees anything, so an
+    /// EOF that arrived with the CLOSE would still find the channel.
+    @Test(
+        "a teardown interrupted after its close went out spares the session",
+        arguments: InterruptedCloseSite.allCases)
+    func teardownInterruptedAfterCloseSparesTheSession(
+        site: InterruptedCloseSite
+    ) async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let closeSent = SessionWaitHold()
+        await connection.holdNextChannelCloseSentForTesting {
+            await closeSent.waitUntilReleased()
+        }
+        let started = try await site.start(on: connection, socketPath: socketPath)
+        do {
+            try await requireEventually("\(site.rawValue) should close its channel") {
+                await closeSent.hasEntered
+            }
+            started.operation.cancel()
+            try await Task.sleep(for: .milliseconds(300))
+            await closeSent.release()
+            await #expect(throws: SSHError.cancelled) { try await started.operation.value }
+            try await started.afterwards()
+        } catch {
+            started.operation.cancel()
+            await closeSent.release()
+            _ = try? await started.operation.value
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+
+        #expect(await connection.oneShotRegistryCountForTesting() == 0)
+        #expect(await connection.ptyChannelCountForTesting() == 0)
+        let echo = try await connection.execute("printf survived", timeout: .seconds(5))
+        #expect(
+            echo.stdout == Data("survived".utf8),
+            "the server dropped the session after \(site.rawValue)'s teardown")
+        #expect(await connection.isConnected)
+        try await connection.close(timeout: .seconds(2))
     }
 
     /// One-shot hooks fail only after the exec channel is allocated and after
@@ -2611,6 +2666,67 @@ private enum OneShotYieldSite: String, CaseIterable {
 
     func finish(_ rpc: Task<Void, any Error>) async throws {
         try await rpc.value
+    }
+}
+
+/// Each closes its channel itself, then leaves a teardown to its owner when
+/// anything after that close fails: the one-shots in their own `catch`, a
+/// PTY's exit status in the `close` that follows it.
+enum InterruptedCloseSite: String, CaseIterable, CustomTestStringConvertible, Sendable {
+    case execute
+    case executeResponseLine
+    case exchangeStreamLocal
+    case ptyExitStatus
+
+    var testDescription: String { rawValue }
+
+    struct Started: Sendable {
+        /// The operation whose own close the test interrupts.
+        let operation: Task<Void, any Error>
+        /// What the channel's owner does once that operation has failed.
+        let afterwards: @Sendable () async throws -> Void
+    }
+
+    func start(on connection: SSHConnection, socketPath: String) async throws -> Started {
+        switch self {
+        case .execute:
+            return Started(
+                operation: Task {
+                    _ = try await connection.execute("printf closed", timeout: .seconds(15))
+                },
+                afterwards: {})
+        case .executeResponseLine:
+            return Started(
+                operation: Task {
+                    _ = try await connection.executeResponseLine(
+                        "IFS= read -r line; printf 'accepted:%s\\n' \"$line\"",
+                        input: Data("device-key-line\n".utf8),
+                        maximumResponseBytes: 64,
+                        timeout: .seconds(15))
+                },
+                afterwards: {})
+        case .exchangeStreamLocal:
+            return Started(
+                operation: Task {
+                    _ = try await connection.exchangeStreamLocal(
+                        socketPath: socketPath,
+                        request: Data(#"{"id":"closed","method":"ping"}\#n"#.utf8),
+                        timeout: .seconds(15))
+                },
+                afterwards: {})
+        case .ptyExitStatus:
+            let pty = try await connection.openPTY(
+                command: "sh -c 'exit 0'",
+                columns: 80,
+                rows: 24,
+                timeout: .seconds(15))
+            while try await pty.read(timeout: .seconds(15)) != nil {}
+            return Started(
+                operation: Task {
+                    _ = try await pty.exitStatus(timeout: .seconds(15))
+                },
+                afterwards: { try await pty.close(timeout: .seconds(5)) })
+        }
     }
 }
 

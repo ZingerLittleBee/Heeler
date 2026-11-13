@@ -54,7 +54,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 - **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
 - **tmux** — macOS または Linux で動作する tmux 3.3+ サーバーに接続します。セッション、ウィンドウ、ペインが Console に表示され、ライブターミナルは画面に合わせてサイズ調整されつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Chat、Composer、New Agent、New Workspace、Worktrees も利用でき、Claude Code のフックとオプションの Host Helper によって Agent のステータス、通知、ライブアクティビティ、Usage を追加できます（[詳しくはこちら](https://docs.heeler.bybee.dev/tmux)）。
 - **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
-- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
+- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
 - **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
 - **Terminal** — Agent のディレクトリで通常のシェルを開きます。Text と Keys の 2 つのモードがあり、Workspace ごとに 1 つのタブを再利用します。
 - **添付ファイル** — 写真や 64 MiB までのファイルを SFTP で Host に置き、そのパスを下書きに挿入します。
@@ -62,7 +62,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 - **通知 + ライブアクティビティ** — Agent が Blocked または Done になったときのエンドツーエンド暗号化されたプッシュ通知と、Agent をリアルタイムで追跡するロック画面 / Dynamic Island のバナーです。リレーが内容を読むことは決してできません（[PRIVACY.md](PRIVACY.md)）。
 - **Usage** — Claude Code と Codex の Usage Limits とそのリセット時刻、および最大 30 日分の Token Usage とその推定 API コストを、すべての Host の合計または 1 台ごとに表示します。ホーム画面とロック画面のウィジェットで、いつでも確認できます（[詳しくはこちら](https://docs.heeler.bybee.dev/usage)）。
 - **Worktrees** — Workspace のリポジトリのクリーンなチェックアウトで Agent を起動します。
-- **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定できる 30 種類のターミナルテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
+- **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定でき、ターミナル、Chat、アプリ全体に適用される 30 種類のテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
 - **Jump Host** — SSH のジャンプを経由して直接到達できないマシンにアクセスし、両方のホップで鍵を検証します。
 
 ## 接続のしくみ

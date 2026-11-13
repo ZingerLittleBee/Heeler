@@ -155,10 +155,39 @@ struct ChatStandardAdapterTests {
         #expect(await store.queries.count == 1)
     }
 
+    @Test func antigravityFollowsACapturedConversationAsTheReducerProjectsIt() async throws {
+        let conversationID = "00000000-0000-4000-8000-000000000002"
+        let fixture = "agy/approvals.jsonl"
+        let adapter = try #require(ChatTranscriptAdapter.standard(for: .agy))
+        let files = VirtualHostFiles(home: "/Users/developer")
+        let path = "/Users/developer/.gemini/antigravity-cli/brain/\(conversationID)/.system_generated/logs/transcript_full.jsonl"
+        await files.write(try ChatFixture.data(fixture), at: path)
+        let engine = ChatConversationEngine(
+            reference: ConversationReference(program: .agy, sessionID: conversationID),
+            cacheKey: ChatCacheKey(hostID: UUID(), herdrSession: "", program: .agy, conversationID: conversationID),
+            files: files.hostFiles(), cache: VolatileChatTranscriptCache(), adapter: adapter, now: { Date() })
+
+        let snapshot = await engine.open(directories: [], context: ChatProjectionContext(activity: .idle))
+
+        var reducer = AgyTranscriptReducer()
+        reducer.append(try ChatFixture.lines(fixture))
+        let expected = reducer.transcript(ChatProjectionContext(activity: .idle))
+        #expect(snapshot.phase == .following(path: path))
+        #expect(snapshot.older == .reachedStart)
+        #expect(!expected.entries.isEmpty)
+        #expect(snapshot.transcript.entries == expected.entries)
+        #expect(snapshot.transcript.turns == expected.turns)
+    }
+
     @Test func eachProgramComparesEchoesTheWayItRecordsPrompts() throws {
         let claude = try #require(ChatTranscriptAdapter.standard(for: .claude))
         let codex = try #require(ChatTranscriptAdapter.standard(for: .codex))
         let grok = try #require(ChatTranscriptAdapter.standard(for: .grok))
+        let agy = try #require(ChatTranscriptAdapter.standard(for: .agy))
+        // Antigravity CLI trims the space Chat adds, and in plan mode
+        // records the prompt after `/plan `.
+        #expect(agy.echoKey("Fix it\r\nplease ") == agy.echoKey("/plan Fix it\nplease"))
+        #expect(agy.echoClockStopsWhileWorking)
         #expect(claude.echoKey("Fix it\r\nplease ") == "Fix it\nplease")
         #expect(codex.echoKey("Fix \u{1B}[31mit\u{1B}[0m\r\nplease ") == "Fix it\nplease")
         // Grok Build records the space Chat adds, and a prompt sent while it

@@ -20,6 +20,8 @@ struct ChatMarkdownView: View {
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
+        let _ = PerfTrace.count("ChatMarkdownView.body")
+        let _ = PerfTrace.count("ChatMarkdownView.blocks", blocks.count)
         VStack(alignment: .leading, spacing: 0) {
             ForEach(blocks.indices, id: \.self) { @Sendable index in
                 MainActorContent {
@@ -106,10 +108,27 @@ struct ChatMarkdownView: View {
         return result
     }
 
+    /// A code block's content as its box draws it: as written, and where
+    /// Chat can open images, each line that is a path to one a link in the
+    /// tint color. The line keeps the block's face and gets no photo
+    /// symbol, so the block's lines stay aligned.
+    nonisolated static func codeText(_ content: AttributedString, opensImages: Bool) -> AttributedString {
+        guard opensImages else { return content }
+        var result = content
+        for run in content.runs {
+            if let path = run[ChatImageLink.PathAttribute.self] {
+                result[run.range].link = ChatImageLink.url(for: path)
+            }
+        }
+        return result
+    }
+
     /// The content as a text block draws it in `font`: `styled`, with a
     /// photo symbol before each path that opens an image, so the link reads
     /// as a picture rather than as code or a web page.
     static func text(_ content: AttributedString, in font: Font, opensImages: Bool) -> Text {
+        let span = PerfTrace.begin("chat.markdown.text")
+        defer { PerfTrace.end(span) }
         let styled = styled(content, in: font, opensImages: opensImages)
         guard opensImages, styled.runs.contains(where: { $0[ChatImageLink.PathAttribute.self] != nil }) else {
             return Text(styled)
@@ -159,6 +178,7 @@ extension View {
 }
 
 private struct ChatMarkdownBlockView: View {
+    @Environment(\.themeColors) private var themeColors
     let block: ChatMarkdownBlock
     let isMuted: Bool
     @ScaledMetric(relativeTo: .body) private var indent: CGFloat = 18
@@ -213,12 +233,12 @@ private struct ChatMarkdownBlockView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-                Text(verbatim: block.text)
+                Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil))
                     .font(.system(.footnote, design: .monospaced))
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 10))
+            .background(themeColors.raised, in: .rect(cornerRadius: 10))
         case .table:
             if let table = block.table {
                 ChatMarkdownTableView(table: table)
@@ -258,6 +278,7 @@ private struct ChatMarkdownBlockView: View {
 /// A native table with stable column widths across every row. Wide tables
 /// scroll within their own bounds; ordinary two-column tables fit the phone.
 struct ChatMarkdownTableView: View {
+    @Environment(\.themeColors) private var themeColors
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
     @Environment(\.chatImageOpener) private var imageOpener
@@ -287,7 +308,7 @@ struct ChatMarkdownTableView: View {
                                 .multilineTextAlignment(textAlignment(for: table.columns[column]))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
                                 .padding(8)
-                                .background(Color(uiColor: row == 0 ? .secondarySystemBackground : .systemBackground))
+                                .background(row == 0 ? themeColors.raised : themeColors.background)
                                 .overlay(alignment: .bottom) {
                                     Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
                                 }

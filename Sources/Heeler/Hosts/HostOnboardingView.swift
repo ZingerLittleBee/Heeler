@@ -1139,7 +1139,7 @@ struct HostOnboardingConnectionPresentation: Equatable {
 /// What a core Host's detail does when the Console finds out something its
 /// checks have not. Only ever the locator and `hello`, so nothing here starts a
 /// core (ADR 0031). A tmux Host's detail follows its server the same way, with
-/// asks that start none (ADR 0042).
+/// asks that start none (ADR 0043).
 enum HostOnboardingCoreFollow {
     /// What the Console says of the core, which is what the checks may contradict.
     enum Reading: Equatable {

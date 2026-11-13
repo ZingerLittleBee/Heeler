@@ -1,0 +1,41 @@
+
+[0m[1m[38;5;4mCommand[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mUser declined the tool call[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> just reply with the word lemon instead[0m
+
+  lemon
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo a3-three . Then reply[0m
+[0m[1m[38;5;4m  with its output only.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo a3-three)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  a3-three
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Use your ask_question tool once, with two questions in the[0m
+[0m[1m[38;5;4m  same call: (1) a multi-select question (is_multi_select[0m
+[0m[1m[38;5;4m  true): which fruits do I like, options apple, pear and[0m
+[0m[1m[38;5;4m  plum; (2) a single-select question: favorite season, summer[0m
+[0m[1m[38;5;4m  or winter. Do nothing else and use no other tools.[0m
+
+[0m[38;5;7m▸ Thought for 17s, 83 tokens[0m
+[0m[38;5;7m  Initial hypothesis: combining the multi-select and singl...[0m
+
+[0m[1m[38;5;3m?[0m Which fruits do you like?
+[0m[1m[38;5;3m?[0m What is your favorite season?
+
+[0m[1m[38;5;3mQuestion[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+
+[0m[1mQuestion 2/2: What is your favorite season?[0m
+
+[0m[38;5;12m> 1. summer[0m
+  2. winter
+  3. Write-in...
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Navigate · [0m[1m[38;5;12m←[0m[38;5;8m Back · [0m[1m[38;5;12menter[0m[38;5;8m Submit All · [0m[1m[38;5;12mesc[0m[38;5;8m Skip[0m
+[0m[38;5;8mesc to cancel                            [0m[2mGemini 4 Argon · high[0m

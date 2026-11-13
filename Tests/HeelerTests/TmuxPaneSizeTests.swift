@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Sizing a tmux Pane's window on an Attach's control client (ADR 0043):
+/// Sizing a tmux Pane's window on an Attach's control client (ADR 0044):
 /// scaling `@<window>:<columns>x<rows>` from the Pane's share, correcting from
 /// what tmux made of it so the Pane never exceeds the device's grid, stopping
 /// at a smaller client's ceiling, and handing the window back with

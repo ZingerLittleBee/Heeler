@@ -15,14 +15,22 @@ struct TerminalThemeSettingsTests {
         return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
     }
 
-    @Test func defaultsBothAppearancesToVesper() throws {
+    @Test func defaultsLightModeToDefaultAndDarkModeToVesper() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(settings.lightSelection == .vesper)
+        #expect(settings.lightSelection == .followSystem)
         #expect(settings.darkSelection == .vesper)
-        #expect(settings.theme == TerminalThemeOption.vesper.terminalTheme)
+        #expect(settings.terminalTheme(for: .light) == Self.showing(.followSystem, isDark: false))
+        #expect(settings.terminalTheme(for: .dark) == Self.showing(.vesper, isDark: true))
+    }
+
+    /// An untouched app is lit as the system is: each default slot's theme
+    /// is as light or dark as its appearance.
+    @Test func defaultSlotsMatchTheirAppearance() {
+        #expect(TerminalThemeSettings.defaultLightSelection.chromeColorScheme(for: .light) == .light)
+        #expect(TerminalThemeSettings.defaultDarkSelection.chromeColorScheme(for: .dark) == .dark)
     }
 
     /// Pre-slot releases persisted one selection; it must seed both slots so
@@ -35,12 +43,13 @@ struct TerminalThemeSettingsTests {
 
         #expect(settings.lightSelection == .tokyoNight)
         #expect(settings.darkSelection == .tokyoNight)
-        #expect(settings.theme == TerminalThemeOption.tokyoNight.terminalTheme)
+        #expect(settings.terminalTheme(for: .light) == Self.showing(.tokyoNight, isDark: false))
     }
 
-    /// The point of the two slots: the composed theme takes its light half
-    /// from the light slot and its dark half from the dark slot.
-    @Test func slotsComposeTheThemeHalfByHalf() throws {
+    /// A terminal shows its appearance's slot whichever appearance it is
+    /// drawn in: a dark theme for Light Mode darkens the app, and the
+    /// terminal must still show the Light Mode slot.
+    @Test func eachAppearanceShowsItsSlotInBothHalves() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let settings = TerminalThemeSettings(defaults: defaults)
@@ -48,11 +57,13 @@ struct TerminalThemeSettingsTests {
         settings.select(.solarized, for: .light)
         settings.select(.tokyoNight, for: .dark)
 
-        #expect(
-            settings.theme
-                == TerminalTheme(
-                    light: TerminalThemeOption.solarized.configuration(isDark: false),
-                    dark: TerminalThemeOption.tokyoNight.configuration(isDark: true)))
+        #expect(settings.terminalTheme(for: .light) == Self.showing(.solarized, isDark: false))
+        #expect(settings.terminalTheme(for: .dark) == Self.showing(.tokyoNight, isDark: true))
+    }
+
+    private static func showing(_ option: TerminalThemeOption, isDark: Bool) -> TerminalTheme {
+        let configuration = option.configuration(isDark: isDark)
+        return TerminalTheme(light: configuration, dark: configuration)
     }
 
     /// A herdr-core attach reports `#rrggbb`, and the catalog writes colors
@@ -146,10 +157,10 @@ struct TerminalThemeSettingsTests {
 
         let reloaded = TerminalThemeSettings(defaults: defaults)
         #expect(reloaded.darkSelection == .dracula)
-        #expect(reloaded.lightSelection == .vesper)
+        #expect(reloaded.lightSelection == .followSystem)
     }
 
-    @Test func unknownPersistedSelectionFallsBackToVesper() throws {
+    @Test func unknownPersistedSelectionFallsBackToTheDefaults() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         defaults.set("removed-theme", forKey: "terminal-theme")
@@ -157,7 +168,7 @@ struct TerminalThemeSettingsTests {
         defaults.set("removed-theme", forKey: "terminal-theme-dark")
         let settings = TerminalThemeSettings(defaults: defaults)
 
-        #expect(settings.lightSelection == .vesper)
+        #expect(settings.lightSelection == .followSystem)
         #expect(settings.darkSelection == .vesper)
     }
 
@@ -168,7 +179,7 @@ struct TerminalThemeSettingsTests {
     @Test func changingThemeKeepsTheExistingTerminalSession() {
         let terminal = TerminalScreenView.makeConfiguredTerminal()
         let session = terminal.terminalSession
-        let theme = TerminalThemeOption.vesper.terminalTheme
+        let theme = Self.showing(.vesper, isDark: false)
 
         #expect(terminal.applyTheme(theme))
         #expect(terminal.appliedTheme == theme)

@@ -1,6 +1,7 @@
 import UIKit
 
-/// The Chat timeline's single column of full-width rows.
+/// The Chat timeline's single column of rows, full width but for
+/// `trailingReserve`.
 ///
 /// Heights come from the cells themselves (self-sizing); until a row is
 /// measured it gets its last measurement, even one taken at another width or
@@ -16,7 +17,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// Identity and revision of the rows the collection view holds now,
     /// in order; read from the data source so the two can never disagree.
     var itemIDs: () -> [ChatRowID] = { [] }
-    var rowInfo: (ChatRowID) -> (seed: ChatRowSeed, revision: Int)? = { _ in nil }
+    var rowInfo: (ChatRowID) -> (seed: ChatRowSeed, extent: ChatRowExtent?, revision: Int)? = { _ in nil }
     var isFollowing: () -> Bool = { true }
     /// The row the reader explicitly opened, including when its top is
     /// partially clipped. Its own growth must extend downward.
@@ -26,6 +27,23 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// end, which throws the rows out by far more than the row changed, so
     /// rows above the reader's keep their heights until the list is back.
     var isPastEnd: () -> Bool = { false }
+    /// Room at the trailing edge that rows end short of, for chrome that
+    /// floats over it. The list itself still runs to the edge, so a drag
+    /// that starts there scrolls it and its scroll bar stays at the edge.
+    var trailingReserve: CGFloat = 0 {
+        didSet {
+            // Rows re-measure at the new width, as on a resize.
+            if trailingReserve != oldValue { invalidateLayout() }
+        }
+    }
+
+    /// The row an update keeps where it shows, and how far under the content
+    /// offset its top edge is. Rows arriving above the reader move
+    /// everything under them. The collection view asks where its offset goes
+    /// with them and builds the rows that show there; left at the old
+    /// offset it built the rows there first and then, once the controller
+    /// had put the reader's row back, the reader's rows again.
+    var updateAnchor: (id: ChatRowID, distance: CGFloat)?
 
     private(set) var geometry = ChatTimelineGeometry()
     private var ids: [ChatRowID] = []
@@ -36,6 +54,10 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     private var held: [ChatRowID: CGFloat] = [:]
     private var width: CGFloat = 0
     private var contentSizeCategory = ""
+    /// What an unmeasured row's text is counted in: the reading column's
+    /// width and the body text's size.
+    private var textWidth: CGFloat = 0
+    private var textMetrics = ChatTextMetrics.standard
 
     func index(of id: ChatRowID) -> Int? {
         indexByID[id]
@@ -67,8 +89,10 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     override func prepare() {
         super.prepare()
         guard let collectionView else { return }
+        let span = PerfTrace.begin("chat.layout.prepare")
+        defer { PerfTrace.end(span) }
         let ids = itemIDs()
-        let width = collectionView.bounds.width
+        let width = max(0, collectionView.bounds.width - trailingReserve)
         // A row measured in another font is as stale as one in another size.
         let traits = collectionView.traitCollection
         let category = "\(traits.preferredContentSizeCategory.rawValue)|\(traits.chatFont.rawValue)"
@@ -76,6 +100,13 @@ final class ChatTimelineLayout: UICollectionViewLayout {
             self.ids = ids
             self.width = width
             contentSizeCategory = category
+            textWidth = max(
+                0, min(width, ChatTimelineMetrics.maximumContentWidth) - 2 * ChatTimelineMetrics.horizontalPadding)
+            let standard = ChatTextMetrics.standard
+            textMetrics = ChatTextMetrics(
+                pointSize: UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize,
+                lineHeight: UIFontMetrics(forTextStyle: .body).scaledValue(
+                    for: standard.lineHeight, compatibleWith: traits))
             indexByID = Dictionary(ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
             held = held.filter { indexByID[$0.key] != nil }
             geometry.setHeights(ids.map(estimatedHeight))
@@ -94,6 +125,18 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     override func layoutAttributesForItem(at indexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
         guard indexPath.section == 0, indexPath.item < geometry.count else { return nil }
         return attributes(at: indexPath.item)
+    }
+
+    override func targetContentOffset(forProposedContentOffset proposedContentOffset: CGPoint) -> CGPoint {
+        guard let anchor = updateAnchor, let index = indexByID[anchor.id], let collectionView else {
+            return super.targetContentOffset(forProposedContentOffset: proposedContentOffset)
+        }
+        // The collection view's own content size is still the old one.
+        let insets = collectionView.adjustedContentInset
+        let start = -insets.top
+        let end = max(start, geometry.totalHeight + insets.bottom - collectionView.bounds.height)
+        return CGPoint(
+            x: proposedContentOffset.x, y: min(max(geometry.minY(at: index) - anchor.distance, start), end))
     }
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {
@@ -153,6 +196,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
             forPreferredLayoutAttributes: preferredAttributes, withOriginalAttributes: originalAttributes)
         let index = preferredAttributes.indexPath.item
         guard let collectionView, index < geometry.count else { return context }
+        PerfTrace.count("chat.layout.resized-row")
         let anchor = isFollowing() ? nil : stableAnchor(in: collectionView)
         let delta = geometry.setHeight(preferredAttributes.size.height, at: index)
         context.contentSizeAdjustment = CGSize(width: 0, height: delta)
@@ -195,7 +239,8 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         if let height = held[id] { return height }
         guard let info = rowInfo(id) else { return ChatRowSeed.system.height }
         return ChatHeightEstimate(
-            cached: measured[id], seed: info.seed, width: width,
+            cached: measured[id], seed: info.seed, extent: info.extent,
+            textWidth: textWidth, metrics: textMetrics, width: width,
             contentSizeCategory: contentSizeCategory, revision: info.revision
         ).height
     }

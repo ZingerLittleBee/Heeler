@@ -30,10 +30,15 @@ struct AgentSkill: Identifiable, Sendable, Equatable, Hashable {
     /// False when the frontmatter says `user-invocable: false`: the skill
     /// is the model's to run, and Claude Code refuses it as a typed command.
     let isUserInvocable: Bool
+    /// True when the frontmatter says `disable-slash-command: true`: the
+    /// skill is the model's to run, and Antigravity CLI hides it from its
+    /// `/` menu and from `/name`.
+    let isSlashCommandDisabled: Bool
 
     init(
         scope: Scope, name: String, description: String?,
-        commandPrefix: String = "/", path: String = "", isUserInvocable: Bool = true
+        commandPrefix: String = "/", path: String = "", isUserInvocable: Bool = true,
+        isSlashCommandDisabled: Bool = false
     ) {
         self.scope = scope
         self.name = name
@@ -41,6 +46,7 @@ struct AgentSkill: Identifiable, Sendable, Equatable, Hashable {
         self.commandPrefix = commandPrefix
         self.path = path
         self.isUserInvocable = isUserInvocable
+        self.isSlashCommandDisabled = isSlashCommandDisabled
     }
 
     /// The invocation as the agent's composer expects it: `/code-review`,

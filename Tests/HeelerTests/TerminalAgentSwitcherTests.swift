@@ -35,8 +35,7 @@ struct TerminalAgentSwitcherTests {
                     repoRoot: "/work/\($0)",
                     checkoutPath: "/work/\($0)",
                     isLinkedWorktree: false)
-            },
-            lastOutputSnippet: nil)
+            })
     }
 
     private static func makeItem(

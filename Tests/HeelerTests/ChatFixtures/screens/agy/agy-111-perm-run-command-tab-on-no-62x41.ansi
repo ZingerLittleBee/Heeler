@@ -1,0 +1,41 @@
+  Here are your responses:
+
+  1. [0m[1mFavorite drink[0m: Skipped
+  2. [0m[1mFavorite meal[0m: dinner
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo a3-hi . Then reply[0m
+[0m[1m[38;5;4m  with its output only.[0m
+
+[0m[38;5;2m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo a3-hi)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+  a3-hi
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> then also reply with the word kiwi[0m
+
+  kiwi
+
+[0m[38;5;8m───────────────────────────────────────────────────────────[0m
+[0m[1m[38;5;4m> Run exactly this shell command: echo a3-two . Then reply[0m
+[0m[1m[38;5;4m  with its output only.[0m
+
+[0m[38;5;3m●[0m [0m[1m[38;5;3mRan[0m [0m[38;5;7m(echo a3-two)[0m [0m[38;5;7m(ctrl+o to expand)[0m
+
+[0m[1m[38;5;3mCommand[0m
+[0m[38;5;8m──────────────────────────────────────────────────────────────[0m
+
+[0m[1m[38;5;7mRequesting permission for:[0m
+[0m[38;5;7m   echo a3-two[0m
+
+[0m[1mRun this command?[0m
+  1. Yes, run command
+  2. Yes, and always allow in this conversation for commands
+that start with 'echo'
+  3. Yes, and always allow for commands that start with 'echo'
+(Persist to settings.json)
+[0m[38;5;12m> 4. No, and tell Antigravity CLI what to do differently[0m
+    [0m[38;5;12m>[0m [0m[7m[38;5;7m [0m
+
+  [0m[1m[38;5;12menter[0m[38;5;8m Submit[0m
+[0m[38;5;8mesc to cancel                            [0m[2mGemini 4 Argon · high[0m

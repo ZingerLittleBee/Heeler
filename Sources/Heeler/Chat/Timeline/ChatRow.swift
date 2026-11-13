@@ -103,6 +103,24 @@ struct ChatRow: Identifiable, Sendable {
         }
     }
 
+    /// The text the row wraps, for the layout's first guess at its height.
+    /// Nil for a row whose height does not follow its text: a tool call
+    /// stays a line or two whatever it ran.
+    var extent: ChatRowExtent? {
+        switch content {
+        case .assistant(let source, let blocks):
+            ChatRowExtent(textBytes: source.utf8.count, blocks: blocks.count, chrome: topSpacing)
+        case .plan(let plan, let blocks):
+            // The card's padding and its title line.
+            ChatRowExtent(textBytes: plan.text.utf8.count, blocks: blocks.count, chrome: topSpacing + 56, inset: 24)
+        case .user(let message) where message.command == nil:
+            // The bubble's padding, and the room it leaves at the leading edge.
+            ChatRowExtent(textBytes: message.text.utf8.count, blocks: 1, chrome: topSpacing + 20, inset: 76)
+        default:
+            nil
+        }
+    }
+
     /// What the timeline lays out: a row placed differently is measured
     /// again, and a cell styled differently is configured again.
     var placement: ChatRowPlacement {

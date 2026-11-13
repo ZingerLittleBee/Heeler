@@ -18,7 +18,7 @@ struct TmuxHostFacts: Equatable, Sendable {
 }
 
 /// What a tmux Host offers the app, beside and never through the Herdr TUI
-/// `Transport` or `HerdrCoreTransport` (ADR 0042). Connecting never starts a
+/// `Transport` or `HerdrCoreTransport` (ADR 0043). Connecting never starts a
 /// server. Linux New Workspace is the one launch that does, and only through
 /// the user's login shell (`TmuxLaunch`). A Host with none running reads as
 /// `TransportError.tmuxServerNotRunning`.
@@ -30,7 +30,7 @@ protocol TmuxTransport: HostHelperConnection {
     nonisolated var hostServices: any HostServices { get }
 
     /// This connection's exec and SFTP, for the Host Helper, which works with
-    /// or without a running tmux server (ADRs 0033 and 0044).
+    /// or without a running tmux server (ADRs 0033 and 0045).
     nonisolated var hostHelperHost: any HostHelperHost { get }
 
     /// Whether the SSH connection is up, whatever became of the server.
@@ -61,7 +61,7 @@ protocol TmuxTransport: HostHelperConnection {
     /// shell's startup files. The script already says how it runs.
     func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult
 
-    /// Follows the server's inventory in one long exec (ADR 0043), with the
+    /// Follows the server's inventory in one long exec (ADR 0044), with the
     /// paths the last `status()` answered on: every pane the server lists at
     /// once, then again each time something changed. The stream ends when the
     /// server stops answering, and throws when the exec fails or goes silent.
@@ -69,13 +69,13 @@ protocol TmuxTransport: HostHelperConnection {
     func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error>
 
     /// Opens an Attach on `pane` of the server the last `status()` answered
-    /// (ADR 0043): a session of Heeler's own holding the Pane's window, with
+    /// (ADR 0044): a session of Heeler's own holding the Pane's window, with
     /// one control client attached to it, and the Pane's first paint. It holds
     /// one of the connection's attach slots (ADR 0017) until it ends.
     func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession
 
     /// Reads one Pane's current status and the process leading its terminal's
-    /// foreground process group, in one bounded exec (ADR 0043).
+    /// foreground process group, in one bounded exec (ADR 0044).
     func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground
 
     /// Closes the connection.
@@ -114,7 +114,7 @@ protocol TmuxHostConnection: HostServices, HostHelperHost {
     func close() async throws
 }
 
-/// tmux over SSH exec: its command-line client and nothing else (ADR 0042).
+/// tmux over SSH exec: its command-line client and nothing else (ADR 0043).
 actor TmuxSSHTransport: TmuxTransport {
     nonisolated let routeID: UUID?
     nonisolated var hostServices: any HostServices { connection }
@@ -328,7 +328,7 @@ actor TmuxSSHTransport: TmuxTransport {
     // MARK: Attach
 
     /// Seconds a client may fall behind before tmux pauses the Pane for it,
-    /// which a new first paint then resumes (ADR 0043).
+    /// which a new first paint then resumes (ADR 0044).
     static let pauseAfter = 10
 
     func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {

@@ -264,6 +264,13 @@ final class AgentChatStore {
     /// herdr reports a session of its own.
     @ObservationIgnored private var continuedSession: ConversationReference?
     @ObservationIgnored private var followed: ConversationReference?
+    /// The root conversation's id for the Antigravity CLI transcript now
+    /// followed, and every session id (root or subagent) already found to
+    /// resolve to it. herdr's `PreInvocation` hook reports each subagent step
+    /// under the subagent's own `conversationId` while the terminal stays in
+    /// the root conversation.
+    @ObservationIgnored private var agyRootSessionID: String?
+    @ObservationIgnored private var agySessionFamily: Set<String> = []
     /// The conversation herdr still reports after the program left it for
     /// its home screen, and the terminal title it had there. Reports of it
     /// read as no report until the program shows it again or herdr reports
@@ -276,8 +283,9 @@ final class AgentChatStore {
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
     /// When the last read began that reached the end of what the source holds. Only
-    /// such a read shows a message is not there.
-    @ObservationIgnored private var pickGuardReadStart: Date?
+    /// such a read shows a message is not there, or which turn is the open one
+    /// (`hasReadSinceTurnStarted`).
+    @ObservationIgnored private var readToEndStartedAt: Date?
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
@@ -370,6 +378,10 @@ final class AgentChatStore {
     /// a session check trusts the transcript once one started after herdr
     /// last reported the Agent idle.
     @ObservationIgnored private var lastReadStartedAt: Date?
+    /// Transcript reads begun, and the latest of them that applied to this
+    /// conversation, numbered in order (`readAgain(within:until:)`).
+    @ObservationIgnored private var readsBegun = 0
+    @ObservationIgnored private var lastAppliedRead = 0
     /// When herdr last reported the Agent idle, while it still is.
     @ObservationIgnored private var idleSince: Date?
     /// When herdr last reported a turn starting. Esc puts back only the
@@ -677,6 +689,34 @@ final class AgentChatStore {
         wake()
     }
 
+    /// Reads the transcript now, rather than at the loop's pace, and waits
+    /// up to `window` for a read that began after this call to apply, or
+    /// for `isEnough`. Returns whether either came. Antigravity CLI's Stop
+    /// needs a step agy wrote just before the tap, which Chat's read under
+    /// way may have begun too early to see.
+    func readAgain(within window: Duration, until isEnough: @MainActor () -> Bool = { false }) async -> Bool {
+        let begun = readsBegun
+        wake()
+        let deadline = ContinuousClock.now + window
+        while lastAppliedRead <= begun, !isEnough() {
+            guard ContinuousClock.now < deadline, !Task.isCancelled else { return false }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return true
+    }
+
+    /// Whether a read that reached the end of the transcript began after
+    /// herdr last reported a turn starting, so the open turn it shows is the
+    /// running one; with no turn reported, whether any did. A prompt typed in
+    /// the terminal starts a turn that Chat reads seconds later. This takes a
+    /// prompt to be written by the time herdr reports its turn, as Antigravity
+    /// CLI's `USER_INPUT` was when herdr first had its session (live).
+    var hasReadSinceTurnStarted: Bool {
+        guard let read = readToEndStartedAt else { return false }
+        guard let turnStartedAt else { return true }
+        return read >= turnStartedAt
+    }
+
     /// A prompt was just sent: the Agent is about to write, and may start a
     /// session Chat has not seen.
     func noteSent() {
@@ -844,15 +884,25 @@ final class AgentChatStore {
         // Answering a dialog resumes the turn it interrupted.
         if activity == .working, previous != .working, previous != .blocked { turnStartedAt = now() }
         returnChecked = []
+        lastActivity = now()
         // A turn starting or ending is when a session changes (`/clear`,
         // `/resume`), when a missing transcript appears, and when a turn
-        // after an undo writes to the thread's new file.
-        lastActivity = now()
-        needsAgentRefresh = true
-        needsRelocate = true
+        // after an undo writes to the thread's new file. A dialog opening
+        // or answered inside a turn is neither: the poll alone brings its
+        // request, without an `agent.get` and a search going out beside the
+        // card's own screen read (herdr TUI, ADR 0024).
+        if !Self.isWithinTurn(from: previous, to: activity) {
+            needsAgentRefresh = true
+            needsRelocate = true
+        }
         nextOpen = nil
         failedOpens = 0
         wake()
+    }
+
+    /// Working to Blocked or back: a dialog the turn opened, or its answer.
+    private static func isWithinTurn(from previous: ChatAgentActivity, to next: ChatAgentActivity) -> Bool {
+        (previous == .working && next == .blocked) || (previous == .blocked && next == .working)
     }
 
     // MARK: Loop
@@ -877,6 +927,8 @@ final class AgentChatStore {
             await checkStartScreen(fresh)
         }
         guard !Task.isCancelled else { return }
+        await resolvePendingAgySessionIfNeeded()
+        guard !Task.isCancelled, !hasUnresolvedAgySession else { return }
         // The query may select another session. Restore that session's own
         // document before waiting for its transcript, too.
         await restoreIfNeeded()
@@ -891,12 +943,15 @@ final class AgentChatStore {
         let context = projectionContext
         let snapshot: ChatConversationSnapshot
         let readStart = now()
+        readsBegun += 1
+        let read = readsBegun
         var polled = false
         var opened = false
         var didRead = true
         var readOlder = false
         let pollsFirst = pollsBeforeNextOlderPage
         pollsBeforeNextOlderPage = false
+        let engineRead = PerfTrace.beginInterval("chat.read", "pane=\(agent.paneID)")
         if let request = olderRequest, !pollsFirst {
             snapshot = await engine.loadOlder(context: context, automatic: request == .automatic)
             readOlder = true
@@ -919,6 +974,10 @@ final class AgentChatStore {
             snapshot = await engine.reproject(context: context)
             didRead = false
         }
+        PerfTrace.endInterval(
+            engineRead,
+            "kind=\(readOlder ? "older" : polled ? "poll" : opened ? "open" : "reproject") entries=\(snapshot.transcript.entries.count)"
+        )
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         if didRead { countTimeout(snapshot.readFailure) }
         // The request is done, even with nothing new to read: the row shows
@@ -931,7 +990,8 @@ final class AgentChatStore {
         apply(snapshot, from: engine)
         if polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             lastReadStartedAt = readStart
-            if !snapshot.hasUnreadRecords { pickGuardReadStart = readStart }
+            lastAppliedRead = read
+            if !snapshot.hasUnreadRecords { readToEndStartedAt = readStart }
         }
         matchSends()
         // Persist the transcript before optional journal requests can wait
@@ -1195,6 +1255,18 @@ final class AgentChatStore {
         case .pickUnconfirmed(let reason):
             evidenceReason = reason
             awaitSession(reason)
+        case .launching:
+            // As before the first check, it stays looking.
+            let leavesPick = followsPick
+            forgetPick()
+            evidenceReason = nil
+            if leavesPick {
+                leavePickedConversation()
+            } else if resolution != .noSession {
+                adopt(.noSession)
+            } else if !isAwaitingSession {
+                showUnavailable()
+            }
         }
     }
 
@@ -1311,8 +1383,9 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
-            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
+            .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
             true
         default: false
         }
@@ -1332,8 +1405,60 @@ final class AgentChatStore {
             refreshBackgroundWork()
             return
         }
+        if !replacingAgent, program == .agy, agyRootSessionID != nil,
+            case .bound(let reference) = next, reference.program == .agy
+        {
+            if showsAwaitingReason {
+                conversation.phase = .locating
+                appliedRevision = nil
+                nextOpen = nil
+                failedOpens = 0
+            }
+            return
+        }
         continuedSession = nil
         followReference(force: replacingAgent)
+    }
+
+    private var hasUnresolvedAgySession: Bool {
+        guard program == .agy, agyRootSessionID != nil,
+            case .bound(let reported) = resolution, reported.program == .agy
+        else { return false }
+        return !agySessionFamily.contains(reported.sessionID)
+    }
+
+    /// Checks whether a newly reported Antigravity CLI session still resolves
+    /// to the root conversation already followed, before replacing the engine.
+    private func resolvePendingAgySessionIfNeeded() async {
+        guard program == .agy, let rootID = agyRootSessionID,
+            case .bound(let reported) = resolution, reported.program == .agy,
+            !agySessionFamily.contains(reported.sessionID)
+        else { return }
+        let recordRevision = sessionRecordRevision
+        let configRoot = source.sessionEvidence == nil ? nil : evidenceRoot
+        do {
+            switch try await AgyTranscriptLocator(files: source.files).locate(
+                sessionID: reported.sessionID, configRoot: configRoot)
+            {
+            case .success(let path) where AgyTranscriptLocator.sessionID(ofTranscript: path) == rootID:
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return }
+                agySessionFamily.insert(reported.sessionID)
+                transcriptReadFailure = nil
+                updateReadFailure()
+            case .success, .failure(.notWritten), .failure(.notFound):
+                guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return }
+                continuedSession = nil
+                followReference(force: true)
+            }
+        } catch {
+            guard !Task.isCancelled, recordRevision == sessionRecordRevision,
+                !(error is CancellationError), error as? TransportError != .cancelled
+            else { return }
+            transcriptReadFailure =
+                error as? TransportError
+                ?? .channelFailed(detail: String(describing: type(of: error)))
+            updateReadFailure()
+        }
     }
 
     /// Points the engine at the conversation to follow, starting a new one
@@ -1358,6 +1483,8 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        agyRootSessionID = nil
+        agySessionFamily = []
         // What was sent went into the last conversation.
         pickGuardSends = []
         pickGuardTurnEnd = nil
@@ -1367,7 +1494,7 @@ final class AgentChatStore {
         // the one the Agent is in now.
         sessionConcern = nil
         lastReadStartedAt = nil
-        pickGuardReadStart = nil
+        readToEndStartedAt = nil
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
@@ -1556,7 +1683,7 @@ final class AgentChatStore {
     /// of its start since the send may have left it before the window.
     private func judgePickGuard() {
         guard followsPick, let turnEnd = pickGuardTurnEnd, !pickGuardSends.isEmpty,
-            let read = pickGuardReadStart, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
+            let read = readToEndStartedAt, read >= turnEnd.addingTimeInterval(timing.pickGuardSettle)
         else { return }
         var missing = false
         for send in sends where pickGuardSends.contains(send.id) {
@@ -1694,6 +1821,26 @@ final class AgentChatStore {
         source.sessionEvidence != nil || program.confirmsSessionBeforeSend
     }
 
+    /// On herdr-core, while Chat shows no conversation and can't tell, the check
+    /// before a Send refuses whatever it finds: a binding it newly finds reads as
+    /// another conversation, and anything else as one it can't tell. So the Send is
+    /// refused before any await, and its message never shows as Sending through the
+    /// check's exec. The next step checks again instead, which ends a reason a new
+    /// process has outlived. Never while there is no conversation yet, since the
+    /// first Send starts it (ADR 0034).
+    func sessionRefusalBeforeCheck() -> String? {
+        guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
+        else { return nil }
+        switch reason {
+        case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
+            .transcriptOff, .codexSharedDaemon:
+            sessionEvidenceMayHaveChanged()
+            return Self.cannotTellSessionReason(program)
+        default:
+            return nil
+        }
+    }
+
     /// On herdr-core: one more check of what the Host shows about the process,
     /// then, for a program that can leave its conversation with nothing there
     /// saying so, what its terminal's title says.
@@ -1712,8 +1859,20 @@ final class AgentChatStore {
         if resolution != before { wake() }
         let name = program.chatName
         switch evidence {
+        // The message starts the conversation, and the check its turn brings
+        // binds it (ADR 0034).
+        case .unavailable(.noConversationYet) where shown == nil:
+            return nil
+        case .unavailable(.noConversationYet):
+            return String(
+                localized: "\(name) hasn't started a conversation here yet, while Chat still shows an earlier one. Send its first message in the terminal.",
+                comment: "Why a Chat send went nowhere: the program's name")
         case .unavailable, .pickUnconfirmed:
-            return String(localized: "Heeler can't tell which conversation \(name) shows, so it sent nothing.")
+            return Self.cannotTellSessionReason(program)
+        case .launching:
+            return String(
+                localized: "\(name) is still starting, so Heeler sent nothing. Send again once it's running.",
+                comment: "Why a Chat send went nowhere: the program's name")
         case .bound, .picked:
             break
         }
@@ -1765,6 +1924,11 @@ final class AgentChatStore {
         String(localized: "Heeler couldn't check which conversation \(program.chatName) shows, so it sent nothing. Try again.")
     }
 
+    /// Why a send that nothing on the Host could place sent nothing.
+    static func cannotTellSessionReason(_ program: ChatProgram) -> String {
+        String(localized: "Heeler can't tell which conversation \(program.chatName) shows, so it sent nothing.")
+    }
+
     // MARK: Snapshots
 
     private func apply(_ snapshot: ChatConversationSnapshot, from origin: ChatConversationEngine) {
@@ -1772,6 +1936,8 @@ final class AgentChatStore {
         guard origin === engine, snapshot.revision != appliedRevision,
             !isAwaitingSession || snapshot.isFromCache
         else { return }
+        let span = PerfTrace.begin("chat.store.apply")
+        defer { PerfTrace.end(span) }
         if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
         transcriptReadFailure = snapshot.readFailure
@@ -1788,6 +1954,16 @@ final class AgentChatStore {
             sessionConcern = nil
         }
         blocked.update(transcript: next.transcript)
+        if program == .agy, case .following(let path) = next.phase,
+            let rootID = AgyTranscriptLocator.sessionID(ofTranscript: path)
+        {
+            agyRootSessionID = rootID
+            agySessionFamily.insert(rootID)
+            if let followedID = followed?.sessionID { agySessionFamily.insert(followedID) }
+            if case .bound(let reported) = resolution, reported.program == .agy {
+                agySessionFamily.insert(reported.sessionID)
+            }
+        }
         if case .following = next.phase, !waitingOutputs.isEmpty {
             let waiting = waitingOutputs
             waitingOutputs = []
@@ -1900,6 +2076,8 @@ final class AgentChatStore {
     /// is no longer the conversation's latest message. A send from before it
     /// recorded late does not overtake it.
     private func matchSends() {
+        let span = PerfTrace.begin("chat.store.match-sends")
+        defer { PerfTrace.end(span) }
         let byEntry = source.adapter.echoesByEntry
         let layout = conversation.layoutGeneration
         if claimedGeneration != conversationGeneration || (!byEntry && claimedLayout != layout) {
@@ -2129,7 +2307,9 @@ final class AgentChatStore {
     /// read counts once it returns, timed out or not: one a cancelled step
     /// cut short is the next step's to take.
     private func checkSendWitnesses() async {
-        guard let witness = source.adapter.sendWitness, let sessionID = followed?.sessionID else { return }
+        guard let witness = source.adapter.sendWitness,
+            let sessionID = agyRootSessionID ?? followed?.sessionID
+        else { return }
         let date = now()
         var due: [(send: TrackedSend, mark: ChatSendWitnessMark, isLast: Bool)] = []
         for send in sends where send.generation == conversationGeneration {
@@ -2421,7 +2601,9 @@ extension ChatProgram {
     /// turn ran, never the turn's opener.
     var stopReturnsUntakenSends: Bool {
         switch self {
-        case .pi, .omp: true
+        // Antigravity CLI 1.5.3's Esc puts a message queued during the turn
+        // back in the box, and its transcript never records it.
+        case .pi, .omp, .agy: true
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
@@ -2436,7 +2618,9 @@ extension ChatProgram {
     var recordsCompactionBeforeNextPrompt: Bool {
         switch self {
         case .pi, .omp, .grok, .opencode: true
-        case .claude, .codex: false
+        // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
+        // checkpoint; a refused one was not observed.
+        case .claude, .codex, .agy: false
         }
     }
 
@@ -2450,7 +2634,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode: false
+        case .claude, .codex, .opencode, .agy: false
         }
     }
 
@@ -2462,7 +2646,7 @@ extension ChatProgram {
     /// says why it is Blocked instead (`BlockedCardStore.unreadableNote`).
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: true
+        case .claude, .codex, .pi, .omp, .grok, .agy: true
         case .opencode: false
         }
     }
@@ -2476,7 +2660,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: false
+        case .claude, .codex, .pi, .omp, .grok, .agy: false
         case .opencode: true
         }
     }
@@ -2487,7 +2671,7 @@ extension ChatProgram {
     /// needs the program's terminal title in the check.
     var confirmsSessionBeforeSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok: false
+        case .claude, .codex, .pi, .omp, .grok, .agy: false
         case .opencode: true
         }
     }
@@ -2498,7 +2682,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy: false
         }
     }
 }
