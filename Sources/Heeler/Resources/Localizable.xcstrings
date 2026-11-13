@@ -8965,7 +8965,6 @@
     "Antigravity CLI is waiting for a second key press (“%@”). Finish it in the terminal first." : {
       "comment" : "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+b again to send command to background"
     },
-    "Antigravity CLI is working. Send once it's idle, or steer from the terminal." : {},
     "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither." : {},
     "Antigravity CLI reports its conversation after a message. Send one to show it here." : {
       "localizations" : {
