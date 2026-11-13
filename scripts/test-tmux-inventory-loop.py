@@ -241,7 +241,37 @@ class LoopTestCase(unittest.TestCase):
 
     def start_server(self, *command: str) -> None:
         # Named, so tmux does not rename the window after its program a moment later.
-        self.tmux("new-session", "-d", "-s", "main", "-n", "first", "-x", "80", "-y", "24", *(command or ("/bin/sleep", "600")))
+        actual = command or ("/bin/sleep", "600")
+        self.tmux("new-session", "-d", "-s", "main", "-n", "first", "-x", "80", "-y", "24", *actual)
+        if actual[0] == "/bin/sleep":
+            self.wait_until_pane_settles("%0", "sleep")
+
+    def wait_until_pane_settles(self, target: str, command: str, timeout: float = 5) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            out = self.tmux("display-message", "-p", "-t", target, "#{pane_current_command}\t#{pane_current_path}")
+            parts = out.rstrip("\n").split("\t", 1)
+            if len(parts) == 2 and parts[0] == command and parts[1] != "":
+                return
+            time.sleep(0.02)
+        self.fail(f"pane {target} did not settle to {command!r}")
+
+    def wait_for_settled_pane(
+        self, loop: Loop, expected_count: int, pane_index: int = -1, command: str = "sleep"
+    ) -> tuple[list[dict], int]:
+        # A poll that lands between tmux's fork() and the child's execve() sees
+        # pane_current_command=="tmux" (or an empty path) first, then "sleep" on
+        # the next ask. Wait for that real transition before counting silence.
+        snapshots = loop.wait_for(expected_count)
+        pane = snapshots[expected_count - 1]["panes"][pane_index]
+        if pane["command"] == command and pane["path"] != "":
+            return snapshots, expected_count
+        settled = loop.wait_for(expected_count + 1)
+        self.assertNotEqual(snapshots[expected_count - 1], settled[expected_count])
+        settled_pane = settled[expected_count]["panes"][pane_index]
+        self.assertEqual(settled_pane["command"], command)
+        self.assertNotEqual(settled_pane["path"], "")
+        return settled, expected_count + 1
 
     def script(self, without_perl: bool = False) -> bytes:
         script = subprocess.run(
@@ -278,11 +308,18 @@ class ChangeOnlyTests(LoopTestCase):
                 time.sleep(3)
                 self.assertEqual(len(loop.inventories()), 1)
                 before = len(first[0]["panes"])
-                self.tmux("new-window", "-d", "-t", "main:", "-n", shell.replace("/", "-"), "/bin/sleep", "600")
-                second = loop.wait_for(2)
-                self.assertEqual(len(second[1]["panes"]), before + 1)
+                window_name = shell.replace("/", "-")
+                self.tmux("new-window", "-d", "-t", "main:", "-n", window_name, "/bin/sleep", "600")
+                second, settled_count = self.wait_for_settled_pane(loop, 2)
+                self.assertEqual(len(second[-1]["panes"]), before + 1)
                 time.sleep(2)
-                self.assertEqual(len(loop.inventories()), 2)
+                self.assertEqual(len(loop.inventories()), settled_count)
+                window_id = second[-1]["panes"][-1]["windowID"]
+                self.tmux("rename-window", "-t", window_id, "--", f"{window_name}-renamed")
+                renamed = loop.wait_for(settled_count + 1)
+                self.assertEqual(renamed[-1]["panes"][-1]["windowName"], f"{window_name}-renamed")
+                time.sleep(2)
+                self.assertEqual(len(loop.inventories()), settled_count + 1)
                 loop.close()
 
     def test_a_new_window_and_a_rename_each_print_one_snapshot(self) -> None:
@@ -291,14 +328,17 @@ class ChangeOnlyTests(LoopTestCase):
         first = loop.wait_for(1)[0]
         self.assertEqual([pane["windowName"] for pane in first["panes"]], ["first"])
         self.tmux("new-window", "-d", "-t", "main:", "-n", "build", "/bin/sleep", "600")
-        second = loop.wait_for(2)[1]
+        second_all, settled_count = self.wait_for_settled_pane(loop, 2, pane_index=1)
+        second = second_all[-1]
         self.assertEqual([pane["windowName"] for pane in second["panes"]], ["first", "build"])
         self.assertEqual([pane["windowIndex"] for pane in second["panes"]], [0, 1])
         self.tmux("rename-window", "-t", "main:1", "release é")
         self.tmux("rename-session", "-t", "main", "work")
-        third = loop.wait_for(3)[-1]
+        third = loop.wait_for(settled_count + 1)[-1]
         self.assertEqual([pane["windowName"] for pane in third["panes"]], ["first", "release é"])
         self.assertEqual({pane["sessionName"] for pane in third["panes"]}, {"work"})
+        time.sleep(2)
+        self.assertEqual(len(loop.inventories()), settled_count + 1)
 
     def test_it_says_it_is_alive_while_nothing_changes(self) -> None:
         self.start_server()
@@ -327,6 +367,8 @@ class RowTests(LoopTestCase):
         self.start_server()
         self.tmux("split-window", "-h", "-d", "-t", "main:0", "/bin/sleep", "600")
         self.tmux("new-session", "-d", "-s", "other", "-n", "elsewhere", "-x", "100", "-y", "30", "/bin/sleep", "600")
+        self.wait_until_pane_settles("%1", "sleep")
+        self.wait_until_pane_settles("%2", "sleep")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-status", "state=working:app=claude-code")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-session", "abc")
         self.tmux("set-option", "-p", "-t", "main:0.0", "@heeler-pipe", "1")
@@ -360,6 +402,7 @@ class RowTests(LoopTestCase):
         directory.mkdir()
         self.start_server()
         self.tmux("new-window", "-d", "-t", "main:", "-n", "echo $HOME", "-c", str(directory), "/bin/sleep", "600")
+        self.wait_until_pane_settles("%1", "sleep")
         # What a row, a marker and the end of a snapshot look like, inside one option.
         forged = (f"state=idle\n{NONCE} argv\n{NONCE} end\n{NONCE} begin\n"
                   "1\t2\t$9\t@9\t0\t%9\t0\t1\t80\t24\t0\t0\n"
@@ -379,6 +422,7 @@ class RowTests(LoopTestCase):
     def test_a_window_linked_into_two_sessions_is_listed_under_each(self) -> None:
         self.start_server()
         self.tmux("new-session", "-d", "-s", "second", "-n", "own", "-x", "80", "-y", "24", "/bin/sleep", "600")
+        self.wait_until_pane_settles("%1", "sleep")
         self.tmux("link-window", "-s", "main:0", "-t", "second:5")
         panes = self.loop().wait_for(1)[0]["panes"]
         self.assertEqual(
