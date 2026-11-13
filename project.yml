@@ -124,9 +124,9 @@ targets:
         CURRENT_PROJECT_VERSION: "43"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
-        # Voice Input (ADR 0036) records only after a tap on the Composer's
-        # mic, and uploads to the speech service the user set up.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text."
+        # Voice Input (ADRs 0036 and 0043) records only after a tap on the
+        # Composer's mic, and transcribes on device or with the user's service.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Heeler records your voice when you tap the microphone in the Composer, and turns it into text on this device or with the speech service you chose in Settings."
         # Only exempt encryption is used: standard, published algorithms in
         # SSH (the HeelerSSH package's libssh2/OpenSSL), OS-provided
         # CryptoKit, and the overlay networks' protocols (WireGuard in

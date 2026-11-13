@@ -14,6 +14,7 @@ struct VoiceInputSettingsView: View {
     @State private var connection: VoiceInputServiceDraft
     @State private var keywords: String
     @State private var prompt: String
+    @State private var onDeviceLanguage: String
     @State private var consentRequest: VoiceInputEndpoint?
     @State private var saveError: String?
     @Environment(\.dismiss) private var dismiss
@@ -25,6 +26,7 @@ struct VoiceInputSettingsView: View {
             service: settings.service, custom: settings.custom, requestOptions: settings.requestOptions))
         _keywords = State(initialValue: settings.keywords.joined(separator: ", "))
         _prompt = State(initialValue: settings.prompt)
+        _onDeviceLanguage = State(initialValue: settings.onDeviceLanguage)
     }
 
     var body: some View {
@@ -40,6 +42,10 @@ struct VoiceInputSettingsView: View {
                 Text(serviceFooter)
             }
             switch connection.service {
+            case .onDevice:
+                if #available(iOS 26.0, *) {
+                    VoiceInputOnDeviceSection(language: $onDeviceLanguage)
+                }
             case .preset(let preset):
                 Section {
                     LabeledContent("Model", value: preset.model)
@@ -54,7 +60,10 @@ struct VoiceInputSettingsView: View {
             }
             if connection.service != nil {
                 keywordsSection
-                promptSection
+                // The device's model takes Keywords and no Prompt.
+                if connection.service != .onDevice {
+                    promptSection
+                }
                 if connection.service == .custom, connection.endpoint != nil {
                     VoiceInputCustomFieldsSection(fields: $connection.options.fields)
                     if let problem = optionsProblem {
@@ -198,6 +207,8 @@ struct VoiceInputSettingsView: View {
 
     private var serviceFooter: String {
         switch connection.service {
+        case .onDevice:
+            String(localized: "Speech is turned into text on this device by Apple's dictation model.")
         case .preset(let preset):
             String(localized: "Recordings go to \(preset.operatorName) under its terms, billed to your key. Heeler's developer receives none of them.")
         case .custom:
@@ -234,6 +245,7 @@ struct VoiceInputSettingsView: View {
 
     private var canSave: Bool {
         guard let service = connection.service else { return settings.service != nil }
+        if service == .onDevice { return true }
         if case .success = settings.validate(service: service, custom: connection.custom, apiKey: connection.apiKey, options: connection.options) {
             return true
         }
@@ -243,6 +255,12 @@ struct VoiceInputSettingsView: View {
     private func requestSave() {
         guard let service = connection.service else {
             settings.turnOff()
+            dismiss()
+            return
+        }
+        if service == .onDevice {
+            settings.saveOnDevice(language: onDeviceLanguage)
+            settings.setKeywords(from: keywords)
             dismiss()
             return
         }

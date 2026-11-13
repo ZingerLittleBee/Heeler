@@ -90,6 +90,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Voice Input for this draft (ADR 0036). Send waits while it records
     /// or transcribes, so the text always has a draft to land in.
     let voice: ComposerVoiceInput
+    /// Bumped when a recording stopped with Send has landed its text; the
+    /// view then sends the draft through its own Send.
+    private(set) var voiceSendRequests = 0
+    /// Bumped when On Device's Stop has landed its text; the view puts the
+    /// caret in the input.
+    private(set) var voiceFocusRequests = 0
 
     private let target: String
     private var agentStatus: AgentStatus
@@ -256,8 +262,27 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Voice Input's one insertion, at the caret like a Snippet. Send waited
     /// all along, so the draft it lands in is the one the user is editing.
+    /// On Device's recorder shows its text after the whole draft, so it
+    /// lands there, with the caret after it (ADR 0043). A recording stopped
+    /// with Send asks the view to send the draft as its Send does; one
+    /// stopped with Stop on the device asks for the input's focus, so typing
+    /// carries on.
     private func insertVoiceTextIfReady() {
-        guard !isEditorComposing, let text = voice.takeTranscript() else { return }
+        guard !isEditorComposing, let landed = voice.takeDraftText() else { return }
+        if !landed.text.isEmpty {
+            if voice.isOnDevice {
+                draftSelection = NSRange(location: (draft as NSString).length, length: 0)
+            }
+            insertVoiceText(landed.text)
+        }
+        if landed.sends {
+            voiceSendRequests += 1
+        } else if voice.isOnDevice, !landed.text.isEmpty {
+            voiceFocusRequests += 1
+        }
+    }
+
+    private func insertVoiceText(_ text: String) {
         let range = Self.clamped(draftSelection, to: draft)
         let characters = draft as NSString
         let before = range.location > 0

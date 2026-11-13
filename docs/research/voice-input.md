@@ -49,11 +49,14 @@ device. It is not zero configuration.
 
 ## Conclusions the facts force
 
-- **Apple speech APIs are not a bilingual engine.** `SpeechTranscriber`,
-  `DictationTranscriber`, and `SFSpeechRecognizer` each bind one `Locale`, with no
-  code-switching parameter. [`SpeechAnalyzer.setModules`](https://developer.apple.com/documentation/speech/speechanalyzer/setmodules(_:))
+- **Apple speech APIs take one language, but a Chinese model keeps English words.**
+  `SpeechTranscriber`, `DictationTranscriber`, and `SFSpeechRecognizer` each bind one
+  `Locale`, with no code-switching parameter (still so in the iOS 27.2 SDK).
+  [`SpeechAnalyzer.setModules`](https://developer.apple.com/documentation/speech/speechanalyzer/setmodules(_:))
   documents about two ongoing recognition instances on iOS, so two locales in
-  parallel sit at that limit with no merge API.
+  parallel sit at that limit with no merge API. A zh-CN locale does transcribe English
+  words inside Chinese speech; en-US garbles the Chinese, and zh-CN degrades whole
+  English sentences. See [Apple on-device](#apple-on-device-ios-26-zero-key) for the probe.
 - **The deployment target stays at iOS 18.** New speech and Foundation Models APIs
   need `#available` gates. Apple reported 79% of iPhones and 68% of iPads on the
   26 releases as of [2026-06-07](https://developer.apple.com/support/app-store/).
@@ -435,10 +438,18 @@ models from those above. They guide test design, not selection.
 - [`contextualStrings`](https://developer.apple.com/documentation/speech/analysiscontext/contextualstrings)
   (100 total) is documented for `DictationTranscriber`, not `SpeechTranscriber`, and
   `progressiveShortDictation` is the preset that fits short prompts. Compare both.
-- One weak probe (macOS 27, three synthetic sentences, `SpeechTranscriber` only):
-  zh-CN kept "use effect" but damaged "dependency array", and wrote "run" as a Chinese
-  near-homophone. en-US produced pinyin-like garbage. This justifies a device test,
-  nothing more.
+- Weak probes (macOS 27, synthetic `say` speech, Chinese voice for whole sentences or
+  spliced with an English voice for the English terms), 2026-11-10: with zh-CN, both
+  modules kept the sentence shape and the English words' positions, but misspelled
+  many terms ("tipescript", "Polorycrest"). `DictationTranscriber` with
+  `progressiveShortDictation`'s short-form hint and `contextualStrings` holding the
+  terms returned "帮我把useEffect的dependency array改一下，然后跑一下unit tests" and
+  "在src目录下面新建一个TypeScript文件叫voice session，然后commit一下" nearly word for
+  word. en-US produced pinyin-like garbage for the Chinese. An English sentence under
+  zh-CN came back damaged ("peace fix the fan unit test"). Synthetic Chinese voices
+  read English badly, so these numbers are pessimistic; real speech on an iPhone is
+  still untested. [ADR 0043](../adr/0043-voice-input-transcribes-on-device-as-it-is-heard.md)
+  ships this route as On Device.
 - A probe found 45 `SpeechTranscriber` and 54 `DictationTranscriber` locales on Apple
   Silicon macOS, including zh-CN, zh-TW, zh-HK, yue-CN, ja-JP, and ko-KR. iPhone lists
   are untested; query at runtime. In the Simulator, `SpeechTranscriber` reports no
