@@ -272,26 +272,29 @@ import UIKit
         #expect(!flow.accountsUnreadable)
         #expect(flow.states.isEmpty)
 
+        await files.onRead(of: Self.defaultSettings) { _ in
+            throw TransportError.cancelled
+        }
+        await flow.loadIfNeeded()
+        #expect(flow.phase == .loading)
+        #expect(!flow.accountsUnreadable)
+        #expect(flow.states.isEmpty)
+
         let entered = AsyncStream.makeStream(of: Void.self)
+        let release = AsyncStream.makeStream(of: Void.self)
         await files.onRead(of: Self.defaultSettings) { _ in
             entered.continuation.yield()
             entered.continuation.finish()
-            try await Task.sleep(for: .seconds(10))
+            for await _ in release.stream { break }
         }
-        let cancelledLoad = Task { await flow.loadIfNeeded() }
+        let firstVisit = Task { await flow.loadIfNeeded() }
         for await _ in entered.stream { break }
-        cancelledLoad.cancel()
-        await cancelledLoad.value
+        firstVisit.cancel()
+        let secondVisit = Task { await flow.loadIfNeeded() }
+        release.continuation.finish()
+        await firstVisit.value
+        await secondVisit.value
 
-        #expect(flow.phase == .loading)
-        #expect(!flow.accountsUnreadable)
-        #expect(
-            !flow.states.values.contains {
-                if case .failed = $0 { return true }
-                return false
-            })
-
-        await flow.loadIfNeeded()
         #expect(flow.phase == .loaded)
         #expect(!flow.accountsUnreadable)
         #expect(flow.states["/home/dev/.claude"] == .read(.on))
