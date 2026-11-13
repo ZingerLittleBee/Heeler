@@ -478,4 +478,164 @@ struct SidebarConsoleIntegrationTests {
             _ = try #require(store.sidebarSnapshots.snapshot(for: id), "Host must publish a valid sidebar fixture")
         }
     }
+
+    @Test func hostStatusRetriesIsolateIssueBannerWithoutRebuildingMountedConsoleOrAgentRows() async throws {
+        let suite = "sidebar-issue-isolation-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let healthy = Host(name: "Healthy", address: "healthy.example", username: "dev")
+        let flaky = Host(name: "Flaky", address: "flaky.example", username: "dev")
+        let healthyTransport = ScriptedTransport(snapshot: .fixture(agents: [
+            .fixture(paneID: "a1", workspaceID: "w1", title: "Alpha"),
+            .fixture(paneID: "a2", workspaceID: "w1", title: "Beta"),
+        ]))
+        let flakyFirst = ScriptedTransport(snapshot: .fixture(agents: []))
+        let flakyRecovered = ScriptedTransport(snapshot: .fixture(agents: []))
+        let flakyConnector = FailingAfterFirstConnectConnector(
+            first: flakyFirst, recovered: flakyRecovered)
+
+        let store = ConsoleStore(
+            pins: PinnedAgentsStore(defaults: defaults),
+            rowLayouts: AgentRowLayoutStore(defaults: defaults)
+        ) { host, subscriptions in
+            if host.id == healthy.id {
+                return EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { healthyTransport },
+                    keepalive: nil)
+            }
+            return EventsSession(
+                subscriptions: subscriptions,
+                connect: { try await flakyConnector.connect() },
+                reconnectPolicy: ReconnectPolicy(
+                    initialDelay: .milliseconds(30), multiplier: 1, maxDelay: .milliseconds(60)),
+                keepalive: nil)
+        }
+        defer { store.setHosts([]) }
+
+        let catalog = HostStore(volatileHosts: [healthy, flaky])
+        store.setHosts(catalog.hosts)
+        await store.resume()
+        try await waitForConsole(store) {
+            store.agents.count == 2
+                && store.hostStatuses[healthy.id] == EventsSessionStatus.connected
+                && store.hostStatuses[flaky.id] == EventsSessionStatus.connected
+                && store.hostIssues.isEmpty
+        }
+
+        let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
+        let lastMode = UserDefaults.standard.object(forKey: "console-list.mode")
+        UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
+        UserDefaults.standard.removeObject(forKey: "console-list.mode")
+        defer {
+            UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab")
+            UserDefaults.standard.set(lastMode, forKey: "console-list.mode")
+        }
+
+        let composition = DemoScreenshotComposition.make()
+        let view = ConsoleView(
+            hosts: catalog, console: store,
+            terminal: TerminalSettings(
+                themes: composition.terminalThemes, zoom: composition.terminalZoom,
+                fonts: composition.terminalFonts, snippets: composition.snippets),
+            inputMode: composition.inputMode, detailSurface: composition.detailSurface,
+            appearance: composition.appearance,
+            pushRegistration: composition.pushRegistration,
+            notificationPreferences: composition.notificationPreferences,
+            relaySettings: composition.relaySettings,
+            notificationRouter: AgentNotificationRouter(),
+            bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
+            activity: composition.activity)
+        let controller = UIHostingController(rootView: view)
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+
+        // Wait for the List's UICollectionView to mount with exactly 2 Agent rows
+        // (0 phantom rows when visibleHostIssues is empty).
+        let mountDeadline = ContinuousClock.now + .seconds(3)
+        while Self.totalListItems(in: controller.view) != 2, ContinuousClock.now < mountDeadline {
+            try await Task.sleep(for: .milliseconds(15))
+            controller.view.layoutIfNeeded()
+        }
+        #expect(Self.totalListItems(in: controller.view) == 2)
+
+        // Start counting ConsoleView evaluations after initial settle.
+        var counts: [String: Int] = [:]
+        PerfTrace.testCountObserver = { name, amount in
+            counts[name.description, default: 0] += amount
+        }
+        defer { PerfTrace.testCountObserver = nil }
+
+        // Drop the flaky Host and let it fail + retry across multiple attempts:
+        // the issue banner row appears (total items 2 -> 3), while ConsoleView.body,
+        // ConsoleView.content, and existing Agent rows never re-evaluate.
+        await flakyFirst.setConnectionAlive(false)
+        await flakyFirst.failEventStream(.sshUnreachable(detail: "offline"))
+        let failDeadline = ContinuousClock.now + .seconds(3)
+        while (await flakyConnector.failedAttempts < 2
+            || Self.totalListItems(in: controller.view) != 3),
+            ContinuousClock.now < failDeadline
+        {
+            try await Task.sleep(for: .milliseconds(20))
+            controller.view.layoutIfNeeded()
+        }
+        #expect(await flakyConnector.failedAttempts >= 2)
+        #expect(Self.totalListItems(in: controller.view) == 3)
+
+        // Recover the flaky Host: the issue banner disappears cleanly (3 -> 2 items),
+        // still with zero ConsoleView.body / ConsoleView.content / agentRow rebuilds.
+        await flakyConnector.allowRecovery()
+        let recoverDeadline = ContinuousClock.now + .seconds(3)
+        while (!store.hostIssues.isEmpty || Self.totalListItems(in: controller.view) != 2),
+            ContinuousClock.now < recoverDeadline
+        {
+            try await Task.sleep(for: .milliseconds(20))
+            controller.view.layoutIfNeeded()
+        }
+        #expect(store.hostIssues.isEmpty)
+        #expect(Self.totalListItems(in: controller.view) == 2)
+        #expect(counts["ConsoleView.body", default: 0] == 0)
+        #expect(counts["ConsoleView.content", default: 0] == 0)
+        #expect(counts["ConsoleView.agentRow", default: 0] == 0)
+    }
+
+    private static func totalListItems(in root: UIView) -> Int? {
+        guard let list = firstCollectionView(in: root) else { return nil }
+        return (0..<list.numberOfSections).reduce(0) { $0 + list.numberOfItems(inSection: $1) }
+    }
+
+    private static func firstCollectionView(in root: UIView) -> UICollectionView? {
+        if let collection = root as? UICollectionView { return collection }
+        for subview in root.subviews {
+            if let found = firstCollectionView(in: subview) { return found }
+        }
+        return nil
+    }
+}
+
+private actor FailingAfterFirstConnectConnector {
+    private let first: ScriptedTransport
+    private let recovered: ScriptedTransport
+    private var calls = 0
+    private var recovers = false
+    private(set) var failedAttempts = 0
+
+    init(first: ScriptedTransport, recovered: ScriptedTransport) {
+        self.first = first
+        self.recovered = recovered
+    }
+
+    func allowRecovery() {
+        recovers = true
+    }
+
+    func connect() throws -> any Transport {
+        calls += 1
+        if calls == 1 { return first }
+        if recovers { return recovered }
+        failedAttempts += 1
+        throw TransportError.sshUnreachable(detail: "offline")
+    }
 }

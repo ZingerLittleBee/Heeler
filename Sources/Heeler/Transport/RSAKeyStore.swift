@@ -10,6 +10,8 @@ enum RSAKeyStoreError: Error, Equatable {
 /// PKCS#1 bytes live only in the backing `SecretStore` (Keychain in the app)
 /// and in memory while the key is used.
 struct RSAKeyStore: Sendable {
+    private static let lock = NSLock()
+
     private let secrets: any SecretStore
     private let account: String
 
@@ -23,21 +25,32 @@ struct RSAKeyStore: Sendable {
 
     func loadOrCreate() throws -> RSAKey {
         if let stored = try secrets.read(account: account) {
-            guard let key = try? RSAKey(privateKeyDER: stored) else {
-                throw RSAKeyStoreError.storedKeyCorrupt
+            return try Self.parseKey(stored)
+        }
+        return try Self.lock.withLock {
+            if let stored = try secrets.read(account: account) {
+                return try Self.parseKey(stored)
             }
+            let key = try RSAKey.generate()
+            try secrets.write(key.privateKeyDER, account: account)
             return key
         }
-        let key = try RSAKey.generate()
-        try secrets.write(key.privateKeyDER, account: account)
-        return key
     }
 
     /// Replaces the identity only after a user-approved recovery flow. Every
     /// Host registration for the previous public key then needs updating.
     func replaceStoredKey() throws -> RSAKey {
-        let key = try RSAKey.generate()
-        try secrets.write(key.privateKeyDER, account: account)
+        try Self.lock.withLock {
+            let key = try RSAKey.generate()
+            try secrets.write(key.privateKeyDER, account: account)
+            return key
+        }
+    }
+
+    private static func parseKey(_ stored: Data) throws -> RSAKey {
+        guard let key = try? RSAKey(privateKeyDER: stored) else {
+            throw RSAKeyStoreError.storedKeyCorrupt
+        }
         return key
     }
 }

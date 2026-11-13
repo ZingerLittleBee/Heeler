@@ -590,13 +590,15 @@ final class ConsoleListPresentationStore {
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
-        sections(
+        let issuesByHost = Dictionary(
+            console.hostIssues(for: hosts).map { ($0.hostID, $0) },
+            uniquingKeysWith: { first, _ in first })
+        return sections(
             hosts: hosts,
             agents: console.chatDisplayAgents,
             hostStatuses: console.hostStatuses,
-            hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
-            hostSyncErrors: console.hostSyncErrors,
+            statusPresentations: issuesByHost,
             filteredHostIDs: filteredHostIDs,
             searchQuery: searchQuery)
     }
@@ -625,6 +627,7 @@ final class ConsoleListPresentationStore {
         hostStandingFailures: [Host.ID: TransportError] = [:],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostSyncErrors: [Host.ID: String] = [:],
+        statusPresentations: [Host.ID: ConsoleHostStatusPresentation]? = nil,
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
@@ -643,12 +646,17 @@ final class ConsoleListPresentationStore {
 
             let hostAgents = agentsByHost[host.id] ?? []
             let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
-            let statusPresentation = ConsoleHostStatusPresentation(
-                host: host,
-                status: hostStatuses[host.id],
-                standingFailure: hostStandingFailures[host.id],
-                isAwaitingSnapshot: isAwaitingSnapshot,
-                syncError: hostSyncErrors[host.id])
+            let statusPresentation: ConsoleHostStatusPresentation? =
+                if let statusPresentations {
+                    statusPresentations[host.id]
+                } else {
+                    ConsoleHostStatusPresentation(
+                        host: host,
+                        status: hostStatuses[host.id],
+                        standingFailure: hostStandingFailures[host.id],
+                        isAwaitingSnapshot: isAwaitingSnapshot,
+                        syncError: hostSyncErrors[host.id])
+                }
             // While searching, a section without a match leaves the list
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a

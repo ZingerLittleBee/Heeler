@@ -203,19 +203,19 @@ final class ListRowFocusHaloView: UIView {
 /// row draws its own card inside a wider cell (`liftsCard`).
 struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
     private let liftsCard: Bool
-    private let menuItems: MenuItems
-    private let preview: Preview
+    private let menuItems: () -> MenuItems
+    private let preview: () -> Preview
     @Environment(\.isSidebarColumn) private var isSidebarColumn
     @State private var rowWidth: CGFloat?
 
     init(
         liftsCard: Bool = false,
-        @ViewBuilder menuItems: () -> MenuItems,
-        @ViewBuilder preview: () -> Preview
+        @ViewBuilder menuItems: @escaping () -> MenuItems,
+        @ViewBuilder preview: @escaping () -> Preview
     ) {
         self.liftsCard = liftsCard
-        self.menuItems = menuItems()
-        self.preview = preview()
+        self.menuItems = menuItems
+        self.preview = preview
     }
 
     func body(content: Content) -> some View {
@@ -231,9 +231,9 @@ struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
                     }
                 }
                 .contextMenu {
-                    menuItems
+                    menuItems()
                 } preview: {
-                    preview
+                    preview()
                         .padding(.horizontal, ConsoleRowLift.padding)
                         .padding(.vertical, 12)
                         // Narrower when it must be: the system caps a
@@ -246,7 +246,7 @@ struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
                         .background(Color(uiColor: .secondarySystemGroupedBackground))
                 }
         } else {
-            content.contextMenu { menuItems }
+            content.contextMenu { menuItems() }
         }
     }
 }
