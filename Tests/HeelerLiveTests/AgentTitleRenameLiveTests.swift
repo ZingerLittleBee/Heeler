@@ -63,7 +63,14 @@ struct AgentTitleRenameLiveTests {
                 #expect(store.state == .renamed, "\(program.rawValue) manual rename: \(store.state)")
                 guard store.state == .renamed else { continue }
                 let saved = try await transport.agentInfo(AgentTarget(target: target.paneID))
-                #expect(AgentTitleNaming.matches(saved, program: program, title: store.input))
+                if program == .agy, !AgentTitleNaming.matches(saved, program: program, title: store.input) {
+                    let screen = try await io.screen().rows.map(\.text).joined(separator: "\n")
+                    let acknowledgement = try #require(
+                        AgentTitleRenameStore.nativeAcknowledgement(program: .agy, title: store.input))
+                    #expect(screen.contains(acknowledgement))
+                } else {
+                    #expect(AgentTitleNaming.matches(saved, program: program, title: store.input))
+                }
                 if target.generates {
                     let generator = AgentTitleRenameStore(agent: saved, program: program, io: io)
                     await generator.generate()

@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Rename an Antigravity CLI conversation from its More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save sends `/rename <title>` and confirms the rename from Antigravity CLI's screen reply or updated terminal title; automatic title generation stays disabled because `/rename` with no title is not supported by Antigravity CLI. (PR #723)
 - Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. Its eye button shows the password while you check it. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
 - Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
 - Chat shows Antigravity CLI conversations on macOS and Linux Herdr TUI
