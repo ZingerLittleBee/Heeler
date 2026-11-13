@@ -34,8 +34,17 @@ struct ChatRowView: View {
             // total fits, so rows always take their ideal height.
             .fixedSize(horizontal: false, vertical: true)
             // Under its group's header, as its member.
-            .padding(.leading, row.isNested ? 12 : 0)
+            .padding(.leading, row.isNested ? 20 : 0)
             .padding(.top, row.topSpacing)
+            .overlay(alignment: .leading) {
+                if row.isNested {
+                    Rectangle()
+                        .fill(Color(uiColor: .separator))
+                        .frame(width: 1.5)
+                        .padding(.leading, 8.25)
+                        .accessibilityHidden(true)
+                }
+            }
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
             .environment(\.chatImageOpener, imageOpener)
@@ -292,16 +301,20 @@ private struct ChatReasoningRow: View {
     let isExpanded: Bool
     let toggle: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: toggle) {
-                HStack(spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: "brain")
+                        .frame(width: 18)
                     Text(title)
                     if !reasoning.text.isEmpty {
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
                     }
                     Spacer(minLength: 0)
                 }
@@ -317,6 +330,7 @@ private struct ChatReasoningRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 24)
             }
         }
     }
@@ -416,11 +430,10 @@ private struct ChatTurnHeaderRow: View {
     }
 }
 
-/// Two or more consecutive tool calls as one card: what they did, their
-/// lines changed, and whether any is running or failed. Opening it shows
-/// each call's own card below it.
+/// Two or more consecutive tool calls as one inline row: what they did,
+/// their lines changed, and whether any is running or failed. Opening it
+/// shows each call's own card below it.
 private struct ChatToolGroupRow: View {
-    @Environment(\.themeColors) private var themeColors
     let group: ChatToolGroup
     let toggle: () -> Void
 
@@ -429,13 +442,12 @@ private struct ChatToolGroupRow: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 ChatToolKindIcon(kind: group.kind)
                 Text(verbatim: group.summary)
                     .font(.subheadline)
                     // At accessibility sizes two lines hold a word or two.
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                Spacer(minLength: 4)
                 if let added = group.added, let removed = group.removed {
                     ChatDiffBadge(diff: ChatDiffStats(added: added, removed: removed))
                 }
@@ -450,14 +462,13 @@ private struct ChatToolGroupRow: View {
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(group.isOpen ? 90 : 0))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: group.isOpen)
+                Spacer(minLength: 0)
             }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(themeColors.raised, in: .rect(cornerRadius: 12))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -651,7 +662,6 @@ private struct ChatSubagentActivityRow: View {
 }
 
 private struct ChatToolRow: View {
-    @Environment(\.themeColors) private var themeColors
     struct TextActions {
         var copy: () -> Void
         var selectText: () -> Void
@@ -669,34 +679,34 @@ private struct ChatToolRow: View {
     let thumbnails: ChatImageThumbnails?
     let previewImage: @MainActor (String, UIImage?) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Button(action: toggle) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        // A read that showed an image reads as one.
-                        ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
-                        Text(verbatim: tool.title)
-                            .font(.subheadline)
-                            .modifier(ChatFontDesign(isCode: titleIsCode))
-                            .lineLimit(isExpanded ? nil : 2)
-                        Spacer(minLength: 4)
-                        if let diff = tool.diff {
-                            ChatDiffBadge(diff: diff)
-                        }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    // A read that showed an image reads as one.
+                    ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
+                    Text(verbatim: tool.title)
+                        .font(.subheadline)
+                        .modifier(ChatFontDesign(isCode: titleIsCode))
+                        .lineLimit(isExpanded ? nil : 1)
+                    if let diff = tool.diff {
+                        ChatDiffBadge(diff: diff)
+                    }
+                    if tool.status != .succeeded || tool.cardAnswer == .allowed {
                         ChatToolStatusBadge(
                             status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer,
                             isNotUpdating: tool.isNotUpdating)
                     }
-                    if let subtitle = tool.subtitle, !subtitle.isEmpty {
-                        Text(verbatim: subtitle)
-                            .font(.caption)
-                            .modifier(ChatFontDesign(isCode: subtitleIsCode))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(isExpanded ? nil : 1)
-                            .padding(.leading, 26)
-                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
+                    Spacer(minLength: 0)
                 }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
             }
@@ -711,22 +721,19 @@ private struct ChatToolRow: View {
             }
             if let path = tool.imagePath {
                 ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
-                    .padding(.leading, 26)
+                    .padding(.leading, 24)
             }
             if isExpanded {
                 details
-                    .padding(.leading, 26)
+                    .padding(.leading, 24)
             }
             if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
                 ChatFileChangesList(
                     changes: changes, expandedFiles: expandedFiles, read: tool.outputRead,
                     missingOutputText: fileMissingOutputText, actions: files)
-                    .padding(.leading, 26)
+                    .padding(.leading, 24)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
 
     /// What an open diff says while its lines were never read; nil for a
@@ -768,6 +775,12 @@ private struct ChatToolRow: View {
     @ViewBuilder
     private var details: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let subtitle = tool.subtitle, !subtitle.isEmpty {
+                Text(verbatim: subtitle)
+                    .font(.caption)
+                    .modifier(ChatFontDesign(isCode: subtitleIsCode))
+                    .foregroundStyle(.secondary)
+            }
             if let note = tool.note, !note.isEmpty {
                 Label {
                     Text(verbatim: note)
@@ -919,7 +932,7 @@ private struct ChatToolOutputText: View {
         .scrollBounceBehavior(.basedOnSize)
         .frame(maxHeight: maximumHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .background(themeColors.background, in: .rect(cornerRadius: 8))
+        .background(themeColors.raised, in: .rect(cornerRadius: 8))
     }
 }
 

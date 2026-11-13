@@ -1247,7 +1247,7 @@ struct ChatTimelineControllerTests {
 
     @Test func aTurnThatFinishesUnderTheReaderPutsItsHeaderWhereTheyWere() async throws {
         let controller = ChatTimelineController(actions: ChatTimelineActions())
-        let (rows, turns) = await Self.turns(0..<3, steps: 16, answerLength: 120)
+        let (rows, turns) = await Self.turns(0..<3, steps: 24, answerLength: 120)
         var running = turns
         running[running.count - 1].endedAt = nil
         running[running.count - 1].ending = nil
