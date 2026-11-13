@@ -407,9 +407,6 @@ struct AgentComposerView: View {
         .onChange(of: store.voice.showsRecorder) { _, shows in
             if shows { hideKeyboard() }
         }
-        .onChange(of: store.voiceSendRequests) { _, _ in
-            sendDraft()
-        }
         .onChange(of: store.voiceFocusRequests) { _, _ in
             guard inputReplacement == nil else { return }
             setKeyboardPresentation(.system)
@@ -869,7 +866,7 @@ struct AgentComposerView: View {
                 voice: store.voice,
                 draft: store.draft,
                 stop: { voiceInput.stop(store.voice) },
-                send: { voiceInput.stop(store.voice, sending: true) },
+                send: { store.sendVoice(using: voiceInput, policy: sendPolicy) },
                 downloadModel: { voiceInput.downloadModel(store.voice) },
                 restart: { voiceInput.start(store.voice) },
                 openVoiceInputSettings: { isVoiceSetupPresented = true }))

@@ -93,28 +93,32 @@ struct VoiceInputSessionTests {
             "the caret goes after all the text")
         #expect(store.voiceFocusRequests == 1)
         #expect(!store.voice.showsRecorder)
-        #expect(store.voiceSendRequests == 0)
+        #expect(store.messages.isEmpty, "Stop sends nothing")
         #expect(await fixture.transcriber.requests.isEmpty, "nothing is uploaded")
         await hold.open()
         try await waitUntil("hold over") { store.canSend }
     }
 
-    @Test func sendLandsTheTextThenAsksForTheDraftToBeSent() async throws {
+    @Test func sendLandsTheTextThenSendsTheDraftThroughTheSurfaceItWasTappedOn() async throws {
         let fixture = try makeOnDeviceFixture()
         defer { fixture.tearDown() }
         let store = fixture.makeStore()
+        let chat = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 },
+            validate: { _ in nil }, preflight: nil, verify: nil)
 
         fixture.session.toggle(store.voice)
         try await waitUntil("recording") { store.voice.isRecording }
         fixture.live.hear(VoiceHeard(settled: "run the tests", revising: ""))
         fixture.live.finalText = "run the tests"
-        fixture.session.stop(store.voice, sending: true)
+        store.sendVoice(using: fixture.session, policy: chat)
         #expect(store.voice.sendsWhenSettled)
-        try await waitUntil("sent") { store.voiceSendRequests == 1 }
+        try await waitUntil("sent") { !store.messages.isEmpty }
+        #expect(store.messages.map(\.text) == ["run the tests"])
+        #expect(store.messages.map(\.route) == [.chat], "the Send that was tapped, whatever other view shows this Composer")
         #expect(store.voiceFocusRequests == 0, "Send leaves the keyboard down")
-        #expect(store.draft == "run the tests")
+        #expect(store.draft.isEmpty)
         #expect(store.voice.phase == .idle)
-        #expect(store.canSend, "no hold: the user asked to send")
     }
 
     @Test func stopBeforeRecordingBeginsDropsTheStart() async throws {

@@ -90,9 +90,10 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Voice Input for this draft (ADR 0036). Send waits while it records
     /// or transcribes, so the text always has a draft to land in.
     let voice: ComposerVoiceInput
-    /// Bumped when a recording stopped with Send has landed its text; the
-    /// view then sends the draft through its own Send.
-    private(set) var voiceSendRequests = 0
+    /// How the recorder's Send delivers the draft once the text lands: the
+    /// policy of the surface and window whose Send was tapped, since the
+    /// same Composer can be open on another surface or in another window.
+    @ObservationIgnored private var voiceSendPolicy: ComposerDeliveryPolicy?
     /// Bumped when On Device's Stop has landed its text; the view puts the
     /// caret in the input.
     private(set) var voiceFocusRequests = 0
@@ -260,23 +261,32 @@ final class AgentComposerStore: ComposerDraftOperations {
         if !composing { insertVoiceTextIfReady() }
     }
 
+    /// The recorder's Send: stops recording, and once the text lands sends
+    /// the draft through `policy`, the Send of the surface it was tapped on.
+    func sendVoice(using session: VoiceInputSession, policy: ComposerDeliveryPolicy) {
+        voiceSendPolicy = policy
+        session.stop(voice, sending: true)
+    }
+
     /// Voice Input's one insertion, at the caret like a Snippet. Send waited
     /// all along, so the draft it lands in is the one the user is editing.
     /// On Device's recorder shows its text after the whole draft, so it
     /// lands there, with the caret after it (ADR 0043). A recording stopped
-    /// with Send asks the view to send the draft as its Send does; one
-    /// stopped with Stop on the device asks for the input's focus, so typing
-    /// carries on.
+    /// with Send then sends the draft through the policy its Send was tapped
+    /// with; one stopped with Stop on the device asks for the input's focus,
+    /// so typing carries on.
     private func insertVoiceTextIfReady() {
         guard !isEditorComposing, let landed = voice.takeDraftText() else { return }
+        let sendPolicy = voiceSendPolicy
+        voiceSendPolicy = nil
         if !landed.text.isEmpty {
             if voice.isOnDevice {
                 draftSelection = NSRange(location: (draft as NSString).length, length: 0)
             }
             insertVoiceText(landed.text)
         }
-        if landed.sends {
-            voiceSendRequests += 1
+        if landed.sends, let sendPolicy {
+            Task { await send(policy: sendPolicy) }
         } else if voice.isOnDevice, !landed.text.isEmpty {
             voiceFocusRequests += 1
         }
