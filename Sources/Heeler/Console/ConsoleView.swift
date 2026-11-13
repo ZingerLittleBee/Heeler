@@ -121,7 +121,12 @@ struct ConsoleView: View {
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
     /// Narrows both lists to selected Hosts; an empty set shows every Host.
     /// Filtering does not change grouping or catalog order.
-    @State private var hostFilter: Set<Host.ID> = []
+    private var hostFilter: Set<Host.ID> { listPresentation.hostFilter }
+    private var hostFilterBinding: Binding<Set<Host.ID>> {
+        Binding(
+            get: { listPresentation.hostFilter },
+            set: { listPresentation.setHostFilter($0) })
+    }
     @State private var filterPopoverTab: ConsoleTab?
     /// Each list's own search (#292, #316), after `hostFilter`. The field
     /// hides under the title until the list is pulled down.
@@ -395,8 +400,9 @@ struct ConsoleView: View {
         }
         // Drop removed Hosts without losing remaining selections. Removing
         // the last selected Host falls back to All Hosts.
-        .onChange(of: hosts.consoleHosts) { _, hosts in
-            hostFilter.formIntersection(hosts.map(\.id))
+        .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
+            guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
+            listPresentation.pruneHostFilter(keeping: consoleHosts)
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
@@ -1071,7 +1077,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: hosts.consoleHosts, hostFilter: $hostFilter,
+            hosts: hosts.consoleHosts, hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -1725,7 +1731,7 @@ struct ConsoleView: View {
                             : String(localized: "No Agents on the Selected Hosts"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
-                Button("Show All Hosts") { hostFilter.removeAll() }
+                Button("Show All Hosts") { listPresentation.clearHostFilter() }
                     .hoverEffect(.highlight)
             }
         case .noSearchResults:
@@ -2736,7 +2742,11 @@ struct ConsoleListFilterChoices: View {
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
                                 choice(host.displayName, selected: hostFilter.contains(host.id)) {
-                                    if !hostFilter.insert(host.id).inserted { hostFilter.remove(host.id) }
+                                    if hostFilter.contains(host.id) {
+                                        hostFilter.remove(host.id)
+                                    } else {
+                                        hostFilter.insert(host.id)
+                                    }
                                 }
                             }
                         }

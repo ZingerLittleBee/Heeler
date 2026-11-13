@@ -519,14 +519,53 @@ final class ConsoleListPresentationStore {
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
     private static let collapsedWorkspacesDefaultsKey = "console-list.collapsed-workspaces"
+    private static let hostFilterDefaultsKey = "console-list.host-filter"
     private static let statusFilterDefaultsKey = "console-list.status-filter"
+
+    /// The Hosts both lists show; empty shows every Host.
+    private(set) var hostFilter: Set<Host.ID>
+
+    func setHostFilter(_ hostIDs: Set<Host.ID>) {
+        guard hostFilter != hostIDs else { return }
+        hostFilter = hostIDs
+        persistHostFilter()
+    }
+
+    func toggleHostFilter(_ hostID: Host.ID) {
+        if !hostFilter.insert(hostID).inserted { hostFilter.remove(hostID) }
+        persistHostFilter()
+    }
+
+    func clearHostFilter() {
+        guard !hostFilter.isEmpty else { return }
+        hostFilter = []
+        defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
+    }
+
+    /// Drops Hosts no longer in `hosts`, falling back to All Hosts when the
+    /// last selected Host leaves the catalog.
+    func pruneHostFilter(keeping hosts: [Host]) {
+        setHostFilter(hostFilter.intersection(hosts.map(\.id)))
+    }
+
+    private func persistHostFilter() {
+        if hostFilter.isEmpty {
+            defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
+        } else {
+            defaults.set(hostFilter.map(\.uuidString).sorted(), forKey: Self.hostFilterDefaultsKey)
+        }
+    }
 
     /// The statuses the Agents list shows; empty shows every Agent.
     private(set) var statusFilter: Set<ConsoleAgentStatusFilter>
 
     func toggleStatusFilter(_ filter: ConsoleAgentStatusFilter) {
         if !statusFilter.insert(filter).inserted { statusFilter.remove(filter) }
-        defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+        if statusFilter.isEmpty {
+            defaults.removeObject(forKey: Self.statusFilterDefaultsKey)
+        } else {
+            defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+        }
     }
 
     func clearStatusFilter() {
@@ -551,6 +590,9 @@ final class ConsoleListPresentationStore {
         collapsedWorkspaceIDs = Set(
             defaults.data(forKey: Self.collapsedWorkspacesDefaultsKey)
                 .flatMap { try? JSONDecoder().decode([ConsoleWorkspaceSection.ID].self, from: $0) } ?? [])
+        hostFilter = Set(
+            (defaults.stringArray(forKey: Self.hostFilterDefaultsKey) ?? [])
+                .compactMap(UUID.init(uuidString:)))
         statusFilter = Set(
             (defaults.stringArray(forKey: Self.statusFilterDefaultsKey) ?? [])
                 .compactMap(ConsoleAgentStatusFilter.init(rawValue:)))
