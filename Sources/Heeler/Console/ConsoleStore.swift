@@ -85,6 +85,24 @@ final class ConsoleStore {
     /// The core each core Host's inventory comes from. A detail reads it, so it
     /// redraws once the Host no longer serves the core it opened on.
     private(set) var hostCores: [Host.ID: String] = [:]
+    /// Per-Host capabilities, published only when a Host's effective capabilities
+    /// actually change so connection retries do not invalidate observers of Herdr TUI
+    /// or already-identified core Hosts.
+    private(set) var hostCapabilities: [Host.ID: HostCapabilities] = [:]
+    /// Actionable Host status rows for `catalog`, published only when a presentation
+    /// changes so list passes reuse the built copy.
+    private(set) var hostIssues: [ConsoleHostStatusPresentation] = []
+    /// Live rows plus saved Chat entry points while a Host is unproven. The
+    /// separate `agents` property remains the only realtime inventory.
+    private(set) var chatDisplayAgents: [ConsoleAgent] = []
+    /// The saved entries among `chatDisplayAgents`, each with its Host's
+    /// readiness, so its row reads as saved rather than as an Agent that is
+    /// running. Live Agents have no entry.
+    private(set) var savedChatEntries: [ConsoleAgent.ID: HostReadiness] = [:]
+    /// The Workspace structure each Host's last snapshot reported, for the
+    /// Hosts whose rows may be saved Chat entries, so By Workspace groups
+    /// those entries as it grouped the live Agents.
+    private(set) var savedWorkspaceStructures: [Host.ID: [ChatCachedWorkspace]] = [:]
     /// The connection each Host's platform was last asked on.
     @ObservationIgnored private var hostPlatformGenerations: [Host.ID: UInt64] = [:]
 
@@ -264,6 +282,9 @@ final class ConsoleStore {
         self.rowLayouts = rowLayouts
         self.makeSession = makeSession
         self.connectCore = connectCore
+        cachedChats.onChange = { [weak self] in
+            self?.rebuildChatDisplayAgents()
+        }
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -600,7 +621,10 @@ final class ConsoleStore {
             return
         }
         guard projections[hostID] === projection else { return }
-        if hostPlatforms[hostID] != platform { hostPlatforms[hostID] = platform }
+        if hostPlatforms[hostID] != platform {
+            hostPlatforms[hostID] = platform
+            rebuildCapabilities()
+        }
         reconcileChatCache()
     }
 
@@ -1479,48 +1503,64 @@ final class ConsoleStore {
         // surface, including the list and saved Chat banners. Removed Hosts
         // have no projection; explicit ended and suspended states stay intact.
         let previousStatuses = hostStatuses
-        hostStatuses = Dictionary(
+        let nextStatuses = Dictionary(
             uniqueKeysWithValues: current.map { projection in
                 (projection.host.id, projection.status ?? .connecting)
             })
+        if hostStatuses != nextStatuses { hostStatuses = nextStatuses }
         for (id, store) in agentUsageStores
-        where hostStatuses[id] == .connected && previousStatuses[id] != .connected {
+        where nextStatuses[id] == .connected && previousStatuses[id] != .connected {
             store.connectionBecameUsable()
         }
         // A Host the widgets have no figures for names why: connected or not.
-        if hostStatuses.mapValues({ $0 == .connected }) != previousStatuses.mapValues({ $0 == .connected }) {
+        if nextStatuses.mapValues({ $0 == .connected }) != previousStatuses.mapValues({ $0 == .connected }) {
             publishUsageWidgets()
             refreshStaleWidgetUsage()
         }
-        hostStandingFailures = Dictionary(
+        let nextStandingFailures = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.standingFailure.map { (projection.host.id, $0) }
             })
-        hostLatencies = Dictionary(
+        if hostStandingFailures != nextStandingFailures {
+            hostStandingFailures = nextStandingFailures
+        }
+        let nextLatencies = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.latency.map { (projection.host.id, $0) }
             })
-        hostsCheckingConnection = Set(current.filter(\.isCheckingConnection).map(\.host.id))
-        hostRouteIDs = Dictionary(
+        if hostLatencies != nextLatencies { hostLatencies = nextLatencies }
+        let nextCheckingConnection = Set(current.filter(\.isCheckingConnection).map(\.host.id))
+        if hostsCheckingConnection != nextCheckingConnection {
+            hostsCheckingConnection = nextCheckingConnection
+        }
+        let nextRouteIDs = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.routeID.map { (projection.host.id, $0) }
             })
-        hostSyncErrors = Dictionary(
+        if hostRouteIDs != nextRouteIDs { hostRouteIDs = nextRouteIDs }
+        let nextSyncErrors = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.syncError.map { (projection.host.id, $0) }
             })
-        hostCoreEnvironmentNotices = Dictionary(
+        if hostSyncErrors != nextSyncErrors { hostSyncErrors = nextSyncErrors }
+        let nextEnvironmentNotices = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 HerdrCoreEnvironmentNotice(names: projection.leakedEnvironmentNames)
                     .map { (projection.host.id, $0) }
             })
-        coreStatusExplanations = Dictionary(
+        if hostCoreEnvironmentNotices != nextEnvironmentNotices {
+            hostCoreEnvironmentNotices = nextEnvironmentNotices
+        }
+        let nextExplanations = Dictionary(
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .flatMap { projection in
                     projection.statusExplanations.map {
                         (ConsoleAgent.ID(hostID: projection.host.id, paneID: $0.key), $0.value)
                     }
                 })
+        if coreStatusExplanations != nextExplanations {
+            coreStatusExplanations = nextExplanations
+        }
         let nextDesktopAppNaming = Dictionary(
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .compactMap { projection in
@@ -1537,14 +1577,25 @@ final class ConsoleStore {
             uniqueKeysWithValues: current.lazy.compactMap { $0 as? HerdrCoreConsoleProjection }
                 .compactMap { projection in projection.inventoryCore.map { (projection.host.id, $0) } })
         if hostCores != nextCores { hostCores = nextCores }
-        hostConnectionGenerations = Dictionary(
+        let nextGenerations = Dictionary(
             uniqueKeysWithValues: current.map {
                 ($0.host.id, $0.transportGeneration)
             })
-        hostsAwaitingSnapshot = Set(
+        if hostConnectionGenerations != nextGenerations {
+            hostConnectionGenerations = nextGenerations
+        }
+        let nextAwaitingSnapshot = Set(
             current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
-        hostsAwaitingFreshSnapshot = Set(
+        if hostsAwaitingSnapshot != nextAwaitingSnapshot {
+            hostsAwaitingSnapshot = nextAwaitingSnapshot
+        }
+        let nextAwaitingFreshSnapshot = Set(
             current.lazy.filter(\.isAwaitingFreshSnapshot).map(\.host.id))
+        if hostsAwaitingFreshSnapshot != nextAwaitingFreshSnapshot {
+            hostsAwaitingFreshSnapshot = nextAwaitingFreshSnapshot
+        }
+        rebuildCapabilities()
+        rebuildHostIssues()
         for (id, session) in composerSessions {
             session.composer.isConnectionAvailable = isHostReadyForInput(id.hostID)
         }
@@ -1687,7 +1738,7 @@ final class ConsoleStore {
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         rowLayouts.resolvedLayout(
             for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID),
-            followsPlugin: capabilities(for: hostID).syncLayoutFromPlugin)
+            followsPlugin: coreHost(hostID) == nil)
     }
 
     /// The fields this Host's Live Activity carries. Label fields are only for
@@ -1908,9 +1959,103 @@ final class ConsoleStore {
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
                 .map { (agent.id, $0) }
         })
-        agents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        let nextAgents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        if agents != nextAgents { agents = nextAgents }
         let listed = Set(unsorted.map(\.id))
         if listedAgentIDs != listed { listedAgentIDs = listed }
+        rebuildChatDisplayAgents()
+    }
+
+    private func rebuildCapabilities() {
+        var next: [Host.ID: HostCapabilities] = [:]
+        next.reserveCapacity(catalog.count)
+        for host in catalog {
+            next[host.id] = HostCapabilities(
+                serverKind: host.serverKind,
+                platform: hostPlatforms[host.id],
+                desktopAppNaming: hostDesktopAppNaming[host.id],
+                coreKernel: hostCoreKernels[host.id],
+                coreLinuxChatPrograms: coreLinuxChatPrograms,
+                coreMacOSChatPrograms: coreMacOSChatPrograms,
+                coreWindowsChatPrograms: coreWindowsChatPrograms,
+                isLocatingCore: hostStatuses[host.id] == .connecting)
+        }
+        if hostCapabilities != next {
+            hostCapabilities = next
+        }
+    }
+
+    private func rebuildHostIssues() {
+        let next = PerfTrace.span("console.host-issues") {
+            catalog.compactMap { host in
+                ConsoleHostStatusPresentation(
+                    host: host,
+                    status: hostStatuses[host.id],
+                    standingFailure: hostStandingFailures[host.id],
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
+                    syncError: hostSyncErrors[host.id])
+            }
+        }
+        if hostIssues != next {
+            hostIssues = next
+        }
+    }
+
+    /// Actionable status presentations for `hosts`, reusing `hostIssues` when
+    /// `hosts` matches the synced `catalog`.
+    func hostIssues(for hosts: [Host]) -> [ConsoleHostStatusPresentation] {
+        if hosts == catalog {
+            return hostIssues
+        }
+        return PerfTrace.span("console.host-issues") {
+            hosts.compactMap { host in
+                ConsoleHostStatusPresentation(
+                    host: host,
+                    status: hostStatuses[host.id],
+                    standingFailure: hostStandingFailures[host.id],
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
+                    syncError: hostSyncErrors[host.id])
+            }
+        }
+    }
+
+    private func rebuildChatDisplayAgents() {
+        let span = PerfTrace.begin("console.chat-display-agents")
+        defer { PerfTrace.end(span) }
+        let live = listedAgentIDs
+        let savedPairs = projections.values.flatMap {
+            projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
+            guard projection.showsSavedChats else { return [] }
+            let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
+            guard !saved.isEmpty else { return [] }
+            let hostReadiness = readiness(of: projection.host)
+            return saved.map { ($0, hostReadiness) }
+        }
+        let nextDisplay: [ConsoleAgent]
+        let nextSavedEntries: [ConsoleAgent.ID: HostReadiness]
+        if savedPairs.isEmpty {
+            nextDisplay = agents
+            nextSavedEntries = [:]
+        } else {
+            nextDisplay =
+                agents
+                + savedPairs.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
+                    pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
+                }
+            nextSavedEntries = Dictionary(savedPairs.map { ($0.agent.id, $0.readiness) }) {
+                first, _ in first
+            }
+        }
+        if chatDisplayAgents != nextDisplay { chatDisplayAgents = nextDisplay }
+        if savedChatEntries != nextSavedEntries { savedChatEntries = nextSavedEntries }
+        var nextStructures: [Host.ID: [ChatCachedWorkspace]] = [:]
+        for projection in projections.values where projection.showsSavedChats {
+            let structure = cachedChats.structure(on: projection.host)
+            if !structure.isEmpty { nextStructures[projection.host.id] = structure }
+        }
+        if savedWorkspaceStructures != nextStructures {
+            savedWorkspaceStructures = nextStructures
+        }
     }
 
     /// What a detail column shows for this selection: an Agent on the list, the
@@ -1950,14 +2095,6 @@ final class ConsoleStore {
         return terminal.isRestarting ? .restarting : .shell
     }
 
-    /// Live rows plus saved Chat entry points while a Host is unproven. The
-    /// separate `agents` property remains the only realtime inventory.
-    var chatDisplayAgents: [ConsoleAgent] {
-        agents + savedChatAgents.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
-            pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
-        }
-    }
-
     func isHostReadyForInput(_ hostID: Host.ID) -> Bool {
         hostStatuses[hostID] == .connected && !hostsCheckingConnection.contains(hostID)
             && !hostsAwaitingFreshSnapshot.contains(hostID)
@@ -1976,13 +2113,6 @@ final class ConsoleStore {
         }
     }
 
-    /// The saved entries among `chatDisplayAgents`, each with its Host's
-    /// readiness, so its row reads as saved rather than as an Agent that is
-    /// running. Live Agents have no entry.
-    var savedChatEntries: [ConsoleAgent.ID: HostReadiness] {
-        Dictionary(savedChatAgents.map { ($0.agent.id, $0.readiness) }) { first, _ in first }
-    }
-
     /// One row's answer to `savedChatEntries`, cheap enough for a detail
     /// screen to ask on every render. It asks who is listed, not what they
     /// are doing, so a detail that asks is left alone by other Agents'
@@ -1994,35 +2124,12 @@ final class ConsoleStore {
         return cachedChats.agents(on: projection.host).contains { $0.id == id }
     }
 
-    /// The Workspace structure each Host's last snapshot reported, for the
-    /// Hosts whose rows may be saved Chat entries, so By Workspace groups
-    /// those entries as it grouped the live Agents.
-    var savedWorkspaceStructures: [Host.ID: [ChatCachedWorkspace]] {
-        var structures: [Host.ID: [ChatCachedWorkspace]] = [:]
-        for projection in projections.values where projection.showsSavedChats {
-            let structure = cachedChats.structure(on: projection.host)
-            if !structure.isEmpty { structures[projection.host.id] = structure }
-        }
-        return structures
-    }
-
     /// The branch the latest Changes read of the Host's checkout at `path`
     /// found, saved with the Workspace structure, so a card titles the
     /// checkout as it last did until a read of this launch lands.
     func savedBranch(on hostID: Host.ID, atCheckoutPath path: String?) -> CheckoutHead.Branch? {
         guard let path, let host = projections[hostID]?.host else { return nil }
         return cachedChats.structure(on: host).first { $0.checkout.checkoutPath == path }?.branch
-    }
-
-    private var savedChatAgents: [(agent: ConsoleAgent, readiness: HostReadiness)] {
-        let live = Set(agents.map(\.id))
-        return projections.values.flatMap { projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.showsSavedChats else { return [] }
-            let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
-            guard !saved.isEmpty else { return [] }
-            let hostReadiness = readiness(of: projection.host)
-            return saved.map { ($0, hostReadiness) }
-        }
     }
 
     /// What the Host's section header says of it, from the same inputs.
@@ -2068,15 +2175,11 @@ final class ConsoleStore {
     /// What the Host offers. A detail can outlive its Host's catalog entry for
     /// a moment; its actions stay as they were and fail as not connected.
     func capabilities(for hostID: Host.ID) -> HostCapabilities {
-        HostCapabilities(
-            serverKind: catalog.first(where: { $0.id == hostID })?.serverKind ?? .herdrTUI,
-            platform: hostPlatforms[hostID],
-            desktopAppNaming: hostDesktopAppNaming[hostID],
-            coreKernel: hostCoreKernels[hostID],
-            coreLinuxChatPrograms: coreLinuxChatPrograms,
-            coreMacOSChatPrograms: coreMacOSChatPrograms,
-            coreWindowsChatPrograms: coreWindowsChatPrograms,
-            isLocatingCore: hostStatuses[hostID] == .connecting)
+        hostCapabilities[hostID] ?? HostCapabilities(serverKind: .herdrTUI)
+    }
+
+    func capabilities(for host: Host) -> HostCapabilities {
+        hostCapabilities[host.id] ?? HostCapabilities(serverKind: host.serverKind)
     }
 
     /// Add Host found a native Windows machine here. A Unix Host says nothing until
@@ -2566,7 +2669,7 @@ extension ConsoleStore {
         }
     }
 
-    private static func consoleSettings(
+    nonisolated private static func consoleSettings(
         for host: Host, knownHosts: any KnownHostsStore, credentials: HostCredentialsProvider,
         overlays: OverlayNetworkRuntime
     ) throws -> SSHTransportSettings {

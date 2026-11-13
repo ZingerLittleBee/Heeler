@@ -27,7 +27,7 @@ struct NotificationRegistrationCeremony: Sendable {
     private let hostSession: @MainActor @Sendable (Host.ID) -> String?
 
     init(
-        keys: NotificationKeyStore = NotificationKeyStore(),
+        keys: NotificationKeyStore = .appShared,
         gate: GitExecGate? = nil,
         hostSession: @escaping @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     ) {
@@ -348,6 +348,106 @@ extension Host {
         return switch socketLocation {
         case .defaultSession, .absolutePath: ""
         case .namedSession(let name): name
+        }
+    }
+}
+
+extension NotificationKeyStore {
+    /// Process-shared store for the main app, backed by an in-memory cache over
+    /// the shared-access-group Keychain so main-actor observers (Live Activities,
+    /// notification preference checks) never block on repeated `SecItemCopyMatching`
+    /// IPC. Extensions keep uncached `NotificationKeyStore()` reads so keys saved
+    /// by the app are visible across processes immediately.
+    static let appShared = NotificationKeyStore(
+        secrets: CachedSecretStore(
+            base: KeychainSecretStore(
+                service: NotificationKeyStore.service,
+                accessGroup: NotificationKeyStore.sharedAccessGroup)))
+}
+
+/// Thread-safe write-through cache over a `SecretStore` whose sole writer is
+/// this process. Errors are never cached.
+final class CachedSecretStore: SecretStore, @unchecked Sendable {
+    private let base: any SecretStore
+    private let lock = NSLock()
+    private var cachedAccounts: [String: Data?] = [:]
+    private var hasLoadedAll = false
+    private var mutationGeneration: UInt64 = 0
+
+    init(base: any SecretStore) {
+        self.base = base
+    }
+
+    func read(account: String) throws -> Data? {
+        let generation: UInt64? = lock.withLock {
+            if cachedAccounts[account] != nil || hasLoadedAll {
+                return nil
+            }
+            return mutationGeneration
+        }
+        guard let generation else {
+            return lock.withLock { cachedAccounts[account] ?? nil }
+        }
+        let value = try base.read(account: account)
+        return lock.withLock {
+            if mutationGeneration == generation, cachedAccounts[account] == nil {
+                cachedAccounts[account] = .some(value)
+            }
+            return cachedAccounts[account] ?? value
+        }
+    }
+
+    func readAll() throws -> [String: Data] {
+        let state: (cached: [String: Data]?, generation: UInt64) = lock.withLock {
+            if hasLoadedAll {
+                return (cachedAccounts.compactMapValues { $0 }, mutationGeneration)
+            }
+            return (nil, mutationGeneration)
+        }
+        if let cached = state.cached {
+            return cached
+        }
+        let all = try base.readAll()
+        lock.withLock {
+            if mutationGeneration == state.generation {
+                cachedAccounts = all.mapValues { Optional($0) }
+                hasLoadedAll = true
+            }
+        }
+        return all
+    }
+
+    func write(_ secret: Data, account: String) throws {
+        do {
+            try base.write(secret, account: account)
+            lock.withLock {
+                mutationGeneration &+= 1
+                cachedAccounts[account] = .some(secret)
+            }
+        } catch {
+            lock.withLock {
+                mutationGeneration &+= 1
+                cachedAccounts.removeValue(forKey: account)
+                hasLoadedAll = false
+            }
+            throw error
+        }
+    }
+
+    func removeSecret(account: String) throws {
+        do {
+            try base.removeSecret(account: account)
+            lock.withLock {
+                mutationGeneration &+= 1
+                cachedAccounts[account] = .some(nil)
+            }
+        } catch {
+            lock.withLock {
+                mutationGeneration &+= 1
+                cachedAccounts.removeValue(forKey: account)
+                hasLoadedAll = false
+            }
+            throw error
         }
     }
 }

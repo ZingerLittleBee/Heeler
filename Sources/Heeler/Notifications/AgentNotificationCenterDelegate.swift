@@ -22,7 +22,7 @@ final class AgentNotificationCenterDelegate: NSObject, UNUserNotificationCenterD
     init(
         directory: AgentSceneDirectory,
         loadKeys: @escaping @Sendable () -> [NotificationKeyRecord] = {
-            (try? NotificationKeyStore().allRecords()) ?? []
+            (try? NotificationKeyStore.appShared.allRecords()) ?? []
         }
     ) {
         self.directory = directory

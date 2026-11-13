@@ -185,7 +185,7 @@ extension Host {
 }
 
 /// What an Agent's row offers besides its pin, by what its Host can do.
-struct ConsoleAgentRowOffers: Equatable {
+struct ConsoleAgentRowOffers: Equatable, Sendable {
     let opensInNewWindow: Bool
     let closes: Bool
 
