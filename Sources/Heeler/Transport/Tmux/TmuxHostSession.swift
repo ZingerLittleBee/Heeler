@@ -66,6 +66,7 @@ actor TmuxHostSession {
     /// The paths the next connection starts from: the catalog's, then whatever
     /// a connection resolved since.
     private nonisolated let storedPaths: Mutex<TmuxPaths?>
+    private nonisolated let pendingAdoptedPaths = Mutex<TmuxPaths??>(nil)
     private var phase: Phase = .suspended
     private var currentTransport: (any TmuxTransport)?
     private var hasEstablishedConnection = false
@@ -94,6 +95,7 @@ actor TmuxHostSession {
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
+    private var immediateAskRequested = false
     private var lifecycleTransition: Task<Void, Never>?
     /// Attaches waiting for a server to answer on a connection.
     private var attachWaiters: [AttachWaiter] = []
@@ -152,6 +154,12 @@ actor TmuxHostSession {
         waitSleep?.cancel()
     }
 
+    /// Asks the Host's server at once on the connection in hand, after Heeler's
+    /// own launch started one without waiting out backoff or a stopped run.
+    func askNow() async {
+        await enqueueLifecycleTransition { await self.wakeForServer() }
+    }
+
     /// Takes the connection down until `resume()`.
     func suspend() async {
         await enqueueLifecycleTransition { await self.deactivate() }
@@ -167,9 +175,11 @@ actor TmuxHostSession {
     }
 
     /// The catalog's paths moved without this session, as Host detail's checks
-    /// move them. The connection in use keeps its own.
+    /// move them. A connection with no answering server adopts them too, while a
+    /// live server keeps the paths it answered on.
     nonisolated func adoptStoredPaths(_ paths: TmuxPaths?) {
         storedPaths.withLock { $0 = paths }
+        pendingAdoptedPaths.withLock { $0 = .some(paths) }
     }
 
     /// Runs one call on the installed transport, whatever became of the server.
@@ -179,7 +189,17 @@ actor TmuxHostSession {
         guard let currentTransport else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
+        await applyPendingAdoptedPaths(to: currentTransport)
         return try await operation(currentTransport)
+    }
+
+    private func applyPendingAdoptedPaths(to transport: any TmuxTransport) async {
+        guard let adopted = pendingAdoptedPaths.withLock({
+            defer { $0 = nil }
+            return $0
+        }) else { return }
+        guard liveServer == nil else { return }
+        await transport.adoptStoredPaths(adopted)
     }
 
     /// Runs an Attach once a server answers on the connection (ADR 0043),
@@ -271,6 +291,7 @@ actor TmuxHostSession {
         guard phase == .suspended else { return }
         phase = .active
         attachFailure = nil
+        immediateAskRequested = false
         startRun()
     }
 
@@ -280,12 +301,29 @@ actor TmuxHostSession {
             return
         }
         attachFailure = nil
+        immediateAskRequested = false
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldStatus(.connecting)
         await windDown()
         guard phase == .active, activationGeneration == generation else { return }
         runTask = Task { await self.run(generation: generation) }
+    }
+
+    private func wakeForServer() {
+        guard phase == .active else { return }
+        if attachFailure != nil || runTask == nil {
+            attachFailure = nil
+            immediateAskRequested = false
+            waitSleep?.cancel()
+            waitSleep = nil
+            runTask?.cancel()
+            runTask = nil
+            startRun()
+            return
+        }
+        immediateAskRequested = true
+        waitSleep?.cancel()
     }
 
     private func startRun() {
@@ -341,11 +379,13 @@ actor TmuxHostSession {
     // MARK: The connection
 
     private func run(generation: UInt64) async {
+        defer { if activationGeneration == generation { runTask = nil } }
         var attempt = 0
         while activationIsCurrent(generation) {
             let failure: TransportError
             do {
                 let transport = try await ensureTransport(for: generation)
+                immediateAskRequested = false
                 let started = ContinuousClock.now
                 let asked = await Self.ask(transport)
                 if let kernel = await transport.hostFacts().kernel {
@@ -379,6 +419,10 @@ actor TmuxHostSession {
                 failAttachWaiters(failure)
                 yieldStatus(.failed(failure))
                 return
+            }
+            if immediateAskRequested {
+                immediateAskRequested = false
+                continue
             }
             attempt += 1
             let delay = reconnectPolicy.delay(beforeAttempt: attempt)
@@ -664,10 +708,14 @@ actor TmuxHostSession {
 
     private func ensureTransport(for generation: UInt64) async throws -> any TmuxTransport {
         if let transport = currentTransport {
-            if !transportSuspect, await transport.isConnected { return transport }
+            if !transportSuspect, await transport.isConnected {
+                await applyPendingAdoptedPaths(to: transport)
+                return transport
+            }
             currentTransport = nil
             try? await transport.close()
         }
+        pendingAdoptedPaths.withLock { $0 = nil }
         let transport = try await connect(storedPaths.withLock { $0 })
         guard activationIsCurrent(generation) else {
             try? await transport.close()

@@ -262,7 +262,7 @@ struct HostOnboardingView: View {
             }
         }
         .onChange(of: store.report) { _, report in
-            isConsoleRecoveryArmed = report == .allPassed
+            handleReportChange(report)
         }
         .onChange(of: consoleRecoveryInput) { _, input in
             switch HostOnboardingConsoleRecovery.action(for: input) {
@@ -438,6 +438,16 @@ struct HostOnboardingView: View {
         case .connecting, .reconnecting: true
         default: false
         }
+    }
+
+    private func handleReportChange(_ report: PreflightReport?) {
+        isConsoleRecoveryArmed = report == .allPassed
+        let action = HostOnboardingCoreFollow.action(
+            afterTmuxChecks: report == .allPassed,
+            isWaitingForServer: store.isWaitingForTmuxServer,
+            serverKind: store.host.serverKind,
+            status: connectionStatus)
+        if action == .wakeConsole { retry() }
     }
 
     private func retry() {
@@ -1178,6 +1188,24 @@ enum HostOnboardingCoreFollow {
         switch coreStart {
         case .started, .alreadyRunning: return .wakeConsole
         case .idle, .running, .failed: return .none
+        }
+    }
+
+    /// Checks on a tmux Host that found a running server wake a Console still
+    /// backing off or stopped on an install check; checks that found a usable
+    /// tmux with no server running wake a Console still stopped on an install check.
+    static func action(
+        afterTmuxChecks reportPassed: Bool, isWaitingForServer: Bool, serverKind: ServerKind,
+        status: EventsSessionStatus?
+    ) -> Action {
+        guard serverKind == .tmux else { return .none }
+        switch status {
+        case .failed(.tmuxNotInstalled), .failed(.tmuxUpdateRequired):
+            return reportPassed || isWaitingForServer ? .wakeConsole : .none
+        case .reconnecting:
+            return reportPassed ? .wakeConsole : .none
+        default:
+            return .none
         }
     }
 }

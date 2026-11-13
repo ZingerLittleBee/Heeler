@@ -1155,6 +1155,7 @@ private struct RecordingTmuxTransport: TmuxTransport {
     func status() async throws -> TmuxServerStatus { try await base.status() }
     func resolvedPaths() async -> TmuxPaths? { await base.resolvedPaths() }
     func hostFacts() async -> TmuxHostFacts { await base.hostFacts() }
+    func adoptStoredPaths(_ storedPaths: TmuxPaths?) async { await base.adoptStoredPaths(storedPaths) }
     func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
         let result = try await base.runTmuxScript(script, throughLoginShell: throughLoginShell)
         onScriptResult(result)

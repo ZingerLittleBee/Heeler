@@ -398,6 +398,29 @@ struct TmuxConsoleTests {
         #expect(action(.connected, passed: false, waits: true) == .runChecks)
         #expect(action(.connected, passed: true, waits: false) == .none)
         #expect(action(.notRunning, passed: false, waits: true) == .none)
+
+        // Checks that proved tmux is now usable or running wake a Console still
+        // stuck on an earlier install check or server backoff.
+        #expect(
+            Follow.action(
+                afterTmuxChecks: false, isWaitingForServer: true, serverKind: .tmux,
+                status: .failed(.tmuxNotInstalled)) == .wakeConsole)
+        #expect(
+            Follow.action(
+                afterTmuxChecks: false, isWaitingForServer: true, serverKind: .tmux,
+                status: .failed(.tmuxUpdateRequired(version: "3.2a"))) == .wakeConsole)
+        #expect(
+            Follow.action(
+                afterTmuxChecks: true, isWaitingForServer: false, serverKind: .tmux,
+                status: notRunning) == .wakeConsole)
+        #expect(
+            Follow.action(
+                afterTmuxChecks: false, isWaitingForServer: true, serverKind: .tmux,
+                status: notRunning) == .none)
+        #expect(
+            Follow.action(
+                afterTmuxChecks: true, isWaitingForServer: false, serverKind: .herdrCore,
+                status: .failed(.tmuxNotInstalled)) == .none)
     }
 
     // MARK: Unknown status explanations and Grok Build's edit

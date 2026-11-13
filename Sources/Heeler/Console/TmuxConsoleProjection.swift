@@ -599,6 +599,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             await endOpened(made)
             throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
         }
+        if self.server == nil { await session.askNow() }
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
             workspaceID: sessionID, tabID: made.windowID, paneID: made.paneID,
@@ -612,6 +613,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let hooks = await hookSettings(for: request)
         let made = try await created(
             try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server, hookSettings: hooks) })
+        if self.server == nil { await session.askNow() }
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
             workspaceID: made.sessionID ?? "", tabID: made.windowID, paneID: made.paneID,
@@ -631,6 +633,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     ) async throws -> ShellTerminalIdentity {
         let server = try await launchServer()
         let made = try await created(try command { try TmuxLaunch.shellSession(workspace, on: server) })
+        if self.server == nil { await session.askNow() }
         return ShellTerminalIdentity(paneID: made.paneID, tabID: made.windowID, terminalID: made.paneID)
     }
 
@@ -863,15 +866,43 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     /// Paths, kernel and shell for a launch. The shell defaults when the probe
-    /// saw none. No paths means the Host has not been asked yet.
+    /// saw none. When no server answers and this connection has not yet read
+    /// usable paths and kernel, or stopped on an install check, one status probe
+    /// refreshes them first without starting a server.
     private func launchServer() async throws -> TmuxLaunch.Server {
-        let facts = try await session.withTransport { await $0.hostFacts() }
+        let needsProbe: Bool =
+            if server != nil {
+                false
+            } else if case .failed = status {
+                true
+            } else {
+                false
+            }
+        let running = server != nil
+        let (facts, serverAnswered) = try await session.withTransport { transport in
+            var current = await transport.hostFacts()
+            var answered = running
+            if needsProbe || current.paths == nil || current.kernel == nil {
+                do {
+                    _ = try await transport.status()
+                    answered = true
+                } catch TransportError.tmuxServerNotRunning {
+                    answered = false
+                }
+                current = await transport.hostFacts()
+            }
+            return (current, answered)
+        }
+        if let next = facts.kernel, next != kernel {
+            kernel = next
+            memory.noteKernel(next, for: host.id)
+        }
         guard let paths = facts.paths else {
             throw TransportError.tmuxServerNotRunning(socketName: host.tmuxSocketName)
         }
         let shell = facts.shell.flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/sh"
         return TmuxLaunch.Server(
-            paths: paths, shell: shell, kernel: facts.kernel, running: server != nil,
+            paths: paths, shell: shell, kernel: facts.kernel, running: serverAnswered,
             openCodeVersion: openCodeVersion)
     }
 

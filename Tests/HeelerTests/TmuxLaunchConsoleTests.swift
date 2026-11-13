@@ -12,7 +12,11 @@ struct TmuxLaunchConsoleTests {
     private let host = Host(
         address: "mac.example", username: "dev", serverKind: .tmux, tmuxPaths: ScriptedTmuxHost.paths())
 
-    private func console(over tmux: ScriptedTmuxHost) -> ConsoleStore {
+    private func console(
+        over tmux: ScriptedTmuxHost,
+        reconnectPolicy: ReconnectPolicy = ReconnectPolicy(
+            initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10))
+    ) -> ConsoleStore {
         ConsoleStore(
             makeSession: { _, subscriptions in
                 EventsSession(
@@ -26,15 +30,19 @@ struct TmuxLaunchConsoleTests {
                     connect: { paths in
                         await tmux.transport(socketName: host.tmuxSocketName, storedPaths: paths)
                     },
-                    reconnectPolicy: ReconnectPolicy(
-                        initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
+                    reconnectPolicy: reconnectPolicy,
                     keepalive: KeepalivePolicy(interval: .milliseconds(10)))
             })
     }
 
-    private func started(_ tmux: ScriptedTmuxHost) async -> ConsoleStore {
-        let store = console(over: tmux)
-        store.setHosts([host])
+    private func started(
+        _ tmux: ScriptedTmuxHost,
+        host: Host? = nil,
+        reconnectPolicy: ReconnectPolicy = ReconnectPolicy(
+            initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10))
+    ) async -> ConsoleStore {
+        let store = console(over: tmux, reconnectPolicy: reconnectPolicy)
+        store.setHosts([host ?? self.host])
         await store.resume()
         return store
     }
@@ -168,6 +176,108 @@ struct TmuxLaunchConsoleTests {
         try await waitUntil("the started session") { store.workspacesByHost[host.id]?.isEmpty == false }
         #expect(store.hostStatuses[host.id] == .connected)
         store.setHosts([])
+    }
+
+    @Test func linuxNewWorkspaceWakesTheSessionDuringBackoffAndOpensItsTerminal() async throws {
+        let tmux = ScriptedTmuxHost(sockets: [], kernel: "Linux")
+        let longBackoff = ReconnectPolicy(initialDelay: .seconds(30), multiplier: 2, maxDelay: .seconds(30))
+        let store = await started(tmux, reconnectPolicy: longBackoff)
+        defer { store.setHosts([]) }
+        try await waitUntil("no server") { isNotRunning(store.hostStatuses[host.id]) }
+
+        let form = NewTerminalStore(
+            hosts: [host],
+            initialHostID: host.id,
+            workspaces: { store.workspaces(for: $0) },
+            directory: { _, _ in nil },
+            remoteHome: { try await store.remoteHomeDirectory(on: $0) },
+            create: { destination, hostID in
+                switch destination {
+                case .existing(let request):
+                    try await store.createShellTerminal(request, on: hostID)
+                case .newWorkspace(let workspace, let tabLabel):
+                    try await store.createShellWorkspace(workspace, tabLabel: tabLabel, on: hostID)
+                }
+            },
+            awaitTerminal: { await store.waitForTerminal($0, on: $1) },
+            offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces })
+        form.applyBrowsedDirectory("/work")
+        form.newWorkspaceLabel = "linux-start"
+
+        await form.submit()
+
+        #expect(form.state == .created(ConsoleTerminal.ID(hostID: host.id, paneID: "%0")))
+        #expect(store.hostStatuses[host.id] == .connected)
+        #expect(store.workspacesByHost[host.id]?.map(\.label) == ["linux-start"])
+    }
+
+    @Test func linuxNewWorkspaceRecoversFromAnInstallFailureAndOpensItsTerminal() async throws {
+        let tmux = ScriptedTmuxHost(version: "tmux 3.2a", sockets: [], kernel: "Linux")
+        let longBackoff = ReconnectPolicy(initialDelay: .seconds(30), multiplier: 2, maxDelay: .seconds(30))
+        var catalogHost = host
+        let store = await started(tmux, host: catalogHost, reconnectPolicy: longBackoff)
+        defer { store.setHosts([]) }
+        try await waitUntil("update required") {
+            store.hostStatuses[catalogHost.id] == .failed(.tmuxUpdateRequired(version: "3.2a"))
+        }
+
+        await tmux.uninstall()
+        await store.retryHost(catalogHost.id)
+        try await waitUntil("not installed") {
+            store.hostStatuses[catalogHost.id] == .failed(.tmuxNotInstalled)
+        }
+
+        await tmux.moveExecutable(to: "/home/dev/.local/opt/tmux-3.3a/bin/tmux", version: "tmux 3.3a")
+        let connector = FakeTransportConnector(
+            outcome: .connects(pingResult: .failure(.cancelled)), tmux: tmux)
+        let onboarding = HostOnboardingStore(
+            host: catalogHost,
+            connector: connector,
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: InMemorySecretStore()),
+            noteTmuxPaths: { _, paths in
+                catalogHost.tmuxPaths = paths
+                store.setHosts([catalogHost])
+            })
+        await onboarding.runChecks()
+        #expect(onboarding.isWaitingForTmuxServer)
+        #expect(
+            HostOnboardingCoreFollow.action(
+                afterTmuxChecks: onboarding.report == .allPassed,
+                isWaitingForServer: onboarding.isWaitingForTmuxServer,
+                serverKind: .tmux,
+                status: store.hostStatuses[catalogHost.id]) == .wakeConsole)
+
+        // Even before a manual reconnect, New Workspace resolves the restored tmux,
+        // starts the server, wakes the stopped session, and opens the terminal.
+        let form = NewTerminalStore(
+            hosts: [catalogHost],
+            initialHostID: catalogHost.id,
+            workspaces: { store.workspaces(for: $0) },
+            directory: { _, _ in nil },
+            remoteHome: { try await store.remoteHomeDirectory(on: $0) },
+            create: { destination, hostID in
+                switch destination {
+                case .existing(let request):
+                    try await store.createShellTerminal(request, on: hostID)
+                case .newWorkspace(let workspace, let tabLabel):
+                    try await store.createShellWorkspace(workspace, tabLabel: tabLabel, on: hostID)
+                }
+            },
+            awaitTerminal: { await store.waitForTerminal($0, on: $1) },
+            offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces })
+        form.applyBrowsedDirectory("/home/boxd/heeler-accept/repo")
+        form.newWorkspaceLabel = "linux-start"
+
+        await form.submit()
+
+        #expect(form.state == .created(ConsoleTerminal.ID(hostID: catalogHost.id, paneID: "%0")))
+        #expect(store.hostStatuses[catalogHost.id] == .connected)
+        #expect(store.hostStandingFailures[catalogHost.id] == nil)
+        #expect(store.workspacesByHost[catalogHost.id]?.map(\.label) == ["linux-start"])
     }
 
     @Test func macosRefusesToStartAServer() async throws {

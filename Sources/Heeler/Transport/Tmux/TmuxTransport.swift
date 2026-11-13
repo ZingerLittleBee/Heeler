@@ -52,6 +52,10 @@ protocol TmuxTransport: HostHelperConnection {
     /// Kept when the server is down, so Linux New Workspace can still start one.
     func hostFacts() async -> TmuxHostFacts
 
+    /// Adopts paths the catalog updated outside this connection, as Host detail's
+    /// checks do, while no server has answered on this connection yet.
+    func adoptStoredPaths(_ storedPaths: TmuxPaths?) async
+
     /// One bounded exec of a script `TmuxLaunch` or agent discovery built.
     /// `throughLoginShell` is the Linux server start, which waits for the
     /// shell's startup files. The script already says how it runs.
@@ -176,6 +180,14 @@ actor TmuxSSHTransport: TmuxTransport {
 
     func hostFacts() -> TmuxHostFacts {
         TmuxHostFacts(paths: paths, kernel: kernel, shell: shell)
+    }
+
+    func adoptStoredPaths(_ storedPaths: TmuxPaths?) {
+        let valid = storedPaths.flatMap { $0.serves(socketName: socketName) ? $0 : nil }
+        guard valid != paths else { return }
+        paths = valid
+        resolved = nil
+        resolvedSinceLastAnswer = false
     }
 
     func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
