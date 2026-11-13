@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -225,5 +227,126 @@ import Testing
             .init(accountName: "Work", path: "/Users/dev/.claude-work"),
             .init(accountName: "Personal", path: "/Users/dev/.claude-personal"),
         ])
+    }
+
+    @Test func firstLoadKeepsLoadingPhaseUntilEveryRootIsRead() async throws {
+        let files = InMemoryHostFiles(files: [
+            Self.accountFile: try accounts(),
+            Self.defaultSettings: ClaudeCodeHooks.launchSettings(script: Self.script),
+        ])
+        let entered = AsyncStream.makeStream(of: Void.self)
+        let release = AsyncStream.makeStream(of: Void.self)
+        await files.onRead(of: Self.defaultSettings) { _ in
+            entered.continuation.yield()
+            entered.continuation.finish()
+            for await _ in release.stream { break }
+        }
+        let flow = flow(files)
+
+        let loading = Task { await flow.loadIfNeeded() }
+        for await _ in entered.stream { break }
+
+        #expect(flow.phase == .loading)
+
+        release.continuation.yield()
+        release.continuation.finish()
+        await loading.value
+
+        #expect(flow.phase == .loaded)
+        #expect(flow.states["/home/dev/.claude"] == .read(.on))
+        #expect(flow.states[Self.work] == .read(.off))
+    }
+
+    @Test func cancelledReadsNeverShowAsFailuresAndReloadShowsRealStates() async throws {
+        let files = InMemoryHostFiles(files: [
+            Self.accountFile: try accounts(),
+            Self.defaultSettings: ClaudeCodeHooks.launchSettings(script: Self.script),
+        ])
+        let flow = flow(files)
+
+        await files.onRead(of: Self.accountFile) { _ in
+            throw TransportError.cancelled
+        }
+        await flow.loadIfNeeded()
+        #expect(flow.phase == .loading)
+        #expect(!flow.accountsUnreadable)
+        #expect(flow.states.isEmpty)
+
+        let entered = AsyncStream.makeStream(of: Void.self)
+        await files.onRead(of: Self.defaultSettings) { _ in
+            entered.continuation.yield()
+            entered.continuation.finish()
+            try await Task.sleep(for: .seconds(10))
+        }
+        let cancelledLoad = Task { await flow.loadIfNeeded() }
+        for await _ in entered.stream { break }
+        cancelledLoad.cancel()
+        await cancelledLoad.value
+
+        #expect(flow.phase == .loading)
+        #expect(!flow.accountsUnreadable)
+        #expect(
+            !flow.states.values.contains {
+                if case .failed = $0 { return true }
+                return false
+            })
+
+        await flow.loadIfNeeded()
+        #expect(flow.phase == .loaded)
+        #expect(!flow.accountsUnreadable)
+        #expect(flow.states["/home/dev/.claude"] == .read(.on))
+        #expect(flow.states[Self.work] == .read(.off))
+
+        let work = try root(flow, Self.work)
+        await files.onRead(of: "\(Self.work)/settings.json") { _ in
+            throw TransportError.cancelled
+        }
+        await flow.review(work, adding: true)
+        #expect(flow.states[work.id] == .read(.off))
+
+        await flow.review(work, adding: true)
+        guard case .review = flow.states[work.id] else {
+            Issue.record("expected a review, got \(String(describing: flow.states[work.id]))")
+            return
+        }
+        await files.onRead(of: "\(Self.work)/settings.json") { _ in
+            throw TransportError.cancelled
+        }
+        await flow.dismiss(work)
+        #expect(flow.states[work.id] == .reading)
+
+        await flow.loadIfNeeded()
+        #expect(flow.states[work.id] == .read(.off))
+    }
+
+    @Test func sectionFirstOpenInAFormShowsEachRootsRealState() async throws {
+        let files = InMemoryHostFiles(files: [
+            Self.accountFile: try accounts(),
+            Self.defaultSettings: ClaudeCodeHooks.launchSettings(script: Self.script),
+        ])
+        await files.onRead(of: Self.defaultSettings) { _ in
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        await files.onRead(of: "\(Self.work)/settings.json") { _ in
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        let flow = flow(files)
+        let controller = UIHostingController(rootView: Form { ClaudeCodeHooksSection(flow: flow) })
+
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
+        ) { window in
+            for _ in 0..<200 where flow.phase != .loaded {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(flow.phase == .loaded)
+            #expect(flow.states["/home/dev/.claude"] == .read(.on))
+            #expect(flow.states[Self.work] == .read(.off))
+
+            let labels = AccessibilityProbe.labels(in: window)
+            #expect(!labels.contains { $0.contains("Connection cancelled") }, "\(labels)")
+            #expect(labels.contains { $0.contains("On") }, "\(labels)")
+            #expect(labels.contains { $0.contains("Off") }, "\(labels)")
+        }
     }
 }

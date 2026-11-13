@@ -17,6 +17,7 @@ actor InMemoryHostFiles: HostServices {
     private(set) var folders: Set<String> = []
     /// Everything that changed the Host, in order.
     private(set) var journal: [String] = []
+    private var beforeReadOf: [String: @Sendable (InMemoryHostFiles) async throws -> Void] = [:]
     private var beforeReplaceOf: [String: @Sendable (InMemoryHostFiles) async -> Void] = [:]
     private var folderFailure: (any Error)?
     private(set) var replaceCalls = 0
@@ -39,6 +40,11 @@ actor InMemoryHostFiles: HostServices {
 
     func clearJournal() {
         journal = []
+    }
+
+    /// Runs once, before the next read of this path answers.
+    func onRead(of path: String, _ step: @escaping @Sendable (InMemoryHostFiles) async throws -> Void) {
+        beforeReadOf[path] = step
     }
 
     /// Runs once, before the next replace of this path compares.
@@ -98,6 +104,7 @@ actor InMemoryHostFiles: HostServices {
     func hostHomeDirectory() async throws -> String { home }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        if let step = beforeReadOf.removeValue(forKey: range.path) { try await step(self) }
         if let failure { throw failure }
         guard let file = files[range.path] else { return RemoteFileSlice(data: Data(), length: nil) }
         let start = min(Int(range.offset), file.count)

@@ -16,7 +16,6 @@ struct ClaudeCodeHooksSection: View {
             case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity)
-                    .task { await flow.load() }
             case .failed(let message):
                 Text(message)
                     .font(.footnote)
@@ -37,6 +36,7 @@ struct ClaudeCodeHooksSection: View {
         } footer: {
             Text("Claude Code Agents Heeler starts report their status already. Adding the hooks does the same for ones you start yourself.")
         }
+        .task { await flow.loadIfNeeded() }
     }
 }
 

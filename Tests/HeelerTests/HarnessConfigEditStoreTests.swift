@@ -714,4 +714,32 @@ import UIKit
         store.note(second, on: hostID)
         #expect(store.edits(on: hostID) == [other, second])
     }
+
+    @Test func cancelledReviewReturnsToIdleWhileUnconfirmedWriteReportsItsFailure() async throws {
+        let files = InMemoryHostFiles(files: [Self.config: Self.original])
+        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
+        defer { store.setHosts([]) }
+        let flow = grokFlow(store, host)
+        await flow.locate()
+        #expect(flow.phase == .idle)
+
+        await files.onRead(of: Self.config) { _ in
+            throw TransportError.cancelled
+        }
+        await flow.review()
+        #expect(flow.phase == .idle)
+
+        await flow.review()
+        guard case .review = flow.phase else {
+            Issue.record("expected a review, got \(flow.phase)")
+            return
+        }
+
+        await files.loseNextReplaceAnswer(TransportError.cancelled, andConnection: true)
+        await flow.accept()
+        guard case .failed = flow.phase else {
+            Issue.record("expected an unconfirmed write to report failure, got \(flow.phase)")
+            return
+        }
+    }
 }

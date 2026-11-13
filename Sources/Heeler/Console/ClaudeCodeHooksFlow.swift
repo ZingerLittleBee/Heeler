@@ -41,8 +41,24 @@ final class ClaudeCodeHooksFlow {
     /// The Host's Account file couldn't be read, so only the default root shows.
     private(set) var accountsUnreadable = false
 
+    private struct LoadWaiter {
+        let id: UInt64
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private struct RunningLoad {
+        let id: UInt64
+        let previousPhase: Phase
+        let task: Task<Void, Never>
+    }
+
     private var locations: HostHelperProbe.Locations?
-    private var isLoading = false
+    @ObservationIgnored private var runningLoad: RunningLoad?
+    @ObservationIgnored private var loadWaiters: [LoadWaiter] = []
+    @ObservationIgnored private var cancelledLoadWaiters: Set<UInt64> = []
+    @ObservationIgnored private var pendingLoadWaiters: Set<UInt64> = []
+    @ObservationIgnored private var nextLoadID: UInt64 = 0
+    @ObservationIgnored private var nextWaiterID: UInt64 = 0
 
     /// Heeler's own folder, which an addition places the script and the
     /// settings a launch passes in. Nil until the Host says where.
@@ -68,33 +84,128 @@ final class ClaudeCodeHooksFlow {
         RemoteFilePath.join(dataHome, HostHelperScript.helperDirectorySuffix, UsageAccountFile.fileName)
     }
 
-    /// Lists the roots and reads each one's settings. Writes nothing. A load
-    /// already under way is the one that answers.
+    /// Reads the roots on first appearance, and finishes any root left reading
+    /// after a cancelled read.
+    func loadIfNeeded() async {
+        switch phase {
+        case .loading:
+            await load()
+        case .loaded:
+            for root in roots where (states[root.id] ?? .reading) == .reading {
+                guard !Task.isCancelled else { return }
+                await read(root)
+            }
+        case .failed:
+            break
+        }
+    }
+
+    /// Lists the roots and reads each one's settings before marking the flow
+    /// loaded. Writes nothing. A load already under way is the one that answers
+    /// while at least one caller waits for it.
     func load() async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        phase = .loading
+        guard !Task.isCancelled else { return }
+        if runningLoad == nil {
+            nextLoadID &+= 1
+            let loadID = nextLoadID
+            let previousPhase = phase
+            phase = .loading
+            let task = Task<Void, Never> { @MainActor [weak self] in
+                await self?.performLoad(id: loadID, previousPhase: previousPhase)
+            }
+            runningLoad = RunningLoad(id: loadID, previousPhase: previousPhase, task: task)
+        }
+        nextWaiterID &+= 1
+        let waiterID = nextWaiterID
+        pendingLoadWaiters.insert(waiterID)
+        defer {
+            pendingLoadWaiters.remove(waiterID)
+            cancelledLoadWaiters.remove(waiterID)
+        }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                if cancelledLoadWaiters.contains(waiterID) {
+                    continuation.resume()
+                    cancelRunningLoadIfAbandoned()
+                } else {
+                    loadWaiters.append(LoadWaiter(id: waiterID, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelLoadWaiter(id: waiterID)
+            }
+        }
+    }
+
+    private func performLoad(id: UInt64, previousPhase: Phase) async {
+        defer { finishLoad(id: id) }
         do {
             let locations = try await locate()
-            self.locations = locations
+            guard runningLoad?.id == id else { return }
             let editor = HarnessConfigEditor(files: try await services())
             var roots = [Root(accountName: nil, path: RemoteFilePath.join(locations.home, ".claude"))]
+            let unreadable: Bool
             do {
-                let file = try UsageAccountFile.decode(try await editor.read(Self.accountFile(dataHome: locations.dataHome)))
-                for account in file.accounts(for: .claude) where !roots.contains(where: { $0.path == account.directory }) {
+                let file = try UsageAccountFile.decode(
+                    try await editor.read(Self.accountFile(dataHome: locations.dataHome)))
+                for account in file.accounts(for: .claude)
+                where !roots.contains(where: { $0.path == account.directory }) {
                     roots.append(Root(accountName: account.name, path: account.directory))
                 }
-                accountsUnreadable = false
+                unreadable = false
+            } catch where HarnessConfigEditMessage.isCancellation(error) {
+                throw error
             } catch {
-                accountsUnreadable = true
+                unreadable = true
             }
+            var nextStates: [Root.ID: RootState] = [:]
+            for root in roots {
+                try Task.checkCancellation()
+                guard runningLoad?.id == id else { return }
+                nextStates[root.id] = try await readState(of: root, locations: locations)
+            }
+            guard runningLoad?.id == id else { return }
+            self.locations = locations
             self.roots = roots
-            states = Dictionary(uniqueKeysWithValues: roots.map { ($0.id, .reading) })
+            self.states = nextStates
+            self.accountsUnreadable = unreadable
             phase = .loaded
-            for root in roots { await read(root) }
+        } catch where HarnessConfigEditMessage.isCancellation(error) {
+            guard runningLoad?.id == id else { return }
+            phase = previousPhase == .loaded ? .loaded : .loading
         } catch {
+            guard runningLoad?.id == id else { return }
             phase = .failed(HarnessConfigEditMessage.text(for: error))
+        }
+    }
+
+    private func finishLoad(id: UInt64) {
+        guard runningLoad?.id == id else { return }
+        runningLoad = nil
+        let parked = loadWaiters
+        loadWaiters = []
+        for waiter in parked {
+            waiter.continuation.resume()
+        }
+    }
+
+    private func cancelLoadWaiter(id: UInt64) {
+        guard pendingLoadWaiters.contains(id) else { return }
+        if let index = loadWaiters.firstIndex(where: { $0.id == id }) {
+            loadWaiters.remove(at: index).continuation.resume()
+            cancelRunningLoadIfAbandoned()
+        } else {
+            cancelledLoadWaiters.insert(id)
+        }
+    }
+
+    private func cancelRunningLoadIfAbandoned() {
+        guard loadWaiters.isEmpty, pendingLoadWaiters.subtracting(cancelledLoadWaiters).isEmpty else { return }
+        if let running = runningLoad {
+            runningLoad = nil
+            phase = running.previousPhase == .loaded ? .loaded : .loading
+            running.task.cancel()
         }
     }
 
@@ -102,6 +213,7 @@ final class ClaudeCodeHooksFlow {
     /// them out. Writes nothing.
     func review(_ root: Root, adding: Bool) async {
         guard let locations else { return }
+        let previous = states[root.id]
         states[root.id] = .reading
         let edit =
             adding
@@ -113,6 +225,8 @@ final class ClaudeCodeHooksFlow {
             case .alreadyApplied: await read(root)
             case .refused(_, let reason, _): states[root.id] = .refused(reason)
             }
+        } catch where HarnessConfigEditMessage.isCancellation(error) {
+            states[root.id] = previous ?? .reading
         } catch {
             states[root.id] = .failed(HarnessConfigEditMessage.text(for: error))
         }
@@ -140,14 +254,34 @@ final class ClaudeCodeHooksFlow {
 
     private func read(_ root: Root) async {
         guard let locations else { return }
+        let previous = states[root.id]
+        states[root.id] = .reading
+        do {
+            states[root.id] = try await readState(of: root, locations: locations)
+        } catch {
+            if case .read = previous {
+                states[root.id] = previous
+            } else {
+                states[root.id] = .reading
+            }
+        }
+    }
+
+    private func readState(
+        of root: Root, locations: HostHelperProbe.Locations
+    ) async throws -> RootState {
         do {
             let current = try await HarnessConfigEditor(files: try await services()).read(root.settingsPath)
             let script = ClaudeCodeHooks.scriptPath(dataHome: locations.dataHome)
-            states[root.id] = .read(ClaudeCodeHooks.presence(in: current, script: script))
+            return .read(ClaudeCodeHooks.presence(in: current, script: script))
+        } catch where HarnessConfigEditMessage.isCancellation(error) {
+            throw error
         } catch let error as HarnessConfigEditError {
-            states[root.id] = error == .tooLarge || error == .unreadable ? .read(nil) : .failed(HarnessConfigEditMessage.text(for: error))
+            return error == .tooLarge || error == .unreadable
+                ? .read(nil)
+                : .failed(HarnessConfigEditMessage.text(for: error))
         } catch {
-            states[root.id] = .failed(HarnessConfigEditMessage.text(for: error))
+            return .failed(HarnessConfigEditMessage.text(for: error))
         }
     }
 }
