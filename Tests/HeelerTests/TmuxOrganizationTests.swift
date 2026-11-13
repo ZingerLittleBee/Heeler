@@ -149,4 +149,26 @@ struct TmuxOrganizationTests {
         let snapshot = build([])
         #expect(snapshot.workspaces.isEmpty && snapshot.tabs.isEmpty && snapshot.panes.isEmpty && snapshot.agents.isEmpty)
     }
+
+    @Test func sessionDirectoryPrefersMarkedWorktreeThenFirstShownPane() {
+        let inventory = TmuxInventory(
+            instance: instance,
+            panes: [
+                .make(
+                    session: 0, sessionName: "heeler-1", window: 0, pane: 0, path: "/tmp/attach",
+                    attachMark: "1"),
+                .make(session: 1, sessionName: "wt", window: 1, pane: 1, path: "/tmp/sub", worktree: "/work/wt"),
+                .make(session: 2, sessionName: "shared-owner", window: 5, pane: 5, path: "/work/shared"),
+                .make(session: 10, sessionName: "alpha", window: 5, pane: 5, path: "/work/shared"),
+                .make(session: 10, sessionName: "alpha", window: 6, windowIndex: 1, pane: 6, path: ""),
+                .make(session: 10, sessionName: "alpha", window: 7, windowIndex: 2, pane: 7, path: "/work/alpha"),
+                .make(session: 11, sessionName: "empty", window: 8, pane: 8, path: ""),
+            ])
+
+        #expect(TmuxOrganization.directory(ofSession: "$1", in: inventory) == "/work/wt")
+        #expect(TmuxOrganization.directory(ofSession: "$2", in: inventory) == "/work/shared")
+        #expect(TmuxOrganization.directory(ofSession: "$10", in: inventory) == "/work/alpha")
+        #expect(TmuxOrganization.directory(ofSession: "$11", in: inventory) == nil)
+        #expect(TmuxOrganization.directory(ofSession: "$0", in: inventory) == nil)
+    }
 }

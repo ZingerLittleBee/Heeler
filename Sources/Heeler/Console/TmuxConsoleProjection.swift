@@ -557,13 +557,23 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         let server = try await launchServer()
-        let hooks = await hookSettings(for: request)
+        let cwd = try await windowDirectory(
+            workspaceID: request.workspaceID, asked: request.cwd, on: server)
+        let resolved = AgentLaunchRequest(
+            kind: request.kind,
+            name: request.name,
+            arguments: request.arguments,
+            workspaceID: request.workspaceID,
+            cwd: cwd,
+            tabLabel: request.tabLabel,
+            environment: request.environment)
+        let hooks = await hookSettings(for: resolved)
         let made = try await created(
-            try command { try TmuxLaunch.agentWindow(request, on: server, hookSettings: hooks) })
+            try command { try TmuxLaunch.agentWindow(resolved, on: server, hookSettings: hooks) })
         return Agent(
-            terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
-            workspaceID: request.workspaceID ?? "", tabID: made.windowID, paneID: made.paneID,
-            cwd: request.cwd ?? "", revision: 0, name: request.name)
+            terminalID: made.paneID, kind: resolved.kind, title: "", status: .unknown,
+            workspaceID: resolved.workspaceID ?? "", tabID: made.windowID, paneID: made.paneID,
+            cwd: cwd, revision: 0, name: resolved.name)
     }
 
     func startAgentInNewWorktree(
@@ -624,7 +634,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         _ request: ShellTerminalCreationRequest
     ) async throws -> ShellTerminalIdentity {
         let server = try await launchServer()
-        let made = try await created(try command { try TmuxLaunch.shellWindow(request, on: server) })
+        let cwd = try await windowDirectory(
+            workspaceID: request.workspaceID, asked: request.cwd, on: server)
+        let resolved = ShellTerminalCreationRequest(
+            workspaceID: request.workspaceID, cwd: cwd, label: request.label)
+        let made = try await created(try command { try TmuxLaunch.shellWindow(resolved, on: server) })
         return ShellTerminalIdentity(paneID: made.paneID, tabID: made.windowID, terminalID: made.paneID)
     }
 
@@ -715,22 +729,49 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         return receipt
     }
 
-    /// The directory the Worktree is branched from: the launch's own, else the
-    /// session's checkout, else its first Pane's path.
-    private func sourceDirectory(for request: AgentLaunchRequest) throws -> String {
-        if let cwd = request.cwd?.trimmingCharacters(in: .whitespacesAndNewlines), !cwd.isEmpty {
-            return cwd
+    func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
+        resolvedLaunchDirectory(workspaceID: workspaceID, asked: asked) ?? asked
+    }
+
+    /// Where a launch in `workspaceID` starts before asking the Host for its home:
+    /// the directory asked for, else the session's checkout or first shown Pane's
+    /// directory.
+    private func resolvedLaunchDirectory(workspaceID: String?, asked: String?) -> String? {
+        if let trimmed = asked?.trimmingCharacters(in: .whitespacesAndNewlines),
+            host.reportedDirectoryStartsTerminals(trimmed)
+        {
+            return trimmed
         }
-        guard let workspaceID = request.workspaceID, let inventory else {
+        guard let workspaceID, !workspaceID.isEmpty, let inventory else { return nil }
+        return TmuxOrganization.directory(ofSession: workspaceID, in: inventory)
+    }
+
+    private func windowDirectory(
+        workspaceID: String?, asked: String?, on server: TmuxLaunch.Server
+    ) async throws -> String {
+        guard let workspaceID, !workspaceID.isEmpty else {
+            throw transportError(.missingTarget)
+        }
+        guard server.running else {
+            throw transportError(.serverNotRunning)
+        }
+        if let directory = resolvedLaunchDirectory(workspaceID: workspaceID, asked: asked) {
+            return directory
+        }
+        let home = try await remoteHomeDirectory()
+        guard host.reportedDirectoryStartsTerminals(home) else {
+            throw transportError(.missingTarget)
+        }
+        return home
+    }
+
+    /// The directory the Worktree is branched from: the launch's own, else the
+    /// session's directory.
+    private func sourceDirectory(for request: AgentLaunchRequest) throws -> String {
+        guard let directory = resolvedLaunchDirectory(workspaceID: request.workspaceID, asked: request.cwd) else {
             throw HerdrCoreWorktreeError.notInGitRepository
         }
-        if let marked = inventory.panes.first(where: { $0.sessionID == workspaceID && !$0.worktree.isEmpty }) {
-            return marked.worktree
-        }
-        if let path = inventory.panes.first(where: { $0.sessionID == workspaceID && !$0.path.isEmpty })?.path {
-            return path
-        }
-        throw HerdrCoreWorktreeError.notInGitRepository
+        return directory
     }
 
     /// Up to eight names. A session created between the read and `new-session`

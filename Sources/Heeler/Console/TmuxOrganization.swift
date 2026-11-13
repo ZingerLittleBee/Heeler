@@ -45,7 +45,7 @@ enum TmuxOrganization {
         var tabs: [TabInfo] = []
         for (position, sessionID) in workspaceOrder.enumerated() {
             let windows = tabOrder[sessionID] ?? []
-            let marked = shown.first { $0.sessionID == sessionID && !$0.worktree.isEmpty }?.worktree
+            let marked = markedWorktree(ofSession: sessionID, in: shown)
             let checkout = marked.flatMap { checkouts[$0] }
             workspaces.append(
                 WorkspaceInfo(
@@ -91,6 +91,28 @@ enum TmuxOrganization {
                 agents: agents, layouts: [], panes: panes, protocolVersion: 0, tabs: tabs, version: "",
                 workspaces: workspaces),
             panes: shown)
+    }
+
+    /// Where a new window in a session starts when nothing asked for a directory:
+    /// the session's checkout (`@heeler-worktree`), else its first shown Pane's
+    /// directory.
+    static func directory(ofSession sessionID: String, in inventory: TmuxInventory) -> String? {
+        let sessionPanes = shownPanes(inventory.panes).filter { $0.sessionID == sessionID }
+        let panes = sessionPanes.isEmpty
+            ? inventory.panes.filter { $0.sessionID == sessionID && !$0.isInHeelerSession }
+            : sessionPanes
+        if let marked = markedWorktree(ofSession: sessionID, in: panes) {
+            return marked
+        }
+        return panes.first {
+            RemoteHostPath.isStartDirectory($0.path, allowingWindows: false)
+        }?.path
+    }
+
+    private static func markedWorktree(ofSession sessionID: String, in panes: [TmuxInventory.Pane]) -> String? {
+        panes.first {
+            $0.sessionID == sessionID && RemoteHostPath.isStartDirectory($0.worktree, allowingWindows: false)
+        }?.worktree
     }
 
     /// The main checkout is the repository's identity, as a tmux server has no other.

@@ -95,6 +95,91 @@ struct TmuxLaunchConsoleTests {
         store.setHosts([])
     }
 
+    @Test func globalNewAgentStartsInAnExistingWorkspaceAndKeepsItsCurrentWindow() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setInstalled(["pi"])
+        await tmux.setPanes([
+            .make(session: 0, sessionName: "alpha", window: 0, pane: 0, command: "bash", path: "/home/boxd/heeler-accept/repo"),
+            .make(
+                session: 0, sessionName: "alpha", window: 1, windowIndex: 2, pane: 1, command: "python3",
+                path: "/home/boxd"),
+        ])
+        let store = await started(tmux)
+        defer { store.setHosts([]) }
+        try await waitUntil("the existing session") {
+            store.workspacesByHost[host.id]?.map(\.label) == ["alpha"]
+        }
+
+        let form = StartAgentStore(
+            hosts: [host],
+            workspaces: { store.workspaces(for: $0) },
+            existingAgentNames: { store.takenAgentNames(on: $0) },
+            discoverAgentKinds: { try await store.availableAgentKinds(on: $0) },
+            remoteHome: { try await store.remoteHomeDirectory(on: $0) },
+            start: { params, destination, hostID in
+                switch destination {
+                case .existingWorkspace:
+                    try await store.startAgent(params, on: hostID)
+                case .newWorktree(let worktree):
+                    try await store.startAgentInNewWorktree(params, worktree: worktree, on: hostID)
+                case .newWorkspace(let workspace):
+                    try await store.startAgentInNewWorkspace(params, workspace: workspace, on: hostID)
+                }
+            },
+            awaitAgentVisible: { await store.waitForAgent($0) },
+            isAgentListed: { id in store.agents.contains { $0.id == id } },
+            programExit: { store.programExit(of: $0) },
+            offersDesktopAppNames: { store.capabilities(for: $0).namesNewWorkspaces },
+            offersConnectedWorktrees: { store.capabilities(for: $0).worktrees })
+        await form.discoverAgents()
+        form.selectExistingWorkspace("$0")
+        form.selectedAgentKind = .pi
+        form.name = "accept-launched-pi"
+
+        await form.submit()
+
+        let startedID = ConsoleAgent.ID(hostID: host.id, paneID: "%2")
+        #expect(form.state == .started(startedID))
+        let launched = try #require(store.agents.first { $0.id == startedID })
+        #expect(launched.agent.workspaceID == "$0")
+        #expect(launched.agent.cwd == "/home/boxd/heeler-accept/repo")
+        #expect(launched.agent.tabID != "@0" && launched.agent.tabID != "@1")
+        #expect(store.terminals.contains { $0.paneID == "%1" && $0.pane.tabID == "@1" })
+        let script = try #require(await commandScripts(tmux).last)
+        #expect(script.contains("new-window -d -t '$0' -c '/home/boxd/heeler-accept/repo'"))
+    }
+
+    @Test func existingWorkspaceLaunchPrefersMarkedWorktreeAndFallsBackToHome() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(
+                session: 0, sessionName: "wt", window: 0, pane: 0, command: "pi", path: "",
+                worktree: "/work/wt", arguments: ["pi"]),
+            .make(session: 1, sessionName: "plain", window: 1, pane: 1, command: "zsh", path: ""),
+        ])
+        let store = await started(tmux)
+        defer { store.setHosts([]) }
+        try await waitUntil("both sessions") {
+            store.workspacesByHost[host.id]?.count == 2 && store.agents.count == 1
+        }
+
+        let existingAgent = try #require(store.agents.first)
+        let origin = StartAgentStore.LaunchOrigin(beside: existingAgent, in: store)
+        #expect(origin.cwd == "/work/wt")
+
+        let inWorktree = try await store.startAgent(
+            AgentLaunchRequest(kind: "pi", name: "pi", workspaceID: "$0"), on: host.id)
+        #expect(inWorktree.cwd == "/work/wt")
+        let worktreeScript = try #require(await commandScripts(tmux).last)
+        #expect(worktreeScript.contains("new-window -d -t '$0' -c '/work/wt'"))
+
+        let inHome = try await store.startAgent(
+            AgentLaunchRequest(kind: "pi", name: "pi-2", workspaceID: "$1"), on: host.id)
+        #expect(inHome.cwd == ScriptedTmuxHost.home)
+        let homeScript = try #require(await commandScripts(tmux).last)
+        #expect(homeScript.contains("new-window -d -t '$1' -c '\(ScriptedTmuxHost.home)'"))
+    }
+
     @Test func aNewTerminalOpensAShellWindow() async throws {
         let tmux = ScriptedTmuxHost()
         await tmux.setPanes([.make()])
