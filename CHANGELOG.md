@@ -29,6 +29,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)
 - Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
 - Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
