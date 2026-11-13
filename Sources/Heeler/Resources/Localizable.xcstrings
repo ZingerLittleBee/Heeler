@@ -1795,7 +1795,27 @@
       }
     },
     "%@ starts a conversation with its first message. Send one here or in the terminal, and Chat follows it." : {
-      "comment" : "In Chat's place before the program started a conversation: the program's name"
+      "comment" : "In Chat's place before the program started a conversation: the program's name",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は最初のメッセージで会話を開始します。ここかターミナルで送ると、チャットが追従します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在收到第一条消息后开始对话。在此处或终端发送一条消息即可在此处显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在收到第一則訊息後開始對話。在這裡或終端機傳送一則訊息即可在此處跟隨顯示。"
+          }
+        }
+      }
     },
     "%@ subagent" : {
       "comment" : "Background Work item, spoken; %@ is the subagent's type, such as Explore",
@@ -8947,6 +8967,28 @@
     },
     "Antigravity CLI is working. Send once it's idle, or steer from the terminal." : {},
     "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither." : {},
+    "Antigravity CLI reports its conversation after a message. Send one to show it here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI はメッセージのあとに会話を報告します。送るとここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI 会在收到消息后报告其对话。发送一条消息即可在此处显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antigravity CLI 會在收到訊息後才回報它的對話。傳送一則訊息即可顯示在這裡。"
+          }
+        }
+      }
+    },
     "Antigravity CLI restarted." : {
       "comment" : "Under a Chat notice that counts the background tasks Antigravity CLI stopped"
     },
@@ -68333,7 +68375,6 @@
         }
       }
     },
-    "herdr hasn't reported an Antigravity CLI conversation for this Agent yet. Antigravity CLI reports one with its first message, and after /clear only once a message follows. If this lasts after a message, check the Antigravity CLI integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {},
     "herdr hasn't reported an Oh My Pi conversation for this Agent yet. Oh My Pi reports it once it has started. If this lasts, check the OMP integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {
       "localizations" : {
         "ja" : {
