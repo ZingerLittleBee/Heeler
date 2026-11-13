@@ -7,7 +7,9 @@ struct VoiceInputOnDeviceSection: View {
     @Binding var language: String
     @State private var languages: [String] = []
     @State private var status: VoiceInputModelStatus?
-    @State private var progress: Double?
+    /// The model being fetched. The Language picker stays open meanwhile,
+    /// so the download shows, and reports back, only for its own language.
+    @State private var download: ModelDownload?
     @State private var downloadError: String?
 
     var body: some View {
@@ -55,30 +57,42 @@ struct VoiceInputOnDeviceSection: View {
         case .unsupported:
             LabeledContent("Speech Model", value: String(localized: "Not available on this device"))
         case .notInstalled:
-            if let progress {
-                ProgressView(value: progress) { Text("Downloading Speech Model…") }
+            if let download, download.language == language {
+                ProgressView(value: download.progress) { Text("Downloading Speech Model…") }
             } else {
-                Button("Download Speech Model", action: download)
+                Button("Download Speech Model", action: startDownload)
             }
         }
     }
 
-    private func download() {
+    private func startDownload() {
         let language = language
-        progress = 0
+        download = ModelDownload(language: language, progress: 0)
         downloadError = nil
         Task {
+            var failed = false
             do {
-                try await DeviceVoiceTranscriber.downloadModel(for: language) { progress = $0 }
+                try await DeviceVoiceTranscriber.downloadModel(for: language) { progress in
+                    if download?.language == language { download?.progress = progress }
+                }
             } catch {
-                downloadError = String(localized: "The speech model could not be downloaded.")
+                failed = true
             }
-            progress = nil
-            status = await DeviceVoiceTranscriber.modelStatus(for: language)
+            if download?.language == language { download = nil }
+            let finished = await DeviceVoiceTranscriber.modelStatus(for: language)
+            guard self.language == language else { return }
+            status = finished
+            if failed { downloadError = String(localized: "The speech model could not be downloaded.") }
         }
     }
 
     private static func name(of identifier: String) -> String {
         Locale.current.localizedString(forIdentifier: identifier) ?? identifier
     }
+}
+
+/// A speech model download in progress, from 0 to 1.
+private struct ModelDownload {
+    let language: String
+    var progress: Double
 }
