@@ -699,7 +699,6 @@ struct TmuxLaunchTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let sampleFile = root.appendingPathComponent("sample.txt")
         let stdoutFile = root.appendingPathComponent("stdout.txt")
         let stub = root.appendingPathComponent("tmux")
         guard !stub.path.contains("'"), !stub.path.contains(paths.executable),
@@ -707,7 +706,6 @@ struct TmuxLaunchTests {
         else {
             throw ShellRoundTrip.unquotablePath
         }
-        try Data(tmuxOutput.utf8).write(to: sampleFile)
         try Data(
             """
             #!/bin/sh
@@ -715,7 +713,7 @@ struct TmuxLaunchTests {
               printf 'tmux failed\\n' >&2
               exit "$HEELER_TMUX_STATUS"
             fi
-            cat "$HEELER_TMUX_SAMPLE"
+            printf '%s' \(HerdrCoreLocator.quoted(tmuxOutput))
             """.utf8
         ).write(to: stub)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
@@ -730,8 +728,9 @@ struct TmuxLaunchTests {
         let status = try HostShell.run(
             "/bin/sh",
             arguments: [runner.path],
+            // A Host's own PATH for POSIX `awk`; the Simulator's has none of these.
             environment: [
-                "HEELER_TMUX_SAMPLE": sampleFile.path,
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
                 "HEELER_TMUX_STATUS": String(tmuxStatus),
             ])
         let output = (try? Data(contentsOf: stdoutFile)) ?? Data()
