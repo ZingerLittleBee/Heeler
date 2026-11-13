@@ -22,7 +22,7 @@ struct VoiceInputOnDeviceSection: View {
                 Text(downloadError).foregroundStyle(.red)
             }
         } footer: {
-            Text("One language per recording, with English words inside it. Keywords help it spell your terms. Text appears in the draft as you speak, and nothing leaves this device.")
+            Text("One language per recording, with English words inside it. Keywords help it spell your terms. Text appears as you speak, and nothing leaves this device.")
         }
         .task {
             let supported = await DeviceVoiceTranscriber.supportedLanguages()

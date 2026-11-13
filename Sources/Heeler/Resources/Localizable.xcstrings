@@ -36487,24 +36487,24 @@
         }
       }
     },
-    "One language per recording, with English words inside it. Keywords help it spell your terms. Text appears in the draft as you speak, and nothing leaves this device." : {
+    "One language per recording, with English words inside it. Keywords help it spell your terms. Text appears as you speak, and nothing leaves this device." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1回の録音につき1つの言語を認識し、その中の英単語も認識します。キーワードは用語を正しく綴るのに役立ちます。話している間にテキストが下書きに表示され、このデバイスの外には何も送信されません。"
+            "value" : "1回の録音につき1つの言語を認識し、その中の英単語も認識します。キーワードは用語を正しく綴るのに役立ちます。話している間にテキストが表示され、このデバイスの外には何も送信されません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次录音识别一种语言，其中夹杂的英文单词也能识别。关键词有助于拼对你的术语。说话时文字会实时写入草稿，所有内容都不会离开此设备。"
+            "value" : "每次录音识别一种语言，其中夹杂的英文单词也能识别。关键词有助于拼对你的术语。说话时文字会实时显示，所有内容都不会离开此设备。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次錄音辨識一種語言，其中夾雜的英文單字也能辨識。關鍵字有助於拼對你的用語。說話時文字會即時寫入草稿，所有內容都不會離開這部裝置。"
+            "value" : "每次錄音辨識一種語言，其中夾雜的英文單字也能辨識。關鍵字有助於拼對你的用語。說話時文字會即時顯示，所有內容都不會離開這部裝置。"
           }
         }
       }
