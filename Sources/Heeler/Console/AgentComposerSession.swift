@@ -35,7 +35,6 @@ final class AgentComposerSession {
         stageFile: @escaping FileStager,
         corePin: TerminalCorePin = TerminalCorePin(),
         saysTransportFailures: Bool = false,
-        isOnCoreHost: Bool = false,
         filePreparer: any FilePreparing = FilePreparer(),
         sendAgentKeys: @escaping @MainActor ([String]) async throws -> Void = { _ in throw TransportError.cancelled }
     ) {
@@ -44,7 +43,7 @@ final class AgentComposerSession {
         agentKeys = ChatAgentKeysStore(send: sendAgentKeys)
         staging = ComposerStagingStore(
             filePreparer: filePreparer, stageImage: stageImage, stageFile: stageFile, composer: composer,
-            saysTransportFailures: saysTransportFailures || isOnCoreHost)
+            saysTransportFailures: saysTransportFailures)
         composer.bindStaging(staging)
     }
 
