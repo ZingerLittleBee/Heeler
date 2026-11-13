@@ -921,7 +921,7 @@ struct TmuxChatTypingTests {
         #expect(!session.agentKeys.isRunningQueuedWork)
 
         // When AgyStopGuard refuses (bash mode with a command typed), Stop sends no Esc and runs no follow-through.
-        await fixture.tmux.clearLog()
+        let controlCountBefore = await fixture.tmux.controlCommands.count
         try await Fixture.setScreen("agy-93-bash-mode-with-text-62x41", on: fixture.tmux)
         var refusedEvents: [String] = []
         let refused = await fixture.chatStop(
@@ -936,7 +936,7 @@ struct TmuxChatTypingTests {
             }
         ).perform()
         #expect(refused == .failed(AgyStopGuard.bashCommand))
-        #expect(await fixture.sendWords().isEmpty)
+        #expect(await fixture.sendWords(after: controlCountBefore).isEmpty)
         #expect(refusedEvents == ["tap"])
 
         fixture.finish()
