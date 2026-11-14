@@ -3465,6 +3465,29 @@
     "%lld ms" : {
       "shouldTranslate" : false
     },
+    "%lld needs you" : {
+      "comment" : "Live Activity count of Agents waiting for the user's input. Singular: 1 needs you; plural: 2 need you.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld needs you"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld need you"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld networks" : {
       "comment" : "EasyTier assigned network count (always more than one)",
       "localizations" : {
@@ -32779,6 +32802,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要 Host Helper"
+          }
+        }
+      }
+    },
+    "Needs you" : {
+      "comment" : "Live Activity Agent status. The Agent is blocked waiting for the user's input; also used for an Agent error.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Needs you"
           }
         }
       }

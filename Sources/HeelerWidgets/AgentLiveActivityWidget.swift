@@ -107,16 +107,17 @@ private struct AgentActivityLockScreenContainer: View {
             isStale: isStale
         )
         .foregroundStyle(AgentActivitySemanticStyle.primary(on: .lockScreen))
-        .activityBackgroundTint(Color(uiColor: AgentActivityLockScreenChrome.backgroundColor))
+        .activityBackgroundTint(AgentActivityLockScreenChrome.backgroundTint)
         .activitySystemActionForegroundColor(
             Color(uiColor: AgentActivityLockScreenChrome.actionColor))
     }
 }
 
 enum AgentActivityLockScreenChrome {
-    /// Keep these semantic colors unresolved so ActivityKit can apply the
-    /// system appearance when its host provides the correct trait collection.
-    static let backgroundColor = UIColor.systemBackground
+    static let backgroundTint: Color? = nil
+
+    /// Keep this semantic color unresolved so an existing Live Activity can
+    /// follow system appearance changes when ActivityKit refreshes it.
     static let actionColor = UIColor.label
 }
 
@@ -124,71 +125,65 @@ struct AgentActivityLockScreenView: View {
     let presentation: AgentActivityPresentation
     let hostID: String
     let isStale: Bool
+    let hostName: String?
+
+    init(
+        presentation: AgentActivityPresentation, hostID: String, isStale: Bool,
+        hostSnapshot: LiveActivityHostSnapshot? = LiveActivityHostSnapshotStore().read()
+    ) {
+        self.presentation = presentation
+        self.hostID = hostID
+        self.isStale = isStale
+        hostName = presentation.lockScreenHostName(hostID: hostID, snapshot: hostSnapshot)
+    }
 
     var body: some View {
-        ZStack {
-            Color(uiColor: AgentActivityLockScreenChrome.backgroundColor)
-                .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                ForEach(
-                    visibleAgents.dropFirst(), id: \.paneID
-                ) { @Sendable [rowMinimumHeight] agent in
-                    AgentActivityLinkedRow(
-                        hostID: hostID,
-                        agent: agent,
-                        surface: .lockScreen,
-                        minimumHeight: rowMinimumHeight)
-                }
-                if let caption = presentation.lockScreenTrailingCaption(isStale: isStale) {
-                    Text(caption)
+        VStack(alignment: .leading, spacing: 0) {
+            if let hostName {
+                Text(hostName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(height: AgentActivityRowMetrics.lockScreenHeaderHeight, alignment: .leading)
+            }
+            ForEach(visibleAgents, id: \.paneID) { @Sendable [rowMinimumHeight] agent in
+                AgentActivityLinkedRow(
+                    hostID: hostID,
+                    agent: agent,
+                    surface: .lockScreen,
+                    minimumHeight: rowMinimumHeight)
+            }
+            if visibleAgents.isEmpty {
+                Text(AgentActivityCopy.lockScreenCounts(presentation.counts))
+                    .font(.caption)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+                    .lineLimit(1)
+            }
+            if let caption = presentation.lockScreenTrailingCaption(
+                isStale: isStale, hasHeader: hostName != nil
+            ) {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+            }
+            #if DEBUG
+                if let reason = AgentActivityDecryptor.lastFailureReason {
+                    Text(reason)
                         .font(.caption2)
                         .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+                        .lineLimit(3)
                 }
-                #if DEBUG
-                    if let reason = AgentActivityDecryptor.lastFailureReason {
-                        Text(reason)
-                            .font(.caption2)
-                            .foregroundStyle(
-                                AgentActivitySemanticStyle.secondary(on: .lockScreen)
-                            )
-                            .lineLimit(3)
-                    }
-                #endif
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, AgentActivityRowMetrics.lockScreenBannerVerticalPadding)
+            #endif
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, AgentActivityRowMetrics.lockScreenBannerVerticalPadding)
         .widgetURL(AgentActivityLink.consoleURL(hostID: hostID))
     }
 
     private var visibleAgents: [AgentActivityDetails.AgentDetail] {
-        presentation.lockScreenAgents(isStale: isStale)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 8) {
-            headline
-            Spacer(minLength: 8)
-            AgentActivityCountChips(counts: presentation.counts, surface: .lockScreen)
-        }
-    }
-
-    @ViewBuilder
-    private var headline: some View {
-        if let first = visibleAgents.first {
-            AgentActivityLinkedRow(
-                hostID: hostID,
-                agent: first,
-                surface: .lockScreen,
-                minimumHeight: rowMinimumHeight)
-        } else {
-            Text(presentation.headerTitle)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AgentActivitySemanticStyle.primary(on: .lockScreen))
-                .lineLimit(1)
-        }
+        presentation.lockScreenAgents(isStale: isStale, hasHeader: hostName != nil)
     }
 
     private var rowMinimumHeight: CGFloat {
@@ -296,6 +291,7 @@ extension View {
 struct AgentActivityStatusGlyph: View {
     let status: String
     let size: CGFloat
+    var surface: AgentActivitySurface = .island
 
     var body: some View {
         Group {
@@ -311,7 +307,7 @@ struct AgentActivityStatusGlyph: View {
             }
         }
         .frame(width: size, height: size)
-        .foregroundStyle(AgentActivityStatusStyle.ink(for: status, on: .island))
+        .foregroundStyle(AgentActivityStatusStyle.ink(for: status, on: surface))
         .accessibilityHidden(true)
     }
 
@@ -319,7 +315,7 @@ struct AgentActivityStatusGlyph: View {
     /// stays open to read as unfinished at rest.
     private var openRing: some View {
         let lineWidth = size * 0.14
-        let ink = AgentActivityStatusStyle.ink(for: status, on: .island)
+        let ink = AgentActivityStatusStyle.ink(for: status, on: surface)
         return ZStack {
             Circle().stroke(ink.opacity(0.28), lineWidth: lineWidth)
             Circle()
@@ -474,9 +470,13 @@ struct AgentActivityIslandRows: View {
 }
 
 enum AgentActivityNarration {
-    static func rowLabel(for agent: AgentActivityDetails.AgentDetail) -> String {
+    static func rowLabel(
+        for agent: AgentActivityDetails.AgentDetail, on surface: AgentActivitySurface = .island
+    ) -> String {
         let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
-        return (rows.filter { !$0.isEmpty } + [AgentActivityCopy.status(agent.status)]).joined(separator: ", ")
+        let status = surface == .lockScreen
+            ? AgentActivityCopy.lockScreenStatus(agent.status) : AgentActivityCopy.status(agent.status)
+        return (rows.filter { !$0.isEmpty } + [status]).joined(separator: ", ")
     }
 
     static func countsLabel(_ items: [(status: String, count: Int)]) -> String {
@@ -493,23 +493,34 @@ enum AgentActivityRowMetrics {
     static let denseMinimumHeight: CGFloat = 28
 
     static func lockScreenMinimumHeight(agentCount: Int) -> CGFloat {
-        agentCount <= 3 ? comfortableMinimumHeight : denseMinimumHeight
+        agentCount <= 2 ? comfortableMinimumHeight : denseMinimumHeight
     }
 
-    /// Three configured rows render at about 43.5 pt (caption + 2 x caption2
-    /// plus the card's vertical padding), so a three-row card is held to the
-    /// comfortable 44 pt target; two rows or fewer fit the dense target.
-    static let threeRowMinimumHeight: CGFloat = comfortableMinimumHeight
+    /// Vertical padding `AgentActivityRowView` adds on each edge of a
+    /// configured lock-screen entry.
+    static let configuredRowVerticalPadding: CGFloat = 1
 
     /// Vertical padding of the whole lock-screen banner.
     static let lockScreenBannerVerticalPadding: CGFloat = 6
+    static let lockScreenHeaderHeight: CGFloat = 20
     /// Rendered height of the trailing caption2 line (overflow / stale).
     static let lockScreenCaptionHeight: CGFloat = 14
     /// ActivityKit's lock-screen presentation height limit.
     static let lockScreenHeightBudget: CGFloat = 160
 
+    /// A configured entry renders its lines plus that padding: about 30 pt for
+    /// two rows and 43.5 pt for three, both taller than the dense target. The
+    /// fitting budgets this height and the row is held to it, so 31 pt and
+    /// 44 pt. Legacy entries are unpadded and fit the dense target.
     static func minimumHeight(for agent: AgentActivityDetails.AgentDetail) -> CGFloat {
-        AgentActivityFields.rows(for: agent).count > 2 ? threeRowMinimumHeight : denseMinimumHeight
+        guard agent.rows != nil else { return denseMinimumHeight }
+        let lines = AgentActivityFields.rows(for: agent).count
+        guard lines > 0 else { return denseMinimumHeight }
+        return max(
+            denseMinimumHeight,
+            AgentActivityIslandMetrics.rowFirstLineHeight
+                + CGFloat(lines - 1) * AgentActivityIslandMetrics.rowLineHeight
+                + configuredRowVerticalPadding * 2)
     }
 }
 
@@ -531,7 +542,7 @@ private struct AgentActivityLinked<Content: View>: View {
             }
             .buttonStyle(.plain)
             .tint(AgentActivitySemanticStyle.primary(on: surface))
-            .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
+            .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent, on: surface))
             .accessibilityHint("Opens this Agent in Heeler")
         } else {
             content
@@ -557,31 +568,6 @@ private struct AgentActivityLinkedRow: View {
         ) {
             AgentActivityRowView(agent: agent, surface: surface)
         }
-    }
-}
-
-private struct AgentActivityCountChips: View {
-    let counts: AgentActivityAttributes.ContentState.Counts
-    let surface: AgentActivitySurface
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ForEach(counts.chipItems, id: \.status) { @Sendable item in
-                Text(AgentActivityCopy.count(item.count, status: item.status))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentActivityStatusStyle.ink(for: item.status, on: surface))
-                    // Chips never compress or wrap; the row title truncates
-                    // instead when all three statuses are present.
-                    .fixedSize()
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        AgentActivityStatusStyle.wash(for: item.status, on: surface).opacity(0.15),
-                        in: Capsule())
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AgentActivityNarration.countsLabel(counts.chipItems))
     }
 }
 
@@ -653,7 +639,11 @@ struct AgentActivityRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
-            marker
+            AgentActivityStatusGlyph(
+                status: agent.status, size: AgentActivityIslandMetrics.rowGlyph, surface: surface
+            )
+            .frame(width: AgentActivityIslandMetrics.markerColumn)
+            .padding(.top, 1.5)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(
                     Array(AgentActivityFields.rows(for: agent).enumerated()), id: \.offset
@@ -662,31 +652,21 @@ struct AgentActivityRowView: View {
                         .lineLimit(1)
                 }
             }
+            if surface == .lockScreen {
+                Spacer(minLength: 0)
+                Text(AgentActivityCopy.lockScreenStatus(agent.status))
+                    .font(.caption)
+                    .foregroundStyle(AgentActivitySemanticStyle.secondary(on: .lockScreen))
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
-        .padding(.vertical, agent.rows == nil || surface == .island ? 0 : 1)
+        .padding(
+            .vertical,
+            agent.rows == nil || surface == .island
+                ? 0 : AgentActivityRowMetrics.configuredRowVerticalPadding)
         .layoutPriority(1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent))
-    }
-
-    /// A dot on the Lock Screen, where the chips name each status; the
-    /// island's own glyph there, matching the tokens in its header.
-    @ViewBuilder
-    private var marker: some View {
-        switch surface {
-        case .lockScreen:
-            Circle()
-                .fill(AgentActivityStatusStyle.ink(for: agent.status, on: surface))
-                .frame(width: 7, height: 7)
-                .padding(.top, 4)
-                .accessibilityHidden(true)
-        case .island:
-            AgentActivityStatusGlyph(
-                status: agent.status, size: AgentActivityIslandMetrics.rowGlyph
-            )
-            .frame(width: AgentActivityIslandMetrics.markerColumn)
-            .padding(.top, 1.5)
-        }
+        .accessibilityLabel(AgentActivityNarration.rowLabel(for: agent, on: surface))
     }
 }
 

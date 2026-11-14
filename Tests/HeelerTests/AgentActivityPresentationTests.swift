@@ -155,17 +155,13 @@ struct AgentActivityPresentationTests {
 
     @Test func lockScreenRowsUseComfortableAndDenseAppleTargetHeights() {
         #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 1) == 44)
-        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 3) == 44)
+        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 2) == 44)
+        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 3) == 28)
         #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 4) == 28)
     }
 
     @Test func lockScreenChromeRemainsDynamicAcrossSystemAppearances() {
-        #expect(
-            rgba(AgentActivityLockScreenChrome.backgroundColor, .light)
-                == rgba(UIColor.systemBackground, .light))
-        #expect(
-            rgba(AgentActivityLockScreenChrome.backgroundColor, .dark)
-                == rgba(UIColor.systemBackground, .dark))
+        #expect(AgentActivityLockScreenChrome.backgroundTint == nil)
         #expect(
             rgba(AgentActivityLockScreenChrome.actionColor, .light)
                 == rgba(UIColor.label, .light))
@@ -173,8 +169,43 @@ struct AgentActivityPresentationTests {
             rgba(AgentActivityLockScreenChrome.actionColor, .dark)
                 == rgba(UIColor.label, .dark))
         #expect(
-            rgba(AgentActivityLockScreenChrome.backgroundColor, .light)
-                != rgba(AgentActivityLockScreenChrome.backgroundColor, .dark))
+            rgba(AgentActivityLockScreenChrome.actionColor, .light)
+                != rgba(AgentActivityLockScreenChrome.actionColor, .dark))
+    }
+
+    @Test func lockScreenHeaderPrefersTheCatalogAndFallsBackToTheEnvelope() {
+        let presentation = detailedPresentation(
+            agentCount: 1, total: .init(working: 1, blocked: 0, done: 0))
+        let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
+            .init(id: "host", name: "workstation-west-build-01"),
+        ])
+        #expect(presentation.lockScreenHostName(hostID: "host", snapshot: snapshot)
+            == "workstation-west-build-01")
+        #expect(presentation.lockScreenHostName(hostID: "other", snapshot: snapshot) == "mbp")
+        #expect(presentation.lockScreenHostName(hostID: "host", snapshot: nil) == "mbp")
+        let countsOnly = AgentActivityPresentation.countsOnly(counts: presentation.counts)
+        #expect(countsOnly.lockScreenHostName(hostID: "host", snapshot: snapshot)
+            == "workstation-west-build-01")
+        #expect(countsOnly.lockScreenHostName(hostID: "host", snapshot: nil) == nil)
+        let emptyName = AgentActivityPresentation.detailed(
+            details: .init(hostName: "", agents: []), counts: presentation.counts)
+        #expect(emptyName.lockScreenHostName(hostID: "host", snapshot: nil) == nil)
+    }
+
+    @Test func lockScreenNarrationIncludesTheDisplayedStatusWord() {
+        for (wire, word) in [("blocked", "Needs you"), ("working", "Working"), ("done", "Done")] {
+            let agent = agentDetail(paneID: "w1:p1", status: wire)
+            #expect(AgentActivityNarration.rowLabel(for: agent, on: .lockScreen)
+                == "Heeler, Claude, \(word)")
+        }
+    }
+
+    @Test func countsOnlyUsesStatusPhrasesWithEnglishPlurals() {
+        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 2, blocked: 1, done: 0))
+            == "1 needs you · 2 working")
+        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 0, blocked: 2, done: 1))
+            == "2 need you · 1 done")
+        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 0, blocked: 0, done: 0)).isEmpty)
     }
 
     @Test func lockScreenSemanticTextRemainsDynamicAcrossSystemAppearances() {
@@ -259,6 +290,7 @@ struct AgentActivityPresentationTests {
         agent.rows = []
         #expect(AgentActivityFields.rows(for: agent).isEmpty)
         #expect(AgentActivityNarration.rowLabel(for: agent) == "blocked")
+        #expect(AgentActivityNarration.rowLabel(for: agent, on: .lockScreen) == "Needs you")
     }
 
     @Test func configuredFieldsShowAtMostThreeRows() {
@@ -268,22 +300,33 @@ struct AgentActivityPresentationTests {
         #expect(AgentActivityNarration.rowLabel(for: agent) == "Row 1, Row 2, Row 3, working")
     }
 
-    @Test func threeRowCardsReserveSpaceForOverflowAndStaleness() {
+    @Test func threeRowCardsReserveSpaceForTheHostHeaderOverflowAndStaleness() {
         let presentation = configuredPresentation(agentCount: 5)
-        #expect(
-            presentation.lockScreenAgents(isStale: false).map(\.paneID)
-                == ["w1:p0", "w1:p1", "w1:p2"])
-        #expect(presentation.lockScreenAgents(isStale: true).count == 3)
+        #expect(presentation.lockScreenAgents(isStale: false).map(\.paneID) == ["w1:p0", "w1:p1"])
+        #expect(presentation.lockScreenAgents(isStale: true).count == 2)
         #expect(presentation.lockScreenTrailingCaption(isStale: true)
-            == "+2 more · May be out of date")
+            == "+3 more · May be out of date")
         #expect(presentation.expandedAgents.count == 2)
         #expect(presentation.overflowCount == 3)
         let three = configuredPresentation(agentCount: 3)
-        #expect(three.lockScreenAgents(isStale: false).count == 3)
-        #expect(three.lockScreenAgents(isStale: true).count == 3)
-        let four = configuredPresentation(agentCount: 4)
-        #expect(four.lockScreenAgents(isStale: false).count == 3)
-        #expect(four.lockScreenTrailingCaption(isStale: false) == "+1 more")
+        #expect(three.lockScreenAgents(isStale: false).count == 2)
+        #expect(three.lockScreenAgents(isStale: true).count == 2)
+        #expect(three.lockScreenTrailingCaption(isStale: false) == "+1 more")
+        #expect(three.lockScreenAgents(isStale: true, hasHeader: false).count == 3)
+        #expect(three.lockScreenTrailingCaption(isStale: true, hasHeader: false)
+            == "May be out of date")
+    }
+
+    @Test func lockScreenFittingKeepsTheEnvelopeOrderIncludingPinnedWorkingAgents() {
+        let ordered = ["working", "blocked", "done", "working", "done"].enumerated().map {
+            agentDetail(paneID: "w1:p\($0.offset)", status: $0.element)
+        }
+        let presentation = AgentActivityPresentation.detailed(
+            details: .init(hostName: "mbp", agents: ordered),
+            counts: .init(working: 3, blocked: 2, done: 2))
+        #expect(presentation.lockScreenAgents(isStale: true).map(\.paneID)
+            == ["w1:p0", "w1:p1", "w1:p2", "w1:p3"])
+        #expect(presentation.lockScreenOverflowCount(isStale: true) == 3)
     }
 
     /// The island clips its expanded content short of the 160 pt limit, which
@@ -320,7 +363,26 @@ struct AgentActivityPresentationTests {
         agent.rows = [[.init(text: "1")], [.init(text: "2")], [.init(text: "3")]]
         #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 44)
         agent.rows = [[.init(text: "1")], [.init(text: "2")]]
+        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 31)
+        agent.rows = [[.init(text: "1")]]
         #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
+        agent.rows = []
+        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
+        agent.rows = nil
+        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
+    }
+
+    @Test func twoRowCardsReserveSpaceForTheHostHeaderOverflowAndStaleness() {
+        let four = configuredPresentation(agentCount: 4, rowCount: 2)
+        #expect(four.lockScreenAgents(isStale: false).count == 4)
+        #expect(four.lockScreenTrailingCaption(isStale: false) == nil)
+        #expect(four.lockScreenAgents(isStale: true).map(\.paneID) == ["w1:p0", "w1:p1", "w1:p2"])
+        #expect(four.lockScreenTrailingCaption(isStale: true) == "+1 more · May be out of date")
+        #expect(four.lockScreenAgents(isStale: true, hasHeader: false).count == 4)
+        let five = configuredPresentation(agentCount: 5, rowCount: 2)
+        #expect(five.lockScreenAgents(isStale: false).count == 3)
+        #expect(five.lockScreenTrailingCaption(isStale: false) == "+2 more")
+        #expect(five.lockScreenAgents(isStale: true).count == 3)
     }
 
     @Test func styledFieldsPreserveHexColorAndSecondarySemantics() {
@@ -360,38 +422,133 @@ struct AgentActivityPresentationTests {
         }
     }
 
-    /// Measures the rendered banner, not `sizeThatFits`: a hosting
-    /// controller reports only the row frames' minimum heights and misses
-    /// the text, which is what let three-row cards overrun the budget.
     @MainActor
     @Test func threeRowBannersFitTheLockScreenHeightBudget() throws {
         for count in [3, 4, 5] {
             for stale in [false, true] {
-                let view = AgentActivityLockScreenView(
-                    presentation: configuredPresentation(agentCount: count),
-                    hostID: "host", isStale: stale)
-                let banner = try RenderedBitmap(
-                    view.frame(width: 360).environment(\.colorScheme, .light),
-                    proposedSize: .unspecified, scale: 2)
-                let height = banner.size.height
-                #expect(height <= 160, "\(count) Agents, stale=\(stale): \(height) pt")
-                // Three three-row cards are drawn, so the banner is far
-                // taller than the two-card layout (about 104 pt).
-                #expect(height > 140, "\(count) Agents, stale=\(stale): \(height) pt")
-                Attachment.record(try banner.image(),
-                    named: "activity-fields-\(count)-agents-stale-\(stale)", as: .png)
+                for scheme in [ColorScheme.light, .dark] {
+                    let banner = try lockScreenBitmap(
+                        configuredPresentation(agentCount: count), scheme: scheme, stale: stale,
+                        hostName: "workstation-west-build-01")
+                    #expect(banner.size.height <= 160)
+                    #expect(banner.size.height > 120)
+                    Attachment.record(try banner.image(),
+                        named: "lock-a2-three-fields-\(count)-agents-\(scheme)-stale-\(stale)", as: .png)
+                }
             }
         }
     }
 
-    private func configuredPresentation(agentCount: Int) -> AgentActivityPresentation {
+    @MainActor
+    @Test func twoRowBannersFitTheLockScreenHeightBudget() throws {
+        for count in [4, 5] {
+            for stale in [false, true] {
+                for scheme in [ColorScheme.light, .dark] {
+                    let banner = try lockScreenBitmap(
+                        configuredPresentation(agentCount: count, rowCount: 2), scheme: scheme,
+                        stale: stale, hostName: "workstation-west-build-01")
+                    #expect(banner.size.height <= 160)
+                    #expect(banner.size.height > 120)
+                    Attachment.record(try banner.image(),
+                        named: "lock-a2-two-fields-\(count)-agents-\(scheme)-stale-\(stale)", as: .png)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    @Test func lockScreenEvidenceCoversAppearancesHostNamesCountsAndStaleness() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            for hostName in ["workstation-west-build-01", "192.0.2.15"] {
+                for count in [1, 2, 3, 5] {
+                    let agents = (0..<count).map { index in
+                        agentDetail(paneID: "w1:p\(index)", status: ["working", "blocked", "done"][index % 3])
+                    }
+                    let presentation = AgentActivityPresentation.detailed(
+                        details: .init(hostName: "envelope-fallback", agents: agents),
+                        counts: .init(
+                            working: agents.filter { $0.status == "working" }.count,
+                            blocked: agents.filter { $0.status == "blocked" }.count,
+                            done: agents.filter { $0.status == "done" }.count))
+                    for stale in (count == 5 ? [false, true] : [false]) {
+                        let banner = try lockScreenBitmap(
+                            presentation, scheme: scheme, stale: stale, hostName: hostName)
+                        #expect(banner.size.height <= 160)
+                        #expect(banner.size.height >= 76)
+                        Attachment.record(try banner.image(),
+                            named: "lock-a2-\(scheme)-\(count)-agents-host-\(hostName)-stale-\(stale)", as: .png)
+                    }
+                }
+                for stale in [false, true] {
+                    let banner = try lockScreenBitmap(
+                        .countsOnly(counts: .init(working: 2, blocked: 1, done: 0)),
+                        scheme: scheme, stale: stale, hostName: hostName)
+                    #expect(banner.size.height <= 160)
+                    #expect(banner.size.height > 40)
+                    Attachment.record(try banner.image(),
+                        named: "lock-a2-\(scheme)-counts-only-host-\(hostName)-stale-\(stale)", as: .png)
+                }
+            }
+            let unnamed = try lockScreenBitmap(
+                .countsOnly(counts: .init(working: 0, blocked: 2, done: 1)),
+                scheme: scheme, stale: false, hostName: nil)
+            #expect(unnamed.size.height <= 160)
+            Attachment.record(try unnamed.image(), named: "lock-a2-\(scheme)-counts-only-no-host", as: .png)
+        }
+    }
+
+    @MainActor
+    @Test func lockScreenContentLeavesTheBackgroundToActivityKit() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let bitmap = try RenderedBitmap(
+                AgentActivityLockScreenView(
+                    presentation: detailedPresentation(
+                        agentCount: 1, total: .init(working: 1, blocked: 0, done: 0)),
+                    hostID: "host", isStale: false, hostSnapshot: nil)
+                    .frame(width: 360)
+                    .environment(\.colorScheme, scheme),
+                proposedSize: .unspecified)
+            #expect(bitmap.pixel(x: 0, y: 0).alpha == 0)
+            #expect(bitmap.pixel(x: bitmap.width - 1, y: bitmap.height - 1).alpha == 0)
+        }
+    }
+
+    @MainActor
+    @Test func lockScreenBannerHonorsLargerDynamicTypeSizes() throws {
+        let view = AgentActivityLockScreenView(
+            presentation: configuredPresentation(agentCount: 1), hostID: "host", isStale: false,
+            hostSnapshot: nil)
+            .frame(width: 360)
+        let standard = try RenderedBitmap(view.environment(\.dynamicTypeSize, .large), proposedSize: .unspecified)
+        let enlarged = try RenderedBitmap(view.environment(\.dynamicTypeSize, .accessibility3), proposedSize: .unspecified)
+        #expect(enlarged.size.height > standard.size.height)
+    }
+
+    @MainActor
+    private func lockScreenBitmap(
+        _ presentation: AgentActivityPresentation, scheme: ColorScheme, stale: Bool, hostName: String?
+    ) throws -> RenderedBitmap {
+        let snapshot = hostName.map { LiveActivityHostSnapshot(v: 1, hosts: [.init(id: "host", name: $0)]) }
+        return try RenderedBitmap(
+            AgentActivityLockScreenView(
+                presentation: presentation, hostID: "host", isStale: stale, hostSnapshot: snapshot)
+                .frame(width: 360)
+                .background(scheme == .light ? Color.white : Color.black)
+                .environment(\.colorScheme, scheme),
+            proposedSize: .unspecified, scale: 2)
+    }
+
+    private func configuredPresentation(
+        agentCount: Int, rowCount: Int = 3
+    ) -> AgentActivityPresentation {
+        let rows: [[AgentActivityDetails.Field]] = [
+            [.init(text: "Heeler · Claude", bold: true)],
+            [.init(text: "Fix the sidebar")],
+            [.init(text: "/Users/developer/Heeler", dim: true)],
+        ]
         let agents = (0..<agentCount).map { index in
             var agent = agentDetail(paneID: "w1:p\(index)")
-            agent.rows = [
-                [.init(text: "Heeler · Claude", bold: true)],
-                [.init(text: "Fix the sidebar")],
-                [.init(text: "/Users/developer/Heeler", dim: true)],
-            ]
+            agent.rows = Array(rows.prefix(rowCount))
             return agent
         }
         return .detailed(details: .init(hostName: "mbp", agents: agents),

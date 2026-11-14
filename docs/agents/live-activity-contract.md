@@ -117,16 +117,72 @@ Decrypted plaintext (canonical form):
   `title` and legacy `name` fields, then `rows`, then send `agents: []`;
   workspace/kind identity remains after rows are dropped; counts always fit.
 
-The widget renders the configured rows beside each Agent's status marker: a
-colored dot on the Lock Screen, a status glyph in the Dynamic Island.
-It preserves field colors, bold and dim styles. When `rows` is absent it uses
-workspace and friendly Agent kind as the legacy identity. Agent order remains
-unchanged. The lock-screen list fits as many complete Agent entries as the
-banner budget allows, followed by "+N more" when needed. The compact Dynamic
-Island shows status counts as glyph-and-count tokens in attention order
-(blocked, done, working); the expanded view uses configured rows.
-The envelope's `host` is not a separate heading, but a configured `host` field
-can display the per-device Host name.
+## Widget rendering
+
+The widget preserves configured Agent List Fields, including field colors,
+bold and dim styles. When `rows` is absent it uses workspace and friendly
+Agent kind as the legacy identity. Agent order stays in the sender's pin-aware
+order. Error remains Blocked on the wire and reads "Needs you" on the Lock
+Screen; a configured status field may still say "Error".
+
+The Lock Screen uses the system background material through
+`.activityBackgroundTint(nil)`, with no painted background layer. Text and
+status colors remain unresolved dynamic UIKit colors so an existing activity
+can follow system appearance changes when ActivityKit refreshes it. The End
+control receives unresolved `UIColor.label` through `Color(uiColor:)`.
+ActivityKit's SwiftUI `colorScheme` is never consulted. Status glyphs use
+dynamic Lock Screen inks from `AgentActivityStatusStyle`.
+
+A separate, one-line semibold Host heading uses middle truncation. Its name
+comes from the local Host snapshot by attributes `hostID`, then the envelope's
+`host`, then no heading when neither supplies a nonempty name. There are no
+header count chips. Each linked Agent entry starts with an open ring for
+Working, a filled exclamation circle for Blocked, or a check circle for Done.
+Its configured fields stay between that glyph and a secondary status word,
+"Working", "Needs you", or "Done". Accessibility reads those same fields and
+the displayed status word. Each entry opens its Agent; surrounding chrome
+keeps the Console fallback link.
+
+The list fits complete entries within 160 pt, including the optional 20 pt
+heading, 6 pt vertical padding on each edge, and one overflow/stale caption.
+It shows at most four entries. One or two entries have a 44 pt minimum target;
+three or four use a 28 pt dense minimum. Configured entries are budgeted at,
+and held to, their rendered height: their text lines plus 1 pt of padding on
+each edge, so 31 pt for two lines and 44 pt for three. A named Host therefore
+fits four two-line entries without a caption or three with one, and two
+three-line entries plus the caption. Lock Screen text retains the system
+Dynamic Type size; only the Dynamic Island caps it through `islandTypeSize()`.
+Overflow uses the full plaintext inventory count minus the number of visible
+entries.
+Stale content adds "May be out of date", sharing the overflow line when
+needed. Debug decrypt diagnostics remain outside the production height budget.
+
+An absent or undecryptable envelope, or empty decrypted Agent details, shows
+only the optional Host heading and localized count phrases in Blocked,
+Working, Done order, such as "1 needs you · 2 working". English plurals use
+"2 need you". Staleness remains visible. Counts-only does not imply a
+connection failure and has no overflow from an Agent list.
+
+Dynamic Island presentation is unchanged. Compact presentations show status
+counts as glyph-and-count tokens in attention order (blocked, done, working);
+the expanded view uses configured rows, per-Agent links, and its own height
+budget. Island inks remain Mocha regardless of ambient appearance.
+
+### Local Host snapshot
+
+The app writes `live-activity-hosts.json` in the shared app-group container.
+It contains `{"v":1,"hosts":[{"id":"<Host UUID string>","name":"<displayName>"}]}`
+in the app's Host catalog order. `id` is `Host.id.uuidString`, identical to the
+Activity attributes' `hostID`. This file is local presentation data, separate
+from the encrypted envelope and relay payload.
+
+The app publishes at initialization and after catalog changes, including
+rename, addition, removal, and reorder. Equal snapshots suppress writes,
+including on relaunch. Replacement is atomic, protected until first unlock,
+and excluded from backup, matching the other app-group snapshot writers.
+Missing, malformed, or unknown-version snapshots read as absent; unknown
+future fields are ignored. A write makes the current catalog available on the
+next widget render; it does not itself request an ActivityKit refresh.
 
 ## Relay request (plugin → relay)
 
