@@ -69,7 +69,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Keep the Workspace drawer handle clear of the message-jump buttons on an Agent terminal's trailing edge. With the keyboard open, the terminal was short enough for the two to overlap. The handle now steps above the buttons, or below them when they sit at the top, and goes back to where you left it once there is room.
+- Keep the Workspace drawer handle clear of the message-jump buttons on an Agent terminal's trailing edge. With the keyboard open, the terminal was short enough for the two to overlap. The handle now steps above the buttons, or below them when they sit at the top, and goes back to where you left it once there is room. (PR #738)
 - End Check Again's spinner in Chat on iPhone once Heeler has checked for the conversation, instead of leaving it spinning after SwiftUI's spurious disappear stops the view's task. (PR #728)
 - Align Chat's notice rows, such as finished background commands, with its reasoning and tool rows: their icons and titles now share the same column and text size, their details indent under the title, and every inline row icon fits a uniform square so wide symbols match narrower ones. (PR #729)
 - Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
