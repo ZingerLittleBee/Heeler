@@ -158,6 +158,10 @@ final class ConsoleStore {
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
     @ObservationIgnored private let makeTmuxSession: @Sendable (Host) -> TmuxHostSession
+    @ObservationIgnored private let makeRexSession: @Sendable (Host) -> RexHostSession
+    /// `RexHostsExperiment`'s switch: off, a Rex Host is not the Console's and
+    /// nothing dials it.
+    @ObservationIgnored private let offersRexHosts: Bool
     /// Hears the paths a tmux Host's connection resolved again, for the catalog.
     @ObservationIgnored var onTmuxPathsResolved: (@MainActor (Host.ID, TmuxPaths) -> Void)?
     /// A test supplies each Host's projection. Production leaves the choice to
@@ -263,6 +267,8 @@ final class ConsoleStore {
             ConsoleStore.coreSessionFactory(),
         makeTmuxSession: @escaping @Sendable (Host) -> TmuxHostSession =
             ConsoleStore.tmuxSessionFactory(),
+        makeRexSession: @escaping @Sendable (Host) -> RexHostSession = ConsoleStore.rexSessionFactory(),
+        offersRexHosts: Bool = RexHostsExperiment.isEnabled,
         makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)? = nil,
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
@@ -284,6 +290,8 @@ final class ConsoleStore {
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.makeTmuxSession = makeTmuxSession
+        self.makeRexSession = makeRexSession
+        self.offersRexHosts = offersRexHosts
         self.makeProjection = makeProjection
         self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
@@ -319,13 +327,14 @@ final class ConsoleStore {
 
     /// Aligns Host projections with the catalog. Editing a Host replaces its
     /// projection because its connection coordinates may have changed. A Host
-    /// waiting for its Server Kind is not the Console's yet.
+    /// waiting for its Server Kind is not the Console's yet, and neither is a
+    /// Rex Host while its switch is off.
     ///
     /// `hostsOutOfSight` is `HostStore.hostsOutOfSight`: Hosts in the catalog that
     /// are not listed, whose device memory stays. Nil says the catalog could not be
     /// read, so nobody can say which Hosts went and none of that memory is swept.
     func setHosts(_ catalogHosts: [Host], hostsOutOfSight: Set<Host.ID>? = []) {
-        let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
+        let hosts = catalogHosts.filter { $0.serverKind.isConfirmed && (offersRexHosts || $0.serverKind != .rex) }
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
         // A tmux Host's stored paths are what a connection last resolved (ADR
@@ -1667,8 +1676,7 @@ final class ConsoleStore {
                         },
                         onChange: onChange)
                 case .rex:
-                    // Never dials: this build does not connect Rex Hosts yet (ADR 0047).
-                    RexConsoleProjection(host: host)
+                    RexConsoleProjection(host: host, session: makeRexSession(host), onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
@@ -3063,6 +3071,25 @@ extension ConsoleStore {
                     for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
                 settings.tmuxPaths = paths
                 return try await connector.connectTmux(settings: settings)
+            }
+        }
+    }
+
+    /// The Rex Hosts' equivalent, with the same trust rules. Each connection
+    /// starts from the socket the session holds: the catalog's, then the one
+    /// a connection found.
+    static func rexSessionFactory(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) -> RexHostSession {
+        { host in
+            RexHostSession(storedSocket: host.rexSocket) { socket, previous in
+                var settings = try consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
+                settings.rexSocket = socket
+                return try await connector.connectRex(settings: settings, resuming: previous)
             }
         }
     }

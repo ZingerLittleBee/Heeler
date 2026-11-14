@@ -19069,6 +19069,7 @@
         }
       }
     },
+    "Detached" : {},
     "Detached HEAD" : {
       "localizations" : {
         "ja" : {
@@ -44769,7 +44770,7 @@
     },
     "Rex refused the connection with HTTP status %lld." : {},
     "Rex server running" : {},
-    "Rex support is not finished" : {},
+    "Rex terminals cannot open yet" : {},
     "Rex was not found on this Host" : {},
     "Rex's answer could not be read." : {},
     "Rex's session list could not be read." : {},
@@ -61436,6 +61437,8 @@
     "This Pane belongs to a tmux server that is gone" : {},
     "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
     "This Pane is gone" : {},
+    "This Terminal belongs to a Rex server that is gone" : {},
+    "This Terminal belongs to a Rex server that is gone. Open it again from the list." : {},
     "This Terminal belongs to a core that is gone" : {
       "localizations" : {
         "ja" : {
@@ -61569,6 +61572,7 @@
       }
     },
     "This account may not use the socket at %@" : {},
+    "This action on a Rex Host" : {},
     "This action on a tmux Host" : {
       "localizations" : {
         "ja" : {
@@ -61657,7 +61661,7 @@
         }
       }
     },
-    "This build of Heeler lists Rex Hosts but does not connect to them yet." : {},
+    "This build of Heeler lists the terminals of a Rex Host but cannot open them yet." : {},
     "This build was made from commit %@, whose source pins each component's exact version." : {
       "localizations" : {
         "ja" : {

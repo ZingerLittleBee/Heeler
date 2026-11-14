@@ -1,121 +1,267 @@
 import Foundation
 
-/// A Rex Host's share of the Console (ADR 0047), before this build connects to
-/// Rex. It never dials, lists nothing, and reads as a Host Heeler cannot
-/// connect to yet, which no retry changes. Every action fails with that same
-/// reason, and nothing reaches herdr, herdr-core or tmux.
+/// A Rex Host's share of the Console (ADRs 0047 and 0048): its connection, the
+/// server that answers on its socket, and the terminals that server lists. A
+/// session is a Workspace, a window a Tab and a terminal block a Pane, as
+/// `RexOrganization` reads them, and a Rex Host lists Terminals only.
 ///
-/// The connection, the inventory and Rex's own answers to what a detail keeps
-/// to replace this as they are built.
+/// A Pane keeps to its server instance, as a tmux Pane does: another instance
+/// leaves every detail open on the last one's terminals. This build lists
+/// terminals and opens none: opening one fails with that reason, and every
+/// action a Host offers is unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     let host: Host
+    let session: RexHostSession
 
-    /// Why the Host has no connection, for every surface that asks.
-    private nonisolated static let reason = TransportError.rexNotConnectableYet
+    private(set) var status: EventsSessionStatus?
+    private(set) var standingFailure: TransportError?
+    private(set) var latency: Duration?
+    private(set) var routeID: UUID?
+    private(set) var transportGeneration: UInt64 = 0
+    /// The server on the Host's socket, while one answers.
+    private(set) var server: RexServerStatus?
+    /// The instance whose terminals a detail keeps to: the last that answered,
+    /// kept through a reconnect until another one answers.
+    private(set) var inventoryCore: String?
+    /// Until the server that answered has listed its terminals, nothing says
+    /// what the Host runs.
+    private(set) var isAwaitingSnapshot = true
+    private(set) var workspaces: [ConsoleWorkspace] = []
+    private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
+    private(set) var sidebarRevision: UInt64 = 0
+    /// The last inventory folded into rows.
+    private(set) var inventory: RexInventory?
 
-    let status: EventsSessionStatus? = .failed(RexConsoleProjection.reason)
-    let standingFailure: TransportError? = RexConsoleProjection.reason
-    let latency: Duration? = nil
-    let routeID: UUID? = nil
     let syncError: String? = nil
     let leakedEnvironmentNames: Set<String> = []
-    let transportGeneration: UInt64 = 0
-    /// Nothing is on its way: the list is empty because nothing was asked.
-    let isAwaitingSnapshot = false
-    let workspaces: [ConsoleWorkspace] = []
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
-    let terminalsByPane: [String: ConsoleTerminal] = [:]
     let agentsByPane: [String: ConsoleAgent] = [:]
     let lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
-    let sidebarRevision: UInt64 = 0
     let terminalLabelKeys: [String] = []
 
-    /// No inventory, so no detail keeps to one. Every action says why instead.
-    let keepsDetailsToInventory = false
-    var leftInventoryMessage: String { Self.reason.presentation.message }
-    let leftInventoryError = RexConsoleProjection.reason
+    private let onChange: @MainActor @Sendable () -> Void
+    private var consumeTask: Task<Void, Never>?
+    private var latencyTask: Task<Void, Never>?
+    private var hasEnded = false
 
-    init(host: Host) {
+    init(host: Host, session: RexHostSession, onChange: @escaping @MainActor @Sendable () -> Void) {
         self.host = host
+        self.session = session
+        self.onChange = onChange
     }
 
     // MARK: Lifecycle
 
-    func start(isActive _: Bool) {}
-    func resume() async {}
-    func revalidate() async {}
-    func suspend() async {}
-    func retry() async {}
-    func cancelConnecting() async {}
-    func end() {}
+    func start(isActive: Bool) {
+        consumeTask = Task { [weak self, session] in
+            for await update in session.updates {
+                guard !Task.isCancelled, let self else { return }
+                self.handle(update)
+            }
+        }
+        // Only the wake-up: `session.currentLatency` is the value ordered
+        // against the statuses, as `HostConsoleProjection` reads it.
+        latencyTask = Task { [weak self, session] in
+            for await _ in session.latencyUpdates {
+                guard !Task.isCancelled, let self else { return }
+                self.latency = session.currentLatency
+                self.onChange()
+            }
+        }
+        if isActive {
+            Task { await session.resume() }
+        }
+    }
+
+    func resume() async {
+        await session.resume()
+    }
+
+    /// One attempt on a stopped session, else a question to the server that
+    /// was answering, as a Herdr TUI Host is re-proved on a foreground return.
+    func revalidate() async {
+        if case .failed = status {
+            beginNewActivation()
+            await session.retry()
+        } else {
+            await session.revalidate()
+        }
+    }
+
+    func suspend() async {
+        await session.suspend()
+    }
+
+    func retry() async {
+        beginNewActivation()
+        await session.retry()
+    }
+
+    func cancelConnecting() async {
+        await session.cancelConnecting()
+    }
+
+    /// Leaves for good: the session closes its control link with a close
+    /// frame, so the server forgets this client at once.
+    func end() {
+        guard !hasEnded else { return }
+        hasEnded = true
+        consumeTask?.cancel()
+        latencyTask?.cancel()
+        consumeTask = nil
+        latencyTask = nil
+        Task { [session] in await session.end() }
+    }
+
+    private func beginNewActivation() {
+        status = .connecting
+        latency = nil
+        routeID = nil
+        server = nil
+        invalidateInventory()
+        onChange()
+    }
+
+    private func handle(_ update: RexHostSessionUpdate) {
+        guard !hasEnded else { return }
+        switch update {
+        case .status(let status):
+            self.status = status
+            latency = session.currentLatency
+            routeID = session.currentRouteID
+            transportGeneration = session.currentConnectionGeneration
+            switch status {
+            case .failed(let failure):
+                standingFailure = failure
+            case .connected, .reconnecting:
+                standingFailure = nil
+            case .connecting, .suspended, .ended:
+                break
+            }
+            if status != .connected {
+                server = nil
+                invalidateInventory()
+            }
+        case .server(let server):
+            // What was listed came from the server that answered before.
+            if inventoryCore != server.instanceID { invalidateInventory() }
+            self.server = server
+            inventoryCore = server.instanceID
+        case .inventory(let inventory):
+            guard status == .connected, server != nil else { return }
+            self.inventory = inventory
+            rebuildRows()
+        }
+        onChange()
+    }
 
     // MARK: Inventory
+
+    /// A Pane belongs to its server: a detail open on another instance's
+    /// terminal has left the inventory.
+    var keepsDetailsToInventory: Bool { true }
+
+    var leftInventoryMessage: String { TerminalStatusPresentation.rexServerGoneMessage }
+
+    var leftInventoryError: TransportError { .rexServerGone }
+
+    private func invalidateInventory() {
+        isAwaitingSnapshot = true
+        inventory = nil
+        workspaces = []
+        terminalsByPane = [:]
+    }
+
+    private func rebuildRows() {
+        guard let inventory else { return }
+        let builder = ConsolePaneRowBuilder(host: host, inventory: RexOrganization.build(inventory))
+        terminalsByPane = builder.terminalRows(agents: [:], liveChange: { _ in nil })
+        workspaces = builder.workspaceRows()
+        isAwaitingSnapshot = false
+        sidebarRevision &+= 1
+    }
 
     func refreshTerminalInventory() async {}
     func refreshSidebarMetadata() async {}
     func setShownAgents(_: Set<String>) {}
 
+    func paneExists(_ paneID: String) async throws -> Bool {
+        terminalsByPane[paneID] != nil
+    }
+
     // MARK: Actions
 
-    func availableAgentKinds() async throws -> [SupportedAgentKind] { throw Self.reason }
-    func startAgent(_: AgentLaunchRequest) async throws -> Agent { throw Self.reason }
+    /// Nothing is started, closed or renamed on a Rex Host (ADR 0047).
+    private nonisolated static var unavailable: TransportError {
+        .hostFeatureUnavailable(feature: String(localized: "This action on a Rex Host"))
+    }
+
+    func availableAgentKinds() async throws -> [SupportedAgentKind] { throw Self.unavailable }
+    func startAgent(_: AgentLaunchRequest) async throws -> Agent { throw Self.unavailable }
     func startAgentInNewWorktree(_: AgentLaunchRequest, worktree _: WorktreeSpec) async throws -> Agent {
-        throw Self.reason
+        throw Self.unavailable
     }
     func startAgentInNewWorkspace(_: AgentLaunchRequest, workspace _: NewWorkspaceSpec) async throws -> Agent {
-        throw Self.reason
+        throw Self.unavailable
     }
     func createShellTerminal(_: ShellTerminalCreationRequest) async throws -> ShellTerminalIdentity {
-        throw Self.reason
+        throw Self.unavailable
     }
     func createShellWorkspace(_: NewWorkspaceSpec, tabLabel _: String?) async throws -> ShellTerminalIdentity {
-        throw Self.reason
+        throw Self.unavailable
     }
-    func paneExists(_: String) async throws -> Bool { throw Self.reason }
-    func closePane(_: String) async throws { throw Self.reason }
-    func closeTab(_: String) async throws { throw Self.reason }
-    func listWorktrees(forWorkspaceID _: String) async throws -> WorktreeListResponse { throw Self.reason }
-    func removeWorktree(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt { throw Self.reason }
-    func worktreeRemovalRisk(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? { throw Self.reason }
-    func focusAgent(_: String) async throws { throw Self.reason }
-    func renameAgent(_: String, name _: String?) async throws { throw Self.reason }
-    func renameWorkspace(_: String, label _: String) async throws { throw Self.reason }
+    func closePane(_: String) async throws { throw Self.unavailable }
+    func closeTab(_: String) async throws { throw Self.unavailable }
+    func listWorktrees(forWorkspaceID _: String) async throws -> WorktreeListResponse { throw Self.unavailable }
+    func removeWorktree(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt { throw Self.unavailable }
+    func worktreeRemovalRisk(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
+        throw Self.unavailable
+    }
+    func focusAgent(_: String) async throws { throw Self.unavailable }
+    func renameAgent(_: String, name _: String?) async throws { throw Self.unavailable }
+    func renameWorkspace(_: String, label _: String) async throws { throw Self.unavailable }
 
     // MARK: One Agent
 
-    func agentInfo(paneID _: String) async throws -> Agent { throw Self.reason }
-    func processInfo(paneID _: String) async throws -> PaneProcessInfo { throw Self.reason }
-    func promptAgent(_: AgentPromptParams) async throws -> Agent { throw Self.reason }
-    func readAgentScreen(_: String) async throws -> ANSIScreen { throw Self.reason }
-    func sendAgentKeys(_: [String], to _: String) async throws { throw Self.reason }
-    func pasteIntoAgent(_: String, paneID _: String) async throws { throw Self.reason }
+    func agentInfo(paneID _: String) async throws -> Agent { throw Self.unavailable }
+    func processInfo(paneID _: String) async throws -> PaneProcessInfo { throw Self.unavailable }
+    func promptAgent(_: AgentPromptParams) async throws -> Agent { throw Self.unavailable }
+    func readAgentScreen(_: String) async throws -> ANSIScreen { throw Self.unavailable }
+    func sendAgentKeys(_: [String], to _: String) async throws { throw Self.unavailable }
+    func pasteIntoAgent(_: String, paneID _: String) async throws { throw Self.unavailable }
 
     // MARK: The live connection
 
-    func terminalRunner() -> TerminalSessionRunner { { _, _ in throw Self.reason } }
+    /// Opening a Rex terminal is not built yet: every Attach fails with the
+    /// one reason that says so, and asks nothing of the Host.
+    func terminalRunner() -> TerminalSessionRunner {
+        { _, _ in throw TransportError.rexTerminalsNotOpenableYet }
+    }
     func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
-        { _, _ in throw Self.reason }
+        { _, _ in throw Self.unavailable }
     }
     func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
-        { _, _ in throw Self.reason }
+        { _, _ in throw Self.unavailable }
     }
-    func sessionFileReader() -> SessionFileReader { { _ in throw Self.reason } }
-    func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in throw Self.reason } }
+    func sessionFileReader() -> SessionFileReader { { _ in throw Self.unavailable } }
+    func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in throw Self.unavailable } }
     func chatHostFiles() -> ChatHostFiles {
         ChatHostFiles(
-            status: { _ in throw Self.reason },
-            list: { _ in throw Self.reason },
-            read: { _ in throw Self.reason },
-            home: { throw Self.reason })
+            status: { _ in throw Self.unavailable },
+            list: { _ in throw Self.unavailable },
+            read: { _ in throw Self.unavailable },
+            home: { throw Self.unavailable })
     }
-    func remoteHomeDirectory() async throws -> String { throw Self.reason }
-    func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.reason }
+    func remoteHomeDirectory() async throws -> String { throw Self.unavailable }
+    func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
 
+    /// A Rex Host is reached through its server's socket only: nothing runs on
+    /// it over SSH.
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {
-        throw Self.reason
+        throw Self.unavailable
     }
 
     /// A Rex Host has no plugin, Notifications or Usage files, and its plugin

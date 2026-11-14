@@ -977,6 +977,7 @@
 		CD2F9C1E4EAFC6C9D94F6FFB /* CodexRecordDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89669281E7DB73D3A6B63BCD /* CodexRecordDecoder.swift */; };
 		CD6468C4FE5F5F67671D33E6 /* HerdrCommandLineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90E77FA4275B5056D4C0808 /* HerdrCommandLineTests.swift */; };
 		CD7F12A6A8D1F064B44879C0 /* CodexRolloutFileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02B2098030E5048047D4B29 /* CodexRolloutFileName.swift */; };
+		CECE02E9BEEA9589C7F6D7CE /* RexOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D35DE1B1360AC47FD67500C /* RexOrganization.swift */; };
 		CF1C8E803B3A98CC36E199B6 /* UsageMiscLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCB84101E983154CA1087D1 /* UsageMiscLocalizationTests.swift */; };
 		CF2323019F65949DA4B9B7F2 /* AgyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9454B2FE4D1BA88B3CCAECA7 /* AgyStep.swift */; };
 		CFAA6CEE9088E0F35A100FFB /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = BE53F92F352D5CEE9A715FA9 /* GhosttyTerminal */; };
@@ -1412,6 +1413,7 @@
 		1C2FA2BD300034D269E1B7A6 /* AgentUsageDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageDashboard.swift; sourceTree = "<group>"; };
 		1C5C06C0179CCB91C36FD4C9 /* AgentUsageProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageProbeTests.swift; sourceTree = "<group>"; };
 		1CCEB9B1072B8C63C413A4B0 /* HeelerSSHTransportBehaviorE2ETests+LineCounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+LineCounts.swift"; sourceTree = "<group>"; };
+		1D35DE1B1360AC47FD67500C /* RexOrganization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexOrganization.swift; sourceTree = "<group>"; };
 		1D360A3ADB8506B9ECC7D059 /* AgentRowLayoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowLayoutStore.swift; sourceTree = "<group>"; };
 		1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosePaneStore.swift; sourceTree = "<group>"; };
 		1D78C747C818346BDFE22ECC /* HostCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCapabilities.swift; sourceTree = "<group>"; };
@@ -3457,6 +3459,7 @@
 				C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */,
 				381B00805D3CDEEE94DAE35B /* RenameStore.swift */,
 				5A8F3998ED0247AE46C0C062 /* RexConsoleProjection.swift */,
+				1D35DE1B1360AC47FD67500C /* RexOrganization.swift */,
 				07A6A8381CE83D1F110DE1EA /* SearchDrawerTuck.swift */,
 				8BB54B93940C297518A3440B /* ShellTerminalPasswordFill.swift */,
 				175D872736F56BE7D98A5A40 /* ShellTerminalStore.swift */,
@@ -4936,6 +4939,7 @@
 				BA0F29073AE6F6A5490DC265 /* RexInventory.swift in Sources */,
 				DD1AD160A110540B8F5624E5 /* RexInventoryBook.swift in Sources */,
 				E42E14F77A0B68A75E97FC91 /* RexInventoryFollower.swift in Sources */,
+				CECE02E9BEEA9589C7F6D7CE /* RexOrganization.swift in Sources */,
 				8EAB893B2DBBFCB230D01264 /* RexProbe.swift in Sources */,
 				444D8B34AB6DC6104559D0F7 /* RexSocket.swift in Sources */,
 				D7AE740F6B99DA8F617CF57C /* RexSocketCheck.swift in Sources */,

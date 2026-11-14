@@ -167,7 +167,8 @@ struct PreflightReport: Equatable, Sendable {
         case .coreMutationOutcomeUnknown:
             check = .connection
             hint = String(localized: "The Host did not confirm the action. Check its state before trying again.")
-        case .herdrCoreInventoryStale, .herdrCoreTerminalGone, .tmuxPaneGone, .tmuxServerGone:
+        case .herdrCoreInventoryStale, .herdrCoreTerminalGone, .tmuxPaneGone, .tmuxServerGone, .rexServerGone,
+            .rexTerminalsNotOpenableYet:
             // Preflight has no inventory; keep the closed taxonomy total.
             check = .connection
             hint = error.presentation.message
@@ -189,10 +190,6 @@ struct PreflightReport: Equatable, Sendable {
             check = .herdrInstalled
             hint = error.presentation.message
         case .tmuxServerNotRunning, .tmuxStartOnMac:
-            check = .serverRunning
-            hint = error.presentation.message
-        case .rexNotConnectableYet:
-            // Rex's checks connect on their own; keep the closed taxonomy total.
             check = .serverRunning
             hint = error.presentation.message
         case .rexNotInstalled, .rexLookupFailed:

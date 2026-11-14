@@ -254,11 +254,16 @@ extension TransportError {
                 summary: String(localized: "This Pane belongs to a tmux server that is gone"),
                 detail: String(localized: "Nothing was sent"),
                 recoverySuggestion: String(localized: "Open it again from the list."))
-        case .rexNotConnectableYet:
+        case .rexTerminalsNotOpenableYet:
             TransportErrorPresentation(
-                summary: String(localized: "Rex support is not finished"),
+                summary: String(localized: "Rex terminals cannot open yet"),
                 detail: nil,
-                recoverySuggestion: String(localized: "This build of Heeler lists Rex Hosts but does not connect to them yet."))
+                recoverySuggestion: String(localized: "This build of Heeler lists the terminals of a Rex Host but cannot open them yet."))
+        case .rexServerGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Terminal belongs to a Rex server that is gone"),
+                detail: String(localized: "Nothing was sent"),
+                recoverySuggestion: String(localized: "Open it again from the list."))
         case .rexNotInstalled:
             TransportErrorPresentation(
                 summary: String(localized: "Rex was not found on this Host"),

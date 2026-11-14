@@ -73,6 +73,10 @@ struct TerminalStatusPresentation: Equatable {
     static let tmuxServerGoneMessage = String(
         localized: "This Pane belongs to a tmux server that is gone. Open it again from the list.")
 
+    /// Why a Rex terminal ended when the Host's server was replaced.
+    static let rexServerGoneMessage = String(
+        localized: "This Terminal belongs to a Rex server that is gone. Open it again from the list.")
+
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,

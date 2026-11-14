@@ -4,9 +4,9 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it while this build does
-/// not connect to Rex (ADR 0047): nothing to start, close or rename, no
-/// integrations, and a standing state instead of a connection.
+/// What a Rex Host offers and how the Console shows it (ADRs 0047 and 0048):
+/// nothing to start, close or rename, no integrations, its terminals listed
+/// from the server, and none opened yet.
 @MainActor
 @Suite("Rex Console")
 struct RexConsoleTests {
@@ -64,39 +64,79 @@ struct RexConsoleTests {
         #expect(notifications.hosts.isEmpty)
     }
 
-    /// However the Console is woken, a Rex Host's projection asks nothing of
-    /// any factory: no Events session, no core, no tmux server.
-    @Test func theConsoleNeverDialsARexHost() async {
-        let dials = Mutex<[String]>([])
-        let store = ConsoleStore(
+    /// What the Console dialed, in order.
+    final class Dials: Sendable {
+        private let entries = Mutex<[String]>([])
+
+        func append(_ entry: String) { entries.withLock { $0.append(entry) } }
+        var all: [String] { entries.withLock { $0 } }
+    }
+
+    /// A Console store whose Rex Hosts dial one SSH connection per server in
+    /// `servers`, or `rexConnect` when given, and which records each Rex dial.
+    private func store(
+        offersRexHosts: Bool = true, servers: [FakeRexServer] = [], dials: Dials = Dials(),
+        rexConnect: (@Sendable (RexSocket?, RexControlLink?) async throws -> any RexTransport)? = nil
+    ) -> ConsoleStore {
+        let hosts = Mutex(servers.map { ScriptedRexHost(control: [.server($0)]) })
+        return ConsoleStore(
             snapshotRetryDelay: .milliseconds(10),
             makeSession: { _, subscriptions in
-                dials.withLock { $0.append("events") }
-                return EventsSession(
+                EventsSession(
                     subscriptions: subscriptions,
-                    connect: {
-                        dials.withLock { $0.append("events connect") }
-                        return ScriptedTransport()
-                    }, keepalive: nil)
-            },
-            connectCore: { _ in
-                dials.withLock { $0.append("core") }
-                throw TransportError.sshUnreachable(detail: "unscripted")
-            },
-            connectTmux: { _ in
-                dials.withLock { $0.append("tmux") }
-                throw TransportError.sshUnreachable(detail: "unscripted")
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") }, keepalive: nil)
             },
             makeCoreSession: { _ in
-                dials.withLock { $0.append("core session") }
-                return HerdrCoreHostSession { throw TransportError.sshUnreachable(detail: "unscripted") }
+                HerdrCoreHostSession { throw TransportError.sshUnreachable(detail: "unscripted") }
             },
             makeTmuxSession: { host in
-                dials.withLock { $0.append("tmux session") }
-                return TmuxHostSession(storedPaths: host.storedTmuxPaths) { _ in
+                TmuxHostSession(storedPaths: host.storedTmuxPaths) { _ in
                     throw TransportError.sshUnreachable(detail: "unscripted")
                 }
-            })
+            },
+            makeRexSession: { host in
+                dials.append("rex session \(host.displayName)")
+                let scripted: RexHostSession.Connect = { socket, previous in
+                    dials.append("rex connect")
+                    guard let next = hosts.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) else {
+                        throw TransportError.sshUnreachable(detail: "no more scripted connections")
+                    }
+                    return try await RexSSHTransport.connect(
+                        over: next, socket: socket, resuming: previous, options: .testing)
+                }
+                return RexHostSession(
+                    storedSocket: host.rexSocket, connect: rexConnect ?? scripted,
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)))
+            },
+            offersRexHosts: offersRexHosts)
+    }
+
+    private func waitUntil(
+        _ what: String, sourceLocation: SourceLocation = #_sourceLocation, _ condition: @MainActor () async -> Bool
+    ) async throws {
+        for _ in 0..<500 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    private func served(_ world: FakeRexWorld, count: Int = 1) async -> [FakeRexServer] {
+        var servers: [FakeRexServer] = []
+        for _ in 0..<count {
+            let server = FakeRexServer()
+            await world.install(on: server)
+            servers.append(server)
+        }
+        return servers
+    }
+
+    /// With the switch off a Rex Host is not the Console's: nothing dials it,
+    /// however the Console is woken.
+    @Test func withTheSwitchOffNothingDialsARexHost() async {
+        let dials = Dials()
+        let store = store(offersRexHosts: false, dials: dials)
         defer { store.setHosts([]) }
         let rex = rex
 
@@ -105,30 +145,121 @@ struct RexConsoleTests {
         await store.retryHost(rex.id)
         await store.retryFailedHosts()
         await store.reactivate()
-        let statuses = HeelerPluginStatusStore()
-        await statuses.refresh([rex.id], transports: store)
 
-        #expect(dials.withLock { $0 } == [])
-        #expect(store.hostStatuses[rex.id] == .failed(.rexNotConnectableYet))
-        #expect(store.agents.isEmpty)
+        #expect(dials.all == [])
+        #expect(store.hostStatuses[rex.id] == nil)
         #expect(store.terminals.isEmpty)
-        #expect(store.hostIssues(for: [rex]).map(\.condition) == [.cannotConnect])
-        #expect(statuses.status(for: rex.id) == .unsupportedServerKind)
-        await #expect(throws: TransportError.rexNotConnectableYet) {
-            try await store.remoteHomeDirectory(on: rex.id)
+    }
+
+    /// Only a Rex Host gets a Rex session; the other kinds keep their own.
+    @Test func onlyARexHostGetsARexSession() async throws {
+        let dials = Dials()
+        let store = store(dials: dials)
+        defer { store.setHosts([]) }
+        let tmux = Host(
+            name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
+
+        store.setHosts([rex, tmux])
+
+        #expect(dials.all.filter { $0.hasPrefix("rex session") } == ["rex session Rex"])
+    }
+
+    /// A Rex Host's sessions, windows and terminal blocks list as Workspaces,
+    /// Tabs and Terminals in Rex's order, its detached terminals under one Tab
+    /// after its windows, and no Agents.
+    @Test func aRexHostListsItsTerminals() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let store = store(servers: await served(world))
+        defer { store.setHosts([]) }
+        let rex = rex
+
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("the terminals with their details") {
+            store.terminals.count == 5 && store.terminals.first?.title == "make test"
         }
+
+        #expect(store.hostStatuses[rex.id] == .connected)
+        #expect(store.agents.isEmpty)
+        let terminals = store.terminals
+        #expect(
+            terminals.map(\.paneID)
+                == ["block:left", "block:right", "block:solo", "block:float", "block:detached"].map {
+                    RexPaneAddress(sessionID: "session:studio", blockID: $0).paneID
+                })
+        #expect(terminals.map(\.workspaceLabel) == Array(repeating: "studio", count: 5))
+        #expect(terminals.map(\.tabLabel) == ["editor", "editor", "", "", "Detached"])
+        #expect(terminals.map(\.tabPosition) == [1, 1, 2, 2, 3])
+        #expect(terminals.map(\.paneLabel) == ["left", nil, nil, "scratch", nil])
+        #expect(terminals.map(\.title) == ["make test", "zsh", "vim", "zsh", "tail"])
+        #expect(terminals.map(\.cwd) == ["/home/dev/app", "/home/dev", "/home/dev/app/src", "/home/dev", "/home/dev"])
+        #expect(terminals.allSatisfy { !$0.isAgent })
+        #expect(store.workspacesByHost[rex.id]?.map(\.label) == ["studio"])
+    }
+
+    /// Another server instance on the socket leaves every detail open on the
+    /// last one's terminals, as another tmux server does.
+    @Test func anotherServerLeavesOpenDetails() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let servers = await served(world, count: 2)
+        let host = ScriptedRexHost(control: servers.map { .server($0) })
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the first inventory") { console.terminals.count == 5 }
+        let pin = console.corePin(on: rex.id)
+        #expect(console.keepsDetailsToCores(on: rex.id))
+        #expect(!console.hasLeftCore(pin, on: rex.id))
+
+        world.restart(as: "instance-0002")
+        await servers[0].close(.goingAway, reason: "shutting down")
+        try await waitUntil("the new server") { console.hasLeftCore(pin, on: rex.id) }
+
+        #expect(console.terminalEndedMessage(keepingTo: pin, on: rex.id) == TerminalStatusPresentation.rexServerGoneMessage)
+        #expect(console.leftCoreError(on: rex.id) == .rexServerGone)
+        try await waitUntil("the new server's terminals") { console.terminals.count == 5 }
+    }
+
+    /// Opening a Rex terminal fails with the one reason that says this build
+    /// cannot yet, and no Retry changes that.
+    @Test func openingARexTerminalSaysThisBuildCannotYet() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let store = store(servers: await served(world))
+        defer { store.setHosts([]) }
+        let rex = rex
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("the terminals") { store.terminals.count == 5 }
+        let paneID = try #require(store.terminals.first?.paneID)
+
+        let runner = store.terminalRunner(for: rex.id)
+        await #expect(throws: TransportError.rexTerminalsNotOpenableYet) {
+            try await runner(
+                TerminalAttachRequest(target: .terminal(paneID), cols: 80, rows: 24),
+                TerminalSessionHandler { _ in })
+        }
+        let error = TransportError.rexTerminalsNotOpenableYet
+        #expect(!error.isRetryable)
+        #expect(error.presentation.summary == "Rex terminals cannot open yet")
+        #expect(error.presentation.message.contains("cannot open them yet"))
     }
 
     /// A Rex Host lists Terminals only: the Agents list, its Host filter and
     /// its issues leave it out, and the Terminals list keeps its problem.
-    @Test func onlyTheTerminalsListShowsARexHost() {
+    @Test func onlyTheTerminalsListShowsARexHost() async throws {
         let rex = rex
         let tmux = Host(
             name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
         let catalog = HostStore(volatileHosts: [rex, tmux])
-        let console = ConsoleStore()
+        let console = store(rexConnect: { _, _ in throw TransportError.rexForwardingRefused(socketPath: "/run/rex.sock") })
         defer { console.setHosts([]) }
         console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the failure") { console.hostStatuses[rex.id] == .failed(.rexForwardingRefused(socketPath: "/run/rex.sock")) }
 
         #expect(ConsoleView.listedHosts(on: .agents, in: catalog) == [tmux])
         #expect(ConsoleView.listedHosts(on: .terminals, in: catalog) == [rex, tmux])
@@ -140,13 +271,5 @@ struct RexConsoleTests {
         #expect(!issueHostIDs(on: .agents, filter: [rex.id]).contains(rex.id))
         #expect(issueHostIDs(on: .terminals).contains(rex.id))
         #expect(!issueHostIDs(on: .terminals, filter: [tmux.id]).contains(rex.id))
-    }
-
-    /// The failure says what is missing and that no retry changes it.
-    @Test func theStandingStateSaysThisBuildCannotConnectRex() {
-        let error = TransportError.rexNotConnectableYet
-        #expect(!error.isRetryable)
-        #expect(error.presentation.summary == "Rex support is not finished")
-        #expect(error.presentation.message.contains("does not connect to them yet"))
     }
 }
