@@ -116,6 +116,29 @@ struct AgentUsageWidgetRefreshTests {
             id: host.id, name: host.displayName, report: complete, readAt: Self.now))
     }
 
+    @Test func turningClaudeCodeLimitsOffHidesThemFromNewerFiguresTheWidgetKeeps() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let complete = try AgentUsageReport.decode(AgentUsageFixture.data())
+        // What the store hands on once the toggle is off: limits hidden.
+        let optedOut = try AgentUsageFixture.report(refreshing: true)
+        let shown = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: complete, readAt: Self.now)
+        let hidden = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: optedOut, readAt: Self.now)
+        #expect(shown.limits.contains { $0.program == "claude" && !$0.windows.isEmpty })
+
+        publisher.publish([Self.reading(host, .available(complete), readAt: Self.now)], now: Self.now)
+        let later = Self.now.addingTimeInterval(60)
+        publisher.publish([Self.reading(host, .available(optedOut), readAt: later)], now: later)
+
+        let kept = try #require(Self.snapshot(directory)?.host(host.id))
+        #expect(kept.readAt == Self.now, "the newer figures stay")
+        #expect(kept.programs == shown.programs)
+        #expect(kept.limits.filter { $0.program == "claude" } == hidden.limits.filter { $0.program == "claude" })
+        #expect(kept.limits.filter { $0.program != "claude" } == shown.limits.filter { $0.program != "claude" })
+        #expect(kept.limits.map(\.program).first == "claude", "Claude Code keeps its place")
+    }
+
     @Test func aStoreShowingARefreshingReportDatesItsFiguresByTheScan() async throws {
         let cached = try AgentUsageFixture.tokenReport(refreshing: true)
         let scannedAt = try #require(AgentUsageLimitsView.date(cached.scan?.coveredThrough))
