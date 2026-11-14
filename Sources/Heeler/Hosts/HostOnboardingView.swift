@@ -96,7 +96,8 @@ struct HostOnboardingView: View {
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
             noteWindowsCore: dependencies.noteWindowsCore,
-            noteTmuxPaths: dependencies.noteTmuxPaths)
+            noteTmuxPaths: dependencies.noteTmuxPaths,
+            offersRexHosts: dependencies.offersRexHosts)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -160,6 +161,9 @@ struct HostOnboardingView: View {
                 if store.host.serverKind == .tmux {
                     LabeledContent("Socket", value: store.host.tmuxSocketName)
                         .accessibilityIdentifier("hosts.detail.tmuxSocket")
+                } else if store.host.serverKind == .rex {
+                    LabeledContent("Socket", value: store.host.rexSocket?.path ?? String(localized: "Not known yet"))
+                        .accessibilityIdentifier("hosts.detail.rexSocket")
                 } else {
                     LabeledContent("Session", value: sessionLine)
                 }
@@ -327,6 +331,11 @@ struct HostOnboardingView: View {
                 if detection.tmux != .unsupported {
                     LabeledContent(ServerKind.tmux.displayName, value: detection.tmux.summary)
                         .accessibilityIdentifier("hosts.detail.detection.tmux")
+                }
+                // Only while the Rex experiment is on, and only where Rex runs.
+                if let rex = detection.rex, rex != .unsupported {
+                    LabeledContent(ServerKind.rex.displayName, value: rex.summary)
+                        .accessibilityIdentifier("hosts.detail.detection.rex")
                 }
             }
             if store.tmuxSocketChoices.count > 1 {

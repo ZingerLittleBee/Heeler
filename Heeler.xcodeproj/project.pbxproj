@@ -10,6 +10,7 @@
 		002084C5C76E26633DBB4541 /* WindowInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BB5AFD4ACED2F245B96C03E /* WindowInteractionTests.swift */; };
 		0032AB8CC6C1DFDB893E35C6 /* AgentActivityLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A62B60BB8431BE061FAA21B /* AgentActivityLinkTests.swift */; };
 		009E08E800D5353526656786 /* LiveInAnotherWindowPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126DE4AA09228412D12EE4E6 /* LiveInAnotherWindowPresentationTests.swift */; };
+		00BE6B0496AD04456FCCD5FE /* RexServerKindDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E17194D0C97AABDB6FCF13 /* RexServerKindDetectionTests.swift */; };
 		00FB65666F7C2E065D94DF2C /* StartAgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B24EF5EA39899292A1907226 /* StartAgentStore.swift */; };
 		0172061BA6A15EF4617333BC /* ScriptedTmuxHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCD4EF70CAC1312A0C87EFF /* ScriptedTmuxHost.swift */; };
 		01E46F4109A7EB36E0CAA49B /* GitProbe+Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = D248614D9139FE512F3A6B4B /* GitProbe+Command.swift */; };
@@ -673,6 +674,7 @@
 		8E236CBD551AF9130B943B01 /* HostConnectionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FDAE57C6482EB8A38B46FA /* HostConnectionDetailView.swift */; };
 		8E440AFCE2BF426ECD8E0A86 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D2BCB4E4038F510852F71C /* SecretStore.swift */; };
 		8E6D5440B7C5B97C2414FDBB /* CodexDialogParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA712E963DE3A4F9799121 /* CodexDialogParser.swift */; };
+		8EAB893B2DBBFCB230D01264 /* RexProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = BACECE9A7A61C46821C7930E /* RexProbe.swift */; };
 		8EB4F2396CC905928797A622 /* AgentName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4692E780178FDFA1CF9537B1 /* AgentName.swift */; };
 		8F91EAC7F32AA058E7F23394 /* TerminalKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */; };
 		8F9D8B11EB35747E767118CB /* TerminalTitleGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */; };
@@ -2072,6 +2074,7 @@
 		B39CBCF8D249D054DC71463E /* AgentActivityPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityPresentationTests.swift; sourceTree = "<group>"; };
 		B3A0D34CD58BD9C168178A23 /* AgentSessionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionConfig.swift; sourceTree = "<group>"; };
 		B3C07C559CE07CF1378BEEA4 /* HeelerSSHTransportBehaviorE2ETests+FilePatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+FilePatch.swift"; sourceTree = "<group>"; };
+		B3E17194D0C97AABDB6FCF13 /* RexServerKindDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexServerKindDetectionTests.swift; sourceTree = "<group>"; };
 		B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionFormCardView.swift; sourceTree = "<group>"; };
 		B444D02BD22C7F29D11C024F /* HerdrCoreStaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreStaging.swift; sourceTree = "<group>"; };
 		B49CD83D83EF72199552659A /* ChatDeliveryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDeliveryPolicyTests.swift; sourceTree = "<group>"; };
@@ -2115,6 +2118,7 @@
 		BA34B35B5CAE41E2AAC2DF75 /* ReadableColumn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadableColumn.swift; sourceTree = "<group>"; };
 		BA34D745573850A936E1ED40 /* OpenCodeSQLiteHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeSQLiteHarness.swift; sourceTree = "<group>"; };
 		BA96C6D39E47A231E6DFCB51 /* AgyInputBoxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyInputBoxDetector.swift; sourceTree = "<group>"; };
+		BACECE9A7A61C46821C7930E /* RexProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexProbe.swift; sourceTree = "<group>"; };
 		BB1F4711A688E588FEC33628 /* ChangesStoreFailureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesStoreFailureStateTests.swift; sourceTree = "<group>"; };
 		BB219C78DF3A81461CEAF062 /* TmuxInventoryLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxInventoryLoop.swift; sourceTree = "<group>"; };
 		BB47B059A9FC5B8A63C834F2 /* AttachmentStaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentStaging.swift; sourceTree = "<group>"; };
@@ -2863,6 +2867,7 @@
 				1687276C209247FF9FC1534A /* RequestFailurePresentationTests.swift */,
 				5CAEF7E8607F4C42AC0E11B8 /* RexConsoleTests.swift */,
 				909CC5C1882B9EF51B4E7474 /* RexHostCatalogTests.swift */,
+				B3E17194D0C97AABDB6FCF13 /* RexServerKindDetectionTests.swift */,
 				CD413D0F840B6DB3ADE2062F /* ServerKindDetectionTests.swift */,
 				EE6396B0C21407D52FE3BF5B /* SettingsLocalizationTests.swift */,
 				13F076778BEA3359D447E78D /* SettingsViewTests.swift */,
@@ -3650,6 +3655,7 @@
 		86086CB16CA17C5953522A9A /* Rex */ = {
 			isa = PBXGroup;
 			children = (
+				BACECE9A7A61C46821C7930E /* RexProbe.swift */,
 				233731B002AD94988D08DA9D /* RexSocket.swift */,
 			);
 			path = Rex;
@@ -4872,6 +4878,7 @@
 				4CB81788CD628171F46111D3 /* RenameStore.swift in Sources */,
 				137E72767F36BD5D18022665 /* RexConsoleProjection.swift in Sources */,
 				47332751793F6FF613C83A0F /* RexHostsExperiment.swift in Sources */,
+				8EAB893B2DBBFCB230D01264 /* RexProbe.swift in Sources */,
 				444D8B34AB6DC6104559D0F7 /* RexSocket.swift in Sources */,
 				D6789E8127CB274D0858800A /* RouteRace.swift in Sources */,
 				4B995E2ED3260FCC86175FF4 /* SSHChannelAdmission.swift in Sources */,
@@ -5422,6 +5429,7 @@
 				4F112D78DCF2B9F86BB7C966 /* RequestFailurePresentationTests.swift in Sources */,
 				77CC6E10EFEB2BA7F8DCB360 /* RexConsoleTests.swift in Sources */,
 				4DA3A68B47737E76FFA2465A /* RexHostCatalogTests.swift in Sources */,
+				00BE6B0496AD04456FCCD5FE /* RexServerKindDetectionTests.swift in Sources */,
 				BA5D3FE58111F8918A50DE2A /* SSHChannelAdmissionTests.swift in Sources */,
 				2E612B94231EF97A285C83D5 /* SSHSourcePolicyTests.swift in Sources */,
 				688D8BEEA2333244C8F252B9 /* ScreenFixture.swift in Sources */,

@@ -46,6 +46,8 @@ struct HostOnboardingDependencies: Sendable {
     var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     /// A tmux Host's checks resolved its paths again, for the catalog to keep.
     var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
+    /// Whether detection looks for Rex and may offer it (ADR 0047).
+    var offersRexHosts = RexHostsExperiment.isEnabled
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -132,6 +134,9 @@ final class HostOnboardingStore {
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
     @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
+    /// `RexHostsExperiment`'s switch: off, detection neither looks for Rex nor
+    /// offers it.
+    @ObservationIgnored private let offersRexHosts: Bool
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -153,8 +158,10 @@ final class HostOnboardingStore {
         },
         harnessEdits: HarnessConfigEditStore? = nil,
         noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in },
-        noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in }
+        noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in },
+        offersRexHosts: Bool = RexHostsExperiment.isEnabled
     ) {
+        self.offersRexHosts = offersRexHosts
         self.noteWindowsCore = noteWindowsCore
         self.noteTmuxPaths = noteTmuxPaths
         tmuxSocket = TmuxSocketName.normalized(host.sessionName)
@@ -293,8 +300,7 @@ final class HostOnboardingStore {
             await performTmuxChecks(settings: settings)
             return
         case .rex:
-            pluginStatus = .unsupportedServerKind
-            report = .failure(.rexNotConnectableYet, authMethod: host.authMethod)
+            await performRexChecks(settings: settings)
             return
         case .herdrTUI:
             break
@@ -456,6 +462,66 @@ final class HostOnboardingStore {
         }
     }
 
+    /// A Rex Host's checks look for its socket again, over a connection of their
+    /// own, and ask nothing of the server, which this build does not connect to
+    /// yet (ADR 0047). They never run `rex` or start a server.
+    private func performRexChecks(settings: SSHTransportSettings) async {
+        pluginStatus = .unsupportedServerKind
+        do {
+            let connection = try await connector.connectForDetection(settings: settings)
+            guard !Task.isCancelled else {
+                try? await connection.close()
+                return
+            }
+            let outcome: Result<ServerKindDetection.RexFinding, any Error>
+            do {
+                outcome = .success(try await RexProbe.run(over: connection))
+            } catch {
+                outcome = .failure(error)
+            }
+            try? await connection.close()
+            guard !Task.isCancelled else { return }
+            switch outcome {
+            case .success(let finding): report = Self.rexReport(finding)
+            case .failure(let error): report = failureReport(error)
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// What a Rex Host's checklist says of the probe: installed, then a socket
+    /// this account may connect to. Heeler never starts the server, so a hint
+    /// says how to.
+    static func rexReport(_ finding: ServerKindDetection.RexFinding) -> PreflightReport {
+        switch finding {
+        case .socketFound:
+            .allPassed
+        case .unsupported:
+            .failure(
+                check: .herdrInstalled,
+                hint: String(localized: "Heeler finds Rex on macOS and Linux Hosts only."))
+        case .unreadable:
+            .failure(
+                check: .herdrInstalled,
+                hint: String(localized: "Heeler could not read whether Rex is on this Host. Check again."))
+        case .notInstalled:
+            .failure(
+                check: .herdrInstalled,
+                hint: String(localized: "Rex was not found on this Host. Install Rex and start it, then check again."))
+        case .notRunning:
+            .failure(
+                check: .serverRunning,
+                hint: String(localized: "Rex is installed, but no server socket was found. Start Rex on this Host, then check again. Heeler does not start it."))
+        case .notUsable(let path):
+            .failure(
+                check: .serverRunning,
+                hint: String(localized: "A Rex server socket is at \(path), but this account cannot connect to it."))
+        }
+    }
+
     /// The Helper's actions dial for themselves, after the preflight settled the
     /// Host key: a key that still needs trusting is declined.
     private func makeHostHelper() -> HostHelperStore {
@@ -506,7 +572,8 @@ final class HostOnboardingStore {
                 return
             }
             do {
-                let found = try await ServerKindDetection.run(over: connection, session: host.sessionName)
+                let found = try await ServerKindDetection.run(
+                    over: connection, session: host.sessionName, findsRex: offersRexHosts)
                 if !Task.isCancelled {
                     detection = found
                     tmuxSocket = found.preselectedTmuxSocket(typed: host.sessionName)
@@ -588,19 +655,29 @@ final class HostOnboardingStore {
         if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
         do {
             // A tmux Host takes the socket chosen here, and the paths this
-            // detection's login shell resolved for it (ADR 0044).
+            // detection's login shell resolved for it (ADR 0044). A Rex Host takes
+            // the socket this detection found (ADR 0047).
             host =
-                kind == .tmux
-                ? try catalog.confirmServerKind(
-                    kind, for: host.id, sessionName: tmuxSocket,
-                    tmuxPaths: detection?.tmuxPaths(socketName: tmuxSocket))
-                : try catalog.confirmServerKind(kind, for: host.id)
+                switch kind {
+                case .tmux:
+                    try catalog.confirmServerKind(
+                        kind, for: host.id, sessionName: tmuxSocket,
+                        tmuxPaths: detection?.tmuxPaths(socketName: tmuxSocket))
+                case .rex:
+                    try catalog.confirmServerKind(kind, for: host.id, rexSocket: detection?.rexSocket)
+                case .herdrTUI, .herdrCore, .unconfirmed:
+                    try catalog.confirmServerKind(kind, for: host.id)
+                }
         } catch HostStoreError.sessionNameRefused(let reason) {
             confirmationRefusal = reason
             return
         } catch HostStoreError.catalogUnreadable where kind == .tmux && catalog.tmuxCatalogLoadError != nil {
             confirmationRefusal =
                 String(localized: "The saved tmux Hosts could not be read, so no tmux Host can be added.")
+            return
+        } catch HostStoreError.catalogUnreadable where kind == .rex {
+            confirmationRefusal =
+                String(localized: "The saved Rex Hosts could not be read, so no Rex Host can be added.")
             return
         } catch HostStoreError.catalogUnreadable where catalog.coreCatalogLoadError != nil {
             confirmationRefusal =
