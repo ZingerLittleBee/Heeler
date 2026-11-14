@@ -32,6 +32,8 @@ struct AgentChatSource: Sendable {
     var coreScope: String?
     /// Listing and confirming candidates, where a check can find nothing (ADR 0034).
     var picks: ChatPickIO?
+    /// Notifies listeners when an Antigravity CLI chat binds or resolves its root conversation.
+    var onAgyConversationBound: (@MainActor @Sendable (_ root: String?, _ rootID: String?) -> Void)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -1240,13 +1242,26 @@ final class AgentChatStore {
                 movedSinceDraft = true
                 draftAtMove = composerDraft
             }
+            if program == .agy {
+                source.onAgyConversationBound?(
+                    evidenceRoot ?? transcriptRoot,
+                    agyRootSessionID ?? followed?.sessionID ?? sessionID)
+            }
         case .picked(let sessionID, let transcriptRoot):
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
+            if program == .agy {
+                source.onAgyConversationBound?(
+                    evidenceRoot ?? transcriptRoot,
+                    agyRootSessionID ?? followed?.sessionID ?? sessionID)
+            }
         case .unavailable(let reason):
             let leavesPick = followsPick
             forgetPick()
             evidenceReason = reason
+            if program == .agy {
+                source.onAgyConversationBound?(nil, nil)
+            }
             if leavesPick {
                 leavePickedConversation()
             } else {
@@ -1254,12 +1269,18 @@ final class AgentChatStore {
             }
         case .pickUnconfirmed(let reason):
             evidenceReason = reason
+            if program == .agy {
+                source.onAgyConversationBound?(nil, nil)
+            }
             awaitSession(reason)
         case .launching:
             // As before the first check, it stays looking.
             let leavesPick = followsPick
             forgetPick()
             evidenceReason = nil
+            if program == .agy {
+                source.onAgyConversationBound?(nil, nil)
+            }
             if leavesPick {
                 leavePickedConversation()
             } else if resolution != .noSession {
@@ -1405,7 +1426,7 @@ final class AgentChatStore {
             refreshBackgroundWork()
             return
         }
-        if !replacingAgent, program == .agy, agyRootSessionID != nil,
+        if !replacingAgent, source.sessionEvidence == nil, program == .agy, agyRootSessionID != nil,
             case .bound(let reference) = next, reference.program == .agy
         {
             if showsAwaitingReason {
@@ -1962,6 +1983,9 @@ final class AgentChatStore {
             if let followedID = followed?.sessionID { agySessionFamily.insert(followedID) }
             if case .bound(let reported) = resolution, reported.program == .agy {
                 agySessionFamily.insert(reported.sessionID)
+            }
+            if !next.isFromCache {
+                source.onAgyConversationBound?(AgyTranscriptLocator.root(ofTranscript: path), rootID)
             }
         }
         if case .following = next.phase, !waitingOutputs.isEmpty {

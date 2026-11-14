@@ -226,6 +226,11 @@ final class ConsoleStore {
     @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
+    @ObservationIgnored private lazy var agyTitles = AgyAnnotationTitleStore(
+        retryDelay: chatPrefetchRetryDelay
+    ) { [weak self] in
+        self?.rebuild()
+    }
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
@@ -340,6 +345,7 @@ final class ConsoleStore {
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
             pluginStatuses.invalidate(id)
+            agyTitles.invalidateHost(id)
             agentUsageStores.removeValue(forKey: id)?.invalidate()
             widgetUsageRefreshes.removeValue(forKey: id)?.task.cancel()
             terminalSnapshotRevisions[id] = nil
@@ -386,6 +392,8 @@ final class ConsoleStore {
             for projection in projections {
                 await projection.resume()
             }
+            agyTitles.bumpRefreshEpoch()
+            reconcileAgyAnnotationTitles()
             guard revalidating else {
                 // A core Host with no connection never reports coming up.
                 refreshStaleWidgetUsage()
@@ -427,6 +435,7 @@ final class ConsoleStore {
             }
             await terminalConnections.suspend()
             await agentTerminals.suspend()
+            agyTitles.suspendAll()
             sidebarSnapshots.invalidateAll()
             rebuild()
             for projection in projections.values {
@@ -626,6 +635,7 @@ final class ConsoleStore {
             rebuildCapabilities()
         }
         reconcileChatCache()
+        reconcileAgyAnnotationTitles()
     }
 
     func availableAgentKinds(on hostID: Host.ID) async throws -> [SupportedAgentKind] {
@@ -958,6 +968,18 @@ final class ConsoleStore {
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = core.sessionEventRevision(of: paneID)
         }
+        if program == .agy {
+            source.onAgyConversationBound = { [weak self] root, rootID in
+                guard let self, let projection = self.projections[hostID],
+                    let current = projection.agentsByPane[paneID] ?? projection.departedAgentsByPane[paneID]
+                else { return }
+                self.agyTitles.noteChatBinding(
+                    for: agent.id, agent: current.agent,
+                    generation: projection.transportGeneration,
+                    root: root, rootID: rootID)
+                self.reconcileAgyAnnotationTitles()
+            }
+        }
         let store = AgentChatStore(
             agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
         if !isActive { store.suspend() }
@@ -1054,14 +1076,18 @@ final class ConsoleStore {
         let fresh = try await origin.agentInfo(paneID: paneID)
         guard projections[hostID] === origin, origin.transportGeneration == generation,
             !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
+        let enriched = await readAgyTitleForRename(
+            fresh: fresh, paneID: paneID, hostID: hostID, generation: generation)
+        guard projections[hostID] === origin, origin.transportGeneration == generation,
+            !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
         if hostPlatforms[hostID] == .posix, let snapshot,
             origin.agentsByPane[paneID]?.agent.agentSession == snapshot.agent.agentSession,
             origin.agentsByPane[paneID]?.agent.terminalID == snapshot.agent.terminalID,
             origin.agentsByPane[paneID]?.agent.workspaceID == snapshot.agent.workspaceID,
             origin.agentsByPane[paneID]?.agent.tabID == snapshot.agent.tabID {
-            cachedChats.confirm(fresh, for: snapshot, on: origin.host)
+            cachedChats.confirm(enriched, for: snapshot, on: origin.host)
         }
-        return fresh
+        return enriched
     }
 
     /// A latest-value view of the existing `pane.agent_status_changed`
@@ -1091,6 +1117,8 @@ final class ConsoleStore {
 
     func refreshTerminalInventory(on hostID: Host.ID) async {
         await projections[hostID]?.refreshTerminalInventory()
+        agyTitles.bumpRefreshEpoch(for: hostID)
+        reconcileAgyAnnotationTitles()
     }
 
     func createShellTerminal(
@@ -1426,18 +1454,45 @@ final class ConsoleStore {
             }
             return current
         }
-        return AgentTitleRenameStore(agent: agent.agent, program: program, io: AgentTitleRenameIO(
-            agent: { try await connection().agentInfo(paneID: agent.agent.paneID) },
-            screen: { try await connection().readAgentScreen(agent.agent.paneID) },
-            prompt: { text in
-                _ = try await connection().promptAgent(AgentPromptParams(
-                    target: agent.agent.paneID, text: text))
-            },
-            keys: { try await connection().sendAgentKeys($0, to: agent.agent.paneID) },
-            paste: { try await connection().pasteIntoAgent($0, paneID: agent.agent.paneID) },
-            refresh: { await origin.refreshSidebarMetadata() },
-            acquire: { self.titleRenamesInFlight.insert(agent.id).inserted },
-            release: { self.titleRenamesInFlight.remove(agent.id) }))
+        var seeded = agyTitles.applying(to: agent).agent
+        if agyTitles.isKnownUntitled(for: agent) {
+            seeded = seeded.clearingUntrackedConversationTitle()
+        }
+        return AgentTitleRenameStore(
+            agent: seeded, program: program,
+            io: AgentTitleRenameIO(
+                agent: { [weak self] in
+                    guard let self else { throw TransportError.cancelled }
+                    let current = try connection()
+                    let fresh = try await current.agentInfo(paneID: agent.agent.paneID)
+                    return await self.readAgyTitleForRename(
+                        fresh: fresh, paneID: agent.agent.paneID,
+                        hostID: agent.hostID, generation: generation)
+                },
+                screen: { try await connection().readAgentScreen(agent.agent.paneID) },
+                prompt: { text in
+                    _ = try await connection().promptAgent(AgentPromptParams(
+                        target: agent.agent.paneID, text: text))
+                },
+                keys: { try await connection().sendAgentKeys($0, to: agent.agent.paneID) },
+                paste: { try await connection().pasteIntoAgent($0, paneID: agent.agent.paneID) },
+                refresh: { [weak self] in
+                    self?.agyTitles.bumpRefreshEpoch(for: agent.hostID)
+                    self?.reconcileAgyAnnotationTitles()
+                    await origin.refreshSidebarMetadata()
+                },
+                initialTitle: program == .agy ? { [weak self] in
+                    guard let self, let current = try? connection() else { return nil }
+                    guard let fresh = try? await current.agentInfo(paneID: agent.agent.paneID) else {
+                        return nil
+                    }
+                    let updated = await self.readAgyTitleForRename(
+                        fresh: fresh, paneID: agent.agent.paneID,
+                        hostID: agent.hostID, generation: generation)
+                    return AgentTitleNaming.title(of: updated, program: .agy)
+                } : nil,
+                acquire: { self.titleRenamesInFlight.insert(agent.id).inserted },
+                release: { self.titleRenamesInFlight.remove(agent.id) }))
     }
 
     func renameAgent(
@@ -1644,12 +1699,14 @@ final class ConsoleStore {
         if terminals != nextTerminals { terminals = nextTerminals }
         // Ahead of the Agents: a detail must never find its Agent in neither.
         let nextDeparted = current.flatMap { $0.departedAgentsByPane.values }
+            .map { agyTitles.applying(to: $0) }
             .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
         if departedAgents != nextDeparted { departedAgents = nextDeparted }
         rebuildAgentOrder()
         publishAgentStatuses()
         publishChatAgents()
         reconcileChatCache()
+        reconcileAgyAnnotationTitles()
         // A reconnecting Host's empty projection is not proof its Agents
         // exited, so their row totals stay until its snapshot says so.
         let liveAgents = Set(agents.map(\.id))
@@ -1762,6 +1819,8 @@ final class ConsoleStore {
                 group.addTask { await projection.refreshSidebarMetadata() }
             }
         }
+        agyTitles.bumpRefreshEpoch()
+        reconcileAgyAnnotationTitles()
         await sidebarSnapshots.refresh(transports: self) { [weak self] in
             self?.rebuildAgentOrder()
         }
@@ -1948,6 +2007,7 @@ final class ConsoleStore {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
+            .map { agyTitles.applying(to: $0) }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
         let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
@@ -2078,7 +2138,7 @@ final class ConsoleStore {
                 isRecovering = false
             }
             if isRecovering, let previous = projection.lastKnownAgentsByPane[id.paneID] {
-                return previous
+                return agyTitles.applying(to: previous)
             }
         }
         return chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }
@@ -2279,6 +2339,66 @@ final class ConsoleStore {
         try await projection(for: hostID).withHostServices { $0 }
     }
 
+    private func reconcileAgyAnnotationTitles() {
+        agyTitles.reconcile(
+            projections: projections,
+            isActive: isActive,
+            hostPlatforms: hostPlatforms,
+            offersAgyChat: { [weak self] hostID in
+                self?.capabilities(for: hostID).offersChat(for: .agy) == true
+            },
+            files: { [weak self] hostID in
+                guard let self else {
+                    return ChatHostFiles(
+                        status: { _ in throw TransportError.cancelled },
+                        list: { _ in throw TransportError.cancelled },
+                        read: { _ in throw TransportError.cancelled },
+                        home: { throw TransportError.cancelled })
+                }
+                return self.chatHostFiles(for: hostID)
+            },
+            isProjectionCurrent: { [weak self] hostID, expected, generation in
+                guard let self else { return false }
+                return self.isActive
+                    && self.projections[hostID] === expected
+                    && expected.status == .connected
+                    && !expected.isAwaitingSnapshot
+                    && expected.transportGeneration == generation
+            },
+            onReconcileNeeded: { [weak self] in
+                self?.reconcileAgyAnnotationTitles()
+            })
+    }
+
+    private func readAgyTitleForRename(
+        fresh: Agent, paneID: String, hostID: Host.ID, generation: UInt64
+    ) async -> Agent {
+        guard fresh.kind == ChatProgram.agy.rawValue,
+            capabilities(for: hostID).offersChat(for: .agy),
+            hostPlatforms[hostID] == .posix
+        else { return fresh }
+        let files = chatHostFiles(for: hostID)
+        do {
+            let outcome = try await agyTitles.readLive(
+                for: fresh, paneID: paneID, hostID: hostID, generation: generation, files: files,
+                isCurrent: { [weak self] in
+                    guard let self, let projection = self.projections[hostID] else { return false }
+                    return projection.transportGeneration == generation
+                        && !projection.isAwaitingSnapshot
+                })
+            switch outcome {
+            case .titled(_, _, let title):
+                return fresh.applyingConversationTitle(title)
+            case .untitled:
+                return fresh.clearingUntrackedConversationTitle()
+            case .unresolved:
+                return fresh
+            }
+        } catch {
+            return fresh
+        }
+    }
+
     private func grokBuildEdit(on hostID: Host.ID, process: Int?) async throws -> HarnessConfigEdit {
         guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
             throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
@@ -2381,7 +2501,9 @@ final class ConsoleStore {
                 chatCacheValidatedGenerations[host.id] = projection.transportGeneration
                 cachedChats.revalidate(on: host)
             }
-            cachedChats.observe(Array(projection.agentsByPane.values), on: host)
+            cachedChats.observe(
+                projection.agentsByPane.values.map { agyTitles.applying(to: $0) },
+                on: host)
             guard chatPrefetchTasks[host.id] == nil else { continue }
             let generation = projection.transportGeneration
             let candidates = projection.agentsByPane.values.filter { agent in
