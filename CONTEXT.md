@@ -11,14 +11,25 @@ _Avoid_: server, machine, connection
 **Server Kind**:
 Which server a Host's Agents live in: Herdr TUI (the original herdr server),
 herdr-core (the vendor's headless terminal runtime, `hc`), or a tmux server.
-They share no Agents. A herdr-core Host whose core also serves the Herdr desktop
-app is still herdr-core; the app's organization is data the Host carries, not
-another kind. Adding a Host by hand saves it unconfirmed, a stored state no
-connection, Agent or notification reaches. Its Host detail detects the kinds
-and the user confirms one, once; a Pairing Code always adds a confirmed Herdr
-TUI Host, so a tmux Host is always added by hand. The Host keeps it: neither a
-connection nor an edit switches a Host to another kind (ADR 0031).
+Rex is a fourth, experimental kind that only builds with its switch on offer
+(ADR 0047). They share no Agents. A herdr-core Host whose core also serves the
+Herdr desktop app is still herdr-core; the app's organization is data the Host
+carries, not another kind. Adding a Host by hand saves it unconfirmed, a stored
+state no connection, Agent or notification reaches. Its Host detail detects the
+kinds and the user confirms one, once; a Pairing Code always adds a confirmed
+Herdr TUI Host, so a tmux or Rex Host is always added by hand. The Host keeps
+it: neither a connection nor an edit switches a Host to another kind (ADR 0031).
 _Avoid_: backend, server type, flavor
+
+**Rex Host**:
+A Host whose Server Kind is Rex: one Rex server on macOS or Linux that is
+already running, found by the Unix socket it listens on and stored with that
+socket's path. Heeler never starts the server and never runs the `rex`
+command-line tool to find it. It lists Terminals only: no Agent status, Chat,
+Composer, notifications, Live Activities or Usage. Experimental, behind a
+switch that is off by default; with it off, stored Rex Hosts stay saved and
+unlisted (ADR 0047).
+_Avoid_: Rex session (for the Host), Rex app (for the server)
 
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
