@@ -147,6 +147,18 @@ struct ChatRow: Identifiable, Sendable {
         }
     }
 
+    /// Whether the row is a message or command the user sent.
+    var isUserMessage: Bool {
+        switch content {
+        case .user, .pending:
+            true
+        case .notice(let notice):
+            notice.userCommandText != nil
+        default:
+            false
+        }
+    }
+
     var imagePath: String? {
         guard case .tool(let tool) = content else { return nil }
         return tool.imagePath
