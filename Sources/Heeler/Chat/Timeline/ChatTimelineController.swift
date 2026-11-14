@@ -21,6 +21,8 @@ struct ChatTimelineActions {
     var thumbnails: ChatImageThumbnails?
     /// An open trajectory intersects the reading viewport.
     var collapseAvailabilityChanged: @MainActor (Bool) -> Void = { _ in }
+    /// An earlier user message lies above the reading viewport.
+    var previousMessageAvailabilityChanged: @MainActor (Bool) -> Void = { _ in }
 }
 
 /// Hands a row's interactions back to the controller that owns the list.
@@ -113,10 +115,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private var disclosureAnchor: ChatRowID?
     private var reportedFollowing = true
     private var reportedCanCollapse = false
+    private var reportedCanJumpPrevious = false
+    /// User-message row an animated single-step jump is heading to; nil once
+    /// the jump settles or anything else moves the list.
+    private var activeMessageJumpTarget: ChatRowID?
     /// The floating Collapse Steps button's height above the list's bottom
     /// edge, and how much of it the bottom inset keeps clear right now.
     private var collapseControlClearance: CGFloat = 0
     private var collapseControlReserve: CGFloat = 0
+    /// The floating Earlier Message button's height at the end of the list,
+    /// and how much of it the bottom inset keeps clear right now.
+    private var jumpControlClearance: CGFloat = 0
+    private var jumpControlReserve: CGFloat = 0
     /// Where the chrome floating over the list's bottom edge begins, in
     /// window coordinates, and how much of the list it covers.
     private var bottomEdge: CGFloat?
@@ -133,6 +143,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// next layout pass, which knows the end, moves it clear.
     private var wantsEndClearOfCollapseControl = false
     private var isJumpAnimating = false
+    private var isTopJumpAnimating = false
     private var hasReportedFirstLayout = false
     /// The older-history state the last automatic request was made in, so
     /// one short list asks once.
@@ -166,6 +177,16 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     var timeline: ChatCollectionView { collectionView }
     var geometry: ChatTimelineGeometry { layout.geometry }
     var canCollapseTrajectory: Bool { collapseTarget != nil }
+    var canJumpToPreviousUserMessage: Bool {
+        if isTopJumpAnimating { return false }
+        if isJumpAnimating || latch.isFollowing {
+            return offersPreviousMessageAtEnd
+        }
+        if let activeID = activeMessageJumpTarget, let activeOffset = destinationOffset(for: activeID) {
+            return activeOffset > collectionView.minOffsetY + 1
+        }
+        return collectionView.contentOffset.y > collectionView.minOffsetY + 1
+    }
 
     /// Where a row's cell sits in the content, for tests; nil off screen.
     func cellFrame(of id: ChatRowID) -> CGRect? {
@@ -288,6 +309,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         liftEndClearOfCollapseControl()
         requestOlderIfShort()
         noteCollapseAvailability()
+        notePreviousMessageAvailability()
     }
 
     private var rowActions: ChatRowActions {
@@ -346,22 +368,34 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             isPullArmed = false
             olderPull.phase = .idle
             disclosureAnchor = nil
+            isJumpAnimating = false
+            isTopJumpAnimating = false
+            activeMessageJumpTarget = nil
             latch.reset()
             noteFollowing()
             let snapshot = projectedSnapshot()
             UIView.performWithoutAnimation {
                 PerfTrace.span("chat.apply.reload") { dataSource.applySnapshotUsingReloadData(snapshot) }
                 PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                if reserveJumpControlRoom() {
+                    PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                }
                 pinToEnd()
             }
             forgetMeasurements()
             reportFirstLayoutIfReady()
             requestOlderIfShort()
             noteCollapseAvailability()
+            notePreviousMessageAvailability()
             return
         }
 
         let anchor = captureAnchor()
+        if activeMessageJumpTarget != nil || isTopJumpAnimating {
+            activeMessageJumpTarget = nil
+            isTopJumpAnimating = false
+            collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+        }
         expanded.formIntersection(allRows.keys)
         expandedFiles = expandedFiles.filter { allRows[$0.key] != nil }
         disclosures = disclosures.filter { allRows[$0.key] != nil }
@@ -401,6 +435,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             // everything under it, so the row goes back once they have.
             PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
             restore(anchor)
+            if reserveJumpControlRoom(), latch.isFollowing, !isJumpAnimating {
+                PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                pinToEnd()
+            }
             if scrolledWhileUpdatingRows {
                 scrolledWhileUpdatingRows = false
                 scrollViewDidScroll(collectionView)
@@ -417,6 +455,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         reportFirstLayoutIfReady()
         requestOlderIfShort()
         noteCollapseAvailability()
+        notePreviousMessageAvailability()
     }
 
     /// Whether `state`'s Load Earlier row offers a request rather than
@@ -476,6 +515,9 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         if let id = disclosureAnchor, rowsByID[id] == nil {
             disclosureAnchor = owners[id]
+        }
+        if let id = activeMessageJumpTarget, rowsByID[id] == nil {
+            activeMessageJumpTarget = owners[id]
         }
         var snapshot = NSDiffableDataSourceSnapshot<Int, ChatRowID>()
         snapshot.appendSections([0])
@@ -598,6 +640,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         reserveCollapseControlRoom()
     }
 
+    /// Keeps `height` at the bottom clear of rows while Earlier Message
+    /// shows at the end of the list, so the button never covers the newest row.
+    func setJumpControlClearance(_ height: CGFloat) {
+        loadViewIfNeeded()
+        guard jumpControlClearance != height else { return }
+        jumpControlClearance = height
+        reserveJumpControlRoom()
+    }
+
     /// Keeps `width` at the trailing edge clear of rows, for chrome that
     /// floats over it, such as the Workspace terminals handle.
     func setTrailingReserve(_ width: CGFloat) {
@@ -605,6 +656,17 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard layout.trailingReserve != width else { return }
         layout.trailingReserve = width
         collectionView.setNeedsLayout()
+    }
+
+    private var bottomControlReserve: CGFloat {
+        max(collapseControlReserve, jumpControlReserve)
+    }
+
+    private var unreservedMaxOffsetY: CGFloat {
+        let view = collectionView
+        return max(
+            view.minOffsetY,
+            view.contentSize.height + view.adjustedContentInset.bottom - bottomControlReserve - view.bounds.height)
     }
 
     private func reserveCollapseControlRoom() {
@@ -618,8 +680,19 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         collectionView.setNeedsLayout()
     }
 
+    @discardableResult
+    private func reserveJumpControlRoom() -> Bool {
+        let reserve = offersPreviousMessageAtEnd ? jumpControlClearance : 0
+        guard jumpControlReserve != reserve else { return false }
+        jumpControlReserve = reserve
+        applyBottomInset()
+        layout.invalidateLayout()
+        collectionView.setNeedsLayout()
+        return true
+    }
+
     private func applyBottomInset() {
-        collectionView.contentInset.bottom = Self.contentInsets.bottom + bottomObstruction + collapseControlReserve
+        collectionView.contentInset.bottom = Self.contentInsets.bottom + bottomObstruction + bottomControlReserve
         collectionView.verticalScrollIndicatorInsets.bottom = bottomObstruction
         // Room given back leaves no blank space past the end at rest.
         if !collectionView.isTracking, !collectionView.isDecelerating,
@@ -659,6 +732,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Back to the newest row and following, as after a send. Waits for the
     /// layout the send's inset changes cause before pinning.
     func followLatest() {
+        cancelProgrammaticJump()
         disclosureAnchor = nil
         latch.reset()
         noteFollowing()
@@ -674,9 +748,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         // room, so making or giving it back never changes the answer; away
         // from the end it starts at the top edge.
         let view = collectionView
-        let unreservedEnd = max(
-            view.minOffsetY,
-            view.contentSize.height + view.adjustedContentInset.bottom - collapseControlReserve - view.bounds.height)
+        let unreservedEnd = unreservedMaxOffsetY
         let top = min(view.contentOffset.y, unreservedEnd) + view.adjustedContentInset.top
         for index in layout.geometry.indices(from: top, to: visibleBottom) {
             guard let id = layout.id(at: index), let scope = trajectoryByRow[id] else { continue }
@@ -731,7 +803,240 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         // Restore clamps to the natural end when little content follows.
         // Never add trailing space just to pin a collapsed header at the top.
         noteCollapseAvailability()
+        notePreviousMessageAvailability()
         if let index = layout.index(of: anchorID),
+            let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+        {
+            UIAccessibility.post(notification: .layoutChanged, argument: cell)
+        }
+    }
+
+    private struct MessageJumpTarget: Equatable {
+        let id: ChatRowID
+        let contentOffsetY: CGFloat
+    }
+
+    /// Keeps the same `contentInsets.top` gap above a jumped-to bubble that
+    /// the first row has at `minOffsetY`, hiding the row above behind the
+    /// top chrome instead of leaving its bottom edge in view.
+    private func messageAnchorOffset(for row: ChatRow) -> CGFloat {
+        -max(0, row.topSpacing - Self.contentInsets.top)
+    }
+
+    private func destinationOffset(for id: ChatRowID, maxOffsetY: CGFloat? = nil) -> CGFloat? {
+        guard let index = layout.index(of: id), let row = rowsByID[id] else { return nil }
+        let visibleTop = layout.geometry.minY(at: index) - messageAnchorOffset(for: row)
+        let raw = visibleTop - collectionView.adjustedContentInset.top
+        let end = maxOffsetY ?? collectionView.maxOffsetY
+        return min(max(raw, collectionView.minOffsetY), end)
+    }
+
+    private var offersPreviousMessageAtEnd: Bool {
+        unreservedMaxOffsetY > collectionView.minOffsetY + 1
+    }
+
+    private func cancelProgrammaticJump() {
+        let hadJump = isJumpAnimating || isTopJumpAnimating || activeMessageJumpTarget != nil
+        isJumpAnimating = false
+        isTopJumpAnimating = false
+        activeMessageJumpTarget = nil
+        if hadJump {
+            collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+        }
+    }
+
+    private var previousUserMessageTarget: MessageJumpTarget? {
+        if isTopJumpAnimating { return nil }
+        if isJumpAnimating {
+            let end = collectionView.maxOffsetY
+            return previousUserMessageTarget(at: end, maxOffsetY: end)
+        }
+        if let activeID = activeMessageJumpTarget,
+            let activeIndex = layout.index(of: activeID),
+            let activeOffset = destinationOffset(for: activeID)
+        {
+            return previousUserMessageTarget(
+                at: activeOffset, maxOffsetY: collectionView.maxOffsetY, before: activeIndex)
+        }
+        let current = min(collectionView.contentOffset.y, collectionView.maxOffsetY)
+        return previousUserMessageTarget(at: current, maxOffsetY: collectionView.maxOffsetY)
+    }
+
+    private func previousUserMessageTarget(
+        at referenceOffset: CGFloat, maxOffsetY: CGFloat, before limit: Int? = nil
+    ) -> MessageJumpTarget? {
+        let view = collectionView
+        let referenceVisibleTop = referenceOffset + view.adjustedContentInset.top
+        let geometricUpper = layout.geometry.indices(from: referenceVisibleTop, to: referenceVisibleTop).upperBound
+        let upper = min(limit ?? geometricUpper, geometricUpper)
+        guard upper > 0 else { return nil }
+        for index in stride(from: upper - 1, through: 0, by: -1) {
+            guard let id = layout.id(at: index), let row = rowsByID[id], row.isUserMessage else { continue }
+            let top = layout.geometry.minY(at: index) - messageAnchorOffset(for: row)
+            guard top < referenceVisibleTop - 1 else { continue }
+            let clamped = min(max(top - view.adjustedContentInset.top, view.minOffsetY), maxOffsetY)
+            if clamped < referenceOffset - 1 {
+                return MessageJumpTarget(id: id, contentOffsetY: clamped)
+            }
+        }
+        return nil
+    }
+
+    private var nextUserMessageTarget: MessageJumpTarget? {
+        if isJumpAnimating { return nil }
+        if isTopJumpAnimating {
+            return nextUserMessageTarget(at: collectionView.minOffsetY, from: 0)
+        }
+        if let activeID = activeMessageJumpTarget,
+            let activeIndex = layout.index(of: activeID),
+            let activeOffset = destinationOffset(for: activeID)
+        {
+            return nextUserMessageTarget(at: activeOffset, from: activeIndex + 1)
+        }
+        let current = min(collectionView.contentOffset.y, collectionView.maxOffsetY)
+        return nextUserMessageTarget(at: current, from: 0)
+    }
+
+    private func nextUserMessageTarget(at referenceOffset: CGFloat, from startIndex: Int) -> MessageJumpTarget? {
+        let view = collectionView
+        let count = layout.geometry.count
+        guard startIndex < count else { return nil }
+        let referenceVisibleTop = referenceOffset + view.adjustedContentInset.top
+        let maxOffset = view.maxOffsetY
+        for index in startIndex..<count {
+            guard let id = layout.id(at: index), let row = rowsByID[id], row.isUserMessage else { continue }
+            let top = layout.geometry.minY(at: index) - messageAnchorOffset(for: row)
+            guard top > referenceVisibleTop + 1 else { continue }
+            let raw = top - view.adjustedContentInset.top
+            if ChatFollowLatch.isAtEnd(offset: min(raw, maxOffset), maxOffset: maxOffset) {
+                return nil
+            }
+            let clamped = max(raw, view.minOffsetY)
+            if clamped > referenceOffset + 1 {
+                return MessageJumpTarget(id: id, contentOffsetY: clamped)
+            }
+        }
+        return nil
+    }
+
+    /// Earlier Message: animates upward to the previous user message above
+    /// the reading viewport, or to the top when only non-user rows remain above.
+    func jumpToPreviousUserMessage() {
+        collectionView.layoutIfNeeded()
+        guard let target = previousUserMessageTarget else {
+            if !isTopJumpAnimating, collectionView.contentOffset.y > collectionView.minOffsetY + 1 {
+                jumpToTop()
+            }
+            return
+        }
+        animateToMessageJump(target)
+    }
+
+    /// Newer Message: animates downward to the next user message below the
+    /// reading viewport, or returns to the bottom when none remains.
+    func jumpToNextUserMessage() {
+        collectionView.layoutIfNeeded()
+        guard let target = nextUserMessageTarget else {
+            jumpToLatest()
+            return
+        }
+        animateToMessageJump(target)
+    }
+
+    private func animateToMessageJump(_ target: MessageJumpTarget) {
+        cancelProgrammaticJump()
+        disclosureAnchor = target.id
+        layout.holdTopPadding()
+        latch.disclosureSettled(isAtEnd: false)
+        noteFollowing()
+        let start = collectionView.contentOffset.y
+        if !UIAccessibility.isReduceMotionEnabled {
+            if start - target.contentOffsetY > 2 * collectionView.bounds.height {
+                collectionView.contentOffset.y = min(start, target.contentOffsetY + collectionView.bounds.height)
+                collectionView.layoutIfNeeded()
+            } else if target.contentOffsetY - start > 2 * collectionView.bounds.height {
+                collectionView.contentOffset.y = max(start, target.contentOffsetY - collectionView.bounds.height)
+                collectionView.layoutIfNeeded()
+            }
+        }
+        guard let destination = destinationOffset(for: target.id) else {
+            notePreviousMessageAvailability()
+            return
+        }
+        if UIAccessibility.isReduceMotionEnabled || abs(collectionView.contentOffset.y - destination) <= 0.5 {
+            settleMessageJump(to: target.id)
+            return
+        }
+        collectionView.setContentOffset(CGPoint(x: 0, y: destination), animated: true)
+        activeMessageJumpTarget = target.id
+        noteCollapseAvailability()
+        notePreviousMessageAvailability()
+    }
+
+    /// Jump to Top: animates directly to the start of the timeline, stepping
+    /// within one screen first when far away.
+    func jumpToTop() {
+        collectionView.layoutIfNeeded()
+        guard collectionView.contentOffset.y > collectionView.minOffsetY + 0.5 else {
+            notePreviousMessageAvailability()
+            return
+        }
+        cancelProgrammaticJump()
+        disclosureAnchor = layout.id(at: 0)
+        layout.holdTopPadding()
+        latch.disclosureSettled(isAtEnd: false)
+        noteFollowing()
+        let top = collectionView.minOffsetY
+        if !UIAccessibility.isReduceMotionEnabled,
+            collectionView.contentOffset.y - top > 2 * collectionView.bounds.height
+        {
+            collectionView.contentOffset.y = min(collectionView.contentOffset.y, top + collectionView.bounds.height)
+            collectionView.layoutIfNeeded()
+        }
+        if UIAccessibility.isReduceMotionEnabled
+            || abs(collectionView.contentOffset.y - collectionView.minOffsetY) <= 0.5
+        {
+            settleTopJump()
+            return
+        }
+        collectionView.setContentOffset(CGPoint(x: 0, y: collectionView.minOffsetY), animated: true)
+        isTopJumpAnimating = true
+        noteCollapseAvailability()
+        notePreviousMessageAvailability()
+    }
+
+    private func settleTopJump() {
+        UIView.performWithoutAnimation {
+            collectionView.contentOffset.y = collectionView.minOffsetY
+            collectionView.layoutIfNeeded()
+            collectionView.contentOffset.y = collectionView.minOffsetY
+            collectionView.layoutIfNeeded()
+        }
+        noteCollapseAvailability()
+        notePreviousMessageAvailability()
+        if layout.geometry.count > 0,
+            let cell = collectionView.cellForItem(at: IndexPath(item: 0, section: 0))
+        {
+            UIAccessibility.post(notification: .layoutChanged, argument: cell)
+        }
+    }
+
+    private func settleMessageJump(to id: ChatRowID) {
+        guard let row = rowsByID[id] else {
+            noteCollapseAvailability()
+            notePreviousMessageAvailability()
+            return
+        }
+        let anchor = ScrollAnchor.rows([(id, messageAnchorOffset(for: row))])
+        UIView.performWithoutAnimation {
+            collectionView.layoutIfNeeded()
+            restore(anchor)
+            collectionView.layoutIfNeeded()
+            restore(anchor)
+        }
+        noteCollapseAvailability()
+        notePreviousMessageAvailability()
+        if let index = layout.index(of: id),
             let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
         {
             UIAccessibility.post(notification: .layoutChanged, argument: cell)
@@ -742,6 +1047,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// above the end from far away, so no blank screen of unmeasured rows
     /// scrolls past.
     func jumpToLatest() {
+        cancelProgrammaticJump()
         disclosureAnchor = nil
         latch.reset()
         noteFollowing()
@@ -761,12 +1067,19 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         {
             isJumpAnimating = false
             pinToEnd()
+            notePreviousMessageAvailability()
             return
         }
         collectionView.setContentOffset(CGPoint(x: 0, y: collectionView.maxOffsetY), animated: true)
     }
 
     private func captureAnchor() -> ScrollAnchor {
+        if isTopJumpAnimating, let firstID = layout.id(at: 0) {
+            return .rows([(firstID, 0)])
+        }
+        if let id = activeMessageJumpTarget, let row = rowsByID[id], layout.index(of: id) != nil {
+            return .rows([(id, messageAnchorOffset(for: row))])
+        }
         if let id = disclosureAnchor, layout.index(of: id) != nil {
             return .rows([(id, rowTop(id))])
         }
@@ -924,6 +1237,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     private func beginDisclosure(_ id: ChatRowID) -> ScrollAnchor {
         let anchor = ScrollAnchor.rows([(id, rowTop(id))])
         disclosureAnchor = id
+        activeMessageJumpTarget = nil
+        isTopJumpAnimating = false
         layout.holdTopPadding()
         // Stop before UIKit measures anything. Otherwise the collection's
         // layout pass can pin to the old end before the anchor is restored.
@@ -943,6 +1258,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         noteFollowing()
         noteCollapseAvailability()
+        notePreviousMessageAvailability()
         if expanding {
             wantsEndClearOfCollapseControl = true
             collectionView.setNeedsLayout()
@@ -1054,11 +1370,24 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    private func notePreviousMessageAvailability() {
+        reserveJumpControlRoom()
+        let available = canJumpToPreviousUserMessage
+        guard available != reportedCanJumpPrevious else { return }
+        reportedCanJumpPrevious = available
+        Task { @MainActor [weak self] in
+            guard let self, reportedCanJumpPrevious == available else { return }
+            actions.previousMessageAvailabilityChanged(available)
+        }
+    }
+
     // MARK: Scrolling
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         disclosureAnchor = nil
         isJumpAnimating = false
+        isTopJumpAnimating = false
+        activeMessageJumpTarget = nil
         isPulling = true
         isPullArmed = false
         olderPull.phase = .idle
@@ -1079,6 +1408,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         notePull()
         requestOlderIfShort()
         noteCollapseAvailability()
+        notePreviousMessageAvailability()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -1107,6 +1437,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
         disclosureAnchor = nil
         isJumpAnimating = false
+        isTopJumpAnimating = false
+        activeMessageJumpTarget = nil
         latch.userScrollBegan()
         noteFollowing()
         return true
@@ -1118,11 +1450,22 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        if isTopJumpAnimating {
+            isTopJumpAnimating = false
+            settleTopJump()
+            return
+        }
+        if let target = activeMessageJumpTarget {
+            activeMessageJumpTarget = nil
+            settleMessageJump(to: target)
+            return
+        }
         guard isJumpAnimating else { return }
         isJumpAnimating = false
         pinToEnd()
         latch.scrolled(isAtEnd: isAtEnd)
         noteFollowing()
+        notePreviousMessageAvailability()
     }
 
     /// Pulling the list past its top by `pullToLoadDistance` arms a request
