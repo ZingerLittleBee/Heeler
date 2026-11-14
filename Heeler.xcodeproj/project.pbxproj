@@ -209,6 +209,7 @@
 		2C352A2CFB6F73CBA8E6C4F2 /* SettingsLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6396B0C21407D52FE3BF5B /* SettingsLocalizationTests.swift */; };
 		2C3C17C7CC32FB939BE1FFC7 /* ConsoleTabBarBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5825AEB7185E363AE08F8EB1 /* ConsoleTabBarBridgeTests.swift */; };
 		2CCF49CE1A3D34AEC4D53469 /* LiveInAnotherWindowPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE495B3E9477AF03F551A350 /* LiveInAnotherWindowPresentation.swift */; };
+		2CDBEAAA9287E8B4DD3C24B1 /* RexControlLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324620D947C4C19F1D0F0A50 /* RexControlLinkTests.swift */; };
 		2D4F50D81371D8600A404DC2 /* ThemeColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7166C68F40482EF9C1E917F /* ThemeColors.swift */; };
 		2D6D9AA3C46BE9D5C61C2386 /* AgentRowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAE2FC36626CBCBF497706C4 /* AgentRowLayout.swift */; };
 		2D7A4526AD24DAC4133B25BC /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A3266F97C243598703DB0A /* JSONValue.swift */; };
@@ -665,6 +666,7 @@
 		8CD88CE3DABBEB63AC4EA1F6 /* OpenCodeSessionID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99EBD8B21A9AC2995D568BAF /* OpenCodeSessionID.swift */; };
 		8D0DD005F4ED101B0A968B7C /* ChatDeliveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4718DCBF1F1C5E8C6E9AAD4 /* ChatDeliveryPolicy.swift */; };
 		8D3112DF73BD74CB4E63382F /* TmuxVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F576A84C9C208C3A96BFA39 /* TmuxVersion.swift */; };
+		8D50AD4B1D4215729357DEF7 /* RexControlWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4E662185DEE0DAD31542F1 /* RexControlWireTests.swift */; };
 		8D6A528175FA0AFF0E7C8616 /* TerminalBackspaceButtonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E03FBDF372AA6DB7BC7F62 /* TerminalBackspaceButtonTests.swift */; };
 		8D9ED28E1DB5A72B471CBD45 /* AppAppearanceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEAF21DF91A1BCE4C9F79A3 /* AppAppearanceSettings.swift */; };
 		8DE4A57F48CA21DE7DC70868 /* OpenCodeRecordSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FD2219A8AED3A836669619 /* OpenCodeRecordSourceTests.swift */; };
@@ -722,6 +724,7 @@
 		9A1EF3031B0903D87E4682FC /* AgentModelProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A383F050585E92B29A100E2 /* AgentModelProbe.swift */; };
 		9A481A0F9152E91DDC294FF8 /* TmuxHostHelperNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B73334DB5BEAB22D96FAA /* TmuxHostHelperNotificationsTests.swift */; };
 		9AA26D72B34CCF2E34C8C675 /* WorktreeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 669A53C020B39F9DFAFE005E /* WorktreeDetailView.swift */; };
+		9ACE8EC66E5BED8C9BF13644 /* RexControlWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542093DE9363FAF4AB36B24A /* RexControlWire.swift */; };
 		9AF7E3EFA40799ECDB9A5019 /* HerdrCoreHostMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CC62BC4417CEECA8234BE0 /* HerdrCoreHostMemory.swift */; };
 		9B0D55D4DE1A7DDFF7507533 /* PiChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A29D9737D4307123E499898 /* PiChatTests.swift */; };
 		9B56E463167A39A908241749 /* WebSocketHandshake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 305F2D656F34DF018809AD61 /* WebSocketHandshake.swift */; };
@@ -1049,6 +1052,7 @@
 		DE020395E7459D508F0CC401 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDC98A5038CD109556BE903F /* NotificationSettingsView.swift */; };
 		DE23D1F848746CCC02F2B43E /* RemoteHostEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC27CC486359B99A90601F9C /* RemoteHostEnvironmentTests.swift */; };
 		DE29F47E606C1C05DA95DFE3 /* AgyTranscriptReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734BF77E90D0078DABABF2CB /* AgyTranscriptReducerTests.swift */; };
+		DE4EE0A0D29024C888247DD5 /* RexControlLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = F224F211F6F2DD35AC3B1749 /* RexControlLink.swift */; };
 		DED05CBB7CDC71B3D92B7B36 /* AttachUserMessageIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */; };
 		DEFF7919D20EE346F40AB35E /* AgentQuickKey+HerdrKeyName.swift in Sources */ = {isa = PBXBuildFile; fileRef = A68E83AC3539EDA921E98953 /* AgentQuickKey+HerdrKeyName.swift */; };
 		DF10569965E2EA5D479BE633 /* BootstrappedExecChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F59F6B4A3BBCD40FDCC59E /* BootstrappedExecChannel.swift */; };
@@ -1087,6 +1091,7 @@
 		E521D6779F4C453B6E098F14 /* TerminalFontSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427512344847A84699F819A0 /* TerminalFontSettingsTests.swift */; };
 		E53A10F8FF445CC4E03AAC72 /* FileDiffScrollMeasurementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 522C42411A137F250F9EEC87 /* FileDiffScrollMeasurementTests.swift */; };
 		E563373DB446DBEF8B1701E3 /* DeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FCA00B5F2A05A599D74FCCE /* DeviceKeyStoreTests.swift */; };
+		E57294B5CA449CB3694B34E3 /* FakeRexServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C494178D0E1896DC3ACC69 /* FakeRexServer.swift */; };
 		E6099245F8299D2D8CFE9324 /* ConsoleDriftLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15A9C3D4479146FAD7BE5AE /* ConsoleDriftLocalizationTests.swift */; };
 		E68A1DDFA6C5F618BBB79AB7 /* AgentLayoutErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66B70100FB78F319E7136652 /* AgentLayoutErrorView.swift */; };
 		E68A2EA8A52AF3C21F936EB0 /* ChatAgentKeysStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 812C5F4452C33A3B3404BA8B /* ChatAgentKeysStoreTests.swift */; };
@@ -1453,6 +1458,7 @@
 		2AAEF5B6E134C4002E072DA1 /* TmuxSSHFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSSHFixture.swift; sourceTree = "<group>"; };
 		2ACCB4440890C2D2CE8AC6E4 /* FileDiffStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDiffStore.swift; sourceTree = "<group>"; };
 		2B4D400D62E214597C08166D /* BlockedHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedHistoryTests.swift; sourceTree = "<group>"; };
+		2B4E662185DEE0DAD31542F1 /* RexControlWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexControlWireTests.swift; sourceTree = "<group>"; };
 		2B5E2443ECA538CD88C3208B /* QuestionForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionForm.swift; sourceTree = "<group>"; };
 		2BB2D46A5EE83B7D06B75176 /* ClaudeImagePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeImagePaste.swift; sourceTree = "<group>"; };
 		2BBBF4D8064442FDAC30C097 /* PerfMainThreadSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfMainThreadSampler.swift; sourceTree = "<group>"; };
@@ -1490,6 +1496,7 @@
 		3207EC84A97FAA930CD87CAC /* ChatCachedAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCachedAgent.swift; sourceTree = "<group>"; };
 		321E267EE49BFE4A60F3B7CB /* FilePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparer.swift; sourceTree = "<group>"; };
 		32413805C1AA874DBEE37547 /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
+		324620D947C4C19F1D0F0A50 /* RexControlLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexControlLinkTests.swift; sourceTree = "<group>"; };
 		32AE04F29C794799B45E5C68 /* Host.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Host.swift; sourceTree = "<group>"; };
 		32EC3CE027A81041B5A57C3B /* TmuxPaneSizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxPaneSizeTests.swift; sourceTree = "<group>"; };
 		3304F659B06876E74C073653 /* HostNotificationFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostNotificationFiles.swift; sourceTree = "<group>"; };
@@ -1657,6 +1664,7 @@
 		53B06E81D67090D3CB62F576 /* ChangesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesStore.swift; sourceTree = "<group>"; };
 		5416AE7B7A89E2987620E65E /* NotificationDisclosureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDisclosureView.swift; sourceTree = "<group>"; };
 		541B6BD9F48CB41007DC16A6 /* ClaudeImagePasteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeImagePasteTests.swift; sourceTree = "<group>"; };
+		542093DE9363FAF4AB36B24A /* RexControlWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexControlWire.swift; sourceTree = "<group>"; };
 		5433C446084E3B43749C61B7 /* ChipWrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChipWrap.swift; sourceTree = "<group>"; };
 		54B6A3DF0F7CCF7FD5A14805 /* ChatTimelineGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineGeometry.swift; sourceTree = "<group>"; };
 		54CA05313C83AD867A520169 /* GrokUpdateRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokUpdateRecord.swift; sourceTree = "<group>"; };
@@ -1814,6 +1822,7 @@
 		77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCardBuilder.swift; sourceTree = "<group>"; };
 		7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UntrackedDirectoryListing.swift; sourceTree = "<group>"; };
 		78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostProjection.swift; sourceTree = "<group>"; };
+		78C494178D0E1896DC3ACC69 /* FakeRexServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeRexServer.swift; sourceTree = "<group>"; };
 		78C87715683760CC51A10FF4 /* HerdrCoreComposerSend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreComposerSend.swift; sourceTree = "<group>"; };
 		78EB812B075130FEF77FC903 /* WebSocketLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketLink.swift; sourceTree = "<group>"; };
 		78F85C588963C3CE948AA9E4 /* AgentNotificationBannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStore.swift; sourceTree = "<group>"; };
@@ -2368,6 +2377,7 @@
 		F0D5F47AF6EF0F3C7F789894 /* RemoteDirectoryBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryBrowser.swift; sourceTree = "<group>"; };
 		F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+Counts.swift"; sourceTree = "<group>"; };
 		F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnixDomainSocketChannel.swift; sourceTree = "<group>"; };
+		F224F211F6F2DD35AC3B1749 /* RexControlLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexControlLink.swift; sourceTree = "<group>"; };
 		F234ED041A4A2835A59A7510 /* AgentTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTerminalView.swift; sourceTree = "<group>"; };
 		F261A0911D08819AFC013F1E /* JSONValueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValueTests.swift; sourceTree = "<group>"; };
 		F2C684EB04A88DB074CEA765 /* OpenCodeRecordSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeRecordSource.swift; sourceTree = "<group>"; };
@@ -2866,6 +2876,8 @@
 				4D6E7022FBB1A7A39C88ACA9 /* RenameStoreTests.swift */,
 				1687276C209247FF9FC1534A /* RequestFailurePresentationTests.swift */,
 				5CAEF7E8607F4C42AC0E11B8 /* RexConsoleTests.swift */,
+				324620D947C4C19F1D0F0A50 /* RexControlLinkTests.swift */,
+				2B4E662185DEE0DAD31542F1 /* RexControlWireTests.swift */,
 				909CC5C1882B9EF51B4E7474 /* RexHostCatalogTests.swift */,
 				B3E17194D0C97AABDB6FCF13 /* RexServerKindDetectionTests.swift */,
 				CD413D0F840B6DB3ADE2062F /* ServerKindDetectionTests.swift */,
@@ -3655,6 +3667,8 @@
 		86086CB16CA17C5953522A9A /* Rex */ = {
 			isa = PBXGroup;
 			children = (
+				F224F211F6F2DD35AC3B1749 /* RexControlLink.swift */,
+				542093DE9363FAF4AB36B24A /* RexControlWire.swift */,
 				BACECE9A7A61C46821C7930E /* RexProbe.swift */,
 				233731B002AD94988D08DA9D /* RexSocket.swift */,
 			);
@@ -3831,6 +3845,7 @@
 				856A8398D8F0FB87F252D193 /* FakeLiveActivityController.swift */,
 				8273181A2428AD3F78FCC27B /* FakePairingConnector.swift */,
 				8203CA1CA93BD39B4115F678 /* FakeQuestionTUI.swift */,
+				78C494178D0E1896DC3ACC69 /* FakeRexServer.swift */,
 				696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */,
 				E711DB4699F32B8BD991D5B7 /* FakeWebSocketServer.swift */,
 				190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */,
@@ -4877,6 +4892,8 @@
 				F8D65F54BA2C27606B01EE73 /* RenameSheetView.swift in Sources */,
 				4CB81788CD628171F46111D3 /* RenameStore.swift in Sources */,
 				137E72767F36BD5D18022665 /* RexConsoleProjection.swift in Sources */,
+				DE4EE0A0D29024C888247DD5 /* RexControlLink.swift in Sources */,
+				9ACE8EC66E5BED8C9BF13644 /* RexControlWire.swift in Sources */,
 				47332751793F6FF613C83A0F /* RexHostsExperiment.swift in Sources */,
 				8EAB893B2DBBFCB230D01264 /* RexProbe.swift in Sources */,
 				444D8B34AB6DC6104559D0F7 /* RexSocket.swift in Sources */,
@@ -5212,6 +5229,7 @@
 				58EE685D5F9C4B21D4B4DC0E /* FakeLiveActivityController.swift in Sources */,
 				E7CE4737CFB94163D9EEC8F2 /* FakePairingConnector.swift in Sources */,
 				EC91591D99561FA25E693806 /* FakeQuestionTUI.swift in Sources */,
+				E57294B5CA449CB3694B34E3 /* FakeRexServer.swift in Sources */,
 				1AD6824BFB55CB50607AD702 /* FakeTransportConnector.swift in Sources */,
 				525C894B241F070260887811 /* FakeWebSocketServer.swift in Sources */,
 				D72DB8602458FB38733BFBB7 /* FileDiffLayoutViewTests.swift in Sources */,
@@ -5428,6 +5446,8 @@
 				29C2C31BF85661940190F48C /* RenderedBitmap.swift in Sources */,
 				4F112D78DCF2B9F86BB7C966 /* RequestFailurePresentationTests.swift in Sources */,
 				77CC6E10EFEB2BA7F8DCB360 /* RexConsoleTests.swift in Sources */,
+				2CDBEAAA9287E8B4DD3C24B1 /* RexControlLinkTests.swift in Sources */,
+				8D50AD4B1D4215729357DEF7 /* RexControlWireTests.swift in Sources */,
 				4DA3A68B47737E76FFA2465A /* RexHostCatalogTests.swift in Sources */,
 				00BE6B0496AD04456FCCD5FE /* RexServerKindDetectionTests.swift in Sources */,
 				BA5D3FE58111F8918A50DE2A /* SSHChannelAdmissionTests.swift in Sources */,

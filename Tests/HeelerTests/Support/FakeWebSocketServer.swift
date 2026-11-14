@@ -174,6 +174,17 @@ actor FakeWebSocketServer: HeelerSSHAPIChannel {
         return frames[frameCursor - 1]
     }
 
+    /// The next frame the client wrote, or nil once the channel closed with
+    /// every frame read.
+    func nextFrameUnlessClosed() async -> WebSocketFrame? {
+        while frameCursor >= frames.count {
+            if isClosed { return nil }
+            await waitForChange()
+        }
+        frameCursor += 1
+        return frames[frameCursor - 1]
+    }
+
     func waitForWrites(_ count: Int) async {
         while writeCount < count { await waitForChange() }
     }
