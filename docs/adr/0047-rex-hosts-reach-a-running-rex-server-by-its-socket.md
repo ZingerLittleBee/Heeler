@@ -46,6 +46,23 @@ an experiment that ships switched off.
   `experimental.rexHosts` default. With it off, the app behaves as a build
   without Rex: detection does not look for Rex, and stored Rex Hosts stay
   saved, unlisted, undialed, and kept by every catalog write.
+- Heeler reaches the server through the Host's SSH connection. A
+  direct-streamlocal channel to the stored socket carries one WebSocket control
+  connection, whose hello asks for API revision 12 only; a server that does not
+  welcome it at revision 12 is named as unsupported, with the revision it
+  offers. More channels to the same socket carry data links under the Attach
+  admission slots. A Host whose socket was not stored has it looked up again
+  when connecting, and keeps what was found.
+- When SSH will not open the socket, one bounded exec reads whether a socket
+  file is there and whether a server listens on it (`/proc/net/unix` on Linux,
+  `lsof` over the account's own processes on macOS). The reason then says Rex
+  is not running, or that the SSH server refuses socket forwarding. It still
+  runs nothing of Rex's.
+- A Rex Host's checks say hello and close with a close frame, which changes
+  nothing on the server. A control connection that drops without a close frame
+  comes back with the reconnect token from its welcome, so the server keeps the
+  client; leaving for good sends a close frame. The token is never logged or
+  shown.
 - A Rex Host lists Terminals only. It offers no Agent status, Chat, Composer,
   New Agent, New Terminal, Rename, Close or uploads, and no notifications,
   Live Activities, Usage, Accounts, plugin or Host Helper. A first version
@@ -75,6 +92,19 @@ an experiment that ships switched off.
   an SSH exec.
 - The Linux places follow where Rex, as of 0.1.0, puts a personal and a shared
   server's socket. No running Linux server has confirmed them yet.
+- Against Rex 0.1.0-preview.14 (API revision 12) on macOS 27.0, through a
+  user-level OpenSSH 10.3p1 sshd on loopback (2026-11-15,
+  `RexControlWebSocketLiveTests` and `RexSSHLiveTests`): a forwarded channel to
+  the Application Support socket, with its space, was welcomed at revision 12;
+  `server.status`, `session.attach_all` and `session.list` agreed on the
+  session count; a connection idling under one-second pings stayed open; and a
+  connection dropped without a close frame came back on a new one as the same
+  client, marked resumed. A second channel to the socket opened beside the
+  control connection.
+- With that sshd, `AllowStreamLocalForwarding no` refused the channel, and so
+  did `AllowTcpForwarding no` with stream-local forwarding allowed. libssh2
+  reported the refusal exactly as it reported a missing socket, which is why
+  the socket check exists.
 - `scripts/test-server-kind-detection.py` runs the detection script through
   `/bin/sh`, dash, bash and ksh against fake Darwin and Linux homes, with a
   socket in a path with spaces, and checks that a `rex` on `PATH` never runs.
@@ -91,7 +121,8 @@ an experiment that ships switched off.
 
 - The Console builds a projection for a Rex Host that never dials and stands
   at a failure saying this build cannot connect to Rex yet. Later changes
-  replace it with the connection, the Terminal inventory and the Attach.
+  replace it with the connection, the Terminal inventory and the Attach. The
+  Host's checks already connect.
 - Each Console projection now says what a detail keeps to when the Host's
   inventory moves on, instead of the store asking for herdr-core or tmux by
   name, so a fourth kind adds its own answers.
