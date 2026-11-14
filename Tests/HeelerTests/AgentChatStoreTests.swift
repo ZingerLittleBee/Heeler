@@ -24,7 +24,7 @@ struct AgentChatStoreTests {
             tabID: "t1", paneID: "w1:p1", cwd: cwd, revision: 1,
             agentSession: session.map {
                 AgentSessionInfo(
-                    agent: program.rawValue, kind: .id, source: "herdr:\(program.rawValue)", value: $0)
+                    agent: program.sessionNaming.agent, kind: .id, source: program.sessionNaming.source, value: $0)
             })
     }
 
@@ -535,7 +535,7 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
-    @Test(arguments: [ChatProgram.claude, .codex, .grok])
+    @Test(arguments: [ChatProgram.claude, .codex, .grok, .agy])
     func missingSessionExplainsTheMissingIdentityWithoutAnInstallDiagnosis(program: ChatProgram) {
         let reason = ChatUnavailableReason.noSession(program)
         #expect(reason.title == "Waiting for Conversation")
@@ -4054,6 +4054,67 @@ struct AgentChatStoreTests {
         await fixture.store.outputReadsSettled()
 
         #expect(fixture.store.outputs.isEmpty)
+    }
+
+    @Test func anAgySubagentSessionFollowsTheRootConversationWithoutResetting() async throws {
+        let rootID = "a6e482a6-e126-4699-96d8-ecdc66a91f60"
+        let firstSubagentID = "7b8895e7-6825-49bb-a9ff-9867399df377"
+        let nestedSubagentID = "e9d8e247-0c17-4913-8ec7-e3ef928a20a2"
+        let otherRootID = "0b9e4a7c-6f12-4d38-8c5a-3e1f7a2d9b02"
+        func agyPath(_ id: String) -> String {
+            "/home/dev/.gemini/antigravity-cli/brain/\(id)/.system_generated/logs/transcript_full.jsonl"
+        }
+        func subagentHeader(sender: String) -> String {
+            #"{"step_index":0,"source":"SYSTEM","type":"SYSTEM_MESSAGE","status":"DONE","created_at":"2026-11-12T18:23:33Z","content":"The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-11-12T18:23:33Z sender=\#(sender) priority=MESSAGE_PRIORITY_HIGH content=task"}"#
+                + "\n"
+        }
+
+        // Opening while herdr reports a nested subagent follows the root
+        // conversation.
+        let fixture = Fixture(session: nestedSubagentID, program: .agy)
+        await fixture.files.write(NumberedChatReducer.lines(0..<3), at: agyPath(rootID))
+        await fixture.files.write(subagentHeader(sender: rootID), at: agyPath(firstSubagentID))
+        await fixture.files.write(subagentHeader(sender: firstSubagentID), at: agyPath(nestedSubagentID))
+
+        await fixture.store.step()
+
+        let generation = fixture.store.conversationGeneration
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(rootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+
+        // Bouncing between the root conversation and its subagents keeps the
+        // same timeline and generation while polling new root entries.
+        await fixture.files.append(NumberedChatReducer.lines(3..<4), to: agyPath(rootID))
+        await fixture.server.set(Self.agent(session: rootID, status: .working, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: rootID, status: .working, program: .agy))
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<3))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+
+        await fixture.files.append(NumberedChatReducer.lines(4..<5), to: agyPath(rootID))
+        await fixture.server.set(Self.agent(session: firstSubagentID, status: .working, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: firstSubagentID, status: .working, program: .agy))
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<4))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversationGeneration == generation)
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(rootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(0..<5))
+
+        // Switching to a genuinely different root conversation replaces the
+        // timeline and increments the generation.
+        await fixture.files.write(NumberedChatReducer.lines(10..<12), at: agyPath(otherRootID))
+        await fixture.server.set(Self.agent(session: otherRootID, status: .idle, program: .agy))
+        fixture.store.agentDidChange(Self.agent(session: otherRootID, status: .idle, program: .agy))
+        await fixture.store.step()
+
+        #expect(fixture.store.conversationGeneration == generation + 1)
+        #expect(fixture.store.conversation.phase == .following(path: agyPath(otherRootID)))
+        #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {

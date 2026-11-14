@@ -519,14 +519,53 @@ final class ConsoleListPresentationStore {
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
     private static let collapsedWorkspacesDefaultsKey = "console-list.collapsed-workspaces"
+    private static let hostFilterDefaultsKey = "console-list.host-filter"
     private static let statusFilterDefaultsKey = "console-list.status-filter"
+
+    /// The Hosts both lists show; empty shows every Host.
+    private(set) var hostFilter: Set<Host.ID>
+
+    func setHostFilter(_ hostIDs: Set<Host.ID>) {
+        guard hostFilter != hostIDs else { return }
+        hostFilter = hostIDs
+        persistHostFilter()
+    }
+
+    func toggleHostFilter(_ hostID: Host.ID) {
+        if !hostFilter.insert(hostID).inserted { hostFilter.remove(hostID) }
+        persistHostFilter()
+    }
+
+    func clearHostFilter() {
+        guard !hostFilter.isEmpty else { return }
+        hostFilter = []
+        defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
+    }
+
+    /// Drops Hosts no longer in `hosts`, falling back to All Hosts when the
+    /// last selected Host leaves the catalog.
+    func pruneHostFilter(keeping hosts: [Host]) {
+        setHostFilter(hostFilter.intersection(hosts.map(\.id)))
+    }
+
+    private func persistHostFilter() {
+        if hostFilter.isEmpty {
+            defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
+        } else {
+            defaults.set(hostFilter.map(\.uuidString).sorted(), forKey: Self.hostFilterDefaultsKey)
+        }
+    }
 
     /// The statuses the Agents list shows; empty shows every Agent.
     private(set) var statusFilter: Set<ConsoleAgentStatusFilter>
 
     func toggleStatusFilter(_ filter: ConsoleAgentStatusFilter) {
         if !statusFilter.insert(filter).inserted { statusFilter.remove(filter) }
-        defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+        if statusFilter.isEmpty {
+            defaults.removeObject(forKey: Self.statusFilterDefaultsKey)
+        } else {
+            defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+        }
     }
 
     func clearStatusFilter() {
@@ -551,6 +590,9 @@ final class ConsoleListPresentationStore {
         collapsedWorkspaceIDs = Set(
             defaults.data(forKey: Self.collapsedWorkspacesDefaultsKey)
                 .flatMap { try? JSONDecoder().decode([ConsoleWorkspaceSection.ID].self, from: $0) } ?? [])
+        hostFilter = Set(
+            (defaults.stringArray(forKey: Self.hostFilterDefaultsKey) ?? [])
+                .compactMap(UUID.init(uuidString:)))
         statusFilter = Set(
             (defaults.stringArray(forKey: Self.statusFilterDefaultsKey) ?? [])
                 .compactMap(ConsoleAgentStatusFilter.init(rawValue:)))
@@ -590,13 +632,15 @@ final class ConsoleListPresentationStore {
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
-        sections(
+        let issuesByHost = Dictionary(
+            console.hostIssues(for: hosts).map { ($0.hostID, $0) },
+            uniquingKeysWith: { first, _ in first })
+        return sections(
             hosts: hosts,
             agents: console.chatDisplayAgents,
             hostStatuses: console.hostStatuses,
-            hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
-            hostSyncErrors: console.hostSyncErrors,
+            statusPresentations: issuesByHost,
             filteredHostIDs: filteredHostIDs,
             searchQuery: searchQuery)
     }
@@ -625,6 +669,7 @@ final class ConsoleListPresentationStore {
         hostStandingFailures: [Host.ID: TransportError] = [:],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostSyncErrors: [Host.ID: String] = [:],
+        statusPresentations: [Host.ID: ConsoleHostStatusPresentation]? = nil,
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
@@ -643,12 +688,17 @@ final class ConsoleListPresentationStore {
 
             let hostAgents = agentsByHost[host.id] ?? []
             let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
-            let statusPresentation = ConsoleHostStatusPresentation(
-                host: host,
-                status: hostStatuses[host.id],
-                standingFailure: hostStandingFailures[host.id],
-                isAwaitingSnapshot: isAwaitingSnapshot,
-                syncError: hostSyncErrors[host.id])
+            let statusPresentation: ConsoleHostStatusPresentation? =
+                if let statusPresentations {
+                    statusPresentations[host.id]
+                } else {
+                    ConsoleHostStatusPresentation(
+                        host: host,
+                        status: hostStatuses[host.id],
+                        standingFailure: hostStandingFailures[host.id],
+                        isAwaitingSnapshot: isAwaitingSnapshot,
+                        syncError: hostSyncErrors[host.id])
+                }
             // While searching, a section without a match leaves the list
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a

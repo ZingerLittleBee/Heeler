@@ -316,8 +316,8 @@ enum ChatRowSeed: Sendable, CaseIterable {
         switch self {
         case .user: 72
         case .assistant: 120
-        case .tool: 52
-        case .reasoning: 44
+        case .tool: 28
+        case .reasoning: 28
         case .system: 36
         case .pending: 72
         case .olderStatus: 44

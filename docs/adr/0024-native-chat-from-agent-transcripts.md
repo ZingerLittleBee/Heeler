@@ -238,10 +238,11 @@ drawn inline on the normal screen; under `NO_COLOR` agy 1.5.3 draws no
 colors but keeps bold, dim, italic and underline, so the rules and the `>`
 are plain and Chat reads a box only when its rules and marker share one
 palette. Chat sends only into an empty box with nothing under it and an
-idle footer it knows; a
-mode's hint is not a draft, and an armed exit does not hold, since the
-paste disarms it. A draft, bash mode, a popup or panel under the box,
-another footer, a running turn, an exited agy and any screen without the
+idle or running-turn footer it knows (`? for shortcuts`, nothing at the
+left, an armed exit, `esc to cancel`, or `Press up to edit queued
+messages`); a mode's hint is not a draft, and an armed exit does not hold,
+since the paste disarms it. A draft, bash mode, a popup or panel under the
+box, another footer, an exited agy and any screen without the
 box hold the message, whatever herdr reports. Vim mode (`/settings` >
 Editor Mode) draws `-- INSERT --` or `-- VISUAL --` before the footer's
 hint, a footer Chat doesn't know, and nothing in Normal mode, whose box
@@ -250,28 +251,10 @@ as typed and started a turn (2026-11-08), so Chat need not tell Normal
 mode from idle. Every agy dialog takes the box's place, and herdr
 0.9.5 reports some of them done or idle (see Blocked cards), where the
 prompt's Enter answers the dialog: an `agent.prompt` sent into a file edit
-dialog was swallowed, and its Enter accepted the edit (1.5.3). A dialog can
-open from a running turn at any moment, after a pending tool row or
-straight from the spinner, and one that opens between Chat's read and
-herdr's Enter takes that Enter. So although agy would queue a message sent
-during a turn, Chat holds it while the footer reads `esc to cancel` or
-`Press up to edit queued messages` or agy's spinner shows, as for Oh My Pi
-and OpenCode (Stop, below). herdr reads agy's Working from that same
-footer and spinner, so its status can only lag Chat's read. Chat also
-holds on a reported Working, before the session check and the read: on a
-herdr-core Host those wait for an exec and an attach's first paint, and
-the message showed as Sending for 1.5 to 2.5 s before the screen's hold
-took it back (2026-11-09). A report that lags the turn's end on screen
-can only cost a hold in that moment, and the notice clears on the next
-status change. What remains is a turn that starts after Chat's read and
-opens a dialog before herdr's Enter: one sent from another client, or the
-turn agy starts by itself when a background command it left running ends.
-agy then injects the task's `SYSTEM_MESSAGE` and starts a step with no
-user input: after its turn has ended, or, while the turn still runs, as
-its reply finishes, with no idle frame seen between (one 5 s gap in the
-reads remains). No send raced either (2026-11-08).
-A message that loses that race to a turn without a dialog is queued, and
-Stop's Esc puts it back in the box. agy takes `exit`,
+dialog was swallowed, and its Enter accepted the edit (1.5.3). Because a
+dialog draws no box, the screen check holds whenever one is open, while a
+turn with an empty box queues the message until the turn ends, and
+Stop's Esc puts an untaken queued message back in the box. agy takes `exit`,
 `quit`, `:q`, a leading `?` or `:` and a `/btw` after the start as text, so
 Chat refuses none of them. The `/` menu offers agy's skills as `/name`,
 except one named like a built-in command or alias, since which of the two
@@ -604,17 +587,19 @@ again at once. The wait belongs to the Agent's Composer, not to a surface:
 switching between Chat and the terminal, or a rebuilt detail, keeps it. With
 text in the draft the button stays Send, so a prompt still queues behind the
 running turn (Pi and Codex 0.162.1 steer the turn with it), and ⌘↩ only
-ever sends. Oh My Pi,
-OpenCode and Antigravity CLI are the exceptions. A steer in Oh My Pi can
+ever sends. Oh My Pi and
+OpenCode are the exceptions. A steer in Oh My Pi can
 move a running command to the background, and herdr writes Enter 300 ms
-after the paste whatever OpenCode or Antigravity CLI shows by then, so a
-permission or question either raises in between would take it as its answer
-(ADR 0025, and Antigravity CLI above). While Oh My Pi's status band,
-OpenCode's footer, or Antigravity CLI's footer or spinner shows a turn
+after the paste whatever OpenCode shows by then, so a
+permission or question it raises in between would take it as its answer
+(ADR 0025). While Oh My Pi's status band or
+OpenCode's footer shows a turn
 running, Chat holds the message and says to send once it is idle or steer
 from the terminal. A reported Working holds it the same way before Chat
-reads the screen (Antigravity CLI above). Esc in
-Pi or Oh My Pi puts a steer the turn has not taken back into the input box,
+reads the screen: on a herdr-core Host the session check and screen read
+wait for an exec and an attach's first paint, and the message otherwise
+showed as Sending before the screen's hold took it back. Esc in
+Pi, Oh My Pi or Antigravity CLI puts a steer or queued message the turn has not taken back into the input box,
 and Esc in Codex 0.162.1 does the same with a follow-up queued with Tab, so
 a draft found there says Stop may have left it. A send that empties the draft keeps Stop
 back for a second, so the second tap of a double tap cannot interrupt the turn

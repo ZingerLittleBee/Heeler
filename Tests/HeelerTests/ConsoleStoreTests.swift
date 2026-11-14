@@ -3200,6 +3200,71 @@ struct ConsoleStoreTests {
 
         store.setHosts([])
     }
+
+    /// An offline Host retrying in the background must not invalidate observers of
+    /// unchanged `agents`, `capabilities(for:)`, or `savedChatEntries` on connected Hosts.
+    @Test func offlineHostReconnectChurnDoesNotInvalidateConnectedAgentsOrCapabilities() async throws {
+        let online = Host.fixture(name: "online")
+        let offline = Host.fixture(name: "offline")
+        let inventory = SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1", status: .working)], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .working, focused: false, paneID: "w1:p1", revision: 1,
+                    tabID: "w1:t1", terminalID: "term", workspaceID: "w1")
+            ],
+            protocolVersion: 17, tabs: [], version: "0.7.5-fake",
+            workspaces: [.fixture(workspaceID: "w1", label: "Proj")])
+        let onlineTransport = ScriptedTransport(snapshot: inventory)
+        let attempts = ConnectionAttemptQueue([
+            .failure(.sshUnreachable(detail: "offline 1")),
+            .failure(.sshUnreachable(detail: "offline 2")),
+            .failure(.sshUnreachable(detail: "offline 3")),
+        ])
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { host, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: {
+                    if host.id == online.id { return onlineTransport }
+                    return try await attempts.next()
+                },
+                reconnectPolicy: ReconnectPolicy(
+                    initialDelay: .milliseconds(15), multiplier: 1, maxDelay: .milliseconds(15)),
+                keepalive: nil)
+        }
+        store.setHosts([online, offline])
+        await store.resume()
+        defer { store.setHosts([]) }
+
+        try await waitUntil("online Host lists its Agent and offline Host begins retrying") {
+            let count = await attempts.attemptCount
+            return store.agents.count == 1 && count >= 1
+        }
+
+        let agentsInvalidated = Mutex(false)
+        let capabilitiesInvalidated = Mutex(false)
+        withObservationTracking {
+            _ = store.agents
+            _ = store.chatDisplayAgents
+            _ = store.savedChatEntries
+        } onChange: {
+            agentsInvalidated.withLock { $0 = true }
+        }
+        withObservationTracking {
+            _ = store.capabilities(for: online.id)
+            _ = store.capabilities(for: offline.id)
+        } onChange: {
+            capabilitiesInvalidated.withLock { $0 = true }
+        }
+
+        try await waitUntil("offline Host runs more reconnect attempts") {
+            await attempts.attemptCount >= 3
+        }
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(!agentsInvalidated.withLock { $0 })
+        #expect(!capabilitiesInvalidated.withLock { $0 })
+    }
 }
 
 /// Hands out scripted transports in order, one per `connect`, so tests can

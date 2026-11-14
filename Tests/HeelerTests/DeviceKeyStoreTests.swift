@@ -45,6 +45,52 @@ struct DeviceKeyStoreTests {
 
         #expect(try store.loadOrCreate().openSSHPublicKey == replacement.openSSHPublicKey)
     }
+
+    @Test func concurrentLoadOrCreateGeneratesAndPersistsSingleKey() async throws {
+        let secrets = WriteCountingSecretStore()
+        let store = DeviceKeyStore(secrets: secrets)
+
+        let keys = try await withThrowingTaskGroup(of: String.self) { group in
+            for _ in 0..<16 {
+                group.addTask {
+                    try store.loadOrCreate().openSSHPublicKey
+                }
+            }
+            var collected: [String] = []
+            for try await key in group {
+                collected.append(key)
+            }
+            return collected
+        }
+
+        #expect(Set(keys).count == 1)
+        #expect(secrets.writeCalls == 1)
+    }
+}
+
+private final class WriteCountingSecretStore: SecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Data] = [:]
+    private(set) var writeCalls = 0
+
+    func read(account: String) throws -> Data? {
+        lock.withLock { storage[account] }
+    }
+
+    func readAll() throws -> [String: Data] {
+        lock.withLock { storage }
+    }
+
+    func write(_ secret: Data, account: String) throws {
+        lock.withLock {
+            writeCalls += 1
+            storage[account] = secret
+        }
+    }
+
+    func removeSecret(account: String) throws {
+        lock.withLock { storage[account] = nil }
+    }
 }
 
 @Suite("RSA key store")
@@ -81,6 +127,27 @@ struct RSAKeyStoreTests {
         let replacement = try store.replaceStoredKey()
 
         #expect(try store.loadOrCreate().openSSHPublicKey == replacement.openSSHPublicKey)
+    }
+
+    @Test func concurrentLoadOrCreateGeneratesAndPersistsSingleRSAKey() async throws {
+        let secrets = WriteCountingSecretStore()
+        let store = RSAKeyStore(secrets: secrets)
+
+        let keys = try await withThrowingTaskGroup(of: String.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    try store.loadOrCreate().openSSHPublicKey
+                }
+            }
+            var collected: [String] = []
+            for try await key in group {
+                collected.append(key)
+            }
+            return collected
+        }
+
+        #expect(Set(keys).count == 1)
+        #expect(secrets.writeCalls == 1)
     }
 }
 

@@ -84,7 +84,7 @@ final class HostLiveActivityCoordinator {
         controller: any LiveActivityControlling,
         preferences: LiveActivityPreferences,
         transports: any NotificationTransportProvider,
-        keys: NotificationKeyStore = NotificationKeyStore(),
+        keys: NotificationKeyStore = .appShared,
         ceremony: NotificationRegistrationCeremony? = nil,
         deviceToken: @escaping @MainActor () -> APNSDeviceToken?,
         knownHostIDs: @escaping @MainActor () -> Set<Host.ID>,
@@ -386,16 +386,18 @@ final class HostLiveActivityCoordinator {
     }
 
     private func computeDesired(for hostID: Host.ID) -> AgentActivityDesire? {
-        guard controller.areEnabled else { return nil }
-        guard preferences.isEnabled(for: hostID) else { return nil }
-        guard registrationGate(hostID) == .open else { return nil }
-        guard deviceToken() != nil else { return nil }
-        guard notificationKey(for: hostID) != nil else { return nil }
-        let agents = latestAgents[hostID] ?? []
-        return AgentActivityContentBuilder.desire(
-            from: agents,
-            hostName: resolvedHostName(hostID, agents: agents),
-            pinnedPaneIDs: pinnedPaneIDs(hostID), layout: rowLayout(hostID))
+        PerfTrace.span("live-activity.compute-desired") {
+            guard controller.areEnabled else { return nil }
+            guard preferences.isEnabled(for: hostID) else { return nil }
+            guard registrationGate(hostID) == .open else { return nil }
+            guard deviceToken() != nil else { return nil }
+            guard notificationKey(for: hostID) != nil else { return nil }
+            let agents = latestAgents[hostID] ?? []
+            return AgentActivityContentBuilder.desire(
+                from: agents,
+                hostName: resolvedHostName(hostID, agents: agents),
+                pinnedPaneIDs: pinnedPaneIDs(hostID), layout: rowLayout(hostID))
+        }
     }
 
     private func isUnchanged(hostID: Host.ID, desired: AgentActivityDesire?) -> Bool {

@@ -121,7 +121,12 @@ struct ConsoleView: View {
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
     /// Narrows both lists to selected Hosts; an empty set shows every Host.
     /// Filtering does not change grouping or catalog order.
-    @State private var hostFilter: Set<Host.ID> = []
+    private var hostFilter: Set<Host.ID> { listPresentation.hostFilter }
+    private var hostFilterBinding: Binding<Set<Host.ID>> {
+        Binding(
+            get: { listPresentation.hostFilter },
+            set: { listPresentation.setHostFilter($0) })
+    }
     @State private var filterPopoverTab: ConsoleTab?
     /// Each list's own search (#292, #316), after `hostFilter`. The field
     /// hides under the title until the list is pulled down.
@@ -204,7 +209,7 @@ struct ConsoleView: View {
             }
             if console.isUsageEnabled {
                 Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
-                    usageTab()
+                    MainActorContent { usageTab() }
                 }
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
@@ -219,7 +224,7 @@ struct ConsoleView: View {
                 .id(hostsTabGeneration)
             }
             Tab(value: ConsoleTab.settings) {
-                settingsView()
+                MainActorContent { settingsView() }
                     .id(settingsTabGeneration)
             } label: {
                 // Outlined, as Terminals is: filled, the gear is the heaviest
@@ -244,7 +249,7 @@ struct ConsoleView: View {
                 // StartAgentView brings its own NavigationStack.
                 StartAgentView(
                     hosts: hosts.consoleHosts.offeringNewItem(
-                        listsTerminals: false, capabilities: { console.capabilities(for: $0.id) }),
+                        listsTerminals: false, capabilities: { console.capabilities(for: $0) }),
                     console: console, origin: request.origin
                 ) { id in
                     // A fresh launch lands in its own terminal, exactly
@@ -266,8 +271,13 @@ struct ConsoleView: View {
             Text(pendingTabClose.map(tabCloseMessage(for:)) ?? "")
         }
         .modifier(ConsoleNoticesAndResets(
+            hosts: hosts,
             console: console,
+            hostFilter: hostFilter,
             pendingSavedChatRemoval: $pendingSavedChatRemoval,
+            hostIssuesLastFailures: $hostIssuesLastFailures,
+            isShowingHostIssues: $isShowingHostIssues,
+            connectionDetailRequest: $connectionDetailRequest,
             savedChatRemovalMessage: savedChatRemovalMessage(for:),
             removeSavedChat: removeSavedChat,
             leaveUsage: leaveUsage))
@@ -281,7 +291,7 @@ struct ConsoleView: View {
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
                     hosts: hosts.consoleHosts.offeringNewItem(
-                        listsTerminals: true, capabilities: { console.capabilities(for: $0.id) }),
+                        listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
                     console: console,
                     initialHostID: hostFilter.count == 1 ? hostFilter.first : nil
                 ) {
@@ -329,7 +339,7 @@ struct ConsoleView: View {
             presentHosts(pending.id, opensHostHelper: pending.opensHostHelper)
         }) {
             ConsoleSheetContent(sheetPresentation) { presentation in
-                settingsView(onDone: { isShowingSettingsSheet = false })
+                MainActorContent { settingsView(onDone: { isShowingSettingsSheet = false }) }
                     .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
             }
         }
@@ -338,19 +348,6 @@ struct ConsoleView: View {
         .onOpenURL { url in
             guard let link = UsageWidgetLink.target(from: url) else { return }
             openUsage(link)
-        }
-        // Retries answered, the Host no longer failing, drop what they saw.
-        .onChange(of: hostIssuesSheetExplained) { _, explained in
-            hostIssuesLastFailures = hostIssuesLastFailures.filter { explained.contains($0.key) }
-        }
-        .onChange(of: filteredHostIssues.isEmpty) { _, isEmpty in
-            if isEmpty { isShowingHostIssues = false }
-        }
-        // Once the Host connects again (or leaves the catalog) the sheet has
-        // nothing left to explain.
-        .onChange(of: connectionDetailRequest.flatMap { connectionDetail(for: $0) }) {
-            _, detail in
-            if detail == nil { connectionDetailRequest = nil }
         }
         .modifier(
             ConsoleStatusBarModifier(
@@ -403,8 +400,9 @@ struct ConsoleView: View {
         }
         // Drop removed Hosts without losing remaining selections. Removing
         // the last selected Host falls back to All Hosts.
-        .onChange(of: hosts.consoleHosts) { _, hosts in
-            hostFilter.formIntersection(hosts.map(\.id))
+        .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
+            guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
+            listPresentation.pruneHostFilter(keeping: consoleHosts)
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
         .focusedSceneValue(\.consoleCommandTarget, commandTarget)
@@ -1027,17 +1025,19 @@ struct ConsoleView: View {
             if hosts.consoleHosts.isEmpty {
                 noHostsView
             } else {
-                TerminalListView(
-                    hosts: hosts.consoleHosts,
-                    console: console,
-                    presentation: terminalPresentation,
-                    filteredHostIDs: hostFilter,
-                    searchQuery: terminalSearchText,
-                    selection: selectedItem,
-                    onOpen: { openTerminal($0, from: .terminals, bySidebar: true) },
-                    onOpenHost: { openHostIssue($0) },
-                    onShowHostIssues: { isShowingHostIssues = true },
-                    onNewTerminal: { isStartingTerminal = true })
+                MainActorContent {
+                    TerminalListView(
+                        hosts: hosts.consoleHosts,
+                        console: console,
+                        presentation: terminalPresentation,
+                        filteredHostIDs: hostFilter,
+                        searchQuery: terminalSearchText,
+                        selection: selectedItem,
+                        onOpen: { openTerminal($0, from: .terminals, bySidebar: true) },
+                        onOpenHost: { openHostIssue($0) },
+                        onShowHostIssues: { isShowingHostIssues = true },
+                        onNewTerminal: { isStartingTerminal = true })
+                }
                 .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
                     focus: $focusedSearch, tab: .terminals,
@@ -1077,7 +1077,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: hosts.consoleHosts, hostFilter: $hostFilter,
+            hosts: hosts.consoleHosts, hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -1223,14 +1223,15 @@ struct ConsoleView: View {
 
     /// One button for both lists, so a sidebar switching lists keeps its
     /// bar as it is.
-    @ViewBuilder
     private func newItemButton(for tab: ConsoleTab) -> some View {
-        if offersNewItem(on: tab) {
-            Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
-                if tab == .terminals {
-                    isStartingTerminal = true
-                } else {
-                    startAgentRequest = StartAgentRequest()
+        MainActorContent {
+            if offersNewItem(on: tab) {
+                Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
+                    if tab == .terminals {
+                        isStartingTerminal = true
+                    } else {
+                        startAgentRequest = StartAgentRequest()
+                    }
                 }
             }
         }
@@ -1238,7 +1239,7 @@ struct ConsoleView: View {
 
     private func offersNewItem(on tab: ConsoleTab) -> Bool {
         hosts.consoleHosts.offersNewItem(
-            listsTerminals: tab == .terminals, capabilities: { console.capabilities(for: $0.id) })
+            listsTerminals: tab == .terminals, capabilities: { console.capabilities(for: $0) })
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
@@ -1700,7 +1701,18 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch agentsSurface {
+        let _ = PerfTrace.count("ConsoleView.content")
+        let mode = listPresentation.mode
+        let groupedSections = mode == .grouped ? hostSections : []
+        let filtered = mode == .grouped ? [] : filteredAgents
+        let visibleIssueCount =
+            mode != .grouped && filtered.isEmpty ? visibleHostIssues.count : 0
+        switch agentsSurface(
+            mode: mode,
+            filteredCount: filtered.count,
+            visibleIssueCount: visibleIssueCount,
+            projectedSectionCount: groupedSections.count
+        ) {
         case .noHosts:
             noHostsView
         case .noAgents:
@@ -1719,7 +1731,7 @@ struct ConsoleView: View {
                             : String(localized: "No Agents on the Selected Hosts"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
-                Button("Show All Hosts") { hostFilter.removeAll() }
+                Button("Show All Hosts") { listPresentation.clearHostFilter() }
                     .hoverEffect(.highlight)
             }
         case .noSearchResults:
@@ -1747,13 +1759,13 @@ struct ConsoleView: View {
             }
         case .rows:
             List(selection: selectedItem) {
-                switch listPresentation.mode {
-                case .flat: flatAgentListRows
-                case .grouped: groupedAgentListRows
+                switch mode {
+                case .flat: flatAgentListRows(filtered: filtered)
+                case .grouped: groupedAgentListRows(sections: groupedSections)
                 case .byWorkspace: workspaceAgentListRows
                 }
             }
-            .modifier(ConsoleAgentListStyle(showsCards: listPresentation.mode == .byWorkspace))
+            .modifier(ConsoleAgentListStyle(showsCards: mode == .byWorkspace))
             .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
@@ -1774,11 +1786,11 @@ struct ConsoleView: View {
     }
 
     @ViewBuilder
-    private var agentHostIssueRows: some View {
-        if !visibleHostIssues.isEmpty {
+    private func agentHostIssueRows(_ issues: [ConsoleHostStatusPresentation]) -> some View {
+        if !issues.isEmpty {
             // On the Agent rows' edges and, as they are, without rules.
             ConsoleHostIssueList(
-                issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
+                issues: issues, onOpenHost: { openHostIssue($0) },
                 onShowAll: { isShowingHostIssues = true })
                 .modifier(ListRowVerticalInsets(0))
                 .listRowBackground(Color.clear)
@@ -1786,47 +1798,89 @@ struct ConsoleView: View {
         }
     }
 
+    private func makeAgentRowKeys(
+        for agents: [ConsoleAgent], pass: Int,
+        qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
+    ) -> [ConsoleAgentRowKey] {
+        let selection = selectedItem.wrappedValue
+        let shownAgentID = notificationRouter.path.last
+        var layouts: [Host.ID: AgentRowLayout] = [:]
+        var capabilitiesByHost: [Host.ID: HostCapabilities] = [:]
+        return agents.map { agent in
+            let layout = layouts[agent.hostID] ?? {
+                let resolved = console.rowLayout(for: agent.hostID)
+                layouts[agent.hostID] = resolved
+                return resolved
+            }()
+            let capabilities = capabilitiesByHost[agent.hostID] ?? {
+                let resolved = console.capabilities(for: agent.hostID)
+                capabilitiesByHost[agent.hostID] = resolved
+                return resolved
+            }()
+            let offers = ConsoleAgentRowOffers(
+                capabilities: capabilities,
+                supportsMultipleWindows: supportsMultipleWindows)
+            let renamesTitle =
+                capabilities.renameAgent
+                && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
+            return ConsoleAgentRowKey(
+                pass: pass,
+                agent: agent,
+                qualifier: qualifiers[agent.id],
+                saved: saved[agent.id],
+                layout: layout,
+                isPinned: console.pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID),
+                isSelected: selection == .agent(agent.id),
+                isShownInWindow: shownAgentID == agent.id,
+                renamesTitle: renamesTitle,
+                offers: offers)
+        }
+    }
+
     @ViewBuilder
-    private var flatAgentListRows: some View {
-        agentHostIssueRows
-        let qualifiers = agentTitleQualifiers
-        let saved = console.savedChatEntries
-        let pass = contentPass.number
-        ForEach(filteredAgents) { @Sendable agent in
-            KeyedContent(
-                key: ConsoleAgentRowKey(
-                    pass: pass, agent: agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
-            ) {
-                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
+    private func flatAgentListRows(filtered: [ConsoleAgent]) -> some View {
+        MainActorContent {
+            agentHostIssueRows(visibleHostIssues)
+        }
+        let keys = makeAgentRowKeys(
+            for: filtered, pass: contentPass.number,
+            qualifiers: agentTitleQualifiers, saved: console.savedChatEntries)
+        ForEach(keys, id: \.agent.id) { @Sendable key in
+            KeyedContent(key: key) {
+                agentRow(key)
             }
         }
     }
 
     @ViewBuilder
     private var workspaceAgentListRows: some View {
-        if !visibleHostIssues.isEmpty {
-            Section {
-                // Off the cards, on the page: out to the cards' edges, as
-                // in the Terminals list's By Workspace.
-                ConsoleHostIssueList(
-                    issues: visibleHostIssues, onOpenHost: { openHostIssue($0) },
-                    onShowAll: { isShowingHostIssues = true })
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+        MainActorContent {
+            let issues = visibleHostIssues
+            if !issues.isEmpty {
+                Section {
+                    // Off the cards, on the page: out to the cards' edges, as
+                    // in the Terminals list's By Workspace.
+                    ConsoleHostIssueList(
+                        issues: issues, onOpenHost: { openHostIssue($0) },
+                        onShowAll: { isShowingHostIssues = true })
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
             }
         }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         let pass = contentPass.number
+        let selectedAgentID = notificationRouter.path.last
         ForEach(workspaceCards) { @Sendable card in
             MainActorContent {
+                let keys = makeWorkspaceRowKeys(
+                    for: card, pass: pass, selectedAgentID: selectedAgentID,
+                    qualifiers: qualifiers, saved: saved)
                 Section {
-                    ForEach(card.rows) { @Sendable placed in
-                        KeyedContent(
-                            key: ConsoleWorkspaceRowKey(
-                                pass: pass, placed: placed, card: card, qualifiers: qualifiers, saved: saved)
-                        ) {
-                            workspaceCardRow(placed, in: card, qualifiers: qualifiers, saved: saved)
+                    ForEach(keys, id: \.placed.id) { @Sendable key in
+                        KeyedContent(key: key) {
+                            workspaceCardRow(key)
                         }
                     }
                 }
@@ -1834,11 +1888,53 @@ struct ConsoleView: View {
         }
     }
 
-    @ViewBuilder
-    private func workspaceCardRow(
-        _ placed: ConsoleWorkspaceCard.Placed, in card: ConsoleWorkspaceCard,
+    private func makeWorkspaceRowKeys(
+        for card: ConsoleWorkspaceCard, pass: Int, selectedAgentID: ConsoleAgent.ID?,
         qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
-    ) -> some View {
+    ) -> [ConsoleWorkspaceRowKey] {
+        var layouts: [Host.ID: AgentRowLayout] = [:]
+        var capabilitiesByHost: [Host.ID: HostCapabilities] = [:]
+        return card.rows.map { placed in
+            guard case .agent(let agent, _, _) = placed.row else {
+                return ConsoleWorkspaceRowKey(pass: pass, placed: placed, card: card)
+            }
+            let layout = layouts[agent.hostID] ?? {
+                let resolved = console.rowLayout(for: agent.hostID)
+                layouts[agent.hostID] = resolved
+                return resolved
+            }()
+            let capabilities = capabilitiesByHost[agent.hostID] ?? {
+                let resolved = console.capabilities(for: agent.hostID)
+                capabilitiesByHost[agent.hostID] = resolved
+                return resolved
+            }()
+            let savedEntry = saved[agent.id]
+            let origin = savedEntry == nil && capabilities.startsAgents
+                ? StartAgentStore.LaunchOrigin(beside: agent, in: console) : nil
+            let renamesTitle =
+                capabilities.renameAgent
+                && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
+            return ConsoleWorkspaceRowKey(
+                pass: pass,
+                placed: placed,
+                card: card,
+                qualifier: qualifiers[agent.id],
+                saved: savedEntry,
+                layout: layout,
+                isPinned: console.pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID),
+                isSelected: selectedAgentID == agent.id,
+                isShownInWindow: selectedAgentID == agent.id,
+                renamesTitle: renamesTitle,
+                offers: ConsoleAgentRowOffers(
+                    capabilities: capabilities, supportsMultipleWindows: supportsMultipleWindows),
+                newAgentOrigin: origin)
+        }
+    }
+
+    @ViewBuilder
+    private func workspaceCardRow(_ key: ConsoleWorkspaceRowKey) -> some View {
+        let placed = key.placed
+        let card = key.card
         switch placed.row {
         case .header:
             let primary = card.primary
@@ -1871,26 +1967,33 @@ struct ConsoleView: View {
             .modifier(ConsoleWorkspaceCardRow(placed: placed, indent: .icon, top: 0, bottom: 0))
             .selectionDisabled()
         case .agent(let agent, let section, let standsAlone):
+            let layout = key.layout ?? .consoleDefault
+            let offers = key.offers ?? ConsoleAgentRowOffers(opensInNewWindow: false, closes: false)
             agentLink(
                 agent,
-                isSaved: saved[agent.id] != nil,
+                isSaved: key.saved != nil,
+                isPinned: key.isPinned,
+                isShownInWindow: key.isShownInWindow,
+                renamesTitle: key.renamesTitle,
+                offers: offers,
                 // A saved Agent's Workspace may be gone with its Host session,
                 // and its detail's New Agent shows only where the Host starts Agents.
-                newAgentOrigin: saved[agent.id] == nil && console.capabilities(for: agent.hostID).startsAgents
-                    ? StartAgentStore.LaunchOrigin(beside: agent, in: console) : nil,
+                newAgentOrigin: key.newAgentOrigin,
                 background: ConsoleWorkspaceCardRow(
                     placed: placed, indent: .icon,
                     top: standsAlone ? (placed.followsHeader ? 0 : 6) : 2, bottom: standsAlone ? 6 : 4,
-                    isSelected: notificationRouter.path.last == agent.id)
+                    isSelected: key.isSelected)
             ) {
                 cardAgentLabel(
                     agent, of: section, standsAlone: standsAlone, in: card,
-                    qualifier: qualifiers[agent.id], saved: saved[agent.id], readsChanges: true)
+                    layout: layout, isPinned: key.isPinned,
+                    qualifier: key.qualifier, saved: key.saved, readsChanges: true)
                 .modifier(foldReveal(placed, in: card))
             } preview: {
                 cardAgentLabel(
                     agent, of: section, standsAlone: standsAlone, in: card,
-                    qualifier: qualifiers[agent.id], saved: saved[agent.id], readsChanges: false)
+                    layout: layout, isPinned: key.isPinned,
+                    qualifier: key.qualifier, saved: key.saved, readsChanges: false)
             }
         }
     }
@@ -1900,7 +2003,8 @@ struct ConsoleView: View {
     /// title and icon; a row leaves to the card what the card already says.
     private func cardAgentLabel(
         _ agent: ConsoleAgent, of section: ConsoleWorkspaceSection, standsAlone: Bool,
-        in card: ConsoleWorkspaceCard, qualifier: String?, saved: HostReadiness?, readsChanges: Bool
+        in card: ConsoleWorkspaceCard, layout: AgentRowLayout, isPinned: Bool,
+        qualifier: String?, saved: HostReadiness?, readsChanges: Bool
     ) -> some View {
         let showsHost = standsAlone && !card.isRepository
         let heading = standsAlone
@@ -1911,9 +2015,8 @@ struct ConsoleView: View {
             : nil
         return AgentCardView(
             agent: agent,
-            layout: console.rowLayout(for: agent.hostID),
-            isPinned: console.pins.isPinned(
-                hostID: agent.hostID, paneID: agent.agent.paneID),
+            layout: layout,
+            isPinned: isPinned,
             changes: readsChanges ? console.rowChanges.store(for: agent) : nil,
             qualifier: standsAlone ? nil : qualifier,
             saved: saved,
@@ -2016,11 +2119,12 @@ struct ConsoleView: View {
     }
 
     @ViewBuilder
-    private var groupedAgentListRows: some View {
-        let qualifiers = agentTitleQualifiers
+    private func groupedAgentListRows(sections: [ConsoleHostSection]) -> some View {
+        let hasExpandedAgents = sections.contains { !$0.isCollapsed && !$0.agents.isEmpty }
+        let qualifiers = hasExpandedAgents ? agentTitleQualifiers : [:]
         let saved = console.savedChatEntries
         let pass = contentPass.number
-        ForEach(hostSections) { @Sendable section in
+        ForEach(sections) { @Sendable section in
             MainActorContent {
                 let opensDetail = connectionDetail(for: section.hostID) != nil
                 Section {
@@ -2031,13 +2135,12 @@ struct ConsoleView: View {
                             ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
                                 .listRowSeparator(.hidden)
                         }
-                        ForEach(section.agents) { @Sendable agent in
-                            KeyedContent(
-                                key: ConsoleAgentRowKey(
-                                    pass: pass, agent: agent, qualifier: qualifiers[agent.id],
-                                    saved: saved[agent.id])
-                            ) {
-                                agentRow(agent, qualifier: qualifiers[agent.id], saved: saved[agent.id])
+                        let keys = makeAgentRowKeys(
+                            for: section.agents, pass: pass,
+                            qualifiers: qualifiers, saved: saved)
+                        ForEach(keys, id: \.agent.id) { @Sendable key in
+                            KeyedContent(key: key) {
+                                agentRow(key)
                             }
                         }
                     }
@@ -2060,29 +2163,31 @@ struct ConsoleView: View {
 
     /// An Agent's row in the plain lists: no rules between rows, and closer
     /// together than the list would set them, as their marks set them apart.
-    private func agentRow(_ agent: ConsoleAgent, qualifier: String?, saved: HostReadiness?) -> some View {
-        agentLink(
-            agent,
-            isSaved: saved != nil,
-            background: ConsoleRowSelectionBackground(
-                isSelected: selectedItem.wrappedValue == .agent(agent.id))
+    private func agentRow(_ key: ConsoleAgentRowKey) -> some View {
+        let _ = PerfTrace.count("ConsoleView.agentRow")
+        return agentLink(
+            key.agent,
+            isSaved: key.saved != nil,
+            isPinned: key.isPinned,
+            isShownInWindow: key.isShownInWindow,
+            renamesTitle: key.renamesTitle,
+            offers: key.offers,
+            background: ConsoleRowSelectionBackground(isSelected: key.isSelected)
         ) {
             AgentCardView(
-                agent: agent,
-                layout: console.rowLayout(for: agent.hostID),
-                isPinned: console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID),
-                changes: console.rowChanges.store(for: agent),
-                qualifier: qualifier,
-                saved: saved)
+                agent: key.agent,
+                layout: key.layout,
+                isPinned: key.isPinned,
+                changes: console.rowChanges.store(for: key.agent),
+                qualifier: key.qualifier,
+                saved: key.saved)
         } preview: {
             AgentCardView(
-                agent: agent,
-                layout: console.rowLayout(for: agent.hostID),
-                isPinned: console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID),
-                qualifier: qualifier,
-                saved: saved)
+                agent: key.agent,
+                layout: key.layout,
+                isPinned: key.isPinned,
+                qualifier: key.qualifier,
+                saved: key.saved)
         }
         .listRowSeparator(.hidden)
         .modifier(ListRowVerticalInsets(4))
@@ -2093,14 +2198,13 @@ struct ConsoleView: View {
     /// set. `background` draws the row's place in the list; `preview` is
     /// what a lifted card shows (see `ConsoleRowContextMenu`).
     private func agentLink<RowContent: View, Background: ViewModifier, Preview: View>(
-        _ agent: ConsoleAgent, isSaved: Bool, newAgentOrigin: StartAgentStore.LaunchOrigin? = nil,
+        _ agent: ConsoleAgent, isSaved: Bool, isPinned: Bool,
+        isShownInWindow: Bool, renamesTitle: Bool, offers: ConsoleAgentRowOffers,
+        newAgentOrigin: StartAgentStore.LaunchOrigin? = nil,
         background: Background,
-        @ViewBuilder label: () -> RowContent, @ViewBuilder preview: () -> Preview
+        @ViewBuilder label: () -> RowContent, @ViewBuilder preview: @escaping () -> Preview
     ) -> some View {
-        let offers = ConsoleAgentRowOffers(
-            capabilities: console.capabilities(for: agent.hostID),
-            supportsMultipleWindows: supportsMultipleWindows)
-        return NavigationLink(value: ConsoleSelection.agent(agent.id)) {
+        NavigationLink(value: ConsoleSelection.agent(agent.id)) {
             label()
                 .modifier(ConsoleRowSelectionContent())
         }
@@ -2115,22 +2219,20 @@ struct ConsoleView: View {
         .hoverEffect(.highlight)
         .modifier(
             ConsoleRowContextMenu {
-                let pinned = console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID)
                 Button(
-                    pinned ? "Unpin" : "Pin",
-                    systemImage: pinned ? "pin.slash" : "pin"
+                    isPinned ? "Unpin" : "Pin",
+                    systemImage: isPinned ? "pin.slash" : "pin"
                 ) {
                     console.togglePin(
                         hostID: agent.hostID, paneID: agent.agent.paneID)
                 }
-                if console.offersTitleRename(for: agent) {
+                if renamesTitle {
                     Button("Rename", systemImage: "pencil") {
                         titleRename = console.titleRenameStore(for: agent)
                     }
                 }
                 // Never on iPhone, and not for the Agent this window already shows.
-                if offers.opensInNewWindow, notificationRouter.path.last != agent.id {
+                if offers.opensInNewWindow, !isShownInWindow {
                     Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
                         openInNewWindow(agent)
                     }
@@ -2167,14 +2269,12 @@ struct ConsoleView: View {
                 title: agent.agent.displayName,
                 isEnabled: offers.opensInNewWindow))
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            let pinned = console.pins.isPinned(
-                hostID: agent.hostID, paneID: agent.agent.paneID)
             Button {
                 togglePinAfterSwipe(agent)
             } label: {
                 Label(
-                    pinned ? "Unpin" : "Pin",
-                    systemImage: pinned ? "pin.slash.fill" : "pin.fill")
+                    isPinned ? "Unpin" : "Pin",
+                    systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
             }
             .tint(.orange)
         }
@@ -2305,14 +2405,19 @@ struct ConsoleView: View {
         }
     }
 
-    private var agentsSurface: ConsoleAgentsSurface {
+    private func agentsSurface(
+        mode: ConsoleListPresentationMode,
+        filteredCount: Int,
+        visibleIssueCount: Int,
+        projectedSectionCount: Int
+    ) -> ConsoleAgentsSurface {
         ConsoleAgentsSurface(
             hostCount: hosts.consoleHosts.count,
             filteredHostName: hostFilter.isEmpty ? nil : filteredHostName,
-            filteredAgentCount: filteredAgents.count,
-            visibleIssueCount: visibleHostIssues.count,
-            presentationMode: listPresentation.mode,
-            projectedSectionCount: hostSections.count,
+            filteredAgentCount: filteredCount,
+            visibleIssueCount: visibleIssueCount,
+            presentationMode: mode,
+            projectedSectionCount: projectedSectionCount,
             searchQuery: agentSearchText,
             isStatusFiltered: !listPresentation.statusFilter.isEmpty)
     }
@@ -2383,7 +2488,9 @@ struct ConsoleView: View {
     private var filteredAgents: [ConsoleAgent] {
         PerfTrace.span("console.list.filtered-agents") {
             let statusFilter = listPresentation.statusFilter
-            return searchedAgents.filter { statusFilter.admits($0) }
+            let searched = searchedAgents
+            guard !statusFilter.isEmpty else { return searched }
+            return searched.filter { statusFilter.admits($0) }
         }
     }
 
@@ -2401,11 +2508,17 @@ struct ConsoleView: View {
         // By Workspace rows leave fields to their card's titles.
         let isByWorkspace = listPresentation.mode == .byWorkspace
         let savedStructures = isByWorkspace ? console.savedWorkspaceStructures : [:]
+        var layouts: [Host.ID: AgentRowLayout] = [:]
         return AgentTitleQualifier.qualifiers(for: hostFilteredAgents) { agent in
+            let layout = layouts[agent.hostID] ?? {
+                let resolved = console.rowLayout(for: agent.hostID)
+                layouts[agent.hostID] = resolved
+                return resolved
+            }()
             let checkoutPath = agent.checkoutPath
                 ?? savedStructures[agent.hostID]?.first { $0.id == agent.agent.workspaceID }?.checkout.checkoutPath
             let card = AgentCardPresentation(
-                agent: agent, layout: console.rowLayout(for: agent.hostID),
+                agent: agent, layout: layout,
                 hiding: isByWorkspace
                     ? ConsoleWorkspaceCard.hiddenTokens(for: agent, checkoutPath: checkoutPath, showsHost: false)
                     : [],
@@ -2453,14 +2566,7 @@ struct ConsoleView: View {
     /// One actionable status per Host. A disconnected session takes priority;
     /// otherwise a connected Host can still have a failing snapshot RPC.
     private var hostIssues: [ConsoleHostStatusPresentation] {
-        hosts.consoleHosts.compactMap { host in
-            ConsoleHostStatusPresentation(
-                host: host,
-                status: console.hostStatuses[host.id],
-                standingFailure: console.hostStandingFailures[host.id],
-                isAwaitingSnapshot: console.hostsAwaitingSnapshot.contains(host.id),
-                syncError: console.hostSyncErrors[host.id])
-        }
+        console.hostIssues(for: hosts.consoleHosts)
     }
 
     /// How the Console's sheets present, resolved against this view.
@@ -2508,7 +2614,7 @@ struct ConsoleView: View {
             for: ConnectionDetailRequest(id: id, lastFailure: hostIssuesLastFailures[id]))
     }
 
-    private struct ConnectionDetailRequest: Identifiable {
+    fileprivate struct ConnectionDetailRequest: Identifiable, Equatable {
         let id: Host.ID
         /// The failure shown when the sheet's Retry Now was tapped.
         var lastFailure: TransportError?
@@ -2520,6 +2626,12 @@ struct ConsoleView: View {
 
     private func connectionDetail(
         for request: ConnectionDetailRequest
+    ) -> HostConnectionDetailPresentation? {
+        Self.connectionDetail(for: request, hosts: hosts, console: console)
+    }
+
+    fileprivate static func connectionDetail(
+        for request: ConnectionDetailRequest, hosts: HostStore, console: ConsoleStore
     ) -> HostConnectionDetailPresentation? {
         guard let host = hosts.consoleHosts.first(where: { $0.id == request.id }) else { return nil }
         return HostConnectionDetailPresentation(
@@ -2630,7 +2742,11 @@ struct ConsoleListFilterChoices: View {
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
                                 choice(host.displayName, selected: hostFilter.contains(host.id)) {
-                                    if !hostFilter.insert(host.id).inserted { hostFilter.remove(host.id) }
+                                    if hostFilter.contains(host.id) {
+                                        hostFilter.remove(host.id)
+                                    } else {
+                                        hostFilter.insert(host.id)
+                                    }
                                 }
                             }
                         }
@@ -3104,8 +3220,13 @@ struct MissingAgentPresentation: Equatable {
 
 /// One link of `ConsoleView.body`'s chain, which is at the type checker's limit.
 private struct ConsoleNoticesAndResets: ViewModifier {
+    let hosts: HostStore
     let console: ConsoleStore
+    let hostFilter: Set<Host.ID>
     @Binding var pendingSavedChatRemoval: ConsoleAgent?
+    @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
+    @Binding var isShowingHostIssues: Bool
+    @Binding var connectionDetailRequest: ConsoleView.ConnectionDetailRequest?
     let savedChatRemovalMessage: (ConsoleAgent) -> String
     let removeSavedChat: (ConsoleAgent) -> Void
     let leaveUsage: () -> Void
@@ -3113,11 +3234,88 @@ private struct ConsoleNoticesAndResets: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(ConsoleOutcomeNoticeAlert(console: console))
+            .modifier(ConsoleHostIssuePresentationReset(
+                hosts: hosts,
+                console: console,
+                hostFilter: hostFilter,
+                hostIssuesLastFailures: $hostIssuesLastFailures,
+                isShowingHostIssues: $isShowingHostIssues,
+                connectionDetailRequest: $connectionDetailRequest))
             .modifier(SavedChatRemovalAlert(
                 pending: $pendingSavedChatRemoval,
                 message: savedChatRemovalMessage,
                 remove: removeSavedChat))
             .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
+    }
+}
+
+/// Keeps Host-issue and connection-detail sheet dismissal tracking in its own
+/// observation scope so Host status transitions never re-evaluate `ConsoleView.body`.
+private struct ConsoleHostIssuePresentationReset: ViewModifier {
+    let hosts: HostStore
+    let console: ConsoleStore
+    let hostFilter: Set<Host.ID>
+    @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
+    @Binding var isShowingHostIssues: Bool
+    @Binding var connectionDetailRequest: ConsoleView.ConnectionDetailRequest?
+
+    func body(content: Content) -> some View {
+        let needsFilteredIssues = !hostIssuesLastFailures.isEmpty || isShowingHostIssues
+        let filteredIssues: [ConsoleHostStatusPresentation] =
+            if needsFilteredIssues {
+                if hostFilter.isEmpty {
+                    console.hostIssues(for: hosts.consoleHosts)
+                } else {
+                    console.hostIssues(for: hosts.consoleHosts).filter {
+                        hostFilter.contains($0.hostID)
+                    }
+                }
+            } else {
+                []
+            }
+        let staleFailureIDs: Set<Host.ID> =
+            if hostIssuesLastFailures.isEmpty {
+                []
+            } else {
+                Set(
+                    hostIssuesLastFailures.keys.filter { id in
+                        !filteredIssues.contains(where: { $0.hostID == id })
+                            || ConsoleView.connectionDetail(
+                                for: .init(id: id, lastFailure: hostIssuesLastFailures[id]),
+                                hosts: hosts, console: console) == nil
+                    })
+            }
+        let shouldDismissHostIssues = isShowingHostIssues && filteredIssues.isEmpty
+        let shouldDismissConnectionDetail =
+            if let request = connectionDetailRequest {
+                ConsoleView.connectionDetail(for: request, hosts: hosts, console: console) == nil
+            } else {
+                false
+            }
+        content
+            // Retries answered, the Host no longer failing, drop what they saw.
+            .onChange(of: staleFailureIDs) { _, staleIDs in
+                guard !staleIDs.isEmpty else { return }
+                var next = hostIssuesLastFailures
+                for id in staleIDs {
+                    next.removeValue(forKey: id)
+                }
+                if next != hostIssuesLastFailures {
+                    hostIssuesLastFailures = next
+                }
+            }
+            .onChange(of: shouldDismissHostIssues) { _, dismiss in
+                if dismiss, isShowingHostIssues {
+                    isShowingHostIssues = false
+                }
+            }
+            // Once the Host connects again (or leaves the catalog) the sheet has
+            // nothing left to explain.
+            .onChange(of: shouldDismissConnectionDetail) { _, dismiss in
+                if dismiss, connectionDetailRequest != nil {
+                    connectionDetailRequest = nil
+                }
+            }
     }
 }
 
@@ -3321,6 +3519,12 @@ private struct ConsoleAgentRowKey: Equatable, Sendable {
     let agent: ConsoleAgent
     let qualifier: String?
     let saved: HostReadiness?
+    let layout: AgentRowLayout
+    let isPinned: Bool
+    let isSelected: Bool
+    let isShownInWindow: Bool
+    let renamesTitle: Bool
+    let offers: ConsoleAgentRowOffers
 }
 
 /// What the detail column hands an Agent's detail.
@@ -3340,24 +3544,15 @@ private struct ConsoleWorkspaceRowKey: Equatable, Sendable {
     let pass: Int
     let placed: ConsoleWorkspaceCard.Placed
     let card: ConsoleWorkspaceCard
-    let qualifier: String?
-    let saved: HostReadiness?
-
-    init(
-        pass: Int, placed: ConsoleWorkspaceCard.Placed, card: ConsoleWorkspaceCard,
-        qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
-    ) {
-        self.pass = pass
-        self.placed = placed
-        self.card = card
-        if case .agent(let agent, _, _) = placed.row {
-            qualifier = qualifiers[agent.id]
-            self.saved = saved[agent.id]
-        } else {
-            qualifier = nil
-            self.saved = nil
-        }
-    }
+    var qualifier: String?
+    var saved: HostReadiness?
+    var layout: AgentRowLayout?
+    var isPinned = false
+    var isSelected = false
+    var isShownInWindow = false
+    var renamesTitle = false
+    var offers: ConsoleAgentRowOffers?
+    var newAgentOrigin: StartAgentStore.LaunchOrigin?
 }
 
 /// What the Console sidebar's split-view selection can hold. Only Agents

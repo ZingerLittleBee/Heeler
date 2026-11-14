@@ -334,10 +334,9 @@ struct AgyBackgroundTaskStop {
     nonisolated static let tasksCommand = "/tasks"
     nonisolated static let eraseTasks = Array(repeating: "backspace", count: tasksCommand.count)
 
-    /// agy's empty idle box, with no dialog, popup or running turn: what a
-    /// Composer send needs too.
+    /// agy's empty idle box, with no dialog, popup or running turn.
     nonisolated static func showsIdleBox(_ screen: ANSIScreen) -> Bool {
-        InputBoxStateDetector.detect(screen, program: .agy).isSendable
+        !AgyScreen(screen).showsRunningTurn && InputBoxStateDetector.detect(screen, program: .agy).isSendable
     }
 
     /// `> /tasks  View background tasks` under the box holding `/tasks`.

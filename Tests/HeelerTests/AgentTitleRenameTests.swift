@@ -34,15 +34,39 @@ struct AgentTitleRenameTests {
         #expect(rig.refreshes == 1)
     }
 
-    /// How Antigravity CLI names a conversation is not known yet, so Rename
-    /// is not offered for it, nor generation.
-    @Test func antigravityOffersNoRename() {
-        #expect(!AgentTitleNaming.supportsRename(.agy))
+    /// Antigravity CLI prints its rename confirmation on screen without setting
+    /// a terminal title by default, and `/rename` with no argument is an error.
+    @Test func antigravityConfirmsRenameOnScreenWithoutGeneration() async throws {
+        #expect(ChatProgram.allCases.allSatisfy(AgentTitleNaming.supportsRename))
         #expect(!AgentTitleNaming.supportsGeneration(.agy))
-        #expect(ChatProgram.allCases.filter { !AgentTitleNaming.supportsRename($0) } == [.agy])
+        let rig = try Rig(.agy)
+        rig.apply = false
+        rig.afterCommand = {
+            rig.screenOverride = ANSIScreenDecoder.decode("> /rename Updated guide ✅\n  ⎿  Conversation renamed to: Updated guide ✅")
+        }
+        let store = rig.store()
+        store.input = "Updated guide ✅"
+        await store.save()
+        #expect(store.state == .renamed)
+        #expect(rig.commands == ["/rename Updated guide ✅"])
+        #expect(rig.refreshes == 1)
     }
 
-    @Test(arguments: [ChatProgram.pi, .grok, .opencode])
+    @Test func antigravityRenameFailureKeepsManualDraft() async throws {
+        let rig = try Rig(.agy)
+        rig.apply = false
+        rig.afterCommand = {
+            rig.screenOverride = ANSIScreenDecoder.decode("> /rename Keep my draft\n  ⎿  Error: Failed to rename conversation: no active conversation")
+        }
+        let store = rig.store()
+        store.input = "Keep my draft"
+        await store.save()
+        #expect(store.input == "Keep my draft")
+        #expect(!store.outcomeUncertain)
+        #expect(store.canSave)
+    }
+
+    @Test(arguments: [ChatProgram.pi, .grok, .opencode, .agy])
     func unsupportedGenerationSendsNothing(program: ChatProgram) async throws {
         let rig = try Rig(program)
         let store = rig.store()
@@ -144,6 +168,9 @@ struct AgentTitleRenameTests {
         #expect(
             AgentTitleRenameStore.nativeAcknowledgement(program: .omp, title: "π > 📝 MANUAL: Original")
                 == "Session renamed to \"📝 MANUAL: Original\".")
+        #expect(
+            AgentTitleRenameStore.nativeAcknowledgement(program: .agy, title: "Original")
+                == "Conversation renamed to: Original")
         for program in [ChatProgram.codex, .pi, .grok, .opencode] {
             #expect(AgentTitleRenameStore.nativeAcknowledgement(program: program, title: "Original") == nil)
         }
@@ -217,8 +244,6 @@ struct AgentTitleRenameTests {
         #expect(AgentTitleNaming.matches(agent, program: .codex, title: "Guide"))
     }
 
-    private struct RenameNotOffered: Error {}
-
     @MainActor
     private final class Rig {
         let program: ChatProgram
@@ -246,7 +271,7 @@ struct AgentTitleRenameTests {
             case .omp: "omp-08-empty-120-after-first"
             case .grok: "grok-01-idle-empty"
             case .opencode: "opencode-02-session-empty-180"
-            case .agy: throw RenameNotOffered()
+            case .agy: "agy-02-idle-empty-120x40"
             }
             empty = try ScreenFixture.screen(fixture)
         }

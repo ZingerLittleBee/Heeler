@@ -189,4 +189,29 @@ struct PinnedAgentsStoreTests {
         #expect(reloaded.pinnedPaneIDs(for: hostID) == ["gone:pane"])
         #expect(reloaded.pinRank(hostID: hostID, paneID: "gone:pane") == 0)
     }
+
+    @Test func rankLookupUpdatesContiguouslyAcrossRemoveAndRetain() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let hostA = UUID()
+        let hostB = UUID()
+        let store = PinnedAgentsStore(defaults: defaults)
+
+        store.togglePin(hostID: hostA, paneID: "p1")
+        store.togglePin(hostID: hostB, paneID: "p2")
+        store.togglePin(hostID: hostA, paneID: "p3")
+        // Order now: A:p3 (0), B:p2 (1), A:p1 (2)
+        #expect(store.pinRank(hostID: hostA, paneID: "p3") == 0)
+        #expect(store.pinRank(hostID: hostB, paneID: "p2") == 1)
+        #expect(store.pinRank(hostID: hostA, paneID: "p1") == 2)
+
+        store.removePin(hostID: hostB, paneID: "p2")
+        #expect(store.pinRank(hostID: hostB, paneID: "p2") == nil)
+        #expect(store.pinRank(hostID: hostA, paneID: "p3") == 0)
+        #expect(store.pinRank(hostID: hostA, paneID: "p1") == 1)
+
+        store.retainPins(hostID: hostA, paneIDs: ["p1"])
+        #expect(store.pinRank(hostID: hostA, paneID: "p3") == nil)
+        #expect(store.pinRank(hostID: hostA, paneID: "p1") == 0)
+    }
 }

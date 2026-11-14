@@ -24,7 +24,7 @@ enum PerfTrace {
         ProcessInfo.processInfo.arguments.contains(launchArgument)
         || UserDefaults.standard.bool(forKey: defaultsKey)
 
-    private static let signposter = OSSignposter(subsystem: "dev.bybee.heeler", category: "PerfTrace")
+    fileprivate static let signposter = OSSignposter(subsystem: "dev.bybee.heeler", category: "PerfTrace")
 
     /// Main-actor work under way; nil while the trace is off.
     struct Span {
@@ -70,10 +70,17 @@ enum PerfTrace {
         return try body()
     }
 
+#if DEBUG
+    @MainActor static var testCountObserver: ((StaticString, Int) -> Void)?
+#endif
+
     /// Counts something that happens many times a frame: a view's `body`, a
     /// cell, an event.
     @MainActor
     static func count(_ name: StaticString, _ amount: Int = 1) {
+#if DEBUG
+        testCountObserver?(name, amount)
+#endif
         guard isEnabled else { return }
         PerfTraceRecorder.shared.count(name, amount)
     }
@@ -280,6 +287,7 @@ final class PerfTraceRecorder: NSObject {
         }
 
         PerfMainThreadSampler.start()
+        Self.installKeychainHook()
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         // Common modes: the clock has to run while a scroll view tracks.
         link.add(to: .main, forMode: .common)
@@ -291,6 +299,27 @@ final class PerfTraceRecorder: NSObject {
             self, selector: #selector(pause), name: UIApplication.willResignActiveNotification, object: nil)
         center.addObserver(
             self, selector: #selector(pause), name: UIApplication.didEnterBackgroundNotification, object: nil)
+    }
+
+    nonisolated static func installKeychainHook() {
+        KeychainSecretTrace.wrapRead = { service, isAll, body in
+            if pthread_main_np() != 0 {
+                let state = PerfTrace.signposter.beginInterval("keychain.main.read")
+                let start = CACurrentMediaTime()
+                let status = body()
+                let seconds = CACurrentMediaTime() - start
+                PerfTrace.signposter.endInterval("keychain.main.read", state)
+                MainActor.assumeIsolated {
+                    PerfTraceRecorder.shared.record("keychain.main.read", seconds: seconds)
+                }
+                return status
+            }
+            let interval = PerfTrace.beginInterval(
+                "keychain.bg.read", "service=\(service) all=\(isAll ? 1 : 0)")
+            let result = body()
+            PerfTrace.endInterval(interval)
+            return result
+        }
     }
 
     func record(_ name: StaticString, seconds: Double) {
