@@ -98,6 +98,7 @@ struct AgentChatSurfaceView: View {
     @State private var mountedWindow = WindowReference()
     @State private var windowControlsHeight: CGFloat = 0
     @State private var checkAgain: ChatCheckAgainHold?
+    @State private var checkAgainTask: Task<Void, Never>?
     /// Shared with the terminal: one reading preference across surfaces.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     @AppStorage(ChatFoldSettings.defaultsKey) private var foldsFinishedTurns = true
@@ -360,6 +361,7 @@ struct AgentChatSurfaceView: View {
                 chat?.hide(viewerID)
                 composer.voice.composerDidLeaveScreen()
                 answerSwitch(false)
+                cancelCheckAgain()
             }
         }
         .onChange(of: timelineFeed, initial: true) { _, feed in
@@ -633,7 +635,6 @@ struct AgentChatSurfaceView: View {
                 .padding(.top, headerObstruction)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .modifier(CheckAgainTiming(hold: $checkAgain, chat: chat))
         // Hung from the conversation's bottom edge down to the screen's, so
         // it never sizes the conversation: as a sibling it could outgrow the
         // room left above a raised keyboard, push the chrome down and the
@@ -828,17 +829,35 @@ struct AgentChatSurfaceView: View {
 
     private func startCheckAgain() {
         guard let chat, checkAgain == nil else { return }
+        if isOnStage() { chat.show(viewerID) }
+        let hold = ChatCheckAgainHold(presentation: presentation)
         withAnimation(ChatCheckAgainHold.animation) {
-            checkAgain = ChatCheckAgainHold(presentation: presentation)
+            checkAgain = hold
         }
         chat.retry()
+        // Run outside `.task(id:)`: SwiftUI can send a spurious `onDisappear`
+        // on iPhone without a matching `onAppear`, after which `.task` and
+        // `.onChange` stop running while Chat stays on stage.
+        checkAgainTask?.cancel()
+        checkAgainTask = Task { @MainActor in
+            await ChatCheckAgainHold.wait { !chat.isRetrying }
+            guard !Task.isCancelled, checkAgain?.id == hold.id else { return }
+            withAnimation(ChatCheckAgainHold.animation) { checkAgain = nil }
+            checkAgainTask = nil
+        }
+    }
+
+    private func cancelCheckAgain() {
+        checkAgainTask?.cancel()
+        checkAgainTask = nil
+        checkAgain = nil
     }
 
     /// Check Again's look: what Chat showed when it was tapped, held with
     /// the button busy until the store has looked again and the look has
     /// shown for `minimum`, so a quick answer doesn't cut it short. At
     /// `limit` the hold ends whatever the store is doing.
-    private struct ChatCheckAgainHold {
+    struct ChatCheckAgainHold {
         static let minimum: Duration = .milliseconds(800)
         static let limit: Duration = .seconds(8)
         /// Both into the look and out of it to the answer.
@@ -846,32 +865,20 @@ struct AgentChatSurfaceView: View {
 
         let id = UUID()
         let presentation: ChatSurfacePresentation
-        var hasShownMinimum = false
-    }
 
-    /// Ends Check Again's hold, easing to the answer.
-    private struct CheckAgainTiming: ViewModifier {
-        @Binding var hold: ChatCheckAgainHold?
-        let chat: AgentChatStore?
-
-        func body(content: Content) -> some View {
-            content
-                .task(id: hold?.id) {
-                    guard hold != nil else { return }
-                    try? await Task.sleep(for: ChatCheckAgainHold.minimum)
-                    guard !Task.isCancelled else { return }
-                    hold?.hasShownMinimum = true
-                    endIfAnswered()
-                    try? await Task.sleep(for: ChatCheckAgainHold.limit - ChatCheckAgainHold.minimum)
-                    guard !Task.isCancelled, hold != nil else { return }
-                    withAnimation(ChatCheckAgainHold.animation) { hold = nil }
-                }
-                .onChange(of: chat?.isRetrying ?? false) { endIfAnswered() }
-        }
-
-        private func endIfAnswered() {
-            guard let hold, hold.hasShownMinimum, !(chat?.isRetrying ?? false) else { return }
-            withAnimation(ChatCheckAgainHold.animation) { self.hold = nil }
+        @MainActor
+        static func wait(
+            minimum: Duration = Self.minimum,
+            limit: Duration = Self.limit,
+            poll: Duration = .milliseconds(50),
+            until isAnswered: @MainActor () -> Bool
+        ) async {
+            let deadline = ContinuousClock.now + limit
+            try? await Task.sleep(for: minimum)
+            while !Task.isCancelled, !isAnswered(), ContinuousClock.now < deadline {
+                let remaining = ContinuousClock.now.duration(to: deadline)
+                try? await Task.sleep(for: min(poll, max(.zero, remaining)))
+            }
         }
     }
 
@@ -1549,6 +1556,7 @@ struct AgentChatSurfaceView: View {
 
     /// The terminal takes over in place with the keyboard as Chat leaves it.
     private func showAgentTerminal() {
+        cancelCheckAgain()
         if keyboardIsUp { keyboardHandoff.arm(for: agent.id, mode: .text) }
         selectSurface(.terminal)
     }
