@@ -259,6 +259,44 @@ extension TransportError {
                 summary: String(localized: "Rex support is not finished"),
                 detail: nil,
                 recoverySuggestion: String(localized: "This build of Heeler lists Rex Hosts but does not connect to them yet."))
+        case .rexNotInstalled:
+            TransportErrorPresentation(
+                summary: String(localized: "Rex was not found on this Host"),
+                detail: nil,
+                recoverySuggestion: String(localized: "Install Rex and start it, then check again."))
+        case .rexLookupFailed(let reason):
+            TransportErrorPresentation(
+                summary: String(localized: "Heeler could not look for Rex on this Host"),
+                detail: Self.droppingTrailingPeriods(reason),
+                recoverySuggestion: nil)
+        case .rexServerNotRunning(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex is not running"),
+                detail: socketPath.map { String(localized: "Nothing is listening at \($0)") }
+                    ?? String(localized: "No Rex server socket was found"),
+                recoverySuggestion: String(localized: "Start Rex on the Host, then check again. Heeler does not start it."))
+        case .rexForwardingRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "The SSH server refuses socket forwarding"),
+                detail: String(localized: "Rex is running, but SSH will not open \(socketPath)"),
+                recoverySuggestion:
+                    String(localized:
+                        "Allow stream-local forwarding in the Host's SSH server, then check again."))
+        case .rexSocketUnreachable(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex is not answering"),
+                detail: String(localized:
+                    "SSH could not open \(socketPath): Rex stopped, or the SSH server refuses socket forwarding"),
+                recoverySuggestion:
+                    String(localized:
+                        "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex."))
+        case .rexAccountRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex did not let this account in"),
+                detail: socketPath.map { String(localized: "This account may not use the socket at \($0)") },
+                recoverySuggestion: String(localized: "Connect as the account that runs Rex."))
+        case .rexUnsupportedRevision(let offered):
+            Self.rexRevisionPresentation(offered: offered)
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),
@@ -338,6 +376,26 @@ extension TransportError {
     /// herdr's own sentence, or a localized detail, may already end in a
     /// full stop of its script; `explanation` supplies the closing one. A
     /// question or exclamation mark stays, since it says something.
+    /// Names the revision this build works with, and which side to update when
+    /// the server named its own.
+    private static func rexRevisionPresentation(offered: Int?) -> TransportErrorPresentation {
+        let supported = RexControlProtocol.apiRevision
+        guard let offered else {
+            return TransportErrorPresentation(
+                summary: String(localized: "This version of Rex is not supported"),
+                detail: String(localized:
+                    "Rex did not offer API revision \(supported), the only one this build of Heeler works with"),
+                recoverySuggestion: nil)
+        }
+        return TransportErrorPresentation(
+            summary: String(localized: "This version of Rex is not supported"),
+            detail: String(localized:
+                "Rex offers API revision \(offered), and this build of Heeler works with revision \(supported) only"),
+            recoverySuggestion: offered < supported
+                ? String(localized: "Update Rex on the Host.")
+                : String(localized: "Update Heeler once a version for this Rex is available."))
+    }
+
     private static func droppingTrailingPeriods(_ text: String) -> String {
         var text = Substring(text)
         while let last = text.unicodeScalars.last, isFullStop(last) { text = text.dropLast() }

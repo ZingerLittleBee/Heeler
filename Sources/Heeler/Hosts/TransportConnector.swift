@@ -14,6 +14,11 @@ protocol TransportConnector: Sendable {
     /// nothing else, and connecting starts no server (ADR 0044).
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport
 
+    /// Dials a Rex Host: SSH, a channel to its server's socket, and the control
+    /// link's hello. With no socket in `settings` it looks for one first. It
+    /// never runs `rex`, and connecting starts no server (ADR 0047).
+    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport
+
     /// Dials an unconfirmed Host for the one exec that detects its Server Kind.
     /// It reaches SSH and nothing past it, so no server starts (ADR 0031).
     func connectForDetection(
@@ -35,6 +40,10 @@ extension TransportConnector {
 
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "tmux Hosts"))
+    }
+
+    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Rex Hosts"))
     }
 }
 
@@ -70,6 +79,11 @@ struct SSHTransportConnector: TransportConnector {
         TmuxSSHTransport(
             connection: try await HeelerSSHTransport.connect(settings: settings),
             socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
+    }
+
+    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+        try await RexSSHTransport.connect(
+            over: try await HeelerSSHTransport.connect(settings: settings), socket: settings.rexSocket)
     }
 }
 
@@ -115,6 +129,7 @@ extension SSHTransportSettings {
         coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
         tmuxSocketName = host.tmuxSocketName
         tmuxPaths = host.storedTmuxPaths
+        rexSocket = host.rexSocket
         // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
         // SSH PATH for every herdr exec; `socket` already names its socket.
         if let endpoint = host.herdrEndpoint,

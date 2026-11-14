@@ -1116,6 +1116,26 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// A Rex Host, which this build lists but does not connect to yet (ADR
     /// 0047). Nothing was dialed.
     case rexNotConnectableYet
+    /// A Rex Host stores no socket, and looking for one found no Rex on the
+    /// Host (ADR 0047).
+    case rexNotInstalled
+    /// Looking for a Rex Host's socket failed. `reason` is one sentence.
+    case rexLookupFailed(reason: String)
+    /// No Rex server listens at the socket, or none was found. Connecting never
+    /// starts one, and the user starting one is all it takes, so it is retried.
+    case rexServerNotRunning(socketPath: String?)
+    /// A server listens at the socket and SSH still refuses to open it: the SSH
+    /// server does not allow stream-local forwarding.
+    case rexForwardingRefused(socketPath: String)
+    /// SSH refused the socket, and the Host could not say whether a server
+    /// listens there, which leaves both causes open.
+    case rexSocketUnreachable(socketPath: String)
+    /// Rex refused this SSH account, or the account may not use the socket
+    /// found, named when it is a socket's permissions that refuse it.
+    case rexAccountRefused(socketPath: String?)
+    /// Rex does not speak the API revision this build does. `offered` is the
+    /// newest revision it named, nil when it named none. Never retried.
+    case rexUnsupportedRevision(offered: Int?)
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1159,7 +1179,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale,
-            .tmuxServerNotRunning:
+            .tmuxServerNotRunning, .rexServerNotRunning, .rexSocketUnreachable:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
@@ -1172,7 +1192,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
-            .rexNotConnectableYet, .homeDirectoryUnresolvable, .invalidDirectoryPath,
+            .rexNotConnectableYet, .rexNotInstalled, .rexLookupFailed, .rexForwardingRefused,
+            .rexAccountRefused, .rexUnsupportedRevision, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false

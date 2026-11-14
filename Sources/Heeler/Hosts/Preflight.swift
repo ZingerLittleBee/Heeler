@@ -192,8 +192,17 @@ struct PreflightReport: Equatable, Sendable {
             check = .serverRunning
             hint = error.presentation.message
         case .rexNotConnectableYet:
-            // Rex's checks ask nothing of its server; keep the closed taxonomy total.
+            // Rex's checks connect on their own; keep the closed taxonomy total.
             check = .serverRunning
+            hint = error.presentation.message
+        case .rexNotInstalled, .rexLookupFailed:
+            check = .herdrInstalled
+            hint = error.presentation.message
+        case .rexServerNotRunning, .rexForwardingRefused, .rexSocketUnreachable, .rexAccountRefused:
+            check = .serverRunning
+            hint = error.presentation.message
+        case .rexUnsupportedRevision:
+            check = .protocolCompatible
             hint = error.presentation.message
         case .gitTimedOut:
             // Preflight never reads Changes; keep the closed taxonomy total.

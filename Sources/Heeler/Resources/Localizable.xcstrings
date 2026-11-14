@@ -15255,6 +15255,7 @@
         }
       }
     },
+    "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -25570,6 +25571,7 @@
         }
       }
     },
+    "Heeler could not look for Rex on this Host" : {},
     "Heeler could not reach this Host's systemd user manager to ask about the service. %@" : {
       "localizations" : {
         "ja" : {
@@ -25659,6 +25661,7 @@
       }
     },
     "Heeler could not read whether Rex is on this Host. Check again." : {},
+    "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -25681,6 +25684,7 @@
         }
       }
     },
+    "Heeler could not write the request to Rex." : {},
     "Heeler couldn't add the extension. Nothing more was written." : {
       "localizations" : {
         "ja" : {
@@ -28987,6 +28991,7 @@
         }
       }
     },
+    "Install Rex and start it, then check again." : {},
     "Install Tailscale on your Mac and sign in with the same account. It appears here, ready to add as a Host." : {
       "localizations" : {
         "ja" : {
@@ -34001,6 +34006,7 @@
         }
       }
     },
+    "No Rex server socket was found" : {},
     "No Skills" : {
       "localizations" : {
         "ja" : {
@@ -44744,12 +44750,32 @@
         }
       }
     },
+    "Rex Hosts" : {},
     "Rex Server" : {},
+    "Rex did not finish opening the connection." : {},
+    "Rex did not let this account in" : {},
+    "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
     "Rex installed" : {},
     "Rex is installed, but no server socket was found. Start Rex on this Host, then check again. Heeler does not start it." : {},
     "Rex server socket" : {},
+    "Rex is not answering" : {},
+    "Rex is not running" : {},
+    "Rex is running, but SSH will not open %@" : {},
+    "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rex offers API revision %1$lld, and this build of Heeler works with revision %2$lld only"
+          }
+        }
+      }
+    },
+    "Rex refused the connection with HTTP status %lld." : {},
     "Rex support is not finished" : {},
     "Rex was not found on this Host. Install Rex and start it, then check again." : {},
+    "Rex was not found on this Host" : {},
+    "Rex's answer could not be read." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {
@@ -45489,6 +45515,7 @@
         }
       }
     },
+    "SSH could not open %@: Rex stopped, or the SSH server refuses socket forwarding" : {},
     "SSH unavailable" : {
       "localizations" : {
         "ja" : {
@@ -49393,6 +49420,8 @@
         }
       }
     },
+    "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex." : {},
+    "Start Rex on the Host, then check again. Heeler does not start it." : {},
     "Start herdr-core" : {
       "localizations" : {
         "ja" : {
@@ -55833,6 +55862,7 @@
         }
       }
     },
+    "The Rex socket found has a path Heeler cannot use." : {},
     "The SSH connection is closed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -56659,6 +56689,7 @@
         }
       }
     },
+    "The connection to Rex ended." : {},
     "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected." : {
       "localizations" : {
         "ja" : {
@@ -59132,6 +59163,7 @@
         }
       }
     },
+    "The request was larger than Rex accepts, so it was not sent." : {},
     "The response has neither a result nor an error." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -61538,6 +61570,7 @@
         }
       }
     },
+    "This account may not use the socket at %@" : {},
     "This action on a tmux Host" : {
       "localizations" : {
         "ja" : {
@@ -63287,6 +63320,7 @@
         }
       }
     },
+    "This version of Rex is not supported" : {},
     "This workspace is not inside a Git repository, so no worktree can be created from it." : {
       "localizations" : {
         "ja" : {
@@ -64847,6 +64881,7 @@
         }
       }
     },
+    "Update Heeler once a version for this Rex is available." : {},
     "Update Heeler to read this Host's Usage format." : {
       "localizations" : {
         "ja" : {
@@ -64914,6 +64949,7 @@
         }
       }
     },
+    "Update Rex on the Host." : {},
     "Update and Turn On" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
