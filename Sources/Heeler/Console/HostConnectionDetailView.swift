@@ -171,27 +171,22 @@ struct HostConnectionDetailContent: View {
         }
         .consoleSheetPage()
         // Pinned: however long the failure's detail, the one action
-        // stays in reach. A failure no retry changes has none.
+        // stays in reach.
         .safeAreaInset(edge: .bottom) {
-            let stop = presentation.canStop ? onStop : nil
-            if presentation.failure.offersRetry || stop != nil {
-                VStack(spacing: 8) {
-                    if presentation.failure.offersRetry {
-                        retryButton
-                    }
-                    if let stop {
-                        Button("Stop Connecting", role: .cancel, action: stop)
-                            .controlSize(.large)
-                            .accessibilityHint(
-                                String(localized: "Stops trying to connect without waiting for a timeout. The Host stays paused until you retry."))
-                    }
+            VStack(spacing: 8) {
+                retryButton
+                if presentation.canStop, let onStop {
+                    Button("Stop Connecting", role: .cancel, action: onStop)
+                        .controlSize(.large)
+                        .accessibilityHint(
+                            String(localized: "Stops trying to connect without waiting for a timeout. The Host stays paused until you retry."))
                 }
+            }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 // A form has no home indicator below it: the button sits as
                 // far from the sheet's bottom edge as from its sides.
                 .padding(.bottom, sheetPresentation == .form ? 20 : 12)
-            }
         }
         .navigationTitle(presentation.hostName)
         .navigationBarTitleDisplayMode(.inline)
