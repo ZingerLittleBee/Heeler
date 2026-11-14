@@ -80,7 +80,7 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
 enum ServerKind: String, Codable, Hashable, Sendable {
     case herdrTUI
     case herdrCore
-    /// A tmux server the user runs, named by its socket (ADR 0043).
+    /// A tmux server the user runs, named by its socket (ADR 0044).
     case tmux
     /// Added by hand and waiting for the user to confirm one of the others. It
     /// stays in the shared catalog, and only its Host detail ever dials it.
@@ -159,7 +159,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// Persisted session selection; onboarding discovers available sessions,
     /// while this field remains editable for older herdr versions. Blank
     /// means the default herdr session. On a tmux Host it is the server's
-    /// socket name, which is never called a session there (ADR 0043).
+    /// socket name, which is never called a session there (ADR 0044).
     var sessionName: String
     /// The Host's own herdr endpoint, from a Pairing Code v2 (ADR 0023). When
     /// set it wins over `sessionName`: every connection uses its socket and
@@ -167,7 +167,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// socket and the `herdr` on the SSH PATH.
     var herdrEndpoint: HerdrEndpoint?
     /// A tmux Host's tmux and socket, as its login shell last resolved them
-    /// (ADR 0043). Nil until then, and on every other kind. Read them through
+    /// (ADR 0044). Nil until then, and on every other kind. Read them through
     /// `storedTmuxPaths`, which knows the socket name they were resolved for.
     var tmuxPaths: TmuxPaths?
     /// The ways to reach this Host, in the user's order: never empty. The
@@ -276,7 +276,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         // with a Herdr Endpoint, which only a Pairing Code gives it.
         serverKind = herdrEndpoint == nil ? decodedKind ?? .herdrTUI : .herdrTUI
         // Paths that do not read are only a lookup to make again, never a Host
-        // to hide: the next connection resolves them (ADR 0043).
+        // to hide: the next connection resolves them (ADR 0044).
         tmuxPaths =
             serverKind == .tmux
             ? (try? container.decodeIfPresent(TmuxPaths.self, forKey: .tmuxPaths)) ?? nil : nil

@@ -134,7 +134,7 @@ import Testing
         #expect(explanation.agentProcess == 70)
     }
 
-    // MARK: tmux Panes (ADR 0045)
+    // MARK: tmux Panes (ADR 0046)
 
     @Test(arguments: [
         ("codex", "Codex"),

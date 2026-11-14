@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Host detail's Claude Code hooks on a tmux Host (ADR 0045): each
+/// Host detail's Claude Code hooks on a tmux Host (ADR 0046): each
 /// configuration root, and the change that adds or removes Heeler's hooks,
 /// shown before it is written.
 struct ClaudeCodeHooksSection: View {

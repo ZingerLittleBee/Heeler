@@ -1,6 +1,6 @@
 import Foundation
 
-/// What Heeler asks tmux to type into a Pane (ADR 0044).
+/// What Heeler asks tmux to type into a Pane (ADR 0045).
 enum TmuxInput: Equatable, Sendable {
     /// Printable text, for `send-keys -l`. It never holds a control character.
     case text(String)
@@ -37,7 +37,7 @@ struct TmuxKey: Equatable, Sendable {
 }
 
 /// Reads the bytes the terminal view writes for Direct Input and the tools
-/// keyboard back into what tmux should type (ADR 0044). The view encodes a key
+/// keyboard back into what tmux should type (ADR 0045). The view encodes a key
 /// for its own keyboard mode, so the same key can arrive in legacy form, in
 /// xterm's modifyOtherKeys form (`CSI 27;m;c~`) or in the CSI u form of kitty's
 /// protocol; each reads as the one tmux name, and tmux encodes it again for the
@@ -431,7 +431,7 @@ enum TmuxKeyReader {
     }
 }
 
-/// The terminal view's input as it arrives, one write at a time (ADR 0044).
+/// The terminal view's input as it arrives, one write at a time (ADR 0045).
 ///
 /// A bracketed paste goes on across writes until its end marker and is pasted
 /// as one, so its line feeds never become Enter keys. Past `pasteLimit` bytes
@@ -445,7 +445,7 @@ enum TmuxKeyReader {
 /// after Escape stays a key of its own. A write that ends inside a character
 /// waits for the rest of it.
 struct TmuxInputStream {
-    /// A 1 MB `set-buffer` pasted exactly on 3.3a and 3.7b (ADR 0044).
+    /// A 1 MB `set-buffer` pasted exactly on 3.3a and 3.7b (ADR 0045).
     static let defaultPasteLimit = 1 << 20
 
     private static let pasteStart = Array("\u{1B}[200~".utf8)

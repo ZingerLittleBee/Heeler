@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Heeler's Claude Code hook files on a tmux Host (ADR 0045): the script, the
+/// Heeler's Claude Code hook files on a tmux Host (ADR 0046): the script, the
 /// settings a launch passes, and the stored tmux paths the script runs, placed
 /// by one script a real `/bin/sh` runs here.
 @Suite struct TmuxClaudeCodeHooksTests {

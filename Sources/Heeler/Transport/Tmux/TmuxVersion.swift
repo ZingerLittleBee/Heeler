@@ -1,6 +1,6 @@
 import Foundation
 
-/// What `tmux -V` printed, and whether Heeler can use that tmux (ADR 0043).
+/// What `tmux -V` printed, and whether Heeler can use that tmux (ADR 0044).
 struct TmuxVersion: Equatable, Sendable {
     /// The oldest tmux Heeler drives, as the user reads it.
     static let minimum = "3.3"
@@ -42,7 +42,7 @@ struct TmuxVersion: Equatable, Sendable {
     }
 }
 
-/// One run of a tmux server (ADR 0043): its pid and when it started. A server
+/// One run of a tmux server (ADR 0044): its pid and when it started. A server
 /// that restarted is another instance, whatever its socket.
 struct TmuxServerInstance: Hashable, Sendable {
     let pid: Int

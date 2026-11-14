@@ -434,7 +434,7 @@ struct TmuxLaunchConsoleTests {
 
     // MARK: Discovery
 
-    // MARK: Heeler's Claude Code hooks (ADR 0045)
+    // MARK: Heeler's Claude Code hooks (ADR 0046)
 
     private let dataHome = "\(ScriptedTmuxHost.home)/Library/Application Support"
     private var hookScript: String { ClaudeCodeHooks.scriptPath(dataHome: dataHome) }

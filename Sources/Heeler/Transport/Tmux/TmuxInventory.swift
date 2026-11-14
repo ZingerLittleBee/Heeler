@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a tmux server lists at one moment (ADR 0044): every pane of every
+/// What a tmux server lists at one moment (ADR 0045): every pane of every
 /// session, in the order `list-panes -a` gives them. A window linked into
 /// several sessions is listed once under each, and Heeler's own sessions are
 /// listed like any other: `TmuxOrganization` decides what the Console shows.
@@ -47,7 +47,7 @@ struct TmuxInventory: Equatable, Sendable {
         /// the program `status` names changed. Nil when they could not be read.
         var foregroundArguments: [String]?
 
-        /// A session of Heeler's own, kept for showing one Pane (ADR 0044).
+        /// A session of Heeler's own, kept for showing one Pane (ADR 0045).
         var isInHeelerSession: Bool { !attachMark.isEmpty }
     }
 }

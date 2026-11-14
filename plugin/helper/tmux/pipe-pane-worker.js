@@ -1,5 +1,5 @@
 // Runs under `tmux pipe-pane -O -t <pane>` for one Codex, Grok Build or
-// OpenCode Pane (ADR 0045). Records the piped `kind:pid` in `@heeler-piped`
+// OpenCode Pane (ADR 0046). Records the piped `kind:pid` in `@heeler-piped`
 // once running, writes OSC 7501 status changes to `@heeler-status` continuing
 // the Pane's counts, and clears its own `@heeler-pipe` mark when the pipe
 // closes while leaving `@heeler-piped` on the Pane until the foreground changes.

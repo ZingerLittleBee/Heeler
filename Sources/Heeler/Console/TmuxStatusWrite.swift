@@ -1,6 +1,6 @@
 import Foundation
 
-/// Heeler's own write of a tmux Pane's `@heeler-status` (ADR 0045): the next
+/// Heeler's own write of a tmux Pane's `@heeler-status` (ADR 0046): the next
 /// value continues the counts the Pane already holds, and it lands only while
 /// that value is still there. A Claude Code write can clear `@heeler-ask` in
 /// the same compare. One attempt, through the Host's own tmux socket.

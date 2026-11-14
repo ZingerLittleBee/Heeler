@@ -55,7 +55,7 @@ struct HostOnboardingDependencies: Sendable {
 /// already fixes the session, and must instead prove its launcher answers. A
 /// Host added unconfirmed first detects which servers it runs and has the user
 /// confirm one kind, then runs that kind's checks (ADR 0031). A tmux Host's
-/// checks ask its server and start none (ADR 0043).
+/// checks ask its server and start none (ADR 0044).
 @MainActor
 @Observable
 final class HostOnboardingStore {
@@ -584,7 +584,7 @@ final class HostOnboardingStore {
         if kind == .herdrCore, detection?.isNativeWindows == true { noteWindowsCore(host.id) }
         do {
             // A tmux Host takes the socket chosen here, and the paths this
-            // detection's login shell resolved for it (ADR 0043).
+            // detection's login shell resolved for it (ADR 0044).
             host =
                 kind == .tmux
                 ? try catalog.confirmServerKind(

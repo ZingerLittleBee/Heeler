@@ -1,6 +1,6 @@
 // Runs a command on a tmux server whose executable and socket the app stored
-// (ADR 0043). Every invocation carries `-N` and `-S`, so it never starts a
-// server (ADR 0045).
+// (ADR 0044). Every invocation carries `-N` and `-S`, so it never starts a
+// server (ADR 0046).
 
 import { execFile } from "node:child_process";
 

@@ -4,7 +4,7 @@ status: proposed
 
 # tmux Hosts poll their inventory and attach through control mode
 
-On a tmux Host (ADR 0043) the Console needs the server's sessions, windows and
+On a tmux Host (ADR 0044) the Console needs the server's sessions, windows and
 panes, which program each pane runs, a live terminal for the Pane a device
 opens, and input into it. tmux offers one-shot commands and control-mode
 clients. A control-mode client receives the output of only the session it is
@@ -37,7 +37,7 @@ for any size it takes part in sizing every window of that session.
   interpreters and `npx`; a shell in the foreground ends it, and a dead Pane
   (`remain-on-exit`) hosts none. An unknown program is never an Agent on tmux,
   since every Program Status there comes from Heeler's integrations for known
-  programs (ADR 0045).
+  programs (ADR 0046).
 - Attach: each Attach is a session of Heeler's own, marked `@heeler-attach`,
   holding a link to the window of the Pane it shows (`link-window`), with one
   control-mode client attached to it, so that client's output and size reach
@@ -141,7 +141,7 @@ for any size it takes part in sizing every window of that session.
   Stop presses in the Agent's program, screen checks included (ADR 0024), so the
   Composer stops Grok Build too, and is offered while the Agent reads Working or
   Blocked, since a Blocked Claude Code can be running a tool the user approved
-  (ADR 0045). This amends the Working-only Stop of ADRs 0013 and 0035 for tmux
+  (ADR 0046). This amends the Working-only Stop of ADRs 0013 and 0035 for tmux
   Hosts.
 - Chat's Send, Stop and Blocked Card answers keep ADR 0035's rules and type
   through an Attach of Chat's own, which asks for no size and closes after the
@@ -149,7 +149,7 @@ for any size it takes part in sizing every window of that session.
 - Launches: New Agent in a Workspace opens a window in its session with
   `new-window -d` at the chosen directory, leaving the session's current window
   as it was; New Workspace opens a session with the name the user typed, or
-  tmux's numbering, starting the server as ADR 0043 allows; New Terminal opens
+  tmux's numbering, starting the server as ADR 0044 allows; New Terminal opens
   a window running the user's shell. An Agent starts as on herdr-core, through
   the user's interactive shell replacing itself with the agent (ADR 0032),
   with ADR 0034's session flags, so its Pane, and a window it had alone, ends

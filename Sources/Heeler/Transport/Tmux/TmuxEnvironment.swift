@@ -1,7 +1,7 @@
 import Foundation
 
 /// Names from `show-environment -s`, filtered on the Host so no value crosses
-/// SSH (ADR 0044).
+/// SSH (ADR 0045).
 ///
 /// The Host script strips values from Bourne shell output (`NAME="..."; export NAME;`
 /// and `unset NAME;`) and prints one `NAME` per assigned POSIX variable name, or

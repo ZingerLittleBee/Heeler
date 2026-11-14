@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// An Attach on a tmux Pane through the tmux transport (ADR 0044): a session
+/// An Attach on a tmux Pane through the tmux transport (ADR 0045): a session
 /// of Heeler's own with one control client, a first paint, the Pane's output
 /// after it, and an end for each way the Pane or the connection can go.
 @Suite("tmux pane attach", .timeLimit(.minutes(1)))

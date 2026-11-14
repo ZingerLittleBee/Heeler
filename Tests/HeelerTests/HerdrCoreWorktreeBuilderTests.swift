@@ -46,7 +46,7 @@ struct HerdrCoreWorktreeBuilderTests {
                 == "/home/dev/.herdr/worktrees/bare.git/x")
     }
 
-    /// tmux Hosts share the slug and the folder layout, under `~/.heeler` (ADR 0044).
+    /// tmux Hosts share the slug and the folder layout, under `~/.heeler` (ADR 0045).
     @Test func aTmuxCheckoutGoesUnderHeelerWhileTheDefaultStaysUnderHerdr() {
         #expect(
             HerdrCoreWorktrees.checkoutPath(

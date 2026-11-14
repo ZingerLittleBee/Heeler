@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// What an Attach on a tmux Pane gets from its Host session (ADR 0044): the
+/// What an Attach on a tmux Pane gets from its Host session (ADR 0045): the
 /// connection a server answered on, or why there is none.
 @Suite("tmux Host session attach", .timeLimit(.minutes(1)))
 struct TmuxHostSessionAttachTests {
@@ -233,7 +233,7 @@ struct TmuxPaneConsoleTests {
         await store.stop()
     }
 
-    // MARK: Another server (ADR 0043)
+    // MARK: Another server (ADR 0044)
 
     /// The Pane's id came back with another server, as another Pane.
     @Test func aServerReplacedWhileTheConnectionWasDownEndsTheTerminal() async throws {

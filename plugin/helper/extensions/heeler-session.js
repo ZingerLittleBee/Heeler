@@ -2,7 +2,7 @@
 // one file into each program's extension folder, or on native Windows the app
 // writes it there, and those programs load every session on the Host through it,
 // so outside a herdr-core Terminal or a tmux Pane it does nothing at all
-// (ADR 0045). It imports only Node built-ins, since it runs from that folder.
+// (ADR 0046). It imports only Node built-ins, since it runs from that folder.
 
 import { execFile } from "node:child_process";
 import { readFileSync, realpathSync, statSync } from "node:fs";
@@ -23,7 +23,7 @@ const PI_PACKAGES = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding
 const FIRST_STATUS_RELEASE = { major: 1, minor: 1 };
 /** Characters, so at most the 2048 bytes Pi itself sends. */
 const STATUS_MESSAGE_LIMIT = 512;
-/** Where a tmux Pane keeps its Program Status and the session its program holds (ADR 0045). */
+/** Where a tmux Pane keeps its Program Status and the session its program holds (ADR 0046). */
 const TMUX_STATUS_OPTION = "@heeler-status";
 const TMUX_SESSION_OPTION = "@heeler-session";
 const TMUX_TIMEOUT_MS = 2000;
@@ -245,7 +245,7 @@ function isBeforeProgramStatus(version) {
   return major < FIRST_STATUS_RELEASE.major || (major === FIRST_STATUS_RELEASE.major && minor < FIRST_STATUS_RELEASE.minor);
 }
 
-// MARK: tmux Panes (ADR 0045)
+// MARK: tmux Panes (ADR 0046)
 
 /** A tmux Pane's `@heeler-status`, read as tmux-heeler-status-v1.json says. */
 export function readHeelerStatus(value) {
@@ -392,7 +392,7 @@ function writeToPane(target, change, notWritten = () => {}) {
   });
 }
 
-/** Inside a tmux Pane: the status, whatever Pi's release, and the session (ADR 0045). */
+/** Inside a tmux Pane: the status, whatever Pi's release, and the session (ADR 0046). */
 async function reportToTmux(program, target) {
   const app = (await piVersion()) ? "pi" : "omp";
   reportStatus(

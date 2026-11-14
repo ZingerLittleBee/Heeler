@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// The tmux commands New Agent, New Workspace, New Terminal, Rename Workspace
-/// and Close run (ADR 0043, ADR 0044). The script is the contract: a detached
+/// and Close run (ADR 0044, ADR 0045). The script is the contract: a detached
 /// window in the chosen session, a session that inherits the server or, on
 /// Linux with none, starts through the login shell, and an Agent that replaces
 /// the user's shell with ADR 0034's flags.
@@ -160,7 +160,7 @@ struct TmuxLaunchTests {
         ))
     }
 
-    // MARK: Heeler's Claude Code hooks (ADR 0045)
+    // MARK: Heeler's Claude Code hooks (ADR 0046)
 
     private static let hookSettings = "/Users/dev/Library/Application Support/heeler/claude-code/hooks.json"
 
@@ -496,7 +496,7 @@ struct TmuxLaunchTests {
     }
 
     /// tmux takes an argv word ending in `;` as the end of a command and reads
-    /// one ending in `\;` as ending in `;` (ADR 0044), so a word of the user's
+    /// one ending in `\;` as ending in `;` (ADR 0045), so a word of the user's
     /// that ends in `;` reaches tmux whole.
     @Test(arguments: ["ends;", #"ends\;"#, ";", "a;b"])
     func aWordEndingInASemicolonReachesTmuxWhole(_ value: String) throws {

@@ -1,5 +1,5 @@
 // Agent Notifications and Live Activity updates on tmux Hosts (ADRs 0033 and
-// 0045): a private real tmux server on one side and the fake Push Relay on the
+// 0046): a private real tmux server on one side and the fake Push Relay on the
 // other, with the Helper's real tmux follower and listeners in between.
 
 import { afterEach, beforeEach, suite, test } from "node:test";

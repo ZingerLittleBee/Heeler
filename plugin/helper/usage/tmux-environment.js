@@ -1,5 +1,5 @@
 // The global environment of one tmux server, which new panes inherit, in the
-// shape `writeUsageRuntime` records (ADR 0033, ADR 0044). `paths` is
+// shape `writeUsageRuntime` records (ADR 0033, ADR 0045). `paths` is
 // `{ executable, socket }` from the Helper's `tmux/<socket name>/paths.json`.
 // Each variable in `ENVIRONMENT_NAMES` is queried by name so unrelated secrets
 // in the server's environment are never dumped. A name the server leaves unset

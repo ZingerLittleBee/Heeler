@@ -54,7 +54,7 @@ them from any terminal attached to it.
   that run Heeler's script. An Agent Heeler starts under a root without them
   gets the same hooks for that launch alone, through `--settings`, editing
   nothing. The hooks run one POSIX script Heeler keeps in its own directory on
-  the Host, apart from the Helper. It runs the tmux the Host stores (ADR 0043),
+  the Host, apart from the Helper. It runs the tmux the Host stores (ADR 0044),
   does nothing outside a tmux Pane (no `TMUX_PANE`), since the same settings
   serve Claude Code under Herdr TUI and herdr-core, and a hook whose script is
   gone does nothing, so status works without the Helper and no hook is left
@@ -87,15 +87,15 @@ them from any terminal attached to it.
   reads Working until Claude Code's next event. After the user approves a
   permission, Claude Code sends nothing until the tool finishes, so a long
   approved tool reads Blocked; Send stays refused then, as ADR 0035 has it for
-  Blocked, and Stop is offered (ADR 0044).
+  Blocked, and Stop is offered (ADR 0045).
 - Agent Status follows `@heeler-status` as herdr-core's follows Program Status,
   Done included: an Agent is Done for a device when it finished a turn after
   that device's last seen mark (ADR 0033) and reads idle or done. Marks keep
-  ADR 0033's form and rules, with the server instance (ADR 0043) and the Pane in
+  ADR 0033's form and rules, with the server instance (ADR 0044) and the Pane in
   place of the core id and the Terminal address. Without a Helper the app keeps
   its marks itself.
 - The Host Helper runs on macOS and Linux tmux Hosts as ADR 0033 installs it,
-  with the tmux executable and socket path the app writes for it (ADR 0043). Its
+  with the tmux executable and socket path the app writes for it (ADR 0044). Its
   tmux follower carries `-N` on every command, so it never starts a server; it
   waits for one, and starts over with a new server instance. It reads
   `list-panes -a` every 5 seconds by default — dropping to every 1 second while
@@ -138,7 +138,7 @@ session's. The extensions stay inert anywhere else.
   and leaves no failing hook when the Helper is removed from another device.
 - The counts keep Done and Blocked right at a 5-second interval while Panes are
   idle or working, sparing the Host most of the cost of sampling every second
-  (ADR 0044); polling every second only while an Agent Pane reads blocked (or a
+  (ADR 0045); polling every second only while an Agent Pane reads blocked (or a
   `turn_duration` confirmation is pending) keeps idle cost unchanged while
   clearing a declined prompt well within 5 seconds without racing Claude Code's
   Stop hook.
@@ -248,7 +248,7 @@ compaction with the source `compact`; and a subagent's tool events carry
   until Undo. Removing the Helper leaves them, and the status they write,
   working.
 - A notification can trail its status change by up to 5 seconds plus the
-  debounce. The Helper's sampling should cost about a fifth of ADR 0044's
+  debounce. The Helper's sampling should cost about a fifth of ADR 0045's
   foreground loop; it has not been measured.
 - Not yet seen live: OpenCode 2.1 or later in tmux, Oh My Pi's and Grok Build's
   error and permission prompts, Pi's blocked, Claude Code's question tool and

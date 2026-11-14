@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// Chat on a tmux Host through `ConsoleStore` and `ScriptedTmuxHost` (ADRs 0034,
-/// 0043, 0044 and 0045): capabilities, process-scoped binding via `TMUX` and
+/// 0044, 0045 and 0046): capabilities, process-scoped binding via `TMUX` and
 /// `TMUX_PANE`, `@heeler-session` hints, `@heeler-chat` candidate picks, and
 /// resetting per-instance Chat and retained-Attach state when another tmux server
 /// instance takes the socket.
@@ -518,7 +518,7 @@ struct TmuxChatTests {
         }
     }
 
-    // MARK: Server instance replacement (ADR 0043)
+    // MARK: Server instance replacement (ADR 0044)
 
     @Test func newServerInstanceDropsChatStatePinsAndIdleRetainedAttaches() async throws {
         let rig = Rig(host: host, kernel: "Darwin")

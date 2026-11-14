@@ -7,7 +7,7 @@ import UIKit
 
 @testable import Heeler
 
-/// Watching a Pane over real SSH and a real tmux (ADR 0044): each Attach is a
+/// Watching a Pane over real SSH and a real tmux (ADR 0045): each Attach is a
 /// control client in a session of Heeler's own, and the Pane reaches the
 /// terminal as a first paint and then its own output. The watched Pane is
 /// `tail -f` of a file on the Host, so a test prints into it by appending.

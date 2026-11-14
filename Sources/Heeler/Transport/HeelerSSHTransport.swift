@@ -3818,7 +3818,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
 
     /// One long exec of `/bin/sh -s`, with the script as all it is given to
     /// read: the script waits for that input to end, as it does when the
-    /// channel closes. It holds an ordinary session slot until then (ADR 0044).
+    /// channel closes. It holds an ordinary session slot until then (ADR 0045).
     func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
         guard connected else {
             throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
@@ -3841,7 +3841,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
     }
 
     /// One long exec of `/bin/sh -s` that starts a control-mode client. Its
-    /// script goes first; the client reads what follows (ADR 0044). It holds an
+    /// script goes first; the client reads what follows (ADR 0045). It holds an
     /// attach slot until the channel closes, and its reads and writes throw
     /// `TransportError`, a lost connection among them.
     func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {

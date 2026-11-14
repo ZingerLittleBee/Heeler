@@ -1,5 +1,5 @@
 // Attaches and closes Heeler's `pipe-pane` status readers on tmux Panes running
-// Codex, Grok Build or OpenCode (ADR 0045). Leaves any Pane the user already
+// Codex, Grok Build or OpenCode (ADR 0046). Leaves any Pane the user already
 // pipes untouched; the running worker records its `kind:pid` in `@heeler-piped`
 // on the Pane so a pipe closed without Heeler stays untouched across Helper
 // restarts until the Pane's foreground program changes, while a failed attach

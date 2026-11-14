@@ -1,5 +1,5 @@
 // The Host Helper's entry point: Heeler's background service on a herdr-core
-// or tmux Host (ADRs 0033 and 0045). The user service keeps this process running.
+// or tmux Host (ADRs 0033 and 0046). The user service keeps this process running.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

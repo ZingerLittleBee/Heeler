@@ -1,7 +1,7 @@
 import Foundation
 
 /// Why a core or tmux Agent reads Unknown, from what its Terminal or Pane
-/// reported and never from its screen (ADRs 0034 and 0045).
+/// reported and never from its screen (ADRs 0034 and 0046).
 struct HerdrCoreStatusExplanation: Equatable, Sendable {
     let text: String
     /// Grok Build's automatic check left Program Status off, so the one edit that
@@ -22,7 +22,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         "agy": (program: "Antigravity CLI", release: "1.4.0"),
     ]
 
-    /// Programs whose reports on tmux the Host Helper reads through `pipe-pane` (ADR 0045).
+    /// Programs whose reports on tmux the Host Helper reads through `pipe-pane` (ADR 0046).
     private static let pipePanePrograms: Set<String> = ["codex", "grok", "opencode"]
 
     /// Nil unless the record holds an Agent reading Unknown.
@@ -55,7 +55,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         }
     }
 
-    /// Nil unless the tmux Pane hosts an Agent reading Unknown (ADR 0045).
+    /// Nil unless the tmux Pane hosts an Agent reading Unknown (ADR 0046).
     init?(pane: TmuxInventory.Pane, agentStatus: AgentStatus) {
         guard let kind = TmuxAgentRule.agentKind(in: pane), agentStatus == .unknown else {
             return nil

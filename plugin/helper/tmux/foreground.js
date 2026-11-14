@@ -1,6 +1,6 @@
 // Reads the process leading each live tmux Pane's foreground process group and
 // its arguments, as `TmuxInventoryLoop` does: from `/proc` on Linux and
-// `/bin/ps` on macOS (ADR 0044).
+// `/bin/ps` on macOS (ADR 0045).
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";

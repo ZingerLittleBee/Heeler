@@ -11,7 +11,7 @@ protocol TransportConnector: Sendable {
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport
 
     /// Dials a tmux Host. It reaches SSH and the tmux command-line client and
-    /// nothing else, and connecting starts no server (ADR 0043).
+    /// nothing else, and connecting starts no server (ADR 0044).
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport
 
     /// Dials an unconfirmed Host for the one exec that detects its Server Kind.

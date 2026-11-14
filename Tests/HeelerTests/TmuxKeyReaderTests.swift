@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// The terminal view's bytes for Direct Input and the tools keyboard, read
-/// back into tmux key names and text (ADR 0044). The view encodes each key the
+/// back into tmux key names and text (ADR 0045). The view encodes each key the
 /// way Ghostty does for its current keyboard mode, which `TerminalKeyEncoder`
 /// mirrors; whichever mode that is, the same key reads as the same name.
 struct TmuxKeyReaderTests {

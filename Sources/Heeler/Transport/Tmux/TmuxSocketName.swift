@@ -1,7 +1,7 @@
 import Foundation
 
 /// The name of the socket a tmux Host's server listens on, as `tmux -L` takes it
-/// (ADR 0043). A blank name is tmux's own default. A socket path is not a name:
+/// (ADR 0044). A blank name is tmux's own default. A socket path is not a name:
 /// Heeler resolves the path itself and never takes one from the user.
 enum TmuxSocketName {
     /// What tmux calls the socket of a server started without `-L`.

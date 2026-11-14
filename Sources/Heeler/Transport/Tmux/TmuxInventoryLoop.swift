@@ -1,6 +1,6 @@
 import Foundation
 
-/// The loop that follows a tmux server's inventory (ADR 0044). Pure: it builds
+/// The loop that follows a tmux server's inventory (ADR 0045). Pure: it builds
 /// one script for one long exec and reads what the script keeps printing.
 ///
 /// Once a second the script asks `list-panes -a` and prints the answer only
@@ -511,7 +511,7 @@ enum TmuxInventoryLoop {
     }
 }
 
-/// What a one-shot foreground look finds for one tmux Pane (ADR 0044), sharing
+/// What a one-shot foreground look finds for one tmux Pane (ADR 0045), sharing
 /// `TmuxInventoryLoop`'s row format and foreground process-group reader.
 enum TmuxPaneForeground: Equatable, Sendable {
     struct Sample: Equatable, Sendable {

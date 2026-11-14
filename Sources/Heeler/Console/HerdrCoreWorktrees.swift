@@ -29,7 +29,7 @@ enum HerdrCoreWorktrees {
 
     /// Nil when the branch leaves no folder of its own: the mod would land on the
     /// repository's folder or above it. `root` is `.herdr` for a core Host and
-    /// `.heeler` for a tmux Host (ADR 0044); the slug and the folders under it
+    /// `.heeler` for a tmux Host (ADR 0045); the slug and the folders under it
     /// stay the same.
     static func checkoutPath(
         home: String, mainCheckout: String, branch: String, root: String = ".herdr"
@@ -146,7 +146,7 @@ struct WorktreeAgentStartFailure: Error {
 struct HerdrCoreWorktreeGit: Sendable {
     let services: any HostServices
     let gate: GitExecGate
-    /// `.herdr` for a core Host, `.heeler` for a tmux Host (ADR 0044).
+    /// `.herdr` for a core Host, `.heeler` for a tmux Host (ADR 0045).
     let checkoutRoot: String
 
     init(services: any HostServices, gate: GitExecGate, checkoutRoot: String = ".herdr") {

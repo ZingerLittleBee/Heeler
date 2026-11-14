@@ -1,4 +1,4 @@
-// Heeler's extension for Pi and Oh My Pi inside a tmux Pane (ADR 0045): the
+// Heeler's extension for Pi and Oh My Pi inside a tmux Pane (ADR 0046): the
 // `@heeler-status` counts from the shared vector, then the extension loaded by a
 // stand-in program running in a Pane of a private tmux server, with a home of
 // its own, writing the status and its session through the tmux the Helper stored.

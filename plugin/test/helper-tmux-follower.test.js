@@ -1,7 +1,7 @@
 // The Helper's tmux follower reads `list-panes -a` every 5 seconds by default
 // (1 second while a followed Agent Pane reads `blocked`) through the tmux
 // executable and socket the app stored under `tmux/<socket>/paths.json`
-// (ADRs 0043 and 0045). Every test runs a private `-S` server under a temporary
+// (ADRs 0044 and 0046). Every test runs a private `-S` server under a temporary
 // directory and never touches the user's tmux.
 
 import { afterEach, beforeEach, suite, test } from "node:test";

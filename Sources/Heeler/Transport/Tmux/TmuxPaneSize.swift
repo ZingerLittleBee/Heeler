@@ -1,7 +1,7 @@
 import Foundation
 
 /// A tmux Pane's size alongside the size of the window that holds it, read on
-/// an Attach's control client while sizing that window (ADR 0044).
+/// an Attach's control client while sizing that window (ADR 0045).
 struct TmuxPaneGeometry: Equatable, Sendable {
     var windowID: String
     var windowWidth: Int
@@ -35,7 +35,7 @@ struct TmuxPaneGeometry: Equatable, Sendable {
 }
 
 /// Control-mode commands that size one window on an Attach's control client and
-/// hand it back with `ignore-size` when the device looks away (ADR 0044).
+/// hand it back with `ignore-size` when the device looks away (ADR 0045).
 enum TmuxPaneSize {
     /// tmux's `WINDOW_MINIMUM` through `WINDOW_MAXIMUM` (`cmd-refresh-client.c`).
     static let windowRange = 2...10_000

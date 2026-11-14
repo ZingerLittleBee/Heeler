@@ -323,7 +323,7 @@ final class ConsoleStore {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
         // A tmux Host's stored paths are what a connection last resolved (ADR
-        // 0043): they move without making it another Host.
+        // 0044): they move without making it another Host.
         for (id, projection) in projections {
             guard let tmux = projection as? TmuxConsoleProjection, let host = incoming[id] else { continue }
             tmux.adoptPaths(of: host)
@@ -2329,7 +2329,7 @@ final class ConsoleStore {
     /// Agent's, whose `GROK_HOME` says which file its program reads.
     /// The edit this explanation may offer, where its Host can make it: it reads
     /// the Agent's environment and writes a POSIX path, neither of which a native
-    /// Windows core Host serves (ADRs 0033 and 0045).
+    /// Windows core Host serves (ADRs 0033 and 0046).
     func grokBuildEditFlow(
         for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
     ) -> HarnessConfigEditFlow? {
@@ -2412,7 +2412,7 @@ final class ConsoleStore {
             })
     }
 
-    /// Host detail's Claude Code hooks on a tmux Host (ADR 0045): it reads and
+    /// Host detail's Claude Code hooks on a tmux Host (ADR 0046): it reads and
     /// writes through the harness edit seam, and finds and places Heeler's script
     /// through the Host's tmux projection.
     func claudeCodeHooksFlow(on hostID: Host.ID) -> ClaudeCodeHooksFlow {

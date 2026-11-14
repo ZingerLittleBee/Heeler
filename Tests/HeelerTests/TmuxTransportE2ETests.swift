@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// A tmux Host over real SSH and a real tmux (ADR 0043). Connecting never
+/// A tmux Host over real SSH and a real tmux (ADR 0044). Connecting never
 /// starts a server, so a test starts its own through the fixture, on a socket
 /// in the fixture account's own tmux directory. The one launch that starts a
 /// server is Linux New Workspace, and only that test lets it.
@@ -259,7 +259,7 @@ struct TmuxTransportE2ETests {
         }
     }
 
-    // MARK: Inventory (ADR 0044)
+    // MARK: Inventory (ADR 0045)
 
     /// The loop's exec over one connection of the app's own, whose session
     /// slots a test can count.
@@ -784,7 +784,7 @@ struct TmuxTransportE2ETests {
     }
 
     /// Heeler's hook script, and the stored tmux paths it runs, where the
-    /// Helper's own script finds the Host's data home (ADR 0045).
+    /// Helper's own script finds the Host's data home (ADR 0046).
     private func expectClaudeCodeHooksPlaced(_ fixture: TmuxSSHFixture, paths: TmuxPaths) async throws {
         let located = try await fixture.run(String(decoding: TmuxClaudeCodeHooks.locateScript(nonce: "e2e"), as: UTF8.self))
         let data = try TmuxClaudeCodeHooks.locations(stdout: located.stdout, nonce: "e2e").dataHome

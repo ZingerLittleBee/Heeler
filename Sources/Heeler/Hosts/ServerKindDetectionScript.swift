@@ -6,7 +6,7 @@ import Foundation
 ///
 /// `herdrRead` runs first, in a subshell of its own, so its PATH never reaches
 /// the locator. The tmux probe follows, in another, through the login shell
-/// (ADR 0043). No part starts a server.
+/// (ADR 0044). No part starts a server.
 enum ServerKindDetectionScript {
     /// What one run printed, before anyone decides what it means.
     struct Output: Equatable, Sendable {

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fills the Console's snapshot shape from a tmux server's panes (ADR 0044). A
+/// Fills the Console's snapshot shape from a tmux server's panes (ADR 0045). A
 /// session is a Workspace, a window a Tab and a pane a Pane, named and ordered
 /// as tmux lists them: Heeler keeps no organization of its own.
 ///

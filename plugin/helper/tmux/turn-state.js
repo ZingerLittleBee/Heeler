@@ -1,4 +1,4 @@
-// A tmux Pane's turn folding from `@heeler-status` (ADR 0045), shared with
+// A tmux Pane's turn folding from `@heeler-status` (ADR 0046), shared with
 // `TmuxTurnState.swift` and `plugin/test-vectors/tmux-heeler-status-v1.json`.
 
 import { readHeelerStatus, wordForTmuxAgent } from "./status.js";

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Heeler's Claude Code hook for tmux Panes (ADR 0045). The app keeps this one
+# Heeler's Claude Code hook for tmux Panes (ADR 0046). The app keeps this one
 # file in Heeler's own directory on the Host, apart from the Host Helper, and
 # Heeler's hook entries run it for each event they name. Inside a tmux Pane it
 # writes the Pane's `@heeler-status`, continuing its counts as

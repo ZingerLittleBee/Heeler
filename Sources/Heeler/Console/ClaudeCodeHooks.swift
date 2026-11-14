@@ -1,6 +1,6 @@
 import Foundation
 
-/// Heeler's Claude Code hooks for tmux status (ADR 0045): the entries Host detail
+/// Heeler's Claude Code hooks for tmux status (ADR 0046): the entries Host detail
 /// adds to a configuration root's `settings.json` on the user's word, and that an
 /// Agent Heeler starts under a root without them gets through `--settings`.
 ///

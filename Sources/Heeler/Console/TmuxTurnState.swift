@@ -1,7 +1,7 @@
 import Foundation
 
 /// What this device knows of one tmux Pane's turns, and so whether its Agent
-/// reads Done here (ADR 0045): it finished a turn after this device's seen mark
+/// reads Done here (ADR 0046): it finished a turn after this device's seen mark
 /// and reads idle or done. The Pane's `turn` count already moves only when a
 /// turn ends, so a later count is a finished turn, however many came between
 /// two looks.

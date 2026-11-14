@@ -8,9 +8,9 @@ import Foundation
 /// starts over, since addresses belong to one core, all but the kernel, which
 /// belongs to the machine.
 ///
-/// A tmux Host keeps its server instance here as its core id (ADR 0044): pane
+/// A tmux Host keeps its server instance here as its core id (ADR 0045): pane
 /// ids belong to one run of the server as addresses belong to one core, and so
-/// do its Panes' turns and seen marks (ADR 0045), which go with the instance.
+/// do its Panes' turns and seen marks (ADR 0046), which go with the instance.
 @MainActor
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {

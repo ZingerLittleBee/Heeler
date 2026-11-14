@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where a tmux Host's tmux and its server's socket are, as the user's
-/// interactive login shell resolved them (ADR 0043). Every command runs
+/// interactive login shell resolved them (ADR 0044). Every command runs
 /// `executable` with `-S socket`, so both are absolute and quotable as one
 /// remote shell word.
 struct TmuxPaths: Codable, Hashable, Sendable {

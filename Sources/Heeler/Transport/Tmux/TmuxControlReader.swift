@@ -1,7 +1,7 @@
 import Foundation
 
 /// One command's reply on a tmux control-mode client: the lines between its
-/// `%begin` and its `%end` or `%error` (ADR 0044).
+/// `%begin` and its `%end` or `%error` (ADR 0045).
 struct TmuxControlReply: Equatable, Sendable {
     /// tmux's number for the command. It counts every command the server ran,
     /// so it says nothing about which of this client's commands it was.
@@ -37,7 +37,7 @@ enum TmuxControlNotification: Equatable, Sendable {
     case other(name: String)
 }
 
-/// Reads what a tmux control-mode client prints (ADR 0044), in whatever pieces
+/// Reads what a tmux control-mode client prints (ADR 0045), in whatever pieces
 /// the channel delivers it. Between a `%begin` and the `%end` or `%error` with
 /// the same time and number every line belongs to the block, so a captured
 /// pane that shows `%end` lines cannot end one early. Outside a block, a line

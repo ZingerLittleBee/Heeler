@@ -1,7 +1,7 @@
 import Foundation
 
 /// One argument of a tmux command, written so that tmux reads back exactly
-/// the text it holds (ADR 0044). Pure.
+/// the text it holds (ADR 0045). Pure.
 enum TmuxArgument {
     /// tmux's double-quoted form, for a line tmux's command parser reads, such
     /// as a control client's command. `"`, `\`, `$`, `~`, `#`, `{`, `}` and

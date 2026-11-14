@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// How an Attach starts (ADR 0044): its own session around a placeholder
+/// How an Attach starts (ADR 0045): its own session around a placeholder
 /// window, marked, ending with its client, holding a link to the Pane's window.
 @Suite("tmux attach script")
 struct TmuxAttachScriptTests {

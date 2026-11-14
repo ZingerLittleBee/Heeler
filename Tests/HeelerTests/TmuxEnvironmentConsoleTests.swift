@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// The leaked-environment notice through `ConsoleStore` over a scripted
-/// tmux Host (ADR 0034, ADR 0044). The planted lines carry values; the
+/// tmux Host (ADR 0034, ADR 0045). The planted lines carry values; the
 /// published result is names only.
 @MainActor
 @Suite("tmux environment in the Console", .timeLimit(.minutes(1)))

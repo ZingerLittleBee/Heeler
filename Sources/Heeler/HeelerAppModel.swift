@@ -172,7 +172,7 @@ final class HeelerAppModel {
         // connections still wait for start() to resume the Console.
         console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
         // A connection that resolved a tmux Host's paths again has the catalog
-        // keep them (ADR 0043). A catalog that cannot be written asks again.
+        // keep them (ADR 0044). A catalog that cannot be written asks again.
         console.onTmuxPathsResolved = { [weak hostStore] id, paths in
             try? hostStore?.noteTmuxPaths(paths, for: id)
         }

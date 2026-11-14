@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Heeler's own `@heeler-status` write (ADR 0045): the counts continue, a
+/// Heeler's own `@heeler-status` write (ADR 0046): the counts continue, a
 /// Claude Code write clears `@heeler-ask`, and a value that changed first is
 /// left alone.
 @Suite struct TmuxStatusWriteTests {

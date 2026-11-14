@@ -5,7 +5,7 @@ import os
 @testable import Heeler
 
 /// Agent Notifications, Live Activity and seen marks on a tmux Host (ADRs 0033
-/// and 0045): this device's registration (`"session": "tmux/<socket>"`), Live
+/// and 0046): this device's registration (`"session": "tmux/<socket>"`), Live
 /// Activity token and seen marks (`"core": "tmux-<pid>-<start>"`) live in the
 /// Host Helper's directory, over `ScriptedTmuxHost` and `ScriptedHelperHost`.
 @MainActor

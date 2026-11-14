@@ -82,7 +82,7 @@ struct HostDraft: Equatable, Sendable {
     /// unchanged. The form shows it read-only; nil for every other Host.
     var herdrEndpoint: HerdrEndpoint?
     /// A tmux Host's resolved paths, carried through Edit unchanged. They stop
-    /// counting once the socket name names another socket (ADR 0043).
+    /// counting once the socket name names another socket (ADR 0044).
     private(set) var tmuxPaths: TmuxPaths?
     /// The Host's routes in order. A new Host starts with none and cannot
     /// be saved until Add Route gives it one; the forwarding properties

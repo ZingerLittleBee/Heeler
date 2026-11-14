@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// What a final Blocked Card answer does to the Agent's turn (ADR 0045).
+/// What a final Blocked Card answer does to the Agent's turn (ADR 0046).
 enum BlockedAnswerKind: Equatable, Sendable {
     /// Declines, cancels, rejects or stops: writes `idle` on tmux.
     case decline
@@ -31,7 +31,7 @@ struct BlockedScreenIO: Sendable {
     /// check, and throws why not. nil where a key is one request, and the card's
     /// read just before it stands.
     var typeWhileShowing: (@Sendable (Typing, @escaping @Sendable (ANSIScreen) -> Bool) async throws -> Void)? = nil
-    /// Called once a final answer's keys have left Heeler (ADR 0045).
+    /// Called once a final answer's keys have left Heeler (ADR 0046).
     var recordAnswer: (@Sendable (BlockedAnswerKind) async -> Void)? = nil
 
     func type(_ typing: Typing, whileShowing check: @escaping @Sendable (ANSIScreen) -> Bool) async throws {

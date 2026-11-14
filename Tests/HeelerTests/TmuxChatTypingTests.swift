@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// Chat's Send, Stop, tools keyboard and Blocked Card answers on a tmux Host
-/// (ADRs 0035, 0044 and 0045), from `AgentComposerStore`, `BlockedCardStore` and
+/// (ADRs 0035, 0045 and 0046), from `AgentComposerStore`, `BlockedCardStore` and
 /// `ChatAgentKeysStore` down through `ConsoleStore`, `TmuxConsoleProjection`,
 /// `TmuxChatTyping` and `TmuxSSHTransport` over `ScriptedTmuxHost`.
 @MainActor

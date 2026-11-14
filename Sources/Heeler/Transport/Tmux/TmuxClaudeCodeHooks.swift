@@ -1,11 +1,11 @@
 import Foundation
 
-/// Heeler's Claude Code hook script on a tmux Host (ADR 0045). It sits in
+/// Heeler's Claude Code hook script on a tmux Host (ADR 0046). It sits in
 /// Heeler's own folder under the Host's data home, apart from the Host Helper,
 /// beside the settings a launch passes with `--settings`. It runs the tmux the
 /// Host stores, which it reads where the Helper's extensions do:
 /// `<Helper dir>/tmux/<socket name>/paths.json`, the paths the app resolved
-/// (ADR 0043). Placing the script writes that file too, so status works on a
+/// (ADR 0044). Placing the script writes that file too, so status works on a
 /// Host without the Helper.
 ///
 /// Pure: it builds the two scripts and reads what they print. The data home

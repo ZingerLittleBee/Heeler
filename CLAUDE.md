@@ -40,7 +40,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   command except Linux New Workspace, a polling loop for inventory, per-Pane
   control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
   from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
-  readers (ADRs 0043, 0044, and 0045).
+  readers (ADRs 0044, 0045, and 0046).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

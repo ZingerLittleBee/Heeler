@@ -1,5 +1,5 @@
 // The socket name and stored paths of a tmux server in the Helper's directory
-// (`tmux/<socket>/paths.json`, ADRs 0043 and 0045). Matches `TmuxSocketName`
+// (`tmux/<socket>/paths.json`, ADRs 0044 and 0046). Matches `TmuxSocketName`
 // and `TmuxPaths` in the app.
 
 import { readFileSync, readdirSync } from "node:fs";

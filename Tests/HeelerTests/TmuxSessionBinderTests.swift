@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Session binding for tmux Panes (ADRs 0034 and 0044): processes match by
+/// Session binding for tmux Panes (ADRs 0034 and 0045): processes match by
 /// `TMUX_PANE` together with the socket path and server pid in `TMUX`, while
 /// `@heeler-session` and `@heeler-chat` follow the same verification rules as
 /// `heeler.session` and `heeler.chat`.

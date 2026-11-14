@@ -73,7 +73,7 @@ export function usageListener({ directory, log = () => {} }) {
   };
 }
 
-/** A listener for `followTmuxServer`, recording under `tmux/<socket>/` (ADR 0045). */
+/** A listener for `followTmuxServer`, recording under `tmux/<socket>/` (ADR 0046). */
 export function tmuxUsageListener({ directory, log = () => {} }) {
   const currentInstance = new Map();
   const notedBySocket = new Map();

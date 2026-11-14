@@ -1,7 +1,7 @@
 import Foundation
 
 /// A tmux Pane's modes as `TmuxPanePaint.modesFormat` prints them: what a
-/// terminal showing the Pane needs beside its cells (ADR 0044). Positions are
+/// terminal showing the Pane needs beside its cells (ADR 0045). Positions are
 /// tmux's, from 0.
 struct TmuxPaneModes: Equatable, Sendable {
     var paneID: String
@@ -77,7 +77,7 @@ struct TmuxPaneModes: Equatable, Sendable {
     }
 }
 
-/// First paint of a tmux Pane (ADR 0044): the commands that read it, and the
+/// First paint of a tmux Pane (ADR 0045): the commands that read it, and the
 /// bytes that put a terminal showing only that Pane where tmux has it. The
 /// Pane's `%output` continues from there.
 enum TmuxPanePaint {
