@@ -30,6 +30,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Stack Chat's unavailable-conversation actions vertically as equal-width primary and secondary capsules, shorten Codex's shared-server placeholder message to an inline monospaced resume command, and move its troubleshooting guide link below the capsules as Learn More. (PR #728)
 - Keep music and other audio playing where it plays while Voice Input records, including on a Bluetooth speaker or headphones, instead of stopping it. Recordings are kept in memory only, never in a temporary file. (PR #727)
 - Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)
 - Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
@@ -54,6 +55,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- End Check Again's spinner in Chat on iPhone once Heeler has checked for the conversation, instead of leaving it spinning after SwiftUI's spurious disappear stops the view's task. (PR #728)
 - Align Chat's notice rows, such as finished background commands, with its reasoning and tool rows: their icons and titles now share the same column and text size, their details indent under the title, and every inline row icon fits a uniform square so wide symbols match narrower ones. (PR #729)
 - Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
 - Scroll the Agents list without stutter while an offline or slow Host retries in the background. Each connection attempt had re-evaluated the Console's tabs and every visible Agent row across Hosts, built lifted card previews upfront, and read credentials and Notification Keys from the Keychain on the main thread. Now other Hosts' rows stay untouched, row menus build only when opened, and Keychain reads stay off the main thread. (PR #717)

@@ -21742,24 +21742,48 @@
         }
       }
     },
-    "Exit Codex, then run codex %@ resume. %@" : {
+    "Exit Codex, run %@, and pick the conversation in Codex's list." : {
+      "comment" : "In Chat's place on herdr-core when Codex started without --no-daemon: the resume command",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Codex を終了し、codex %1$@ resume を実行してください。%2$@"
+            "value" : "Codex を終了し、%@ を実行してリストから会話を選んでください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请退出 Codex，然后运行 codex %@ resume。%@"
+            "value" : "请退出 Codex，运行 %@，并在列表中选择对话。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "結束 Codex，然後執行 codex %@ resume。%@"
+            "value" : "請結束 Codex，執行 %@，並在清單中選擇對話。"
+          }
+        }
+      }
+    },
+    "Exit Codex, then run %@." : {
+      "comment" : "In Chat's place when Codex started without --no-daemon: the resume command",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex を終了し、%@ を実行して会話を再開してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请退出 Codex，再运行 %@ 恢复会话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請結束 Codex，再執行 %@ 繼續對話。"
           }
         }
       }
@@ -30265,6 +30289,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "啟動器"
+          }
+        }
+      }
+    },
+    "Learn More" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細を見る"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "了解详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "瞭解詳情"
           }
         }
       }
