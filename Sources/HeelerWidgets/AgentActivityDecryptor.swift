@@ -13,16 +13,12 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Fallback headline when a row cannot be drawn. Host identity is never
-    /// rendered.
-    var headerTitle: String {
-        switch self {
-        case .detailed:
-            guard let primary = primaryAgent else { return AgentActivityCopy.genericAppName }
-            return primary.displayIdentity
-        case .countsOnly:
-            return AgentActivityCopy.genericAppName
+    func lockScreenHostName(hostID: String, snapshot: LiveActivityHostSnapshot?) -> String? {
+        if let name = snapshot?.name(forHostID: hostID), !name.isEmpty { return name }
+        if case .detailed(let details, _) = self, !details.hostName.isEmpty {
+            return details.hostName
         }
+        return nil
     }
 
     var agents: [AgentActivityDetails.AgentDetail] {
@@ -32,11 +28,6 @@ enum AgentActivityPresentation: Equatable, Sendable {
         case .countsOnly:
             return []
         }
-    }
-
-    /// First Agent in envelope order (pinned eligible first, then status rank).
-    var primaryAgent: AgentActivityDetails.AgentDetail? {
-        agents.first
     }
 
     /// Rows drawn in the expanded Dynamic Island, under its status header:
@@ -65,12 +56,10 @@ enum AgentActivityPresentation: Equatable, Sendable {
         return max(0, counts.total - shown)
     }
 
-    /// Keep configured rows, independent tap targets, padding, and the
-    /// overflow/stale caption within the 160 pt lock-screen budget. The
-    /// estimate mirrors the rendered layout: three three-row cards plus the
-    /// caption fit (about 158 pt), a fourth never does, and four two-row
-    /// cards still fit as before.
-    func lockScreenAgents(isStale: Bool) -> [AgentActivityDetails.AgentDetail] {
+    /// Reserve the Host heading before fitting complete linked Agent entries.
+    func lockScreenAgents(
+        isStale: Bool, hasHeader: Bool = true
+    ) -> [AgentActivityDetails.AgentDetail] {
         let total = counts.total
         guard total > 0 else { return [] }
         let candidates = Array(agents.prefix(min(total, 4)))
@@ -84,7 +73,10 @@ enum AgentActivityPresentation: Equatable, Sendable {
             let captionHeight = isStale || total > shown
                 ? AgentActivityRowMetrics.lockScreenCaptionHeight : 0
             let padding = AgentActivityRowMetrics.lockScreenBannerVerticalPadding * 2
-            if rowHeight + padding + captionHeight <= AgentActivityRowMetrics.lockScreenHeightBudget {
+            let headerHeight = hasHeader ? AgentActivityRowMetrics.lockScreenHeaderHeight : 0
+            if rowHeight + padding + captionHeight + headerHeight
+                <= AgentActivityRowMetrics.lockScreenHeightBudget
+            {
                 return prefix
             }
         }
@@ -92,21 +84,95 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 
     /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
-    func lockScreenOverflowCount(isStale: Bool) -> Int {
-        let shown = lockScreenAgents(isStale: isStale)
+    func lockScreenOverflowCount(isStale: Bool, hasHeader: Bool = true) -> Int {
+        let shown = lockScreenAgents(isStale: isStale, hasHeader: hasHeader)
         guard !shown.isEmpty else { return 0 }
         return max(0, counts.total - shown.count)
     }
 
     /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
-    func lockScreenTrailingCaption(isStale: Bool) -> String? {
-        let overflow = lockScreenOverflowCount(isStale: isStale)
+    func lockScreenTrailingCaption(isStale: Bool, hasHeader: Bool = true) -> String? {
+        let overflow = lockScreenOverflowCount(isStale: isStale, hasHeader: hasHeader)
         switch (isStale, overflow > 0) {
         case (true, true): return String(localized: "+\(overflow) more · May be out of date")
         case (true, false): return String(localized: "May be out of date")
         case (false, true): return String(localized: "+\(overflow) more")
         case (false, false): return nil
         }
+    }
+}
+
+struct AgentActivityIslandPresentation: Equatable, Sendable {
+    struct Mark: Equatable, Sendable, Identifiable {
+        enum Kind: Equatable, Sendable {
+            case status(String)
+            case overflow
+        }
+
+        let id: Int
+        let kind: Kind
+
+        var status: String {
+            if case .status(let status) = kind { return status }
+            return "unknown"
+        }
+
+        var isOverflow: Bool {
+            if case .overflow = kind { return true }
+            return false
+        }
+    }
+
+    let counts: AgentActivityAttributes.ContentState.Counts
+    let marks: [Mark]
+    let hostName: String?
+    let hostLabel: String?
+    let hasMultipleHosts: Bool
+
+    init(
+        presentation: AgentActivityPresentation,
+        hostID: String,
+        hostSnapshot: LiveActivityHostSnapshot?
+    ) {
+        counts = presentation.counts
+        marks = Self.makeMarks(counts)
+        hasMultipleHosts = (hostSnapshot?.hosts.count ?? 0) >= 2
+        if hasMultipleHosts, let label = hostSnapshot?.label(forHostID: hostID), !label.isEmpty {
+            hostLabel = label
+        } else {
+            hostLabel = nil
+        }
+        hostName = presentation.lockScreenHostName(hostID: hostID, snapshot: hostSnapshot)
+    }
+
+    var accessibilityLabel: String {
+        var phrases = AgentActivityCopy.countPhrases(counts)
+        if hasMultipleHosts, let hostName { phrases.insert(hostName, at: 0) }
+        return phrases.joined(separator: String(
+            localized: ", ",
+            comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
+    }
+
+    var minimalTileStatus: String? {
+        guard hasMultipleHosts, hostLabel != nil else { return nil }
+        return counts.attentionItems.first?.status
+    }
+
+    private static func makeMarks(_ counts: AgentActivityAttributes.ContentState.Counts) -> [Mark] {
+        let limit = 4
+        var result: [Mark] = []
+        var remaining = limit
+        for item in counts.attentionItems where remaining > 0 {
+            let visible = min(item.count, remaining)
+            for _ in 0..<visible {
+                result.append(.init(id: result.count, kind: .status(item.status)))
+            }
+            remaining -= visible
+        }
+        if counts.total > limit {
+            result[limit - 1] = .init(id: limit - 1, kind: .overflow)
+        }
+        return result
     }
 }
 
@@ -183,7 +249,6 @@ enum AgentActivityDecryptor {
 }
 
 enum AgentActivityCopy {
-    static let genericAppName = "Heeler"
     // Governs the Dynamic Island expanded rows; the lock screen sizes itself
     // via `lockScreenAgents` instead.
     static let rowLimit = 3
@@ -194,21 +259,37 @@ enum AgentActivityCopy {
     static func count(_ count: Int, status: String) -> String {
         switch status {
         case "blocked": String(localized: "\(count) blocked")
-        case "working": String(localized: "\(count) working")
-        case "done": String(localized: "\(count) done")
+        case "working":
+            String(localized: "\(count) working", comment: "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.")
+        case "done":
+            String(localized: "\(count) done", comment: "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.")
         case "idle": String(localized: "\(count) idle")
         default: "\(count) \(status)"
         }
     }
 
-    /// A row's status as VoiceOver reads it after the row's fields.
-    static func status(_ status: String) -> String {
+    static func lockScreenStatus(_ status: String) -> String {
         switch status {
-        case "blocked": String(localized: "blocked")
-        case "working": String(localized: "working")
-        case "done": String(localized: "done")
-        case "idle": String(localized: "idle")
+        case "blocked":
+            String(localized: "Needs you", comment: "Live Activity Agent status. The Agent is blocked waiting for the user's input; also used for an Agent error.")
+        case "working": String(localized: "Working")
+        case "done": String(localized: "Agent status Done", defaultValue: "Done")
         default: status
+        }
+    }
+
+    static func lockScreenCounts(_ counts: AgentActivityAttributes.ContentState.Counts) -> String {
+        countPhrases(counts).joined(separator: " · ")
+    }
+
+    static func countPhrases(_ counts: AgentActivityAttributes.ContentState.Counts) -> [String] {
+        counts.chipItems.map { item in
+            switch item.status {
+            case "blocked":
+                String(localized: "\(item.count) needs you", comment: "Live Activity count of Agents waiting for the user's input. Singular: 1 needs you; plural: 2 need you.")
+            default:
+                count(item.count, status: item.status)
+            }
         }
     }
 }
@@ -226,8 +307,7 @@ extension AgentActivityAttributes.ContentState.Counts {
         return items
     }
 
-    /// Non-zero counts in attention order: blocked, done, working. The
-    /// Dynamic Island leads with the first and trails with the rest.
+    /// Non-zero counts in attention order: blocked, done, working.
     var attentionItems: [(status: String, count: Int)] {
         var items: [(String, Int)] = []
         if blocked > 0 { items.append(("blocked", blocked)) }

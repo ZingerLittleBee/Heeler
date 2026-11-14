@@ -50,6 +50,7 @@ final class HeelerAppModel {
 
     private var isStarted = false
     private var observers: [AnyObject] = []
+    private let liveActivityHosts: LiveActivityHostPublisher
 
     /// `hostStore`, `console`, and `activity` are injectable so a test can
     /// drive the activity wiring and observe that something consumed it:
@@ -67,7 +68,8 @@ final class HeelerAppModel {
             coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
             harnessEdits: HarnessConfigEditStore(defaults: .standard)),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
-        activity: AppActivityCoordinator = AppActivityCoordinator()
+        activity: AppActivityCoordinator = AppActivityCoordinator(),
+        liveActivityHosts: LiveActivityHostPublisher = LiveActivityHostPublisher()
     ) {
         self.pushRegistration = pushRegistration
         self.sceneDirectory = sceneDirectory
@@ -75,6 +77,7 @@ final class HeelerAppModel {
         self.console = console
         self.overlayNetworks = overlayNetworks
         self.activity = activity
+        self.liveActivityHosts = liveActivityHosts
         terminalThemes = TerminalThemeSettings()
         terminalZoom = TerminalZoomSettings()
         terminalFonts = TerminalFontSettings()
@@ -176,6 +179,7 @@ final class HeelerAppModel {
         console.onTmuxPathsResolved = { [weak hostStore] id, paths in
             try? hostStore?.noteTmuxPaths(paths, for: id)
         }
+        liveActivityHosts.publish(hostStore.hosts)
     }
 
     var terminal: TerminalSettings {
@@ -289,6 +293,7 @@ final class HeelerAppModel {
 
         observe({ hostStore.hosts }) { [weak self] hosts in
             guard let self else { return }
+            liveActivityHosts.publish(hosts)
             console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hosts)
             liveActivities.layoutsDidChange()

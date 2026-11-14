@@ -2259,6 +2259,168 @@ struct ChatRowViewTests {
         let ranLabels = try await Self.labels(of: ran, isExpanded: true)
         #expect(ranLabels.contains { $0.contains("No output.") }, "\(ranLabels)")
     }
+
+    @Test func inlineRowsShareAlignedIconColumnAndDetailIndent() async throws {
+        let width: CGFloat = 402
+        let scale: CGFloat = 2
+        let cases: [(name: String, content: ChatRow.Content)] = [
+            ("reasoning", .reasoning(ChatReasoning(text: "Thought"))),
+            ("command", .tool(ChatToolActivity(kind: .command, name: "Bash", title: "echo ok", status: .succeeded))),
+            ("fileRead", .tool(ChatToolActivity(kind: .fileRead, name: "Read", title: "README.md", status: .succeeded))),
+            ("fileEdit", .tool(ChatToolActivity(kind: .fileEdit, name: "Edit", title: "README.md", status: .succeeded))),
+            ("agent", .tool(ChatToolActivity(kind: .agent, name: "Agent", title: "Explore codebase", status: .succeeded))),
+            ("question", .tool(ChatToolActivity(kind: .question, name: "AskUserQuestion", title: "Which option?", status: .succeeded))),
+            (
+                "toolGroup",
+                .toolGroup(
+                    ChatToolGroup(
+                        summary: "Ran 2 commands", kind: .command, added: nil, removed: nil, failed: 0,
+                        isRunning: false, calls: 2, isOpen: false))
+            ),
+            ("notice", .notice(ChatNotice(kind: .taskNotification, title: "Background command finished"))),
+        ]
+
+        var singleLineHeights: [CGFloat] = []
+        let expectedCenter = ChatTimelineMetrics.horizontalPadding + ChatTimelineMetrics.inlineIconColumnWidth / 2
+        for item in cases {
+            let row = ChatRow(id: .entry(ChatEntryID(item.name)), content: item.content, revision: 1, topSpacing: 0)
+            let (image, height, _) = try await Self.renderRow(row, width: width, scale: scale)
+            singleLineHeights.append(height)
+            let bounds = try #require(
+                Self.inkBounds(in: image, xRange: 0..<35, yRange: 0..<height, scale: scale),
+                "Expected icon ink for \(item.name)")
+            let midX = (bounds.minX + bounds.maxX) / 2
+            let dominantSize = max(bounds.width, bounds.height)
+            #expect(abs(midX - expectedCenter) <= 1.2, "\(item.name) icon midX \(midX) != \(expectedCenter)")
+            #expect(bounds.minX >= 15.5 && bounds.maxX <= 34.5, "\(item.name) icon overflowed column: \(bounds)")
+            #expect(
+                (11.0...15.5).contains(dominantSize),
+                "\(item.name) icon dominant size \(dominantSize) outside 11...15.5pt (bounds: \(bounds))")
+        }
+
+        let baselineHeight = try #require(singleLineHeights.first)
+        for (item, height) in zip(cases, singleLineHeights) {
+            #expect(abs(height - baselineHeight) <= 1, "\(item.name) height \(height) != \(baselineHeight)")
+        }
+
+        let detailedNotice = ChatRow(
+            id: .entry(ChatEntryID("notice-detail")),
+            content: .notice(
+                ChatNotice(
+                    kind: .taskNotification, title: "Background command finished", detail: "python3 -c 'print(0)'")),
+            revision: 1, topSpacing: 0)
+        let titleOnlyHeight = try #require(singleLineHeights.last)
+        let (detailImage, detailHeight, labels) = try await Self.renderRow(detailedNotice, width: width, scale: scale)
+        #expect(detailHeight > titleOnlyHeight)
+        let indentEdge = ChatTimelineMetrics.horizontalPadding + ChatTimelineMetrics.inlineDetailLeadingIndent - 1
+        #expect(
+            Self.inkBounds(in: detailImage, xRange: 0..<indentEdge, yRange: titleOnlyHeight..<detailHeight, scale: scale)
+                == nil,
+            "Notice detail leaked left of \(indentEdge)pt")
+        #expect(
+            Self.inkBounds(
+                in: detailImage, xRange: indentEdge..<width, yRange: titleOnlyHeight..<detailHeight, scale: scale)
+                != nil,
+            "Expected notice detail ink to the right of \(indentEdge)pt")
+        #expect(
+            labels.contains { $0.contains("Background command finished") && $0.contains("python3 -c 'print(0)'") },
+            "\(labels)")
+        #expect(!labels.contains { $0.localizedCaseInsensitiveContains("bell") }, "\(labels)")
+    }
+
+    private struct InkBounds {
+        let minX: CGFloat
+        let maxX: CGFloat
+        let minY: CGFloat
+        let maxY: CGFloat
+
+        var width: CGFloat { maxX - minX }
+        var height: CGFloat { maxY - minY }
+    }
+
+    private static func renderRow(
+        _ row: ChatRow, width: CGFloat, scale: CGFloat
+    ) async throws -> (image: CGImage, height: CGFloat, labels: [String]) {
+        let content = ChatRowView(row: row, isExpanded: false, actions: Self.actions)
+            .frame(width: width)
+            .fixedSize(horizontal: false, vertical: true)
+        let sizer = UIHostingController(rootView: content)
+        let fittedHeight = sizer.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        let hostHeight = max(fittedHeight, 44)
+        let controller = UIHostingController(
+            rootView: content
+                .frame(width: width, height: hostHeight, alignment: .topLeading)
+                .background(Color(uiColor: .systemBackground)))
+        controller.safeAreaRegions = []
+        controller.view.backgroundColor = .systemBackground
+        var rendered: UIImage?
+        var labels: [String] = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: width, height: hostHeight), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            labels = AccessibilityProbe.labels(in: controller.view)
+            let format = UIGraphicsImageRendererFormat()
+            format.opaque = true
+            format.scale = scale
+            rendered = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
+                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+        }
+        let cgImage = try #require(rendered?.cgImage)
+        return (cgImage, fittedHeight, labels)
+    }
+
+    private static func inkBounds(
+        in image: CGImage, xRange: Range<CGFloat>, yRange: Range<CGFloat>, scale: CGFloat
+    ) -> InkBounds? {
+        let pixelWidth = image.width
+        let pixelHeight = image.height
+        guard pixelWidth > 0, pixelHeight > 0 else { return nil }
+        var rgba = [UInt8](repeating: 0, count: pixelWidth * pixelHeight * 4)
+        let drawn = rgba.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: pixelWidth, height: pixelHeight,
+                bitsPerComponent: 8, bytesPerRow: pixelWidth * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+            return true
+        }
+        guard drawn else { return nil }
+        let bgR = Int(rgba[0])
+        let bgG = Int(rgba[1])
+        let bgB = Int(rgba[2])
+        let xStart = max(0, Int((xRange.lowerBound * scale).rounded(.down)))
+        let xEnd = min(pixelWidth, Int((xRange.upperBound * scale).rounded(.up)))
+        let yStart = max(0, Int((yRange.lowerBound * scale).rounded(.down)))
+        let yEnd = min(pixelHeight, Int((yRange.upperBound * scale).rounded(.up)))
+        guard xStart < xEnd, yStart < yEnd else { return nil }
+        var minPX = Int.max
+        var maxPX = Int.min
+        var minPY = Int.max
+        var maxPY = Int.min
+        for py in yStart..<yEnd {
+            for px in xStart..<xEnd {
+                let offset = (py * pixelWidth + px) * 4
+                let diff = max(
+                    abs(Int(rgba[offset]) - bgR),
+                    abs(Int(rgba[offset + 1]) - bgG),
+                    abs(Int(rgba[offset + 2]) - bgB))
+                if diff > 12 {
+                    minPX = min(minPX, px)
+                    maxPX = max(maxPX, px)
+                    minPY = min(minPY, py)
+                    maxPY = max(maxPY, py)
+                }
+            }
+        }
+        guard minPX <= maxPX else { return nil }
+        return InkBounds(
+            minX: CGFloat(minPX) / scale, maxX: CGFloat(maxPX + 1) / scale,
+            minY: CGFloat(minPY) / scale, maxY: CGFloat(maxPY + 1) / scale)
+    }
 }
 
 /// Exercises UIKit's commit callback without completing the animation early.

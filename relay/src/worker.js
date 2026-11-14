@@ -231,6 +231,11 @@ function validCounts(counts) {
 function buildLiveActivityApnsBody(activity) {
   const countsJson = JSON.stringify(activity.counts);
   let aps = `"timestamp":${activity.timestamp},"event":${JSON.stringify(activity.event)},"content-state":{"counts":${countsJson},"envelope":${activity.envelope}}`;
+  if (activity.event === "update") {
+    const { blocked, working, done } = activity.counts;
+    const relevanceScore = blocked >= 1 ? 3 : working >= 1 ? 2 : done >= 1 ? 1 : 0;
+    aps += `,"relevance-score":${relevanceScore}`;
+  }
   if (activity.staleDate !== undefined) {
     aps += `,"stale-date":${activity.staleDate}`;
   }

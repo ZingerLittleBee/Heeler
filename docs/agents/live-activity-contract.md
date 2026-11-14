@@ -117,16 +117,116 @@ Decrypted plaintext (canonical form):
   `title` and legacy `name` fields, then `rows`, then send `agents: []`;
   workspace/kind identity remains after rows are dropped; counts always fit.
 
-The widget renders the configured rows beside each Agent's status marker: a
-colored dot on the Lock Screen, a status glyph in the Dynamic Island.
-It preserves field colors, bold and dim styles. When `rows` is absent it uses
-workspace and friendly Agent kind as the legacy identity. Agent order remains
-unchanged. The lock-screen list fits as many complete Agent entries as the
-banner budget allows, followed by "+N more" when needed. The compact Dynamic
-Island shows status counts as glyph-and-count tokens in attention order
-(blocked, done, working); the expanded view uses configured rows.
-The envelope's `host` is not a separate heading, but a configured `host` field
-can display the per-device Host name.
+## Widget rendering
+
+The widget preserves configured Agent List Fields, including field colors,
+bold and dim styles. When `rows` is absent it uses workspace and friendly
+Agent kind as the legacy identity. Agent order stays in the sender's pin-aware
+order. Error remains Blocked on the wire and reads "Needs you" on the Lock
+Screen and expanded Dynamic Island; a configured status field may still say
+"Error".
+
+The Lock Screen uses the system background material through
+`.activityBackgroundTint(nil)`, with no painted background layer. Text and
+status colors remain unresolved dynamic UIKit colors so an existing activity
+can follow system appearance changes when ActivityKit refreshes it. The End
+control receives unresolved `UIColor.label` through `Color(uiColor:)`.
+ActivityKit's SwiftUI `colorScheme` is never consulted. Status glyphs use
+dynamic Lock Screen inks from `AgentActivityStatusStyle`.
+
+A separate, one-line semibold Host heading on the Lock Screen and expanded
+Dynamic Island uses middle truncation. Its name
+comes from the local Host snapshot by attributes `hostID`, then the envelope's
+`host`, then no heading when neither supplies a nonempty name. There are no
+header count chips. Each linked Agent entry starts with an open ring for
+Working, a filled exclamation circle for Blocked, or a check circle for Done.
+Its configured fields stay between that glyph and a secondary status word,
+"Working", "Needs you", or "Done". Accessibility reads those same fields and
+the displayed status word. Each entry opens its Agent; surrounding chrome
+keeps the Console fallback link.
+
+The list fits complete entries within 160 pt, including the optional 20 pt
+heading, 6 pt vertical padding on each edge, and one overflow/stale caption.
+It shows at most four entries. One or two entries have a 44 pt minimum target;
+three or four use a 28 pt dense minimum. Configured entries are budgeted at,
+and held to, their rendered height: their text lines plus 1 pt of padding on
+each edge, so 31 pt for two lines and 44 pt for three. A named Host therefore
+fits four two-line entries without a caption or three with one, and two
+three-line entries plus the caption. Lock Screen text retains the system
+Dynamic Type size; only the Dynamic Island caps it through `islandTypeSize()`.
+Overflow uses the full plaintext inventory count minus the number of visible
+entries.
+Stale content adds "May be out of date", sharing the overflow line when
+needed. Debug decrypt diagnostics remain outside the production height budget.
+
+An absent or undecryptable envelope, or empty decrypted Agent details, shows
+only the optional Host heading and localized count phrases in Blocked,
+Working, Done order, such as "1 needs you · 2 working". English plurals use
+"2 need you". Staleness remains visible. Counts-only does not imply a
+connection failure and has no overflow from an Agent list.
+
+### Dynamic Island
+
+Compact presentations show one status mark per Agent in attention order,
+Blocked, Done, Working, using the full plaintext counts even without decrypted
+details. Marks use the same open ring, filled exclamation circle, and check
+circle as the Agent rows. At most four slots appear. When the inventory exceeds
+four, the first three marks remain and the last slot becomes a plus mark.
+The first two slots lead the camera and the rest trail it. One Agent leaves
+the trailing region empty. There are no visible count numbers or status words.
+
+A rounded-square Host tile precedes the compact leading marks only when the
+local snapshot contains at least two Hosts and the current Host has a nonempty
+`label`. This uses the entire configured catalog, including quiet Hosts, rather
+than the set of running activities. One Host has no tile in any Island region.
+An absent snapshot, unknown Host, or missing label omits the tile.
+
+Minimal presentation without a tile shows up to four status marks in a two by
+two cluster, with the same overflow rule. A single mark stays larger. With an
+eligible tile, minimal shows the Host label wearing its most urgent status,
+filled for Blocked, outlined for Working, or outlined with a small check for
+Done. Compact and minimal expose one accessibility summary of all counts,
+using localized phrases such as "1 needs you, 1 working, 1 done". Only a
+snapshot listing at least two Hosts adds the Host name to that summary.
+
+The expanded header shows the full Host name with the eligible tile before
+it. Its trailing region may summarize the status marks. The bottom preserves
+configured Agent List Fields, status marks, and the displayed status words
+used by the Lock Screen. Complete linked entries remain in envelope order,
+with at most three entries inside the existing 100 pt row budget, including
+the overflow caption. Surrounding chrome keeps the Console fallback link.
+Without Agent details, expanded content shows the localized count phrases
+instead of Agent rows.
+Island type sizes cap at `.large` through `islandTypeSize()`. Island inks
+remain Mocha regardless of ambient appearance.
+
+### Local Host snapshot
+
+The app writes `live-activity-hosts.json` in the shared app-group container.
+It contains `{"v":1,"hosts":[{"id":"<Host UUID string>","name":"<displayName>","label":"L"}]}`
+in the app's Host catalog order. `id` is `Host.id.uuidString`, identical to the
+Activity attributes' `hostID`. This file is local presentation data, separate
+from the encrypted envelope and relay payload.
+
+Optional `label` is additive v1 metadata. Older files without it still decode
+and supply Host names, but omit Island tiles. On every publish the app computes
+labels with `HostMonogram.labels(for:)` over the full catalog's ids and display
+names, including when there is only one Host. A first letter identifies a
+distinct name; collisions use word initials or two letters, then the first
+letter and a number. Numbers run in catalog order per first letter and skip any
+label an unnumbered Host already holds. IPv4 names use the last octet, or the
+last two octets on a collision.
+The widget never computes labels from the subset of active Hosts, and labels
+never pass through the Push Relay.
+
+The app publishes at initialization and after catalog changes, including
+rename, addition, removal, and reorder. Equal snapshots suppress writes,
+including on relaunch. Replacement is atomic, protected until first unlock,
+and excluded from backup, matching the other app-group snapshot writers.
+Missing, malformed, or unknown-version snapshots read as absent; unknown
+future fields are ignored. A write makes the current catalog available on the
+next widget render; it does not itself request an ActivityKit refresh. A
+running activity shows a Host rename on its next update.
 
 ## Relay request (plugin → relay)
 
@@ -162,6 +262,7 @@ update/end/priority signal — nothing else new (PRIVACY.md documents this).
 ```json
 {"aps": {"timestamp": <unix seconds>, "event": "update" | "end",
          "content-state": {"counts": {...}, "envelope": {...}},
+         "relevance-score": <update only: derived from counts>,
          "stale-date": <update only: timestamp + 900>,
          "dismissal-date": <end only: = timestamp, immediate removal>}}
 ```
@@ -170,6 +271,23 @@ Never an `alert` field — the existing alert-notification path owns alerts.
 Priority 10 only when an agent **newly** entered `blocked`; 5 otherwise.
 Existing 4096-byte pre-check applies; 410/413 verdicts pass through to the
 plugin unchanged (`{"reason": ...}`).
+
+Relevance is derived only from plaintext `counts`, with no count tiebreak.
+The first matching tier sets the score:
+
+| Condition | Score |
+| --------- | ----- |
+| `blocked >= 1` | 3 |
+| `working >= 1` | 2 |
+| `done >= 1` | 1 |
+| All counts are zero | 0 |
+
+Higher scores rank a Host's Live Activity above lower scores on the Lock
+Screen and in the Dynamic Island. The app sets `ActivityContent.relevanceScore`
+on local starts and updates. The relay derives the numeric `aps["relevance-score"]`
+on every `update` and omits it on `end`. The relay request has no relevance
+field, so existing plugins and Host Helpers receive this behavior after the
+relay is deployed.
 
 ## Registration file (additive per-device field)
 

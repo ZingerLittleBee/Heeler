@@ -24,6 +24,13 @@ struct AgentActivityAttributes: Codable, Hashable, Sendable {
             var working: Int
             var blocked: Int
             var done: Int
+
+            var relevanceScore: Double {
+                if blocked >= 1 { return 3 }
+                if working >= 1 { return 2 }
+                if done >= 1 { return 1 }
+                return 0
+            }
         }
 
         /// Cleartext `{v,kid,n,ct}` frame carried inside content-state.

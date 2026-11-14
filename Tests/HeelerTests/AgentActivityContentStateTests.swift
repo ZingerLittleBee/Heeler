@@ -48,4 +48,20 @@ struct AgentActivityContentStateTests {
         #expect(state.counts == .init(working: 0, blocked: 0, done: 1))
         #expect(state.envelope == nil)
     }
+
+    @Test func relevanceScoreUsesStatusTiersWithoutCountTiebreaks() {
+        let cases: [(AgentActivityAttributes.ContentState.Counts, Double)] = [
+            (.init(working: 0, blocked: 0, done: 0), 0),
+            (.init(working: 0, blocked: 0, done: 1), 1),
+            (.init(working: 0, blocked: 0, done: 999), 1),
+            (.init(working: 1, blocked: 0, done: 999), 2),
+            (.init(working: 999, blocked: 0, done: 0), 2),
+            (.init(working: 999, blocked: 1, done: 999), 3),
+            (.init(working: 0, blocked: 999, done: 0), 3),
+        ]
+
+        for (counts, expected) in cases {
+            #expect(counts.relevanceScore == expected)
+        }
+    }
 }
