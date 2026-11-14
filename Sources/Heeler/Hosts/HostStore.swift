@@ -20,17 +20,46 @@ enum HostStoreError: Error, Equatable {
 /// to UserDefaults (no secrets in them); passwords go straight to the
 /// injected `SecretStore` (the Keychain in the app), keyed by Host id.
 ///
-/// The catalog is stored in two parts of one shape. Herdr TUI Hosts and Hosts
-/// not yet confirmed stay in the shared one every build reads. herdr-core Hosts
-/// live in a second one, with the merged Host order, that builds before Server
-/// Kinds never read, so such a build can neither show one nor re-save it as
-/// Herdr TUI (ADR 0031).
+/// The catalog is stored in parts of one shape. Herdr TUI Hosts and Hosts not
+/// yet confirmed stay in the shared one every build reads. herdr-core Hosts live
+/// in a second one, and tmux Hosts in a third, each with the merged Host order,
+/// that builds before its kind never read, so such a build can neither show one
+/// nor re-save it as another kind (ADRs 0031 and 0044).
 @MainActor
 @Observable
 final class HostStore {
     private static let defaultsKey = "hosts"
-    private static let coreDefaultsKey = "herdrCoreHosts"
     private static let catalogVersion = 1
+
+    /// A Server Kind whose confirmed Hosts live outside the shared catalog. The
+    /// order is the one a Host found in several is read in, and the reverse of
+    /// the one their saved orders are believed in: the kind added last is
+    /// written by the newest builds only, so its order names the most Hosts.
+    private enum KindCatalog: CaseIterable {
+        case core, tmux
+
+        var kind: ServerKind {
+            switch self {
+            case .core: .herdrCore
+            case .tmux: .tmux
+            }
+        }
+
+        var defaultsKey: String {
+            switch self {
+            case .core: "herdrCoreHosts"
+            case .tmux: "tmuxHosts"
+            }
+        }
+
+        init?(_ kind: ServerKind) {
+            switch kind {
+            case .herdrCore: self = .core
+            case .tmux: self = .tmux
+            case .herdrTUI, .unconfirmed: return nil
+            }
+        }
+    }
 
     /// Decodes each Host through its own decoder so a future authentication
     /// method, Server Kind, or herdr endpoint this build cannot read hides only that
@@ -117,23 +146,27 @@ final class HostStore {
     private struct PersistedCatalog: Codable {
         let version: Int
         let hosts: PersistedHosts
-        /// The merged Host order, kept only with the herdr-core catalog. Ids it
-        /// lacks follow it in the shared catalog's order, which is how a Host
-        /// added since, here or by an older build, stays last.
+        /// The merged Host order, kept with each kind's own catalog. Ids it lacks
+        /// follow it, in another catalog's order where one names them and else in
+        /// the shared catalog's, which is how a Host added since, here or by an
+        /// older build, stays last.
         var order: [Host.ID]?
     }
 
     private(set) var hosts: [Host]
     /// The shared catalog could not be read, so no Host is shown or written.
     private(set) var catalogLoadError: HostStoreError?
-    /// The herdr-core catalog could not be read. Herdr TUI Hosts carry on from
-    /// their own key; nothing goes to this one, whose bytes stay as they are.
-    private(set) var coreCatalogLoadError: HostStoreError?
+    /// The kinds whose own catalog could not be read. The other Hosts carry on
+    /// from their own keys; nothing goes to such a catalog, whose bytes stay as
+    /// they are.
+    private var kindCatalogLoadErrors: [KindCatalog: HostStoreError] = [:]
+    var coreCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.core] }
+    var tmuxCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.tmux] }
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
     @ObservationIgnored private var catalogEntries: [PersistedHosts.Entry]
-    @ObservationIgnored private var coreCatalogEntries: [PersistedHosts.Entry]
+    @ObservationIgnored private var kindCatalogEntries: [KindCatalog: [PersistedHosts.Entry]] = [:]
 
     init(
         defaults: UserDefaults = .standard,
@@ -143,34 +176,37 @@ final class HostStore {
         self.secrets = secrets
         do {
             var shared = try Self.loadSharedEntries(from: defaults)
-            let core: PersistedCatalog?
-            do {
-                core = try Self.loadCoreCatalog(from: defaults)
-                coreCatalogLoadError = nil
-            } catch {
-                core = nil
-                coreCatalogLoadError = .catalogUnreadable
+            var kinds: [KindCatalog: PersistedCatalog] = [:]
+            var errors: [KindCatalog: HostStoreError] = [:]
+            for catalog in KindCatalog.allCases {
+                do {
+                    kinds[catalog] = try Self.loadKindCatalog(catalog, from: defaults)
+                } catch {
+                    errors[catalog] = .catalogUnreadable
+                }
             }
-            let coreEntries = core?.hosts.entries ?? []
-            // A Host found in both is herdr-core. Its shared copy goes now, so
-            // an older build cannot show it and removing the Host cannot bring
-            // it back as Herdr TUI.
-            let coreIDs = Set(coreEntries.compactMap(\.knownHostID))
+            // A Host found in the shared catalog and a kind's own is that kind's.
+            // Its shared copy goes now, so an older build cannot show it and
+            // removing the Host cannot bring it back as another kind.
+            let kindIDs = Set(kinds.values.flatMap { $0.hosts.entries.compactMap(\.knownHostID) })
             let sharedCount = shared.count
-            shared.removeAll { $0.knownHostID.map(coreIDs.contains) == true }
+            shared.removeAll { $0.knownHostID.map(kindIDs.contains) == true }
             if shared.count != sharedCount {
                 defaults.set(try Self.encodedCatalog(entries: shared), forKey: Self.defaultsKey)
             }
-            hosts = Self.mergedHosts(shared: shared, core: coreEntries, order: core?.order ?? [])
+            let entries = kinds.mapValues(\.hosts.entries)
+            hosts = Self.mergedHosts(
+                shared: shared,
+                kinds: KindCatalog.allCases.flatMap { entries[$0] ?? [] },
+                orders: KindCatalog.allCases.reversed().compactMap { kinds[$0]?.order })
             catalogEntries = shared
-            coreCatalogEntries = coreEntries
+            kindCatalogEntries = entries
+            kindCatalogLoadErrors = errors
             catalogLoadError = nil
         } catch {
             hosts = []
             catalogEntries = []
-            coreCatalogEntries = []
             catalogLoadError = .catalogUnreadable
-            coreCatalogLoadError = nil
         }
     }
 
@@ -192,24 +228,34 @@ final class HostStore {
         return legacyHosts.entries
     }
 
-    private static func loadCoreCatalog(from defaults: UserDefaults) throws -> PersistedCatalog? {
-        guard let data = defaults.data(forKey: coreDefaultsKey) else { return nil }
-        let catalog = try JSONDecoder().decode(PersistedCatalog.self, from: data)
-        guard catalog.version == catalogVersion else {
+    private static func loadKindCatalog(
+        _ catalog: KindCatalog, from defaults: UserDefaults
+    ) throws -> PersistedCatalog? {
+        guard let data = defaults.data(forKey: catalog.defaultsKey) else { return nil }
+        let decoded = try JSONDecoder().decode(PersistedCatalog.self, from: data)
+        guard decoded.version == catalogVersion else {
             throw HostStoreError.catalogUnreadable
         }
-        return catalog
+        return decoded
     }
 
+    /// Hosts never trade places, so every saved order agrees on the Hosts it
+    /// names, and a Host an order lacks was added after that order was saved.
+    /// Each order in turn therefore places the Hosts the ones before it lack.
     private static func mergedHosts(
-        shared: [PersistedHosts.Entry], core: [PersistedHosts.Entry], order: [Host.ID]
+        shared: [PersistedHosts.Entry], kinds: [PersistedHosts.Entry], orders: [[Host.ID]]
     ) -> [Host] {
-        let unordered = (shared + core).compactMap(\.knownHost)
-        let positions = Dictionary(
-            order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-        let ordered = unordered.filter { positions[$0.id] != nil }
-            .sorted { (positions[$0.id] ?? 0) < (positions[$1.id] ?? 0) }
-        return ordered + unordered.filter { positions[$0.id] == nil }
+        var seen: Set<Host.ID> = []
+        var remaining = (shared + kinds).compactMap(\.knownHost).filter { seen.insert($0.id).inserted }
+        var merged: [Host] = []
+        for order in orders {
+            let positions = Dictionary(
+                order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            merged += remaining.filter { positions[$0.id] != nil }
+                .sorted { (positions[$0.id] ?? 0) < (positions[$1.id] ?? 0) }
+            remaining.removeAll { positions[$0.id] != nil }
+        }
+        return merged + remaining
     }
 
     /// A process-local catalog for previews and development compositions.
@@ -218,23 +264,25 @@ final class HostStore {
         defaults = nil
         secrets = VolatileSecretStore()
         hosts = volatileHosts
-        catalogEntries = volatileHosts.filter { $0.serverKind != .herdrCore }
+        catalogEntries = volatileHosts.filter { KindCatalog($0.serverKind) == nil }
             .map(PersistedHosts.Entry.known)
-        coreCatalogEntries = volatileHosts.filter { $0.serverKind == .herdrCore }
-            .map(PersistedHosts.Entry.known)
+        for catalog in KindCatalog.allCases {
+            kindCatalogEntries[catalog] = volatileHosts.filter { $0.serverKind == catalog.kind }
+                .map(PersistedHosts.Entry.known)
+        }
         catalogLoadError = nil
-        coreCatalogLoadError = nil
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
     func add(_ host: Host, password: String? = nil) throws {
         try ensureCatalogIsWritable()
-        if host.serverKind == .herdrCore { try ensureCoreCatalogIsWritable() }
+        let own = KindCatalog(host.serverKind)
+        if let own { try ensureIsWritable(own) }
         try applyPassword(password, to: host)
         hosts.append(host)
-        if host.serverKind == .herdrCore {
-            coreCatalogEntries.append(.known(host))
-            try persistCoreCatalog()
+        if let own {
+            kindCatalogEntries[own, default: []].append(.known(host))
+            try persist(own)
         } else {
             catalogEntries.append(.known(host))
             try persistSharedCatalog()
@@ -253,10 +301,17 @@ final class HostStore {
             throw HostStoreError.serverKindChanged
         }
         try applyPassword(password, to: host)
+        try replaceEntry(of: host, at: index)
+    }
+
+    /// Writes `host` over its entry, in whichever catalog holds it.
+    private func replaceEntry(of host: Host, at index: Int) throws {
         hosts[index] = host
-        if let entryIndex = coreCatalogEntries.firstIndex(where: { $0.knownHostID == host.id }) {
-            coreCatalogEntries[entryIndex] = .known(host)
-            try persistCoreCatalog()
+        if let own = KindCatalog.allCases.first(where: { holds(host.id, in: $0) }),
+            let entryIndex = kindCatalogEntries[own]?.firstIndex(where: { $0.knownHostID == host.id })
+        {
+            kindCatalogEntries[own]?[entryIndex] = .known(host)
+            try persist(own)
         } else if let entryIndex = catalogEntries.firstIndex(where: { $0.knownHostID == host.id }) {
             catalogEntries[entryIndex] = .known(host)
             try persistSharedCatalog()
@@ -265,11 +320,17 @@ final class HostStore {
         }
     }
 
-    /// Confirms a Host added unconfirmed, once. A herdr-core Host's catalog
-    /// entry is written before the shared one goes: a Host found in both loads
-    /// as herdr-core, so an interrupted confirmation is still a confirmation.
+    /// Confirms a Host added unconfirmed, once. A kind with a catalog of its own
+    /// has that entry written before the shared one goes: a Host found in both
+    /// loads as that kind, so an interrupted confirmation is still a confirmation.
+    ///
+    /// `sessionName` replaces the typed one, for a kind whose detection offered
+    /// the name, as a tmux Host's socket is. `tmuxPaths` is what that detection
+    /// resolved, kept only by a tmux Host (ADR 0044).
     @discardableResult
-    func confirmServerKind(_ kind: ServerKind, for id: Host.ID) throws -> Host {
+    func confirmServerKind(
+        _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil
+    ) throws -> Host {
         try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == id }) else {
             throw HostStoreError.unknownHost
@@ -280,8 +341,10 @@ final class HostStore {
         guard kind.isConfirmed else {
             throw HostStoreError.serverKindChanged
         }
-        if kind == .herdrCore { try ensureCoreCatalogIsWritable() }
-        if let reason = kind.sessionNameRefusal(hosts[index].sessionName) {
+        let own = KindCatalog(kind)
+        if let own { try ensureIsWritable(own) }
+        let name = sessionName ?? hosts[index].sessionName
+        if let reason = kind.sessionNameRefusal(name) {
             throw HostStoreError.sessionNameRefused(reason: reason)
         }
         guard let entryIndex = catalogEntries.firstIndex(where: { $0.knownHostID == id }) else {
@@ -289,11 +352,12 @@ final class HostStore {
         }
         var confirmed = hosts[index]
         confirmed.serverKind = kind
-        confirmed.sessionName = kind.storedSessionName(confirmed.sessionName)
+        confirmed.sessionName = kind.storedSessionName(name)
+        confirmed.tmuxPaths = kind == .tmux ? tmuxPaths : nil
         hosts[index] = confirmed
-        if kind == .herdrCore {
-            coreCatalogEntries.append(.known(confirmed))
-            try persistCoreCatalog()
+        if let own {
+            kindCatalogEntries[own, default: []].append(.known(confirmed))
+            try persist(own)
             catalogEntries.remove(at: entryIndex)
         } else {
             catalogEntries[entryIndex] = .known(confirmed)
@@ -302,13 +366,30 @@ final class HostStore {
         return confirmed
     }
 
+    /// Stores what a tmux Host's login shell last resolved, for its next
+    /// connections to run without asking that shell again (ADR 0044). Paths the
+    /// Host already holds write nothing.
+    func noteTmuxPaths(_ paths: TmuxPaths, for id: Host.ID) throws {
+        try ensureCatalogIsWritable()
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostStoreError.unknownHost
+        }
+        guard hosts[index].serverKind == .tmux else {
+            throw HostStoreError.serverKindChanged
+        }
+        guard hosts[index].tmuxPaths != paths else { return }
+        var host = hosts[index]
+        host.tmuxPaths = paths
+        try replaceEntry(of: host, at: index)
+    }
+
     /// Hosts the catalog keeps that this build cannot read, as an older build
     /// finds a newer one's. Nil when a catalog itself could not be read, which
     /// says nothing of which Hosts exist: device memory of a Host goes only when
     /// the Host is known to be gone.
     var hostsOutOfSight: Set<Host.ID>? {
-        guard catalogLoadError == nil, coreCatalogLoadError == nil else { return nil }
-        return Set((catalogEntries + coreCatalogEntries).compactMap(\.unknownHostID))
+        guard catalogLoadError == nil, kindCatalogLoadErrors.isEmpty else { return nil }
+        return Set((catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID))
     }
 
     /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
@@ -317,10 +398,20 @@ final class HostStore {
         hosts.filter(\.serverKind.isConfirmed)
     }
 
+    /// The Hosts Usage and Settings' per-Host pages show: those of a kind
+    /// Heeler has a plugin or a Host Helper for.
+    var integratedHosts: [Host] {
+        hosts.filter(\.serverKind.hasHostIntegrations)
+    }
+
     /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
-    /// core Host may show one is its registration's call, see `LiveActivityGate`.
+    /// herdr-core or tmux Host may show one is its registration's call, see
+    /// `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
-        hosts.first(where: { $0.id == id })?.serverKind.isConfirmed == true
+        switch hosts.first(where: { $0.id == id })?.serverKind {
+        case .herdrTUI, .herdrCore, .tmux: true
+        case .unconfirmed, nil: false
+        }
     }
 
     /// Removes the Host, its stored password, and the device's consent to
@@ -333,9 +424,9 @@ final class HostStore {
         try secrets.removeSecret(account: Self.passwordAccount(for: id))
         defaults?.removeObject(forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: id))
         hosts.remove(at: index)
-        if coreCatalogEntries.contains(where: { $0.knownHostID == id }) {
-            coreCatalogEntries.removeAll { $0.knownHostID == id }
-            try persistCoreCatalog()
+        if let own = KindCatalog.allCases.first(where: { holds(id, in: $0) }) {
+            kindCatalogEntries[own]?.removeAll { $0.knownHostID == id }
+            try persist(own)
         } else {
             catalogEntries.removeAll { $0.knownHostID == id }
             try persistSharedCatalog()
@@ -374,10 +465,14 @@ final class HostStore {
         }
     }
 
-    private func ensureCoreCatalogIsWritable() throws {
-        if coreCatalogLoadError != nil {
+    private func ensureIsWritable(_ catalog: KindCatalog) throws {
+        if kindCatalogLoadErrors[catalog] != nil {
             throw HostStoreError.catalogUnreadable
         }
+    }
+
+    private func holds(_ id: Host.ID, in catalog: KindCatalog) -> Bool {
+        kindCatalogEntries[catalog]?.contains { $0.knownHostID == id } == true
     }
 
     private func persistSharedCatalog() throws {
@@ -386,10 +481,10 @@ final class HostStore {
             forKey: Self.defaultsKey)
     }
 
-    private func persistCoreCatalog() throws {
+    private func persist(_ catalog: KindCatalog) throws {
         defaults?.set(
-            try Self.encodedCatalog(entries: coreCatalogEntries, order: hosts.map(\.id)),
-            forKey: Self.coreDefaultsKey)
+            try Self.encodedCatalog(entries: kindCatalogEntries[catalog] ?? [], order: hosts.map(\.id)),
+            forKey: catalog.defaultsKey)
     }
 
     private static func encodedCatalog(

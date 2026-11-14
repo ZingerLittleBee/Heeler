@@ -1,0 +1,1 @@
+Control Claude Code, Codex, and other coding agents over SSH on Herdr TUI, Herdr desktop, herdr-core, or tmux—with native Chat, encrypted alerts, and Usage widgets.

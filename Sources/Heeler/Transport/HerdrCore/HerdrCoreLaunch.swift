@@ -50,20 +50,41 @@ enum HerdrCoreLaunch {
         request(argv: nil, name: nil, environment: [:], placement: placement)
     }
 
+    /// The program a launch runs, and the variables it blanks, before a Host
+    /// wraps them. `environment` is the launch's own, a Launch Preset's (#622);
+    /// it wins over the variables blanked for `kind`.
+    struct AgentStart: Equatable, Sendable {
+        /// The executable, then the session flags, then the user's arguments.
+        let program: [String]
+        let environment: [String: String]
+        /// The session id the flags named, when they named one.
+        let sessionHint: String?
+    }
+
+    static func agentStart(
+        kind: SupportedAgentKind, arguments: [String], environment: [String: String] = [:],
+        openCodeVersion: String?
+    ) -> AgentStart {
+        let session = sessionStart(kind: kind, arguments: arguments, openCodeVersion: openCodeVersion)
+        return AgentStart(
+            program: [kind.executable] + session.flags + arguments,
+            environment: blankedVariables(kind).merging(environment) { _, launch in launch },
+            sessionHint: session.hint)
+    }
+
     /// `environment` is the launch's own, a Launch Preset's (#622); it wins over
     /// the variables blanked for `kind`.
     static func agentRequest(
         kind: SupportedAgentKind, name: String?, arguments: [String], environment: [String: String] = [:],
         shell: String, openCodeVersion: String?, placement: Placement
     ) -> JSONValue {
-        let session = sessionStart(kind: kind, arguments: arguments, openCodeVersion: openCodeVersion)
+        let start = agentStart(
+            kind: kind, arguments: arguments, environment: environment, openCodeVersion: openCodeVersion)
         var labeled = placement
-        if let hint = session.hint { labeled.labels[sessionHintLabel] = hint }
+        if let hint = start.sessionHint { labeled.labels[sessionHintLabel] = hint }
         return request(
-            argv: HerdrCoreShellLaunch.argv(
-                shell: shell, program: [kind.executable] + session.flags + arguments),
-            name: name, environment: blankedVariables(kind).merging(environment) { _, launch in launch },
-            placement: labeled)
+            argv: HerdrCoreShellLaunch.argv(shell: shell, program: start.program),
+            name: name, environment: start.environment, placement: labeled)
     }
 
     /// A Template by its name, as the core runs it: no shell, session flags or

@@ -99,6 +99,11 @@ enum HerdrCoreHostSystem: Equatable, Sendable {
 /// Claude Code's `<config dir>/sessions/<pid>.json` is read by name, so the
 /// `<pid>.<hash>.key` beside it before the prompt is never read or listed.
 struct HerdrCoreSessionBinder: Sendable {
+    enum ProcessScope: Equatable, Sendable {
+        case herdrCore
+        case tmux(paneID: String, socketPath: String, serverPID: Int)
+    }
+
     let program: ChatProgram
     /// Facts for each process the request reaches: one exec. An empty answer
     /// is an exec that failed on the Host, which tells nothing.
@@ -117,6 +122,8 @@ struct HerdrCoreSessionBinder: Sendable {
     /// The programs a macOS Host binds exactly. Any other reads as cannot tell there,
     /// which leaves it to the candidate list and one confirmation.
     var macOSExactPrograms = HostCapabilities.macOSExactCoreChatPrograms
+    /// How a Terminal's processes identify their Pane and server instance.
+    var processScope = ProcessScope.herdrCore
 
     /// What an npm install runs as on Windows, where a program cannot retitle itself.
     static let windowsRuntimes: Set<String> = ["node", "bun"]
@@ -221,7 +228,9 @@ struct HerdrCoreSessionBinder: Sendable {
                 ? tree.agentOnWindows(
                     isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode,
                     runtimes: Self.windowsRuntimes)
-                : tree.agent(isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode)
+                : (tree.agent(
+                    isAgent: Self.isClaudeCode, followsLauncher: true, isTool: Self.isToolOfClaudeCode)
+                    ?? (tree.rootIsForeground ? nil : tree.leafRuntimeAgent(runtimes: Self.windowsRuntimes)))
         case .codex: codexAgent(in: tree)
         case .grok:
             isOnWindows
@@ -296,29 +305,61 @@ struct HerdrCoreSessionBinder: Sendable {
     func readTerminalProcesses(
         of record: HerdrCoreTerminalRecord, ask: ProcessAsk, from root: Int? = nil
     ) async throws -> HerdrCoreTerminalProcesses? {
-        guard let terminalPid = record.pid, let foreground = record.foreground?.pid ?? root else { return nil }
-        let root = String(foreground)
-        let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
-        let request = HostProcessReader.Request(
-            pids: Array(Set([String(terminalPid), root])).sorted(),
-            readsStart: true,
-            valuesOf: [scopeVariable] + ask.values,
-            namesOf: ask.namesOf,
-            readsOpenFiles: ask.readsOpenFiles,
-            argumentsAmong: ask.arguments,
-            preservesArgumentOrder: ask.preservesArgumentOrder,
-            descendantsOf: root)
-        let facts = try await processes(request)
-        func scope(of pid: String) -> String? {
-            guard case .value(let scope)? = facts[pid]?.variables[scopeVariable], !scope.isEmpty else { return nil }
-            return scope
+        switch processScope {
+        case .herdrCore:
+            guard let terminalPid = record.pid, let foreground = record.foreground?.pid ?? root else { return nil }
+            let root = String(foreground)
+            let scopeVariable = HerdrCoreTerminalProcesses.scopeVariable
+            let request = HostProcessReader.Request(
+                pids: Array(Set([String(terminalPid), root])).sorted(),
+                readsStart: true,
+                valuesOf: [scopeVariable] + ask.values,
+                namesOf: ask.namesOf,
+                readsOpenFiles: ask.readsOpenFiles,
+                argumentsAmong: ask.arguments,
+                preservesArgumentOrder: ask.preservesArgumentOrder,
+                descendantsOf: root)
+            let facts = try await processes(request)
+            func scope(of pid: String) -> String? {
+                guard case .value(let scope)? = facts[pid]?.variables[scopeVariable], !scope.isEmpty else { return nil }
+                return scope
+            }
+            if let scope = scope(of: String(terminalPid)) {
+                return HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope)
+            }
+            guard isOnMacOS, facts[String(terminalPid)]?.variables[scopeVariable] == .unavailable else { return nil }
+            let tree = HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope(of: root))
+            return tree.scope != nil || tree.walkAnswered ? tree : nil
+        case .tmux(let paneID, let socketPath, let serverPID):
+            let foregroundPID = record.foreground?.pid
+            guard let rootPID = foregroundPID ?? root ?? record.pid else { return nil }
+            let root = String(rootPID)
+            let terminal = record.pid.map(String.init)
+            let pids = terminal.map { Array(Set([$0, root])).sorted() } ?? [root]
+            let request = HostProcessReader.Request(
+                pids: pids,
+                readsStart: true,
+                valuesOf: [
+                    HerdrCoreTerminalProcesses.tmuxVariable,
+                    HerdrCoreTerminalProcesses.tmuxPaneVariable,
+                ] + ask.values,
+                namesOf: ask.namesOf,
+                readsOpenFiles: ask.readsOpenFiles,
+                argumentsAmong: ask.arguments,
+                preservesArgumentOrder: ask.preservesArgumentOrder,
+                descendantsOf: root)
+            let facts = try await processes(request)
+            let expected = HerdrCoreTerminalProcesses.Scope.tmux(
+                paneID: paneID, socketPath: socketPath, serverPID: serverPID)
+            let tree = HerdrCoreTerminalProcesses(
+                facts: facts, root: root, scope: expected, rootIsForeground: foregroundPID != nil)
+            if tree.sharesScope(root) || terminal.map(tree.sharesScope) == true {
+                return tree
+            }
+            let withheld = terminal.map(tree.scopeIsUnavailable) ?? tree.scopeIsUnavailable(root)
+            guard isOnMacOS, withheld, tree.walkAnswered else { return nil }
+            return tree
         }
-        if let scope = scope(of: String(terminalPid)) {
-            return HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope)
-        }
-        guard isOnMacOS, facts[String(terminalPid)]?.variables[scopeVariable] == .unavailable else { return nil }
-        let tree = HerdrCoreTerminalProcesses(facts: facts, root: root, scope: scope(of: root))
-        return tree.scope != nil || tree.walkAnswered ? tree : nil
     }
 
     private static func isToolOfClaudeCode(_ process: HostProcessReader.Facts?) -> Bool {
@@ -408,16 +449,80 @@ struct HerdrCoreSessionBinder: Sendable {
 /// What one exec shows of a Terminal's processes, and which of them is the Agent.
 struct HerdrCoreTerminalProcesses: Sendable {
     static let scopeVariable = "HC_SCOPE"
+    static let tmuxVariable = "TMUX"
+    static let tmuxPaneVariable = "TMUX_PANE"
+
+    struct TmuxEnvironment: Equatable, Sendable {
+        let socketPath: String
+        let serverPID: Int
+    }
+
+    enum Scope: Equatable, Sendable {
+        case herdrCore(String)
+        case tmux(paneID: String, socketPath: String, serverPID: Int)
+    }
 
     let facts: [String: HostProcessReader.Facts]
     let root: String
     /// Nil when macOS withheld every process that could say it, so none is the Agent.
-    let scope: String?
+    let scope: Scope?
+    /// True when `root` is `record.foreground.pid`; false when `root` is a tmux Pane's
+    /// `pane_pid` (often an interactive shell rather than the foreground job).
+    let rootIsForeground: Bool
+
+    init(
+        facts: [String: HostProcessReader.Facts], root: String, scope: Scope?,
+        rootIsForeground: Bool = true
+    ) {
+        self.facts = facts
+        self.root = root
+        self.scope = scope
+        self.rootIsForeground = rootIsForeground
+    }
+
+    init(facts: [String: HostProcessReader.Facts], root: String, scope: String?) {
+        self.init(facts: facts, root: root, scope: scope.map(Scope.herdrCore), rootIsForeground: true)
+    }
+
+    /// Parses `<socket>,<server pid>,<session>` from `TMUX`, allowing commas inside
+    /// `<socket>`.
+    static func parseTmuxEnvironment(_ value: String) -> TmuxEnvironment? {
+        let parts = value.split(separator: ",", omittingEmptySubsequences: false)
+        guard parts.count >= 3 else { return nil }
+        let session = parts[parts.count - 1]
+        let pidPart = parts[parts.count - 2]
+        let socketPath = parts.dropLast(2).joined(separator: ",")
+        guard socketPath.hasPrefix("/"),
+            !session.isEmpty, session.allSatisfy({ $0.isASCII && $0.isNumber }),
+            !pidPart.isEmpty, pidPart.allSatisfy({ $0.isASCII && $0.isNumber }),
+            let serverPID = Int(pidPart), serverPID > 0
+        else { return nil }
+        return TmuxEnvironment(socketPath: socketPath, serverPID: serverPID)
+    }
 
     /// Whether this process is in the Terminal, as far as its environment says.
     func sharesScope(_ pid: String) -> Bool {
-        guard let scope else { return false }
-        return facts[pid]?.variables[Self.scopeVariable] == .value(scope)
+        guard let scope, let variables = facts[pid]?.variables else { return false }
+        switch scope {
+        case .herdrCore(let expected):
+            return variables[Self.scopeVariable] == .value(expected)
+        case .tmux(let paneID, let socketPath, let serverPID):
+            guard variables[Self.tmuxPaneVariable] == .value(paneID),
+                case .value(let rawTmux)? = variables[Self.tmuxVariable],
+                let parsed = Self.parseTmuxEnvironment(rawTmux)
+            else { return false }
+            return parsed == TmuxEnvironment(socketPath: socketPath, serverPID: serverPID)
+        }
+    }
+
+    func scopeIsUnavailable(_ pid: String) -> Bool {
+        guard let variables = facts[pid]?.variables else { return false }
+        switch scope {
+        case .herdrCore, nil:
+            return variables[Self.scopeVariable] == .unavailable
+        case .tmux:
+            return variables[Self.tmuxVariable] == .unavailable || variables[Self.tmuxPaneVariable] == .unavailable
+        }
     }
 
     /// Whether this process, from this start, runs below the foreground under the
@@ -478,12 +583,15 @@ struct HerdrCoreTerminalProcesses: Sendable {
         isTool: (HostProcessReader.Facts?) -> Bool = { _ in false },
         skips: (HostProcessReader.Facts?) -> Bool = { _ in false }
     ) -> String? {
-        guard sharesScope(root) else { return nil }
+        let rootInScope = sharesScope(root)
+        let allowsWithheldRoot: Bool =
+            if case .tmux = scope { scopeIsUnavailable(root) } else { false }
+        guard rootInScope || allowsWithheldRoot else { return nil }
         var children: [String: [String]] = [:]
         for pid in descendants where sharesScope(pid) && !skips(facts[pid]) {
             if let parent = facts[pid]?.parent { children[parent, default: []].append(pid) }
         }
-        var level = [root]
+        var level = rootInScope ? [root] : (children[root] ?? [])
         while !level.isEmpty {
             let named = level.filter { isAgent(facts[$0]) }
             if named.count > 1 { return nil }
@@ -500,7 +608,22 @@ struct HerdrCoreTerminalProcesses: Sendable {
             }
             level = level.flatMap { children[$0] ?? [] }
         }
-        let isOutOfSight = descendants.contains { facts[$0]?.variables[Self.scopeVariable] == .unavailable }
-        return (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
+        let isOutOfSight = descendants.contains { scopeIsUnavailable($0) }
+        return rootInScope && rootIsForeground && (children[root] ?? []).isEmpty && !isOutOfSight ? root : nil
+    }
+
+    /// On tmux `root` is `pane_pid` (often the Pane's shell), so when nothing is named
+    /// for the program, only a leaf runtime (`node`, `bun`, `deno`) with no withheld
+    /// descendant can stand in for a script-launched Agent.
+    func leafRuntimeAgent(runtimes: Set<String>) -> String? {
+        guard !descendants.contains(where: { scopeIsUnavailable($0) }) else { return nil }
+        var children: [String: [String]] = [:]
+        for pid in descendants where sharesScope(pid) {
+            if let parent = facts[pid]?.parent { children[parent, default: []].append(pid) }
+        }
+        guard let found = nearestAgent(isAgent: { $0?.name.map(runtimes.contains) ?? false }),
+            (children[found] ?? []).isEmpty
+        else { return nil }
+        return found
     }
 }

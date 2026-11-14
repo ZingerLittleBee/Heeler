@@ -47,6 +47,7 @@ final class TerminalInputController {
     private var nextGeneration: UInt64 = 0
     private var writer: ((Data) -> Void)?
     private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
+    private var tmuxSend: TmuxAttachSend?
     private var scroller: ((Data, Int) -> Void)?
     private var discardPendingScroll: (() -> Void)?
     private var pendingPasteText: String?
@@ -86,7 +87,8 @@ final class TerminalInputController {
         writer: @escaping (Data) -> Void,
         scroller: ((Data, Int) -> Void)? = nil,
         discardPendingScroll: (() -> Void)? = nil,
-        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil
+        acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil,
+        tmuxSend: TmuxAttachSend? = nil
     ) -> SessionGeneration {
         self.discardPendingScroll?()
         nextGeneration &+= 1
@@ -97,6 +99,7 @@ final class TerminalInputController {
         userMessageIndex.reset()
         self.writer = writer
         self.acknowledgedWriter = acknowledgedWriter
+        self.tmuxSend = tmuxSend
         self.scroller = scroller
         self.discardPendingScroll = discardPendingScroll
         return generation
@@ -111,6 +114,7 @@ final class TerminalInputController {
         paintedGeneration = nil
         writer = nil
         acknowledgedWriter = nil
+        tmuxSend = nil
         scroller = nil
         userMessageIndex.reset()
         if !preservingPendingPaste {
@@ -129,6 +133,7 @@ final class TerminalInputController {
         paintedGeneration = nil
         writer = nil
         acknowledgedWriter = nil
+        tmuxSend = nil
         scroller = nil
         userMessageIndex.reset()
     }
@@ -180,6 +185,12 @@ final class TerminalInputController {
         try await acknowledgedWriter(data)
     }
 
+    /// Checked Send's control-client surface on `generation`'s tmux Attach, or nil
+    /// once that session is gone or on another Server Kind.
+    func tmuxSend(for generation: SessionGeneration) -> TmuxAttachSend? {
+        generation == liveGeneration ? tmuxSend : nil
+    }
+
     /// Sends ordinary terminal bytes if a live Attach session exists.
     /// Returns whether the bytes reached a live writer. Empty payloads and a
     /// missing session are no-ops and return false.
@@ -205,6 +216,20 @@ final class TerminalInputController {
     func sendEscapeKey() -> Bool {
         guard isEnabled, let writer else { return false }
         write(Data([0x1B]), using: writer, source: .escapeKey)
+        return true
+    }
+
+    /// The Esc quick key, returning once the byte has left. Indexed as
+    /// `.escapeKey` only after that, so a session that ended first records nothing.
+    @discardableResult
+    func sendEscapeKeyAcknowledged() async -> Bool {
+        guard isEnabled, let generation = liveGeneration else { return false }
+        do {
+            try await writeAcknowledged(Data([0x1B]), generation: generation)
+        } catch {
+            return false
+        }
+        userMessageIndex.observeOutgoing(Data([0x1B]), source: .escapeKey)
         return true
     }
 

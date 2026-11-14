@@ -51,6 +51,36 @@ struct SSHChannelAdmissionTests {
         #expect(await admission.snapshot().connection == 0)
     }
 
+    /// A tmux Host's inventory loop is one long exec among the ordinary
+    /// sessions (ADR 0045), which leaves three for one-shot commands.
+    @Test func aLongSessionExecHoldsOneOrdinarySessionUntilItsChannelCloses() async throws {
+        let admission = SSHChannelAdmission()
+        let loop = try await admission.admitSessionExec { FakeCoreSocket() }
+        #expect(await admission.snapshot() == .init(
+            ordinaryForwarding: 0, events: 0, ordinarySession: 1, attach: 0, connection: 1))
+
+        var commands: [SSHChannelAdmissionLease] = []
+        for _ in 0..<3 { commands.append(try await admission.acquire(.ordinarySession)) }
+        let waiting = Task { try await admission.acquire(.ordinarySession) }
+        await Task.yield()
+        #expect(await admission.snapshot().ordinarySession == 4)
+
+        try await loop.close(timeout: .seconds(1))
+        let next = try await waiting.value
+        #expect(await admission.snapshot().ordinarySession == 4)
+        await next.release()
+        for command in commands { await command.release() }
+        #expect(await admission.snapshot().connection == 0)
+    }
+
+    @Test func aLongSessionExecThatCannotOpenGivesItsSlotBack() async {
+        let admission = SSHChannelAdmission()
+        await #expect(throws: TransportError.channelFailed(detail: "refused")) {
+            try await admission.admitSessionExec { throw TransportError.channelFailed(detail: "refused") }
+        }
+        #expect(await admission.snapshot().connection == 0)
+    }
+
     @Test func productionLimitsReserveEventsAndAttachWithinTheConnectionCeiling() async throws {
         let limits = SSHChannelAdmission.Limits.production
         #expect(limits.ordinaryForwarding == 8)

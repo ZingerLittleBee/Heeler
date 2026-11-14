@@ -110,7 +110,8 @@ final class HeelerAppModel {
             },
             harnessEdits: console.harnessEdits,
             noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
-            coreKernel: { [weak console] in console?.hostCoreKernels[$0] })
+            coreKernel: { [weak console] in console?.hostCoreKernels[$0] },
+            noteTmuxPaths: { [weak hostStore] id, paths in try? hostStore?.noteTmuxPaths(paths, for: id) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
@@ -150,7 +151,8 @@ final class HeelerAppModel {
                 hostStore?.supportsLiveActivities(for: id) ?? false
             },
             registrationGate: { [weak hostStore, weak notificationPreferences] id in
-                guard hostStore?.hosts.first(where: { $0.id == id })?.serverKind == .herdrCore else {
+                let kind = hostStore?.hosts.first(where: { $0.id == id })?.serverKind
+                guard kind == .herdrCore || kind == .tmux else {
                     return .open
                 }
                 return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
@@ -172,6 +174,11 @@ final class HeelerAppModel {
         // Hosts and begin loading saved Chats before that first render;
         // connections still wait for start() to resume the Console.
         console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
+        // A connection that resolved a tmux Host's paths again has the catalog
+        // keep them (ADR 0044). A catalog that cannot be written asks again.
+        console.onTmuxPathsResolved = { [weak hostStore] id, paths in
+            try? hostStore?.noteTmuxPaths(paths, for: id)
+        }
         liveActivityHosts.publish(hostStore.hosts)
     }
 
@@ -257,14 +264,14 @@ final class HeelerAppModel {
     func refreshUsageInBackground() async {
         guard await scheduleUsageRefresh(), let publisher = console.usageWidgets else { return }
         await AgentUsageBackgroundRefresh.live().run(
-            hosts: hostStore.consoleHosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
+            hosts: hostStore.integratedHosts, publisher: publisher, isUsageEnabled: { console.isUsageEnabled })
     }
 
     /// Asks for a background Usage read while Usage is on and a widget is installed,
     /// and withdraws the request once none is.
     @discardableResult
     private func scheduleUsageRefresh() async -> Bool {
-        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.consoleHosts.isEmpty,
+        guard console.isUsageEnabled, let publisher = console.usageWidgets, !hostStore.integratedHosts.isEmpty,
             await publisher.widgetsInstalled()
         else {
             AgentUsageBackgroundRefresh.cancel()

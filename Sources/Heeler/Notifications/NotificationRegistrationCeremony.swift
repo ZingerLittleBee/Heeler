@@ -332,15 +332,19 @@ struct NotificationRegistrationCeremony: Sendable {
 }
 
 extension Host {
-    /// The herdr session value a registration entry carries for this Host:
-    /// "" for the default session, otherwise the session name. An endpoint
+    /// The session value a registration entry carries for this Host: "" for
+    /// the default Herdr TUI session, otherwise the session name. An endpoint
     /// Host carries the session its socket names, as its hooks derive it
     /// (ADR 0023); any other fixed socket path (test fixtures only) counts as
     /// the default session. A herdr-core Host carries its core session's folder
-    /// name, which is what its Host Helper follows (ADR 0033).
+    /// name, and a tmux Host carries `tmux/<socket name>`, which is what the
+    /// Host Helper follows (ADRs 0033 and 0046).
     var notificationSession: String {
         if serverKind == .herdrCore {
             return HerdrCoreSessionName.normalized(sessionName)
+        }
+        if serverKind == .tmux {
+            return "tmux/\(tmuxSocketName)"
         }
         if let herdrEndpoint {
             return herdrEndpoint.session

@@ -141,6 +141,18 @@ jobs:
           path: .ci/herdr-core-archive
           key: herdr-core-archive-${{ steps.core-archive.outputs.sha256 }}
 
+      # The tmux Host suite links the runner's own tmux into its fixture, which
+      # owns its home and its tmux directories (scripts/fixtures/tmux-ssh.py).
+      # The test script stops before the build when there is none.
+      - name: Install tmux for the tmux Host suite
+        if: ${{ matrix.shard == 'transport' || matrix.shard == 'all' }}
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          command -v tmux >/dev/null || brew install tmux
+          tmux -V
+
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
 

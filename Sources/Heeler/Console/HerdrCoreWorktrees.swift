@@ -28,11 +28,15 @@ enum HerdrCoreWorktrees {
     }
 
     /// Nil when the branch leaves no folder of its own: the mod would land on the
-    /// repository's folder or above it.
-    static func checkoutPath(home: String, mainCheckout: String, branch: String) -> String? {
+    /// repository's folder or above it. `root` is `.herdr` for a core Host and
+    /// `.heeler` for a tmux Host (ADR 0045); the slug and the folders under it
+    /// stay the same.
+    static func checkoutPath(
+        home: String, mainCheckout: String, branch: String, root: String = ".herdr"
+    ) -> String? {
         let slug = slug(branch)
         guard !["", ".", ".."].contains(slug) else { return nil }
-        return "\(home)/.herdr/worktrees/\(repositoryName(mainCheckout: mainCheckout))/\(slug)"
+        return "\(home)/\(root)/worktrees/\(repositoryName(mainCheckout: mainCheckout))/\(slug)"
     }
 
     static func repositoryName(mainCheckout: String) -> String {
@@ -142,6 +146,14 @@ struct WorktreeAgentStartFailure: Error {
 struct HerdrCoreWorktreeGit: Sendable {
     let services: any HostServices
     let gate: GitExecGate
+    /// `.herdr` for a core Host, `.heeler` for a tmux Host (ADR 0045).
+    let checkoutRoot: String
+
+    init(services: any HostServices, gate: GitExecGate, checkoutRoot: String = ".herdr") {
+        self.services = services
+        self.gate = gate
+        self.checkoutRoot = checkoutRoot
+    }
 
     struct Created: Equatable, Sendable {
         let path: String
@@ -169,7 +181,7 @@ struct HerdrCoreWorktreeGit: Sendable {
         let home = try await services.hostHomeDirectory()
         guard
             let path = HerdrCoreWorktrees.checkoutPath(
-                home: home, mainCheckout: mainCheckout, branch: branch)
+                home: home, mainCheckout: mainCheckout, branch: branch, root: checkoutRoot)
         else { throw HerdrCoreWorktreeError.noFolderName(branch: branch) }
 
         let lookup = try await read(

@@ -145,6 +145,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
     case needsHostHelper
     case updateHostHelper
     case waitingForCore
+    case waitingForTmux
     case repairHostHelper
     case hostHelperNotOnWindows
     case noAgentActivity
@@ -156,8 +157,8 @@ enum AgentUsageExclusion: Equatable, Sendable {
 
     private static let known: [Self] = [
         .notConnected, .notReadYet, .usageOff, .needsPlugin, .unsupportedPlatform, .needsHostHelper,
-        .updateHostHelper, .waitingForCore, .repairHostHelper, .hostHelperNotOnWindows, .noAgentActivity,
-        .updateRequired, .readFailed,
+        .updateHostHelper, .waitingForCore, .waitingForTmux, .repairHostHelper, .hostHelperNotOnWindows,
+        .noAgentActivity, .updateRequired, .readFailed,
     ]
 
     /// The words builds before the tokens wrote for the reasons widgets act on.
@@ -178,6 +179,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
         case .needsHostHelper: String(localized: "Needs the Host Helper")
         case .updateHostHelper: String(localized: "Update the Host Helper")
         case .waitingForCore: String(localized: "Waiting for the core")
+        case .waitingForTmux: String(localized: "Waiting for tmux")
         case .repairHostHelper: String(localized: "Repair the Host Helper")
         case .hostHelperNotOnWindows: String(localized: "Comes with the Host Helper, not available yet")
         case .noAgentActivity: String(localized: "No Agent activity yet")
@@ -198,6 +200,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
         case .needsHostHelper: "needsHostHelper"
         case .updateHostHelper: "updateHostHelper"
         case .waitingForCore: "waitingForCore"
+        case .waitingForTmux: "waitingForTmux"
         case .repairHostHelper: "repairHostHelper"
         case .hostHelperNotOnWindows: "hostHelperNotOnWindows"
         case .noAgentActivity: "noAgentActivity"

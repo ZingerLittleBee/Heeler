@@ -70,6 +70,11 @@ targets:
       - path: plugin/helper
         type: folder
         buildPhase: resources
+      # Heeler's Claude Code hook script, placed on a tmux Host apart from the
+      # Helper (ADR 0046).
+      - path: plugin/claude-code
+        type: folder
+        buildPhase: resources
     info:
       path: Sources/Heeler/Info.plist
       properties:
@@ -316,6 +321,15 @@ targets:
         buildPhase: resources
       # Shared seen-mark vectors: Swift writes the format and the Helper reads it.
       - path: plugin/test-vectors/herdr-core-seen-mark-v1.json
+        buildPhase: resources
+      # Shared tmux Program Status vectors, read by Swift, the hook script and the Helper.
+      - path: plugin/test-vectors/tmux-heeler-status-v1.json
+        buildPhase: resources
+      # The tmux input measurements: keys, text and pastes per version and mode.
+      - path: plugin/test-vectors/tmux-input-v1.json
+        buildPhase: resources
+      # Heeler's Claude Code hook entries, read by Swift and the hook script's tests.
+      - path: plugin/test-vectors/claude-code-hooks-v1.json
         buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json

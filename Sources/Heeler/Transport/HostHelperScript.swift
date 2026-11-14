@@ -33,7 +33,7 @@ struct HostHelperScript: Sendable, Equatable {
         case removeFiles([String])
         /// Removes each folder that is empty, in the order given.
         case removeEmptyFolders([String])
-        case removeTree(String)
+        case removeTree(String, keeping: [String] = [])
         /// Clears what an install that never finished left in the Helper directory
         /// and beside the files `record` names: staging folders, a previous `app`
         /// and half-written temporary files. With a record, and no Helper in place, no
@@ -46,6 +46,14 @@ struct HostHelperScript: Sendable, Equatable {
         /// so the Helper comes to follow that session's core. The whole answer
         /// is framed and capped, so a cut-off report can never read as complete.
         case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
+        /// Runs the Helper's own Usage query for a tmux server, whose stored
+        /// paths live under `tmux/<socket>`, and writes `storedPaths` there when
+        /// the Helper is installed so it comes to follow that server too. Makes
+        /// no core session folder.
+        case tmuxUsageQuery(timeZone: String, claudeLimits: Bool, socket: String, storedPaths: String? = nil)
+        /// Updates `tmux/<socket>/paths.json` when `tmux` moved on a Host that
+        /// already holds the Helper or placed `paths.json` for Claude Code's hooks.
+        case refreshTmuxPaths(socket: String, storedPaths: String)
     }
 
     /// What an install record names, for `tidyInterruptedInstall`.
@@ -164,12 +172,46 @@ struct HostHelperScript: Sendable, Equatable {
             lines = files.isEmpty ? [":"] : ["rm -f -- \(files.map(quote).joined(separator: " "))"]
         case .removeEmptyFolders(let folders):
             lines = folders.isEmpty ? [":"] : folders.map { "rmdir -- \(quote($0)) 2>/dev/null || :" }
-        case .removeTree(let path):
-            lines = ["rm -rf -- \(quote(path))"]
+        case .removeTree(let path, let keeping):
+            if keeping.isEmpty {
+                lines = ["rm -rf -- \(quote(path))"]
+            } else {
+                let keep = keeping.map { "! -name \(quote($0))" }.joined(separator: " ")
+                lines = [
+                    "if [ -d \(quote(path)) ]; then",
+                    "  (cd \(quote(path)) && find . -mindepth 1 -maxdepth 1 \(keep) -exec rm -rf -- {} +) || exit 1",
+                    "  rmdir -- \(quote(path)) 2>/dev/null || :",
+                    "fi",
+                ]
+            }
         case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
             lines = tidy(directory: directory, record: record, quietMinutes: quietMinutes)
         case .usageQuery(let timeZone, let claudeLimits, let session):
-            lines = usageQuery(timeZone: timeZone, claudeLimits: claudeLimits, session: session, nonce: nonce)
+            lines = usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, folder: "sessions", flag: "--session",
+                name: session, prepare: ["  mkdir -p -- \"$__h_target\" || return 1"], nonce: nonce)
+        case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket, let storedPaths):
+            let prepare: [String] =
+                if let storedPaths, !storedPaths.isEmpty {
+                    writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: nil)
+                } else {
+                    []
+                }
+            lines = usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, folder: "tmux", flag: "--tmux",
+                name: socket, prepare: prepare, nonce: nonce)
+        case .refreshTmuxPaths(let socket, let storedPaths):
+            lines = [
+                "LC_ALL=C; export LC_ALL",
+                "umask 077",
+                dataHome,
+                "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
+                "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
+                "__h_target=\"$__h_dir\"/tmux/\(quote(socket))",
+                "if [ -f \"$__h_app/main.js\" ] || [ -f \"$__h_target/paths.json\" ]; then",
+            ] + writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: "exit 1") + [
+                "fi",
+            ]
         }
         return (["printf '%s begin\\n' \(quote(nonce))"] + lines
             + ["__h_status=$?", "printf '%s end\\n' \(quote(nonce))", "exit \"$__h_status\""])
@@ -189,12 +231,40 @@ struct HostHelperScript: Sendable, Equatable {
         "printf 'config %s\\n' \"$__h_config\"",
     ]
 
+    private static func writeStoredTmuxPaths(
+        _ storedPaths: String, nonce: String, failCommand: String?
+    ) -> [String] {
+        let want = storedPaths.trimmingCharacters(in: .newlines)
+        guard let failCommand else {
+            return [
+                "  if mkdir -p -- \"$__h_target\" 2>/dev/null; then",
+                "    __h_paths=\"$__h_target/paths.json\"",
+                "    __h_want=\(quote(want))",
+                "    if [ ! -f \"$__h_paths\" ] || [ \"$(cat \"$__h_paths\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+                "      __h_tmp=\"$__h_paths\(temporarySuffix)\(nonce)\"",
+                "      (printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_paths\" ] && mv -f -- \"$__h_tmp\" \"$__h_paths\") 2>/dev/null || rm -f -- \"$__h_tmp\" 2>/dev/null || :",
+                "    fi",
+                "  fi",
+            ]
+        }
+        return [
+            "  mkdir -p -- \"$__h_target\" || \(failCommand)",
+            "  __h_paths=\"$__h_target/paths.json\"",
+            "  __h_want=\(quote(want))",
+            "  if [ ! -f \"$__h_paths\" ] || [ \"$(cat \"$__h_paths\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+            "    __h_tmp=\"$__h_paths\(temporarySuffix)\(nonce)\"",
+            "    if printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_paths\" ] && mv -f -- \"$__h_tmp\" \"$__h_paths\"; then :; else rm -f -- \"$__h_tmp\"; \(failCommand); fi",
+            "  fi",
+        ]
+    }
+
     private static func usageQuery(
-        timeZone: String, claudeLimits: Bool, session: String, nonce: String
+        timeZone: String, claudeLimits: Bool, folder: String, flag: String, name: String,
+        prepare: [String], nonce: String
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
-        let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) --session \(quote(session))\(flags)"
+        let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) \(flag) \(quote(name))\(flags)"
         return [
             "LC_ALL=C; export LC_ALL",
             "umask 077",
@@ -203,13 +273,13 @@ struct HostHelperScript: Sendable, Equatable {
             dataHome,
             "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
             "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
-            "__h_session=\"$__h_dir\"/sessions/\(quote(session))",
+            "__h_target=\"$__h_dir\"/\(folder)/\(quote(name))",
             nodeGoneFunction,
             "__h_usage() {",
             "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",
             "  [ -f \"$__h_app/usage-query.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
-            "  mkdir -p -- \"$__h_session\" || return 1",
-            "  if ! IFS= read -r __h_node < \"$__h_session/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
+        ] + prepare + [
+            "  if ! IFS= read -r __h_node < \"$__h_target/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
             "  \"$__h_node\" \(query)",
             "  __h_result=$?",
@@ -293,7 +363,7 @@ struct HostHelperScript: Sendable, Equatable {
             ["[ -z \"$__h_others\" ]", "[ ! -e \(app) ]", "[ ! -h \(app) ]", "[ -f \(quote(recordFileName)) ]"]
             + files.map { "[ ! -e \(quote($0)) ]" } + files.map { "[ ! -h \(quote($0)) ]" }
         return lines + [
-            "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) -print) || __h_others=unread",
+            "__h_others=$(find . -mindepth 1 -maxdepth 1 ! -name \(quote(recordFileName)) ! -name 'tmux' -print) || __h_others=unread",
             "if \(conditions.joined(separator: " && ")); then",
             "rm -f -- \(quote(recordFileName)) || return 1",
             "cd /",

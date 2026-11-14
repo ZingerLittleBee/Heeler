@@ -3,7 +3,7 @@ import Foundation
 /// What a herdr-core Host offers the app, beside and never through the Herdr
 /// TUI `Transport` (ADR 0031). Connecting never starts a core: a Host with
 /// none running reads as `TransportError.herdrCoreNotRunning`.
-protocol HerdrCoreTransport: Sendable {
+protocol HerdrCoreTransport: HostHelperConnection {
     /// The route that won the dial; nil when there was only ever one way in.
     nonisolated var routeID: UUID? { get }
 

@@ -2,7 +2,7 @@
 // with README.md at the repo root, where most of it comes from.
 
 export const hero = {
-  lede: 'Control Claude Code and Codex from your iPhone or iPad. Agents run on your own Hosts with <a class="text-link" href="https://herdr.dev">herdr</a>; Heeler connects over SSH.',
+  lede: 'Control Claude Code and Codex from your iPhone or iPad. Agents run on your own Hosts in <a class="text-link" href="https://herdr.dev">herdr</a>, <a class="text-link" href="https://docs.heeler.bybee.dev/herdr-core">herdr-core</a>, or <a class="text-link" href="https://docs.heeler.bybee.dev/tmux">tmux</a>; Heeler connects over SSH.',
 };
 
 export const consoleCopy = {
@@ -14,7 +14,7 @@ export const steerCopy = {
 };
 
 export const connect = {
-  lede: "The app speaks herdr's JSON API, newline-delimited JSON over a Unix socket, through SSH. SSH access plus a running herdr server is the whole prerequisite.",
+  lede: 'Heeler connects over SSH to Herdr TUI, the Herdr desktop app (<a class="text-link" href="https://docs.heeler.bybee.dev/herdr-core">herdr-core</a>), or a running <a class="text-link" href="https://docs.heeler.bybee.dev/tmux">tmux</a> server. SSH access plus your running server is the whole prerequisite.',
   pairNote:
     'The <span class="mono">pair</span> action opens a Pairing Code QR. Scan it and the machine is added as a Host. Nothing to type.',
 };
@@ -63,7 +63,7 @@ export const security = [
 export const faq = [
   {
     q: 'What do I need on the machine?',
-    a: 'Node &gt;= 20, herdr &gt;= 0.7.5, and an OpenSSH server enabled. On macOS that is System Settings &gt; General &gt; Sharing &gt; Remote Login.',
+    a: 'An OpenSSH server enabled (on macOS: System Settings &gt; General &gt; Sharing &gt; Remote Login) plus herdr &gt;= 0.7.5 (with Node &gt;= 20 for pairing), herdr-core, or tmux &gt;= 3.3 on macOS or Linux.',
   },
   {
     q: 'Does it work on iPad?',
@@ -71,7 +71,7 @@ export const faq = [
   },
   {
     q: 'What happens to the terminal I already had open?',
-    a: 'Attach and Reattach use herdr takeover mode, disconnecting the previous terminal owner when necessary.',
+    a: 'On Herdr TUI, Attach and Reattach use takeover mode. On herdr-core and tmux Hosts, live terminals attach alongside your desktop terminal without disconnecting it.',
   },
   {
     q: 'Is Heeler an official Claude Code, Codex, or herdr app?',

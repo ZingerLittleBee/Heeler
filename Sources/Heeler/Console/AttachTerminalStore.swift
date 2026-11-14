@@ -532,7 +532,7 @@ final class AttachTerminalStore {
         // opening is someone acting on it.
         let reportsOnceOpen = !isViewed || viewer == .interactive
         let request = TerminalAttachRequest(
-            target: target, takeover: takeover, viewer: viewer,
+            target: target, takeover: takeover, viewer: viewer, isViewed: isViewed,
             displayFacts: isViewed ? feed.displayFacts : nil,
             surfaceHasHistory: hasTakenOutput, cols: cols, rows: rows)
         let operation: TerminalSessionOperation = { [weak self] session in
@@ -610,7 +610,8 @@ final class AttachTerminalStore {
                     session.scroll(sequence, rows: rows)
                 },
                 discardPendingScroll: { session.discardPendingScroll() },
-                acknowledgedWriter: { data in try await session.sendAcknowledged(data) })
+                acknowledgedWriter: { data in try await session.sendAcknowledged(data) },
+                tmuxSend: session.tmuxSend)
             self.inputGeneration = generation
             return generation
         }

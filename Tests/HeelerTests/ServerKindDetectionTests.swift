@@ -25,11 +25,12 @@ struct ServerKindDetectionTests {
     private func detect(
         herdr: ScriptedCoreHost.HerdrRead = .notInstalled,
         locator: [String] = ScriptedCoreHost.locatorLines(),
+        tmux: [String]? = ScriptedCoreHost.tmuxLines(),
         shellBanner: Data = Data(),
         session: String = "work"
     ) async throws -> ServerKindDetection {
         let host = ScriptedCoreHost(
-            locator: locator, shellBanner: shellBanner, herdrRead: herdr, channel: .refused)
+            locator: locator, shellBanner: shellBanner, herdrRead: herdr, tmuxProbe: tmux, channel: .refused)
         return try await ServerKindDetection.run(over: host, session: session)
     }
 
@@ -238,14 +239,155 @@ struct ServerKindDetectionTests {
         let core = try await detect()
         #expect(core.offeredKinds == [.herdrCore])
 
-        // Nothing there yet: the user may be about to install either.
+        // Nothing there yet: the user may be about to install any of them.
         let neither = try await detect(locator: ScriptedCoreHost.locatorLines(executable: nil))
-        #expect(neither.offeredKinds == [.herdrTUI, .herdrCore])
-        #expect(ServerKindDetection.offeredWithoutFindings == [.herdrTUI, .herdrCore])
+        #expect(neither.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(ServerKindDetection.offeredWithoutFindings == [.herdrTUI, .herdrCore, .tmux])
 
         // Offered, so that confirming it says why it cannot be.
         let refused = try await detect(herdr: .answers(Self.sessionsJSON), session: "a/b")
-        #expect(refused.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(refused.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+    }
+
+    // MARK: tmux
+
+    private static let tmuxPath = "/home/dev/.local/bin/tmux"
+
+    private func detectTmux(
+        _ tmux: [String]?, herdr: ScriptedCoreHost.HerdrRead = .notInstalled,
+        locator: [String] = ScriptedCoreHost.locatorLines(executable: nil)
+    ) async throws -> ServerKindDetection {
+        try await detect(herdr: herdr, locator: locator, tmux: tmux)
+    }
+
+    @Test func theSameExecAsksTmuxThroughTheLoginShellAndStartsNoServer() async throws {
+        let host = ScriptedCoreHost(channel: .refused)
+        _ = try await ServerKindDetection.run(over: host, session: "work")
+
+        #expect(await host.log == ["detection"])
+        let body = try #require(await host.scripts.first)
+        #expect(body.contains(#""${SHELL:-/bin/sh}" -lic 'exec /bin/sh -c "$__heeler_tmux_probe"'"#))
+        let tmuxCommands = body.split(separator: "\n").filter { $0.contains("display-message") }
+        #expect(tmuxCommands.count == 1)
+        #expect(tmuxCommands.allSatisfy { $0.contains("-N -S") })
+        // The probe has its own subshell, between the Herdr TUI read and the locator.
+        let probe = try #require(body.range(of: "__heeler_tmux_probe="))
+        let status = try #require(body.range(of: "herdr-tui status"))
+        let locator = try #require(body.range(of: "__session="))
+        #expect(status.upperBound < probe.lowerBound && probe.upperBound < locator.lowerBound)
+        // The typed session is a core session's name here, not a socket's.
+        #expect(!body.contains("n='\\''work'\\''"))
+    }
+
+    @Test func aRunningTmuxIsFoundWithTheSocketsItsServersAnswerOn() async throws {
+        let detection = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["alpha", "default", "work"]))
+
+        #expect(detection.tmux == .running(version: "3.4", sockets: ["default", "alpha", "work"]))
+        #expect(detection.tmuxSockets == ["default", "alpha", "work"])
+        #expect(detection.foundKinds == [.tmux])
+        #expect(detection.offeredKinds == [.tmux])
+        #expect(detection.tmux.summary == "3.4, running")
+    }
+
+    @Test func allThreeAnswerInOneRun() async throws {
+        let detection = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["default"]),
+            herdr: .answers(Self.sessionsJSON), locator: ScriptedCoreHost.locatorLines())
+
+        #expect(detection.foundKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+    }
+
+    @Test func theConfirmationStartsOnTheTypedSocketWhenItsServerAnswers() async throws {
+        let running = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["default", "work"]))
+        #expect(running.preselectedTmuxSocket(typed: "") == "default")
+        #expect(running.preselectedTmuxSocket(typed: " work ") == "work")
+        #expect(running.preselectedTmuxSocket(typed: "absent") == "default")
+
+        let withoutDefault = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["work", "play"]))
+        #expect(withoutDefault.preselectedTmuxSocket(typed: "") == "work")
+
+        // With no server answering, the typed name stands.
+        let stopped = try await detectTmux(ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath))
+        #expect(stopped.preselectedTmuxSocket(typed: "") == "default")
+        #expect(stopped.preselectedTmuxSocket(typed: "later") == "later")
+    }
+
+    @Test func whatTheLoginShellResolvedIsWhatAConfirmedHostStores() async throws {
+        let detection = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(
+                executable: Self.tmuxPath, directory: "/home/dev/run/tmux-1000", sockets: ["default"]))
+
+        #expect(detection.tmuxPaths(socketName: "") == TmuxPaths(
+            executable: Self.tmuxPath, socket: "/home/dev/run/tmux-1000/default"))
+        #expect(detection.tmuxPaths(socketName: "work")?.socket == "/home/dev/run/tmux-1000/work")
+
+        // Nothing to store without a tmux Heeler can use.
+        let old = try await detectTmux(ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, version: "tmux 3.2a"))
+        #expect(old.tmuxPaths(socketName: "default") == nil)
+        let none = try await detectTmux(ScriptedCoreHost.tmuxLines())
+        #expect(none.tmuxPaths(socketName: "default") == nil)
+    }
+
+    @Test func aTmuxWithNoServerRunningIsNotFoundButStaysOnOffer() async throws {
+        let alone = try await detectTmux(ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath))
+        #expect(alone.tmux == .notRunning(version: "3.4"))
+        #expect(alone.foundKinds.isEmpty)
+        #expect(alone.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(alone.tmux.summary == "3.4, no server running")
+
+        let besideHerdr = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath), herdr: .answers(Self.sessionsJSON))
+        #expect(besideHerdr.foundKinds == [.herdrTUI])
+        #expect(besideHerdr.offeredKinds == [.herdrTUI, .tmux])
+    }
+
+    @Test func aTmuxHeelerCannotUseIsOfferedOnlyWhenNothingWasFound() async throws {
+        let old = ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, version: "tmux 3.2a")
+        let alone = try await detectTmux(old)
+        #expect(alone.tmux == .updateRequired(version: "3.2a"))
+        #expect(alone.tmux.summary == "3.2a, needs 3.3 or newer")
+        #expect(alone.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+
+        let besideHerdr = try await detectTmux(old, herdr: .answers(Self.sessionsJSON))
+        #expect(besideHerdr.offeredKinds == [.herdrTUI])
+
+        let missing = try await detectTmux(ScriptedCoreHost.tmuxLines(), herdr: .answers(Self.sessionsJSON))
+        #expect(missing.tmux == .notInstalled)
+        #expect(missing.tmux.summary == "Not installed")
+        #expect(missing.offeredKinds == [.herdrTUI])
+    }
+
+    @Test(arguments: ["FreeBSD", "OpenBSD", "SunOS", ""])
+    func tmuxIsOnlyOfferedOnMacOSAndLinux(kernel: String) async throws {
+        let detection = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, kernel: kernel, sockets: ["default"]))
+
+        #expect(detection.tmux == .unsupported)
+        #expect(detection.foundKinds.isEmpty)
+        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(detection.tmuxSockets.isEmpty)
+    }
+
+    @Test func aMacIsATmuxHostToo() async throws {
+        let detection = try await detectTmux(
+            ScriptedCoreHost.tmuxLines(
+                executable: "/opt/homebrew/bin/tmux", version: "tmux 3.7b", kernel: "Darwin",
+                directory: "/private/tmp/tmux-501", sockets: ["default"]))
+        #expect(detection.tmux == .running(version: "3.7b", sockets: ["default"]))
+    }
+
+    /// The probe's part not reading says nothing of the other two.
+    @Test func aProbeThatDidNotReadLeavesTheOtherFindingsStanding() async throws {
+        let detection = try await detectTmux(nil, herdr: .answers(Self.sessionsJSON))
+
+        #expect(detection.herdrTUI == .found(sessions: Self.sessions))
+        #expect(detection.tmux == .unreadable)
+        #expect(detection.tmux.summary == "Could not read")
+        #expect(detection.offeredKinds == [.herdrTUI])
     }
 
     // MARK: A native Windows target

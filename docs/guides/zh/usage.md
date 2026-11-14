@@ -1,11 +1,11 @@
-<!-- Translated from docs/guides/usage.md at 371b84c8 -->
+<!-- Translated from docs/guides/usage.md at b1b5b8b6 -->
 # 查看 Usage 与 Usage Limits
 
 在 iPhone 或 iPad 上查看 Claude Code 和 Codex 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
 
 Usage 还会显示每台 Host 上的 Agent 最近 30 天用了多少 token，以及按 API 标价折算的估算费用。估算费用不是你的订阅账单。
 
-你需要一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host。
+你需要一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host，或在 [herdr-core](herdr-core.md#host-helper) 或 [tmux](tmux.md#host-helper) Host 上安装 Host Helper。
 
 ## 配置 Host
 
@@ -35,7 +35,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 
 ### 打开 Claude Code limits
 
-Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件（在 herdr-core Host 上则是 [Host Helper](herdr-core.md#host-helper)）会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
+Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件（在 herdr-core 或 tmux Host 上则是 [Host Helper](herdr-core.md#host-helper)）会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
 
 ## 关闭 Usage
 

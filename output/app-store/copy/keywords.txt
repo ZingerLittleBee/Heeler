@@ -1,0 +1,1 @@
+herdr,tmux,claude,codex,ssh,terminal,coding,agent,console,dev,remote,worktree,chat,ghostty

@@ -431,7 +431,9 @@ struct HarnessConfigEditor: Sendable {
         }
     }
 
-    private func read(_ path: String) async throws -> Data? {
+    /// The whole file, nil when there is none. Throws when it is too large to edit
+    /// or can't be read whole.
+    func read(_ path: String) async throws -> Data? {
         let slice = try await files.readHostFileRange(
             RemoteFileRange(path: path, offset: 0, maxBytes: Self.maximumFileSize))
         guard let length = slice.length else { return nil }

@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a macOS or Linux Host running herdr, and an Agent there running Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), or [tmux](tmux.md#chat), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
 
 ## Set up the Host
 
@@ -65,7 +65,7 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi, OpenCode, and Antigravity CLI need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
-- **Images and files.** Tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+- **Images and files.** On Herdr TUI and herdr-core Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 

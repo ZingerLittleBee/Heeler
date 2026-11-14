@@ -673,4 +673,40 @@ struct HerdrCoreWindowsChatTests {
         #expect(card.notice == nil)
         fixture.finish()
     }
+
+    @Test func listingAnAgentOnAWindowsCoreHostDoesNotEagerlyResolveHostPlatform() async throws {
+        let scripted = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            channel: .core(.init(id: "c1", terminals: [Self.record()])))
+        await scripted.helper.configure { $0.platform = .nativeWindows }
+        let host = Host(address: "win.example", username: "me", serverKind: .herdrCore)
+        let console = ConsoleStore(
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in
+                HerdrCoreHostSession(
+                    connect: {
+                        await scripted.setConnected(true)
+                        return scripted.transport()
+                    },
+                    keepalive: nil)
+            },
+            coreHostMemory: HerdrCoreHostMemory(
+                defaults: UserDefaults(suiteName: "core-windows-platform-\(UUID().uuidString)") ?? .standard),
+            herdrAppRename: false,
+            coreWindowsChatPrograms: Self.candidates)
+        console.setHosts([host])
+        await console.resume()
+        try await Self.until("the Agent") { !console.agents.isEmpty && console.hostCoreKernels[host.id] == "Windows" }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(console.capabilities(for: host.id).chat)
+        #expect(console.hostPlatforms[host.id] == nil)
+        console.setHosts([])
+    }
 }

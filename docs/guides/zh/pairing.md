@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at 371b84c8 -->
+<!-- Translated from docs/guides/pairing.md at b1b5b8b6 -->
 
 # 扫码配对 Host
 
@@ -8,7 +8,7 @@
 
 ## 开始之前
 
-- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
+- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。如需使用 herdr-core 或 tmux Host，请按[连接 herdr-core](herdr-core.md) 或[连接 tmux](tmux.md) 手动添加。
 - iPhone 或 iPad 与这台机器处于同一网络（例如同一个 Wi-Fi），或连接到同一个 VPN。配对不会使用 Heeler 中 **Settings > Overlay Networks** 里的网络；这些网络可以在配对完成后再添加，用于[外出时使用](#外出时使用)。
 - 预留约两分钟：配对码只能使用一次，两分钟后失效。
 

@@ -1,0 +1,23 @@
+Heeler is an independent mobile agent console for iPhone and iPad. Control Claude Code, Codex, Grok Build, Pi, Oh My Pi, and OpenCode running on your own machines over SSH—in Herdr TUI, the Herdr desktop app (herdr-core), or tmux.
+
+Agents run on your own Hosts, not on your phone. Open Heeler to see every coding Agent across your machines sorted by who needs you, then steer them from a live terminal or supported Chat conversation.
+
+THREE SERVER KINDS OVER SSH
+• Herdr TUI — pair by scanning a QR code on macOS or Linux, or add native Windows Hosts manually.
+• Herdr desktop & herdr-core — follow desktop spaces and tabs on macOS, Linux, and native Windows without starting a core on macOS or Linux when connecting.
+• tmux — connect to a tmux 3.3+ server on macOS or Linux, bringing sessions, windows, and panes into the Console while sizing live terminals within an open desktop terminal on the same window.
+
+NATIVE CHAT & COMPOSER
+• Read supported Agent conversations as native messages, reply from the Composer, stop a running turn, and answer Blocked prompts with buttons.
+• Draft locally with the full iOS keyboard (autocorrect, IME, dictation) or Voice Input with your own speech service API key, then send in one step.
+• Live terminals rendered by libghostty, with touch scrollback, long-press selection, 30 themes, pinch to zoom, and a tools keyboard with Agent control keys, Agent Skills, and Snippets.
+
+ENCRYPTED ALERTS, LIVE ACTIVITIES & USAGE
+• End-to-end encrypted push notifications when an Agent goes Blocked or Done, plus Lock Screen and Dynamic Island Live Activities (via the Heeler plugin on Herdr TUI or the optional Host Helper on herdr-core and tmux).
+• Check Claude Code and Codex Usage Limits with reset times and up to 30 days of Token Usage with estimated API cost across Hosts, with Home Screen and Lock Screen widgets.
+
+REACH YOUR HOSTS FROM ANYWHERE
+• Connect directly on the local network, join Tailscale, ZeroTier, or EasyTier inside the app without an iOS VPN configuration, or route through an SSH Jump Host with keys verified at both hops.
+• Private SSH keys stay in the Keychain; host keys use fingerprint verification.
+
+Heeler is open source under Apache-2.0 and requires SSH access to a Host running herdr, herdr-core, or tmux. Not affiliated with the herdr project.

@@ -1,6 +1,6 @@
 # Heeler
 
-Native iOS companion app for [herdr](https://herdr.dev), an agent console over SSH.
+Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent console over SSH.
 
 ## Start here
 
@@ -16,7 +16,7 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
 - **Review or regrade:** capture the current acceptance amendments, candidate,
   and evidence in [the handoff template](docs/agents/review-handoff.md).
 - **RPC, subscriptions, launch/input, or scrolling compatibility:** consult
-  [versioned herdr observations](docs/agents/herdr-compatibility.md). Check each
+  [versioned herdr and tmux observations](docs/agents/herdr-compatibility.md). Check each
   observation's version before applying it to a newer server.
 
 ## Architecture
@@ -35,6 +35,12 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
   socket on Unix, SSH exec of `herdr-core connect` on native Windows after a
   pipe check. Connecting never starts a core on Unix, and on Windows starts one
   only if it stops in the round trip after that check (ADR 0031).
+- tmux Hosts target one macOS or Linux tmux 3.3+ server by socket name through
+  the stored tmux executable and `-S <socket>` over SSH exec: `-N` on every
+  command except Linux New Workspace, a polling loop for inventory, per-Pane
+  control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
+  from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
+  readers (ADRs 0044, 0045, and 0046).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

@@ -48,8 +48,8 @@ struct TerminalDisplayFacts: Sendable, Equatable {
     var cell: CellPixels?
 }
 
-/// Whether anyone is looking at a retained terminal. Only a herdr-core attach
-/// passes this on: a hidden one reports neither focus nor display facts.
+/// Whether anyone is looking at a retained terminal. Only a herdr-core or tmux
+/// attach passes this on: a hidden one yields its size and reports no focus.
 enum TerminalViewerPresence: Sendable, Equatable {
     case viewed(TerminalDisplayFacts?)
     case hidden
@@ -63,6 +63,9 @@ struct TerminalAttachRequest: Sendable, Equatable {
     let target: TerminalAttachTarget
     let takeover: Bool
     let viewer: TerminalViewerRole
+    /// Whether a surface is showing this attach now. On a reconnect while
+    /// shown, `viewer` is `.resumed` for a core while `isViewed` stays true.
+    let isViewed: Bool
     let displayFacts: TerminalDisplayFacts?
     /// The surface this attach paints already holds its scrollback, so a server
     /// that can send it should not send it again.
@@ -77,6 +80,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         target: TerminalAttachTarget,
         takeover: Bool = false,
         viewer: TerminalViewerRole = .interactive,
+        isViewed: Bool? = nil,
         displayFacts: TerminalDisplayFacts? = nil,
         surfaceHasHistory: Bool = false,
         cols: Int,
@@ -85,6 +89,7 @@ struct TerminalAttachRequest: Sendable, Equatable {
         self.target = target
         self.takeover = takeover
         self.viewer = viewer
+        self.isViewed = isViewed ?? (viewer == .interactive)
         self.displayFacts = displayFacts
         self.surfaceHasHistory = surfaceHasHistory
         self.cols = cols
@@ -511,6 +516,43 @@ enum TerminalAttachInputError: Error, Equatable {
     case sessionEnded
 }
 
+enum TmuxSendWriteOutcome: Equatable, Sendable {
+    /// tmux answered `%end`.
+    case left
+    /// Nothing reached the Pane: the client had already ended, or tmux answered
+    /// `%error` and any buffer was deleted.
+    case notLeft
+    /// The command left this side and tmux never answered `%end` or `%error`.
+    case unknown
+}
+
+/// One `capture-pane` on the Attach's control client.
+enum TmuxPaneCapture: Equatable, Sendable {
+    /// The Pane's screen, lines joined the way `capture-pane -p` prints them.
+    case text(String)
+    /// The client had ended, or tmux answered `%error`.
+    case notLeft
+    /// The command left this side and tmux never answered.
+    case unknown
+}
+
+/// Checked Send's control-client operations on one tmux Attach (ADR 0045).
+struct TmuxAttachSend: Sendable {
+    typealias Sleep = @Sendable (Duration) async throws -> Void
+
+    let bracketedPaste: @Sendable () async -> TmuxPaneFeed.BracketedPaste
+    let paste: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendKey: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendText: @Sendable (String, @escaping Sleep) async -> TmuxSendWriteOutcome
+    let sendHexByte: @Sendable (UInt8, @escaping Sleep) async -> TmuxSendWriteOutcome
+    /// Whether tmux can encode `key` for the Pane's program now (`nil` once the
+    /// control client has ended).
+    let canSendKey: @Sendable (TmuxKey, @escaping Sleep) async -> Bool?
+    /// The Pane's screen, after anything already queued on this Attach.
+    let capturePane: @Sendable (@escaping Sleep) async -> TmuxPaneCapture
+    let settle: @Sendable (@escaping Sleep) async -> TmuxSendWriteOutcome
+}
+
 /// The live PTY's mixed-reliability input queue.
 ///
 /// Keystrokes and resizes are reliable and ordered. Touch scrolling is an
@@ -533,8 +575,13 @@ final class TerminalAttachInputQueue: Sendable {
 
     private typealias Acknowledgement = CheckedContinuation<Void, any Error>
 
+    private enum ReliablePayload: Sendable {
+        case input(TerminalAttachInput)
+        case action(@Sendable () async throws -> Void)
+    }
+
     private struct ReliableItem: Sendable {
-        let input: TerminalAttachInput
+        let payload: ReliablePayload
         var acknowledgement: Acknowledgement?
     }
 
@@ -551,7 +598,7 @@ final class TerminalAttachInputQueue: Sendable {
 
     private enum NextDecision {
         case wait
-        case resume(TerminalAttachInput?)
+        case resume(ReliablePayload?)
     }
 
     private let state = Mutex(State())
@@ -563,7 +610,7 @@ final class TerminalAttachInputQueue: Sendable {
 
     func send(_ keystrokes: Data) {
         guard !keystrokes.isEmpty else { return }
-        enqueueReliable(ReliableItem(input: .keystrokes(keystrokes)), discardingPendingScroll: true)
+        enqueueReliable(ReliableItem(payload: .input(.keystrokes(keystrokes))), discardingPendingScroll: true)
     }
 
     /// `send` that returns once the writer has written the bytes, in the same
@@ -578,7 +625,23 @@ final class TerminalAttachInputQueue: Sendable {
                 return
             }
             enqueueReliable(
-                ReliableItem(input: .keystrokes(keystrokes), acknowledgement: continuation),
+                ReliableItem(payload: .input(.keystrokes(keystrokes)), acknowledgement: continuation),
+                discardingPendingScroll: true)
+        }
+    }
+
+    /// Runs `action` in FIFO order with queued keystrokes and resizes, throwing
+    /// what `action` threw or `TerminalAttachInputError.sessionEnded` if the
+    /// queue ended before `action` finished.
+    func performAcknowledged(_ action: @escaping @Sendable () async throws -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: Acknowledgement) in
+            let isOpen = state.withLock { !$0.isFinished && !$0.hasStoppedPumping }
+            guard isOpen else {
+                continuation.resume(throwing: TerminalAttachInputError.sessionEnded)
+                return
+            }
+            enqueueReliable(
+                ReliableItem(payload: .action(action), acknowledgement: continuation),
                 discardingPendingScroll: true)
         }
     }
@@ -615,17 +678,42 @@ final class TerminalAttachInputQueue: Sendable {
         state.withLock { $0.pendingScroll = nil }
     }
 
+    /// Whether keystrokes wait behind what the writer has, so a writer can
+    /// tell a write cut short from one that ends where it ends.
+    var hasQueuedKeystrokes: Bool {
+        state.withLock { state in
+            if case .input(.keystrokes)? = state.reliable.first?.payload { true } else { false }
+        }
+    }
+
     func resize(cols: Int, rows: Int) {
-        enqueueReliable(ReliableItem(input: .resize(cols: cols, rows: rows)), discardingPendingScroll: false)
+        enqueueReliable(ReliableItem(payload: .input(.resize(cols: cols, rows: rows))), discardingPendingScroll: false)
     }
 
     func next() async -> TerminalAttachInput? {
+        while let payload = await nextPayload() {
+            switch payload {
+            case .input(let input):
+                return input
+            case .action(let action):
+                do {
+                    try await action()
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                }
+            }
+        }
+        return nil
+    }
+
+    private func nextPayload() async -> ReliablePayload? {
         while true {
             let decision = state.withLock { state -> NextDecision in
                 if !state.reliable.isEmpty {
                     let item = state.reliable.removeFirst()
                     state.inFlightAcknowledgement = item.acknowledgement
-                    return .resume(item.input)
+                    return .resume(item.payload)
                 }
                 if let scroll = state.pendingScroll, scroll.expiresAt <= now() {
                     state.pendingScroll = nil
@@ -639,7 +727,7 @@ final class TerminalAttachInputQueue: Sendable {
                             sequence: scroll.sequence, rows: remainingRows, expiresAt: scroll.expiresAt)
                         : nil
                     return .resume(
-                        .scroll(Self.repeated(scroll.sequence, count: deliveredRows)))
+                        .input(.scroll(Self.repeated(scroll.sequence, count: deliveredRows))))
                 }
                 if state.isFinished {
                     return .resume(nil)
@@ -647,7 +735,7 @@ final class TerminalAttachInputQueue: Sendable {
                 return .wait
             }
 
-            if case .resume(let input) = decision { return input }
+            if case .resume(let payload) = decision { return payload }
             // Wake the writer, rather than handing it bytes here. A suspended
             // writer must recheck expiry and recovery cancellation when it runs.
             await withCheckedContinuation { continuation in
@@ -730,10 +818,10 @@ final class TerminalAttachInputQueue: Sendable {
         resize: (Int, Int) async throws -> Void
     ) async throws {
         defer { stopPumping() }
-        while let item = await next() {
+        while let payload = await nextPayload() {
             guard !Task.isCancelled else { return }
-            switch item {
-            case .keystrokes(let data):
+            switch payload {
+            case .input(.keystrokes(let data)):
                 do {
                     try await write(data)
                     finishInFlight(.success(()))
@@ -741,11 +829,19 @@ final class TerminalAttachInputQueue: Sendable {
                     finishInFlight(.failure(error))
                     throw error
                 }
-            case .scroll(let data):
+            case .input(.scroll(let data)):
                 try await write(data)
                 try await Task.sleep(for: Self.scrollPacingInterval)
-            case .resize(let cols, let rows):
+            case .input(.resize(let cols, let rows)):
                 try await resize(cols, rows)
+            case .action(let action):
+                do {
+                    try await action()
+                    guard !Task.isCancelled else { return }
+                    finishInFlight(.success(()))
+                } catch {
+                    finishInFlight(.failure(error))
+                }
             }
         }
     }
@@ -787,6 +883,7 @@ final class TerminalAttachSession: Sendable {
     private let onEndStarted: @Sendable () -> Void
     private let onConsumed: (@Sendable (Int) -> Void)?
     private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
+    let tmuxSend: TmuxAttachSend?
     private let ender: @Sendable () async -> Void
 
     init(
@@ -795,6 +892,7 @@ final class TerminalAttachSession: Sendable {
         onEndStarted: @escaping @Sendable () -> Void = {},
         onConsumed: (@Sendable (Int) -> Void)? = nil,
         onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
+        tmuxSend: TmuxAttachSend? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
         self.makeOutput = makeOutput
@@ -802,6 +900,7 @@ final class TerminalAttachSession: Sendable {
         self.onEndStarted = onEndStarted
         self.onConsumed = onConsumed
         self.onPresence = onPresence
+        self.tmuxSend = tmuxSend
         self.ender = ender
     }
 

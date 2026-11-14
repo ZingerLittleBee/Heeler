@@ -120,10 +120,14 @@ final class NotificationPreferencesStore {
     }
 
     /// Only unchanged Hosts keep confirmed state and in-flight operations. A
-    /// Host waiting for its Server Kind has no notifications to offer yet.
+    /// Host waiting for its Server Kind has no notifications to offer yet, nor
+    /// has one of a kind without a plugin or a Host Helper.
     func setHosts(_ catalogHosts: [Host]) {
-        let hosts = catalogHosts.filter(\.serverKind.isConfirmed)
-        let unchanged = Set(hosts.filter { self.hosts.contains($0) }.map(\.id))
+        let hosts = catalogHosts.filter(\.serverKind.hasHostIntegrations)
+        let unchanged = Set(
+            hosts.filter { incoming in
+                self.hosts.contains { Self.isSameNotificationHost($0, incoming) }
+            }.map(\.id))
         self.hosts = hosts
         states = states.filter { unchanged.contains($0.key) }
         helperRequirements = helperRequirements.filter { unchanged.contains($0.key) }
@@ -136,7 +140,17 @@ final class NotificationPreferencesStore {
     }
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
-        operations[host.id] == operation && hosts.contains(host)
+        operations[host.id] == operation && hosts.contains { Self.isSameNotificationHost($0, host) }
+    }
+
+    /// A tmux Host's stored paths move as a connection resolves them, without
+    /// making it another Host.
+    private static func isSameNotificationHost(_ lhs: Host, _ rhs: Host) -> Bool {
+        var a = lhs
+        var b = rhs
+        a.tmuxPaths = nil
+        b.tmuxPaths = nil
+        return a == b
     }
 
     /// A note beside a core Host's toggles: what its Helper still needs while they
@@ -308,7 +322,9 @@ final class NotificationPreferencesStore {
         let operation = UUID()
         operations[host.id] = operation
         if states[host.id] != .loading {
-            settingsDuringReRead[host.id] = host.serverKind == .herdrCore ? confirmedSettings(for: host.id) : nil
+            settingsDuringReRead[host.id] =
+                (host.serverKind == .herdrCore || host.serverKind == .tmux)
+                ? confirmedSettings(for: host.id) : nil
             settledBeforeReRead[host.id] = states[host.id]
         }
         states[host.id] = .loading
@@ -456,10 +472,10 @@ final class NotificationPreferencesStore {
         }
     }
 
-    /// Each core Host's gate, for whoever follows them changing.
+    /// Each core or tmux Host's gate, for whoever follows them changing.
     var coreLiveActivityGates: [Host.ID: LiveActivityGate] {
         var gates: [Host.ID: LiveActivityGate] = [:]
-        for host in hosts where host.serverKind == .herdrCore {
+        for host in hosts where host.serverKind == .herdrCore || host.serverKind == .tmux {
             gates[host.id] = liveActivityGate(forCoreHost: host.id)
         }
         return gates
@@ -501,7 +517,9 @@ final class NotificationPreferencesStore {
     func noteSeenMarks(
         core: String, marks: [String: HerdrCoreTurnState.Mark], for hostID: Host.ID
     ) {
-        guard hosts.contains(where: { $0.id == hostID && $0.serverKind == .herdrCore }) else { return }
+        guard hosts.contains(where: {
+            $0.id == hostID && ($0.serverKind == .herdrCore || $0.serverKind == .tmux)
+        }) else { return }
         pendingSeenMarks[hostID] = PendingSeenMarks(core: core, marks: marks)
         writeSeenMarks(for: hostID)
     }

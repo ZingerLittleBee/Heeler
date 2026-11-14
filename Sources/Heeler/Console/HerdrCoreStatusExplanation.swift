@@ -1,7 +1,7 @@
 import Foundation
 
-/// Why a core Agent reads Unknown, from what its Terminal reported and never from
-/// its screen (ADR 0034).
+/// Why a core or tmux Agent reads Unknown, from what its Terminal or Pane
+/// reported and never from its screen (ADRs 0034 and 0046).
 struct HerdrCoreStatusExplanation: Equatable, Sendable {
     let text: String
     /// Grok Build's automatic check left Program Status off, so the one edit that
@@ -21,6 +21,9 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         // From agy's own changelog, embedded in its 1.5.3 binary.
         "agy": (program: "Antigravity CLI", release: "1.4.0"),
     ]
+
+    /// Programs whose reports on tmux the Host Helper reads through `pipe-pane` (ADR 0046).
+    private static let pipePanePrograms: Set<String> = ["codex", "grok", "opencode"]
 
     /// Nil unless the record holds an Agent reading Unknown.
     init?(record: HerdrCoreTerminalRecord) {
@@ -49,6 +52,59 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         } else {
             text = program.map { String(localized: "\($0) hasn't reported a status.") }
                 ?? String(localized: "This program hasn't reported a status.")
+        }
+    }
+
+    /// Nil unless the tmux Pane hosts an Agent reading Unknown (ADR 0046).
+    init?(pane: TmuxInventory.Pane, agentStatus: AgentStatus) {
+        guard let kind = TmuxAgentRule.agentKind(in: pane), agentStatus == .unknown else {
+            return nil
+        }
+        let noted = Self.firstReportingReleases[kind]
+        let program = noted?.program ?? SupportedAgentKind(rawValue: kind)?.displayName ?? kind
+        agentProcess = pane.processID
+        if TmuxProgramStatus(option: pane.status).word(forAgent: kind) != nil {
+            text = String(localized: "\(program) has not reported a state yet.")
+            offersGrokBuildEdit = false
+            return
+        }
+        let hasUserPipe = pane.hasPipe && pane.pipeMark.isEmpty
+        let hasHelperPipe = pane.hasPipe && !pane.pipeMark.isEmpty
+        if Self.pipePanePrograms.contains(kind), hasUserPipe {
+            text = String(
+                localized:
+                    "\(program) has no status because this Pane already has a pipe-pane of your own, which Heeler leaves alone.")
+            offersGrokBuildEdit = false
+            return
+        }
+        offersGrokBuildEdit = kind == "grok"
+        switch kind {
+        case "grok":
+            text =
+                hasHelperPipe
+                ? String(localized: "Grok Build hasn't reported a status.")
+                : String(localized: "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper.")
+        case "codex", "opencode":
+            if let release = noted?.release {
+                text =
+                    hasHelperPipe
+                    ? String(
+                        localized:
+                            "\(program) hasn't reported a status. It reports one from version \(release), so an older version stays Unknown.")
+                    : String(
+                        localized:
+                            "\(program) hasn't reported a status. In tmux its status is read by the Host Helper, from \(program) \(release).")
+            } else {
+                text = String(localized: "\(program) hasn't reported a status.")
+            }
+        case "claude":
+            text = String(
+                localized: "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks.")
+        case "pi", "omp":
+            text = String(
+                localized: "\(program) hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+        default:
+            text = String(localized: "\(program) hasn't reported a status.")
         }
     }
 

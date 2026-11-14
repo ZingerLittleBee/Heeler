@@ -5,7 +5,7 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 5, 6)
+    static let bundled = PluginVersion(0, 5, 7)
     /// The first Helper that sends Agent Notifications.
     static let firstWithNotifications = PluginVersion(0, 4, 0)
     /// The first Helper that drives a Live Activity through the Push Relay.
@@ -321,6 +321,14 @@ struct HostHelperReading: Sendable, Equatable {
     /// The Node.js the service would name, when the Host has one to name.
     var nodePath: String? {
         if case .found(let path) = probe?.node { path } else { nil }
+    }
+
+    /// Whether an intact or newer Helper is already in place on the Host.
+    var hasInstalledHelper: Bool {
+        switch integrity {
+        case .intact, .newer: true
+        case .absent, .damaged: false
+        }
     }
 
     /// True when an install would put new Helper files in place. An older

@@ -121,9 +121,11 @@ struct HeelerPluginRequirement: Hashable, Sendable {
     let note: String
 }
 
-/// The legacy TUI plugin cannot be installed into the core daemon.
+/// The plugin is Herdr TUI's: it cannot be installed into the core daemon,
+/// and a tmux server takes none.
 enum HeelerPluginUnavailableError: Error, Sendable {
     case herdrCore
+    case tmux
 }
 
 /// What one Host's plugin read established.
@@ -143,7 +145,7 @@ enum HeelerPluginStatus: Equatable, Sendable {
         switch result {
         case .success(let installation?): self = .installed(installation)
         case .success(nil): self = .notInstalled
-        case .failure(HeelerPluginUnavailableError.herdrCore): self = .unsupportedServerKind
+        case .failure(is HeelerPluginUnavailableError): self = .unsupportedServerKind
         case .failure(TransportError.hostFeatureUnavailable): self = .unsupportedPlatform
         case .failure: self = .unavailable
         }

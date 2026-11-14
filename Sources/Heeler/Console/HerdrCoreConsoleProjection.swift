@@ -44,6 +44,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// As `HerdrCoreLocator.Location.kernel`: what a locator last found, this connection's once
     /// it has run. What a Host offers does not wait for a core to answer.
     private(set) var kernel: String?
+    let usesProcessBoundChat = true
     /// Why each Agent reading Unknown does, by Terminal address.
     private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var transportGeneration: UInt64 = 0
@@ -117,6 +118,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     /// Whether Rename and applying a typed name are offered at all (ADR 0032).
     private let herdrAppRename: Bool
     private let chatTypingClock: BlockedCardClock
+    /// Whether Send should treat the Host as native Windows, read when a step runs.
+    private let isNativeWindows: @MainActor () -> Bool
+    private let stopClock: BlockedCardClock
     private var chatTypings: [String: HerdrCoreChatTyping] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
@@ -134,6 +138,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         gitGate: GitExecGate,
         herdrAppRename: Bool,
         chatTypingClock: BlockedCardClock = .live,
+        isNativeWindows: @escaping @MainActor () -> Bool,
+        stopClock: BlockedCardClock = .live,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -145,6 +151,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.gitGate = gitGate
         self.herdrAppRename = herdrAppRename
         self.chatTypingClock = chatTypingClock
+        self.isNativeWindows = isNativeWindows
+        self.stopClock = stopClock
         self.onSeenMarksChanged = onSeenMarksChanged
         self.onChange = onChange
     }
@@ -1280,6 +1288,51 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     func pasteIntoAgent(_ text: String, paneID: String) async throws {
         try await chatTyping(at: paneID).paste(text)
+    }
+
+    var stagingSaysTransportFailures: Bool { true }
+
+    /// Checked Composer Send (ADR 0035). `live` follows a projection replaced
+    /// after the Composer was opened.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? {
+        let isNativeWindows = isNativeWindows
+        return HerdrCoreComposerSend(
+            address: paneID,
+            projection: { live() as? HerdrCoreConsoleProjection },
+            corePin: corePin,
+            clock: chatTypingClock,
+            isOnWindows: isNativeWindows)
+    }
+
+    /// Terminal Stop while this Agent holds the foreground. An unlisted Pane is
+    /// the shell a Terminal kept after its Agent exited, and that shell must not
+    /// take the Agent's stop key. Grok Build keeps Send: the core's key would be
+    /// Esc, which only shows a toast. `live` follows a projection replaced after
+    /// the Composer was opened.
+    func checkedTerminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? {
+        guard let listed = agentsByPane[paneID] else { return .keepSend }
+        let stop = HerdrCoreComposerStop(
+            address: listed.agent.paneID,
+            projection: { live() as? HerdrCoreConsoleProjection },
+            corePin: corePin,
+            clock: stopClock)
+        guard let interrupt = AgentComposerInterrupt.coreTerminal(forAgentKind: listed.agent.kind, {
+            await stop.perform()
+        }) else { return .keepSend }
+        return .interrupt(interrupt)
+    }
+
+    /// Chat's checked typing for this Pane (ADR 0035).
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)? {
+        chatTyping(at: paneID)
     }
 
     /// How Chat reads and types in a Terminal (ADR 0035), kept so the screen it

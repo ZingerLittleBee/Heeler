@@ -7,7 +7,7 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="Available on TestFlight" height="40" /></a>
 
-**A native iOS companion app for [herdr](https://herdr.dev) — an agent-first terminal runtime.**
+**A native iOS companion app for [herdr](https://herdr.dev) (an agent-first terminal runtime) and tmux.**
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,7 +24,7 @@ English | [简体中文](./README-zh.md) | [繁體中文](./README-zh-TW.md) | [
 
 ---
 
-Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts in Herdr TUI or the Herdr desktop app (herdr-core); Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
+Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts in Herdr TUI, the Herdr desktop app (herdr-core), or tmux; Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
 
 ## Screenshots
 
@@ -57,6 +57,13 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   follows the desktop app's spaces and tabs, and live terminals, Chat, the
   Composer, New Agent, and New Workspace work there too
   ([Read more](https://docs.heeler.bybee.dev/herdr-core)).
+- **tmux** — connect to a tmux 3.3+ server on macOS or Linux. Sessions,
+  windows, and panes appear in the Console, live terminals size to fit your
+  screen and stay within an open desktop terminal on the same window, Chat,
+  the Composer, New Agent, New Workspace, and Worktrees work there too, and
+  Claude Code hooks plus the optional Host Helper add Agent Status,
+  notifications, Live Activities, and Usage
+  ([Read more](https://docs.heeler.bybee.dev/tmux)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
   long-press selection, takeover of a stale terminal owner, and quietly
@@ -108,6 +115,8 @@ Native Windows Hosts (herdr >= 0.9.3) connect over SSH and are added manually.
 
 herdr-core Hosts, including machines running the Herdr desktop app, are added manually with their Server Kind confirmed. Heeler carries one framed link to the core: a direct-streamlocal channel onto its socket on macOS and Linux, or `herdr-core connect` over SSH exec on native Windows. Connecting never starts a core on macOS or Linux. The optional Host Helper adds notifications, Live Activities, and Usage on macOS and Linux ([Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core)).
 
+tmux Hosts (tmux >= 3.3 on macOS and Linux) are added manually with their Server Kind and socket name confirmed. Connecting never starts a tmux server; on Linux, New Workspace can start one when you ask. Live terminals attach per Pane in tmux control mode alongside desktop clients, sizing to fit your screen and staying within an open desktop terminal on the same window. Claude Code hooks report Blocked, Done, and conversation ids, and the optional Host Helper adds status readers, Pi and Oh My Pi extensions, notifications, Live Activities, and Usage ([Connect tmux](https://docs.heeler.bybee.dev/tmux)).
+
 For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
 
 [View the Heeler setup screenshots](docs/guides/overlay-networks.md#heeler-setup-screenshots) for Tailscale, ZeroTier, and both EasyTier modes.
@@ -131,6 +140,9 @@ or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
   enable SSH, then add the Host manually:
   [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core). Needs
   Heeler 0.1.18 or later.
+- **tmux (macOS / Linux):** Start tmux 3.3 or newer (or let New Workspace
+  start it on Linux), enable SSH, then add the Host manually:
+  [Connect tmux](https://docs.heeler.bybee.dev/tmux).
 
 ## Adding a machine
 

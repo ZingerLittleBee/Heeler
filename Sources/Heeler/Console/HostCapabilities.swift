@@ -53,7 +53,10 @@ struct HostCapabilities: Equatable, Sendable {
     }
 
     /// Whether New Workspace asks for a name it can apply.
-    var namesNewWorkspaces: Bool { tabNames || desktopAppNaming != nil }
+    var namesNewWorkspaces: Bool { tabNames || desktopAppNaming != nil || namesCreatedWorkspaces }
+    /// A Host that names a Workspace it creates, such as a tmux session, and
+    /// does not also name Tabs. Existing memberwise callers leave it off.
+    var namesCreatedWorkspaces = false
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -97,6 +100,27 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
+        // A tmux Host starts Agents and Terminals, renames a Workspace, closes
+        // a Pane or a Tab, opens a Worktree, stages images and files over SFTP,
+        // runs POSIX Host scripts for Changes, Skills, and harness edits, and
+        // offers Composer Send, Stop, and Chat for confirmed POSIX programs once
+        // a probe has named Linux or macOS. It does not rename an Agent, take
+        // over a Terminal, or name Tabs.
+        guard serverKind != .tmux else {
+            let tmuxChatPrograms: Set<ChatProgram>? =
+                switch coreKernel {
+                case HerdrCoreLocator.linuxKernel: coreLinuxChatPrograms
+                case HerdrCoreLocator.macOSKernel: coreMacOSChatPrograms
+                default: nil
+                }
+            self.init(
+                startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
+                worktrees: true, uploads: true, composerSend: true, chat: tmuxChatPrograms != nil,
+                tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
+                composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
+                namesCreatedWorkspaces: true)
+            return
+        }
         let offered = serverKind == .herdrTUI
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
         let coreChatPrograms: Set<ChatProgram>? =

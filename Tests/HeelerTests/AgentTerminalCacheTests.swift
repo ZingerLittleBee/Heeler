@@ -99,6 +99,25 @@ struct AgentTerminalCacheTests {
         console.setHosts([])
     }
 
+    @Test func nonTmuxReconcileKeepsIdlePinnedEntryWhileTmuxServerChangeEvictsIt() async throws {
+        let (_, _, console, agent) = try await connectedAgent()
+        let cache = AgentTerminalCache()
+        let owner = UUID()
+        let entry = cache.acquire(
+            agent: agent, console: console, ownerID: owner, corePin: TerminalCorePin(joined: "s1"))
+        cache.release(entry, ownerID: owner)
+
+        // Non-tmux Hosts pass `tmuxServerInstance: nil`: an idle pinned entry stays.
+        await cache.reconcile(hostID: agent.hostID, agents: [agent], tmuxServerInstance: nil)
+        #expect(cache.entries[agent.id] === entry)
+
+        // A tmux server restart (`s2`) evicts the idle entry pinned to `s1`.
+        await cache.reconcile(hostID: agent.hostID, agents: [agent], tmuxServerInstance: "s2")
+        #expect(cache.entries.isEmpty)
+        await cache.suspend()
+        console.setHosts([])
+    }
+
     @Test func changedRouteAllowsAgentEvictionBeforeItsViewDisappears() async throws {
         let (_, transport, console, agent) = try await connectedAgent()
         let budget = TerminalRetentionBudget(maximumPerHost: 3)

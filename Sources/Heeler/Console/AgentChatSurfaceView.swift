@@ -1365,7 +1365,8 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt {
-        console.chatStopPlan(for: agent, program: program).composerInterrupt(
+        console.chatInterrupt(
+            for: agent, program: program, keepingTo: session.corePin,
             context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
     }
 
@@ -1469,9 +1470,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: { isSelectingPhoto = true },
-            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
-            addFile: { isSelectingFile = true },
+            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
+            pasteImage: capabilities.uploads
+                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

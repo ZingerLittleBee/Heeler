@@ -2875,6 +2875,12 @@ actor HeelerSSHTransport: Transport {
             timeoutMarkerPrefix: "__HEELER_GIT_TIMEOUT_", timedOut: .gitTimedOut)
     }
 
+    private func requireConnected() throws {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+    }
+
     /// One script in one bounded exec, for each feature that reads the Host
     /// through a script. The caller's deadline includes admission. Once
     /// dispatched, exec keeps its lease until the remote watchdog ends the
@@ -2889,6 +2895,7 @@ actor HeelerSSHTransport: Transport {
         timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil
     ) async throws -> GitExecResult {
         try await requirePOSIXHost(feature: feature)
+        try requireConnected()
         do {
             try Task.checkCancellation()
             let timeoutMarker = "\(timeoutMarkerPrefix)\(UUID().uuidString)__"
@@ -2901,6 +2908,7 @@ actor HeelerSSHTransport: Transport {
             return try await Self.runInLane(deadline: deadline, lane: lane) {
                 try await self.channelAdmission.withChannel(.ordinarySession) {
                     try Task.checkCancellation()
+                    try await self.requireConnected()
                     // Awaiting an unstructured task does not forward cancellation.
                     // Never cancel this task: its remote bound supplies the exit
                     // that lets libssh2 reclaim the channel without killing SSH.
@@ -3769,12 +3777,117 @@ actor HeelerSSHTransport: Transport {
 
 // MARK: - What Server Kind detection uses of this connection
 extension HeelerSSHTransport: ServerKindDetectionConnection {
-    /// One bounded exec, cut off on the Host if a read hangs. The POSIX script does
-    /// not go to native Windows, which runs `runWindowsCommand` instead.
+    /// One bounded exec, cut off on the Host if a read hangs, and long enough for
+    /// the login shell the tmux probe goes through. The POSIX script does not go to
+    /// native Windows, which runs `runWindowsCommand` instead.
     func runServerKindDetection(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "Server Kind detection"), deadline: .seconds(16), remoteSeconds: 12,
+            script, feature: String(localized: "Server Kind detection"), deadline: .seconds(26), remoteSeconds: 20,
             timeoutMarkerPrefix: "__HEELER_KIND_DETECTION_TIMEOUT_", timedOut: .timedOut)
+    }
+}
+
+// MARK: - What a tmux Host uses of this connection
+extension HeelerSSHTransport: TmuxHostConnection {
+    /// One bounded exec. A probe through the login shell gets room for its
+    /// startup files; one with stored paths asks tmux alone.
+    func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "tmux Hosts"),
+            deadline: throughLoginShell ? .seconds(26) : .seconds(14),
+            remoteSeconds: throughLoginShell ? 20 : 10,
+            timeoutMarkerPrefix: "__HEELER_TMUX_PROBE_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// The same bound as a probe. A Linux server start goes through the login
+    /// shell and gets the longer one; every other command asks tmux alone.
+    func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "tmux Hosts"),
+            deadline: throughLoginShell ? .seconds(26) : .seconds(14),
+            remoteSeconds: throughLoginShell ? 20 : 10,
+            timeoutMarkerPrefix: "__HEELER_TMUX_COMMAND_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func runTmuxForeground(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "tmux Hosts"),
+            deadline: .seconds(14), remoteSeconds: 10,
+            timeoutMarkerPrefix: "__HEELER_TMUX_FOREGROUND_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// One long exec of `/bin/sh -s`, with the script as all it is given to
+    /// read: the script waits for that input to end, as it does when the
+    /// channel closes. It holds an ordinary session slot until then (ADR 0045).
+    func openTmuxInventoryLoop(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        let timeout = requestTimeout
+        let channel = try await channelAdmission.admitSessionExec {
+            do {
+                return try await self.connection.openExec(command: Self.gitScriptCommand, timeout: timeout)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
+        }
+        do {
+            try await channel.write(script, timeout: timeout)
+        } catch {
+            try? await channel.close(timeout: .seconds(2))
+            throw await mapOperationError(error)
+        }
+        return channel
+    }
+
+    /// One long exec of `/bin/sh -s` that starts a control-mode client. Its
+    /// script goes first; the client reads what follows (ADR 0045). It holds an
+    /// attach slot until the channel closes, and its reads and writes throw
+    /// `TransportError`, a lost connection among them.
+    func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        let timeout = requestTimeout
+        let channel = try await channelAdmission.admitAttachExec {
+            do {
+                return try await self.connection.openExec(command: Self.gitScriptCommand, timeout: timeout)
+            } catch {
+                throw await self.mapOperationError(error)
+            }
+        }
+        do {
+            try await channel.write(script, timeout: timeout)
+        } catch {
+            try? await channel.close(timeout: .seconds(2))
+            throw await mapOperationError(error)
+        }
+        return TransportErrorExecChannel(channel: channel) { await self.mapOperationError($0) }
+    }
+}
+
+/// An exec whose reads and writes throw `TransportError`, as the connection
+/// classifies what its channel threw.
+private struct TransportErrorExecChannel: WindowsTerminalExecChannel {
+    let channel: any WindowsTerminalExecChannel
+    let map: @Sendable (any Error) async -> TransportError
+
+    func write(_ data: Data, timeout: Duration) async throws {
+        do { try await channel.write(data, timeout: timeout) } catch { throw await map(error) }
+    }
+
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? {
+        do { return try await channel.read(maximumBytes: maximumBytes, timeout: timeout) } catch {
+            throw await map(error)
+        }
+    }
+
+    func exitStatus(timeout: Duration) async throws -> Int32 {
+        do { return try await channel.exitStatus(timeout: timeout) } catch { throw await map(error) }
+    }
+
+    func close(timeout: Duration) async throws {
+        try await channel.close(timeout: timeout)
     }
 }
 
@@ -3783,10 +3896,13 @@ extension HeelerSSHTransport: HostHelperHost {
     /// One bounded exec, long enough for the Node.js search's login shell.
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
         // A Usage read searches for nothing, and a screen is waiting on it.
-        if case .usageQuery = script.step {
+        switch script.step {
+        case .usageQuery, .tmuxUsageQuery:
             return try await runBoundedScript(
                 Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
+        default:
+            break
         }
         return try await runBoundedScript(
             Data(script.text.utf8), feature: String(localized: "The Host Helper"), deadline: .seconds(40), remoteSeconds: 30,

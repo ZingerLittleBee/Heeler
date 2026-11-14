@@ -46,6 +46,19 @@ struct HerdrCoreWorktreeBuilderTests {
                 == "/home/dev/.herdr/worktrees/bare.git/x")
     }
 
+    /// tmux Hosts share the slug and the folder layout, under `~/.heeler` (ADR 0045).
+    @Test func aTmuxCheckoutGoesUnderHeelerWhileTheDefaultStaysUnderHerdr() {
+        #expect(
+            HerdrCoreWorktrees.checkoutPath(
+                home: "/home/dev", mainCheckout: "/work/my app", branch: "feature/login",
+                root: ".heeler")
+                == "/home/dev/.heeler/worktrees/my app/feature-login")
+        #expect(
+            HerdrCoreWorktrees.checkoutPath(
+                home: "/home/dev", mainCheckout: "/work/app", branch: "功.功", root: ".heeler")
+                == nil)
+    }
+
     /// `功.功` is a branch git takes, and its slug would be the repository's folder.
     @Test(arguments: ["功能", "功.功", "功..功", "/"])
     func aBranchWithNoUsableFolderNameHasNoCheckout(branch: String) {

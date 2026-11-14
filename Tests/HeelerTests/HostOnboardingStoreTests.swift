@@ -529,7 +529,7 @@ struct HostOnboardingStoreTests {
             ),
             (
                 ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused),
-                [.herdrTUI, .herdrCore]
+                [.herdrTUI, .herdrCore, .tmux]
             ),
         ]
         for (core, offered) in cases {
@@ -620,7 +620,7 @@ struct HostOnboardingStoreTests {
         let core = ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused)
         let (store, _, catalog) = try unconfirmedStore(core, session: "a/b")
         await store.runChecks()
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
         guard case .sessionRefused = store.detection?.herdrCore else {
             Issue.record("Detection should say hc refuses the name")
             return
@@ -632,7 +632,7 @@ struct HostOnboardingStoreTests {
         #expect(store.confirmationRefusal?.contains("herdr-core refuses") == true)
         #expect(store.host.serverKind == .unconfirmed)
         #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
         #expect(await core.log == ["detection", "close"])
 
         store.dismissConfirmationRefusal()
@@ -684,7 +684,7 @@ struct HostOnboardingStoreTests {
         let found = HostOnboardingStoreTests.sessionsJSON
         let cases: [(ScriptedCoreHost, String?)] = [
             (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), "This machine runs both"),
-            (ScriptedCoreHost(locator: absent, channel: .refused), "Neither was found"),
+            (ScriptedCoreHost(locator: absent, channel: .refused), "None of them was found"),
             (ScriptedCoreHost(channel: .refused), nil),
             (ScriptedCoreHost(locator: absent, herdrRead: .answers(found), channel: .refused), nil),
         ]
@@ -737,7 +737,7 @@ struct HostOnboardingStoreTests {
 
         #expect(store.detection == nil)
         #expect(store.detectionFailure?.contains("Server Kind detection") == true)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
         #expect(store.report == nil)
         #expect(await core.log == ["detection", "close"])
 

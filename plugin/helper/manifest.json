@@ -1,5 +1,5 @@
 {
-  "version": "0.5.6",
+  "version": "0.5.7",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -11,7 +11,7 @@
     },
     {
       "path": "core/follower.js",
-      "sha256": "880e505a9f0dcb8db4236adf45a8a07ee3dfb73c563119a405a0b72833a75e4b"
+      "sha256": "d5bfcb628dbc8d04557d26ca1e2a3488475c7cde620839179a3fa233ecba4050"
     },
     {
       "path": "core/frames.js",
@@ -43,7 +43,7 @@
     },
     {
       "path": "extensions/heeler-session.js",
-      "sha256": "b844ebf4d91b2e6388b5c9519cc77632e4bd825e4f7caf3e9acafe0022542586"
+      "sha256": "57b1b25a7a3cdff4418651fdfb649695a7f110ef8e153271bf38cf4111b65716"
     },
     {
       "path": "extensions/opencode/index.js",
@@ -59,15 +59,15 @@
     },
     {
       "path": "main.js",
-      "sha256": "381fc7e363fe93b3651b87d643adce54eab8dfacc9c1521703679521628343bc"
+      "sha256": "934c4637cc3d49b771642824d0097ff282e6b38252be03599026267ad0c1d9a0"
     },
     {
       "path": "notifications/activity.js",
-      "sha256": "14aa112bc484ec79bbbe086ceca478387f7fd41556198b4990e3028a133e56ad"
+      "sha256": "69fe196cce9aba04199bca93257115afa684b6dee62eff07a7296887a83f858b"
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "f7f234234833b47d071279527ff995e6d0ed6450a4d14cec6fe098322928aec9"
+      "sha256": "c2d26cfbc084b3052abb03e64d8657b189551cb6d0a4f57b88d5cafef9471558"
     },
     {
       "path": "notifications/seen-marks.js",
@@ -202,8 +202,52 @@
       "sha256": "0fbc4df78372ecc022db51307e39bea872971f0f14284f54701b408870156f60"
     },
     {
+      "path": "tmux/client.js",
+      "sha256": "7c1a28d2a6bb7045324808ef807389983306e15e8a0faacaedd012b239459869"
+    },
+    {
+      "path": "tmux/follower.js",
+      "sha256": "e443d5bc29c787e12759d93f9c76f00d163db9c0ecc9dbeebb07339228117d87"
+    },
+    {
+      "path": "tmux/foreground.js",
+      "sha256": "ce039582874471e5c36e33f4de272b8d7c63d5dab30e58700c95e20f41ea4469"
+    },
+    {
+      "path": "tmux/osc7501.js",
+      "sha256": "e0f6fd597e1ca8d76a2d2ee2f5455f9bb92b7fb183297af4e55f4fc45525a004"
+    },
+    {
+      "path": "tmux/pipe-pane-worker.js",
+      "sha256": "16f3107b40501803391a9b5dbb77347a1e0582d651196feb1f52e284086e9d31"
+    },
+    {
+      "path": "tmux/pipe-reader.js",
+      "sha256": "b81a00bfed7c141c455e9125864737cbf17ced0c0af8eb1a0a7bea933b27ea7f"
+    },
+    {
+      "path": "tmux/quoted-format.js",
+      "sha256": "c1521205d9448609c1c7643875c28695184060a555bcb290ddf2b626059a1c5b"
+    },
+    {
+      "path": "tmux/socket-name.js",
+      "sha256": "6a3adb09a4b7826f37f1dd83d9dca4c627a5afd508bfe25835f6cf4190ea4e90"
+    },
+    {
+      "path": "tmux/status.js",
+      "sha256": "633471ce3cd863a6eb7cbbf81209754f93c572bac3439cd7888a6e74ba310779"
+    },
+    {
+      "path": "tmux/transcript-watcher.js",
+      "sha256": "d58fc6fb78deaeac7dfb75b88be79be8068460a1feff5cbc92bf66f21d57e209"
+    },
+    {
+      "path": "tmux/turn-state.js",
+      "sha256": "aedf934871a23be7a5bf6d3ab5eaa169f58551996f7e491b806a1ba6a5f3ffa1"
+    },
+    {
       "path": "usage-query.js",
-      "sha256": "d07b25edf833c4d7acfd714614348c522fa3455b6fbe2f87b6580a0032b27a9f"
+      "sha256": "8478dd9c20e5c7263c6e4b62d2c9f0ead8749719dce388267ef2aac61deb98b1"
     },
     {
       "path": "usage-worker.js",
@@ -215,15 +259,19 @@
     },
     {
       "path": "usage/layout.js",
-      "sha256": "e3c044a78bd6d368f62342d7e1aec3403f0fae263afab9c1dd0da17a2b169996"
+      "sha256": "e4cb042f6ea293545606b79e2a42404fc704e55e4daa5cd7a298125f3399e60e"
     },
     {
       "path": "usage/recorder.js",
-      "sha256": "d95b49762de9d5738cdb1224b528177be9b805cf47cc0cbb1b1eff41255bf660"
+      "sha256": "31cb09c6ae6e32203567155276500027c4a8d16e7d0468c4890b8a8857dbe161"
+    },
+    {
+      "path": "usage/tmux-environment.js",
+      "sha256": "00d8585d9dab50bfee91d4a63e691e99fe06798630f680a457c31a25c7fa66cf"
     },
     {
       "path": "version.json",
-      "sha256": "89c058b7cfda81e2bd742130c46adb75f8b20d8443f34e3720e318c75f3e30a9"
+      "sha256": "d3067a2dc8cce607e39dc20bc0b1ae4d6458c620c436220158239bafdd7bd010"
     }
   ]
 }

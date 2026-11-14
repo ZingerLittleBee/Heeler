@@ -1,0 +1,449 @@
+import Foundation
+
+/// The tmux commands a user asks for on a tmux Host (ADR 0044, ADR 0045).
+/// Pure: it builds one `/bin/sh` script and reads the ids tmux prints back.
+///
+/// A window opens detached in the session the user chose, so that session's
+/// current window stays put. A new session on a running server takes the
+/// server's environment (`-E`). With no server, only Linux New Workspace
+/// starts one, through the user's login shell and without `-N`; macOS says to
+/// start tmux on the Mac, and anything else starts nothing. An Agent is the
+/// same program herdr-core runs: the user's shell replaces itself with it,
+/// with ADR 0034's session flags, and a Claude Code under a configuration root
+/// without Heeler's hooks gets them for that launch alone through `--settings`
+/// (ADR 0046).
+enum TmuxLaunch {
+    struct Server: Equatable, Sendable {
+        var paths: TmuxPaths
+        var shell: String
+        /// `uname -s` from the last probe. Nil has not been read.
+        var kernel: String?
+        var running: Bool
+        var openCodeVersion: String?
+    }
+
+    struct Command: Equatable, Sendable {
+        var script: Data
+        /// The Linux start, whose script is the login shell's to run.
+        var throughLoginShell: Bool
+    }
+
+    enum Refusal: Error, Equatable {
+        /// macOS, and no server: New Workspace does not start one.
+        case startTmuxOnMac
+        /// No server, and this command is not the Linux start.
+        case serverNotRunning
+        /// A window with no session, or a launch with no directory.
+        case missingTarget
+    }
+
+    /// What `new-window -P` or `new-session -P` printed.
+    struct Created: Equatable, Sendable {
+        var paneID: String
+        var windowID: String
+        var sessionID: String?
+        var sessionName: String?
+    }
+
+    static let paneFormat = "#{pane_id} #{window_id}"
+    static let sessionFormat = "#{pane_id} #{window_id} #{session_id} #{q:session_name} ."
+
+    /// `hookSettings` is the settings file a Claude Code launch passes. Any
+    /// other program ignores it.
+    static func agentWindow(
+        _ request: AgentLaunchRequest, on server: Server, hookSettings: String? = nil
+    ) throws -> Command {
+        let session = try required(request.workspaceID)
+        let directory = try required(request.cwd)
+        let launch = try disposition(of: server, createsSession: false)
+        let agent = program(of: request, on: server, hookSettings: hookSettings)
+        return command(
+            windowWords(session: session, directory: directory, environment: agent.environment, program: agent.argv),
+            paths: server.paths, loginShell: launch.loginShell)
+    }
+
+    static func shellWindow(_ request: ShellTerminalCreationRequest, on server: Server) throws -> Command {
+        let launch = try disposition(of: server, createsSession: false)
+        return command(
+            windowWords(
+                session: try required(request.workspaceID), directory: try required(request.cwd),
+                environment: [:], program: []),
+            paths: server.paths, loginShell: launch.loginShell)
+    }
+
+    static func agentSession(
+        _ request: AgentLaunchRequest, workspace: NewWorkspaceSpec, on server: Server, hookSettings: String? = nil
+    ) throws -> Command {
+        let launch = try disposition(of: server, createsSession: true)
+        let agent = program(of: request, on: server, hookSettings: hookSettings)
+        return command(
+            sessionWords(
+                name: workspace.label, directory: try required(workspace.directory),
+                environment: agent.environment, program: agent.argv, inheritServerEnvironment: launch.inherit),
+            paths: server.paths, loginShell: launch.loginShell)
+    }
+
+    static func shellSession(_ workspace: NewWorkspaceSpec, on server: Server) throws -> Command {
+        let launch = try disposition(of: server, createsSession: true)
+        return command(
+            sessionWords(
+                name: workspace.label, directory: try required(workspace.directory),
+                environment: [:], program: [], inheritServerEnvironment: launch.inherit),
+            paths: server.paths, loginShell: launch.loginShell)
+    }
+
+    static func renameSession(id: String, label: String, paths: TmuxPaths) -> Command {
+        // The label is positional. `--` keeps a name like `-x` from being a flag.
+        command(["rename-session", "-t", id, "--", label], paths: paths, loginShell: false)
+    }
+
+    static func killPane(_ id: String, paths: TmuxPaths) -> Command {
+        command(["kill-pane", "-t", id], paths: paths, loginShell: false)
+    }
+
+    static func killWindow(_ id: String, paths: TmuxPaths) -> Command {
+        command(["kill-window", "-t", id], paths: paths, loginShell: false)
+    }
+
+    /// Ends a leftover session of Heeler's own (`@heeler-attach`) only while the
+    /// answering server is still `instance`, the session id `$n` still carries a
+    /// non-empty `@heeler-attach` option, and `#{session_attached}` is `0`
+    /// (ADR 0045). Matched by `@heeler-attach` on the session id and never by
+    /// session name prefix, inside tmux's own `if-shell -F` check.
+    static func endUnattachedAttachSession(
+        id: String, instance: TmuxServerInstance, paths: TmuxPaths
+    ) -> Command? {
+        guard isID(id, prefix: "$") else { return nil }
+        let format = [
+            "#{&&:#{==:#{pid}:#{start_time},\(instance.pid):\(instance.startTime)},",
+            "#{&&:#{==:#{session_attached},0},#{!=:#{@heeler-attach},}}}",
+        ].joined()
+        let kill = ["kill-session", "-t", id].map(TmuxControlCommand.quoted).joined(separator: " ")
+        return command(
+            ["if-shell", "-F", "-t", id, format, kill],
+            paths: paths, loginShell: false)
+    }
+
+    /// The session name for a Worktree: the branch, with `.` and `:` replaced by
+    /// `-` because tmux rejects both in a session name, then `-2`, `-3`, …
+    /// while that name is already taken.
+    static func sessionName(forBranch branch: String, taken: Set<String>) -> String {
+        let base = String(branch.map { $0 == "." || $0 == ":" ? "-" : $0 })
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base)-\(number)") { number += 1 }
+        return "\(base)-\(number)"
+    }
+
+    /// `@heeler-worktree` on the session id, after the session exists. The path
+    /// is how a later removal finds the session, never its name.
+    static func setWorktree(session: String, path: String, paths: TmuxPaths) -> Command {
+        command(
+            ["set-option", "-t", session, "@heeler-worktree", path],
+            paths: paths, loginShell: false)
+    }
+
+    /// Sets the Pane's `@heeler-status` to `next` only while it still reads
+    /// `expected`, then prints whatever it reads now. One attempt: a value that
+    /// changed is left to the writer that changed it (ADR 0046). `clearAsk`
+    /// also clears `@heeler-ask`, which a Claude Code Pane's idle or working
+    /// write does. Both sets are inside the compare, so a lost compare clears
+    /// nothing.
+    static func compareAndSetStatus(
+        pane: String, expected: String, next: String, clearAsk: Bool, paths: TmuxPaths
+    ) -> Command {
+        var sets = [paneOption(pane: pane, name: "@heeler-status", value: next)]
+        if clearAsk {
+            sets.append(paneOption(pane: pane, name: "@heeler-ask", value: ""))
+        }
+        let format = "#{==:#{@heeler-status},\(expected)}"
+        let check = shellArguments([
+            "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
+        ])
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{q:@heeler-status} .",
+        ])
+        // A quoted `;` is one argv word, so tmux ends if-shell there and runs
+        // display-message next. A user's own `;` still goes through oneShot
+        // and reaches tmux as `\;`, which tmux keeps.
+        return command(shellArguments: check + ["';'"] + show, paths: paths, loginShell: false)
+    }
+
+    /// Sets Pane options only while the server answering on `paths` is still
+    /// `instance`, then prints that server's `pid:start_time`. An option value
+    /// that holds JSON braces or commas never enters the format condition.
+    static func setPaneOptions(
+        pane: String,
+        instance: TmuxServerInstance,
+        options: [(name: String, value: String)],
+        paths: TmuxPaths
+    ) -> Command {
+        let sets = options.map { paneOption(pane: pane, name: $0.name, value: $0.value) }
+        let format = "#{==:#{pid}:#{start_time},\(instance.pid):\(instance.startTime)}"
+        let check = shellArguments([
+            "if-shell", "-F", "-t", pane, format, sets.joined(separator: " ; "),
+        ])
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{pid}:#{start_time}",
+        ])
+        return command(shellArguments: check + ["';'"] + show, paths: paths, loginShell: false)
+    }
+
+    static func serverInstanceMatches(_ instance: TmuxServerInstance, stdout: Data) -> Bool {
+        let line = String(decoding: stdout, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .last?
+            .trimmingCharacters(in: .whitespaces)
+        return line == "\(instance.pid):\(instance.startTime)"
+    }
+
+    /// Reads a Pane's visible screen with escape sequences kept (`capture-pane -e -p`),
+    /// prefixed by the answering server's `pid:start_time` so a replaced server is
+    /// never mistaken for the one Chat keeps to (ADRs 0044 and 0045).
+    static func capturePaneScreen(pane: String, paths: TmuxPaths) -> Command {
+        let show = shellArguments([
+            "display-message", "-p", "-t", pane, "#{pid}:#{start_time}",
+        ])
+        let capture = shellArguments([
+            "capture-pane", "-e", "-p", "-t", pane,
+        ])
+        return command(shellArguments: show + ["';'"] + capture, paths: paths, loginShell: false)
+    }
+
+    /// Splits `capturePaneScreen`'s stdout into the server instance header and the
+    /// captured screen text.
+    static func capturedPaneScreen(from stdout: Data) -> (instance: TmuxServerInstance, text: String)? {
+        let raw = String(decoding: stdout, as: UTF8.self)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+        let header: Substring
+        let body: Substring
+        if let newline = raw.firstIndex(of: "\n") {
+            header = raw[..<newline]
+            body = raw[raw.index(after: newline)...]
+        } else {
+            header = raw[...]
+            body = ""
+        }
+        let parts = header.trimmingCharacters(in: .whitespaces).split(separator: ":", maxSplits: 1)
+        guard parts.count == 2,
+            let pid = Int(parts[0]), pid > 0,
+            let startTime = Int(parts[1]), startTime > 0
+        else {
+            return nil
+        }
+        return (TmuxServerInstance(pid: pid, startTime: startTime), String(body))
+    }
+
+    /// One `set-option -p` as tmux parses a command string: the text of the
+    /// option, not a shell word.
+    private static func paneOption(pane: String, name: String, value: String) -> String {
+        ["set-option", "-p", "-t", pane, name, value].map(TmuxControlCommand.quoted).joined(separator: " ")
+    }
+
+    /// The server's global environment names, which a new session inherits,
+    /// filtered on the Host so no value crosses SSH (ADR 0045).
+    static func showEnvironment(paths: TmuxPaths) -> Command {
+        environmentNamesCommand(["-u", "show-environment", "-g", "-s"], paths: paths)
+    }
+
+    /// One session's environment delta names (`NAME` and `-NAME`), addressed by
+    /// its id (`$n`), never its name, and filtered on the Host so no value crosses SSH.
+    static func showEnvironment(session: String, paths: TmuxPaths) -> Command {
+        environmentNamesCommand(["-u", "show-environment", "-t", session, "-s"], paths: paths)
+    }
+
+    /// The last non-empty line. A login shell's startup files may print before it.
+    static func created(from stdout: Data) -> Created? {
+        let lines = String(decoding: stdout, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard let text = lines.last, let paneEnd = text.firstIndex(of: " ") else { return nil }
+        let pane = String(text[..<paneEnd])
+        guard isID(pane, prefix: "%") else { return nil }
+        let rest = text[text.index(after: paneEnd)...]
+        let window: String
+        let afterWindow: Substring
+        if let space = rest.firstIndex(of: " ") {
+            window = String(rest[..<space])
+            afterWindow = rest[rest.index(after: space)...]
+        } else {
+            window = String(rest)
+            afterWindow = ""
+        }
+        guard isID(window, prefix: "@") else { return nil }
+        guard !afterWindow.isEmpty else {
+            return Created(paneID: pane, windowID: window, sessionID: nil, sessionName: nil)
+        }
+        guard let space = afterWindow.firstIndex(of: " ") else { return nil }
+        let session = String(afterWindow[..<space])
+        let quotedName = String(afterWindow[afterWindow.index(after: space)...])
+        guard isID(session, prefix: "$"),
+            let decoded = TmuxQuotedField.decodeLine(Data((quotedName + "\n").utf8), count: 1),
+            let name = decoded.first,
+            !name.isEmpty
+        else { return nil }
+        return Created(paneID: pane, windowID: window, sessionID: session, sessionName: name)
+    }
+
+    // MARK: The words tmux is given
+
+    private struct Launch {
+        var loginShell: Bool
+        var inherit: Bool
+    }
+
+    /// A running server keeps `-N`. A new session on one also keeps `-E`.
+    /// Linux with no server is the login-shell start, and the only command
+    /// without `-N`.
+    private static func disposition(of server: Server, createsSession: Bool) throws -> Launch {
+        if server.running { return Launch(loginShell: false, inherit: createsSession) }
+        guard createsSession else { throw Refusal.serverNotRunning }
+        switch server.kernel {
+        case HerdrCoreLocator.linuxKernel: return Launch(loginShell: true, inherit: false)
+        case HerdrCoreLocator.macOSKernel: throw Refusal.startTmuxOnMac
+        default: throw Refusal.serverNotRunning
+        }
+    }
+
+    private static func required(_ value: String?) throws -> String {
+        try required(value ?? "")
+    }
+
+    private static func required(_ value: String) throws -> String {
+        guard !value.isEmpty else { throw Refusal.missingTarget }
+        return value
+    }
+
+    private static func program(
+        of request: AgentLaunchRequest, on server: Server, hookSettings: String?
+    ) -> (argv: [String], environment: [String: String]) {
+        guard let kind = SupportedAgentKind(rawValue: request.kind) else {
+            let argv = HerdrCoreShellLaunch.argv(shell: server.shell, program: [request.kind] + request.arguments)
+            return (argv, request.environment)
+        }
+        var arguments = request.arguments
+        if kind == .claude, let hookSettings { arguments = ["--settings", hookSettings] + arguments }
+        let start = HerdrCoreLaunch.agentStart(
+            kind: kind, arguments: arguments, environment: request.environment,
+            openCodeVersion: server.openCodeVersion)
+        return (HerdrCoreShellLaunch.argv(shell: server.shell, program: start.program), start.environment)
+    }
+
+    private static func windowWords(
+        session: String, directory: String, environment: [String: String], program: [String]
+    ) -> [String] {
+        ["new-window", "-d", "-t", session, "-c", directory]
+            + environmentFlags(environment)
+            + ["-P", "-F", paneFormat]
+            + (program.isEmpty ? [] : ["--"] + program)
+    }
+
+    private static func sessionWords(
+        name: String?, directory: String, environment: [String: String], program: [String],
+        inheritServerEnvironment: Bool
+    ) -> [String] {
+        var words = ["new-session", "-d"]
+        if inheritServerEnvironment { words.append("-E") }
+        if let name, !name.isEmpty { words += ["-s", name] }
+        return words + ["-c", directory] + environmentFlags(environment) + ["-P", "-F", sessionFormat]
+            + (program.isEmpty ? [] : ["--"] + program)
+    }
+
+    /// Blanked names and the launch's own, in one order a test can write down.
+    /// The launch's value already won where the names match.
+    private static func environmentFlags(_ environment: [String: String]) -> [String] {
+        environment.keys.sorted().flatMap { key in ["-e", "\(key)=\(environment[key] ?? "")"] }
+    }
+
+    private static func command(_ words: [String], paths: TmuxPaths, loginShell: Bool) -> Command {
+        command(shellArguments: shellArguments(words), paths: paths, loginShell: loginShell)
+    }
+
+    /// Each word as `/bin/sh` and then tmux will read it. A trailing `;` is
+    /// escaped, so a word of the user's is not the end of the command.
+    private static func shellArguments(_ words: [String]) -> [String] {
+        words.map { shellWord(TmuxArgument.oneShot($0)) }
+    }
+
+    private static func command(
+        shellArguments arguments: [String], paths: TmuxPaths, loginShell: Bool
+    ) -> Command {
+        let flags = loginShell ? ["-S"] : ["-N", "-S"]
+        let line = (["exec", "\"$t\""] + flags + ["\"$s\""] + arguments).joined(separator: " ")
+        let body = """
+            t=\(HerdrCoreLocator.quoted(paths.executable))
+            s=\(HerdrCoreLocator.quoted(paths.socket))
+            \(line)
+            """
+        let script =
+            loginShell
+            ? """
+            __heeler_tmux_start=\(HerdrCoreLocator.quoted(body))
+            export __heeler_tmux_start
+            "$SHELL" -lic 'exec /bin/sh -c "$__heeler_tmux_start"'
+
+            """
+            : body + "\n"
+        return Command(script: Data(script.utf8), throughLoginShell: loginShell)
+    }
+
+    /// Runs `show-environment -s` and strips values on the Host under `LC_ALL=C`,
+    /// printing only `NAME` and `-NAME` for POSIX variable names while keeping
+    /// tmux's exit status when the server or session is missing.
+    private static let environmentNamesAwk = #"""
+        {s=s $0 "\n"}
+        END{
+        p=1;e=length(s)
+        while(p<=e){
+        if(substr(s,p,6)=="unset "){
+        u=p+6;while(u<=e&&substr(s,u,1)!="\n")u++
+        l=substr(s,p,u-p);if(substr(l,length(l),1)=="\r")l=substr(l,1,length(l)-1)
+        if(!index(l,"=")&&substr(l,length(l),1)==";"){
+        k=substr(l,7,length(l)-7)
+        if(k~/^[A-Za-z_][A-Za-z0-9_]*$/&&length(k)<=64)print "-"k
+        p=u+1;continue}}
+        u=p;while(u<e&&substr(s,u,2)!="=\"")u++
+        if(u>=e)break
+        k=substr(s,p,u-p);p=u+2;ok=0
+        while(p<=e){
+        b=0;while(p<=e&&substr(s,p,1)=="\\"){b++;p++}
+        if(p>e)break
+        c=substr(s,p,1);p++
+        if(c=="\""&&b%2==0){ok=1;break}}
+        if(!ok)break
+        t="; export "k";"
+        if(substr(s,p,length(t))!=t)break
+        p+=length(t)
+        if(substr(s,p,1)=="\r")p++
+        if(substr(s,p,1)=="\n")p++
+        if(k~/^[A-Za-z_][A-Za-z0-9_]*$/&&length(k)<=64)print k}}
+        """#
+
+    private static func environmentNamesCommand(_ words: [String], paths: TmuxPaths) -> Command {
+        let ask = (["\"$t\"", "-N", "-S", "\"$s\""] + shellArguments(words)).joined(separator: " ")
+        let script = """
+            t=\(HerdrCoreLocator.quoted(paths.executable))
+            s=\(HerdrCoreLocator.quoted(paths.socket))
+            e=$(\(ask)) || exit "$?"
+            [ -n "$e" ] || exit 0
+            printf '%s\\n' "$e" | LC_ALL=C awk \(HerdrCoreLocator.quoted(environmentNamesAwk))
+
+            """
+        return Command(script: Data(script.utf8), throughLoginShell: false)
+    }
+
+    /// A word `/bin/sh` will not split or expand. `@` stays bare so a window id
+    /// reads as itself, and `_` so a session id does; everything else with a
+    /// shell meaning is single-quoted.
+    private static func shellWord(_ value: String) -> String {
+        let plain = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@_-")
+        return value.unicodeScalars.allSatisfy(plain.contains) ? value : HerdrCoreLocator.quoted(value)
+    }
+
+    private static func isID(_ value: String, prefix: Character) -> Bool {
+        guard let first = value.first, first == prefix else { return false }
+        let rest = value.dropFirst()
+        return !rest.isEmpty && rest.allSatisfy(\.isNumber)
+    }
+}

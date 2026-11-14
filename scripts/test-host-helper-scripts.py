@@ -53,9 +53,12 @@ struct Input: Decodable {
     var arguments: [String]?
     var user: String?
     var files: [String]?
+    var keeping: [String]?
     var timeZone: String?
     var claudeLimits: Bool?
     var session: String?
+    var tmuxSocket: String?
+    var storedPaths: String?
     var node: String?
     var lister: String?
     var service: String?
@@ -88,15 +91,23 @@ case "bootOutAndRemove":
 case "enableLinger": step = .enableLinger(user: input.user ?? "")
 case "removeFiles": step = .removeFiles(input.files ?? [])
 case "removeEmptyFolders": step = .removeEmptyFolders(input.folders ?? [])
-case "removeTree": step = .removeTree(input.path ?? "")
+case "removeTree": step = .removeTree(input.path ?? "", keeping: input.keeping ?? [])
 case "tidyInterruptedInstall":
     step = .tidyInterruptedInstall(
         directory: input.directory ?? "",
         record: input.recordFiles.map { HostHelperScript.RecordedPaths(files: $0, folders: input.recordFolders ?? []) },
         quietMinutes: input.quietMinutes)
 case "usageQuery":
-    step = .usageQuery(
-        timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false, session: input.session ?? "")
+    if let tmuxSocket = input.tmuxSocket {
+        step = .tmuxUsageQuery(
+            timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false,
+            socket: tmuxSocket, storedPaths: input.storedPaths)
+    } else {
+        step = .usageQuery(
+            timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false, session: input.session ?? "")
+    }
+case "refreshTmuxPaths":
+    step = .refreshTmuxPaths(socket: input.tmuxSocket ?? "", storedPaths: input.storedPaths ?? "")
 default: exit(64)
 }
 let script = HostHelperScript(step, nonce: nonce)
@@ -909,6 +920,28 @@ class RemovalStepTests(HelperScriptCase):
         self.assertFalse(self.helper_dir.exists())
         self.assertTrue(self.helper_dir.parent.exists())
 
+    def test_remove_tree_keeping_tmux_leaves_stored_paths_and_removes_when_none(self) -> None:
+        for shell in shells():
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.helper_dir, ignore_errors=True)
+                self.install_tree({"main.js": "one\n"})
+                (self.helper_dir / "installed.json").write_text("{}")
+                (self.helper_dir / "notifications.json").write_text("{}")
+                (self.helper_dir / "usage-accounts.json").write_text("{}")
+                tmux_paths = self.helper_dir / "tmux/work/paths.json"
+                tmux_paths.parent.mkdir(parents=True)
+                tmux_paths.write_text('{"executable":"/usr/bin/tmux","socket":"/tmp/s/work"}\n')
+                result = self.run_script(shell, step="removeTree", path=str(self.helper_dir), keeping=["tmux"])
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(sorted(path.name for path in self.helper_dir.iterdir()), ["tmux"])
+                self.assertTrue(tmux_paths.is_file())
+
+                shutil.rmtree(self.helper_dir / "tmux")
+                (self.helper_dir / "notifications.json").write_text("{}")
+                result = self.run_script(shell, step="removeTree", path=str(self.helper_dir), keeping=["tmux"])
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(self.helper_dir.exists())
+
 
 class TidyStepTests(HelperScriptCase):
     """What a dropped SSH forward left mid-upload on hc-lab (2026-11-03): a staging
@@ -1010,6 +1043,16 @@ class TidyStepTests(HelperScriptCase):
         self.assertEqual(
             sorted(path.name for path in self.helper_dir.iterdir()), ["installed.json", "notifications.json"])
 
+    def test_stored_tmux_paths_still_let_an_orphaned_record_be_removed(self) -> None:
+        paths = self.helper_dir / "tmux/work/paths.json"
+        paths.parent.mkdir(parents=True)
+        paths.write_text('{"executable":"/usr/bin/tmux","socket":"/tmp/s/work"}\n')
+        self.age()
+        result = self.tidy()
+        self.assertIn("record-removed", result.stdout)
+        self.assertEqual(sorted(path.name for path in self.helper_dir.iterdir()), ["tmux"])
+        self.assertTrue(paths.is_file())
+
     def test_a_helper_in_place_keeps_its_record_and_loses_its_staging(self) -> None:
         self.install_tree({"main.js": "one\n"})
         (self.helper_dir / "app.old-1").mkdir()
@@ -1036,9 +1079,18 @@ class UsageQueryTests(HelperScriptCase):
     BEGIN = f"__HEELER_USAGE_BEGIN_{NONCE}\n"
     END = f"\n__HEELER_USAGE_END_{NONCE}:"
 
-    def query(self, shell: str = "/bin/sh", session: str = "work", limits: bool = False) -> tuple[str, str]:
-        result = self.run_script(
-            shell, step="usageQuery", timeZone="Asia/Kolkata", claudeLimits=limits, session=session)
+    def query(
+        self, shell: str = "/bin/sh", session: str = "work", limits: bool = False,
+        tmux_socket: str | None = None, stored_paths: str | None = None,
+    ) -> tuple[str, str]:
+        kwargs = {"timeZone": "Asia/Kolkata", "claudeLimits": limits}
+        if tmux_socket is not None:
+            kwargs["tmuxSocket"] = tmux_socket
+            if stored_paths is not None:
+                kwargs["storedPaths"] = stored_paths
+        else:
+            kwargs["session"] = session
+        result = self.run_script(shell, step="usageQuery", **kwargs)
         self.assertEqual(result.returncode, 0, result.stderr)
         start = result.stdout.find(self.BEGIN)
         self.assertGreaterEqual(start, 0, result.stdout)
@@ -1249,6 +1301,133 @@ printf '{{"version":1,"runtime":"service"}}\\n'
         self.installed()
         self.assertEqual(self.query(), (self.MISSING, "0"))
         self.assertTrue((self.helper_dir / "sessions/work").is_dir())
+
+    def test_runs_the_helpers_query_for_a_tmux_socket_without_making_sessions(self) -> None:
+        self.installed()
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.query(shell, tmux_socket="work"), (self.MISSING, "0"))
+                self.assertFalse((self.helper_dir / "sessions").exists())
+                self.assertFalse((self.helper_dir / "tmux").exists())
+
+        node = self.bin / "recorded-node"
+        node.write_text(f"""#!/bin/sh
+printf '%s\\n' "$@" >> "{self.log}"
+printf '{{"version":1,"runtime":"recorded"}}\\n'
+""")
+        node.chmod(0o755)
+        folder = self.helper_dir / "tmux/work"
+        folder.mkdir(parents=True)
+        (folder / "runtime-node").write_text(f"{node}\n")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.log.write_text("")
+                self.assertEqual(self.query(shell, tmux_socket="work"), ('{"version":1,"runtime":"recorded"}', "0"))
+                self.assertEqual(
+                    self.log.read_text().splitlines(),
+                    [str(self.helper_dir / "app/usage-query.js"), "--tz", "Asia/Kolkata", "--tmux", "work"],
+                )
+
+    def test_tmux_usage_query_writes_stored_paths_only_when_helper_is_installed(self) -> None:
+        stored = '{"executable":"/opt/homebrew/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        updated = '{"executable":"/usr/local/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        self.assertEqual(self.query(tmux_socket="work", stored_paths=stored), ("helper-absent", "0"))
+        self.assertFalse(self.helper_dir.exists())
+
+        self.installed(query=None)
+        self.assertEqual(self.query(tmux_socket="work", stored_paths=stored), ("helper-outdated", "0"))
+        self.assertFalse((self.helper_dir / "tmux").exists())
+
+        shutil.rmtree(self.helper_dir, ignore_errors=True)
+        self.installed()
+        for shell in shells():
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.helper_dir / "tmux", ignore_errors=True)
+                self.assertEqual(self.query(shell, tmux_socket="work", stored_paths=stored), (self.MISSING, "0"))
+                paths_file = self.helper_dir / "tmux/work/paths.json"
+                self.assertEqual(paths_file.read_text(), stored)
+                self.assertEqual(stat.S_IMODE(paths_file.stat().st_mode), 0o600)
+                self.assertEqual(stat.S_IMODE(paths_file.parent.stat().st_mode), 0o700)
+
+                self.assertEqual(self.query(shell, tmux_socket="work", stored_paths=updated), (self.MISSING, "0"))
+                self.assertEqual(paths_file.read_text(), updated)
+
+    def test_tmux_usage_query_continues_when_stored_paths_cannot_be_written(self) -> None:
+        stored = '{"executable":"/opt/homebrew/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        node = self.bin / "recorded-node"
+        node.write_text(f"""#!/bin/sh
+printf '%s\\n' "$@" >> "{self.log}"
+printf '{{"version":1,"runtime":"recorded"}}\\n'
+""")
+        node.chmod(0o755)
+
+        for shell in shells():
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.helper_dir, ignore_errors=True)
+                self.installed()
+                # Parent directory is read-only, so `mkdir -p` for `tmux/work` fails.
+                self.helper_dir.chmod(0o500)
+                try:
+                    self.assertEqual(self.query(shell, tmux_socket="work", stored_paths=stored), (self.MISSING, "0"))
+                    strict = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=stored)
+                    self.assertNotEqual(strict.returncode, 0)
+                finally:
+                    self.helper_dir.chmod(0o700)
+
+                # Target directory has a runtime record and is read-only, so temp file creation fails.
+                folder = self.helper_dir / "tmux/work"
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / "runtime-node").write_text(f"{node}\n")
+                folder.chmod(0o500)
+                try:
+                    self.log.write_text("")
+                    self.assertEqual(
+                        self.query(shell, tmux_socket="work", stored_paths=stored),
+                        ('{"version":1,"runtime":"recorded"}', "0"),
+                    )
+                    self.assertEqual(
+                        self.log.read_text().splitlines(),
+                        [str(self.helper_dir / "app/usage-query.js"), "--tz", "Asia/Kolkata", "--tmux", "work"],
+                    )
+                finally:
+                    folder.chmod(0o700)
+
+                # `mv` fails after writing the temp file (target is a non-empty directory): temp file is cleaned up.
+                blocking = folder / "paths.json"
+                (blocking / "keep").mkdir(parents=True)
+                self.log.write_text("")
+                self.assertEqual(
+                    self.query(shell, tmux_socket="work", stored_paths=stored),
+                    ('{"version":1,"runtime":"recorded"}', "0"),
+                )
+                self.assertEqual(list(folder.glob("paths.json.tmp-*")), [])
+                strict_mv = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=stored)
+                self.assertNotEqual(strict_mv.returncode, 0)
+                self.assertEqual(list(folder.glob("paths.json.tmp-*")), [])
+
+    def test_refresh_tmux_paths_updates_only_when_helper_or_stored_paths_already_exist(self) -> None:
+        initial = '{"executable":"/usr/local/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        moved = '{"executable":"/opt/homebrew/bin/tmux","socket":"/tmp/tmux-501/work"}\n'
+        for shell in shells():
+            with self.subTest(shell=shell):
+                shutil.rmtree(self.helper_dir, ignore_errors=True)
+                result = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=moved)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(self.helper_dir.exists())
+
+                paths_file = self.helper_dir / "tmux/work/paths.json"
+                paths_file.parent.mkdir(parents=True)
+                paths_file.write_text(initial)
+                result = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=moved)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(paths_file.read_text(), moved)
+
+                shutil.rmtree(self.helper_dir, ignore_errors=True)
+                self.installed()
+                result = self.run_script(shell, step="refreshTmuxPaths", tmuxSocket="work", storedPaths=moved)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(paths_file.read_text(), moved)
+                self.assertEqual(stat.S_IMODE(paths_file.stat().st_mode), 0o600)
 
     def test_the_real_helper_answers_from_a_bare_copy(self) -> None:
         node = shutil.which("node")

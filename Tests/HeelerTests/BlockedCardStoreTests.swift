@@ -2571,14 +2571,134 @@ struct BlockedCardStoreTests {
         ChatPendingRequest(entryID: ChatEntryID(id), callID: id, kind: .fileRead, toolName: "read", summary: path)
     }
 
-    private static func store(_ program: ChatProgram, pane: FakePane, clock: ManualClock = ManualClock()) -> BlockedCardStore {
+    private static func store(
+        _ program: ChatProgram,
+        pane: FakePane,
+        clock: ManualClock = ManualClock(),
+        recordAnswer: (@Sendable (BlockedAnswerKind) async -> Void)? = nil
+    ) -> BlockedCardStore {
         BlockedCardStore(
             program: program,
             io: BlockedScreenIO(
                 readScreen: { try await pane.read() },
                 sendKeys: { await pane.send($0) },
-                paste: { await pane.paste($0) }),
+                paste: { await pane.paste($0) },
+                recordAnswer: recordAnswer),
             clock: clock.clock)
+    }
+
+    @Test func answerKindClassifiesRecognizedAndGenericOptionsThreeWays() async throws {
+        // 1. Recognized dialog: approve -> .answer, decline -> .decline, dismiss -> .decline,
+        // unknown ordinal -> .unknown, intermediate page turn -> .unknown.
+        let bashDialog = try #require(
+            BlockedDialogParser.parse(try ScreenFixture.screen("claude-02-c1-bash-blocked"), program: .claude).dialog)
+        let approvePlan = try DialogActionPlanner.plan(.choose(ordinal: 1), for: bashDialog)
+        let declineOrdinal = try #require(bashDialog.options.first { $0.role == .decline }?.ordinal)
+        let declinePlan = try DialogActionPlanner.plan(.choose(ordinal: declineOrdinal), for: bashDialog)
+        let dismissPlan = try DialogActionPlanner.plan(.dismiss, for: bashDialog)
+        #expect(BlockedCardStore.answerKind(.choose(ordinal: 1), on: bashDialog, plan: approvePlan) == .answer)
+        #expect(
+            BlockedCardStore.answerKind(.choose(ordinal: declineOrdinal), on: bashDialog, plan: declinePlan) == .decline)
+        #expect(BlockedCardStore.answerKind(.dismiss, on: bashDialog, plan: dismissPlan) == .decline)
+        #expect(BlockedCardStore.answerKind(.choose(ordinal: 99), on: bashDialog, plan: approvePlan) == .unknown)
+
+        let ompApproval = try #require(
+            BlockedDialogParser.parse(try ScreenFixture.screen("omp-24-approval-a-dialog"), program: .omp).dialog)
+        let ompDismiss = try DialogActionPlanner.plan(.dismiss, for: ompApproval)
+        #expect(BlockedCardStore.answerKind(.dismiss, on: ompApproval, plan: ompDismiss) == .decline)
+
+        let grokCancel = try #require(
+            BlockedDialogParser.parse(try ScreenFixture.screen("grok-16-subagent-panel"), program: .grok).dialog)
+        let grokCancelPlan = try DialogActionPlanner.plan(.choose(ordinal: 1), for: grokCancel)
+        #expect(BlockedCardStore.answerKind(.choose(ordinal: 1), on: grokCancel, plan: grokCancelPlan) == .decline)
+
+        let codexPageOne = try #require(
+            BlockedDialogParser.parse(try ScreenFixture.screen("codex-04-x3-q1"), program: .codex).dialog)
+        let pageOnePlan = try DialogActionPlanner.plan(.choose(ordinal: 1), for: codexPageOne)
+        #expect(BlockedCardStore.answerKind(.choose(ordinal: 1), on: codexPageOne, plan: pageOnePlan) == .unknown)
+
+        // 2. Generic dialog options: permission role, request match, fallback labels, and unknown.
+        let genericRows = Self.genericClaudeRows(
+            title: "Which database?",
+            options: [
+                "Yes, allow once",
+                "Allow once",
+                "Postgres (Recommended)",
+                "No, skip",
+                "Deny",
+                "Don't allow",
+                "Reject",
+                "Inspect details",
+            ])
+        let expectations: [(Int, BlockedAnswerKind)] = [
+            (1, .answer),
+            (2, .answer),
+            (3, .answer),
+            (4, .decline),
+            (5, .decline),
+            (6, .decline),
+            (7, .decline),
+            (8, .unknown),
+        ]
+        let singleQuestion = ChatPendingRequest(
+            entryID: ChatEntryID("q-db"), callID: "toolu_db", kind: .question, toolName: "AskUserQuestion",
+            summary: "Which database?",
+            questions: [ChatQuestion(text: "Which database?", options: ["Postgres", "SQLite"])])
+        for (number, expected) in expectations {
+            let pane = FakePane(ScreenFixture.synthetic(genericRows))
+            await pane.react(to: [String(number)], with: try ScreenFixture.screen("claude-01-ready"))
+            let recorded = RecordedAnswers()
+            let store = Self.store(.claude, pane: pane) { kind in
+                await recorded.append(kind)
+            }
+            store.update(transcript: Self.transcript(pending: [singleQuestion]))
+            store.update(activity: .blocked)
+            await store.refresh()
+            guard case .generic = store.content else {
+                Issue.record("Expected generic card for option \(number), got \(store.content)")
+                return
+            }
+
+            await store.press(number: number)
+
+            #expect(await pane.keys == [[String(number)]], "option \(number)")
+            #expect(await recorded.kinds == [expected], "option \(number)")
+        }
+
+        // Without a matching single-question request, "Postgres (Recommended)" is unknown too.
+        do {
+            let pane = FakePane(ScreenFixture.synthetic(genericRows))
+            await pane.react(to: ["3"], with: try ScreenFixture.screen("claude-01-ready"))
+            let recorded = RecordedAnswers()
+            let store = Self.store(.claude, pane: pane) { kind in
+                await recorded.append(kind)
+            }
+            store.update(activity: .blocked)
+            await store.refresh()
+            await store.press(number: 3)
+            #expect(await pane.keys == [["3"]])
+            #expect(await recorded.kinds == [.unknown])
+        }
+    }
+
+    private static func genericClaudeRows(title: String, options: [String]) -> [String] {
+        var rows = [
+            SGR.claudeRule(108),
+            " \(SGR.reset)\(SGR.bold)\(title)\(SGR.reset)",
+            "",
+        ]
+        for (offset, label) in options.enumerated() {
+            let number = offset + 1
+            if offset == 0 {
+                rows.append(
+                    " \(SGR.reset)\(SGR.claudeAccent)❯ \(SGR.reset)\(SGR.claudeInactive)\(number). \(SGR.reset)\(SGR.claudeAccent)\(label)\(SGR.reset)")
+            } else {
+                rows.append("   \(SGR.reset)\(SGR.claudeInactive)\(number). \(SGR.reset)\(label)")
+            }
+        }
+        rows.append("")
+        rows.append(" \(SGR.reset)\(SGR.claudeInactive)Esc to cancel · Enter to confirm\(SGR.reset)")
+        return rows
     }
 
     /// A store showing agy-44's two questions as a form.
@@ -2681,6 +2801,14 @@ struct BlockedCardStoreTests {
 @MainActor
 private final class StoreBox {
     weak var store: BlockedCardStore?
+}
+
+private actor RecordedAnswers {
+    private(set) var kinds: [BlockedAnswerKind] = []
+
+    func append(_ kind: BlockedAnswerKind) {
+        kinds.append(kind)
+    }
 }
 
 /// The Agent's pane: one screen at a time, which keys can replace.

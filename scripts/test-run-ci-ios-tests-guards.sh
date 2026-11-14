@@ -112,11 +112,11 @@ extract_shipped_function release_resource_lock
 extract_shipped_function provisioning_step
 extract_shipped_function redact_secret_in_file
 
-# The all and split layouts share six fixture call sites. Behavioral tests
+# The all and split layouts share seven fixture call sites. Behavioral tests
 # in test-ci-simulator-recovery.sh prove which calls each shard executes.
 app_fixture_lane_count=$(grep -cE '^[[:space:]]*run_suite ' "$gate_script")
-[[ "$app_fixture_lane_count" == 6 ]] \
-    || die "gate has $app_fixture_lane_count app fixture call sites, expected 6"
+[[ "$app_fixture_lane_count" == 7 ]] \
+    || die "gate has $app_fixture_lane_count app fixture call sites, expected 7"
 # These are source-code literals. The variable-looking text must not expand.
 # shellcheck disable=SC2016
 grep -qF 'if [[ "$ci_lane" == "package" ]]; then' "$gate_script" \
@@ -125,6 +125,12 @@ grep -qF 'HEELER_CI_LANE: package' "$workflow" \
     || die "workflow has no package-only job"
 grep -qF 'HEELER_CI_LANE: app' "$workflow" \
     || die "workflow does not pin the app-only job"
+# The tmux Host suite is mandatory in the transport and all shards, and its
+# fixture links a tmux the runner already has.
+grep -qF 'brew install tmux' "$workflow" \
+    || die "workflow does not install tmux for the tmux Host suite"
+grep -qF 'run_tmux_fixture_suite || return $?' "$gate_script" \
+    || die "gate does not run the tmux Host suite"
 # All fixture processes must use the explicitly selected job runtime.
 if grep -qF '/usr/bin/python3' "$gate_script"; then
     die "fixtures must not invoke the Apple Developer tool Python shim"

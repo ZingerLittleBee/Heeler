@@ -40,7 +40,8 @@ final class HostHelperStore {
     /// Helper should look again.
     @ObservationIgnored var onChanged: (@MainActor () -> Void)?
 
-    @ObservationIgnored private let connect: @Sendable () async throws -> any HerdrCoreTransport
+    @ObservationIgnored private let connect: @Sendable () async throws -> any HostHelperConnection
+    @ObservationIgnored private let tmuxPaths: @MainActor @Sendable () -> TmuxPaths?
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
@@ -49,7 +50,8 @@ final class HostHelperStore {
     @ObservationIgnored private let undoEdits: @MainActor @Sendable (any HostServices) async throws -> String?
 
     init(
-        connect: @escaping @Sendable () async throws -> any HerdrCoreTransport,
+        connect: @escaping @Sendable () async throws -> any HostHelperConnection,
+        tmuxPaths: @escaping @MainActor @Sendable () -> TmuxPaths? = { nil },
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         healthGap: @escaping @Sendable () async throws -> Void = {
@@ -58,6 +60,7 @@ final class HostHelperStore {
         undoEdits: @escaping @MainActor @Sendable (any HostServices) async throws -> String? = { _ in nil }
     ) {
         self.connect = connect
+        self.tmuxPaths = tmuxPaths
         self.bundle = bundle
         self.nonce = nonce
         self.healthGap = healthGap
@@ -134,12 +137,13 @@ final class HostHelperStore {
     /// goes, unless that action is still running and has yet to report. The second
     /// health read a LaunchAgent takes comes back for the caller to run, as it is
     /// over ten seconds away, and until it has run nothing has been concluded.
-    func beginRefresh(over transport: any HerdrCoreTransport) async -> HealthConfirmation? {
+    func beginRefresh(over transport: any HostHelperConnection) async -> HealthConfirmation? {
         if running == nil { failure = nil }
         let began = actionsDone
         let installer = installer(transport)
         do {
             let first = try await installer.readLoadingAgent()
+            await syncTmuxPathsIfInstalled(first, with: installer)
             guard first.awaitsSecondHealthRead else {
                 if answers(began) { adopt(first) }
                 return nil
@@ -179,8 +183,10 @@ final class HostHelperStore {
             await listInstall()
             return
         }
+        let readPaths = tmuxPaths
         await perform(.install) { installer, reading, bundle, _ in
-            _ = try await installer.install(over: reading, bundle: try bundle())
+            let paths = await readPaths()
+            _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
         }
     }
 
@@ -219,14 +225,21 @@ final class HostHelperStore {
         }
     }
 
-    private func read(over transport: any HerdrCoreTransport, began: Int? = nil) async {
+    private func read(over transport: any HostHelperConnection, began: Int? = nil) async {
         let began = began ?? actionsDone
         do {
-            let read = try await installer(transport).check()
+            let installer = installer(transport)
+            let read = try await installer.check()
+            await syncTmuxPathsIfInstalled(read, with: installer)
             if answers(began) { adopt(read) }
         } catch {
             if answers(began) { forgetReading(.unavailable(message: Self.message(for: error))) }
         }
+    }
+
+    private func syncTmuxPathsIfInstalled(_ reading: HostHelperReading, with installer: HostHelperInstaller) async {
+        guard running == nil, reading.hasInstalledHelper, let paths = tmuxPaths() else { return }
+        try? await installer.writeTmuxPaths(paths, over: reading)
     }
 
     /// Whether a read that began at this count may still say how the Host is.
@@ -240,7 +253,7 @@ final class HostHelperStore {
         planFailure = nil
         guard read.installAction != nil else { return }
         do {
-            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle())
+            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle(), tmuxPaths: tmuxPaths())
         } catch {
             planFailure = Self.message(for: error)
         }
@@ -266,7 +279,7 @@ final class HostHelperStore {
         running = action
         failure = nil
         defer { running = nil }
-        let transport: any HerdrCoreTransport
+        let transport: any HostHelperConnection
         do {
             transport = try await connect()
         } catch {
@@ -285,7 +298,7 @@ final class HostHelperStore {
         onChanged?()
     }
 
-    private func installer(_ transport: any HerdrCoreTransport) -> HostHelperInstaller {
+    private func installer(_ transport: any HostHelperConnection) -> HostHelperInstaller {
         HostHelperInstaller(host: transport.hostHelperHost, nonce: nonce, bundle: bundle, healthGap: healthGap)
     }
 

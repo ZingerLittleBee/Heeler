@@ -220,6 +220,40 @@ extension TransportError {
                 summary: String(localized: "This session name can't be used"),
                 detail: Self.droppingTrailingPeriods(reason),
                 recoverySuggestion: String(localized: "Edit the Host's session name."))
+        case .tmuxNotInstalled:
+            TransportErrorPresentation(
+                summary: String(localized: "tmux is not installed"),
+                detail: String(localized: "Your login shell on the Host finds no tmux"),
+                recoverySuggestion:
+                    String(localized: "Install tmux \(TmuxVersion.minimum) or newer on the Host, then check again."))
+        case .tmuxUpdateRequired(let version):
+            TransportErrorPresentation(
+                summary: String(localized: "Update required"),
+                detail: String(localized:
+                    "The Host has tmux \(version), and Heeler needs \(TmuxVersion.minimum) or newer"),
+                recoverySuggestion: String(localized: "Update tmux on the Host, then check again."))
+        case .tmuxStartOnMac:
+            TransportErrorPresentation(
+                summary: String(localized: "Start tmux on the Mac first"),
+                detail: String(localized: "A tmux server started over SSH would run outside the Mac's login session"),
+                recoverySuggestion: String(localized: "Start tmux in a terminal on the Mac. Heeler keeps checking."))
+        case .tmuxServerNotRunning(let socketName):
+            TransportErrorPresentation(
+                summary: String(localized: "No tmux server running"),
+                detail: socketName == TmuxSocketName.defaultName
+                    ? String(localized: "No tmux server answers on the default socket")
+                    : String(localized: "No tmux server answers on the socket \"\(socketName)\""),
+                recoverySuggestion: String(localized: "Start tmux on the Host. Heeler keeps checking."))
+        case .tmuxPaneGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Pane is gone"),
+                detail: nil,
+                recoverySuggestion: nil)
+        case .tmuxServerGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Pane belongs to a tmux server that is gone"),
+                detail: String(localized: "Nothing was sent"),
+                recoverySuggestion: String(localized: "Open it again from the list."))
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),
