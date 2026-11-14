@@ -2393,10 +2393,9 @@ final class ConsoleStore {
     func grokBuildEditFlow(
         for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
     ) -> HarnessConfigEditFlow? {
-        let supportsEdit =
-            capabilities(for: hostID).hostScripts
-            || catalog.first(where: { $0.id == hostID })?.serverKind == .tmux
-        guard explanation.offersGrokBuildEdit, supportsEdit else { return nil }
+        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).hostScripts else {
+            return nil
+        }
         return grokBuildEditFlow(on: hostID, process: explanation.agentProcess)
     }
 

@@ -88,6 +88,8 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 
 - **窗口尺寸：** 当你在 iPhone 或 iPad 上查看某个 Pane 时，Heeler 会将该窗口调整为适合屏幕的尺寸，并保持在同一窗口已打开的桌面终端范围内。离开该 Pane 后会将窗口尺寸交还给其他客户端，同一会话中的其他窗口则不会被调整尺寸。
 - **Send 与 Stop：** **Send** 在确认同一个 Agent 仍位于窗格前台、未处于 **Blocked** 状态且可接收粘贴后，才会粘贴草稿并按下回车。当状态为 **Working** 或 **Blocked** 且草稿为空时，对所有受支持的 Agent（包括 Grok Build），**Send** 都会变为 **Stop**。
+- **Add：** 在 Composer 中轻点 **Add**，或在 Direct Input 的 **More** 菜单中轻点 **Add Image**、**Paste Image** 或 **Add File**，通过 SFTP 上传图片或文件并插入其路径。
+- **Changes 与 Skills：** 从 Agent 标题栏或 **More** 菜单打开 **Changes** 以查看所在目录未提交的 Git 变更，并在 Composer、Direct Input 或 Chat 中使用 `/` 或 **Skills** 浏览并插入 Host 上的技能。
 - **Close：** 关闭 Agent 或终端会关闭其对应的窗格或窗口。
 
 ### Direct Input 中的换行键
@@ -151,8 +153,7 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 - **仅限装有 tmux 3.3 或更新版本的 macOS 和 Linux：** 不支持原生 Windows，且仅支持通过 `-L` socket 名称而非自定义 `-S` 路径指定 tmux 服务端。
 - **早于 3.5 的 tmux：** **Shift-Return** 不会送达 Agent；请改用 **Control-J**（或在 Pi 之外使用 **Option-Return**）。
 - **`window-size largest` 下缩小桌面终端：** 当其他终端自行改变尺寸时 tmux 不会发出通知，因此在 `window-size largest` 下，若桌面终端未分离或切换窗口而直接缩小，窗口尺寸会在下一次窗口或客户端变动时才重新收紧；若读取客户端尺寸失败，Heeler 不会改动窗口尺寸。
-- **不支持上传图片或文件：** 在 tmux Host 的 Composer 和 Chat 中不提供 **Add Image**、**Paste Image** 与 **Add File**。
-- **不提供 Changes、Skills、Templates、Take Over 或重命名 Agent/Tab：** 不提供 Changes 与 Skills 视图、herdr-core Templates、Take Over、窗格缩放，也不支持从 Heeler 重命名 Agent 或 Tab；窗格标题由程序自身设置，Tab 名称跟随 tmux 窗口名称。
+- **不提供 Templates、Take Over 或重命名 Agent/Tab：** 不提供 herdr-core Templates、Take Over、窗格缩放，也不支持从 Heeler 重命名 Agent 或 Tab；窗格标题由程序自身设置，Tab 名称跟随 tmux 窗口名称。
 - **OpenCode Chat 已关闭：** OpenCode Agent 仅提供实时终端视图，且 OpenCode 在 tmux 中的状态支持来自源码审阅而非实机运行。
 - **Pi 与 Oh My Pi 扩展：** 扩展会上报 **Idle**、**Working**、**Done** 与 **Error**，不上报 **Blocked**；通过 `npx` 启动的 Pi 不会加载扩展。
 - **已重定向输出的窗格：** 如果你已经在 tmux 中自行重定向某个窗格的输出，Heeler 不会改动它，其中的 Codex、Grok Build 或 OpenCode 会保持 **Unknown**。

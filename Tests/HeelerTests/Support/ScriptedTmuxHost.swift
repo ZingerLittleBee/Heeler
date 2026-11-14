@@ -1427,6 +1427,47 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
             return try await host.onOpenDial(id) { try await $0.hostHomeDirectory() }
         }
 
+        func stageImage(
+            _ image: PreparedImage,
+            progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+        ) async throws -> StagedImage {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.stageImage(image, progress: progress) }
+        }
+
+        func stageFile(
+            _ file: PreparedFile,
+            progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+        ) async throws -> StagedFile {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.stageFile(file, progress: progress) }
+        }
+
+        func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.readChanges(request) }
+        }
+
+        func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.readFilePatch(request) }
+        }
+
+        func listUntrackedDirectory(_ request: UntrackedDirectoryRequest) async throws -> UntrackedDirectoryListing {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.listUntrackedDirectory(request) }
+        }
+
+        func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.listSkills(query) }
+        }
+
+        func readSkillFile(atPath path: String) async throws -> String {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.readSkillFile(atPath: path) }
+        }
+
         func checkouts(for directories: [String]) async throws -> [String: HostCheckout] {
             try await requireConnected()
             return try await host.onOpenDial(id) { try await $0.checkouts(for: directories) }
@@ -1588,6 +1629,99 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     func hostHomeDirectory() async throws -> String {
         Self.home
+    }
+
+    private(set) var stagedFiles: [(path: String, contents: Data)] = []
+    private var stagingFailures: [AttachmentStagingError] = []
+    private(set) var changesReads: [ChangesReadRequest] = []
+    private(set) var filePatchReads: [FilePatchRequest] = []
+    private(set) var untrackedDirectoryReads: [UntrackedDirectoryRequest] = []
+    private var changes: CheckoutChangesRead?
+    private var filePatch: FilePatch?
+    private var untrackedListing: UntrackedDirectoryListing?
+    private(set) var skillQueries: [SkillListQuery] = []
+    private(set) var readSkillPaths: [String] = []
+    private var skills: [AgentSkill] = []
+    private var skillFiles: [String: String] = [:]
+
+    func failStages(with failures: [AttachmentStagingError]) {
+        stagingFailures = failures
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        try StagedImage(
+            path: try await stage(image.fileURL, named: "image.\(image.format.fileExtension)", progress: progress))
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        try StagedFile(path: try await stage(file.fileURL, named: file.remoteFilename, progress: progress))
+    }
+
+    private func stage(
+        _ source: URL,
+        named name: String,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> String {
+        if !stagingFailures.isEmpty { throw stagingFailures.removeFirst() }
+        let contents = try Data(contentsOf: source)
+        let path = "/tmp/heeler-stage/stage-\(stagedFiles.count)/\(name)"
+        stagedFiles.append((path, contents))
+        await progress(AttachmentStageProgress(transferredBytes: contents.count, totalBytes: contents.count))
+        return path
+    }
+
+    func setChanges(_ read: CheckoutChangesRead?) {
+        changes = read
+    }
+
+    func setFilePatch(_ patch: FilePatch?) {
+        filePatch = patch
+    }
+
+    func setUntrackedDirectory(_ listing: UntrackedDirectoryListing?) {
+        untrackedListing = listing
+    }
+
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        changesReads.append(request)
+        guard let changes else { throw ChangesReadError.unavailable }
+        return changes
+    }
+
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        filePatchReads.append(request)
+        guard let filePatch else { throw ChangesReadError.unavailable }
+        return filePatch
+    }
+
+    func listUntrackedDirectory(_ request: UntrackedDirectoryRequest) async throws -> UntrackedDirectoryListing {
+        untrackedDirectoryReads.append(request)
+        guard let untrackedListing else { throw ChangesReadError.unavailable }
+        return untrackedListing
+    }
+
+    func setSkills(_ skills: [AgentSkill], files: [String: String] = [:]) {
+        self.skills = skills
+        skillFiles = files
+    }
+
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
+        skillQueries.append(query)
+        return skills
+    }
+
+    func readSkillFile(atPath path: String) async throws -> String {
+        readSkillPaths.append(path)
+        guard let body = skillFiles[path] else {
+            throw TransportError.channelFailed(detail: "Skill file missing: \(path)")
+        }
+        return body
     }
 
     /// One repository a test planted, so a Worktree's git has something to ask.
