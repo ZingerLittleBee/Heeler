@@ -1257,14 +1257,26 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
     }
 
-    func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager {
-        let unavailable = unavailable
-        return { _, _ in throw unavailable }
+    func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
+        let session = session
+        return { image, reporter in
+            try await session.withTransport { transport in
+                try await transport.hostServices.stageImage(image) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        }
     }
 
-    func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager {
-        let unavailable = unavailable
-        return { _, _ in throw unavailable }
+    func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
+        let session = session
+        return { file, reporter in
+            try await session.withTransport { transport in
+                try await transport.hostServices.stageFile(file) { progress in
+                    await reporter.report(progress)
+                }
+            }
+        }
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {

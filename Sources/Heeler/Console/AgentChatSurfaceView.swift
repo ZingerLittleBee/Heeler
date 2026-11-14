@@ -1470,9 +1470,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: { isSelectingPhoto = true },
-            pasteImage: { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) },
-            addFile: { isSelectingFile = true },
+            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
+            pasteImage: capabilities.uploads
+                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

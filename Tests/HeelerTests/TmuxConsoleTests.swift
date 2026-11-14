@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -119,7 +120,9 @@ struct TmuxConsoleTests {
         #expect(!offers.renameAgent)
         #expect(!offers.takeOver)
         #expect(offers.chat)
-        #expect(!offers.uploads)
+        #expect(offers.uploads)
+        #expect(offers.hostScripts)
+        #expect(offers.offersChanges(directory: "/work/app"))
         #expect(offers.composerSend)
         #expect(offers.composerStop)
         #expect(offers.worktrees)
@@ -554,5 +557,125 @@ struct TmuxConsoleTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(await helperTmux.helper.files[pathsFile]?.contents == TmuxClaudeCodeHooks.storedPaths(movedPaths))
+    }
+
+    @Test func aTmuxAgentsComposerStagesAnImageAndAFileThroughHostServices() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, processID: 1400, command: "claude", path: "/work/app", arguments: ["claude"]),
+        ])
+        let console = await started(tmux)
+        let store = console.store
+        defer { store.setHosts([]) }
+        try await waitUntil("the claude Agent") { !store.agents.isEmpty }
+
+        let agent = try #require(store.agents.first)
+        let session = store.composerSession(for: agent)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24), format: format).image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        }
+        try #require(session.staging.begin(.photo(DataImageSelection(data: try #require(image.pngData())))) != nil)
+        try await waitUntil("the staged image") {
+            if case .completed(let outcome) = session.staging.state { return outcome.medium == .image }
+            return false
+        }
+
+        let contents = Data("tmux notes".utf8)
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tmux-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let fileURL = folder.appendingPathComponent("meeting notes.txt")
+        try contents.write(to: fileURL)
+        try #require(session.staging.begin(.file(fileURL)) != nil)
+        try await waitUntil("the staged file") {
+            if case .completed(let outcome) = session.staging.state { return outcome.medium == .file }
+            return false
+        }
+
+        let staged = await tmux.stagedFiles
+        #expect(staged.map(\.path) == [
+            "/tmp/heeler-stage/stage-0/image.jpg", "/tmp/heeler-stage/stage-1/meeting_notes.txt",
+        ])
+        #expect(staged.last?.contents == contents)
+        #expect(
+            session.composer.draft
+                == "/tmp/heeler-stage/stage-0/image.jpg /tmp/heeler-stage/stage-1/meeting_notes.txt ")
+
+        await tmux.failStages(with: [.sftpUnavailable])
+        let failingFile = folder.appendingPathComponent("retry.txt")
+        try Data("retry".utf8).write(to: failingFile)
+        try #require(session.staging.begin(.file(failingFile)) != nil)
+        try await waitUntil("the SFTP refusal") {
+            if case .failed = session.staging.state { return true }
+            return false
+        }
+    }
+
+    @Test func aTmuxHostReadsChangesAndSkillsThroughHostServices() async throws {
+        let tmux = ScriptedTmuxHost()
+        await tmux.setPanes([
+            .make(pane: 0, processID: 1500, command: "claude", path: "/work/app", arguments: ["claude"]),
+        ])
+        let expectedChanges = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: CheckoutLocation(
+                    topLevel: Data("/work/app".utf8), isLinkedWorktree: false, displayPath: "/work/app"),
+                head: CheckoutHead(branch: .named("main"), commit: "abc", latestCommit: nil),
+                files: [
+                    ChangedFile(
+                        path: Data("src/app.swift".utf8), originalPath: nil, kind: .modified,
+                        staging: .unstaged)
+                ]),
+            directoryPrefix: Data())
+        let expectedPatch = FilePatch(files: [], isTruncated: false)
+        let expectedUntracked = UntrackedDirectoryListing(
+            directory: Data("newdir/".utf8),
+            entries: [
+                ChangedFile(
+                    path: Data("newdir/file.swift".utf8), originalPath: nil, kind: .untracked,
+                    staging: .unstaged)
+            ],
+            total: 1,
+            isTruncated: false,
+            isSeparateRepository: false,
+            limitNotice: nil)
+        let skillPath = "/work/app/.claude/skills/tmux-review/SKILL.md"
+        let expectedSkills = [
+            AgentSkill(scope: .project, name: "tmux-review", description: "Inspect diff", path: skillPath)
+        ]
+        await tmux.setChanges(expectedChanges)
+        await tmux.setFilePatch(expectedPatch)
+        await tmux.setUntrackedDirectory(expectedUntracked)
+        await tmux.setSkills(expectedSkills, files: [skillPath: "# tmux-review\n"])
+
+        let console = await started(tmux)
+        let store = console.store
+        defer { store.setHosts([]) }
+        try await waitUntil("the connected server") { store.hostStatuses[host.id] == .connected }
+
+        let changes = try await store.readChanges(ChangesReadRequest(directory: "/work/app"), on: host.id)
+        let patch = try await store.readFilePatch(
+            FilePatchRequest(topLevel: Data("/work/app".utf8), path: Data("src/app.swift".utf8), isUntracked: false),
+            on: host.id)
+        let untracked = try await store.listUntrackedDirectory(
+            UntrackedDirectoryRequest(topLevel: Data("/work/app".utf8), directory: Data("newdir/".utf8)),
+            on: host.id)
+        let skills = try await store.fetchSkills(kind: .claude, projectRoot: "/work/app", on: host.id)
+        let skillDocument = try await store.readSkillFile(path: skillPath, on: host.id)
+
+        #expect(changes == expectedChanges)
+        #expect(patch == expectedPatch)
+        #expect(untracked == expectedUntracked)
+        #expect(skills == expectedSkills)
+        #expect(skillDocument == "# tmux-review\n")
+        #expect(await tmux.changesReads == [ChangesReadRequest(directory: "/work/app")])
+        #expect(await tmux.skillQueries == [SkillListQuery(kind: .claude, projectRoot: "/work/app")])
+        #expect(await tmux.readSkillPaths == [skillPath])
     }
 }

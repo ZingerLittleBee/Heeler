@@ -87,6 +87,8 @@ Live terminals open on the Pane itself, even when a tmux window is split across 
 
 - **Window sizing:** While you view a Pane on iPhone or iPad, Heeler sizes that window to fit your screen and stays within an open desktop terminal on the same window. Leaving the Pane hands window sizing back to your other clients, and other windows in the session are not resized.
 - **Send and Stop:** **Send** pastes your draft and presses Enter once it checks that the same Agent still leads the pane, is not **Blocked**, and accepts a paste. While **Working** or **Blocked** with an empty draft, **Send** becomes **Stop** for every supported Agent, Grok Build included.
+- **Add:** Tap **Add** in the Composer, or **Add Image**, **Paste Image**, or **Add File** under **More** in Direct Input, to upload an image or file over SFTP and insert its path.
+- **Changes and Skills:** Open **Changes** from an Agent's header or **More** menu to inspect uncommitted Git changes in its directory, and use `/` or **Skills** in the Composer, Direct Input, or Chat to browse and insert skills from the Host.
 - **Close:** Closing an Agent or Terminal closes its pane or window.
 
 ### Newline keys in Direct Input
@@ -150,8 +152,7 @@ Open the Host in **Hosts**, tap **Host Helper**, review **Files This Writes**, t
 - **macOS and Linux with tmux 3.3 or newer:** Native Windows is not supported, and tmux servers are chosen by `-L` socket name rather than a custom `-S` socket path.
 - **tmux older than 3.5:** **Shift-Return** never reaches the Agent; use **Control-J** (or **Option-Return** outside Pi).
 - **Desktop terminal shrinking under `window-size largest`:** tmux sends no notice when another terminal resizes on its own, so under `window-size largest` a desktop terminal that shrinks without detaching or changing windows is re-capped on the next window or client change rather than right away, and if reading client sizes fails Heeler leaves the window size alone.
-- **No image or file uploads:** **Add Image**, **Paste Image**, and **Add File** are not offered in the Composer or Chat on tmux Hosts.
-- **No Changes, Skills, Templates, Take Over, or Agent/Tab rename:** Changes and Skills views, herdr-core Templates, Take Over, pane zoom, and renaming Agents or Tabs from Heeler are not offered; programs set their own pane titles, and Tab names follow tmux window names.
+- **No Templates, Take Over, or Agent/Tab rename:** herdr-core Templates, Take Over, pane zoom, and renaming Agents or Tabs from Heeler are not offered; programs set their own pane titles, and Tab names follow tmux window names.
 - **OpenCode Chat is off:** OpenCode Agents offer the live terminal only, and OpenCode status inside tmux comes from source review rather than a live run.
 - **Pi and Oh My Pi extensions:** They report **Idle**, **Working**, **Done**, and **Error**, not **Blocked**, and starting Pi via `npx` does not load the extension.
 - **Panes already redirecting output:** If you already redirect a pane's output in tmux, Heeler leaves it alone and Codex, Grok Build, or OpenCode in that pane stays **Unknown**.

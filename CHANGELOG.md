@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Upload images and files over SFTP from the Composer, Direct Input, and Chat on macOS and Linux tmux Hosts, inspect uncommitted Git changes in Changes, and browse or insert Host skills from Skills and the `/` menu. (PR #731)
 - Connect to macOS and Linux tmux 3.3 or newer Hosts over SSH. Adding a Host by hand detects a running tmux server alongside Herdr TUI and herdr-core so you can confirm Server Kind and pick the tmux socket name. Connecting never starts a server; Host detail warns if variables from an agent session leaked into tmux and shows how to clear them. (#726)
 - See tmux sessions as Workspaces, windows as Tabs, and panes as Panes in the Console, with Pins and seen marks kept per server run. Start Agents, Terminals, and Workspaces from Heeler, rename Workspaces, close panes, windows, or sessions cleanly, and check out or remove Worktrees at `~/.heeler/worktrees/<repository>/<branch>`. On Linux, New Workspace can start a stopped tmux server; on macOS, Heeler asks you to start tmux on the Mac first. (#726)
 - Open a live terminal on one tmux Pane alongside your desktop clients, sizing the window to fit your screen and staying within an open desktop terminal on the same window, then handing sizing back when you leave. Direct Input withholds modified Return and Escape chords that tmux or the Agent has not enabled extended keys for, so their names are never typed as text; Control-J and Option-Return insert a new line without extra setup. (#726)
