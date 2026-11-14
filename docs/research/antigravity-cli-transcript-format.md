@@ -104,8 +104,13 @@ one (median 1.91); its longest line was 69,703 bytes, one line passed
 
 A forked conversation's file does not copy its parent: the one observed
 starts at `step_index` 2. Subagents have folders and transcripts of their
-own that start with a `SYSTEM_MESSAGE`; they have no `USER_INPUT`, presence
-lock or history line, and herdr reports only the top-level conversation.
+own that start with a `SYSTEM_MESSAGE` (`[Message] timestamp=… sender=<parent-id> …`,
+sometimes after a `step_index: 0` `SYSTEM_SDK` reminder); they have no
+`USER_INPUT`, presence lock or history line. Because subagents run in the
+same `agy` process, each subagent step fires herdr's `PreInvocation` hook
+with the subagent's own `conversationId` while the terminal stays in the
+top-level conversation, so `AgyTranscriptLocator` walks `sender=<parent-id>`
+up to the top-level conversation's transcript.
 
 `history.jsonl` is not a send witness: the first prompt after a fresh launch
 has no `conversationId` (7 ordinary prompts in the census lack it), and a
@@ -556,8 +561,9 @@ tell them apart.
 
 ### What Chat sends into
 
-Chat sends only into an empty box with nothing under it and an idle footer
-it knows (`? for shortcuts`, nothing at the left, or an armed exit); a
+Chat sends only into an empty box with nothing under it and an idle or
+running-turn footer it knows (`? for shortcuts`, nothing at the left, an
+armed exit, `esc to cancel`, or `Press up to edit queued messages`); a
 mode's hint is not a draft, and an armed exit does not hold. A draft,
 bash mode, a popup or panel under the box, another footer (code search
 mode's from agy's strings, if drawn there, or Vim's Insert and Visual
@@ -565,26 +571,12 @@ badges), a dialog, an exited agy and any unreadable screen hold the
 message. Vim's Normal mode reads as idle and takes the send (Vim mode,
 above).
 
-A running turn holds it too: the footer `esc to cancel` or `Press up to
-edit queued messages`, or a braille spinner leading one of the bottom rows,
-the two cues herdr's manifest reads as Working (`esc_cancel_footer_working`,
-`spinner_working`). agy would queue the message, but a dialog can open from
-the turn at any moment, and herdr's Enter, written 300 ms after its paste
-whatever shows, would answer one that opened after Chat's read. In the pane
-reads of 2026-11-07 (about every 160 ms), a pending row (`○ Running (…)`,
-`○ Editing 1 file (…)`) with its spinner sat over an empty box for 1.5 to
-2.4 s before four dialogs replaced the box, and three command dialogs
-opened one read after a spinner row (`Reading file...` or a thought
-summary) with no pending row (67 and 69 show the first kind). Since herdr
-reads Working from the same screen, its status can only lag Chat's read;
-Chat holds on it as well, before the read, which on a herdr-core Host
-spares the message a Sending echo (ADR 0024). What remains is a turn
-that starts after Chat's read and opens a dialog before herdr's Enter:
-one sent from another client, or the turn agy starts by itself when a
-background command ends (Background tasks, above). No probe caught
-either race; both follow from the timings above. agy was seen going on by
-itself on 2026-11-08, after its turn had ended and inside a running one,
-with nothing sent meanwhile.
+While a turn runs, agy queues a message sent into the empty box until the
+turn ends, and Esc puts an untaken queued message back into the box.
+Stop's follow-through (`AgyBackgroundTaskStop`) still checks
+`AgyScreen.showsRunningTurn` (the footer `esc to cancel` or `Press up to
+edit queued messages`, or a braille spinner leading one of the bottom
+rows) so `/tasks` is typed only once the turn has ended.
 
 Stop sends one Esc, never Ctrl+C. It reads the screen first and sends
 nothing while bash mode holds a command, which Esc would drop (93); what

@@ -337,7 +337,7 @@ struct AgentComposerView: View {
 
                 VStack(spacing: 0) {
                     inputArea
-                        .modifier(ComposerInputReplacement(replacement: inputReplacement))
+                        .modifier(ComposerInputReplacement(replacement: inputReplacement ?? liveVoiceRecorder))
                         .padding(inputAreaInsets)
 
                     TerminalAgentSwitcherRow(
@@ -365,7 +365,7 @@ struct AgentComposerView: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(composerCardStroke, lineWidth: dropHighlight.strokeWidth)
+                        .stroke(composerCardStroke, lineWidth: composerCardStrokeWidth)
                 }
                 .overlay(alignment: .top) { keyboardGrabber }
                 .composerDropDestination(
@@ -400,7 +400,17 @@ struct AgentComposerView: View {
         }
         .onChange(of: focusRequest) { _, _ in
             // A card still in the input's place keeps the keyboard down.
-            if inputReplacement == nil { isInputFocused = true }
+            if inputReplacement == nil, liveVoiceRecorder == nil { isInputFocused = true }
+        }
+        // The recorder takes the input's place, so the keyboard has nothing
+        // to type into.
+        .onChange(of: store.voice.showsRecorder) { _, shows in
+            if shows { hideKeyboard() }
+        }
+        .onChange(of: store.voiceFocusRequests) { _, _ in
+            guard inputReplacement == nil else { return }
+            setKeyboardPresentation(.system)
+            isInputFocused = true
         }
         .onChange(of: keyboardDismissRequest) { _, _ in
             if isKeyboardPresented { hideKeyboard() }
@@ -843,8 +853,23 @@ struct AgentComposerView: View {
             isInputFocused: isInputFocused,
             keyboardPresentation: keyboardPresentation,
             inheritsKeyboard: inheritsPendingKeyboard,
-            hasInputReplacement: inputReplacement != nil,
+            hasInputReplacement: inputReplacement != nil || liveVoiceRecorder != nil,
             keyboardIsLeaving: keyboardIsLeaving)
+    }
+
+    /// On Device Voice Input in the input's place, from the first tap until
+    /// its text lands in the draft (ADR 0043).
+    private var liveVoiceRecorder: AnyView? {
+        guard let voiceInput, inputMode == .composer, store.voice.showsRecorder else { return nil }
+        return AnyView(
+            ComposerLiveVoiceRecorder(
+                voice: store.voice,
+                draft: store.draft,
+                stop: { voiceInput.stop(store.voice) },
+                send: { store.sendVoice(using: voiceInput, policy: sendPolicy) },
+                downloadModel: { voiceInput.downloadModel(store.voice) },
+                restart: { voiceInput.start(store.voice) },
+                openVoiceInputSettings: { isVoiceSetupPresented = true }))
     }
 
     /// A keyboard handed over by the screen this one replaces, read without
@@ -998,10 +1023,16 @@ struct AgentComposerView: View {
         ComposerDropHighlight(isTargeted: isDropTargeted)
     }
 
+    /// Red while On Device records, so recording mode reads at a glance.
     private var composerCardStroke: Color {
-        dropHighlight.usesAccentStroke
+        if store.voice.isInRecordingMode { return Color(uiColor: .systemRed) }
+        return dropHighlight.usesAccentStroke
             ? Color.accentColor.opacity(0.72)
             : Color.secondary.opacity(0.16)
+    }
+
+    private var composerCardStrokeWidth: CGFloat {
+        store.voice.isInRecordingMode ? 1.5 : dropHighlight.strokeWidth
     }
 
 }
@@ -1135,7 +1166,7 @@ struct AgentComposerSendButton: View {
     }
 }
 
-private struct AgentComposerSendButtonStyle: ButtonStyle {
+struct AgentComposerSendButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {

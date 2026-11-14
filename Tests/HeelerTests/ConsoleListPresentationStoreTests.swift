@@ -51,6 +51,35 @@ struct ConsoleListPresentationStoreTests {
             isStatusFiltered: true) == .noSearchResults)
     }
 
+    @Test func hostFilterPersistsAndPrunesRemovedHosts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let first = Host.fixture(name: "m3")
+        let second = Host.fixture(name: "m1 pro")
+        let removed = Host.fixture(name: "old")
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        #expect(store.hostFilter.isEmpty)
+
+        store.toggleHostFilter(first.id)
+        store.toggleHostFilter(removed.id)
+        #expect(store.hostFilter == [first.id, removed.id])
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [first.id, removed.id])
+
+        store.pruneHostFilter(keeping: [first, second])
+        #expect(store.hostFilter == [first.id])
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [first.id])
+
+        store.toggleHostFilter(first.id)
+        #expect(store.hostFilter.isEmpty)
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+
+        store.setHostFilter([second.id])
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [second.id])
+        store.clearHostFilter()
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+    }
+
     @Test(.serialized, arguments: [DynamicTypeSize.large, .accessibility3])
     func filterChoicesKeepHostsBoundedAndSelectionsIndependent(textSize: DynamicTypeSize) async throws {
         let (defaults, cleanup) = try makeDefaults()

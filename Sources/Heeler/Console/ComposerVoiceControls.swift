@@ -14,7 +14,7 @@ struct ComposerVoiceButton: View {
         Button(action: action) {
             ZStack {
                 switch voice.phase {
-                case .starting, .transcribing:
+                case .starting, .transcribing, .downloadingModel:
                     ProgressView()
                         .controlSize(.small)
                 case .recording:
@@ -43,7 +43,7 @@ struct ComposerVoiceButton: View {
 
     private var isWaiting: Bool {
         switch voice.phase {
-        case .starting, .transcribing: true
+        case .starting, .transcribing, .downloadingModel: true
         case .idle, .recording, .failed: false
         }
     }
@@ -53,6 +53,7 @@ struct ComposerVoiceButton: View {
         case .starting: String(localized: "Starting")
         case .recording: String(localized: "Recording")
         case .transcribing: String(localized: "Transcribing")
+        case .downloadingModel: String(localized: "Downloading Speech Model…")
         case .idle, .failed: ""
         }
     }
@@ -61,7 +62,7 @@ struct ComposerVoiceButton: View {
         switch voice.phase {
         case .idle, .failed: String(localized: "Records speech and adds its text to the draft")
         case .recording: String(localized: "Stops recording and adds its text to the draft")
-        case .starting, .transcribing: ""
+        case .starting, .transcribing, .downloadingModel: ""
         }
     }
 }
@@ -93,19 +94,21 @@ struct ComposerVoiceBar: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 22)
                 .accessibilityHidden(true)
-            elapsed
-                .font(.subheadline.weight(.medium))
-                .monospacedDigit()
-                .accessibilityHidden(true)
+            ComposerVoiceElapsed(voice: voice)
         }
         .padding(.trailing, 12)
         .frame(height: 36)
         .background(Color(uiColor: .systemBackground).opacity(0.55), in: Capsule())
     }
+}
 
-    /// The time, in a slot sized for "0:00" so the waveform keeps its width
-    /// as the phase changes. Transcribing holds the recording's length.
-    private var elapsed: some View {
+/// The recording's time, in a slot sized for "0:00" so what sits beside it
+/// keeps its width as the phase changes. Transcribing holds the recording's
+/// length.
+struct ComposerVoiceElapsed: View {
+    let voice: ComposerVoiceInput
+
+    var body: some View {
         Text(verbatim: Self.format(0))
             .hidden()
             .overlay(alignment: .trailing) {
@@ -116,10 +119,13 @@ struct ComposerVoiceBar: View {
                         countsDown: false)
                 case .transcribing:
                     Text(verbatim: Self.format(voice.recordedDuration ?? 0))
-                case .idle, .starting, .failed:
+                case .idle, .starting, .downloadingModel, .failed:
                     Text(verbatim: Self.format(0))
                 }
             }
+            .font(.subheadline.weight(.medium))
+            .monospacedDigit()
+            .accessibilityHidden(true)
     }
 
     private static func format(_ seconds: TimeInterval) -> String {

@@ -10,8 +10,9 @@ by Heeler's developer.
 
 Agent Notifications use the limited-purpose Push Relay described below.
 Optional Overlay Networks use the Tailscale, ZeroTier, or EasyTier services
-you choose, and optional Voice Input sends recordings to the speech service
-you choose, as described below.
+you choose, and optional Voice Input either turns speech into text on your
+device or sends recordings to the speech service you choose, as described
+below.
 
 ## Data stored on your device and Hosts
 
@@ -32,8 +33,8 @@ you choose, as described below.
   only over the SSH connection between your device and your Host, which is
   encrypted end to end even when an Overlay Network carries it. The limited
   notification data described below takes a separate route, and so does a
-  Voice Input recording, which goes to your speech service before its text
-  reaches the draft.
+  Voice Input recording sent to a speech service, which goes there before its
+  text reaches the draft.
 - **Changes.** For each Agent with a working directory whose row the
   Agents list shows, Heeler asks git on your Host for the Checkout's branch
   or detached commit, its upstream branch and how many commits it is ahead
@@ -80,8 +81,8 @@ you choose, as described below.
   container, protected until first unlock and excluded from backups.
   Deleting a network deletes its secrets and state; the ZeroTier identity
   goes with the last ZeroTier network.
-- **Voice Input.** The speech service you choose and its settings are stored
-  locally. Its API key is stored in the Keychain on this device only. A
+- **Voice Input.** The service you choose, On Device's language, and their
+  settings are stored locally. Its API key is stored in the Keychain on this device only. A
   Custom URL's key is tied to that URL, so changing the URL deletes it.
 
 ## Overlay Networks
@@ -126,13 +127,19 @@ the server's operator.
 
 ## Voice Input
 
-Voice Input is optional and stays off until you choose a speech service in
-Settings, enter your own API key for it, and agree to send recordings there.
-Heeler's developer operates none of these services and receives no
-recordings, text, or keys.
+Voice Input is optional and stays off until you choose On Device, or a speech
+service in Settings with your own API key and your agreement to send
+recordings there. Heeler's developer operates none of these services and
+receives no recordings, text, or keys.
 
-When you tap the microphone in the Composer, Heeler records until you tap
-again, for at most two minutes, and uploads the recording over HTTPS to the
+With On Device, available from iOS 26, Apple's dictation model on your device
+turns speech into text as you speak, using the Keywords you enter as hints.
+Nothing is uploaded. Heeler downloads the language's model from Apple when you
+ask in Settings.
+
+With a speech service, when you tap the microphone in the Composer, Heeler
+records until you tap again, for at most two minutes, and uploads the
+recording over HTTPS to the
 service you chose: OpenAI (`api.openai.com`), DeepInfra (`api.deepinfra.com`),
 SiliconFlow (`api.siliconflow.cn`), or a Custom URL you enter. The upload
 carries the audio, the model name, your API key, the Keywords and Prompt you
@@ -144,10 +151,9 @@ the recording wherever that URL points, under the terms of whoever runs it.
 Heeler refuses redirects, so a recording never goes to a different host from
 the one you agreed to.
 
-While Heeler records, the audio is written to a temporary file with iOS
-Complete file protection, deleted as soon as recording stops. The recording
-then stays in memory only until its text arrives or you dismiss it; after a
-failed upload it is kept so you can retry. It is never saved or backed up.
+While Heeler records, the audio is kept in memory only, never in a file. It
+stays there until its text arrives or you dismiss it; after a failed upload it
+is kept so you can retry. It is never saved or backed up.
 
 ## Agent Notifications and the Push Relay
 

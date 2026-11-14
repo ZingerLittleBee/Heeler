@@ -11,6 +11,7 @@ final class ConsoleChatCache {
     /// The Workspace structure of each Host's last snapshot, saved with its
     /// entries.
     private(set) var structures: [Host.ID: [ChatCachedWorkspace]] = [:]
+    @ObservationIgnored var onChange: (@MainActor () -> Void)?
     @ObservationIgnored private let cache: any ChatTranscriptCache
     @ObservationIgnored private var hosts: [Host.ID: Host] = [:]
     @ObservationIgnored private var loads: [Host.ID: Task<Void, Never>] = [:]
@@ -41,27 +42,39 @@ final class ConsoleChatCache {
 
     func setHosts(_ next: [Host]) {
         let incoming = Dictionary(next.map { ($0.id, $0) }) { _, last in last }
+        var removedAny = false
         for id in hosts.keys where hosts[id] != incoming[id] {
             loads[id]?.cancel()
             loads[id] = nil
-            records[id] = nil
-            structures[id] = nil
+            if records[id] != nil || structures[id] != nil {
+                records[id] = nil
+                structures[id] = nil
+                removedAny = true
+            }
             pendingUpdates[id] = nil
             revisions[id, default: 0] += 1
             confirmed = confirmed.filter { $0.key.hostID != id }
         }
         let changed = incoming.values.filter { hosts[$0.id] != $0 }
         hosts = incoming
+        if removedAny {
+            onChange?()
+        }
         for host in changed {
             let revision = revisions[host.id, default: 0]
             loads[host.id] = Task { [weak self, cache] in
                 let saved = await cache.loadAgentDirectory(for: host)
                 guard !Task.isCancelled, let self, hosts[host.id] == host,
                     revisions[host.id, default: 0] == revision else { return }
+                let changedLoaded =
+                    records[host.id] != saved.agents || structures[host.id] != saved.workspaces
                 records[host.id] = saved.agents
                 structures[host.id] = saved.workspaces
                 loads[host.id] = nil
                 applyPendingUpdates(on: host)
+                if changedLoaded {
+                    onChange?()
+                }
             }
         }
     }
@@ -80,12 +93,17 @@ final class ConsoleChatCache {
             guard !Task.isCancelled, let self, hosts[host.id] == host,
                 revisions[host.id, default: 0] == revision else { return }
             loads[host.id] = nil
+            var cleared = false
             if !belongs {
+                cleared = records[host.id] != nil || structures[host.id] != nil
                 records[host.id] = nil
                 structures[host.id] = nil
                 confirmed = confirmed.filter { $0.key.hostID != host.id }
             }
             applyPendingUpdates(on: host)
+            if cleared {
+                onChange?()
+            }
         }
     }
 
@@ -247,6 +265,7 @@ final class ConsoleChatCache {
         guard records[host.id] != next || structures[host.id] != structure else { return }
         records[host.id] = next
         structures[host.id] = structure
+        onChange?()
         let contents = ChatAgentDirectory.Contents(agents: next, workspaces: structure)
         writes[host.id] = Task { [previous = writes[host.id], cache] in
             await previous?.value

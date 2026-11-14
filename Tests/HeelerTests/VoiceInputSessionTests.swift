@@ -11,6 +11,7 @@ struct VoiceInputSessionTests {
         let session: VoiceInputSession
         let recorder: FakeVoiceRecorder
         let transcriber: ScriptedTranscriber
+        let live: FakeLiveTranscriber
         let settings: VoiceInputSettings
         let defaults: UserDefaults
         let suite: String
@@ -44,13 +45,151 @@ struct VoiceInputSessionTests {
         }
         let recorder = FakeVoiceRecorder()
         let transcriber = ScriptedTranscriber(results: results)
+        let live = FakeLiveTranscriber()
         let session = VoiceInputSession(
             settings: settings, recorder: recorder,
             transcribe: { try await transcriber.transcribe($0) },
+            makeLiveTranscriber: { live },
             sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
         return Fixture(
-            session: session, recorder: recorder, transcriber: transcriber, settings: settings,
-            defaults: defaults, suite: suite)
+            session: session, recorder: recorder, transcriber: transcriber, live: live,
+            settings: settings, defaults: defaults, suite: suite)
+    }
+
+    private func makeOnDeviceFixture() throws -> Fixture {
+        let fixture = try makeFixture(ready: false)
+        fixture.settings.saveOnDevice(language: "zh-CN")
+        fixture.settings.setKeywords(from: "useEffect, README")
+        return fixture
+    }
+
+    @Test func onDeviceTextShowsInTheRecorderAndLandsOnceOnStop() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        let hold = ScriptedTransportCallGate()
+        let store = fixture.makeStore(holdGate: hold)
+        store.applyEditorDraft("fix. Then commit", selection: NSRange(location: 4, length: 0))
+
+        fixture.session.toggle(store.voice)
+        #expect(store.voice.showsRecorder)
+        #expect(store.voice.isInRecordingMode)
+        try await waitUntil("recording") { store.voice.isRecording }
+        #expect(fixture.live.started.map(\.locale) == ["zh-CN"])
+        #expect(fixture.live.started.first?.keywords == ["useEffect", "README"])
+        #expect(fixture.recorder.hasAudioSink)
+
+        fixture.live.hear(VoiceHeard(settled: "the ", revising: "use"))
+        fixture.live.hear(VoiceHeard(settled: "the useEffect ", revising: "hook"))
+        #expect(store.voice.heard.text == "the useEffect hook")
+        #expect(store.draft == "fix. Then commit", "the draft waits for the text to settle")
+        #expect(!store.canSend)
+
+        fixture.live.finalText = "Look at the useEffect hook."
+        fixture.session.stop(store.voice)
+        try await waitUntil("settled") { store.voice.phase == .idle }
+        #expect(store.draft == "fix. Then commit Look at the useEffect hook.", "the text joins the draft's end, as the recorder showed")
+        #expect(
+            store.draftSelection == NSRange(location: (store.draft as NSString).length, length: 0),
+            "the caret goes after all the text")
+        #expect(store.voiceFocusRequests == 1)
+        #expect(!store.voice.showsRecorder)
+        #expect(store.messages.isEmpty, "Stop sends nothing")
+        #expect(await fixture.transcriber.requests.isEmpty, "nothing is uploaded")
+        await hold.open()
+        try await waitUntil("hold over") { store.canSend }
+    }
+
+    @Test func sendLandsTheTextThenSendsTheDraftThroughTheSurfaceItWasTappedOn() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+        let chat = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 },
+            validate: { _ in nil }, preflight: nil, verify: nil)
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        fixture.live.hear(VoiceHeard(settled: "run the tests", revising: ""))
+        fixture.live.finalText = "run the tests"
+        store.sendVoice(using: fixture.session, policy: chat)
+        #expect(store.voice.sendsWhenSettled)
+        try await waitUntil("sent") { !store.messages.isEmpty }
+        #expect(store.messages.map(\.text) == ["run the tests"])
+        #expect(store.messages.map(\.route) == [.chat], "the Send that was tapped, whatever other view shows this Composer")
+        #expect(store.voiceFocusRequests == 0, "Send leaves the keyboard down")
+        #expect(store.draft.isEmpty)
+        #expect(store.voice.phase == .idle)
+    }
+
+    @Test func stopBeforeRecordingBeginsDropsTheStart() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        let gate = ScriptedTransportCallGate()
+        fixture.recorder.permissionGate = gate
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        #expect(store.voice.phase == .starting)
+        fixture.session.stop(store.voice)
+        #expect(store.voice.phase == .idle)
+        #expect(!store.voice.showsRecorder)
+        await gate.open()
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(fixture.recorder.starts == 0)
+    }
+
+    @Test func aMissingModelDownloadsInPlaceThenRecords() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        fixture.live.startError = .modelNotInstalled
+        let download = ScriptedTransportCallGate()
+        fixture.live.downloadGate = download
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("failed") { store.voice.failure != nil }
+        #expect(store.voice.failure == LiveVoiceTranscriberError.modelNotInstalled.failure)
+        #expect(store.voice.failure?.downloadsModel == true)
+        #expect(store.voice.showsRecorder, "the failure shows in the recorder")
+        #expect(!store.voice.isInRecordingMode)
+        #expect(fixture.recorder.starts == 0)
+
+        fixture.live.startError = nil
+        fixture.session.downloadModel(store.voice)
+        try await waitUntil("downloading") { store.voice.phase == .downloadingModel(progress: 0.5) }
+        await download.open()
+        try await waitUntil("recording") { store.voice.isRecording }
+        #expect(fixture.live.downloads == ["zh-CN"])
+    }
+
+    @Test func hearingNothingOffersToTryAgain() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        fixture.session.stop(store.voice)
+        try await waitUntil("failed") { store.voice.failure != nil }
+        #expect(store.voice.failure == .noSpeech)
+        #expect(store.voice.failure?.restarts == true)
+
+        fixture.session.start(store.voice)
+        try await waitUntil("recording again") { store.voice.isRecording }
+    }
+
+    @Test func settlingThatFailsKeepsWhatWasHeard() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        fixture.live.finishError = LiveVoiceTranscriberError.failed
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        fixture.live.hear(VoiceHeard(settled: "run the ", revising: "tests"))
+        fixture.session.stop(store.voice)
+        try await waitUntil("settled") { store.voice.phase == .idle }
+        #expect(store.draft == "run the tests")
     }
 
     @Test func theMicOpensSetupBeforeAServiceIsSavedAndRecordsNothing() throws {
@@ -396,6 +535,7 @@ private final class FakeVoiceRecorder: VoiceRecorder {
     private(set) var builtInMicrophoneStarts: [Bool] = []
     private(set) var stops = 0
     private(set) var cancels = 0
+    private(set) var hasAudioSink = false
     private var isRecording = false
 
     func requestPermission() async -> Bool {
@@ -403,9 +543,10 @@ private final class FakeVoiceRecorder: VoiceRecorder {
         return permission
     }
 
-    func start(maxDuration _: TimeInterval, builtInMicrophone: Bool) throws {
+    func start(maxDuration _: TimeInterval, builtInMicrophone: Bool, onAudio: VoiceAudioSink?) throws {
         starts += 1
         builtInMicrophoneStarts.append(builtInMicrophone)
+        hasAudioSink = onAudio != nil
         isRecording = true
     }
 
@@ -422,6 +563,47 @@ private final class FakeVoiceRecorder: VoiceRecorder {
 
     func level() -> Double {
         isRecording ? currentLevel : 0
+    }
+}
+
+@MainActor
+private final class FakeLiveTranscriber: LiveVoiceTranscriber {
+    var startError: LiveVoiceTranscriberError?
+    var finalText = ""
+    var finishError: (any Error)?
+    var downloadGate: ScriptedTransportCallGate?
+    private(set) var started: [(locale: String, keywords: [String])] = []
+    private(set) var downloads: [String] = []
+    private(set) var cancels = 0
+    private var onText: (@MainActor (VoiceHeard) -> Void)?
+
+    func start(
+        locale: String, keywords: [String], onText: @escaping @MainActor (VoiceHeard) -> Void
+    ) async throws -> VoiceAudioSink {
+        started.append((locale, keywords))
+        if let startError { throw startError }
+        self.onText = onText
+        return { _ in }
+    }
+
+    /// What the device has heard so far.
+    func hear(_ heard: VoiceHeard) {
+        onText?(heard)
+    }
+
+    func finish() async throws -> String {
+        if let finishError { throw finishError }
+        return finalText
+    }
+
+    func cancel() {
+        cancels += 1
+    }
+
+    func downloadModel(locale: String, progress: @escaping @MainActor (Double) -> Void) async throws {
+        downloads.append(locale)
+        progress(0.5)
+        await downloadGate?.waitUntilOpen()
     }
 }
 

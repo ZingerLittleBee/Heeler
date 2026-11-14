@@ -126,20 +126,21 @@ struct AgentComposerChatRouteTests {
         var echoes: [[AgentComposerStore.DeliveryState]] = []
     }
 
-    /// The herdr-core run: a Send while Antigravity CLI worked showed
-    /// "Sending" for 1.5 to 2.5 s, while the session check's exec and the
-    /// screen read's paint ran, before the same hold took it back. A
+    /// The herdr-core run: a Send while a program that holds on Working ran
+    /// showed "Sending" for 1.5 to 2.5 s, while the session check's exec and
+    /// the screen read's paint ran, before the same hold took it back. A
     /// reported Working now holds before either, so the echo leaves in the
     /// main-actor turn it came in: a job queued behind the Send never sees
     /// it, and nothing renders it.
     @Test func aWorkingHoldNeverShowsTheEcho() async throws {
         let transport = ScriptedTransport()
         let store = Self.store(transport, status: .working)
-        let ready = try ScreenFixture.screen("agy-02-idle-empty-120x40")
+        let ready = try ScreenFixture.screen("opencode-02-session-empty-180")
         let seen = Seen()
         let policy = ComposerDeliveryPolicy.chat(
             rules: ChatSendRules(
-                program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .agy)),
+                program: .opencode,
+                commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .opencode)),
             activity: { .working },
             readScreen: {
                 seen.steps.append("read")
@@ -154,7 +155,7 @@ struct AgentComposerChatRouteTests {
             },
             pause: { _ in })
         let hold = ComposerRefusal.inputNotReady(
-            "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal."
+            "The Agent isn't taking messages: OpenCode is working. Send once it's idle, or steer from the terminal."
         )
         store.replaceDraft(with: "hello")
 
