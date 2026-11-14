@@ -16,6 +16,7 @@
 		021249A2E11F409A23534668 /* ChatMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = D020CA26F533FB4848A99F9B /* ChatMarkdown.swift */; };
 		0272B09CE3B0F295EAD8FC32 /* DemoChatSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C3F322BF44ADFEF60742B4 /* DemoChatSample.swift */; };
 		028382018C6BEC8780CD3597 /* ClaudeCodeHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC9F2432433142FC0AC6463 /* ClaudeCodeHooks.swift */; };
+		0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */; };
 		03970FA28B8C09C524AF435E /* NotificationPrivacyCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943C187E6425414801A4734E /* NotificationPrivacyCopyTests.swift */; };
 		03A4895D457152CA4D31FC5A /* WorktreeDetailStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 442A5127B47FF6FF8840B0B9 /* WorktreeDetailStoreTests.swift */; };
 		03D51D76D290B174CD1835CD /* AgentSceneDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350E9BC30923D39BA3180FF6 /* AgentSceneDirectory.swift */; };
@@ -879,6 +880,7 @@
 		C038D3091EC326076D76EDC8 /* QuestionFormCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */; };
 		C07DBBA6976DCE57F1608DC2 /* GrokPromptHistoryWitness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96773BDF5177E9327BB22C2 /* GrokPromptHistoryWitness.swift */; };
 		C0CA2928B947520D9FB9CAF9 /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A058322630CB1827F69DBF53 /* SharedAsyncOperation.swift */; };
+		C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */; };
 		C0F5DC7258848D70F66DC972 /* AgyAnnotationTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4184E98AD0CB0C686A061C /* AgyAnnotationTitle.swift */; };
 		C106FF6EBA7ACE3A59ADB67B /* GitProbeRecordings+Counts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */; };
 		C131653782AE4DFFC76D737E /* TmuxAttachScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F0BE2BC519E8D9DC31EC1D2 /* TmuxAttachScript.swift */; };
@@ -1474,6 +1476,7 @@
 		3162CD4084FE26D571DEA82F /* WebSocketLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketLinkTests.swift; sourceTree = "<group>"; };
 		316C7C37EA98B14306B428C3 /* RSAKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSAKey.swift; sourceTree = "<group>"; };
 		31B3368D352EFC805C2534F9 /* RealSSHFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSSHFixture.swift; sourceTree = "<group>"; };
+		31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexControlWebSocketLiveTests.swift; sourceTree = "<group>"; };
 		31F09325DE68693680E5A3BB /* HerdrSocketLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSocketLocationTests.swift; sourceTree = "<group>"; };
 		3207EC84A97FAA930CD87CAC /* ChatCachedAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCachedAgent.swift; sourceTree = "<group>"; };
 		321E267EE49BFE4A60F3B7CB /* FilePreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparer.swift; sourceTree = "<group>"; };
@@ -2350,6 +2353,7 @@
 		F0A01FC67602CEE1119218B9 /* HerdrCoreWindowsStagingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWindowsStagingTests.swift; sourceTree = "<group>"; };
 		F0D5F47AF6EF0F3C7F789894 /* RemoteDirectoryBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryBrowser.swift; sourceTree = "<group>"; };
 		F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+Counts.swift"; sourceTree = "<group>"; };
+		F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnixDomainSocketChannel.swift; sourceTree = "<group>"; };
 		F234ED041A4A2835A59A7510 /* AgentTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTerminalView.swift; sourceTree = "<group>"; };
 		F261A0911D08819AFC013F1E /* JSONValueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValueTests.swift; sourceTree = "<group>"; };
 		F2C684EB04A88DB074CEA765 /* OpenCodeRecordSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeRecordSource.swift; sourceTree = "<group>"; };
@@ -2991,6 +2995,8 @@
 			children = (
 				691F0B12B70ADF3F3D828304 /* AgentTitleRenameLiveTests.swift */,
 				E358F8FCF35FCD51358D1D06 /* AgyModelSwitchLiveTests.swift */,
+				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
+				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
 			path = HeelerLiveTests;
 			sourceTree = "<group>";
@@ -4321,6 +4327,8 @@
 				44F8F862F448BCC8A52D54A1 /* AgentTitleRenameLiveTests.swift in Sources */,
 				AE316A55AC9A52A1D270128D /* AgyModelSwitchLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
+				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
+				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
