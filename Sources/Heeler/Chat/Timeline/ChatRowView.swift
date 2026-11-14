@@ -5,6 +5,9 @@ import SwiftUI
 enum ChatTimelineMetrics {
     static let maximumContentWidth: CGFloat = 960
     static let horizontalPadding: CGFloat = 16
+    static let inlineIconColumnWidth: CGFloat = 18
+    static let inlineIconSpacing: CGFloat = 6
+    static let inlineDetailLeadingIndent: CGFloat = inlineIconColumnWidth + inlineIconSpacing
 }
 
 extension View {
@@ -306,9 +309,8 @@ private struct ChatReasoningRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: toggle) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "brain")
-                        .frame(width: 18)
+                HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
+                    ChatInlineRowIcon(image: Image(systemName: "brain"))
                     Text(title)
                     if !reasoning.text.isEmpty {
                         Image(systemName: "chevron.right")
@@ -330,7 +332,7 @@ private struct ChatReasoningRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 24)
+                    .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
         }
     }
@@ -442,7 +444,7 @@ private struct ChatToolGroupRow: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
                 ChatToolKindIcon(kind: group.kind)
                 Text(verbatim: group.summary)
                     .font(.subheadline)
@@ -684,7 +686,7 @@ private struct ChatToolRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: toggle) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
                     // A read that showed an image reads as one.
                     ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
                     Text(verbatim: tool.title)
@@ -721,17 +723,17 @@ private struct ChatToolRow: View {
             }
             if let path = tool.imagePath {
                 ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
-                    .padding(.leading, 24)
+                    .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
             if isExpanded {
                 details
-                    .padding(.leading, 24)
+                    .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
             if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
                 ChatFileChangesList(
                     changes: changes, expandedFiles: expandedFiles, read: tool.outputRead,
                     missingOutputText: fileMissingOutputText, actions: files)
-                    .padding(.leading, 24)
+                    .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
         }
     }
@@ -893,25 +895,39 @@ private struct ChatToolRow: View {
     }
 }
 
-/// A tool kind's glyph beside a row title set on its first baseline. A
-/// symbol carries its own baseline; the bot is an asset with none, which
-/// would rest its bottom edge on the baseline and ride above the text, so
-/// it centres on the title's capitals instead.
-private struct ChatToolKindIcon: View {
+/// Leading glyph in the shared 18pt column of an inline timeline row
+/// (reasoning, tool group, tool call, or notice). Every symbol and vector
+/// asset is aspect-fitted inside a square box and centered on the first
+/// line's cap-height, since `.resizable()` strips SF Symbols' intrinsic
+/// baseline just as vector assets carry none.
+private struct ChatInlineRowIcon: View {
+    @ScaledMetric(relativeTo: .subheadline) private var scaledIconSize: CGFloat = 15
     @ScaledMetric(relativeTo: .subheadline) private var titleCapHeight = UIFont.systemFont(ofSize: 15).capHeight
+    let image: Image
+
+    private var iconSize: CGFloat {
+        min(scaledIconSize, ChatTimelineMetrics.inlineIconColumnWidth)
+    }
+
+    var body: some View {
+        image
+            .resizable()
+            .scaledToFit()
+            .frame(width: iconSize, height: iconSize)
+            .frame(width: ChatTimelineMetrics.inlineIconColumnWidth)
+            .alignmentGuide(.firstTextBaseline) { [titleCapHeight] dimensions in
+                dimensions[VerticalAlignment.center] + titleCapHeight / 2
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+private struct ChatToolKindIcon: View {
     let kind: ChatToolActivity.Kind
 
     var body: some View {
-        let icon = ChatToolRow.icon(for: kind)
+        ChatInlineRowIcon(image: ChatToolRow.icon(for: kind))
             .foregroundStyle(.secondary)
-            .frame(width: 18)
-        if case .agent = kind {
-            icon.alignmentGuide(.firstTextBaseline) { [titleCapHeight] dimensions in
-                dimensions[VerticalAlignment.center] + titleCapHeight / 2
-            }
-        } else {
-            icon
-        }
     }
 }
 
@@ -1126,8 +1142,10 @@ private struct ChatQuestionsView: View {
 private struct ChatNoticeRow: View {
     let notice: ChatNotice
 
+    private var isUserCommand: Bool { notice.userCommandText != nil }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: isUserCommand ? 4 : 6) {
             if let command = notice.userCommandText {
                 ChatBubble {
                     Text(verbatim: command)
@@ -1136,20 +1154,22 @@ private struct ChatNoticeRow: View {
                         .accessibilityLabel("You: \(command)")
                 }
             } else {
-                Label {
+                HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
+                    ChatInlineRowIcon(image: Image(systemName: symbol))
                     Text(verbatim: notice.title)
-                } icon: {
-                    Image(systemName: symbol)
+                    Spacer(minLength: 0)
                 }
-                .font(.footnote)
+                .font(.subheadline)
             }
             if let detail = notice.detail, !detail.isEmpty {
                 Text(verbatim: detail)
                     .font(.caption)
                     .lineLimit(6)
+                    .padding(.leading, isUserCommand ? 0 : ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
             if !notice.questions.isEmpty {
                 ChatQuestionsView(questions: notice.questions)
+                    .padding(.leading, isUserCommand ? 0 : ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
         }
         .foregroundStyle(notice.kind == .error ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
