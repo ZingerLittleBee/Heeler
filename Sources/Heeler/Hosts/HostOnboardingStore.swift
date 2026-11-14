@@ -46,6 +46,8 @@ struct HostOnboardingDependencies: Sendable {
     var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     /// A tmux Host's checks resolved its paths again, for the catalog to keep.
     var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
+    /// A Rex Host's checks looked its socket up, for the catalog to keep.
+    var noteRexSocket: @MainActor @Sendable (Host.ID, RexSocket) -> Void = { _, _ in }
     /// Whether detection looks for Rex and may offer it (ADR 0047).
     var offersRexHosts = RexHostsExperiment.isEnabled
 }
@@ -134,6 +136,7 @@ final class HostOnboardingStore {
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
     @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
+    @ObservationIgnored private let noteRexSocket: @MainActor (Host.ID, RexSocket) -> Void
     /// `RexHostsExperiment`'s switch: off, detection neither looks for Rex nor
     /// offers it.
     @ObservationIgnored private let offersRexHosts: Bool
@@ -159,11 +162,13 @@ final class HostOnboardingStore {
         harnessEdits: HarnessConfigEditStore? = nil,
         noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in },
         noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in },
+        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in },
         offersRexHosts: Bool = RexHostsExperiment.isEnabled
     ) {
         self.offersRexHosts = offersRexHosts
         self.noteWindowsCore = noteWindowsCore
         self.noteTmuxPaths = noteTmuxPaths
+        self.noteRexSocket = noteRexSocket
         tmuxSocket = TmuxSocketName.normalized(host.sessionName)
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
@@ -462,63 +467,25 @@ final class HostOnboardingStore {
         }
     }
 
-    /// A Rex Host's checks look for its socket again, over a connection of their
-    /// own, and ask nothing of the server, which this build does not connect to
-    /// yet (ADR 0047). They never run `rex` or start a server.
+    /// A Rex Host's checks reach its server's socket and say hello, then close
+    /// with a close frame, which changes nothing on the server (ADR 0047). A
+    /// Host that stores no socket has it looked up again, and the catalog keeps
+    /// what was found. They never run `rex` or start a server.
     private func performRexChecks(settings: SSHTransportSettings) async {
         pluginStatus = .unsupportedServerKind
         do {
-            let connection = try await connector.connectForDetection(settings: settings)
-            guard !Task.isCancelled else {
-                try? await connection.close()
-                return
+            let transport = try await connector.connectRex(settings: settings)
+            if let found = transport.foundSocket, host.rexSocket == nil {
+                host.rexSocket = found
+                noteRexSocket(host.id, found)
             }
-            let outcome: Result<ServerKindDetection.RexFinding, any Error>
-            do {
-                outcome = .success(try await RexProbe.run(over: connection))
-            } catch {
-                outcome = .failure(error)
-            }
-            try? await connection.close()
+            await transport.close()
             guard !Task.isCancelled else { return }
-            switch outcome {
-            case .success(let finding): report = Self.rexReport(finding)
-            case .failure(let error): report = failureReport(error)
-            }
+            report = .allPassed
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
             report = failureReport(error)
-        }
-    }
-
-    /// What a Rex Host's checklist says of the probe: installed, then a socket
-    /// this account may connect to. Heeler never starts the server, so a hint
-    /// says how to.
-    static func rexReport(_ finding: ServerKindDetection.RexFinding) -> PreflightReport {
-        switch finding {
-        case .socketFound:
-            .allPassed
-        case .unsupported:
-            .failure(
-                check: .herdrInstalled,
-                hint: String(localized: "Heeler finds Rex on macOS and Linux Hosts only."))
-        case .unreadable:
-            .failure(
-                check: .herdrInstalled,
-                hint: String(localized: "Heeler could not read whether Rex is on this Host. Check again."))
-        case .notInstalled:
-            .failure(
-                check: .herdrInstalled,
-                hint: String(localized: "Rex was not found on this Host. Install Rex and start it, then check again."))
-        case .notRunning:
-            .failure(
-                check: .serverRunning,
-                hint: String(localized: "Rex is installed, but no server socket was found. Start Rex on this Host, then check again. Heeler does not start it."))
-        case .notUsable(let path):
-            .failure(
-                check: .serverRunning,
-                hint: String(localized: "A Rex server socket is at \(path), but this account cannot connect to it."))
         }
     }
 

@@ -158,6 +158,31 @@ struct RexHostCatalogTests {
         }
     }
 
+    /// A socket looked up for a Rex Host that stored none is kept in its own
+    /// catalog; a Host that holds one keeps it.
+    @Test func aLookedUpSocketIsKeptOnlyByARexHostWithoutOne() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = makeStore(defaults, secrets: secrets)
+        var lost = rexHost()
+        lost.rexSocket = nil
+        try store.add(lost)
+        let kept = rexHost(name: "Kept")
+        try store.add(kept)
+        let tmux = tmuxHost()
+        try store.add(tmux)
+        let found = try #require(RexSocket(path: "/run/user/1001/rex/server.sock"))
+
+        try store.noteRexSocket(found, for: lost.id)
+        try store.noteRexSocket(found, for: kept.id)
+
+        let reloaded = makeStore(defaults, secrets: secrets)
+        #expect(reloaded.hosts.first { $0.id == lost.id }?.rexSocket == found)
+        #expect(reloaded.hosts.first { $0.id == kept.id }?.rexSocket == socket)
+        #expect(throws: HostStoreError.serverKindChanged) { try store.noteRexSocket(found, for: tmux.id) }
+    }
+
     @Test func aSocketGoesOnlyToARexHost() throws {
         let store = HostStore(volatileHosts: [unconfirmedHost()])
         let id = try #require(store.hosts.first?.id)

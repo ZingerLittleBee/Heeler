@@ -97,6 +97,7 @@ struct HostOnboardingView: View {
             harnessEdits: dependencies.harnessEdits,
             noteWindowsCore: dependencies.noteWindowsCore,
             noteTmuxPaths: dependencies.noteTmuxPaths,
+            noteRexSocket: dependencies.noteRexSocket,
             offersRexHosts: dependencies.offersRexHosts)
     }
 

@@ -7,12 +7,12 @@ import Foundation
 enum PreflightCheck: CaseIterable, Sendable {
     /// The checks a Host of this kind runs, in order. A tmux Host speaks no
     /// protocol of Heeler's: its version is part of being installed. A Rex
-    /// Host's checks look for its socket and ask nothing of the server, which
-    /// this build does not connect to yet (ADR 0047).
+    /// Host needs no shell setup: its checks reach the server's socket and say
+    /// hello, which changes nothing on the server (ADR 0047).
     static func cases(for serverKind: ServerKind) -> [PreflightCheck] {
         switch serverKind {
         case .tmux: allCases.filter { $0 != .protocolCompatible }
-        case .rex: [.connection, .herdrInstalled, .serverRunning]
+        case .rex: allCases.filter { $0 != .remoteEnvironment }
         case .herdrTUI, .herdrCore, .unconfirmed: allCases
         }
     }
@@ -41,7 +41,7 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.herdrInstalled, .tmux): String(localized: "tmux installed")
         case (.serverRunning, .tmux): String(localized: "tmux server running")
         case (.herdrInstalled, .rex): String(localized: "Rex installed")
-        case (.serverRunning, .rex): String(localized: "Rex server socket")
+        case (.serverRunning, .rex): String(localized: "Rex server running")
         case (.protocolCompatible, _): String(localized: "protocol compatible")
         }
     }

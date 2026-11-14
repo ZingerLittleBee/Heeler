@@ -5210,7 +5210,6 @@
         }
       }
     },
-    "A Rex server socket is at %@, but this account cannot connect to it." : {},
     "A Shell Terminal on this Host is open in another Heeler window, and input continues there. Close it to use the terminal here." : {
       "localizations" : {
         "ja" : {
@@ -25660,7 +25659,6 @@
         }
       }
     },
-    "Heeler could not read whether Rex is on this Host. Check again." : {},
     "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
@@ -44756,8 +44754,6 @@
     "Rex did not let this account in" : {},
     "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
     "Rex installed" : {},
-    "Rex is installed, but no server socket was found. Start Rex on this Host, then check again. Heeler does not start it." : {},
-    "Rex server socket" : {},
     "Rex is not answering" : {},
     "Rex is not running" : {},
     "Rex is running, but SSH will not open %@" : {},
@@ -44772,8 +44768,8 @@
       }
     },
     "Rex refused the connection with HTTP status %lld." : {},
+    "Rex server running" : {},
     "Rex support is not finished" : {},
-    "Rex was not found on this Host. Install Rex and start it, then check again." : {},
     "Rex was not found on this Host" : {},
     "Rex's answer could not be read." : {},
     "Right Arrow" : {

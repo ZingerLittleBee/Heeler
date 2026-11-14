@@ -51,9 +51,9 @@ struct RexConsoleTests {
     /// Hosts by kind, and none of them picks a Rex Host.
     @Test func noIntegrationTreatsARexHostAsItsOwn() {
         #expect(!ServerKind.rex.hasHostIntegrations)
-        #expect(PreflightCheck.cases(for: .rex) == [.connection, .herdrInstalled, .serverRunning])
+        #expect(PreflightCheck.cases(for: .rex) == [.connection, .herdrInstalled, .serverRunning, .protocolCompatible])
         #expect(PreflightCheck.herdrInstalled.title(for: .rex) == "Rex installed")
-        #expect(PreflightCheck.serverRunning.title(for: .rex) == "Rex server socket")
+        #expect(PreflightCheck.serverRunning.title(for: .rex) == "Rex server running")
 
         let notifications = NotificationPreferencesStore(
             transports: ScriptedTransportProvider(transports: [:]),

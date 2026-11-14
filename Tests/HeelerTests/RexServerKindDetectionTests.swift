@@ -228,23 +228,27 @@ struct RexServerKindDetectionTests {
     }
 }
 
-/// A Rex Host's confirmation and checks in Host onboarding (ADR 0047).
+/// A Rex Host's confirmation and checks in Host onboarding (ADR 0047): the
+/// checks reach the server's socket, say hello, and close with a close frame.
 @MainActor
-@Suite("Rex Host onboarding")
+@Suite("Rex Host onboarding", .timeLimit(.minutes(1)))
 struct RexHostOnboardingTests {
-    private static let socket = "/Users/dev/Library/Application Support/rex/server.sock"
+    static let socket = "/Users/dev/Library/Application Support/rex/server.sock"
 
     private func makeStore(
-        _ host: Host, scripted: ScriptedCoreHost, offersRex: Bool = true
+        _ host: Host, scripted: ScriptedCoreHost = ScriptedCoreHost(channel: .refused), rex: ScriptedRexHost = ScriptedRexHost(),
+        offersRex: Bool = true, noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
     ) -> HostOnboardingStore {
         HostOnboardingStore(
             host: host,
-            connector: FakeTransportConnector(outcome: .connects(pingResult: .failure(.cancelled)), core: scripted),
+            connector: FakeTransportConnector(
+                outcome: .connects(pingResult: .failure(.cancelled)), core: scripted, rex: rex),
             knownHosts: InMemoryKnownHostsStore(),
             credentials: HostCredentialsProvider(
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: InMemorySecretStore()),
+            noteRexSocket: noteRexSocket,
             offersRexHosts: offersRex)
     }
 
@@ -256,13 +260,21 @@ struct RexHostOnboardingTests {
         return nil
     }
 
-    @Test func confirmingRexStoresTheSocketDetectionFoundAndChecksItAgain() async throws {
+    private func rexHost(socket: String? = socket) -> Host {
+        Host(
+            address: "mac.example", username: "dev", serverKind: .rex,
+            rexSocket: socket.flatMap { RexSocket(path: $0) })
+    }
+
+    @Test func confirmingRexStoresTheSocketDetectionFoundAndSaysHelloToIt() async throws {
         let scripted = ScriptedCoreHost(
             locator: ScriptedCoreHost.locatorLines(executable: nil),
             rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.socket, true, true)]), channel: .refused)
+        let server = FakeRexServer()
+        let rex = ScriptedRexHost(control: [.server(server)])
         let host = Host(address: "mac.example", username: "dev", serverKind: .unconfirmed, sessionName: "work")
         let catalog = HostStore(volatileHosts: [host])
-        let store = makeStore(host, scripted: scripted)
+        let store = makeStore(host, scripted: scripted, rex: rex)
 
         await store.runChecks()
         #expect(store.detection?.rex == .socketFound(socketPath: Self.socket))
@@ -275,8 +287,12 @@ struct RexHostOnboardingTests {
         #expect(store.host.rexSocket?.path == Self.socket)
         #expect(store.host.sessionName == "")
         #expect(catalog.hosts == [store.host])
-        // The checks look for the socket again and connect to nothing else.
-        #expect(await scripted.log == ["detection", "close", "detection", "close"])
+        // Detection ran once; the checks dialed the stored socket, said hello and left.
+        #expect(await scripted.log == ["detection", "close"])
+        #expect(await rex.log == ["control \(Self.socket)", "close"])
+        #expect(await server.nextHello()["type"] == .string("hello"))
+        #expect(await server.clientClose?.code == .normalClosure)
+        #expect(await server.requests.isEmpty)
         #expect(store.report == .allPassed)
         #expect(store.pluginStatus == .unsupportedServerKind)
         #expect(store.hostHelper == nil)
@@ -295,45 +311,84 @@ struct RexHostOnboardingTests {
         #expect(await scripted.scripts.allSatisfy { !$0.contains("rex begin") })
     }
 
-    /// Heeler never starts Rex: the checklist says to.
-    @Test(arguments: [
-        (ScriptedCoreHost.rexLines(installed: true), PreflightCheck.serverRunning, "Start Rex on this Host"),
-        (ScriptedCoreHost.rexLines(installed: false), PreflightCheck.herdrInstalled, "Rex was not found"),
-        (
-            ScriptedCoreHost.rexLines(kernel: "Linux", sockets: [("/run/rex/server.sock", false, false)]),
-            PreflightCheck.serverRunning, "this account cannot connect"
-        ),
-        (ScriptedCoreHost.rexLines(kernel: "FreeBSD"), PreflightCheck.herdrInstalled, "macOS and Linux"),
-    ])
-    func aRexHostsChecksSayWhatIsMissing(lines: [String], check: PreflightCheck, words: String) async {
-        let scripted = ScriptedCoreHost(rexProbe: lines, channel: .refused)
-        let host = Host(
-            address: "mac.example", username: "dev", serverKind: .rex,
-            rexSocket: RexSocket(path: Self.socket))
-        let store = makeStore(host, scripted: scripted)
-
-        await store.runChecks()
-
-        let failed = failedCheck(store)
-        #expect(failed?.0 == check)
-        #expect(failed?.1.contains(words) == true, "\(failed?.1 ?? "")")
-        #expect(await scripted.log == ["detection", "close"])
-        #expect(store.host.rexSocket?.path == Self.socket)
-    }
-
-    /// A Rex Host's checks run the Rex probe alone, never herdr's or tmux's reads.
-    @Test func aRexHostsChecksIgnoreHerdrAndTmux() async throws {
-        let scripted = ScriptedCoreHost(
-            herdrRead: .answers(#"{"sessions":[{"name":"default","default":true,"running":true}]}"#),
-            rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.socket, true, true)]), channel: .refused)
-        let host = Host(address: "mac.example", username: "dev", serverKind: .rex)
-        let store = makeStore(host, scripted: scripted)
+    /// A Host whose socket did not read has it looked up again, and the
+    /// catalog keeps what was found.
+    @Test func aHostWithoutASocketHasItLookedUpAndKept() async throws {
+        let found = "/run/user/1000/rex/server.sock"
+        let rex = ScriptedRexHost(
+            probe: ScriptedRexHost.probeFinding(found, kernel: "Linux"), control: [.server(FakeRexServer())])
+        let host = rexHost(socket: nil)
+        let catalog = HostStore(volatileHosts: [host])
+        let store = makeStore(host, rex: rex) { id, socket in try? catalog.noteRexSocket(socket, for: id) }
 
         await store.runChecks()
 
         #expect(store.report == .allPassed)
-        let body = try #require(await scripted.scripts.first)
-        #expect(!body.contains("herdr-tui begin"))
-        #expect(!body.contains("tmux begin"))
+        #expect(store.host.rexSocket?.path == found)
+        #expect(catalog.hosts.first?.rexSocket?.path == found)
+        #expect(await rex.log == ["probe", "control \(found)", "close"])
+    }
+
+    /// Heeler never starts Rex: the checklist says what is missing and how to fix it.
+    @Test func aRexHostsChecksSayWhatIsMissing() async throws {
+        let cases: [(ScriptedRexHost, String?, PreflightCheck, String)] = [
+            (ScriptedRexHost(probe: ["kernel Darwin"]), nil, .herdrInstalled, "Rex was not found"),
+            (ScriptedRexHost(probe: ["kernel FreeBSD"]), nil, .herdrInstalled, "macOS and Linux"),
+            (
+                ScriptedRexHost(probe: ["kernel Linux", "socket 0 0 /run/rex/server.sock", "installed"]), nil,
+                .serverRunning, "may not use the socket"
+            ),
+            (ScriptedRexHost(probe: ["kernel Darwin", "installed"]), nil, .serverRunning, "Heeler does not start it"),
+            (ScriptedRexHost(socketCheck: "missing", control: [.refused]), Self.socket, .serverRunning, "Heeler does not start it"),
+            (
+                ScriptedRexHost(socketCheck: "listening", control: [.refused]), Self.socket, .serverRunning,
+                "refuses socket forwarding"
+            ),
+            (ScriptedRexHost(control: [.refused]), Self.socket, .serverRunning, "Rex stopped, or the SSH server"),
+        ]
+        for (rex, socket, check, words) in cases {
+            let store = makeStore(rexHost(socket: socket), rex: rex)
+
+            await store.runChecks()
+
+            let failed = failedCheck(store)
+            #expect(failed?.0 == check, "\(words)")
+            #expect(failed?.1.contains(words) == true, "\(failed?.1 ?? "")")
+            #expect(await rex.log.last == "close")
+        }
+    }
+
+    @Test func aRexThatRefusesTheAccountOrSpeaksAnotherRevisionFailsItsCheck() async throws {
+        let refusing = FakeRexServer()
+        let refusingHost = ScriptedRexHost(control: [.server(refusing, welcome: nil)])
+        let refused = makeStore(rexHost(), rex: refusingHost)
+        async let refusal: Void = refused.runChecks()
+        await refusing.refuseUpgrade(status: 403)
+        await refusal
+        #expect(failedCheck(refused)?.0 == .serverRunning)
+        #expect(failedCheck(refused)?.1.contains("did not let this account in") == true)
+
+        var newer = FakeRexServer.Welcome()
+        newer.apiRevision = 13
+        newer.serverRevision = 13
+        let store = makeStore(rexHost(), rex: ScriptedRexHost(control: [.server(FakeRexServer(), welcome: newer)]))
+        await store.runChecks()
+        #expect(failedCheck(store)?.0 == .protocolCompatible)
+        #expect(failedCheck(store)?.1.contains("revision 12") == true)
+    }
+
+    /// A Rex Host's checks never ask herdr or tmux, or open a detection connection.
+    @Test func aRexHostsChecksIgnoreHerdrAndTmux() async throws {
+        let scripted = ScriptedCoreHost(
+            herdrRead: .answers(#"{"sessions":[{"name":"default","default":true,"running":true}]}"#),
+            rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.socket, true, true)]), channel: .refused)
+        let rex = ScriptedRexHost(control: [.server(FakeRexServer())])
+        let store = makeStore(rexHost(), scripted: scripted, rex: rex)
+
+        await store.runChecks()
+
+        #expect(store.report == .allPassed)
+        #expect(await scripted.log.isEmpty)
+        #expect(await rex.log == ["control \(Self.socket)", "close"])
     }
 }

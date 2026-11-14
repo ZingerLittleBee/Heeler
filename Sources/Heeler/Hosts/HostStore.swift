@@ -401,6 +401,23 @@ final class HostStore {
         try replaceEntry(of: host, at: index)
     }
 
+    /// Stores the socket a lookup found for a Rex Host that stored none, as
+    /// when its stored path did not read (ADR 0047). A Host that already holds
+    /// a socket keeps it.
+    func noteRexSocket(_ socket: RexSocket, for id: Host.ID) throws {
+        try ensureCatalogIsWritable()
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostStoreError.unknownHost
+        }
+        guard hosts[index].serverKind == .rex else {
+            throw HostStoreError.serverKindChanged
+        }
+        guard hosts[index].rexSocket == nil else { return }
+        var host = hosts[index]
+        host.rexSocket = socket
+        try replaceEntry(of: host, at: index)
+    }
+
     /// Hosts the catalog keeps that this build cannot read, as an older build
     /// finds a newer one's. Nil when a catalog itself could not be read, which
     /// says nothing of which Hosts exist: device memory of a Host goes only when
