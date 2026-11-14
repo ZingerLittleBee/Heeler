@@ -76,24 +76,43 @@ struct WorkspaceTerminalDrawer: View {
             + (hasFooter ? footerHeight : 0)
     }
 
-    /// Where the handle's top edge rests inside `height`, from the remembered
-    /// fraction plus any lift in progress, clamped to the edge.
-    /// A handle that would overlap `clearing` steps above it, or below it
-    /// when there is no room above. The jump buttons cannot move lower, so
-    /// the handle is the one that gives way.
+    /// Where the handle's top edge sits inside `height`: where it rests from
+    /// the remembered fraction, plus any lift in progress, clamped to the edge.
+    /// A resting handle that would overlap `clearing` steps above it, or below
+    /// it when there is no room above. The jump buttons cannot move lower, so
+    /// the handle is the one that gives way. A lift starts from where the
+    /// handle sits and follows the finger, wherever the other control is.
     static func handleTop(
         fraction: CGFloat, liftTravel: CGFloat, height: CGFloat,
         clearing: ClosedRange<CGFloat>? = nil
     ) -> CGFloat {
         let travel = max(0, height - handleSize.height)
-        let top = min(max(fraction * travel + liftTravel, 0), travel)
+        let resting = clear(min(max(fraction * travel, 0), travel), of: clearing, travel: travel)
+        return min(max(resting + liftTravel, 0), travel)
+    }
+
+    /// Where an accessibility nudge of `step` from `top` lands: the next
+    /// place clear of `clearing` in the nudge's direction, so a nudge can
+    /// pass the other control instead of being turned back by it.
+    static func nudged(
+        from top: CGFloat, by step: CGFloat, height: CGFloat, clearing: ClosedRange<CGFloat>?
+    ) -> CGFloat {
+        let travel = max(0, height - handleSize.height)
+        return clear(min(max(top + step, 0), travel), of: clearing, travel: travel, downward: step > 0)
+    }
+
+    private static func clear(
+        _ top: CGFloat, of clearing: ClosedRange<CGFloat>?, travel: CGFloat, downward: Bool = false
+    ) -> CGFloat {
         guard let clearing else { return top }
         let blockedTop = clearing.lowerBound - edgeGap
         let blockedBottom = clearing.upperBound + edgeGap
         guard top + handleSize.height > blockedTop, top < blockedBottom else { return top }
         let above = blockedTop - handleSize.height
-        if above >= 0 { return above }
-        if blockedBottom <= travel { return blockedBottom }
+        let fitsAbove = above >= 0
+        let fitsBelow = blockedBottom <= travel
+        if fitsBelow && (downward || !fitsAbove) { return blockedBottom }
+        if fitsAbove { return above }
         return top
     }
 
@@ -141,11 +160,9 @@ struct WorkspaceTerminalDrawer: View {
     var body: some View {
         GeometryReader { geometry in
             let height = geometry.size.height
-            // A lifted handle follows the finger, wherever the other control is.
             let handleTop = Self.handleTop(
                 fraction: edgeDock.fraction(for: .workspaceDrawer),
-                liftTravel: liftTravel, height: height,
-                clearing: isLifted ? nil : clearedSpan)
+                liftTravel: liftTravel, height: height, clearing: clearedSpan)
             ZStack(alignment: .topTrailing) {
                 if expanded {
                     // A tap anywhere else closes the panel instead of reaching
@@ -212,7 +229,7 @@ struct WorkspaceTerminalDrawer: View {
                 onDrop: { travel in
                     dock(handleTop: Self.handleTop(
                         fraction: edgeDock.fraction(for: .workspaceDrawer),
-                        liftTravel: travel, height: height), height: height)
+                        liftTravel: travel, height: height, clearing: clearedSpan), height: height)
                 })
             .hoverEffect(.highlight)
             .accessibilityElement(children: .ignore)
@@ -224,10 +241,12 @@ struct WorkspaceTerminalDrawer: View {
             .accessibilityHint("Shows the terminals in this Workspace")
             .accessibilityAction { setExpanded(true) }
             .accessibilityAction(named: "Move up") {
-                dock(handleTop: top - Self.nudge, height: height)
+                dock(handleTop: Self.nudged(
+                    from: top, by: -Self.nudge, height: height, clearing: clearedSpan), height: height)
             }
             .accessibilityAction(named: "Move down") {
-                dock(handleTop: top + Self.nudge, height: height)
+                dock(handleTop: Self.nudged(
+                    from: top, by: Self.nudge, height: height, clearing: clearedSpan), height: height)
             }
     }
 

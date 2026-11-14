@@ -104,6 +104,33 @@ struct EdgeDockSettingsTests {
         #expect(top == WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height))
     }
 
+    @Test func liftingAHandleThatSteppedAsideStartsWhereItSits() {
+        let jump: ClosedRange<CGFloat> = 136...180
+        func top(lift: CGFloat) -> CGFloat {
+            WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: lift, height: 240, clearing: jump)
+        }
+        let rested = top(lift: 0)
+        #expect(rested == 64)
+        #expect(top(lift: 10) == rested + 10, "the lifted handle follows the finger into the buttons' span")
+        #expect(top(lift: -30) == rested - 30)
+    }
+
+    @Test func accessibilityNudgesPassTheJumpButtons() {
+        let handle = WorkspaceTerminalDrawer.handleSize.height
+        let gap = WorkspaceTerminalDrawer.edgeGap
+        let jump: ClosedRange<CGFloat> = 256...300
+        let above = jump.lowerBound - gap - handle
+        let below = jump.upperBound + gap
+        func nudge(_ top: CGFloat, _ step: CGFloat) -> CGFloat {
+            WorkspaceTerminalDrawer.nudged(from: top, by: step, height: 400, clearing: jump)
+        }
+        #expect(nudge(above, handle) == below)
+        #expect(nudge(below, -handle) == above)
+        #expect(nudge(0, handle) == handle, "a nudge clear of the buttons moves by the handle's height")
+        #expect(WorkspaceTerminalDrawer.nudged(from: 300, by: handle, height: 400, clearing: nil) == 400 - handle,
+                "a nudge stays on the edge")
+    }
+
     @Test func drawerPanelCentresOnTheHandleWithoutLeavingTheTerminal() {
         let panel = WorkspaceTerminalDrawer.panelHeight(count: 3)
         let expected: CGFloat = 178  // header 36, three 44 rows, two 2 gaps, inset 6
