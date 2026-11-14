@@ -1113,6 +1113,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// server's Pane, and the Host now runs another server, whose pane ids
     /// start over. The tmux Host's `.herdrCoreTerminalGone`.
     case tmuxServerGone
+    /// A Rex Host, which this build lists but does not connect to yet (ADR
+    /// 0047). Nothing was dialed.
+    case rexNotConnectableYet
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1169,7 +1172,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
-            .homeDirectoryUnresolvable, .invalidDirectoryPath,
+            .rexNotConnectableYet, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:
             false

@@ -168,6 +168,16 @@ struct HostFormView: View {
             } footer: {
                 Text("Set by this Host's Pairing Code.")
             }
+        } else if draft.serverKind == .rex {
+            // A Rex Host names no session: its server is the one detection found.
+            Section {
+                serverKindRow
+                LabeledContent("Socket", value: draft.rexSocket?.path ?? String(localized: "Not known yet"))
+            } header: {
+                Text("Rex Server")
+            } footer: {
+                Text("Found when the Host was confirmed.")
+            }
         } else {
             Section {
                 serverKindRow
@@ -195,7 +205,7 @@ struct HostFormView: View {
         case .herdrTUI: String(localized: "herdr Session")
         case .herdrCore: String(localized: "herdr-core Session")
         case .tmux: String(localized: "tmux Socket")
-        case .unconfirmed: String(localized: "Session")
+        case .unconfirmed, .rex: String(localized: "Session")
         }
     }
 
@@ -203,7 +213,7 @@ struct HostFormView: View {
         switch draft.serverKind {
         case .herdrTUI: String(localized: "Leave blank for the default herdr session.")
         case .tmux: String(localized: "Leave blank for the default socket, which a tmux started without -L uses.")
-        case .herdrCore, .unconfirmed: String(localized: "Leave blank for the default session.")
+        case .herdrCore, .unconfirmed, .rex: String(localized: "Leave blank for the default session.")
         }
     }
 

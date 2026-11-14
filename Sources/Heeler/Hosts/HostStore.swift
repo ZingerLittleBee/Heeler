@@ -22,9 +22,11 @@ enum HostStoreError: Error, Equatable {
 ///
 /// The catalog is stored in parts of one shape. Herdr TUI Hosts and Hosts not
 /// yet confirmed stay in the shared one every build reads. herdr-core Hosts live
-/// in a second one, and tmux Hosts in a third, each with the merged Host order,
-/// that builds before its kind never read, so such a build can neither show one
-/// nor re-save it as another kind (ADRs 0031 and 0044).
+/// in a second one, tmux Hosts in a third and Rex Hosts in a fourth, each with
+/// the merged Host order, that builds before its kind never read, so such a
+/// build can neither show one nor re-save it as another kind (ADRs 0031, 0044
+/// and 0047). While `RexHostsExperiment` is off, this build reads Rex Hosts as
+/// such a build would not see them: kept as they are, listed nowhere.
 @MainActor
 @Observable
 final class HostStore {
@@ -36,12 +38,13 @@ final class HostStore {
     /// the one their saved orders are believed in: the kind added last is
     /// written by the newest builds only, so its order names the most Hosts.
     private enum KindCatalog: CaseIterable {
-        case core, tmux
+        case core, tmux, rex
 
         var kind: ServerKind {
             switch self {
             case .core: .herdrCore
             case .tmux: .tmux
+            case .rex: .rex
             }
         }
 
@@ -49,6 +52,7 @@ final class HostStore {
             switch self {
             case .core: "herdrCoreHosts"
             case .tmux: "tmuxHosts"
+            case .rex: "rexHosts"
             }
         }
 
@@ -56,6 +60,7 @@ final class HostStore {
             switch kind {
             case .herdrCore: self = .core
             case .tmux: self = .tmux
+            case .rex: self = .rex
             case .herdrTUI, .unconfirmed: return nil
             }
         }
@@ -162,18 +167,27 @@ final class HostStore {
     private var kindCatalogLoadErrors: [KindCatalog: HostStoreError] = [:]
     var coreCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.core] }
     var tmuxCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.tmux] }
+    var rexCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.rex] }
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
     @ObservationIgnored private var catalogEntries: [PersistedHosts.Entry]
     @ObservationIgnored private var kindCatalogEntries: [KindCatalog: [PersistedHosts.Entry]] = [:]
+    /// Kind catalogs read and kept, whose Hosts this build does not list: Rex's
+    /// while its switch is off. Nothing is written to them.
+    @ObservationIgnored private let hiddenCatalogs: Set<KindCatalog>
 
+    /// `offersRexHosts` is `RexHostsExperiment`'s switch, off in every build
+    /// that has not turned it on.
     init(
         defaults: UserDefaults = .standard,
-        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh")
+        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh"),
+        offersRexHosts: Bool = RexHostsExperiment.isEnabled
     ) {
         self.defaults = defaults
         self.secrets = secrets
+        let hiddenCatalogs: Set<KindCatalog> = offersRexHosts ? [] : [.rex]
+        self.hiddenCatalogs = hiddenCatalogs
         do {
             var shared = try Self.loadSharedEntries(from: defaults)
             var kinds: [KindCatalog: PersistedCatalog] = [:]
@@ -197,7 +211,7 @@ final class HostStore {
             let entries = kinds.mapValues(\.hosts.entries)
             hosts = Self.mergedHosts(
                 shared: shared,
-                kinds: KindCatalog.allCases.flatMap { entries[$0] ?? [] },
+                kinds: KindCatalog.allCases.filter { !hiddenCatalogs.contains($0) }.flatMap { entries[$0] ?? [] },
                 orders: KindCatalog.allCases.reversed().compactMap { kinds[$0]?.order })
             catalogEntries = shared
             kindCatalogEntries = entries
@@ -263,6 +277,7 @@ final class HostStore {
     init(volatileHosts: [Host]) {
         defaults = nil
         secrets = VolatileSecretStore()
+        hiddenCatalogs = []
         hosts = volatileHosts
         catalogEntries = volatileHosts.filter { KindCatalog($0.serverKind) == nil }
             .map(PersistedHosts.Entry.known)
@@ -326,10 +341,12 @@ final class HostStore {
     ///
     /// `sessionName` replaces the typed one, for a kind whose detection offered
     /// the name, as a tmux Host's socket is. `tmuxPaths` is what that detection
-    /// resolved, kept only by a tmux Host (ADR 0044).
+    /// resolved, kept only by a tmux Host (ADR 0044), and `rexSocket` the socket
+    /// it found, kept only by a Rex Host (ADR 0047).
     @discardableResult
     func confirmServerKind(
-        _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil
+        _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil
     ) throws -> Host {
         try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == id }) else {
@@ -354,6 +371,7 @@ final class HostStore {
         confirmed.serverKind = kind
         confirmed.sessionName = kind.storedSessionName(name)
         confirmed.tmuxPaths = kind == .tmux ? tmuxPaths : nil
+        confirmed.rexSocket = kind == .rex ? rexSocket : nil
         hosts[index] = confirmed
         if let own {
             kindCatalogEntries[own, default: []].append(.known(confirmed))
@@ -389,7 +407,9 @@ final class HostStore {
     /// the Host is known to be gone.
     var hostsOutOfSight: Set<Host.ID>? {
         guard catalogLoadError == nil, kindCatalogLoadErrors.isEmpty else { return nil }
-        return Set((catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID))
+        let unread = (catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID)
+        let hidden = hiddenCatalogs.flatMap { kindCatalogEntries[$0] ?? [] }.compactMap(\.knownHostID)
+        return Set(unread + hidden)
     }
 
     /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
@@ -404,13 +424,13 @@ final class HostStore {
         hosts.filter(\.serverKind.hasHostIntegrations)
     }
 
-    /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
-    /// herdr-core or tmux Host may show one is its registration's call, see
-    /// `LiveActivityGate`.
+    /// A Host waiting for its Server Kind stays out of Live Activities, and so
+    /// does a Rex Host, which reports no Agents. Whether a herdr-core or tmux
+    /// Host may show one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
         switch hosts.first(where: { $0.id == id })?.serverKind {
         case .herdrTUI, .herdrCore, .tmux: true
-        case .unconfirmed, nil: false
+        case .rex, .unconfirmed, nil: false
         }
     }
 
@@ -465,8 +485,10 @@ final class HostStore {
         }
     }
 
+    /// A hidden catalog is never written either: its Hosts are not this build's
+    /// to change while it does not list them.
     private func ensureIsWritable(_ catalog: KindCatalog) throws {
-        if kindCatalogLoadErrors[catalog] != nil {
+        if kindCatalogLoadErrors[catalog] != nil || hiddenCatalogs.contains(catalog) {
             throw HostStoreError.catalogUnreadable
         }
     }

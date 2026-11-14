@@ -1666,6 +1666,9 @@ final class ConsoleStore {
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },
                         onChange: onChange)
+                case .rex:
+                    // Never dials: this build does not connect Rex Hosts yet (ADR 0047).
+                    RexConsoleProjection(host: host)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,

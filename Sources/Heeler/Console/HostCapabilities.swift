@@ -100,6 +100,18 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
+        // A Rex Host offers nothing yet (ADR 0047): it starts and closes no
+        // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
+        // Composer, Chat, Host scripts or layout, and is never taken over. So it
+        // stays out of New Agent and New Terminal.
+        guard serverKind != .rex else {
+            self.init(
+                startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
+                worktrees: false, uploads: false, composerSend: false, chat: false,
+                tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
+                composerStop: false, chatPrograms: [], hostScripts: false)
+            return
+        }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
         // a Pane or a Tab, opens a Worktree, stages images and files over SFTP,
         // runs POSIX Host scripts for Changes, Skills, and harness edits, and

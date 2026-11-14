@@ -151,11 +151,15 @@ final class HeelerAppModel {
                 hostStore?.supportsLiveActivities(for: id) ?? false
             },
             registrationGate: { [weak hostStore, weak notificationPreferences] id in
-                let kind = hostStore?.hosts.first(where: { $0.id == id })?.serverKind
-                guard kind == .herdrCore || kind == .tmux else {
+                switch hostStore?.hosts.first(where: { $0.id == id })?.serverKind {
+                case .herdrCore, .tmux:
+                    return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
+                // A Rex Host registers nothing (ADR 0047).
+                case .rex:
+                    return .closed
+                case .herdrTUI, .unconfirmed, nil:
                     return .open
                 }
-                return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
             },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []

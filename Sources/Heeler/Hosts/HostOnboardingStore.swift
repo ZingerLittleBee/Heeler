@@ -292,6 +292,10 @@ final class HostOnboardingStore {
         case .tmux:
             await performTmuxChecks(settings: settings)
             return
+        case .rex:
+            pluginStatus = .unsupportedServerKind
+            report = .failure(.rexNotConnectableYet, authMethod: host.authMethod)
+            return
         case .herdrTUI:
             break
         }

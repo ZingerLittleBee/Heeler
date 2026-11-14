@@ -6,9 +6,15 @@ import Foundation
 /// everything before it demonstrably worked, everything after it is unknown.
 enum PreflightCheck: CaseIterable, Sendable {
     /// The checks a Host of this kind runs, in order. A tmux Host speaks no
-    /// protocol of Heeler's: its version is part of being installed.
+    /// protocol of Heeler's: its version is part of being installed. A Rex
+    /// Host's checks look for its socket and ask nothing of the server, which
+    /// this build does not connect to yet (ADR 0047).
     static func cases(for serverKind: ServerKind) -> [PreflightCheck] {
-        serverKind == .tmux ? allCases.filter { $0 != .protocolCompatible } : allCases
+        switch serverKind {
+        case .tmux: allCases.filter { $0 != .protocolCompatible }
+        case .rex: [.connection, .herdrInstalled, .serverRunning]
+        case .herdrTUI, .herdrCore, .unconfirmed: allCases
+        }
     }
 
     /// SSH reachable, credentials accepted, host key trusted.
@@ -34,6 +40,8 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.serverRunning, .herdrCore): String(localized: "herdr-core running")
         case (.herdrInstalled, .tmux): String(localized: "tmux installed")
         case (.serverRunning, .tmux): String(localized: "tmux server running")
+        case (.herdrInstalled, .rex): String(localized: "Rex installed")
+        case (.serverRunning, .rex): String(localized: "Rex server socket")
         case (.protocolCompatible, _): String(localized: "protocol compatible")
         }
     }
@@ -181,6 +189,10 @@ struct PreflightReport: Equatable, Sendable {
             check = .herdrInstalled
             hint = error.presentation.message
         case .tmuxServerNotRunning, .tmuxStartOnMac:
+            check = .serverRunning
+            hint = error.presentation.message
+        case .rexNotConnectableYet:
+            // Rex's checks ask nothing of its server; keep the closed taxonomy total.
             check = .serverRunning
             hint = error.presentation.message
         case .gitTimedOut:
