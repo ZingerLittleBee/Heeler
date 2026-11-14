@@ -119,6 +119,29 @@ struct RexConsoleTests {
         }
     }
 
+    /// A Rex Host lists Terminals only: the Agents list, its Host filter and
+    /// its issues leave it out, and the Terminals list keeps its problem.
+    @Test func onlyTheTerminalsListShowsARexHost() {
+        let rex = rex
+        let tmux = Host(
+            name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
+        let catalog = HostStore(volatileHosts: [rex, tmux])
+        let console = ConsoleStore()
+        defer { console.setHosts([]) }
+        console.setHosts([rex])
+
+        #expect(ConsoleView.listedHosts(on: .agents, in: catalog) == [tmux])
+        #expect(ConsoleView.listedHosts(on: .terminals, in: catalog) == [rex, tmux])
+        func issueHostIDs(on tab: ConsoleTab, filter: Set<Host.ID> = []) -> [Host.ID] {
+            ConsoleView.filteredHostIssues(on: tab, hosts: catalog, console: console, hostFilter: filter)
+                .map(\.hostID)
+        }
+        #expect(!issueHostIDs(on: .agents).contains(rex.id))
+        #expect(!issueHostIDs(on: .agents, filter: [rex.id]).contains(rex.id))
+        #expect(issueHostIDs(on: .terminals).contains(rex.id))
+        #expect(!issueHostIDs(on: .terminals, filter: [tmux.id]).contains(rex.id))
+    }
+
     /// The failure says what is missing and that no retry changes it.
     @Test func theStandingStateSaysThisBuildCannotConnectRex() {
         let error = TransportError.rexNotConnectableYet

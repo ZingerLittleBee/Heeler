@@ -92,6 +92,15 @@ enum ServerKind: String, Codable, Hashable, Sendable {
 
     var isConfirmed: Bool { self != .unconfirmed }
 
+    /// Whether this kind's Hosts report Agents. A Rex Host lists Terminals
+    /// only (ADR 0047).
+    var reportsAgents: Bool {
+        switch self {
+        case .herdrTUI, .herdrCore, .tmux: true
+        case .rex, .unconfirmed: false
+        }
+    }
+
     /// Whether Heeler's side of the Host exists for this kind: the plugin or
     /// the Host Helper behind Usage and Accounts. A Rex Host has neither.
     var hasHostIntegrations: Bool {

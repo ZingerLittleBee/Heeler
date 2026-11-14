@@ -21,6 +21,7 @@ struct RexHostModelTests {
 
     @Test func rexIsConfirmedWithoutHostIntegrations() {
         #expect(ServerKind.rex.isConfirmed)
+        #expect(!ServerKind.rex.reportsAgents)
         #expect(!ServerKind.rex.hasHostIntegrations)
         #expect(ServerKind.rex.displayName == "Rex")
         #expect(ServerKind.rex.rawValue == "rex")
@@ -355,12 +356,14 @@ struct RexHostCatalogTests {
         #expect(try persistedHostIDs(in: defaults, key: Self.rexKey) == [rex.id, future])
     }
 
-    @Test func aRexHostIsAConsoleHostWithoutIntegrationsOrLiveActivities() throws {
+    @Test func aRexHostIsAConsoleHostWithoutAgentsIntegrationsOrLiveActivities() throws {
         let rex = rexHost()
-        let store = HostStore(volatileHosts: [rex, unconfirmedHost()])
+        let tmux = tmuxHost()
+        let store = HostStore(volatileHosts: [rex, tmux, unconfirmedHost()])
 
-        #expect(store.consoleHosts == [rex])
-        #expect(store.integratedHosts.isEmpty)
+        #expect(store.consoleHosts == [rex, tmux])
+        #expect(store.agentHosts == [tmux])
+        #expect(store.integratedHosts == [tmux])
         #expect(!store.supportsLiveActivities(for: rex.id))
     }
 }

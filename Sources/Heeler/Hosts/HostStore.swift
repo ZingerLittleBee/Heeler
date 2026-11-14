@@ -412,10 +412,18 @@ final class HostStore {
         return Set(unread + hidden)
     }
 
-    /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
-    /// Server Kind is only in the Hosts list.
+    /// The confirmed Hosts: those the Console lists Terminals for, and those
+    /// Usage and the pickers look Hosts up in. A Host waiting for its Server
+    /// Kind is only in the Hosts list. The Agents list narrows these to
+    /// `agentHosts`.
     var consoleHosts: [Host] {
         hosts.filter(\.serverKind.isConfirmed)
+    }
+
+    /// The Hosts the Agents list shows: confirmed ones of a kind that reports
+    /// Agents, so never a Rex Host.
+    var agentHosts: [Host] {
+        consoleHosts.filter(\.serverKind.reportsAgents)
     }
 
     /// The Hosts Usage and Settings' per-Host pages show: those of a kind

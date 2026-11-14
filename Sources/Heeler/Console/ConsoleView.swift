@@ -274,6 +274,7 @@ struct ConsoleView: View {
             hosts: hosts,
             console: console,
             hostFilter: hostFilter,
+            issuesTab: shownListTab,
             pendingSavedChatRemoval: $pendingSavedChatRemoval,
             hostIssuesLastFailures: $hostIssuesLastFailures,
             isShowingHostIssues: $isShowingHostIssues,
@@ -1077,7 +1078,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: hosts.consoleHosts, hostFilter: hostFilterBinding,
+            hosts: Self.listedHosts(on: tab, in: hosts), hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -2425,7 +2426,7 @@ struct ConsoleView: View {
     private var hostSections: [ConsoleHostSection] {
         PerfTrace.span("console.list.host-sections") {
             listPresentation.sections(
-                hosts: hosts.consoleHosts,
+                hosts: hosts.agentHosts,
                 console: console,
                 filteredHostIDs: hostFilter,
                 searchQuery: agentSearchText)
@@ -2436,7 +2437,7 @@ struct ConsoleView: View {
         PerfTrace.span("console.list.workspace-cards") {
             ConsoleWorkspaceCard.cards(
                 listPresentation.workspaceSections(
-                    hosts: hosts.consoleHosts, console: console,
+                    hosts: hosts.agentHosts, console: console,
                     filteredHostIDs: hostFilter, searchQuery: agentSearchText))
         }
     }
@@ -2534,14 +2535,31 @@ struct ConsoleView: View {
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
         }
-        return filteredHostIssues
+        return filteredHostIssues(on: .agents)
     }
 
-    /// Every Host problem under the Host filter, as the flat lists show
-    /// them outside a search, and as their summary's sheet lists them.
-    private var filteredHostIssues: [ConsoleHostStatusPresentation] {
-        guard !hostFilter.isEmpty else { return hostIssues }
-        return hostIssues.filter { hostFilter.contains($0.hostID) }
+    /// Every problem of the Hosts `tab` lists, under the Host filter, as the
+    /// flat lists show them outside a search, and as their summary's sheet
+    /// lists them.
+    private func filteredHostIssues(on tab: ConsoleTab) -> [ConsoleHostStatusPresentation] {
+        Self.filteredHostIssues(on: tab, hosts: hosts, console: console, hostFilter: hostFilter)
+    }
+
+    /// The same for a view that reads the stores in an observation scope of
+    /// its own, as the sheet's reset does.
+    static func filteredHostIssues(
+        on tab: ConsoleTab, hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
+    ) -> [ConsoleHostStatusPresentation] {
+        let issues = console.hostIssues(for: listedHosts(on: tab, in: hosts))
+        guard !hostFilter.isEmpty else { return issues }
+        return issues.filter { hostFilter.contains($0.hostID) }
+    }
+
+    /// The Hosts `tab`'s list and filter show. The Agents list leaves out a
+    /// Host whose kind reports no Agents, such as a Rex Host, which only
+    /// Terminals list.
+    static func listedHosts(on tab: ConsoleTab, in hosts: HostStore) -> [Host] {
+        tab == .agents ? hosts.agentHosts : hosts.consoleHosts
     }
 
     /// The one selected Host's name, which the empty state names; empty for
@@ -2563,12 +2581,6 @@ struct ConsoleView: View {
         let origin: ConsoleTab?
     }
 
-    /// One actionable status per Host. A disconnected session takes priority;
-    /// otherwise a connected Host can still have a failing snapshot RPC.
-    private var hostIssues: [ConsoleHostStatusPresentation] {
-        console.hostIssues(for: hosts.consoleHosts)
-    }
-
     /// How the Console's sheets present, resolved against this view.
     private var sheetPresentation: ConsoleSheetPresentation {
         ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
@@ -2577,8 +2589,10 @@ struct ConsoleView: View {
     private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
         -> some View
     {
+        // The problems of the list the sheet opened from: a Rex Host's only
+        // from Terminals.
         ConsoleHostIssuesSheet(
-            issues: filteredHostIssues,
+            issues: filteredHostIssues(on: shownListTab),
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,
             onOpenHost: { id in
@@ -2606,7 +2620,9 @@ struct ConsoleView: View {
     }
 
     private var hostIssuesSheetExplained: Set<Host.ID> {
-        Set(filteredHostIssues.map(\.hostID).filter { hostIssuesSheetDetail(for: $0) != nil })
+        Set(
+            filteredHostIssues(on: shownListTab).map(\.hostID)
+                .filter { hostIssuesSheetDetail(for: $0) != nil })
     }
 
     private func hostIssuesSheetDetail(for id: Host.ID) -> HostConnectionDetailPresentation? {
@@ -3223,6 +3239,7 @@ private struct ConsoleNoticesAndResets: ViewModifier {
     let hosts: HostStore
     let console: ConsoleStore
     let hostFilter: Set<Host.ID>
+    let issuesTab: ConsoleTab
     @Binding var pendingSavedChatRemoval: ConsoleAgent?
     @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
     @Binding var isShowingHostIssues: Bool
@@ -3238,6 +3255,7 @@ private struct ConsoleNoticesAndResets: ViewModifier {
                 hosts: hosts,
                 console: console,
                 hostFilter: hostFilter,
+                issuesTab: issuesTab,
                 hostIssuesLastFailures: $hostIssuesLastFailures,
                 isShowingHostIssues: $isShowingHostIssues,
                 connectionDetailRequest: $connectionDetailRequest))
@@ -3255,6 +3273,8 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
     let hosts: HostStore
     let console: ConsoleStore
     let hostFilter: Set<Host.ID>
+    /// The list tab the issues sheet opens from, whose Hosts it lists.
+    let issuesTab: ConsoleTab
     @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
     @Binding var isShowingHostIssues: Bool
     @Binding var connectionDetailRequest: ConsoleView.ConnectionDetailRequest?
@@ -3263,13 +3283,8 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
         let needsFilteredIssues = !hostIssuesLastFailures.isEmpty || isShowingHostIssues
         let filteredIssues: [ConsoleHostStatusPresentation] =
             if needsFilteredIssues {
-                if hostFilter.isEmpty {
-                    console.hostIssues(for: hosts.consoleHosts)
-                } else {
-                    console.hostIssues(for: hosts.consoleHosts).filter {
-                        hostFilter.contains($0.hostID)
-                    }
-                }
+                ConsoleView.filteredHostIssues(
+                    on: issuesTab, hosts: hosts, console: console, hostFilter: hostFilter)
             } else {
                 []
             }
