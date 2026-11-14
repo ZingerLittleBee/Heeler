@@ -69,7 +69,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Start a new Live Activity when you open Heeler with Agents still working after iOS ended the last one, such as at its eight-hour limit. Heeler used to take over the ended activity, which shows no more updates, and wait for an Agent to change. Opening Heeler also retries a start iOS refused while Heeler was in the background. An activity you swipe away still stays away until an Agent changes.
+- Start a new Live Activity when you open Heeler with Agents still working after iOS ended the last one, such as at its eight-hour limit. Heeler used to take over the ended activity, which shows no more updates, and wait for an Agent to change. Opening Heeler also retries a start iOS refused while Heeler was in the background. An activity you swipe away still stays away until an Agent changes. (PR #737)
 - End Check Again's spinner in Chat on iPhone once Heeler has checked for the conversation, instead of leaving it spinning after SwiftUI's spurious disappear stops the view's task. (PR #728)
 - Align Chat's notice rows, such as finished background commands, with its reasoning and tool rows: their icons and titles now share the same column and text size, their details indent under the title, and every inline row icon fits a uniform square so wide symbols match narrower ones. (PR #729)
 - Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
