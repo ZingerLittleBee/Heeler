@@ -28,8 +28,7 @@ an experiment that ships switched off.
 - Detection works without the Rex command-line tool. It tests files in the
   detection exec Heeler already runs: whether each place a server listens holds
   a socket, whether the account owns it and may read and write it, and whether
-  Rex looks installed. It never runs `rex`. Should a later change ever run it,
-  it runs with `REX_AUTOSTART=0`.
+  Rex looks installed. It never runs `rex`.
   - On macOS the place is the account's
     `~/Library/Application Support/rex/server.sock`, whose path has a space.
   - On Linux the places are, in order, `$REX_RUNTIME_DIR/server.sock`,
