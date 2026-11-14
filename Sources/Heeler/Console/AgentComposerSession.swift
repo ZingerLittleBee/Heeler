@@ -61,14 +61,19 @@ final class AgentComposerSession {
     /// The terminal page's Send. `attach` is that window's Attach, which a
     /// herdr-core Send types into, since another window can show the same
     /// Agent's Composer.
-    func terminalSendPolicy(attach: AgentAttachStore?) -> ComposerDeliveryPolicy {
+    func terminalSendPolicy(attach: AgentAttachStore?, kind: String? = nil) -> ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.terminal
         policy.coreAttach = attach
         let settings = settingOverrides
+        let isClaude = kind == nil || kind == "claude"
         policy.preflight = { [weak self] _ in
             if settings.switchingSetting != nil {
                 return .inputNotReady(
-                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
+                    isClaude
+                        ? String(localized: "Claude Code is reading or changing a setting. Try again in a moment.")
+                        : String(
+                            localized: "The Agent is reading or changing a setting. Try again in a moment.",
+                            comment: "Terminal input refusal while an Agent reads or changes a setting."))
             }
             return self?.heldSend()
         }

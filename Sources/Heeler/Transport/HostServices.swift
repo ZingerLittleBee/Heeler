@@ -32,6 +32,10 @@ protocol HostServices: Sendable {
     /// as `listSkills`.
     func readSkillFile(atPath path: String) async throws -> String
 
+    /// Lists the models Antigravity CLI offers on this Host (`agy models`),
+    /// grouped into families and effort levels for Chat's model menu.
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice]
+
     /// Reads one byte range of a Host file. A file that only ever grows — an
     /// Agent's session transcript — is followed by asking for what has not
     /// been read yet, so a screen can show a running figure without pulling
@@ -148,6 +152,10 @@ extension HostServices {
     }
 
     func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill] {
+        []
+    }
+
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice] {
         []
     }
 

@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 3
+    static let revision = 5
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -200,6 +200,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
 
         private mutating func readPrompt(_ step: AgyStep) {
             closeForNextPrompt()
+            if let selection = step.modelSelection {
+                transcript.model = selection.model
+                transcript.effort = selection.effort
+            }
             let request = step.request
             let text = request?.text ?? ""
             let images = step.media.filter { $0.mimeType?.hasPrefix("image/") == true }.count
@@ -250,6 +254,10 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         // MARK: Agent steps
 
         private mutating func readResponse(_ step: AgyStep) {
+            if let resolved = step.plannerModel {
+                transcript.model = resolved.model
+                transcript.effort = resolved.effort
+            }
             ensureOpen()
             note(step)
             // Calls an earlier response left without a result never get one.

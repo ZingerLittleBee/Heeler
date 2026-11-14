@@ -52597,6 +52597,29 @@
         }
       }
     },
+    "The Agent is reading or changing a setting. Try again in a moment." : {
+      "comment" : "Terminal input refusal while an Agent reads or changes a setting.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントが設定を読み取り中または変更中です。しばらくしてから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 正在读取或更改设置。请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 正在讀取或變更設定。請稍後再試。"
+          }
+        }
+      }
+    },
     "The Agent is showing a dialog. Answer it in the terminal first." : {
       "localizations" : {
         "ja" : {
@@ -52659,6 +52682,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 仍在啟動中，因此沒有送出任何內容。請稍後再試。"
+          }
+        }
+      }
+    },
+    "The Agent is switching a setting. Try again in a moment." : {
+      "comment" : "Chat status when input is refused because the Agent is switching a setting.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントが設定を切り替えています。しばらくしてから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 正在切换设置。请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 正在切換設定。請稍後再試。"
           }
         }
       }

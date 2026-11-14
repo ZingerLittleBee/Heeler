@@ -114,6 +114,7 @@ final class ConsoleStore {
     /// so a reconnect naturally invalidates, and evicted per Host on insert
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
+    @ObservationIgnored private var agyModelsCache: [Host.ID: (generation: UInt64, models: [AgyModelCatalog.Choice])] = [:]
     /// Status events already converge through each Host's one pane-scoped
     /// subscription. Composers consume this fan-out instead of opening a
     /// second events channel that could outlive the connection snapshot.
@@ -765,6 +766,23 @@ final class ConsoleStore {
         try await projection(for: hostID).withHostServices { services in
             try await services.readSkillFile(atPath: path)
         }
+    }
+
+    /// Antigravity CLI's model catalog on a Host (`agy models`), cached per
+    /// Host connection once non-empty so subsequent agy Chats open the menu
+    /// immediately while an unauthenticated or transient empty read retries.
+    func fetchAgyModels(on hostID: Host.ID) async throws -> [AgyModelCatalog.Choice] {
+        let generation = hostConnectionGenerations[hostID] ?? 0
+        if let cached = agyModelsCache[hostID], cached.generation == generation {
+            return cached.models
+        }
+        let models = try await projection(for: hostID).withHostServices { services in
+            try await services.listAgyModels()
+        }
+        if !models.isEmpty {
+            agyModelsCache[hostID] = (generation, models)
+        }
+        return models
     }
 
     /// Shared across Changes presentations and the Agents list's row reads

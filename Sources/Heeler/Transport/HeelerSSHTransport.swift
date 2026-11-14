@@ -806,6 +806,17 @@ actor HeelerSSHTransport: Transport {
         return content
     }
 
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice] {
+        guard try await hostPlatform() == .posix else { return [] }
+        let result = try await runBoundedScript(
+            AgyModelCatalog.script, feature: String(localized: "Chat"),
+            deadline: chatQueryTimeout,
+            remoteSeconds: max(1, chatQueryTimeout.components.seconds - 2),
+            timeoutMarkerPrefix: "__HEELER_AGY_MODELS_TIMEOUT_", timedOut: .hostFileTimedOut)
+        guard result.exitStatus == 0 else { return [] }
+        return AgyModelCatalog.parse(result.stdout)
+    }
+
     func listAgents() async throws -> [Agent] {
         try await request(method: "agent.list", decoding: AgentListResponse.self)
             .agents.map(Agent.init)

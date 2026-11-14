@@ -1384,7 +1384,7 @@ struct AgentTerminalView: View {
 
     /// This window's Attach, since another window can show the same Agent's Composer.
     private var sendPolicy: ComposerDeliveryPolicy {
-        session.terminalSendPolicy(attach: attach)
+        session.terminalSendPolicy(attach: attach, kind: agent.agent.kind)
     }
 
     private var composerChrome: some View {

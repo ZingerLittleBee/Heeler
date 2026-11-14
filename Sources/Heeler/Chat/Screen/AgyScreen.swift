@@ -91,6 +91,106 @@ struct AgyScreen: Sendable {
         var description: String
     }
 
+    /// The model and optional effort agy shows at the right edge of its footer
+    /// (`[mode · ]Model[ · effort][ · N task(s) · /tasks]`).
+    struct FooterModel: Equatable, Sendable {
+        var model: String
+        var effort: String?
+    }
+
+    /// Local setting slash commands Chat types into agy's input box.
+    enum SettingCommand: Equatable, Sendable {
+        case model
+        case effort
+
+        var echo: String {
+            switch self {
+            case .model: "> /model"
+            case .effort: "> /effort"
+            }
+        }
+    }
+
+    /// What agy prints above the input box in answer to `/model <slug>` or
+    /// `/effort <level>`. agy echoes `> /model` or `> /effort` without the
+    /// argument, so both echo count and the rows above the box are compared
+    /// against the pre-command snapshot to stay sound on a full screen.
+    struct CommandOutcome: Equatable, Sendable {
+        var echoes = 0
+        var rowsAboveBox: [String] = []
+        var isDraftEmpty = false
+        var result: Bool?
+        var value: String?
+
+        init(of command: SettingCommand, on screen: ANSIScreen) {
+            let agy = AgyScreen(screen)
+            let rows = screen.rows
+            let live = (rows.lastIndex(where: AgyScreen.isExitLine) ?? -1) + 1
+            guard !agy.hasExited, let box = agy.composer, live <= box.topRule else { return }
+            isDraftEmpty = box.draft.isEmpty && agy.below == nil
+            let above = Array(rows[live..<box.topRule])
+            rowsAboveBox = above.map(\.trimmedText)
+            echoes = rowsAboveBox.filter { $0 == command.echo }.count
+            guard let parsed = Self.parseLatestBlock(in: above, command: command) else { return }
+            result = parsed.result
+            value = parsed.value
+        }
+
+        func answered(since before: CommandOutcome) -> Bool? {
+            guard isDraftEmpty, echoes > before.echoes || rowsAboveBox != before.rowsAboveBox else {
+                return nil
+            }
+            return result
+        }
+
+        private static func parseLatestBlock(
+            in above: [ScreenRow], command: SettingCommand
+        ) -> (result: Bool, value: String?)? {
+            guard let end = above.lastIndex(where: { !$0.isBlank }) else { return nil }
+            let trimmed = above[...end]
+            let windowStart = max(0, trimmed.count - 8)
+            guard let bracket = (windowStart..<trimmed.count).last(where: {
+                trimmed[$0].trimmedText.hasPrefix("⎿")
+            }), bracket > 0 else { return nil }
+            let header = trimmed[bracket - 1].trimmedText
+            guard header == command.echo || header == "⚠ Warning" else { return nil }
+            var parts = [
+                String(trimmed[bracket].trimmedText.dropFirst()).trimmingCharacters(in: .whitespaces)
+            ]
+            if bracket + 1 < trimmed.count {
+                for cont in trimmed[(bracket + 1)...] {
+                    guard !cont.isBlank else { continue }
+                    let contText = cont.trimmedText
+                    guard (cont.indent ?? 0) >= 4,
+                        !contText.hasPrefix(">"), !contText.hasPrefix("●"),
+                        !contText.hasPrefix("○"), !contText.hasPrefix("─"),
+                        !contText.hasPrefix("⚠")
+                    else { return nil }
+                    parts.append(contText)
+                }
+            }
+            let message = parts.filter { !$0.isEmpty }.joined(separator: " ")
+            guard !message.isEmpty else { return nil }
+            if header == "⚠ Warning" {
+                return (false, nil)
+            }
+            switch command {
+            case .model:
+                for prefix in ["Model set to ", "Model already set to "] where message.hasPrefix(prefix) {
+                    let confirmed = message.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+                    return confirmed.isEmpty ? (false, nil) : (true, confirmed)
+                }
+                return (false, nil)
+            case .effort:
+                if message.hasPrefix("Effort set to ") {
+                    let confirmed = message.dropFirst("Effort set to ".count).trimmingCharacters(in: .whitespaces)
+                    return confirmed.isEmpty ? (false, nil) : (true, confirmed)
+                }
+                return (false, nil)
+            }
+        }
+    }
+
     let composer: Composer?
     /// The `/tasks` panel under the box, when it shows.
     let taskPanel: TaskPanel?
@@ -103,6 +203,12 @@ struct AgyScreen: Sendable {
     /// the mode, model and effort show at the right, as with a draft. Nil
     /// when something other than the footer is drawn under the box.
     let footerHint: String?
+    /// The footer's right-aligned model and optional effort, when visible.
+    let footerModel: FooterModel?
+    /// The welcome banner's model and optional effort before any reply or
+    /// command output has been printed, used on narrow screens where the footer
+    /// drops its right-aligned model.
+    let welcomeModel: FooterModel?
     /// The first row of what agy draws under the box in place of the
     /// footer: the `/` and `@` popups, the `?` help, the `/model` picker,
     /// the artifact review panel or the `/tasks` panel, each of which takes
@@ -151,6 +257,7 @@ struct AgyScreen: Sendable {
         let live = (rows.lastIndex(where: Self.isExitLine) ?? -1) + 1
         var composer = Self.composer(in: rows, from: live, ruleWidth: ruleWidth)
         var footerHint: String?
+        var footerRow: ScreenRow?
         var below: String?
         var showsRunningTasks = false
         if let box = composer {
@@ -164,9 +271,11 @@ struct AgyScreen: Sendable {
             }
             let later = rows.indices.contains(index) ? rows[(index + 1)...].filter { !$0.isBlank } : []
             if later.isEmpty {
-                footerHint = rows.indices.contains(index) ? Self.hint(of: rows[index]) : ""
+                footerRow = rows.indices.contains(index) ? rows[index] : nil
+                footerHint = footerRow.map(Self.hint) ?? ""
             } else {
                 below = rows[index...].first { !$0.isBlank }?.trimmedText
+                footerRow = rows[index...].last { !$0.isBlank }
             }
         }
         // Without colors a mode's hint is as plain as a draft. It is one of
@@ -191,8 +300,15 @@ struct AgyScreen: Sendable {
             hint.hasPrefix("press ") && hint.contains(" again to ") && !Self.readyHints.contains(hint) ? hint : nil
         }
         let tail = rows.dropFirst((composer?.bottomRule ?? -1) + 1).filter { !$0.isBlank }.suffix(Self.exitTailRows)
-        hasExited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
-        showsDialog = composer == nil && Self.showsDialog(rows)
+        let exited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
+        let dialog = composer == nil && Self.showsDialog(rows)
+        hasExited = exited
+        showsDialog = dialog
+        if footerRow == nil, dialog, live < rows.count {
+            footerRow = rows[live...].last { !$0.isBlank }
+        }
+        footerModel = exited ? nil : footerRow.flatMap(Self.footerModel)
+        welcomeModel = exited ? nil : Self.welcomeModel(in: rows, from: live, upTo: composer?.topRule ?? rows.count)
         showsRunningTurn = footerHint.map(Self.workingHints.contains) == true || Self.showsSpinner(rows)
         self.showsRunningTasks = showsRunningTasks
     }
@@ -350,6 +466,71 @@ struct AgyScreen: Sendable {
         let text = row.trimmedText
         let left = text.components(separatedBy: "  ").first ?? text
         return left.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static let footerModePrefixes = ["accept-edits · ", "auto · ", "plan · "]
+    private static let footerNonModelPrefixes = [
+        "↑/↓ ", "Keyboard:", "enter ", "? for ", "esc to ", "press ", "Press ", "activated bash mode",
+    ]
+
+    /// The footer's right side (`[mode · ]Model[ · effort][ · N task(s) · /tasks]`),
+    /// ignoring narrow footers where only the left hint fits.
+    private static func footerModel(of row: ScreenRow) -> FooterModel? {
+        guard let indent = row.indent else { return nil }
+        let trimmed = ScreenRow.normalizedSpaces(row.text).trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        var right: String
+        if indent <= 2 {
+            if let gap = trimmed.firstRange(of: /\s{2,}/) {
+                right = String(trimmed[gap.upperBound...])
+            } else if row.run(at: indent)?.style.isDim == true
+                || footerModePrefixes.contains(where: { trimmed.hasPrefix($0) })
+            {
+                right = trimmed
+            } else {
+                return nil
+            }
+        } else {
+            right = trimmed
+        }
+        right = right.trimmingCharacters(in: .whitespaces)
+        guard !right.isEmpty, !right.hasSuffix(cutMark),
+            !footerNonModelPrefixes.contains(where: { right.hasPrefix($0) })
+        else { return nil }
+        right = right.replacing(/\s*·\s*\d+\s+task\(s\)(?:\s*·\s*\/tasks)?$/, with: "")
+        for prefix in footerModePrefixes where right.hasPrefix(prefix) {
+            right = String(right.dropFirst(prefix.count))
+            break
+        }
+        if let sep = right.range(of: " · ", options: .backwards) {
+            let head = right[..<sep.lowerBound].trimmingCharacters(in: .whitespaces)
+            let tail = right[sep.upperBound...].trimmingCharacters(in: .whitespaces)
+            if !head.isEmpty, AgyModelCatalog.effortOrder.contains(tail) {
+                return FooterModel(model: head, effort: tail)
+            }
+        }
+        let model = right.trimmingCharacters(in: .whitespaces)
+        return model.isEmpty ? nil : FooterModel(model: model, effort: nil)
+    }
+
+    /// Antigravity CLI's startup banner (`Antigravity CLI <version>`, account,
+    /// `<Model>`, `<cwd>`) when no conversation output or slash command sits
+    /// between it and the input box.
+    private static func welcomeModel(in rows: [ScreenRow], from start: Int, upTo end: Int) -> FooterModel? {
+        guard start < end else { return nil }
+        let slice = rows[start..<end]
+        guard let header = slice.indices.last(where: {
+            rows[$0].trimmedText.wholeMatch(of: /^Antigravity CLI [0-9]+\.[0-9]+\S*$/) != nil
+        }), header + 3 < end else { return nil }
+        let modelRow = rows[header + 2].trimmedText
+        let pathRow = rows[header + 3].trimmedText
+        guard !modelRow.isEmpty, !modelRow.hasSuffix(cutMark),
+            pathRow.hasPrefix("/") || pathRow.hasPrefix("~")
+                || pathRow.wholeMatch(of: /^[A-Za-z]:[\\\/].*/) != nil,
+            rows[(header + 4)..<end].allSatisfy(\.isBlank)
+        else { return nil }
+        let resolved = AgyModelCatalog.resolveDisplayLabel(modelRow, in: AgyModelCatalog.defaultChoices)
+        return FooterModel(model: resolved.model, effort: resolved.effort)
     }
 
     private static let exitLine = "Resume with -c"
