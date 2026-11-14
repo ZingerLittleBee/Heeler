@@ -56,13 +56,14 @@ enum WebSocketError: Error, Sendable {
 /// Ending: `close` sends a close frame and waits briefly for the peer's
 /// answer. A peer's close frame is answered with its own code, and once the
 /// messages that arrived before it are received, `receive` throws
-/// `.closedByPeer` with the peer's code and reason. A cancelled `receive`
-/// ends the link at once, with no close frame. However it ends, the reader
-/// and writer stop and the channel is closed. Ending is explicit: a dropped
-/// link stays open. Its reader keeps reading until the channel ends, unless
-/// read-ahead has stopped it; then nothing reads again, and the link and its
-/// channel live until the SSH session closes. End every link you are done
-/// with by `close` or by cancelling a `receive`.
+/// `.closedByPeer` with the peer's code and reason. `disconnect`, or a
+/// cancelled `receive`, ends the link at once, with no close frame. However
+/// it ends, the reader and writer stop and the channel is closed. Ending is
+/// explicit: a link the caller lets go of stays open. Its reader keeps
+/// reading until the channel ends, unless read-ahead has stopped it; then
+/// nothing reads again, and the link and its channel live until the SSH
+/// session closes. End every link you are done with by `close`,
+/// `disconnect`, or cancelling a `receive`.
 actor WebSocketLink {
     typealias Sleep = @Sendable (Duration) async throws -> Void
 
@@ -247,6 +248,16 @@ actor WebSocketLink {
         }
         await closeTask?.value
         return peerClose
+    }
+
+    /// Ends the link at once with no close frame, as a connection that
+    /// dropped does, and returns once its channel is closed. A server that
+    /// keeps a client whose connection dropped, as Rex does for a while,
+    /// still keeps this one. A link that already finished only waits; one
+    /// still waiting for the peer's answer to its close frame stops waiting.
+    func disconnect() async {
+        if closeTask == nil { abandon() }
+        await closeTask?.value
     }
 
     private func send(_ opcode: WebSocketOpcode, payload: Data) async throws {
