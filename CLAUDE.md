@@ -18,6 +18,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
 - **RPC, subscriptions, launch/input, or scrolling compatibility:** consult
   [versioned herdr and tmux observations](docs/agents/herdr-compatibility.md). Check each
   observation's version before applying it to a newer server.
+- **Rex control connection, inventory, events or resume:** consult
+  [versioned Rex observations](docs/agents/rex-compatibility.md), checking the
+  Rex version each names.
 
 ## Architecture
 

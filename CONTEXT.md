@@ -28,8 +28,17 @@ socket's path. Heeler never starts the server and never runs the `rex`
 command-line tool to find it. It lists Terminals only: no Agent status, Chat,
 Composer, notifications, Live Activities or Usage. Experimental, behind a
 switch that is off by default; with it off, stored Rex Hosts stay saved and
-unlisted (ADR 0047).
+unlisted (ADR 0047). One control connection follows the whole server: every
+session's terminals, kept current by Rex's events and read again after any
+new connection. Another server instance on the socket is another server, as
+with tmux (ADR 0048).
 _Avoid_: Rex session (for the Host), Rex app (for the server)
+
+**Detached Terminal**:
+A Rex terminal block that belongs to a session but to none of its windows. It
+is still the user's terminal: the Console lists a session's Detached Terminals
+under one Tab of their own, named Detached, after its windows (ADR 0048).
+_Avoid_: hidden terminal, orphan
 
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
@@ -179,7 +188,9 @@ ordinary shell — a workspace's root pane starts as a shell. Used as an address
 (`pane_id`), never as a layout concept in this app. On Herdr TUI it is herdr's
 pane; on herdr-core each Terminal is one Pane, addressed by the Terminal's
 address; on tmux it is tmux's pane, whose address holds for one run of the tmux
-server: after a restart its Panes are new, even where tmux reuses an id.
+server: after a restart its Panes are new, even where tmux reuses an id. On
+Rex it is a terminal block, addressed by its session and block; blocks that
+are not terminals are not Panes.
 _Avoid_: window, tile
 
 **Tab**:
@@ -187,7 +198,9 @@ An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
 is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
 Workspace, one Terminal's own Tab. A Terminal without desktop labels started
 from inside another, such as a subagent, joins that Terminal's Tab as another
-Pane. On tmux it is a tmux window.
+Pane. On tmux it is a tmux window. On Rex it is a Rex window, its Panes in
+reading order, tiled before floating; a session's Detached Terminals share one
+Tab of their own.
 _Avoid_: window, page
 
 **Terminal**:
@@ -227,7 +240,9 @@ only while that app runs on the Host; a derived Workspace has no name of its
 own. On tmux it is a tmux session, named and ordered as tmux shows it, and
 Heeler keeps no organization of its own there either; a window several
 sessions share, grouped or linked, shows once, under the one with the lowest
-id, and the sessions Heeler keeps for showing Panes are not Workspaces. New
+id, and the sessions Heeler keeps for showing Panes are not Workspaces. On
+Rex it is a Rex session, named and ordered as Rex shows it; one with no
+terminal is not listed. New
 Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)

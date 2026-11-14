@@ -119,10 +119,8 @@ an experiment that ships switched off.
 
 ## Consequences
 
-- The Console builds a projection for a Rex Host that never dials and stands
-  at a failure saying this build cannot connect to Rex yet. Later changes
-  replace it with the connection, the Terminal inventory and the Attach. The
-  Host's checks already connect.
+- The Console connects a Rex Host and lists its Terminals as ADR 0048 says;
+  opening one is a later change. The Host's checks connect on their own.
 - Each Console projection now says what a detail keeps to when the Host's
   inventory moves on, instead of the store asking for herdr-core or tmux by
   name, so a fourth kind adds its own answers.
