@@ -4,7 +4,7 @@ The production implementation supersedes the original UI prototype. `AgentTitleR
 
 ## Behavior
 
-- Save applies the manually entered title to Claude Code, Codex, Pi, OMP, Grok, or OpenCode.
+- Save applies the manually entered title to Claude Code, Codex, Pi, OMP, Grok, OpenCode, or Antigravity CLI.
 - Generate Automatically invokes native title generation and applies the result immediately for Claude Code, Codex, and OMP. Other Agents show a disabled action with an explanation.
 - Cancel before an operation writes nothing. Editing and dismissal are disabled while an operation is in progress.
 - The operation requires an idle Agent, an empty native input, and a stable conversation identity. A changed conversation or an uncertain result stops further writes.

@@ -101,25 +101,25 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text."
+            "value" : "Heeler records your voice when you tap the microphone in the Composer, and turns it into text on this device or with the speech service you chose in Settings."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は、コンポーザーのマイクをタップしたときにあなたの声を録音し、設定で選択した音声サービスに録音を送ってテキストに変換します。"
+            "value" : "Heeler は、コンポーザーのマイクをタップしたときにあなたの声を録音し、このデバイス上で、または設定で選択した音声サービスでテキストに変換します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当你轻点输入框中的麦克风时，Heeler 会录下你的语音，并将录音发送到你在“设置”中选择的语音服务，转换为文字。"
+            "value" : "当你轻点输入框中的麦克风时，Heeler 会录下你的语音，并在本设备上或通过你在“设置”中选择的语音服务转换为文字。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "當你點選輸入框中的麥克風時，Heeler 會錄下你的聲音，並將錄音傳送到你在「設定」中選擇的語音服務，轉換成文字。"
+            "value" : "當你點選輸入框中的麥克風時，Heeler 會錄下你的聲音，並在這部裝置上或透過你在「設定」中選擇的語音服務轉換成文字。"
           }
         }
       }

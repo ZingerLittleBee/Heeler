@@ -171,8 +171,7 @@ struct AgyScreen: Sendable {
         }
         // Without colors a mode's hint is as plain as a draft. It is one of
         // agy's hints over `? for shortcuts`, which a typed key clears (117,
-        // 129), or over a running turn's footer, which a draft keeps (33)
-        // but which holds a send either way. An armed exit's footer keeps
+        // 129), or over a running turn's footer. An armed exit's footer keeps
         // a draft too (07), so over it the same text reads as typed.
         if let box = composer, box.palette == .colorless,
             let footer = footerHint, Self.modeHintFooters.contains(footer),

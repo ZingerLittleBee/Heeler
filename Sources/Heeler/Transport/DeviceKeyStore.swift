@@ -12,6 +12,8 @@ enum DeviceKeyStoreError: Error, Equatable {
 /// raw bytes exist only inside the backing `SecretStore` (the Keychain in the
 /// app) and the in-memory CryptoKit object; there is no export path.
 struct DeviceKeyStore: Sendable {
+    private static let lock = NSLock()
+
     private let secrets: any SecretStore
     private let account: String
 
@@ -25,22 +27,33 @@ struct DeviceKeyStore: Sendable {
 
     func loadOrCreate() throws -> DeviceKey {
         if let stored = try secrets.read(account: account) {
-            guard let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: stored) else {
-                throw DeviceKeyStoreError.storedKeyCorrupt
+            return try Self.parseKey(stored)
+        }
+        return try Self.lock.withLock {
+            if let stored = try secrets.read(account: account) {
+                return try Self.parseKey(stored)
             }
+            let key = Curve25519.Signing.PrivateKey()
+            try secrets.write(key.rawRepresentation, account: account)
             return DeviceKey(privateKey: key)
         }
-        let key = Curve25519.Signing.PrivateKey()
-        try secrets.write(key.rawRepresentation, account: account)
-        return DeviceKey(privateKey: key)
     }
 
     /// Replaces the stored key only after a user-approved recovery flow. This
     /// is deliberately separate from `loadOrCreate`: silent replacement would
     /// invalidate access to every Host that trusts the previous public key.
     func replaceStoredKey() throws -> DeviceKey {
-        let key = Curve25519.Signing.PrivateKey()
-        try secrets.write(key.rawRepresentation, account: account)
+        try Self.lock.withLock {
+            let key = Curve25519.Signing.PrivateKey()
+            try secrets.write(key.rawRepresentation, account: account)
+            return DeviceKey(privateKey: key)
+        }
+    }
+
+    private static func parseKey(_ stored: Data) throws -> DeviceKey {
+        guard let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: stored) else {
+            throw DeviceKeyStoreError.storedKeyCorrupt
+        }
         return DeviceKey(privateKey: key)
     }
 }

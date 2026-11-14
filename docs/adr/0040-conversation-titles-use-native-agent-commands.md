@@ -10,11 +10,11 @@ herdr's `agent.rename` changes its restricted management alias, not the Agent's 
 
 Keep the existing native More menu and list context menu. Both open one Rename sheet, also available from the terminal detail. Save applies the typed conversation title. Generate Automatically is a second, immediate rename action: it invokes native generation and dismisses only after confirmation. Cancel before either action writes nothing; dismissal is disabled while an action is in flight.
 
-`AgentTitleRenameStore` owns validation, native command/dialog sequencing, and result reconciliation. It sends through the existing Console projection and SSH transport; it never writes harness files. Supported Herdr TUI programs are Claude Code, Codex, Pi, Oh My Pi, Grok Build, and OpenCode. herdr-core does not yet offer this action because its Agent identity and typing contracts need a separate adapter. Other programs do not offer Rename.
+`AgentTitleRenameStore` owns validation, native command/dialog sequencing, and result reconciliation. It sends through the existing Console projection and SSH transport; it never writes harness files. Supported Herdr TUI programs are Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI. herdr-core does not yet offer this action because its Agent identity and typing contracts need a separate adapter. Other programs do not offer Rename.
 
-- Claude, Codex, OMP and Grok take `/rename <title>`; Pi takes `/name <title>`.
+- Claude, Codex, OMP, Grok and Antigravity CLI take `/rename <title>`; Pi takes `/name <title>`.
 - OpenCode 2.0.32 uses its Ctrl+R Rename session dialog. Every field change is preceded by a same-session and dialog check, and Enter follows an exact field read-back.
-- Claude, Codex and OMP expose native generation via `/rename`. Codex's generated suggestion requires a separately checked confirmation. Pi, Grok and OpenCode keep manual editing while the generation button explains that generation is unavailable here. This does not claim those programs can never support another generation API.
+- Claude, Codex and OMP expose native generation via `/rename`. Codex's generated suggestion requires a separately checked confirmation. Pi, Grok, OpenCode and Antigravity CLI keep manual editing while the generation button explains that generation is unavailable here. This does not claim those programs can never support another generation API.
 
 The operation pins terminal, pane, workspace, tab, program, connection generation, and the reported conversation. An absent session or a nonempty/unrecognized input box sends nothing. It starts only for an idle/done Agent. A per-Agent lease prevents concurrent rename operations and other Console input on this device. Fresh reads precede writes; there is no atomic session-conditional input RPC, so another client changing the program between a read and write remains a protocol limitation.
 

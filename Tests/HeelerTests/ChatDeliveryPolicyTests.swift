@@ -134,11 +134,9 @@ struct ChatDeliveryPolicyTests {
     /// turn is held before the session check and the screen read, which on
     /// herdr-core kept the message showing as Sending. The idle screen says
     /// the report alone held it.
-    @Test(arguments: [ChatProgram.agy, .omp, .opencode])
+    @Test(arguments: [ChatProgram.omp, .opencode])
     func reportedWorkingHoldsBeforeTheChecks(program: ChatProgram) async throws {
         let holds: [ChatProgram: String] = [
-            .agy:
-                "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal.",
             .omp: "The Agent isn't taking messages: Oh My Pi is working. Send once it's idle, or steer from the terminal.",
             .opencode:
                 "The Agent isn't taking messages: OpenCode is working. Send once it's idle, or steer from the terminal.",
@@ -153,7 +151,7 @@ struct ChatDeliveryPolicyTests {
 
     /// A program that queues or steers a message sent during a turn still
     /// gets every check while herdr reports Working, and its screen decides.
-    @Test(arguments: [ChatProgram.claude, .codex, .pi, .grok])
+    @Test(arguments: [ChatProgram.claude, .codex, .pi, .grok, .agy])
     func reportedWorkingStillChecksAProgramThatQueues(program: ChatProgram) async throws {
         let calls = Calls()
         let preflight = try Self.checkedPreflight(program, activity: .working, calls: calls)
@@ -289,22 +287,32 @@ struct ChatDeliveryPolicyTests {
         #expect(reads.count == 1)
     }
 
-    /// Antigravity CLI's command dialog replaced this pending command row
-    /// (agy-67 to agy-69), and herdr reports its file dialogs idle, so the
-    /// message waits for the turn to end, whatever herdr reports.
+    /// Antigravity CLI queues a message sent into an empty box while a turn
+    /// runs, even when one is already queued, while a draft or dialog on
+    /// screen still holds.
     @Test(arguments: [ChatAgentActivity.idle, .working, .unknown])
-    func agyWorkingHoldsWithItsOwnReason(activity: ChatAgentActivity) async throws {
+    func agyWorkingSendsIntoAnEmptyBoxAndHoldsOnADraftOrDialog(activity: ChatAgentActivity) async throws {
         let working = try ScreenFixture.screen("agy-67-working-tool-running-62x41")
+        let queued = try ScreenFixture.screen("agy-70-working-queued-after-approve-62x41")
+        let draft = try ScreenFixture.screen("agy-68-working-with-draft-62x41")
+        let dialog = try ScreenFixture.screen("agy-69-working-draft-entered-then-perm-dialog-62x41")
         let rules = ChatSendRules(
             program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: false, program: .agy))
-        let preflight = try #require(
-            ComposerDeliveryPolicy.chat(rules: rules, activity: { activity }, readScreen: { working }).preflight)
+        func preflight(_ screen: ANSIScreen) throws -> @MainActor (String) async -> ComposerRefusal? {
+            try #require(
+                ComposerDeliveryPolicy.chat(rules: rules, activity: { activity }, readScreen: { screen }).preflight)
+        }
 
+        #expect(await (try preflight(working))("hello") == nil)
+        #expect(await (try preflight(queued))("hello") == nil)
         #expect(
-            await preflight("hello")
+            await (try preflight(draft))("hello")
                 == .inputNotReady(
-                    "The Agent isn't taking messages: Antigravity CLI is working. Send once it's idle, or steer from the terminal."
+                    "Antigravity CLI's input box already has text, such as a draft or a queued message Stop put back. Send or clear it in the terminal first."
                 ))
+        #expect(
+            await (try preflight(dialog))("hello")
+                == .inputNotReady("The Agent is showing a dialog. Answer it in the terminal first."))
     }
 
     @Test func anUnreadableScreenHoldsTheMessage() async throws {
