@@ -9,10 +9,21 @@ struct LiveActivityHostSnapshot: Codable, Equatable, Sendable {
     struct Entry: Codable, Equatable, Sendable {
         var id: String
         var name: String
+        var label: String?
+
+        init(id: String, name: String, label: String? = nil) {
+            self.id = id
+            self.name = name
+            self.label = label
+        }
     }
 
     func name(forHostID hostID: String) -> String? {
         hosts.first { $0.id == hostID }?.name
+    }
+
+    func label(forHostID hostID: String) -> String? {
+        hosts.first { $0.id == hostID }?.label
     }
 }
 

@@ -2991,8 +2991,26 @@
       }
     },
     "%lld done" : {
-      "comment" : "Pill counting a Host's Agents by status.",
+      "comment" : "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.",
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld done"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld done"
+                }
+              }
+            }
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4289,8 +4307,26 @@
       }
     },
     "%lld working" : {
-      "comment" : "Pill counting a Host's Agents by status.",
+      "comment" : "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.",
       "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld working"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld working"
+                }
+              }
+            }
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",

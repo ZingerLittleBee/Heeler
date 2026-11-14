@@ -110,27 +110,103 @@ struct AgentActivityPresentationTests {
         #expect(workingOnly.attentionItems.map(\.count) == [3])
     }
 
-    /// One status used to draw its count on both sides of the camera (2 and
-    /// 2). Its glyph now leads alone and the count trails.
-    @MainActor
-    @Test func aLoneStatusDrawsItsCountOnOneSideOfTheCamera() throws {
-        let lone = AgentActivityAttributes.ContentState.Counts(working: 2, blocked: 0, done: 0)
-        let mixed = AgentActivityAttributes.ContentState.Counts(working: 2, blocked: 1, done: 0)
+    @Test func islandMarksUseAttentionOrderAndReplaceTheLastSlotOnOverflow() {
+        let mixed = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
+            hostID: "host", hostSnapshot: nil)
+        #expect(mixed.marks.map(\.status) == ["blocked", "done", "working"])
+        #expect(mixed.marks.allSatisfy { !$0.isOverflow })
 
-        let glyphAlone = try renderedWidth(AgentActivityCompactLeading(counts: lone))
-        #expect(abs(glyphAlone - AgentActivityIslandMetrics.tokenGlyph) < 0.5)
-        #expect(try renderedWidth(AgentActivityCompactTrailing(counts: lone)) > 0)
+        let seven = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 7, blocked: 0, done: 0)),
+            hostID: "host", hostSnapshot: nil)
+        #expect(seven.marks.count == 4)
+        #expect(seven.marks.dropLast().map(\.status) == ["working", "working", "working"])
+        #expect(seven.marks.last?.isOverflow == true)
 
-        let glyphAndCount = try renderedWidth(AgentActivityCompactLeading(counts: mixed))
-        #expect(glyphAndCount > glyphAlone + 5)
-        #expect(
-            try renderedWidth(AgentActivityCompactTrailing(counts: mixed))
-                > AgentActivityIslandMetrics.tokenGlyph + 5)
+        let four = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
+            hostID: "host", hostSnapshot: nil)
+        #expect(four.marks.map(\.status) == ["blocked", "blocked", "done", "working"])
+        #expect(four.marks.allSatisfy { !$0.isOverflow })
+
+        let empty = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 0, blocked: 0, done: 0)),
+            hostID: "host", hostSnapshot: nil)
+        #expect(empty.marks.isEmpty)
+    }
+
+    @Test func islandTileRequiresTwoHostsAndAComputedLabel() {
+        let oneHost = LiveActivityHostSnapshot(v: 1, hosts: [
+            .init(id: "host", name: "Laptop", label: "L"),
+        ])
+        let twoHosts = LiveActivityHostSnapshot(v: 1, hosts: [
+            .init(id: "host", name: "Laptop", label: "L"),
+            .init(id: "other", name: "Oak4d", label: "O"),
+        ])
+        let one = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 0)),
+            hostID: "host", hostSnapshot: oneHost)
+        #expect(one.hasMultipleHosts == false)
+        #expect(one.hostLabel == nil)
+        #expect(one.minimalTileStatus == nil)
+        #expect(one.accessibilityLabel == "1 working")
+
+        let two = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 0)),
+            hostID: "host", hostSnapshot: twoHosts)
+        #expect(two.hostLabel == "L")
+        #expect(two.minimalTileStatus == "blocked")
+        #expect(two.accessibilityLabel == "Laptop, 1 needs you, 1 working")
+
+        let missing = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 1)),
+            hostID: "missing", hostSnapshot: twoHosts)
+        #expect(missing.hasMultipleHosts)
+        #expect(missing.hostLabel == nil)
+        #expect(missing.minimalTileStatus == nil)
+    }
+
+    @Test func islandMinimalTileUsesTheMostUrgentCount() {
+        let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
+            .init(id: "host", name: "Laptop", label: "L"),
+            .init(id: "other", name: "Oak4d", label: "O"),
+        ])
+        let cases: [(AgentActivityAttributes.ContentState.Counts, String)] = [
+            (.init(working: 5, blocked: 1, done: 1), "blocked"),
+            (.init(working: 5, blocked: 0, done: 1), "done"),
+            (.init(working: 5, blocked: 0, done: 0), "working"),
+        ]
+        for (counts, status) in cases {
+            let island = AgentActivityIslandPresentation(
+                presentation: .countsOnly(counts: counts), hostID: "host", hostSnapshot: snapshot)
+            #expect(island.minimalTileStatus == status)
+        }
+    }
+
+    @Test func islandMissingLabelsOmitTilesButKeepTheFullAccessibilitySummary() {
+        for label in [nil, ""] as [String?] {
+            let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
+                .init(id: "host", name: "Laptop", label: label),
+                .init(id: "other", name: "Oak4d", label: "O"),
+            ])
+            let island = AgentActivityIslandPresentation(
+                presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
+                hostID: "host", hostSnapshot: snapshot)
+            #expect(island.hostLabel == nil)
+            #expect(island.minimalTileStatus == nil)
+            #expect(island.accessibilityLabel == "Laptop, 2 need you, 1 working, 1 done")
+        }
+        let noSnapshot = AgentActivityIslandPresentation(
+            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
+            hostID: "host", hostSnapshot: nil)
+        #expect(noSnapshot.hostLabel == nil)
+        #expect(noSnapshot.accessibilityLabel == "1 needs you, 1 working, 1 done")
     }
 
     @Test func narrationIncludesStatusForIslandAccessibility() {
         let agent = agentDetail(paneID: "w1:p1", status: "blocked")
-        #expect(AgentActivityNarration.rowLabel(for: agent) == "Heeler, Claude, blocked")
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "Heeler, Claude, Needs you")
     }
 
     @Test func identityIgnoresCustomAgentNameAndTerminalTitle() {
@@ -148,9 +224,8 @@ struct AgentActivityPresentationTests {
             status: "blocked", title: nil)
 
         #expect(agent.displayWorkspace == "Checkout")
-        #expect(
-            AgentActivityNarration.rowLabel(for: agent)
-                == "Checkout, Claude, blocked")
+        #expect(AgentActivityNarration.rowLabel(for: agent)
+            == "Checkout, Claude, Needs you")
     }
 
     @Test func lockScreenRowsUseComfortableAndDenseAppleTargetHeights() {
@@ -279,7 +354,7 @@ struct AgentActivityPresentationTests {
             [.init(text: "/src/Heeler")],
         ]
         #expect(AgentActivityNarration.rowLabel(for: agent)
-            == "**Task** · feature/one, /src/Heeler, blocked")
+            == "**Task** · feature/one, /src/Heeler, Needs you")
         #expect(String(AgentActivityFields.attributedText(
             agent.rows?[0] ?? [], rowIndex: 0, surface: .lockScreen).characters)
             == "**Task** · feature/one")
@@ -289,7 +364,7 @@ struct AgentActivityPresentationTests {
         var agent = agentDetail(paneID: "w1:p1", status: "blocked")
         agent.rows = []
         #expect(AgentActivityFields.rows(for: agent).isEmpty)
-        #expect(AgentActivityNarration.rowLabel(for: agent) == "blocked")
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "Needs you")
         #expect(AgentActivityNarration.rowLabel(for: agent, on: .lockScreen) == "Needs you")
     }
 
@@ -297,7 +372,7 @@ struct AgentActivityPresentationTests {
         var agent = agentDetail(paneID: "w1:p1")
         agent.rows = (1...4).map { [.init(text: "Row \($0)")] }
         #expect(AgentActivityFields.rows(for: agent).count == 3)
-        #expect(AgentActivityNarration.rowLabel(for: agent) == "Row 1, Row 2, Row 3, working")
+        #expect(AgentActivityNarration.rowLabel(for: agent) == "Row 1, Row 2, Row 3, Working")
     }
 
     @Test func threeRowCardsReserveSpaceForTheHostHeaderOverflowAndStaleness() {
@@ -356,6 +431,135 @@ struct AgentActivityPresentationTests {
         let standard = try renderedSize(rows.environment(\.dynamicTypeSize, .large))
         let enlarged = try renderedSize(rows.environment(\.dynamicTypeSize, .accessibility3))
         #expect(enlarged.height == standard.height)
+    }
+
+    @MainActor
+    @Test func compactAndMinimalIslandEvidenceFitsAtBothTypeSizes() throws {
+        let oneHost = LiveActivityHostSnapshot(v: 1, hosts: [
+            .init(id: "host", name: "Laptop", label: "L"),
+        ])
+        let twoHosts = LiveActivityHostSnapshot(v: 1, hosts: oneHost.hosts + [
+            .init(id: "oak", name: "Oak4d", label: "O"),
+        ])
+        let compactCases: [(String, AgentActivityAttributes.ContentState.Counts, LiveActivityHostSnapshot)] = [
+            ("working", .init(working: 1, blocked: 0, done: 0), oneHost),
+            ("mixed", .init(working: 1, blocked: 1, done: 1), oneHost),
+            ("blocked", .init(working: 0, blocked: 1, done: 0), oneHost),
+            ("overflow", .init(working: 7, blocked: 0, done: 0), oneHost),
+            ("two-host-l", .init(working: 1, blocked: 1, done: 1), twoHosts),
+            ("two-host-wide-overflow", .init(working: 5, blocked: 1, done: 1),
+                LiveActivityHostSnapshot(v: 1, hosts: [
+                    .init(id: "host", name: "10.0.180.255", label: "180.255"),
+                    .init(id: "other", name: "10.0.181.255", label: "181.255"),
+                ])),
+        ]
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            for (name, counts, snapshot) in compactCases {
+                let island = AgentActivityIslandPresentation(
+                    presentation: .countsOnly(counts: counts), hostID: "host", hostSnapshot: snapshot)
+                let bitmap = try RenderedBitmap(
+                    HStack(spacing: 0) {
+                        AgentActivityCompactLeading(presentation: island)
+                        Color.clear.frame(width: 126)
+                        AgentActivityCompactTrailing(presentation: island)
+                    }
+                    .padding(.horizontal, 11)
+                    .frame(height: 37)
+                    .background(Color.black)
+                    .environment(\.dynamicTypeSize, size)
+                    .environment(\.colorScheme, .light),
+                    proposedSize: .unspecified, scale: 2)
+                #expect(bitmap.size.width <= 240, "\(name), \(size)")
+                #expect(bitmap.size.height == 37)
+                Attachment.record(try bitmap.image(),
+                    named: "island-b2-compact-\(name)-\(size)", as: .png)
+            }
+            for (name, counts) in [
+                ("single", AgentActivityAttributes.ContentState.Counts(working: 1, blocked: 0, done: 0)),
+                ("mixed", .init(working: 1, blocked: 1, done: 1)),
+                ("overflow", .init(working: 7, blocked: 0, done: 0)),
+                ("done", .init(working: 0, blocked: 0, done: 1)),
+            ] {
+                for (hostCount, snapshot) in [(1, oneHost), (2, twoHosts)] {
+                    let island = AgentActivityIslandPresentation(
+                        presentation: .countsOnly(counts: counts), hostID: "host", hostSnapshot: snapshot)
+                    let content = AgentActivityMinimal(presentation: island)
+                        .environment(\.dynamicTypeSize, size)
+                        .environment(\.colorScheme, .light)
+                    let naturalSize = try renderedSize(content)
+                    #expect(naturalSize.width <= 37)
+                    #expect(naturalSize.height <= 37)
+                    let bitmap = try RenderedBitmap(
+                        content.frame(width: 37, height: 37).background(Color.black),
+                        proposedSize: .unspecified, scale: 2)
+                    Attachment.record(try bitmap.image(),
+                        named: "island-b2-minimal-\(hostCount)-host-\(name)-\(size)", as: .png)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    @Test func expandedIslandEvidenceIncludesHostHeadingsAndCompleteRows() throws {
+        let hostCases = [
+            ("laptop", "Laptop", "L"),
+            ("long-name", "workstation-west-build-01", "W"),
+            ("ip-name", "192.0.2.15", "15"),
+        ]
+        let statuses = ["blocked", "done", "working"]
+        let agents = statuses.enumerated().map { index, status in
+            var agent = agentDetail(paneID: "w1:p\(index)", status: status)
+            agent.rows = [
+                [.init(text: ["herdr", "arch", "docs"][index], bold: true)],
+                [.init(text: ["Redesign live activity", "Fix sshd forwarding", "Update changelog"][index])],
+            ]
+            return agent
+        }
+        for (name, hostName, label) in hostCases {
+            let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
+                .init(id: "host", name: hostName, label: label),
+                .init(id: "other", name: "Oak4d", label: "O"),
+            ])
+            let presentation = AgentActivityPresentation.detailed(
+                details: .init(hostName: "envelope-fallback", agents: agents),
+                counts: .init(working: 1, blocked: 1, done: 1))
+            let island = AgentActivityIslandPresentation(
+                presentation: presentation, hostID: "host", hostSnapshot: snapshot)
+            #expect(island.hostName == hostName)
+            #expect(island.hostLabel == label)
+            #expect(presentation.expandedAgents.count == 3)
+            var standardHeight: CGFloat?
+            for size in [DynamicTypeSize.large, .accessibility3] {
+                let rows = AgentActivityIslandRows(presentation: presentation, hostID: "host")
+                    .frame(width: 321)
+                    .environment(\.dynamicTypeSize, size)
+                #expect(try renderedSize(rows).height <= 100)
+                let bitmap = try RenderedBitmap(
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            AgentActivityIslandHeadline(presentation: island)
+                            AgentActivityIslandHeaderTrailing(presentation: island)
+                        }
+                        rows
+                    }
+                    .padding(.horizontal, AgentActivityIslandMetrics.expandedSideMargin)
+                    .padding(.top, 13)
+                    .padding(.bottom, 13)
+                    .frame(width: 371)
+                    .background(Color.black)
+                    .environment(\.dynamicTypeSize, size)
+                    .environment(\.colorScheme, .light),
+                    proposedSize: .unspecified, scale: 2)
+                #expect(bitmap.size.height <= 160)
+                if let standardHeight {
+                    #expect(bitmap.size.height == standardHeight)
+                } else {
+                    standardHeight = bitmap.size.height
+                }
+                Attachment.record(try bitmap.image(),
+                    named: "island-b2-expanded-\(name)-\(size)", as: .png)
+            }
+        }
     }
 
     @Test func threeRowCardsUseTheComfortableTargetHeight() {
@@ -567,11 +771,6 @@ struct AgentActivityPresentationTests {
                 .background(surface == .lockScreen ? Color.white : Color.black)
                 .environment(\.colorScheme, surface == .lockScreen ? .light : .dark),
             proposedSize: .init(width: 300, height: 50))
-    }
-
-    @MainActor
-    private func renderedWidth(_ view: some View) throws -> CGFloat {
-        try renderedSize(view).width
     }
 
     @MainActor

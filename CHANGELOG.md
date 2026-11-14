@@ -36,6 +36,7 @@ Entries reference the pull request that made the change.
 - Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
 - Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)
 - Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
+- Read one status mark per Agent in the Dynamic Island, with bounded overflow, Host tiles when multiple Hosts are configured, and the full Host name above expanded Agent rows. (PR #719)
 - Identify each Lock Screen Live Activity by its Host name on the system material, with status glyphs and Working, Needs you, or Done beside the configured Agent fields. Counts-only summaries and overflow keep the full inventory visible. (PR #718)
 - Rank Hosts' Live Activities by Agent Status on the Lock Screen and in the Dynamic Island, with Blocked above Working, Working above Done, and empty activities last. (PR #720)
 - Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)

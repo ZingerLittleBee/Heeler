@@ -23,9 +23,31 @@ struct LiveActivityHostPublisherTests {
         publisher.publish([named, unnamed])
 
         #expect(store.read() == LiveActivityHostSnapshot(v: 1, hosts: [
-            .init(id: named.id.uuidString, name: "My Mac"),
-            .init(id: unnamed.id.uuidString, name: "builder@server.local"),
+            .init(id: named.id.uuidString, name: "My Mac", label: "M"),
+            .init(id: unnamed.id.uuidString, name: "builder@server.local", label: "B"),
         ]))
+    }
+
+    @Test func publishesLabelsAcrossTheWholeCatalog() throws {
+        let store = try temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.containerURL!) }
+        let publisher = LiveActivityHostPublisher(store: store)
+        let laptop = Host(name: "Laptop", address: "laptop.local", username: "me")
+        let oak = Host(name: "oak4d", address: "oak.local", username: "me")
+        let macBook = Host(name: "MacBook", address: "macbook.local", username: "me")
+        let macMini = Host(name: "Mac mini", address: "mini.local", username: "me")
+
+        publisher.publish([laptop])
+        #expect(store.read()?.hosts == [
+            .init(id: laptop.id.uuidString, name: "Laptop", label: "L"),
+        ])
+
+        publisher.publish([laptop, oak, macBook, macMini])
+
+        #expect(store.read()?.hosts.map(\.label) == ["L", "O", "MB", "Mm"])
+
+        publisher.publish([macBook])
+        #expect(store.read()?.hosts.map(\.label) == ["M"])
     }
 
     @Test func publishesRenamesAdditionsRemovalsAndOrder() throws {
@@ -38,19 +60,19 @@ struct LiveActivityHostPublisherTests {
 
         first.name = "New name"
         publisher.publish([first])
-        #expect(store.read()?.hosts == [.init(id: first.id.uuidString, name: "New name")])
+        #expect(store.read()?.hosts == [.init(id: first.id.uuidString, name: "New name", label: "N")])
 
         publisher.publish([first, second])
         #expect(store.read()?.hosts == [
-            .init(id: first.id.uuidString, name: "New name"),
-            .init(id: second.id.uuidString, name: "Server"),
+            .init(id: first.id.uuidString, name: "New name", label: "N"),
+            .init(id: second.id.uuidString, name: "Server", label: "S"),
         ])
 
         publisher.publish([second, first])
         #expect(store.read()?.hosts.map(\.id) == [second.id.uuidString, first.id.uuidString])
 
         publisher.publish([second])
-        #expect(store.read()?.hosts == [.init(id: second.id.uuidString, name: "Server")])
+        #expect(store.read()?.hosts == [.init(id: second.id.uuidString, name: "Server", label: "S")])
 
         publisher.publish([])
         #expect(store.read()?.hosts == [])
@@ -74,21 +96,21 @@ struct LiveActivityHostPublisherTests {
             sceneDirectory: AgentSceneDirectory(), hostStore: hostStore, console: console,
             liveActivityHosts: LiveActivityHostPublisher(store: store))
 
-        #expect(store.read()?.hosts == [.init(id: host.id.uuidString, name: "Original")])
+        #expect(store.read()?.hosts == [.init(id: host.id.uuidString, name: "Original", label: "O")])
         app.start()
         host.name = "Renamed"
         try hostStore.update(host)
-        try await waitForHosts([.init(id: host.id.uuidString, name: "Renamed")], in: store)
+        try await waitForHosts([.init(id: host.id.uuidString, name: "Renamed", label: "R")], in: store)
 
         let second = Host(name: "Server", address: "server.local", username: "me")
         try hostStore.add(second)
         try await waitForHosts([
-            .init(id: host.id.uuidString, name: "Renamed"),
-            .init(id: second.id.uuidString, name: "Server"),
+            .init(id: host.id.uuidString, name: "Renamed", label: "R"),
+            .init(id: second.id.uuidString, name: "Server", label: "S"),
         ], in: store)
 
         try hostStore.remove(host.id)
-        try await waitForHosts([.init(id: second.id.uuidString, name: "Server")], in: store)
+        try await waitForHosts([.init(id: second.id.uuidString, name: "Server", label: "S")], in: store)
     }
 
     private func waitForHosts(
@@ -118,6 +140,6 @@ struct LiveActivityHostPublisherTests {
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         #expect(attributes[.modificationDate] as? Date == savedDate)
-        #expect(store.read()?.hosts == [.init(id: host.id.uuidString, name: "My Mac")])
+        #expect(store.read()?.hosts == [.init(id: host.id.uuidString, name: "My Mac", label: "M")])
     }
 }

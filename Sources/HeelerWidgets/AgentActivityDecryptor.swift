@@ -102,6 +102,80 @@ enum AgentActivityPresentation: Equatable, Sendable {
     }
 }
 
+struct AgentActivityIslandPresentation: Equatable, Sendable {
+    struct Mark: Equatable, Sendable, Identifiable {
+        enum Kind: Equatable, Sendable {
+            case status(String)
+            case overflow
+        }
+
+        let id: Int
+        let kind: Kind
+
+        var status: String {
+            if case .status(let status) = kind { return status }
+            return "unknown"
+        }
+
+        var isOverflow: Bool {
+            if case .overflow = kind { return true }
+            return false
+        }
+    }
+
+    let counts: AgentActivityAttributes.ContentState.Counts
+    let marks: [Mark]
+    let hostName: String?
+    let hostLabel: String?
+    let hasMultipleHosts: Bool
+
+    init(
+        presentation: AgentActivityPresentation,
+        hostID: String,
+        hostSnapshot: LiveActivityHostSnapshot?
+    ) {
+        counts = presentation.counts
+        marks = Self.makeMarks(counts)
+        hasMultipleHosts = (hostSnapshot?.hosts.count ?? 0) >= 2
+        if hasMultipleHosts, let label = hostSnapshot?.label(forHostID: hostID), !label.isEmpty {
+            hostLabel = label
+        } else {
+            hostLabel = nil
+        }
+        hostName = presentation.lockScreenHostName(hostID: hostID, snapshot: hostSnapshot)
+    }
+
+    var accessibilityLabel: String {
+        var phrases = AgentActivityCopy.countPhrases(counts)
+        if hasMultipleHosts, let hostName { phrases.insert(hostName, at: 0) }
+        return phrases.joined(separator: String(
+            localized: ", ",
+            comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
+    }
+
+    var minimalTileStatus: String? {
+        guard hasMultipleHosts, hostLabel != nil else { return nil }
+        return counts.attentionItems.first?.status
+    }
+
+    private static func makeMarks(_ counts: AgentActivityAttributes.ContentState.Counts) -> [Mark] {
+        let limit = 4
+        var result: [Mark] = []
+        var remaining = limit
+        for item in counts.attentionItems where remaining > 0 {
+            let visible = min(item.count, remaining)
+            for _ in 0..<visible {
+                result.append(.init(id: result.count, kind: .status(item.status)))
+            }
+            remaining -= visible
+        }
+        if counts.total > limit {
+            result[limit - 1] = .init(id: limit - 1, kind: .overflow)
+        }
+        return result
+    }
+}
+
 /// Synchronous render-time helper. Failures degrade to counts-only so a
 /// view body never has to throw (nil envelope, locked Keychain before
 /// first unlock, unknown kid, decrypt or payload error).
@@ -185,8 +259,10 @@ enum AgentActivityCopy {
     static func count(_ count: Int, status: String) -> String {
         switch status {
         case "blocked": String(localized: "\(count) blocked")
-        case "working": String(localized: "\(count) working")
-        case "done": String(localized: "\(count) done")
+        case "working":
+            String(localized: "\(count) working", comment: "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.")
+        case "done":
+            String(localized: "\(count) done", comment: "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.")
         case "idle": String(localized: "\(count) idle")
         default: "\(count) \(status)"
         }
@@ -203,6 +279,10 @@ enum AgentActivityCopy {
     }
 
     static func lockScreenCounts(_ counts: AgentActivityAttributes.ContentState.Counts) -> String {
+        countPhrases(counts).joined(separator: " · ")
+    }
+
+    static func countPhrases(_ counts: AgentActivityAttributes.ContentState.Counts) -> [String] {
         counts.chipItems.map { item in
             switch item.status {
             case "blocked":
@@ -210,17 +290,6 @@ enum AgentActivityCopy {
             default:
                 count(item.count, status: item.status)
             }
-        }.joined(separator: " · ")
-    }
-
-    /// A row's status as VoiceOver reads it after the row's fields.
-    static func status(_ status: String) -> String {
-        switch status {
-        case "blocked": String(localized: "blocked")
-        case "working": String(localized: "working")
-        case "done": String(localized: "done")
-        case "idle": String(localized: "idle")
-        default: status
         }
     }
 }
@@ -238,8 +307,7 @@ extension AgentActivityAttributes.ContentState.Counts {
         return items
     }
 
-    /// Non-zero counts in attention order: blocked, done, working. The
-    /// Dynamic Island leads with the first and trails with the rest.
+    /// Non-zero counts in attention order: blocked, done, working.
     var attentionItems: [(status: String, count: Int)] {
         var items: [(String, Int)] = []
         if blocked > 0 { items.append(("blocked", blocked)) }
