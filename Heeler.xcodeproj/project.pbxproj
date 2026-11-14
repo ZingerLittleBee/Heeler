@@ -1093,6 +1093,7 @@
 		E350D8D9F811AB8C11737D49 /* ChatConversationStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423EDC5B2A1A0A20551CF9D9 /* ChatConversationStatus.swift */; };
 		E3528309ECCAFFAC6415546B /* HarnessConfigEdit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31A5E23328C2889BA59B39C /* HarnessConfigEdit.swift */; };
 		E379C1AD65B445D4E08614CF /* AgentNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D3B8E2EB97A8376B333914 /* AgentNameTests.swift */; };
+		E37D12C65C1143ADB642AE00 /* RexInventoryLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */; };
 		E398DDC88A5ACCD1895B866C /* ChatBackgroundWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45260CCC4E565AC4EE78E961 /* ChatBackgroundWork.swift */; };
 		E3A6BD8012A481CBE3D0A17A /* ChangesReferenceViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A85BEEEB7C05665A86483C54 /* ChangesReferenceViewTests.swift */; };
 		E40423F17711B663875138E3 /* GitProbe+Patch.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF1E684391B619EEB872E24B /* GitProbe+Patch.swift */; };
@@ -1458,6 +1459,7 @@
 		2782D0CCB8DD0CC97AF6932C /* AcknowledgementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcknowledgementsView.swift; sourceTree = "<group>"; };
 		2787D9F2267D26DD4012008E /* ConsolePaneRowBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsolePaneRowBuilder.swift; sourceTree = "<group>"; };
 		27950D09736733112C4C4AEA /* AgentKindMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentKindMark.swift; sourceTree = "<group>"; };
+		28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexInventoryLiveTests.swift; sourceTree = "<group>"; };
 		281FC10F8501F05C6D4D3C8D /* SideBySideDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideBySideDiffTests.swift; sourceTree = "<group>"; };
 		28519EE07E39CB6F31419312 /* HostServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostServices.swift; sourceTree = "<group>"; };
 		2853DC5E61CF2FC065B82335 /* OverlayPeerChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayPeerChoiceTests.swift; sourceTree = "<group>"; };
@@ -3054,6 +3056,7 @@
 				691F0B12B70ADF3F3D828304 /* AgentTitleRenameLiveTests.swift */,
 				E358F8FCF35FCD51358D1D06 /* AgyModelSwitchLiveTests.swift */,
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
+				28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */,
 				307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */,
 				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
@@ -4411,6 +4414,7 @@
 				AE316A55AC9A52A1D270128D /* AgyModelSwitchLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
+				E37D12C65C1143ADB642AE00 /* RexInventoryLiveTests.swift in Sources */,
 				E6687F153BE7D91DA036CA17 /* RexSSHLiveTests.swift in Sources */,
 				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);
