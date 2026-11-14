@@ -77,7 +77,8 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         do {
             let activity = try Activity.request(
                 attributes: attributes,
-                content: ActivityContent(state: content, staleDate: nil),
+                content: ActivityContent(
+                    state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore),
                 pushType: .token)
             return LiveActivityHandle(id: activity.id, hostID: hostID)
         } catch {
@@ -94,7 +95,9 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         finalContent: AgentActivityAttributes.ContentState?,
         immediate: Bool
     ) {
-        let content = finalContent.map { ActivityContent(state: $0, staleDate: nil) }
+        let content = finalContent.map {
+            ActivityContent(state: $0, staleDate: nil, relevanceScore: $0.counts.relevanceScore)
+        }
         let policy: ActivityUIDismissalPolicy = immediate ? .immediate : .default
         Task { await Self.pushEnd(id: id, content: content, policy: policy) }
     }
@@ -142,7 +145,8 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         id: String, content: AgentActivityAttributes.ContentState
     ) async {
         guard let activity = activity(id: id) else { return }
-        await activity.update(ActivityContent(state: content, staleDate: nil))
+        await activity.update(ActivityContent(
+            state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore))
     }
 
     nonisolated private static func pushEnd(
