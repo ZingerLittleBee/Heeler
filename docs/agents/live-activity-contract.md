@@ -262,6 +262,7 @@ update/end/priority signal — nothing else new (PRIVACY.md documents this).
 ```json
 {"aps": {"timestamp": <unix seconds>, "event": "update" | "end",
          "content-state": {"counts": {...}, "envelope": {...}},
+         "relevance-score": <update only: derived from counts>,
          "stale-date": <update only: timestamp + 900>,
          "dismissal-date": <end only: = timestamp, immediate removal>}}
 ```
@@ -270,6 +271,23 @@ Never an `alert` field — the existing alert-notification path owns alerts.
 Priority 10 only when an agent **newly** entered `blocked`; 5 otherwise.
 Existing 4096-byte pre-check applies; 410/413 verdicts pass through to the
 plugin unchanged (`{"reason": ...}`).
+
+Relevance is derived only from plaintext `counts`, with no count tiebreak.
+The first matching tier sets the score:
+
+| Condition | Score |
+| --------- | ----- |
+| `blocked >= 1` | 3 |
+| `working >= 1` | 2 |
+| `done >= 1` | 1 |
+| All counts are zero | 0 |
+
+Higher scores rank a Host's Live Activity above lower scores on the Lock
+Screen and in the Dynamic Island. The app sets `ActivityContent.relevanceScore`
+on local starts and updates. The relay derives the numeric `aps["relevance-score"]`
+on every `update` and omits it on `end`. The relay request has no relevance
+field, so existing plugins and Host Helpers receive this behavior after the
+relay is deployed.
 
 ## Registration file (additive per-device field)
 

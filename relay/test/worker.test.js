@@ -458,6 +458,29 @@ suite("live activity request validation", () => {
 });
 
 suite("live activity forwarding to APNs", () => {
+  const relevanceCases = [
+    ["empty", { working: 0, blocked: 0, done: 0 }, 0],
+    ["done", { working: 0, blocked: 0, done: 1 }, 1],
+    ["many done", { working: 0, blocked: 0, done: 999 }, 1],
+    ["working over done", { working: 1, blocked: 0, done: 999 }, 2],
+    ["many working", { working: 999, blocked: 0, done: 0 }, 2],
+    ["blocked over working and done", { working: 999, blocked: 1, done: 999 }, 3],
+    ["many blocked", { working: 0, blocked: 999, done: 0 }, 3],
+  ];
+
+  for (const [name, counts, expected] of relevanceCases) {
+    test(`sets relevance-score for ${name} counts`, async (t) => {
+      const calls = stubApns(t);
+      freezeTime(t);
+      const relay = createRelay();
+      const res = await relay.fetch(pushRequest({ ...goodActivity, counts }), baseEnv);
+
+      assert.equal(res.status, 200);
+      const payload = JSON.parse(calls[0].init.body);
+      assert.equal(payload.aps["relevance-score"], expected);
+    });
+  }
+
   test("sends liveactivity headers, derived topic, and no collapse id", async (t) => {
     const calls = stubApns(t);
     freezeTime(t);
@@ -492,7 +515,7 @@ suite("live activity forwarding to APNs", () => {
 
     assert.equal(
       calls[0].init.body,
-      `{"aps":{"timestamp":${nowSec},"event":"update","content-state":{"counts":{"working":2,"blocked":1,"done":0},"envelope":${activityEnvelope}},"stale-date":${nowSec + 900}}}`,
+      `{"aps":{"timestamp":${nowSec},"event":"update","content-state":{"counts":{"working":2,"blocked":1,"done":0},"envelope":${activityEnvelope}},"relevance-score":3,"stale-date":${nowSec + 900}}}`,
     );
     const payload = JSON.parse(calls[0].init.body);
     assert.deepEqual(Object.keys(payload), ["aps"]);
@@ -532,6 +555,7 @@ suite("live activity forwarding to APNs", () => {
     const payload = JSON.parse(calls[0].init.body);
     assert.equal(payload.aps.event, "end");
     assert.equal(payload.aps["dismissal-date"], nowSec);
+    assert.equal("relevance-score" in payload.aps, false);
     assert.equal("alert" in payload.aps, false);
     assert.equal("mutable-content" in payload.aps, false);
   });
@@ -567,6 +591,32 @@ suite("live activity forwarding to APNs", () => {
 });
 
 suite("live activity APNs status and caps", () => {
+  test("includes relevance-score in the 4 KB payload budget", async (t) => {
+    const calls = stubApns(t);
+    freezeTime(t);
+    const relay = createRelay();
+    const envelope = JSON.stringify({ ct: "" });
+    const baseline = await relay.fetch(pushRequest({ ...goodActivity, envelope }), baseEnv);
+    assert.equal(baseline.status, 200);
+    const padding = 4096 - Buffer.byteLength(calls[0].init.body);
+
+    const atLimit = await relay.fetch(
+      pushRequest({ ...goodActivity, envelope: JSON.stringify({ ct: "x".repeat(padding) }) }),
+      baseEnv,
+    );
+    assert.equal(atLimit.status, 200);
+    assert.equal(Buffer.byteLength(calls[1].init.body), 4096);
+    assert.equal(JSON.parse(calls[1].init.body).aps["relevance-score"], 3);
+
+    const overLimit = await relay.fetch(
+      pushRequest({ ...goodActivity, envelope: JSON.stringify({ ct: "x".repeat(padding + 1) }) }),
+      baseEnv,
+    );
+    assert.equal(overLimit.status, 413);
+    assert.deepEqual(await overLimit.json(), { error: "payload_too_large" });
+    assert.equal(calls.length, 2);
+  });
+
   test("rejects when the APNs payload would exceed 4 KB, without calling APNs", async (t) => {
     const calls = stubApns(t);
     freezeTime(t);
