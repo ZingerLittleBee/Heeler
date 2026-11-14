@@ -15,9 +15,12 @@ protocol TransportConnector: Sendable {
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport
 
     /// Dials a Rex Host: SSH, a channel to its server's socket, and the control
-    /// link's hello. With no socket in `settings` it looks for one first. It
-    /// never runs `rex`, and connecting starts no server (ADR 0047).
-    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport
+    /// link's hello, carrying `previous`'s reconnect token when there is one.
+    /// With no socket in `settings` it looks for one first. It never runs
+    /// `rex`, and connecting starts no server (ADR 0047).
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport
 
     /// Dials an unconfirmed Host for the one exec that detects its Server Kind.
     /// It reaches SSH and nothing past it, so no server starts (ADR 0031).
@@ -42,8 +45,15 @@ extension TransportConnector {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "tmux Hosts"))
     }
 
-    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+    func connectRex(
+        settings: SSHTransportSettings, resuming _: RexControlLink?
+    ) async throws -> any RexTransport {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Rex Hosts"))
+    }
+
+    /// Dials a Rex Host as a new client.
+    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+        try await connectRex(settings: settings, resuming: nil)
     }
 }
 
@@ -81,9 +91,12 @@ struct SSHTransportConnector: TransportConnector {
             socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
     }
 
-    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport {
         try await RexSSHTransport.connect(
-            over: try await HeelerSSHTransport.connect(settings: settings), socket: settings.rexSocket)
+            over: try await HeelerSSHTransport.connect(settings: settings), socket: settings.rexSocket,
+            resuming: previous)
     }
 }
 

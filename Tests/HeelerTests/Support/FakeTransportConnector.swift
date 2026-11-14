@@ -284,7 +284,9 @@ final actor FakeTransportConnector: TransportConnector {
     }
 
     /// The real Rex transport over a scripted Host, for this Host's socket.
-    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport {
         capturedSettings.append(settings)
         switch outcome {
         case .connectFails(let error):
@@ -298,7 +300,8 @@ final actor FakeTransportConnector: TransportConnector {
         guard let rex else {
             throw TransportError.hostFeatureUnavailable(feature: "Rex Hosts")
         }
-        return try await RexSSHTransport.connect(over: rex, socket: settings.rexSocket, options: .testing)
+        return try await RexSSHTransport.connect(
+            over: rex, socket: settings.rexSocket, resuming: previous, options: .testing)
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {

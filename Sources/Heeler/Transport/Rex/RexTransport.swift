@@ -23,13 +23,14 @@ protocol RexTransport: Sendable {
     /// `reconnectControl`.
     var control: RexControlLink { get async }
 
-    /// Drops the control link without a close frame, so the server keeps its
-    /// client for a while, and opens a new one on a fresh channel whose hello
-    /// carries the old link's reconnect token. The new link's `resumed` says
-    /// whether the server took the client back; either way, events sent in
-    /// between are lost, so inventory needs a fresh read. Throws
-    /// `TransportError`.
-    func reconnectControl() async throws -> RexControlLink
+    /// Replaces the control link with a new one on a fresh channel. Resuming,
+    /// it drops the old link without a close frame, so the server keeps its
+    /// client for a while, and the new hello carries the old link's reconnect
+    /// token; the new link's `resumed` says whether the server took the client
+    /// back. Otherwise it closes the old link and says a plain hello. Either
+    /// way, events sent in between are lost, so inventory needs a fresh read.
+    /// Throws `TransportError`.
+    func reconnectControl(resuming: Bool) async throws -> RexControlLink
 
     /// Opens one more channel to the same socket, for a data link, under one
     /// of the connection's attach slots until it closes. Throws `TransportError`.
@@ -38,6 +39,13 @@ protocol RexTransport: Sendable {
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
+}
+
+extension RexTransport {
+    /// Replaces the control link, resuming its client.
+    func reconnectControl() async throws -> RexControlLink {
+        try await reconnectControl(resuming: true)
+    }
 }
 
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
@@ -87,11 +95,14 @@ actor RexSSHTransport: RexTransport {
     }
 
     /// Reaches `socket`, or the socket a lookup finds when it is nil, and says
-    /// hello. Owns `connection` from here: when connecting fails, it is
-    /// closed. Throws `TransportError`.
+    /// hello, with `previous`'s reconnect token when there is one, so a client
+    /// whose SSH connection went down can be taken back over a new one. Owns
+    /// `connection` from here: when connecting fails, it is closed. Throws
+    /// `TransportError`.
     static func connect(
         over connection: any RexHostConnection,
         socket stored: RexSocket?,
+        resuming previous: RexControlLink? = nil,
         options: RexControlLink.Options = RexControlLink.Options(),
         sleep: @escaping RexControlLink.Sleep = { try await Task.sleep(for: $0) },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString }
@@ -104,7 +115,7 @@ actor RexSSHTransport: RexTransport {
                 socket = try await lookUp(over: connection, nonce: nonce())
             }
             let control = try await openControl(
-                over: connection, socket: socket, resuming: nil, options: options, sleep: sleep, nonce: nonce)
+                over: connection, socket: socket, resuming: previous, options: options, sleep: sleep, nonce: nonce)
             return RexSSHTransport(
                 connection: connection, socket: socket, foundSocket: stored == nil ? socket : nil, control: control,
                 options: options, sleep: sleep, nonce: nonce)
@@ -118,14 +129,19 @@ actor RexSSHTransport: RexTransport {
         get async { await connection.isConnected }
     }
 
-    func reconnectControl() async throws -> RexControlLink {
+    func reconnectControl(resuming: Bool) async throws -> RexControlLink {
         if let reconnecting { return try await reconnecting.value }
         let previous = control
         let task = Task { [connection, socket, options, sleep, nonce] in
             // The old link's channel holds the events slot until it closes.
-            await previous.disconnect()
+            if resuming {
+                await previous.disconnect()
+            } else {
+                await previous.close()
+            }
             return try await Self.openControl(
-                over: connection, socket: socket, resuming: previous, options: options, sleep: sleep, nonce: nonce)
+                over: connection, socket: socket, resuming: resuming ? previous : nil, options: options, sleep: sleep,
+                nonce: nonce)
         }
         reconnecting = task
         defer { reconnecting = nil }
