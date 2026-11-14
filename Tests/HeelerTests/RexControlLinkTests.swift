@@ -142,8 +142,11 @@ struct RexControlLinkTests {
         let (server, link) = try await FakeRexServer.open()
         async let first = link.call("session.view", payload: Echo(text: "first"))
         async let second = link.call("session.view", payload: Echo(text: "second"))
-        let one = await server.nextRequest()
-        let two = await server.nextRequest()
+        // The two calls start concurrently, so either may reach the server first;
+        // tell them apart by payload, not by arrival order.
+        let arrived = [await server.nextRequest(), await server.nextRequest()]
+        let one = try #require(arrived.first { $0.payload?["text"]?.stringValue == "first" })
+        let two = try #require(arrived.first { $0.payload?["text"]?.stringValue == "second" })
         #expect(one.id != two.id)
         #expect(one.method == "session.view")
 
