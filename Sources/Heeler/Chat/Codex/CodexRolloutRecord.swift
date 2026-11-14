@@ -624,6 +624,7 @@ struct CodexRawEvent: Decodable {
     var itemID: String?
     var userFacingHint: String?
     var reviewExplanation: String?
+    var threadSettings: CodexRawThreadSettings?
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodexKey.self)
@@ -670,6 +671,31 @@ struct CodexRawEvent: Decodable {
         itemID = container.lenient("item_id")
         userFacingHint = container.lenient("user_facing_hint")
         reviewExplanation = container.lenient("review_output", as: CodexRawReviewOutput.self)?.explanation
+        threadSettings = container.lenient("thread_settings")
+    }
+}
+
+struct CodexRawTurnContext: Decodable {
+    var turnID: String?
+    var model: String?
+    var effort: String?
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodexKey.self)
+        turnID = container.lenient("turn_id")
+        model = container.lenient("model")
+        effort = container.lenient("effort") ?? container.lenient("reasoning_effort")
+    }
+}
+
+struct CodexRawThreadSettings: Decodable {
+    var model: String?
+    var effort: String?
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodexKey.self)
+        model = container.lenient("model")
+        effort = container.lenient("reasoning_effort") ?? container.lenient("effort")
     }
 }
 
@@ -1049,6 +1075,7 @@ enum CodexRecord: Equatable, Sendable {
     case verifiedAnswer(CodexVerifiedAnswer)
     case callOutput(CodexCallOutput)
     case codeModePatch(CodexCodeModePatch)
+    case sessionSettings(turnID: String?, model: String?, effort: String?)
     // Legacy rollouts.
     case userMessage(CodexUserContent)
     case agentMessage(CodexAgentContent)

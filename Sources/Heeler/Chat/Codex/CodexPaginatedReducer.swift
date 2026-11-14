@@ -106,6 +106,8 @@ struct CodexPaginatedBuilder {
     /// Every turn a loaded line names, so a turn started under a root that
     /// only appears further down still joins it.
     private var namedTurns: Set<String> = []
+    private var model: String?
+    private var effort: String?
     private var ordinals = CodexOrdinalDiagnostics()
 
     /// The timeline of `segments`, oldest first, each already cut to the
@@ -114,6 +116,11 @@ struct CodexPaginatedBuilder {
         var builder = CodexPaginatedBuilder()
         let accepted = segments.map { builder.accepted($0) }
         builder.namedTurns = Set(accepted.joined().compactMap { Self.turnID(named: $0.record) })
+        for (record, _) in accepted.joined() {
+            if case .turnStarted(let started, let root?, _) = record, builder.namedTurns.contains(root) {
+                builder.forwardedTurns[started] = root
+            }
+        }
         for (index, segment) in segments.enumerated() {
             for (record, line) in accepted[index] {
                 builder.apply(record, line: line, segment: segment, at: Position(segment: index, offset: line.offset))
@@ -254,6 +261,14 @@ struct CodexPaginatedBuilder {
                 $0.hasOutput = true
                 $0.outputAnswers = output.answers
             }
+        case .sessionSettings(let turnID, let settingModel, let settingEffort):
+            if let turnID, forwardedTurns[turnID] != nil { return }
+            if let settingModel {
+                model = settingModel
+                effort = settingEffort
+            } else if let settingEffort {
+                effort = settingEffort
+            }
         case .turnAborted(nil, _, _, _), .userMessage, .agentMessage, .reasoning, .contextCompacted, .compacted,
             .rolledBack, .toolCall, .legacyItem:
             // An abort without a turn id names no turn here; the rest are
@@ -376,6 +391,8 @@ struct CodexPaginatedBuilder {
                         return entry
                     },
                     ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt, opensInWindow: turn.sawStart)
-            })
+            },
+            model: model,
+            effort: effort)
     }
 }

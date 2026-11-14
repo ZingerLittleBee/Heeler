@@ -78,11 +78,12 @@ struct AgentChatSurfaceView: View {
         nonmutating set { session.settingOverrides.switchingSetting = newValue }
     }
     private var isSwitchingSetting: Bool { switchingSetting != nil }
-    /// A fresh Claude or Antigravity session has no reply yet; its welcome banner names the model.
+    /// A fresh Claude, Codex or Antigravity session has no reply yet; its screen names the model.
     @State private var welcomeModel: String?
     @State private var welcomeEffort: String?
     /// Antigravity CLI's model catalog on this Host (`agy models`).
     @State private var agyModels: [AgyModelCatalog.Choice] = []
+    private var codexModelCatalog: CodexModelCatalog { chat?.codexModelCatalog ?? .fallback }
     @State private var isRenamingAgent = false
     @State private var titleRename: AgentTitleRenameStore?
     @State private var isRenamingWorkspace = false
@@ -1138,6 +1139,8 @@ struct AgentChatSurfaceView: View {
             let choice = agyModels.first(where: { $0.id.caseInsensitiveCompare(raw) == .orderedSame })
         {
             model = choice.title
+        } else if program == .codex, let raw = model {
+            model = codexModelCatalog.displayTitle(for: raw)
         }
         let permissionMode = override(.permissionMode) ?? chat?.conversation.transcript.permissionMode
         let effort: String?
@@ -1234,6 +1237,33 @@ struct AgentChatSurfaceView: View {
                             } else {
                                 setOverride(.effort, confirmed.label.lowercased())
                             }
+                        }
+                    }
+                })
+        case .codex:
+            let catalog = codexModelCatalog
+            let activeModel = sessionSettings?.model
+            return AgentSessionControls(
+                isEnabled: isEnabled,
+                modelChoices: catalog.choices.map { (id: $0.id, title: $0.title) },
+                effortChoices: catalog.effortChoices(for: activeModel),
+                modelMatches: { model, choiceID in
+                    catalog.selectedChoiceID(for: model) == choiceID
+                },
+                setPermissionMode: nil,
+                setModel: { id in
+                    switchSetting(.model) {
+                        if let confirmed = await typeCodexSettingCommand("/model \(id)") {
+                            setOverride(.model, confirmed.model)
+                            setOverride(.effort, confirmed.effort ?? "")
+                        }
+                    }
+                },
+                setEffort: { level in
+                    switchSetting(.effort) {
+                        if let confirmed = await typeCodexSettingCommand("/model --reasoning=\(level)") {
+                            setOverride(.model, confirmed.model)
+                            setOverride(.effort, confirmed.effort ?? "")
                         }
                     }
                 })
@@ -1351,6 +1381,25 @@ struct AgentChatSurfaceView: View {
                     }
                 }
                 if attempt < attempts - 1 {
+                    do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+                }
+            }
+        case .codex:
+            guard status == .idle || status == .done,
+                console.isHostReadyForInput(agent.hostID),
+                chat?.conversation.transcript.model == nil
+            else { return }
+            for attempt in 0..<10 {
+                let screen = try? await readAgentScreen()
+                guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
+                    chat?.conversation.transcript.model == nil
+                else { return }
+                if let screen, let footer = CodexSessionScreen.footerSettings(onScreen: screen) {
+                    welcomeModel = footer.model
+                    welcomeEffort = footer.effort
+                    break
+                }
+                if attempt < 9 {
                     do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                 }
             }
@@ -1518,6 +1567,83 @@ struct AgentChatSurfaceView: View {
                     if answered, let label = outcome.value {
                         return (label, AgyScreen(screen).footerModel)
                     }
+                    break
+                }
+            }
+        } catch {}
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        return nil
+    }
+
+    private func typeCodexSettingCommand(_ command: String) async -> (model: String, effort: String?)? {
+        if let reason = await confirmSession?() {
+            permissionErrorMessage = reason
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return nil
+        }
+        guard let chat, !session.agentKeys.isRunningQueuedWork else { return nil }
+        let io = chat.screenIO
+        let generation = chat.conversationGeneration
+        let activity = agentActivity
+        do {
+            let before = try await io.readScreen()
+            guard PreSendGate.check(before, program: .codex, activity: activity()) == .send else {
+                throw CancellationError()
+            }
+            guard isOnStage(), chat.conversationGeneration == generation,
+                !session.agentKeys.isRunningQueuedWork, activity() == .idle
+            else {
+                throw CancellationError()
+            }
+            try await typeSwitchStep(
+                io, .paste(command),
+                whileShowing: { PreSendGate.check($0, program: .codex, activity: .idle) == .send })
+            let checkTyped: @Sendable (ANSIScreen) -> Bool = { screen in
+                guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .codex) else {
+                    return false
+                }
+                return typed.trimmingCharacters(in: .whitespacesAndNewlines) == command
+            }
+            if io.typeWhileShowing == nil {
+                var readyForEnter = false
+                for _ in 0..<6 {
+                    try await Task.sleep(for: .milliseconds(150))
+                    let afterPaste = try await io.readScreen()
+                    guard isOnStage(), chat.conversationGeneration == generation,
+                        !session.agentKeys.isRunningQueuedWork, activity() == .idle
+                    else {
+                        throw CancellationError()
+                    }
+                    if checkTyped(afterPaste) {
+                        readyForEnter = true
+                        break
+                    }
+                    guard case .empty = InputBoxStateDetector.detect(afterPaste, program: .codex) else {
+                        throw CancellationError()
+                    }
+                }
+                guard readyForEnter else { throw CancellationError() }
+            } else {
+                try await Task.sleep(for: .milliseconds(150))
+                guard isOnStage(), chat.conversationGeneration == generation,
+                    !session.agentKeys.isRunningQueuedWork, activity() == .idle
+                else {
+                    throw CancellationError()
+                }
+            }
+            try await typeSwitchStep(io, .keys(["enter"]), whileShowing: checkTyped)
+            for _ in 0..<12 {
+                try await Task.sleep(for: .milliseconds(250))
+                let screen = try await io.readScreen()
+                guard isOnStage(), chat.conversationGeneration == generation else { throw CancellationError() }
+                switch CodexSessionScreen.switchOutcome(since: before, command: command, on: screen) {
+                case .changed(let model, let effort):
+                    return (model: model, effort: effort)
+                case .failed(let message):
+                    permissionErrorMessage = message
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    return nil
+                case nil:
                     break
                 }
             }

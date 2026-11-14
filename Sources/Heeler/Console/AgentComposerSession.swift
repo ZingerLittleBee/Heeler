@@ -130,7 +130,7 @@ final class AgentSettingOverrides {
     enum Setting: Int { case permissionMode, model, effort }
 
     private var values: [String?] = [nil, nil, nil]
-    private var recorded: [String?] = [nil, nil, nil]
+    private var recorded: [Setting: [String?]] = [:]
     /// A switch's paste or key got no answer, so it may still reach the
     /// Agent's input; the next input waits until the Host answers a read.
     var lastSwitchHasNoAnswer = false
@@ -161,11 +161,17 @@ final class AgentSettingOverrides {
     }
 
     func value(_ setting: Setting, over now: [String?]) -> String? {
-        recorded[setting.rawValue] == now[setting.rawValue] ? values[setting.rawValue] : nil
+        guard let snapshot = recorded[setting], snapshot.count == now.count else { return nil }
+        switch setting {
+        case .permissionMode:
+            return snapshot.first == now.first ? values[setting.rawValue] : nil
+        case .model, .effort:
+            return Array(snapshot.dropFirst()) == Array(now.dropFirst()) ? values[setting.rawValue] : nil
+        }
     }
 
     func set(_ setting: Setting, _ value: String?, over now: [String?]) {
         values[setting.rawValue] = value
-        recorded[setting.rawValue] = now[setting.rawValue]
+        recorded[setting] = now
     }
 }

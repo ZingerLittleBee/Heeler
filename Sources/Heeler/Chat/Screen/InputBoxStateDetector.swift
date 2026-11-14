@@ -154,7 +154,7 @@ enum InputBoxStateDetector {
     /// (`CX/tui/src/bottom_pane/footer.rs` and the composer snapshots).
     private static func codexOverlay(around composer: CodexComposer, in screen: ANSIScreen) -> String? {
         let rows = screen.rows
-        let hints = ["again to quit", "to edit previous message", "reverse-i-search", "esc close"]
+        let hints = ["again to quit", "to edit previous message", "reverse-i-search", "esc close", "Waiting for startup"]
         for row in rows[(composer.row + 1)...] where !row.isBlank {
             let text = row.trimmedText
             if hints.contains(where: text.contains) { return text }

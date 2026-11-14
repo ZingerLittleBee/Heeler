@@ -67,6 +67,8 @@ final actor ScriptedTransport: Transport {
     private(set) var agentPromptParams: [AgentPromptParams] = []
     /// Every `agent.send_keys` received, in order.
     private(set) var agentSendKeysParams: [AgentSendKeysParams] = []
+    /// Every `pane.send_input` received, in order.
+    private(set) var paneSendInputs: [PaneSendInputParams] = []
     /// Every `agent.start` received, in order; the new-agent flow (#12)
     /// asserts on the params it forwarded.
     private(set) var agentStarts: [AgentLaunchRequest] = []
@@ -669,6 +671,10 @@ final actor ScriptedTransport: Transport {
 
     func sendAgentKeys(_ params: AgentSendKeysParams) async throws {
         agentSendKeysParams.append(params)
+    }
+
+    func sendPaneInput(_ params: PaneSendInputParams) async throws {
+        paneSendInputs.append(params)
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {

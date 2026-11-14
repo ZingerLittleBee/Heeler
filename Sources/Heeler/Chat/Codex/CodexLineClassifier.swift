@@ -18,6 +18,8 @@ enum CodexLineKind: Equatable, Sendable {
     case response(String)
     /// A `retained_context` record, with its payload type.
     case retainedContext(String)
+    /// A `turn_context` record, carrying the turn's model and effort.
+    case turnContext
     /// A `compacted` record: model context only.
     case compacted
     /// A known top-level type that carries nothing Chat shows.
@@ -59,7 +61,7 @@ enum CodexLineClassifier {
 
     /// Top-level types Codex writes that hold nothing for Chat.
     static let ignorableTypes: Set<String> = [
-        "turn_context", "world_state", "token_usage_record", "security_risk_score",
+        "world_state", "token_usage_record", "security_risk_score",
         "inter_agent_communication", "inter_agent_communication_metadata", "realtime_item",
     ]
 
@@ -88,6 +90,8 @@ enum CodexLineClassifier {
             kind = scanner.payloadType.map(CodexLineKind.response) ?? .unclassified
         case "retained_context":
             kind = scanner.payloadType.map(CodexLineKind.retainedContext) ?? .unclassified
+        case "turn_context":
+            kind = .turnContext
         case "compacted":
             kind = .compacted
         case let type? where ignorableTypes.contains(type):

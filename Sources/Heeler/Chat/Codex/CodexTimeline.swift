@@ -102,6 +102,8 @@ struct CodexTimeline: Equatable, Sendable {
     /// Rows above the first turn: a divider where older history is missing.
     var leading: [CodexTimelineEntry] = []
     var turns: [CodexTimelineTurn] = []
+    var model: String? = nil
+    var effort: String? = nil
 }
 
 /// A turn as tests and diagnostics see it.
