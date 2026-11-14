@@ -24,12 +24,32 @@ test("renders the three configured rows with styles, unstyled separators and no 
   assert.deepEqual(render([
     ["state_icon", "workspace", "tab", { token: "agent", fg: "#AbC", bold: true, dim: false }],
     ["pane", "terminal_title", "terminal_title_stripped", "$task", "$blank", "$missing"],
-    ["directory", "host", "status", "state_text"],
+    ["directory", "path", "host", "status", "state_text"],
   ]).rows, [
     [{ text: "Heeler" }, { text: " · " }, { text: "reviewer", fg: "#AbC", bold: true, dim: false }],
     [{ text: "shell" }, { text: " · " }, { text: "⠂ raw" }, { text: " · " }, { text: "stripped" }, { text: " · " }, { text: "**plain text**" }],
-    [{ text: "/work/Heeler" }, { text: " · " }, { text: "My Mac" }, { text: " · " }, { text: "Working" }],
+    [{ text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }, { text: " · " }, { text: "My Mac" }, { text: " · " }, { text: "Working" }],
   ]);
+});
+
+test("directory extracts the last component across POSIX and Windows paths while path keeps trimmed cwd", () => {
+  for (const [cwd, expectedDirectory, expectedPath] of [
+    ["/work/Heeler", "Heeler", "/work/Heeler"],
+    ["/home/dev/project/", "project", "/home/dev/project/"],
+    ["/", "/", "/"],
+    ["C:\\Users\\dev\\project\\", "project", "C:\\Users\\dev\\project\\"],
+    ["C:/Users/dev/project", "project", "C:/Users/dev/project"],
+    ["C:\\", "C:\\", "C:\\"],
+    ["\\\\server\\share\\project", "project", "\\\\server\\share\\project"],
+    ["\\\\server\\share\\", "\\\\server\\share", "\\\\server\\share\\"],
+  ]) {
+    assert.deepEqual(render([["directory", "path"]], { agents: [{ ...agent, cwd }] }).rows, [
+      [{ text: expectedDirectory }, { text: " · " }, { text: expectedPath }],
+    ], cwd);
+  }
+  for (const blank of ["", "  \n", null, undefined]) {
+    assert.deepEqual(render([["directory", "path"]], { agents: [{ ...agent, cwd: blank }] }).rows, []);
+  }
 });
 
 test("tab visibility matches Console and unrelated pane context is ignored", () => {
@@ -83,7 +103,7 @@ test("a label key the app would not offer makes the layout malformed", () => {
 });
 
 test("a label named like an object's own members shows nothing", () => {
-  assert.deepEqual(render([["label:constructor", "label:__proto__", "directory"]]).rows, [[{ text: "/work/Heeler" }]]);
+  assert.deepEqual(render([["label:constructor", "label:__proto__", "directory"]]).rows, [[{ text: "Heeler" }]]);
 });
 
 test("field truncation preserves the first 80 graphemes without ellipsis or trailing-space trimming", () => {

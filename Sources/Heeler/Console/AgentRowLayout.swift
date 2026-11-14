@@ -1,8 +1,8 @@
 import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
-/// Heeler-only names (`host`, `status`, `directory`, and the right side's
-/// `status_badge` and `changes`) that exist in the app layout, not as
+/// Heeler-only names (`host`, `status`, `directory`, `path`, and the right
+/// side's `status_badge` and `changes`) that exist in the app layout, not as
 /// authored plugin fields. A herdr-core Terminal's labels are fields too, as
 /// `label:<key>`.
 ///
@@ -13,7 +13,7 @@ import Foundation
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
-    case host, status, directory, statusBadge, changes
+    case host, status, directory, path, statusBadge, changes
     case custom(String)
     case label(String)
 
@@ -24,7 +24,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     ]
 
     static let heelerBuiltins: [Self] = [
-        .host, .status, .directory,
+        .host, .status, .directory, .path,
     ]
 
     static let builtins: [Self] = herdrBuiltins + heelerBuiltins
@@ -57,6 +57,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "host": self = .host
         case "status": self = .status
         case "directory": self = .directory
+        case "path": self = .path
         case "status_badge": self = .statusBadge
         case "changes": self = .changes
         default:
@@ -90,6 +91,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .host: "host"
         case .status: "status"
         case .directory: "directory"
+        case .path: "path"
         case .statusBadge: "status_badge"
         case .changes: "changes"
         case .custom(let name): "$\(name)"

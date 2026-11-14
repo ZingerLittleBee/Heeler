@@ -581,7 +581,7 @@ struct HerdrCoreAgentsTests {
         let row = try #require(agent(store, "t1"))
         #expect(
             AgentRowRenderer.render(layout: layout, agent: row).map { $0.map(\.text) }
-                == [["fix the sync"], ["/work/app/src"]])
+                == [["fix the sync"], ["src"]])
     }
 
     @Test func aPluginSnapshotNeverSetsACoreHostsRowsButItsSavedLayoutDoes() {

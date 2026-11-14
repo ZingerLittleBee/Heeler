@@ -80,17 +80,19 @@ struct AgentLayoutTokensEditingTests {
         #expect(AgentLayoutTokensEditing.description(for: .workspace) == "Workspace or repo folder name")
         #expect(AgentLayoutTokensEditing.description(for: .host) == "Host name")
         #expect(AgentLayoutTokensEditing.description(for: .status) == "Agent Status as text")
-        #expect(AgentLayoutTokensEditing.description(for: .directory) == "Working directory")
+        #expect(AgentLayoutTokensEditing.description(for: .directory) == "Working directory name")
+        #expect(AgentLayoutTokensEditing.description(for: .path) == "Working directory path")
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins)
-                == [.host, .status, .directory])
+                == [.host, .status, .directory, .path])
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(
                 in: [.init(.host)], from: AgentRowToken.heelerBuiltins)
-                == [.status, .directory])
+                == [.status, .directory, .path])
         #expect(AgentRowToken(rawValue: "host") == .host)
         #expect(AgentRowToken(rawValue: "status") == .status)
         #expect(AgentRowToken(rawValue: "directory") == .directory)
+        #expect(AgentRowToken(rawValue: "path") == .path)
         #expect(AgentRowToken(rawValue: "$host") == .custom("host"))
     }
 
@@ -132,8 +134,8 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.slotFields(1, of: try #require(saved())) == [.init(.agent), .init(.host)])
         #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [], side: .trailing)
-            == [.host, .status, .directory, .statusBadge, .changes])
-        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .status, .directory])
+            == [.host, .status, .directory, .path, .statusBadge, .changes])
+        #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .status, .directory, .path])
         #expect(AgentLayoutTokensEditing.description(for: .changes).contains("Changes"))
         #expect(!AgentLayoutTokensEditing.hasStyle(.host, on: .trailing))
         #expect(!AgentLayoutTokensEditing.hasStyle(.changes, on: .trailing))
@@ -239,10 +241,10 @@ struct AgentLayoutTokensEditingTests {
         #expect(AgentRowSlot.forRow(0) == .herdr && AgentRowSlot.forRow(1) == .herdr)
         #expect(AgentRowSlot.forRow(2) == .heeler && AgentRowSlot.forRow(3) == nil)
         #expect(AgentRowSlot.slotRows([]) == [[], [], []])
-        #expect(AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins) == [.host, .status, .directory])
+        #expect(AgentLayoutTokensEditing.availableBuiltins(in: [], from: AgentRowToken.heelerBuiltins) == [.host, .status, .directory, .path])
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(in: [.init(.host)], from: AgentRowToken.heelerBuiltins)
-                == [.status, .directory])
+                == [.status, .directory, .path])
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(
             AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", rowIndex: 0)

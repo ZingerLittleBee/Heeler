@@ -242,12 +242,15 @@ suite("an update to a registered activity token", () => {
   });
 
   test("a layout with a Terminal label keeps its other fields and shows the label", async () => {
-    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }]] };
+    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }], [{ token: "directory" }, { token: "path" }]] };
     register(entry(KEY_A, ALERT_A, ACTIVITY_A, { live: { row_layout: layout } }));
-    await connected([agent("t1", { labels: { "team.owner": "ana" } })]);
+    await connected([agent("t1", { cwd: "/work/Heeler", labels: { "team.owner": "ana" } })]);
     await pushes(ACTIVITY_A, 1);
 
-    assert.deepEqual(opened(lastTo(ACTIVITY_A), KEY_A).agents[0].rows, [[{ text: "claude" }, { text: " · " }, { text: "ana" }]]);
+    assert.deepEqual(opened(lastTo(ACTIVITY_A), KEY_A).agents[0].rows, [
+      [{ text: "claude" }, { text: " · " }, { text: "ana" }],
+      [{ text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }],
+    ]);
   });
 
   test("follows this device's pins and layout, each device its own", async () => {

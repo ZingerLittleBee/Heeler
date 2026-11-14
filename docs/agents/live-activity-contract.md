@@ -98,7 +98,7 @@ Decrypted plaintext (canonical form):
   (`display_agent`, then `name`, then raw kind); raw terminal title; stripped terminal title (an absent value falls back
   to the raw title with one leading activity glyph removed only at a whitespace
   boundary, while an explicitly empty value stays empty); configured Host display name; capitalized status;
-  trimmed `cwd` for directory; `tokens` values for `$custom` fields; and on a
+  the last component of trimmed `cwd` for `directory`; trimmed `cwd` for `path`; `tokens` values for `$custom` fields; and on a
   herdr-core Host the Terminal's label for `label:<key>` fields, which the Helper
   reads from the same `tokens`.
   On a herdr-core Host the app takes an Agent's `cwd` from its Terminal's

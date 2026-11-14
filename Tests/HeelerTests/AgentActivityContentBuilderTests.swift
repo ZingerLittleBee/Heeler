@@ -21,17 +21,18 @@ struct AgentActivityContentBuilderTests {
             workspaceLabel: "Heeler", repositoryCheckout: nil)
         let layout = AgentRowLayout(rows: [
             [.init(.workspace, bold: true), .init(.custom("branch"), fg: HexColor("#abc"))],
-            [.init(.host, dim: true)], [.init(.directory)],
+            [.init(.host, dim: true)], [.init(.directory), .init(.path)],
         ])
         let content = try #require(AgentActivityContentBuilder.make(
             agents: [row], hostName: "Studio Mac", key: key, layout: layout))
         let details = try opened(content)
         #expect(details.agents.first?.rows == [
             [.init(text: "Heeler", bold: true), .init(text: " · "), .init(text: "**literal**", fg: "#abc")],
-            [.init(text: "Studio Mac", dim: true)], [.init(text: "/work/heeler")],
+            [.init(text: "Studio Mac", dim: true)],
+            [.init(text: "heeler"), .init(text: " · "), .init(text: "/work/heeler")],
         ])
         let wire = String(decoding: try JSONEncoder().encode(content), as: UTF8.self)
-        #expect(!wire.contains("/work/heeler") && !wire.contains("**literal**"))
+        #expect(!wire.contains("/work/heeler") && !wire.contains("heeler") && !wire.contains("**literal**"))
     }
 
     @Test func oversizedConfiguredRowsFallBackToIdentityBeforeDroppingAgents() throws {

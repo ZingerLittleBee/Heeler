@@ -204,8 +204,8 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
     }
 
     /// The fields a row in a card leaves to the card: the Workspace, the
-    /// Host where a header names it, and a directory that is the checkout
-    /// at `checkoutPath`, its section's.
+    /// Host where a header names it, and a directory or path that is the
+    /// checkout at `checkoutPath`, its section's.
     static func hiddenTokens(
         for agent: ConsoleAgent, checkoutPath: String?, showsHost: Bool
     ) -> Set<AgentRowToken> {
@@ -213,6 +213,7 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
         if !showsHost { hidden.insert(.host) }
         if let checkoutPath, agent.agent.cwd == checkoutPath {
             hidden.insert(.directory)
+            hidden.insert(.path)
         }
         return hidden
     }

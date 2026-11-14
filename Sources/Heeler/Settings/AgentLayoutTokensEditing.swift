@@ -216,7 +216,9 @@ enum AgentLayoutTokensEditing {
         case .status:
             String(localized: "Agent Status as text")
         case .directory:
-            String(localized: "Working directory")
+            String(localized: "Working directory name")
+        case .path:
+            String(localized: "Working directory path")
         case .statusBadge:
             String(localized: "Agent Status in its colored capsule")
         case .changes:
