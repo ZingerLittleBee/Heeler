@@ -50,15 +50,19 @@ enum WebSocketError: Error, Sendable {
 /// caller then reconnects. A link whose consumer must never fall behind, such
 /// as a control connection, sets a limit it never reaches. This link's own
 /// keepalive waits while the reader is stopped, because the server did not
-/// fall silent.
+/// fall silent. A stopped reader does not see the channel end either, so a
+/// link dropped while stopped never ends on its own (see Ending).
 ///
 /// Ending: `close` sends a close frame and waits briefly for the peer's
 /// answer. A peer's close frame is answered with its own code, and once the
 /// messages that arrived before it are received, `receive` throws
 /// `.closedByPeer` with the peer's code and reason. A cancelled `receive`
 /// ends the link at once, with no close frame. However it ends, the reader
-/// and writer stop and the channel is closed. Ending is explicit: a link
-/// that is dropped without either keeps reading until its channel ends.
+/// and writer stop and the channel is closed. Ending is explicit: a dropped
+/// link stays open. Its reader keeps reading until the channel ends, unless
+/// read-ahead has stopped it; then nothing reads again, and the link and its
+/// channel live until the SSH session closes. End every link you are done
+/// with by `close` or by cancelling a `receive`.
 actor WebSocketLink {
     typealias Sleep = @Sendable (Duration) async throws -> Void
 
