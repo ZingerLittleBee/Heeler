@@ -158,31 +158,33 @@ struct AgentDetailHeader: View {
 
     @ViewBuilder
     private func titlePill(_ title: AgentDetailHeaderTitle) -> some View {
-        if let controls = sessionControls {
+        if let controls = sessionControls, !controls.modelChoices.isEmpty {
             Menu {
                 Menu("Model", systemImage: "cpu") {
                     Section("Model") {
                         Picker("Model", selection: Binding(
-                            get: { AgentSessionSettings.modelChoices.first { AgentSessionSettings.model(sessionSettings?.model, is: $0.id) }?.id ?? "" },
+                            get: { controls.modelChoices.first { controls.modelMatches(sessionSettings?.model, $0.id) }?.id ?? "" },
                             set: { controls.setModel($0) })
                         ) {
-                            ForEach(AgentSessionSettings.modelChoices, id: \.id) { choice in
+                            ForEach(controls.modelChoices, id: \.id) { choice in
                                 Text(choice.title).tag(choice.id)
                             }
                         }
                         .labelsHidden()
                         .disabled(!controls.isEnabled || statusTitle != nil)
                     }
-                    Section("Effort") {
-                        Picker("Effort", selection: Binding(
-                            get: { sessionSettings?.effort ?? "" }, set: { controls.setEffort($0) })
-                        ) {
-                            ForEach(AgentSessionSettings.effortChoices, id: \.self) { level in
-                                Text(level).tag(level)
+                    if !controls.effortChoices.isEmpty {
+                        Section("Effort") {
+                            Picker("Effort", selection: Binding(
+                                get: { sessionSettings?.effort ?? "" }, set: { controls.setEffort($0) })
+                            ) {
+                                ForEach(controls.effortChoices, id: \.self) { level in
+                                    Text(level).tag(level)
+                                }
                             }
+                            .labelsHidden()
+                            .disabled(!controls.isEnabled || statusTitle != nil)
                         }
-                        .labelsHidden()
-                        .disabled(!controls.isEnabled || statusTitle != nil)
                     }
                 }
             } label: {
@@ -206,6 +208,8 @@ struct AgentDetailHeader: View {
         let mark = AgentKindMark(kind: title.kind)
         // Claude's square asset has vertical padding; match the folder's visible height.
         let markSize: CGFloat = mark.artwork == AgentKindMark.artwork(for: .claude) ? 18 : 12
+        let hasModel = !(sessionSettings?.model ?? "").isEmpty
+        let offersModelMenu = !(sessionControls?.modelChoices.isEmpty ?? true)
         return VStack(spacing: 1) {
             HStack(spacing: 6) {
                 if statusTitle != nil {
@@ -219,36 +223,20 @@ struct AgentDetailHeader: View {
                     .foregroundStyle(palette.foreground)
                     .lineLimit(1)
             }
-            HStack(spacing: 4) {
-                Group {
-                    if let artwork = mark.artwork {
-                        Image(artwork.template)
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        Text(verbatim: mark.monogram)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            Group {
+                if title.folder != nil && hasModel {
+                    ViewThatFits(in: .horizontal) {
+                        subtitleRow(
+                            title, mark: mark, markSize: markSize, includeFolder: true,
+                            offersModelMenu: offersModelMenu)
+                        subtitleRow(
+                            title, mark: mark, markSize: markSize, includeFolder: false,
+                            offersModelMenu: offersModelMenu)
                     }
-                }
-                .frame(width: markSize, height: markSize)
-                .frame(height: 12)
-                .accessibilityHidden(true)
-                if let folder = title.folder {
-                    Text(verbatim: "·")
-                        .accessibilityHidden(true)
-                    Image(systemName: "folder")
-                        .accessibilityHidden(true)
-                    Text(verbatim: folder)
-                        .truncationMode(.middle)
-                }
-                if let model = sessionSettings?.modelLine {
-                    if title.folder != nil {
-                        Text(verbatim: "·")
-                            .accessibilityHidden(true)
-                    }
-                    Text(verbatim: model)
-                        .layoutPriority(1)
+                } else {
+                    subtitleRow(
+                        title, mark: mark, markSize: markSize, includeFolder: true,
+                        offersModelMenu: offersModelMenu)
                 }
             }
             .font(.system(size: 12))
@@ -260,6 +248,60 @@ struct AgentDetailHeader: View {
         .headerGlass(in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private func subtitleRow(
+        _ title: AgentDetailHeaderTitle, mark: AgentKindMark, markSize: CGFloat,
+        includeFolder: Bool, offersModelMenu: Bool
+    ) -> some View {
+        HStack(spacing: 4) {
+            Group {
+                if let artwork = mark.artwork {
+                    Image(artwork.template)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Text(verbatim: mark.monogram)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                }
+            }
+            .frame(width: markSize, height: markSize)
+            .frame(height: 12)
+            .accessibilityHidden(true)
+            let shownFolder = includeFolder ? title.folder : nil
+            if let folder = shownFolder {
+                Text(verbatim: "·")
+                    .fixedSize()
+                    .accessibilityHidden(true)
+                Image(systemName: "folder")
+                    .accessibilityHidden(true)
+                Text(verbatim: folder)
+                    .truncationMode(.middle)
+            }
+            if let rawModel = sessionSettings?.model, !rawModel.isEmpty {
+                Text(verbatim: "·")
+                    .fixedSize()
+                    .accessibilityHidden(true)
+                Text(verbatim: AgentSessionSettings.modelTitle(rawModel))
+                    .truncationMode(.middle)
+                    .layoutPriority(1)
+                if let effort = sessionSettings?.effort, !effort.isEmpty {
+                    Text(verbatim: "·")
+                        .fixedSize()
+                        .accessibilityHidden(true)
+                    Text(verbatim: effort)
+                        .layoutPriority(2)
+                }
+            } else if offersModelMenu {
+                Text(verbatim: "·")
+                    .fixedSize()
+                    .accessibilityHidden(true)
+                Text("Model")
+                    .fixedSize()
+                    .layoutPriority(2)
+            }
+        }
     }
 }
 

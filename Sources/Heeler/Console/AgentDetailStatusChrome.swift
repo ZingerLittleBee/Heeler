@@ -29,7 +29,8 @@ struct AgentDetailStatusChrome: View {
         } ?? false
         // Only a line that shows the Checkout opens it.
         let open = showsGit || showsTotals ? changes?.open : nil
-        let showsSession = session?.notablePermissionMode != nil || (session != nil && sessionControls != nil)
+        let showsSession = session?.notablePermissionMode != nil
+            || (session != nil && sessionControls?.setPermissionMode != nil)
         // No spacing of its own, so a divider sits closer to its neighbours
         // than the line's spacing would put it: the rule already separates
         // them, and the branch needs the width.
@@ -279,7 +280,10 @@ struct AgentSessionControls {
     var isSwitchingPermissionMode = false
     /// A launch opt-in or current live bypass, not a recorded transcript mode.
     var allowsBypassPermissions = false
-    var setPermissionMode: @MainActor (String) -> Void
+    var modelChoices: [(id: String, title: String)] = AgentSessionSettings.modelChoices
+    var effortChoices: [String] = AgentSessionSettings.effortChoices
+    var modelMatches: (String?, String) -> Bool = AgentSessionSettings.model(_:is:)
+    var setPermissionMode: (@MainActor (String) -> Void)? = nil
     var setModel: @MainActor (String) -> Void
     var setEffort: @MainActor (String) -> Void
 }
@@ -347,12 +351,14 @@ struct AgentPermissionModeLabel: View {
 
     var body: some View {
         Group {
-            if let mode = settings.notablePermissionMode ?? (controls == nil ? nil : settings.permissionMode ?? "") {
+            if let mode = settings.notablePermissionMode
+                ?? (controls?.setPermissionMode == nil ? nil : settings.permissionMode ?? "")
+            {
                 permission(mode)
             }
         }
         .confirmationDialog("Skip every permission prompt?", isPresented: $confirmsBypass, titleVisibility: .visible) {
-            Button("Bypass Permissions", role: .destructive) { controls?.setPermissionMode("bypassPermissions") }
+            Button("Bypass Permissions", role: .destructive) { controls?.setPermissionMode?("bypassPermissions") }
         } message: {
             Text("The Agent runs every tool without asking until you switch back.")
         }
@@ -379,12 +385,12 @@ struct AgentPermissionModeLabel: View {
             .font(.caption2.weight(.medium))
             .foregroundStyle(permissionInk(mode))
             .fixedSize()
-        if let controls {
+        if let controls, let setPermissionMode = controls.setPermissionMode {
             Menu {
                 Picker("Permission mode", selection: Binding(
                     get: { mode },
                     set: { choice in
-                        if choice == "bypassPermissions" { confirmsBypass = true } else { controls.setPermissionMode(choice) }
+                        if choice == "bypassPermissions" { confirmsBypass = true } else { setPermissionMode(choice) }
                     })
                 ) {
                     ForEach(AgentSessionSettings.permissionChoices.filter {

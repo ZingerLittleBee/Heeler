@@ -57,6 +57,8 @@ struct AgyStep: Sendable {
     let status: Status
     /// The step's start, UTC to the second.
     let createdAt: Date?
+    /// The model slug recorded on a `PLANNER_RESPONSE` step (agy 1.5.9+).
+    let model: String?
     let content: String?
     let thinking: String?
     let calls: [Call]
@@ -86,8 +88,9 @@ struct AgyStep: Sendable {
         return AgyStep(
             offset: line.offset, length: line.length, isTruncated: line.isTruncated,
             stepIndex: integer(value["step_index"]), kind: kind(type), status: status(value["status"]?.stringValue),
-            createdAt: value["created_at"]?.stringValue.flatMap(date), content: value["content"]?.stringValue,
-            thinking: value["thinking"]?.stringValue, calls: calls, error: value["error"]?.stringValue, media: media)
+            createdAt: value["created_at"]?.stringValue.flatMap(date), model: value["model"]?.stringValue,
+            content: value["content"]?.stringValue, thinking: value["thinking"]?.stringValue, calls: calls,
+            error: value["error"]?.stringValue, media: media)
     }
 
     private static func kind(_ type: String) -> Kind {
@@ -139,6 +142,47 @@ struct AgyStep: Sendable {
             return (body.trimmingCharacters(in: .whitespacesAndNewlines), false)
         }
         return (body[..<close.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines), true)
+    }
+
+    /// The model and effort a `USER_INPUT`'s `<USER_SETTINGS_CHANGE>` block
+    /// recorded after `</USER_REQUEST>`. Read only outside `<USER_REQUEST>` so
+    /// pasted prompt text cannot impersonate a setting change.
+    var modelSelection: (model: String, effort: String?)? {
+        guard kind == .userInput, let content,
+            let afterRequest = content.range(of: "</USER_REQUEST>")?.upperBound
+        else { return nil }
+        let prefix = "The user changed setting `Model Selection` from "
+        var search = content[afterRequest...]
+        var latest: (model: String, effort: String?)?
+        while let open = search.range(of: "<USER_SETTINGS_CHANGE>"),
+            let close = search[open.upperBound...].range(of: "</USER_SETTINGS_CHANGE>")
+        {
+            for rawLine in search[open.upperBound..<close.lowerBound].split(separator: "\n") {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard line.hasPrefix(prefix) else { continue }
+                var rest = String(line.dropFirst(prefix.count))
+                if let comment = rest.range(of: ". No need to comment") {
+                    rest = String(rest[..<comment.lowerBound])
+                } else if rest.hasSuffix(".") {
+                    rest.removeLast()
+                }
+                guard let sep = rest.range(of: " to ") else { continue }
+                let rawLabel = rest[sep.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !rawLabel.isEmpty, rawLabel != "None" else { continue }
+                latest = AgyModelCatalog.resolveDisplayLabel(rawLabel, in: AgyModelCatalog.defaultChoices)
+            }
+            search = search[close.upperBound...]
+        }
+        return latest
+    }
+
+    /// The model and effort a `PLANNER_RESPONSE` step recorded in its `"model"`
+    /// slug (such as `"gemini-4-carbon-high"`). Keeps long conversations whose
+    /// initial `<USER_SETTINGS_CHANGE>` sits above the 256 KiB tail window
+    /// reporting their active model.
+    var plannerModel: (model: String, effort: String?)? {
+        guard kind == .plannerResponse, let model else { return nil }
+        return AgyModelCatalog.resolveModelSlug(model)
     }
 
     /// A tool result's text without the `Created At` and `Completed At`
