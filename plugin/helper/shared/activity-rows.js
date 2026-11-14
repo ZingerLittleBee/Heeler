@@ -3,11 +3,45 @@ import { optionalText } from "./display-text.js";
 
 const BUILTINS = new Set([
   "state_icon", "state_text", "workspace", "tab", "pane", "agent",
-  "terminal_title", "terminal_title_stripped", "host", "status", "directory",
+  "terminal_title", "terminal_title_stripped", "host", "status", "directory", "path",
 ]);
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const LABEL_PREFIX = "label:";
+
+function windowsRootEnd(path) {
+  if (/^[A-Za-z]:[/\\]/.test(path)) return 3;
+  if (!path.startsWith("\\\\")) return null;
+  const rest = path.slice(2);
+  const sep = rest.search(/[/\\]/);
+  if (sep <= 0) return null;
+  const server = rest.slice(0, sep);
+  if (server === "." || server === ".." || server === "?") return null;
+  const afterServer = 2 + sep + 1;
+  const shareSep = path.slice(afterServer).search(/[/\\]/);
+  const shareEnd = shareSep === -1 ? path.length : afterServer + shareSep;
+  const share = path.slice(afterServer, shareEnd);
+  if (!share || share === "." || share === "..") return null;
+  return shareEnd;
+}
+
+/** Matches `RemoteHostPath.lastComponent(of:)` across POSIX and Windows roots. */
+function lastPathComponent(raw) {
+  if (typeof raw !== "string") return null;
+  const path = raw.trim();
+  if (!path) return null;
+  const winEnd = windowsRootEnd(path);
+  const isWin = winEnd !== null;
+  const rootEnd = winEnd ?? (path.startsWith("/") ? 1 : 0);
+  let end = path.length;
+  while (end > rootEnd && (path[end - 1] === "/" || (isWin && path[end - 1] === "\\"))) {
+    end -= 1;
+  }
+  if (end === rootEnd) return path.slice(0, end);
+  const trimmed = path.slice(0, end);
+  const parts = trimmed.split(isWin ? /[/\\]+/ : /\/+/);
+  return parts.at(-1) || trimmed;
+}
 
 /** Keeps to `AgentRowToken.terminalLabel`, the app's rule for a label it offers. */
 function isLabelField(token) {
@@ -80,7 +114,8 @@ export function renderActivityRows(layout, agent, { hostName, workspaceLabels, t
         const status = agent.agent_status.toLowerCase();
         return status.charAt(0).toUpperCase() + status.slice(1);
       }
-      case "directory": return typeof agent.cwd === "string" ? agent.cwd.trim() : null;
+      case "directory": return lastPathComponent(agent.cwd);
+      case "path": return typeof agent.cwd === "string" ? agent.cwd.trim() : null;
       default: {
         if (token.startsWith("$")) return agent.tokens?.[token.slice(1)];
         return token.startsWith(LABEL_PREFIX) ? agent.tokens?.[token.slice(LABEL_PREFIX.length)] : null;

@@ -103,8 +103,8 @@ struct AgentRowRendererTests {
             workspaceLabel: "Heeler", repositoryCheckout: nil, hostUsername: hostUsername)
     }
 
-    @Test func directoryShortensOnlyTheAccountsStandardHome() {
-        let layout = AgentRowLayout(rows: [[.init(.directory)]])
+    @Test func pathShortensOnlyTheAccountsStandardHome() {
+        let layout = AgentRowLayout(rows: [[.init(.path)]])
         for (cwd, username, expected) in [
             ("/Users/aliefe/Code/bitbucket/opinnate-python", "aliefe",
              "~/Code/bitbucket/opinnate-python"),
@@ -124,8 +124,29 @@ struct AgentRowRendererTests {
         }
     }
 
-    @Test func directoryStaysAbsentWhenTheLaunchPathIsBlank() {
+    @Test func directoryExtractsTheLastComponentAcrossPOSIXAndWindowsPaths() {
         let layout = AgentRowLayout(rows: [[.init(.directory)]])
+        for (cwd, username, expected) in [
+            ("/Users/aliefe/Code/bitbucket/opinnate-python", "aliefe", "opinnate-python"),
+            ("/Users/aliefe/Code/bitbucket/opinnate-python/", "aliefe", "opinnate-python"),
+            ("/Users/aliefe", "aliefe", "aliefe"),
+            ("/", "aliefe", "/"),
+            (#"C:\Users\dev\project\"#, nil, "project"),
+            ("C:/Users/dev/project", nil, "project"),
+            (#"C:\"#, nil, #"C:\"#),
+            (#"\\server\share\project"#, nil, "project"),
+            (#"\\server\share\"#, nil, #"\\server\share"#),
+        ] as [(String, String?, String)] {
+            let rows = AgentRowRenderer.render(
+                layout: layout, agent: directoryAgent(cwd: cwd, hostUsername: username))
+            #expect(
+                rows.map { $0.map(\.text).joined() } == [expected],
+                "\(cwd) for user \(username ?? "none")")
+        }
+    }
+
+    @Test func directoryAndPathStayAbsentWhenTheLaunchPathIsBlank() {
+        let layout = AgentRowLayout(rows: [[.init(.directory), .init(.path)]])
         #expect(
             AgentRowRenderer.render(
                 layout: layout, agent: directoryAgent(cwd: "", hostUsername: "aliefe")
@@ -171,18 +192,18 @@ struct AgentRowRendererTests {
         #expect(AgentRowRenderer.render(layout: emptyOverride, agent: agent()).isEmpty)
     }
 
-    @Test func heelerOnlyFieldsRenderHostStatusAndDirectory() {
+    @Test func heelerOnlyFieldsRenderHostStatusDirectoryAndPath() {
         let withCwd = ConsoleAgent(
             hostID: UUID(), hostName: "Studio Mac",
             agent: Agent(
                 terminalID: "term", kind: "claude", title: "Fix", status: .idle,
                 workspaceID: "w", tabID: "t", paneID: "p", cwd: "/work/heeler", revision: 1),
             workspaceLabel: nil, repositoryCheckout: nil)
-        let layout = AgentRowLayout(rows: [[.init(.host), .init(.status), .init(.directory)]])
+        let layout = AgentRowLayout(rows: [[.init(.host), .init(.status), .init(.directory), .init(.path)]])
         #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).map { $0.map(\.text).joined() }
-                == ["Studio Mac · Idle · /work/heeler"])
+                == ["Studio Mac · Idle · heeler · /work/heeler"])
         #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).flatMap { $0.compactMap(\.token) }
-                == [.host, .status, .directory])
+                == [.host, .status, .directory, .path])
 
         let empty = ConsoleAgent(
             hostID: UUID(), hostName: "  ",
@@ -203,7 +224,7 @@ struct AgentRowRendererTests {
             workspaceLabel: nil, repositoryCheckout: nil)
         let layout = AgentRowLayout(rows: [[.init(.host), .init(.status), .init(.directory)]])
         #expect(AgentRowRenderer.render(layout: layout, agent: unknown).map { $0.map(\.text).joined() }
-                == ["Studio Mac · /work/heeler"])
+                == ["Studio Mac · heeler"])
         #expect(AgentStatus.unknown.displayTitle == nil)
         #expect(AgentStatus(rawValue: "paused").displayTitle == "Paused")
     }

@@ -556,10 +556,10 @@ struct ConsoleListPresentationStoreTests {
                 terminalID: "term_p2", kind: "claude", title: "Task", status: .idle,
                 workspaceID: "w1", tabID: "w1:t1", paneID: "p2", cwd: "/wt/nest", revision: 1),
             workspaceLabel: "nest", repositoryCheckout: atCheckout.repositoryCheckout)
-        #expect(ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, checkoutPath: inCheckout.checkoutPath, showsHost: true) == [.workspace, .directory])
+        #expect(ConsoleWorkspaceCard.hiddenTokens(for: inCheckout, checkoutPath: inCheckout.checkoutPath, showsHost: true) == [.workspace, .directory, .path])
 
         let layout = AgentRowLayout(rows: [
-            [.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory)],
+            [.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory), .init(.path)],
         ])
         let card = AgentCardPresentation(
             agent: inCheckout, layout: layout,

@@ -67553,24 +67553,46 @@
         }
       }
     },
-    "Working directory" : {
+    "Working directory name" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "作業ディレクトリ"
+            "value" : "作業ディレクトリ名"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "工作目录"
+            "value" : "工作目录名称"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "工作目錄"
+            "value" : "工作目錄名稱"
+          }
+        }
+      }
+    },
+    "Working directory path" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業ディレクトリのパス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目录路径"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目錄路徑"
           }
         }
       }

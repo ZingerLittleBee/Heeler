@@ -83,7 +83,7 @@
     },
     {
       "path": "shared/activity-rows.js",
-      "sha256": "bd82b277df2aabad0d7225aa805490b0368336715b2da9829ae095105fac794d"
+      "sha256": "c7cea0bdd16075754d47182a8811a2a7cd0f2e772535ba85777a3c672a7a0c5c"
     },
     {
       "path": "shared/activity-state.js",

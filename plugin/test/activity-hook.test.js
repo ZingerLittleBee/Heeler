@@ -493,13 +493,13 @@ suite("activity-hook: registered Agent List Fields", () => {
   test("devices render separate layouts and a preference change bypasses unchanged status suppression", async () => {
     await startFakeRelay();
     writeConfig();
-    const live = { token: ACTIVITY_TOKEN_A, host_name: "My Mac", row_layout: { rows: [[{ token: "host" }], [{ token: "directory", dim: true }]] } };
+    const live = { token: ACTIVITY_TOKEN_A, host_name: "My Mac", row_layout: { rows: [[{ token: "host" }], [{ token: "directory", dim: true }, { token: "path" }]] } };
     writeRegistration([device({ liveActivity: live }), device({ token: "b".repeat(64), key: KEY_B, activityToken: ACTIVITY_TOKEN_B })]);
     writeHerdrStub([{ ...listedAgent(), cwd: "/work/Heeler" }]);
     let result = await runHook(statusEvent("working"));
     assert.equal(result.status, 0, result.stderr);
     const first = decryptEnvelope(relay.requests[0].body.envelope, KEY_A).payload;
-    assert.deepEqual(first.agents[0].rows, [[{ text: "My Mac" }], [{ dim: true, text: "/work/Heeler" }]]);
+    assert.deepEqual(first.agents[0].rows, [[{ text: "My Mac" }], [{ dim: true, text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }]]);
     assert.equal("rows" in decryptEnvelope(relay.requests[1].body.envelope, KEY_B).payload.agents[0], false);
     live.row_layout.rows = [[{ token: "agent" }]];
     writeRegistration([device({ liveActivity: live })]);

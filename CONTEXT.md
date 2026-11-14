@@ -300,7 +300,7 @@ and Row 2 are herdr rows: they start from herdr's sidebar fields and are what
 Sync from plugin refills. On herdr-core they start from Heeler's own layout and
 also accept the Terminal's labels. Row 3 is Heeler's row, which Sync keeps.
 Every slot accepts herdr fields and the Heeler-only fields herdr does not define (Host name,
-Agent Status as text, working directory). Each slot also has a right side
+Agent Status as text, working directory name, working directory path). Each slot also has a right side
 that ends its line, Heeler's own, which Sync keeps and which alone can hold
 the Status Badge and the Checkout's Changes totals; a field sits on one side
 of a slot at most. Until a Host's layout chooses its right sides, the Console

@@ -37,6 +37,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Show only the working directory's folder name in the Agents list's `directory` field, and add a `path` field in Settings › Agent List Fields for the full directory path, with `~` for the Host account's home. Live Activities render both fields once the Host's plugin or Host Helper updates. (PR #732)
 - Stack Chat's unavailable-conversation actions vertically as equal-width primary and secondary capsules, shorten Codex's shared-server placeholder message to an inline monospaced resume command, and move its troubleshooting guide link below the capsules as Learn More. (PR #728)
 - Keep music and other audio playing where it plays while Voice Input records, including on a Bluetooth speaker or headphones, instead of stopping it. Recordings are kept in memory only, never in a temporary file. (PR #727)
 - Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)

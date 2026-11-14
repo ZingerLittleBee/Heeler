@@ -121,8 +121,8 @@ struct ConsoleTerminalInventoryTests {
         #expect(row.matchesAgentSearch("/launch"))
         #expect(!row.matchesAgentSearch("/second-checkout"))
         #expect(
-            AgentRowRenderer.render(layout: AgentRowLayout(rows: [[.init(.directory)]]), agent: row)
-                .flatMap { $0 }.map(\.text) == ["/launch"])
+            AgentRowRenderer.render(layout: AgentRowLayout(rows: [[.init(.directory), .init(.path)]]), agent: row)
+                .flatMap { $0 }.compactMap { $0.token == nil ? nil : $0.text } == ["launch", "/launch"])
         #expect(await transport.snapshotFetchCount == count)
     }
 
