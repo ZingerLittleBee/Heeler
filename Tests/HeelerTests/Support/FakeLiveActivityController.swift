@@ -110,8 +110,8 @@ final class FakeLiveActivityController: LiveActivityControlling {
         }
     }
 
-    func currentActivities() -> [(id: String, hostID: UUID)] {
-        records.values.map { ($0.id, $0.hostID) }
+    func currentActivities() -> [LiveActivitySnapshot] {
+        records.values.map { LiveActivitySnapshot(id: $0.id, hostID: $0.hostID, state: $0.state) }
     }
 
     func pushTokenUpdates(for handle: LiveActivityHandle) -> AsyncStream<Data> {
