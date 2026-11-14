@@ -1,0 +1,243 @@
+import Foundation
+import Synchronization
+
+@testable import Heeler
+
+/// What a fake Rex server lists: sessions, their windows and layers, and the
+/// blocks in them, answered in the shapes Rex 0.1.0-preview.14 (API revision
+/// 12) was seen to use. Ids, labels, titles and paths are invented.
+final class FakeRexWorld: Sendable {
+    struct Block: Sendable {
+        var id: String
+        var label = "shell"
+        var creator = RexInventoryWire.terminalCreator
+        var flavor = "com.superlogical.terminal.shell"
+        var owner: String? = "client:00000000-0000-7000-8000-0000000000aa"
+        var title = ""
+        var program: String? = "zsh"
+        var directory: String? = "/home/dev"
+
+        init(_ id: String) {
+            self.id = id
+        }
+
+        /// A block some other creator made, which is not a terminal.
+        static func notes(_ id: String) -> Block {
+            var block = Block(id)
+            block.label = "notes"
+            block.creator = "com.example.notes"
+            block.flavor = "com.example.notes.page"
+            return block
+        }
+    }
+
+    indirect enum Layout: Sendable {
+        case block(String)
+        case split(Layout, Layout)
+    }
+
+    struct Layer: Sendable {
+        var floating = false
+        var layout: Layout?
+        var blocks: [Block]
+    }
+
+    struct Window: Sendable {
+        var id: String
+        var label: String
+        var layers: [Layer]
+    }
+
+    struct Session: Sendable {
+        var id: String
+        var label: String
+        var revision = 1
+        var activeWindowID: String?
+        var windows: [Window]
+        var detached: [Block] = []
+    }
+
+    private struct State {
+        var instanceID: String
+        var sessions: [Session]
+    }
+
+    private let state: Mutex<State>
+
+    init(instanceID: String = "instance-0001", sessions: [Session] = []) {
+        state = Mutex(State(instanceID: instanceID, sessions: sessions))
+    }
+
+    var sessions: [Session] { state.withLock { $0.sessions } }
+
+    func update(_ change: (inout [Session]) -> Void) {
+        state.withLock { change(&$0.sessions) }
+    }
+
+    /// Another server process on the same socket.
+    func restart(as instanceID: String) {
+        state.withLock { $0.instanceID = instanceID }
+    }
+
+    /// Answers every read the inventory makes as this world stands at the time.
+    func install(on server: FakeRexServer) async {
+        await server.answer("server.status") { [self] _ in
+            .result(["instance_id": .string(state.withLock { $0.instanceID }), "session_count": 1])
+        }
+        await server.answer("session.attach_all") { [self] _ in .result(attachAll) }
+        await server.answer("session.view") { [self] request in
+            guard let session = session(request) else { return Self.sessionNotFound }
+            return .result(Self.view(session))
+        }
+        await server.answer("session.list_blocks") { [self] request in
+            guard let session = session(request) else { return Self.sessionNotFound }
+            return .result(Self.listing(session))
+        }
+        await server.answer(RexInventoryWire.terminalMethod("title")) { [self] request in
+            guard let block = block(request) else { return Self.blockNotFound }
+            return .result(["title": .string(block.title)])
+        }
+        await server.answer(RexInventoryWire.terminalMethod("process")) { [self] request in
+            guard let block = block(request) else { return Self.blockNotFound }
+            return .result(Self.process(block))
+        }
+    }
+
+    // MARK: Answers
+
+    var attachAll: JSONValue {
+        .object([
+            "sessions": .array(
+                sessions.map { .object(["session_id": .string($0.id), "label": .string($0.label)]) })
+        ])
+    }
+
+    static func view(_ session: Session) -> JSONValue {
+        var view: [String: JSONValue] = [
+            "revision": .number(Double(session.revision)), "session_id": .string(session.id),
+            "label": .string(session.label),
+            "windows": .array(session.windows.map(window)),
+        ]
+        if let active = session.activeWindowID ?? session.windows.first?.id { view["active_window_id"] = .string(active) }
+        return .object(view)
+    }
+
+    static func listing(_ session: Session) -> JSONValue {
+        var blocks: [JSONValue] = []
+        for window in session.windows {
+            for layer in window.layers {
+                for block in layer.blocks {
+                    blocks.append(facts(block, extra: ["placement": "placed", "window_id": .string(window.id)]))
+                }
+            }
+        }
+        for block in session.detached {
+            blocks.append(facts(block, extra: ["placement": "detached"]))
+        }
+        return .object(["blocks": .array(blocks)])
+    }
+
+    static func process(_ block: Block) -> JSONValue {
+        guard let program = block.program else { return .object(["foreground": .null]) }
+        var foreground: [String: JSONValue] = ["pid": 4242, "name": .string(program)]
+        if let directory = block.directory { foreground["cwd"] = .string(directory) }
+        return .object(["foreground": .object(foreground)])
+    }
+
+    private static func window(_ window: Window) -> JSONValue {
+        .object([
+            "window_id": .string(window.id), "label": .string(window.label),
+            "layers": .array(
+                window.layers.enumerated().map { index, layer in
+                    var value: [String: JSONValue] = [
+                        "layer_id": .string("layer:\(window.id)-\(index)"),
+                        "kind": .string(layer.floating ? "floating" : "tiled"),
+                        "blocks": .array(layer.blocks.map { facts($0) }),
+                    ]
+                    if let layout = layer.layout { value["layout"] = node(layout) }
+                    return .object(value)
+                }),
+        ])
+    }
+
+    private static func node(_ layout: Layout) -> JSONValue {
+        switch layout {
+        case .block(let id):
+            .object(["rect": [0, 0, 1, 1], "block_id": .string(id)])
+        case .split(let before, let after):
+            .object([
+                "rect": [0, 0, 1, 1],
+                "split": .object([
+                    "split_id": "split:fake", "direction": "horizontal", "ratio": .number(0.5),
+                    "before": node(before), "after": node(after),
+                ]),
+            ])
+        }
+    }
+
+    private static func facts(_ block: Block, extra: [String: JSONValue] = [:]) -> JSONValue {
+        var value: [String: JSONValue] = [
+            "block_id": .string(block.id), "label": .string(block.label), "creator_name": .string(block.creator),
+            "flavor": .string(block.flavor), "host_id": "host-0001",
+        ]
+        if let owner = block.owner { value["owner"] = .string(owner) }
+        return .object(value.merging(extra) { _, new in new })
+    }
+
+    private static let sessionNotFound = FakeRexServer.Answer.error(
+        code: "session_not_found", message: "no such session", status: 404)
+    private static let blockNotFound = FakeRexServer.Answer.error(
+        code: "not_found", message: "no such block", status: 404)
+
+    private func session(_ request: FakeRexServer.Request) -> Session? {
+        let id = request.payload?["session_id"]?.stringValue
+        return sessions.first { $0.id == id }
+    }
+
+    private func block(_ request: FakeRexServer.Request) -> Block? {
+        guard let session = session(request), let id = request.payload?["block_id"]?.stringValue else { return nil }
+        let blocks = session.windows.flatMap { $0.layers.flatMap(\.blocks) } + session.detached
+        return blocks.first { $0.id == id }
+    }
+}
+
+extension FakeRexWorld {
+    /// One session laid out as Rex lays out a busy one: a window split in two
+    /// with a notes block beside them, a window with a floating layer over its
+    /// one terminal, and a terminal detached from both.
+    static func studio(id: String = "session:studio", label: String = "studio") -> Session {
+        var left = Block("block:left")
+        left.label = "left"
+        left.title = "make test"
+        left.program = "make"
+        left.directory = "/home/dev/app"
+        let right = Block("block:right")
+        let notes = Block.notes("block:notes")
+        var solo = Block("block:solo")
+        solo.program = "vim"
+        solo.directory = "/home/dev/app/src"
+        var float = Block("block:float")
+        float.label = "scratch"
+        var detached = Block("block:detached")
+        detached.program = "tail"
+        return Session(
+            id: id, label: label, revision: 3, activeWindowID: "window:0000-0000-0000-00000000b0b0",
+            windows: [
+                Window(
+                    id: "window:0000-0000-0000-00000000a0a0", label: "editor",
+                    layers: [
+                        Layer(
+                            layout: .split(.block(left.id), .split(.block(notes.id), .block(right.id))),
+                            blocks: [right, notes, left])
+                    ]),
+                Window(
+                    // Rex's own label for a new window, its id's last eight digits: unnamed.
+                    id: "window:0000-0000-0000-00000000b0b0", label: "Window 0000b0b0",
+                    layers: [
+                        Layer(layout: .block(solo.id), blocks: [solo]),
+                        Layer(floating: true, layout: .block(float.id), blocks: [float]),
+                    ]),
+            ],
+            detached: [detached])
+    }
+}

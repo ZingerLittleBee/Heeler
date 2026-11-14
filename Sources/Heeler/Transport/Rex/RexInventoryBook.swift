@@ -1,0 +1,381 @@
+import Foundation
+
+/// What one control link knows of a Rex server's sessions, and what it still
+/// has to read (ADR 0048). Pure: `RexInventoryFollower` sends the reads it
+/// asks for and hands back their answers and the link's events.
+///
+/// Every answer carries the seq of the last event the server queued before it
+/// started the request, so an event with a higher seq is newer than the answer
+/// and one with a lower or equal seq is already part of it. A session's
+/// structure (its view and its block listing) is read again after any event
+/// that changed it, one read in flight per session, so a burst of events costs
+/// one read and the one after it. No answer replaces what an event or answer
+/// newer than it already said. A terminal's details are read once per link and
+/// then follow its own events.
+struct RexInventoryBook {
+    enum Read: Hashable, Sendable {
+        /// A session's view, then its block listing.
+        case structure(sessionID: String)
+        /// A terminal's title, then its foreground process.
+        case details(RexPaneAddress)
+    }
+
+    /// One answer and the seq it came with.
+    struct Answer<Value> {
+        let value: Value
+        let seq: UInt64
+    }
+
+    private struct SessionRecord {
+        var label: String
+        var labelSeq: UInt64 = 0
+        var view: RexInventoryWire.View?
+        var viewSeq: UInt64 = 0
+        var listing: [RexInventoryWire.ListedBlock]?
+        var listingSeq: UInt64 = 0
+        /// The newest event that changed the structure.
+        var wantedSeq: UInt64 = 0
+        /// How far the structure is known: what the last read's answers covered.
+        var heldSeq: UInt64 = 0
+        /// A read is due whatever the seqs say: the session is new, or what
+        /// changed it could not be read.
+        var forced = true
+        var reading = false
+        /// `wantedSeq` when the read in flight started.
+        var readFromSeq: UInt64 = 0
+        /// A read finished, or failed, at least once.
+        var hasSettled = false
+        var closedBlocks: Set<String> = []
+        var owners: [String: (owner: String?, seq: UInt64)] = [:]
+
+        var needsRead: Bool { !reading && (forced || wantedSeq > heldSeq) }
+
+        mutating func noteOwner(_ block: RexInventoryWire.BlockFacts, seq: UInt64) {
+            guard seq >= owners[block.id]?.seq ?? 0 else { return }
+            owners[block.id] = (block.owner, seq)
+        }
+    }
+
+    private struct DetailRecord {
+        var details: RexTerminalDetails
+        var titleSeq: UInt64 = 0
+        var processSeq: UInt64 = 0
+        var wanted = true
+        var reading = false
+    }
+
+    private var order: [String] = []
+    private var sessions: [String: SessionRecord] = [:]
+    private var destroyed: Set<String> = []
+    private var details: [RexPaneAddress: DetailRecord] = [:]
+    /// What the last link knew of each terminal, shown until this one reads it.
+    private let carried: [RexPaneAddress: RexTerminalDetails]
+    /// The seq the session list was read at; nil while it is being read, when
+    /// events wait in `pending`.
+    private var listedSeq: UInt64?
+    private var pending: [RexControlEvent] = []
+
+    /// The session list needs reading again: an event that changed it could
+    /// not be read, or events went missing.
+    private(set) var needsListing = true
+
+    init(carrying carried: [RexPaneAddress: RexTerminalDetails] = [:]) {
+        self.carried = carried
+    }
+
+    // MARK: The session list
+
+    /// The session list is being read: events wait until it is answered.
+    mutating func beginListing() {
+        needsListing = false
+        listedSeq = nil
+    }
+
+    /// The session list as `session.attach_all` answered it. Sessions it does
+    /// not name are gone. Every session's structure and every terminal's
+    /// details are read again, since events may have gone missing before it.
+    mutating func listed(_ entries: [RexInventoryWire.SessionEntry], seq: UInt64) {
+        listedSeq = seq
+        let named = Set(entries.map(\.id))
+        for id in order where !named.contains(id) { forget(id) }
+        order = []
+        for entry in entries where !destroyed.contains(entry.id) {
+            order.append(entry.id)
+            if sessions[entry.id] == nil {
+                sessions[entry.id] = SessionRecord(label: entry.label)
+            } else {
+                sessions[entry.id]?.forced = true
+            }
+            if let labelSeq = sessions[entry.id]?.labelSeq, seq >= labelSeq {
+                sessions[entry.id]?.label = entry.label
+                sessions[entry.id]?.labelSeq = seq
+            }
+        }
+        for address in details.keys { details[address]?.wanted = true }
+        let waiting = pending
+        pending = []
+        for event in waiting where event.seq > seq { apply(event) }
+    }
+
+    /// Events went missing: the list is read again, and with it everything else.
+    mutating func sequenceBroke() {
+        needsListing = true
+    }
+
+    // MARK: Events
+
+    mutating func apply(_ event: RexControlEvent) {
+        guard let listedSeq else {
+            pending.append(event)
+            return
+        }
+        guard event.seq > listedSeq else { return }
+        let seq = event.seq
+        switch event.body {
+        case .sessionCreated(let id, let label):
+            guard !destroyed.contains(id), sessions[id] == nil else { return }
+            sessions[id] = SessionRecord(label: label ?? "", labelSeq: seq)
+            order.append(id)
+        case .sessionDestroyed(let id):
+            destroyed.insert(id)
+            forget(id)
+        case .sessionMoved(let id, let before):
+            guard let index = order.firstIndex(of: id) else { return }
+            order.remove(at: index)
+            let target = before.flatMap { order.firstIndex(of: $0) } ?? order.endIndex
+            order.insert(id, at: target)
+        case .unreadable where event.sessionID == nil:
+            needsListing = true
+        default:
+            guard let sessionID = event.sessionID else { return }
+            applySessionEvent(event.body, to: sessionID, seq: seq)
+        }
+    }
+
+    private mutating func applySessionEvent(_ body: RexEventBody, to sessionID: String, seq: UInt64) {
+        guard !destroyed.contains(sessionID) else { return }
+        if sessions[sessionID] == nil {
+            // An event of a session the list did not name yet: read it whole.
+            sessions[sessionID] = SessionRecord(label: "")
+            order.append(sessionID)
+        }
+        switch body {
+        case .sessionLabelChanged(let label):
+            guard seq > sessions[sessionID]?.labelSeq ?? 0 else { return }
+            sessions[sessionID]?.label = label ?? ""
+            sessions[sessionID]?.labelSeq = seq
+        case .sessionViewChanged(let revision):
+            // Revisions may arrive out of order; one the view already has changes nothing.
+            if let revision, let held = sessions[sessionID]?.view?.revision, revision <= held { return }
+            want(sessionID, seq)
+        case .windowCreated, .windowClosed, .windowLabelChanged, .activeWindowChanged, .blockCreated:
+            want(sessionID, seq)
+        case .blockClosed(let blockID):
+            sessions[sessionID]?.closedBlocks.insert(blockID)
+            details[RexPaneAddress(sessionID: sessionID, blockID: blockID)] = nil
+            want(sessionID, seq)
+        case .blockOwnerChanged(let blockID, let owner, _, _):
+            guard seq > sessions[sessionID]?.owners[blockID]?.seq ?? 0 else { return }
+            sessions[sessionID]?.owners[blockID] = (owner, seq)
+        case .blockEvent(let blockID, let creator, let name, let payload):
+            guard creator == nil || creator == RexInventoryWire.terminalCreator,
+                sessions[sessionID]?.closedBlocks.contains(blockID) != true
+            else { return }
+            let address = RexPaneAddress(sessionID: sessionID, blockID: blockID)
+            switch name {
+            case "title_changed":
+                updateDetails(of: address) { record in
+                    guard seq > record.titleSeq else { return }
+                    record.details.title = RexInventoryWire.title(payload)
+                    record.titleSeq = seq
+                }
+            case "process_changed":
+                updateDetails(of: address) { record in
+                    guard seq > record.processSeq else { return }
+                    let process = RexInventoryWire.process(payload)
+                    record.details.program = process.program
+                    record.details.directory = process.directory
+                    record.processSeq = seq
+                }
+            default:
+                break
+            }
+        case .unreadable:
+            sessions[sessionID]?.forced = true
+        case .sessionCreated, .sessionDestroyed, .sessionMoved:
+            break
+        }
+    }
+
+    private mutating func want(_ sessionID: String, _ seq: UInt64) {
+        guard let wanted = sessions[sessionID]?.wantedSeq, seq > wanted else { return }
+        sessions[sessionID]?.wantedSeq = seq
+    }
+
+    private mutating func updateDetails(of address: RexPaneAddress, _ change: (inout DetailRecord) -> Void) {
+        var record = details[address] ?? DetailRecord(details: carried[address] ?? RexTerminalDetails())
+        change(&record)
+        details[address] = record
+    }
+
+    private mutating func forget(_ sessionID: String) {
+        sessions[sessionID] = nil
+        order.removeAll { $0 == sessionID }
+        details = details.filter { $0.key.sessionID != sessionID }
+    }
+
+    // MARK: Reads
+
+    /// The reads to send now, at most `limit` in flight in all: each session's
+    /// structure ahead of any terminal's details. Each one returned counts as
+    /// in flight until its answer or failure is handed back.
+    mutating func takeReads(limit: Int) -> [Read] {
+        guard listedSeq != nil else { return [] }
+        var inFlight =
+            sessions.values.count(where: \.reading) + details.values.count(where: \.reading)
+        var reads: [Read] = []
+        for id in order where inFlight < limit {
+            guard var record = sessions[id], record.needsRead else { continue }
+            record.reading = true
+            record.forced = false
+            record.readFromSeq = record.wantedSeq
+            sessions[id] = record
+            reads.append(.structure(sessionID: id))
+            inFlight += 1
+        }
+        guard inFlight < limit else { return reads }
+        // A terminal's details are read once its session's structure shows it.
+        for address in shownAddresses() where inFlight < limit {
+            var record = details[address] ?? DetailRecord(details: carried[address] ?? RexTerminalDetails())
+            guard record.wanted, !record.reading else { continue }
+            record.wanted = false
+            record.reading = true
+            details[address] = record
+            reads.append(.details(address))
+            inFlight += 1
+        }
+        return reads
+    }
+
+    /// A structure read's answers. A nil view or listing could not be read.
+    mutating func structureRead(
+        _ sessionID: String, view: Answer<RexInventoryWire.View?>, listing: Answer<[RexInventoryWire.ListedBlock]?>
+    ) {
+        guard var record = sessions[sessionID] else { return }
+        record.reading = false
+        record.hasSettled = true
+        if let newView = view.value, view.seq >= record.viewSeq,
+            newView.revision >= record.view?.revision ?? Int.min
+        {
+            record.view = newView
+            record.viewSeq = view.seq
+            if view.seq >= record.labelSeq, let label = newView.label {
+                record.label = label
+                record.labelSeq = view.seq
+            }
+            for window in newView.windows {
+                for block in window.blocks { record.noteOwner(block, seq: view.seq) }
+            }
+        }
+        if let newListing = listing.value, listing.seq >= record.listingSeq {
+            record.listing = newListing
+            record.listingSeq = listing.seq
+            for block in newListing { record.noteOwner(block.facts, seq: listing.seq) }
+        }
+        if view.value == nil || listing.value == nil {
+            // An answer that did not read is not asked again until something changes.
+            record.heldSeq = max(record.heldSeq, record.readFromSeq)
+        } else {
+            record.heldSeq = max(record.heldSeq, min(view.seq, listing.seq))
+        }
+        sessions[sessionID] = record
+    }
+
+    /// The server could not answer a structure read. It is not asked again
+    /// until something changes.
+    mutating func structureReadFailed(_ sessionID: String) {
+        guard var record = sessions[sessionID] else { return }
+        record.reading = false
+        record.hasSettled = true
+        record.heldSeq = max(record.heldSeq, record.readFromSeq)
+        sessions[sessionID] = record
+    }
+
+    /// The server no longer knows the session.
+    mutating func sessionGone(_ sessionID: String) {
+        destroyed.insert(sessionID)
+        forget(sessionID)
+    }
+
+    /// A details read's answers; nil for one that failed.
+    mutating func detailsRead(
+        _ address: RexPaneAddress, title: Answer<String?>?, process: Answer<RexInventoryWire.Process>?
+    ) {
+        guard var record = details[address] else { return }
+        record.reading = false
+        if let title, title.seq >= record.titleSeq {
+            record.details.title = title.value
+            record.titleSeq = title.seq
+        }
+        if let process, process.seq >= record.processSeq {
+            record.details.program = process.value.program
+            record.details.directory = process.value.directory
+            record.processSeq = process.seq
+        }
+        details[address] = record
+    }
+
+    // MARK: What it knows
+
+    /// The session list is read, and every session's structure is as current
+    /// as the events say, with no read of it in flight.
+    var isStructureSettled: Bool {
+        guard listedSeq != nil, !needsListing else { return false }
+        return order.allSatisfy { id in
+            guard let record = sessions[id] else { return true }
+            return record.hasSettled && !record.reading && !record.needsRead
+        }
+    }
+
+    /// No terminal's details wait for a read or its answer.
+    var isDetailSettled: Bool {
+        let shown = Set(shownAddresses())
+        return !details.values.contains(where: \.reading)
+            && shown.allSatisfy { address in details[address].map { !$0.wanted } ?? false }
+    }
+
+    var inventory: RexInventory {
+        RexInventory(sessions: order.compactMap { id in sessions[id].flatMap { session(id, $0) } })
+    }
+
+    private func shownAddresses() -> [RexPaneAddress] {
+        order.flatMap { id -> [RexPaneAddress] in
+            guard let record = sessions[id], let session = session(id, record) else { return [] }
+            return session.terminals.map { RexPaneAddress(sessionID: id, blockID: $0.blockID) }
+        }
+    }
+
+    /// A session as its last answers and later events show it; nil until
+    /// anything of its structure was read, and for a session with no terminal.
+    private func session(_ id: String, _ record: SessionRecord) -> RexInventory.Session? {
+        guard record.view != nil || record.listing != nil else { return nil }
+        func terminal(_ facts: RexInventoryWire.BlockFacts) -> RexInventory.Terminal? {
+            guard facts.isTerminal, !record.closedBlocks.contains(facts.id) else { return nil }
+            let address = RexPaneAddress(sessionID: id, blockID: facts.id)
+            return RexInventory.Terminal(
+                blockID: facts.id, label: facts.customLabel,
+                owner: record.owners[facts.id].map(\.owner) ?? facts.owner,
+                details: details[address]?.details ?? carried[address] ?? RexTerminalDetails())
+        }
+        let windows = (record.view?.windows ?? []).map { window in
+            RexInventory.Window(id: window.id, label: window.customLabel, terminals: window.blocks.compactMap(terminal))
+        }
+        let placed = Set((record.view?.windows ?? []).flatMap { $0.blocks.map(\.id) })
+        // A listed block the view does not place is detached.
+        let detached = (record.listing ?? []).filter { !placed.contains($0.facts.id) }.compactMap { terminal($0.facts) }
+        let session = RexInventory.Session(
+            id: id, label: record.label, activeWindowID: record.view?.activeWindowID, windows: windows,
+            detached: detached)
+        return session.terminals.isEmpty ? nil : session
+    }
+}

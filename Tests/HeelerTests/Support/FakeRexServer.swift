@@ -39,6 +39,7 @@ actor FakeRexServer {
 
     nonisolated let channel: FakeWebSocketServer
     private var answers: [String: Answer] = [:]
+    private var responders: [String: @Sendable (Request) -> Answer] = [:]
     private var hello: (value: JSONValue, text: String)?
     private var unanswered: [Request] = []
     private var lastSeq: UInt64 = 0
@@ -116,6 +117,19 @@ actor FakeRexServer {
     /// seq of the last event pushed.
     func answer(_ method: String, with answer: Answer) {
         answers[method] = answer
+    }
+
+    /// Each later request for `method` is answered as it arrives with what
+    /// `responder` makes of it, with the seq of the last event pushed. A
+    /// responder takes precedence over a fixed answer.
+    func answer(_ method: String, using responder: @escaping @Sendable (Request) -> Answer) {
+        responders[method] = responder
+    }
+
+    /// Stops answering `method` by itself.
+    func stopAnswering(_ method: String) {
+        answers[method] = nil
+        responders[method] = nil
     }
 
     /// The next request no scripted answer took, once it arrives.
@@ -225,7 +239,7 @@ actor FakeRexServer {
         else { return }
         let request = Request(id: id, method: method, payload: value["payload"], text: text)
         requests.append(request)
-        guard let answer = answers[method] else {
+        guard let answer = responders[method]?(request) ?? answers[method] else {
             unanswered.append(request)
             return
         }

@@ -44772,6 +44772,8 @@
     "Rex support is not finished" : {},
     "Rex was not found on this Host" : {},
     "Rex's answer could not be read." : {},
+    "Rex's session list could not be read." : {},
+    "Rex's status named no server instance." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {
