@@ -34,6 +34,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private(set) var sidebarRevision: UInt64 = 0
     /// Labels are herdr-core's; a Herdr TUI Pane has none.
     let terminalLabelKeys: [String] = []
+    /// A Herdr TUI inventory names no core, so no detail here ever leaves one,
+    /// and the two answers below are never read.
+    let keepsDetailsToInventory = false
+    var leftInventoryMessage: String { TerminalStatusPresentation.coreGoneMessage }
+    var leftInventoryError: TransportError { .herdrCoreTerminalGone }
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".

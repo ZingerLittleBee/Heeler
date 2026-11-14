@@ -260,6 +260,13 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         memory.coreID(for: host.id)
     }
 
+    /// A Pane belongs to its server: another server's pane ids start over.
+    var keepsDetailsToInventory: Bool { true }
+
+    var leftInventoryMessage: String { TerminalStatusPresentation.tmuxServerGoneMessage }
+
+    var leftInventoryError: TransportError { .tmuxServerGone }
+
     /// Whether what keeps to `pin` still means this inventory's Panes.
     func admits(_ pin: TerminalCorePin) -> Bool {
         inventoryCore.map(pin.admits) ?? true

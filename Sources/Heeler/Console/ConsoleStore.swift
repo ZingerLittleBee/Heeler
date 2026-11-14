@@ -532,11 +532,10 @@ final class ConsoleStore {
         projections[hostID] as? TmuxConsoleProjection
     }
 
-    /// Whether an address on this Host can come to mean another Terminal: a
-    /// herdr-core Host's under another core, a tmux Host's under another server
-    /// instance. A detail there keeps to the one it opened on.
+    /// Whether an address on this Host can come to mean another Terminal, as the
+    /// Host's projection answers it. A detail there keeps to the one it opened on.
     func keepsDetailsToCores(on hostID: Host.ID) -> Bool {
-        projections[hostID] is HerdrCoreConsoleProjection || projections[hostID] is TmuxConsoleProjection
+        projections[hostID]?.keepsDetailsToInventory == true
     }
 
     func corePin(on hostID: Host.ID) -> TerminalCorePin {
@@ -554,14 +553,14 @@ final class ConsoleStore {
     /// its own words.
     func terminalEndedMessage(keepingTo corePin: TerminalCorePin?, on hostID: Host.ID) -> String? {
         guard hasLeftCore(corePin, on: hostID) else { return nil }
-        return projections[hostID] is TmuxConsoleProjection
-            ? TerminalStatusPresentation.tmuxServerGoneMessage : TerminalStatusPresentation.coreGoneMessage
+        return projections[hostID]?.leftInventoryMessage ?? TerminalStatusPresentation.coreGoneMessage
     }
 
-    /// What an action from a detail that `hasLeftCore` throws: a tmux Host's
-    /// Pane belongs to a server, a core Host's Terminal to a core.
+    /// What an action from a detail that `hasLeftCore` throws, as the Host's
+    /// projection names what its addresses belong to. A Host gone from the
+    /// catalog answers as a core Host.
     func leftCoreError(on hostID: Host.ID) -> TransportError {
-        projections[hostID] is TmuxConsoleProjection ? .tmuxServerGone : .herdrCoreTerminalGone
+        projections[hostID]?.leftInventoryError ?? .herdrCoreTerminalGone
     }
 
     /// What Agent Ended says for `id`, when it has more to say than its plain
