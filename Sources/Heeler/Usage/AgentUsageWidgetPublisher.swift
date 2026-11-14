@@ -113,6 +113,11 @@ extension UsageWidgetSnapshot.Host {
             // report the app still holds from before.
             if var kept, let keptAt = kept.readAt, keptAt > readAt {
                 kept.name = reading.name
+                // The figures stay, but this device's opt-out applies now.
+                if report.claudeProgram?.usageLimits.state == "disabled" {
+                    kept.limits = Self.limits(
+                        kept.limits, claudeFrom: Self(id: reading.id, name: reading.name, report: report, readAt: readAt))
+                }
                 self = kept
             } else {
                 self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
@@ -141,6 +146,14 @@ extension UsageWidgetSnapshot.Host {
             }
             self.init(id: reading.id, name: reading.name, excludedReason: reason)
         }
+    }
+
+    /// `limits` with Claude Code's entries swapped for `other`'s, in their place.
+    private static func limits(_ limits: [UsageWidgetSnapshot.Limits], claudeFrom other: Self) -> [UsageWidgetSnapshot.Limits] {
+        guard let place = limits.firstIndex(where: { $0.program == "claude" }) else { return limits }
+        var swapped = limits.filter { $0.program != "claude" }
+        swapped.insert(contentsOf: other.limits.filter { $0.program == "claude" }, at: place)
+        return swapped
     }
 
     init(id: UUID, name: String, excludedReason: AgentUsageExclusion) {
