@@ -26,6 +26,9 @@ struct WorkspaceTerminalDrawer: View {
     /// Where the panel's top edge sits, in global space, while a header
     /// opens it: just below the header.
     var headerPanelTop: CGFloat = 0
+    /// The vertical span of another control on the same edge, in this
+    /// drawer's space. The resting handle steps around it.
+    var clearedSpan: ClosedRange<CGFloat>?
 
     static let handleSize = CGSize(width: TerminalEdgeTabBackground.width, height: 68)
     /// The handle's hit area reaches past its visible edge into the terminal.
@@ -33,6 +36,8 @@ struct WorkspaceTerminalDrawer: View {
     /// How far content resting beside the handle keeps from the trailing
     /// edge: the handle and a small gap. The terminal keeps its full width.
     static let contentClearance: CGFloat = handleSize.width + 4
+    /// The space kept between the handle and another control on the edge.
+    static let edgeGap: CGFloat = 4
     static let panelWidth: CGFloat = 248
     static let rowHeight: CGFloat = 44
     static let headerHeight: CGFloat = 36
@@ -73,11 +78,23 @@ struct WorkspaceTerminalDrawer: View {
 
     /// Where the handle's top edge rests inside `height`, from the remembered
     /// fraction plus any lift in progress, clamped to the edge.
+    /// A handle that would overlap `clearing` steps above it, or below it
+    /// when there is no room above. The jump buttons cannot move lower, so
+    /// the handle is the one that gives way.
     static func handleTop(
-        fraction: CGFloat, liftTravel: CGFloat, height: CGFloat
+        fraction: CGFloat, liftTravel: CGFloat, height: CGFloat,
+        clearing: ClosedRange<CGFloat>? = nil
     ) -> CGFloat {
         let travel = max(0, height - handleSize.height)
-        return min(max(fraction * travel + liftTravel, 0), travel)
+        let top = min(max(fraction * travel + liftTravel, 0), travel)
+        guard let clearing else { return top }
+        let blockedTop = clearing.lowerBound - edgeGap
+        let blockedBottom = clearing.upperBound + edgeGap
+        guard top + handleSize.height > blockedTop, top < blockedBottom else { return top }
+        let above = blockedTop - handleSize.height
+        if above >= 0 { return above }
+        if blockedBottom <= travel { return blockedBottom }
+        return top
     }
 
     /// The fraction a handle dropped at `top` should remember.
@@ -92,6 +109,13 @@ struct WorkspaceTerminalDrawer: View {
     static func panelTop(handleTop: CGFloat, panelHeight: CGFloat, height: CGFloat) -> CGFloat {
         let centred = handleTop + handleSize.height / 2 - panelHeight / 2
         return min(max(centred, 0), max(0, height - panelHeight))
+    }
+
+    /// Keeps the resting handle clear of another control on the same edge.
+    func clearing(_ span: ClosedRange<CGFloat>?) -> Self {
+        var copy = self
+        copy.clearedSpan = span
+        return copy
     }
 
     /// Hands the panel to a header menu: the handle steps aside, and the
@@ -117,9 +141,11 @@ struct WorkspaceTerminalDrawer: View {
     var body: some View {
         GeometryReader { geometry in
             let height = geometry.size.height
+            // A lifted handle follows the finger, wherever the other control is.
             let handleTop = Self.handleTop(
                 fraction: edgeDock.fraction(for: .workspaceDrawer),
-                liftTravel: liftTravel, height: height)
+                liftTravel: liftTravel, height: height,
+                clearing: isLifted ? nil : clearedSpan)
             ZStack(alignment: .topTrailing) {
                 if expanded {
                     // A tap anywhere else closes the panel instead of reaching

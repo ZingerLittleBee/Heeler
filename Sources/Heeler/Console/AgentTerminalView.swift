@@ -312,6 +312,8 @@ struct AgentTerminalView: View {
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
+    /// Where the message-jump buttons sit, for the drawer handle to clear.
+    @State private var messageJumpFrame: CGRect?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
@@ -1120,6 +1122,7 @@ struct AgentTerminalView: View {
         .overlay {
             if let workspaceDrawer {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                    .clearing(messageJumpFrame.map { $0.minY...$0.maxY })
                 // The back header's menu stands in for the edge handle
                 // while the header is out; folded, the handle comes back.
                 if isBackHeaderExpanded {
@@ -1986,7 +1989,9 @@ struct AgentTerminalView: View {
             edgeFraction: terminal.edgeDock.fraction(for: .messageJump),
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() },
-            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) })
+            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) },
+            // Reported from UIKit layout, so the state changes after it.
+            onFrameChange: { frame in Task { @MainActor in messageJumpFrame = frame } })
         // Hit-test only while enabled. The in-flight spinner must not eat
         // terminal drags. Placement and pass-through live in
         // MessageJumpChromeContainer.

@@ -64,6 +64,46 @@ struct EdgeDockSettingsTests {
                 "A terminal shorter than the handle has no travel")
     }
 
+    /// The terminal and jump buttons as measured on an iPhone with the
+    /// keyboard open: the handle at its default rested 18 points into them.
+    @Test func drawerHandleStepsAboveTheJumpButtonsItWouldOverlap() {
+        let handle = WorkspaceTerminalDrawer.handleSize.height
+        let gap = WorkspaceTerminalDrawer.edgeGap
+        let height: CGFloat = 240
+        let jump: ClosedRange<CGFloat> = 136...180
+        let unclear = WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height)
+        #expect(unclear + handle > jump.lowerBound, "the measured overlap")
+
+        let top = WorkspaceTerminalDrawer.handleTop(
+            fraction: 0.5, liftTravel: 0, height: height, clearing: jump)
+        #expect(top == jump.lowerBound - gap - handle)
+    }
+
+    @Test func drawerHandleKeepsItsPlaceWhenNothingIsInTheWay() {
+        let height: CGFloat = 600
+        let rested = WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height)
+        #expect(WorkspaceTerminalDrawer.handleTop(
+            fraction: 0.5, liftTravel: 0, height: height, clearing: 400...444) == rested)
+        #expect(WorkspaceTerminalDrawer.handleTop(
+            fraction: 0.5, liftTravel: 0, height: height, clearing: nil) == rested)
+    }
+
+    @Test func drawerHandleStepsBelowWhenTheJumpButtonsSitAtTheTop() {
+        let gap = WorkspaceTerminalDrawer.edgeGap
+        let jump: ClosedRange<CGFloat> = 0...44
+        let top = WorkspaceTerminalDrawer.handleTop(
+            fraction: 0, liftTravel: 0, height: 400, clearing: jump)
+        #expect(top == jump.upperBound + gap)
+    }
+
+    @Test func drawerHandleStaysPutWithNoRoomOnEitherSide() {
+        let handle = WorkspaceTerminalDrawer.handleSize.height
+        let height = handle + 40
+        let top = WorkspaceTerminalDrawer.handleTop(
+            fraction: 0.5, liftTravel: 0, height: height, clearing: 10...50)
+        #expect(top == WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height))
+    }
+
     @Test func drawerPanelCentresOnTheHandleWithoutLeavingTheTerminal() {
         let panel = WorkspaceTerminalDrawer.panelHeight(count: 3)
         let expected: CGFloat = 178  // header 36, three 44 rows, two 2 gaps, inset 6
