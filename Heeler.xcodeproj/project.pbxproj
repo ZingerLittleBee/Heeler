@@ -1097,6 +1097,7 @@
 		E563373DB446DBEF8B1701E3 /* DeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FCA00B5F2A05A599D74FCCE /* DeviceKeyStoreTests.swift */; };
 		E57294B5CA449CB3694B34E3 /* FakeRexServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C494178D0E1896DC3ACC69 /* FakeRexServer.swift */; };
 		E6099245F8299D2D8CFE9324 /* ConsoleDriftLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15A9C3D4479146FAD7BE5AE /* ConsoleDriftLocalizationTests.swift */; };
+		E6687F153BE7D91DA036CA17 /* RexSSHLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */; };
 		E68A1DDFA6C5F618BBB79AB7 /* AgentLayoutErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66B70100FB78F319E7136652 /* AgentLayoutErrorView.swift */; };
 		E68A2EA8A52AF3C21F936EB0 /* ChatAgentKeysStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 812C5F4452C33A3B3404BA8B /* ChatAgentKeysStoreTests.swift */; };
 		E6C37DDB207FB193C115F9DC /* LiveActivityHostPublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2772D640E2EA7B299227D52D /* LiveActivityHostPublisherTests.swift */; };
@@ -1487,6 +1488,7 @@
 		305F2D656F34DF018809AD61 /* WebSocketHandshake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketHandshake.swift; sourceTree = "<group>"; };
 		3075C285D7AA76CE9D51A794 /* TmuxTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxTransport.swift; sourceTree = "<group>"; };
 		30773AA9AE9CD8B9488525D4 /* UsageWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWidgetSnapshot.swift; sourceTree = "<group>"; };
+		307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexSSHLiveTests.swift; sourceTree = "<group>"; };
 		30B992B8533B228C40E47F0A /* ManualClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualClock.swift; sourceTree = "<group>"; };
 		30E56DB306F9C1F8C537EF3D /* DiffPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffPalette.swift; sourceTree = "<group>"; };
 		30F3752FD23CAA0C27F52D10 /* OpenCodeProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeProbe.swift; sourceTree = "<group>"; };
@@ -3034,6 +3036,7 @@
 				691F0B12B70ADF3F3D828304 /* AgentTitleRenameLiveTests.swift */,
 				E358F8FCF35FCD51358D1D06 /* AgyModelSwitchLiveTests.swift */,
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
+				307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */,
 				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
 			path = HeelerLiveTests;
@@ -4384,6 +4387,7 @@
 				AE316A55AC9A52A1D270128D /* AgyModelSwitchLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
+				E6687F153BE7D91DA036CA17 /* RexSSHLiveTests.swift in Sources */,
 				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
