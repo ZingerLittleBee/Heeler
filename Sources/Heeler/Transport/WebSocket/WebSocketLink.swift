@@ -183,7 +183,7 @@ actor WebSocketLink {
     }
 
     /// How long one write may take: a whole message has to cross a slow link.
-    static func writeTimeout(forBytes count: Int) -> Duration {
+    private static func writeTimeout(forBytes count: Int) -> Duration {
         max(minimumWriteTimeout, .seconds(count / slowestWriteBytesPerSecond))
     }
 
