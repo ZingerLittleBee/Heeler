@@ -459,6 +459,7 @@
 		63A0D5586B43F7DCC12AA1CA /* OverlayRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF505666C45AE37AC8551A78 /* OverlayRoute.swift */; };
 		63ADBED637BEA84B045BE9FC /* DeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24E7FB55E1DF14C8353ABDE /* DeviceKeyStore.swift */; };
 		640128C8D69F74ECF51FF452 /* DiffLayoutSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7C4030E0C3CCF493C11B0DE /* DiffLayoutSettingsTests.swift */; };
+		6405A197BDFEF87C0A750653 /* AgyAnnotationTitleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A789DD788FA54A82397E96AE /* AgyAnnotationTitleTests.swift */; };
 		6460096A5B757E1D3B5A44F3 /* ChangesFreshnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0081CF87748BCA49AA6AA0A2 /* ChangesFreshnessTests.swift */; };
 		64D08D7EF9A513EB13DD2A35 /* CodexLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5AACADE3810ECCD0FD576A /* CodexLaunch.swift */; };
 		64D60404BCF9D834E3B346DA /* LiveActivityHostSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3827B873928BCAB9CDE58C40 /* LiveActivityHostSnapshot.swift */; };
@@ -870,6 +871,7 @@
 		C038D3091EC326076D76EDC8 /* QuestionFormCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */; };
 		C07DBBA6976DCE57F1608DC2 /* GrokPromptHistoryWitness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96773BDF5177E9327BB22C2 /* GrokPromptHistoryWitness.swift */; };
 		C0CA2928B947520D9FB9CAF9 /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A058322630CB1827F69DBF53 /* SharedAsyncOperation.swift */; };
+		C0F5DC7258848D70F66DC972 /* AgyAnnotationTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4184E98AD0CB0C686A061C /* AgyAnnotationTitle.swift */; };
 		C106FF6EBA7ACE3A59ADB67B /* GitProbeRecordings+Counts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */; };
 		C131653782AE4DFFC76D737E /* TmuxAttachScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F0BE2BC519E8D9DC31EC1D2 /* TmuxAttachScript.swift */; };
 		C148DA8EFE4289CDE4C6F525 /* TmuxInventoryConsoleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D573F9C275DF90AA6AC5BB5 /* TmuxInventoryConsoleTests.swift */; };
@@ -1986,6 +1988,7 @@
 		A68E83AC3539EDA921E98953 /* AgentQuickKey+HerdrKeyName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentQuickKey+HerdrKeyName.swift"; sourceTree = "<group>"; };
 		A6F76BD3446176C286DADD49 /* HostHelperStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostHelperStoreTests.swift; sourceTree = "<group>"; };
 		A7103745D02C07787E49AC70 /* NotificationEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationEnvelopeTests.swift; sourceTree = "<group>"; };
+		A789DD788FA54A82397E96AE /* AgyAnnotationTitleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyAnnotationTitleTests.swift; sourceTree = "<group>"; };
 		A78EE88FAFD4C2E6E5EC74F9 /* TmuxLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxLaunchTests.swift; sourceTree = "<group>"; };
 		A797FB6FAEF48C2B8ABE8171 /* ChatTranscriptCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptCache.swift; sourceTree = "<group>"; };
 		A8068A3FE72651D04E13E48A /* GitProbeLineCountsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitProbeLineCountsTests.swift; sourceTree = "<group>"; };
@@ -2234,6 +2237,7 @@
 		DC6D0361E0EB15681156D5C7 /* NotificationKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationKeyStore.swift; sourceTree = "<group>"; };
 		DCFFA315D8783A1B5DAEF51C /* TmuxDoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxDoneTests.swift; sourceTree = "<group>"; };
 		DD17BB4EEFBB38DECB6765BF /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
+		DD4184E98AD0CB0C686A061C /* AgyAnnotationTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyAnnotationTitle.swift; sourceTree = "<group>"; };
 		DD56934BD448DF367CCC8C27 /* ConsoleCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleCommandTests.swift; sourceTree = "<group>"; };
 		DD5FFC61FCFABE53F589116B /* AgyInputBoxDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyInputBoxDetectorTests.swift; sourceTree = "<group>"; };
 		DD7EC7BEC9AACD2DAF634B2C /* AgentNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRouter.swift; sourceTree = "<group>"; };
@@ -2511,6 +2515,7 @@
 				2299C7D41D19BDBF88F84366 /* AgentUsageTests.swift */,
 				E767CF47B2336598C36C5D45 /* AgentUsageWidgetRefreshTests.swift */,
 				25C3FE1962A7DCAD36DAB4A4 /* AgentUsageWidgetTests.swift */,
+				A789DD788FA54A82397E96AE /* AgyAnnotationTitleTests.swift */,
 				B627D252E1FAD52BF70F2173 /* AgyBackgroundTaskStopTests.swift */,
 				BFB9887828E1532687B4E56B /* AgyDialogParserTests.swift */,
 				E9697C438D82B97C38E78903 /* AgyDialogPlannerTests.swift */,
@@ -3286,6 +3291,7 @@
 				0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */,
 				029887EC83335A8AED8C8ABC /* AgentUsageStrip.swift */,
 				996FEB63446D29BFF498378F /* AgentWindowDrag.swift */,
+				DD4184E98AD0CB0C686A061C /* AgyAnnotationTitle.swift */,
 				5870640477FDEB252DEE80B7 /* AttachLinkIndex.swift */,
 				FBE2F11B705B68BB1FBE993D /* AttachRestorationTrace.swift */,
 				F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */,
@@ -4393,6 +4399,7 @@
 				83CAAC9D1D76996B24732D0C /* AgentUsageWidgetPublisher.swift in Sources */,
 				1A160820CAA7EC1D8F987602 /* AgentWindowDrag.swift in Sources */,
 				8034B5827C6A0E0808972749 /* AgentsAndAccountsSettingsView.swift in Sources */,
+				C0F5DC7258848D70F66DC972 /* AgyAnnotationTitle.swift in Sources */,
 				389242951AF2322478041BCF /* AgyBackgroundTaskStop.swift in Sources */,
 				D0A284068CBC6B53D4DBDDD7 /* AgyDialogParser.swift in Sources */,
 				F6814974ED116F3287E97B1D /* AgyDialogPlanner.swift in Sources */,
@@ -4983,6 +4990,7 @@
 				98D7E08416065DDF86F7AF06 /* AgentUsageTests.swift in Sources */,
 				783D5072E630CC6892111ED1 /* AgentUsageWidgetRefreshTests.swift in Sources */,
 				47535DD6B2D1765EF254CFDC /* AgentUsageWidgetTests.swift in Sources */,
+				6405A197BDFEF87C0A750653 /* AgyAnnotationTitleTests.swift in Sources */,
 				214A71B36D2A038761A01CF0 /* AgyBackgroundTaskStopTests.swift in Sources */,
 				3ECDC98A0455300DCE624E49 /* AgyDialogParserTests.swift in Sources */,
 				C1F5D8A8563AA09C29DE9850 /* AgyDialogPlannerTests.swift in Sources */,

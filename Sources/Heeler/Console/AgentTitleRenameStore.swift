@@ -20,7 +20,7 @@ enum AgentTitleNaming {
         var title = agent.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let directory = (agent.foregroundCwd ?? agent.cwd).split(separator: "/").last.map(String.init) ?? ""
         switch program {
-        case .claude: break
+        case .claude, .agy: break
         case .codex:
             if !directory.isEmpty, let separator = title.range(of: " | ", options: .backwards) {
                 let suffix = String(title[separator.upperBound...])
@@ -42,8 +42,6 @@ enum AgentTitleNaming {
             if title.hasSuffix(" - grok") { title.removeLast(7) }
         case .opencode:
             if title.hasPrefix("OC | ") { title.removeFirst(5) }
-        case .agy:
-            break
         }
         return title
     }
@@ -78,6 +76,7 @@ struct AgentTitleRenameIO {
     var keys: ([String]) async throws -> Void
     var paste: (String) async throws -> Void
     var refresh: () async -> Void
+    var initialTitle: (() async -> String?)? = nil
     var acquire: () -> Bool = { true }
     var release: () -> Void = {}
     var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
@@ -101,8 +100,10 @@ final class AgentTitleRenameStore: Identifiable {
     let program: ChatProgram
     var input: String
     private(set) var state: State = .editing
+
     private let expected: Agent
     private let io: AgentTitleRenameIO
+    private var initialInput: String
     /// A timeout or interrupted write requires reopening and checking the terminal.
     private(set) var outcomeUncertain = false
     private var dispatched = false
@@ -111,7 +112,9 @@ final class AgentTitleRenameStore: Identifiable {
         expected = agent
         self.program = program
         self.io = io
-        input = AgentTitleNaming.title(of: agent, program: program)
+        let seeded = AgentTitleNaming.title(of: agent, program: program)
+        input = seeded
+        initialInput = seeded
     }
 
     var isBusy: Bool { state == .saving || state == .generating }
@@ -120,6 +123,16 @@ final class AgentTitleRenameStore: Identifiable {
     var generationUnavailable: String? {
         AgentTitleNaming.supportsGeneration(program) ? nil
             : String(localized: "Automatic title generation isn't available for \(program.chatName) here.")
+    }
+
+    /// Refreshes the seeded title when the sheet opens unless the user already edited or started saving.
+    func refreshInitialTitle() async {
+        guard state == .editing, !dispatched, input == initialInput,
+            let refreshed = await io.initialTitle?()
+        else { return }
+        guard state == .editing, !dispatched, input == initialInput else { return }
+        input = refreshed
+        initialInput = refreshed
     }
 
     func save() async {
@@ -265,8 +278,8 @@ final class AgentTitleRenameStore: Identifiable {
             let text = try await io.screen().rows.map(\.text).joined(separator: "\n")
             if (target == nil || program == .agy), fresh.status == .idle || fresh.status == .done,
                 let acknowledgement = Self.nativeAcknowledgement(program: program, title: target ?? fresh.title),
-                acknowledgementCount(acknowledgement, in: text)
-                    > acknowledgementCount(acknowledgement, in: oldText) {
+                Self.acknowledgementCount(acknowledgement, program: program, in: text)
+                    > Self.acknowledgementCount(acknowledgement, program: program, in: oldText) {
                 // Generating again can legitimately produce the current title, and
                 // Antigravity CLI confirms a rename on screen without setting a
                 // terminal title by default.
@@ -296,10 +309,56 @@ final class AgentTitleRenameStore: Identifiable {
         }
     }
 
-    private func acknowledgementCount(_ acknowledgement: String, in text: String) -> Int {
-        text.components(separatedBy: "\n").filter {
-            $0.trimmingCharacters(in: .whitespaces).hasSuffix(acknowledgement)
-        }.count
+    static func acknowledgementCount(
+        _ acknowledgement: String, program: ChatProgram = .claude, in text: String
+    ) -> Int {
+        let rows = text.components(separatedBy: "\n")
+        var count = 0
+        var index = 0
+        while index < rows.count {
+            let trimmed = rows[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasSuffix(acknowledgement) {
+                count += 1
+                index += 1
+                continue
+            }
+            if program == .agy, acknowledgement.hasPrefix("Conversation renamed to: "),
+                let head = agyAcknowledgementStart(of: trimmed)
+            {
+                var candidates: Set<String> = [head]
+                var matchedOffset: Int?
+                for offset in 1...4 {
+                    let nextIndex = index + offset
+                    guard nextIndex < rows.count else { break }
+                    let rawNext = rows[nextIndex]
+                    guard rawNext.hasPrefix("  ") else { break }
+                    let nextTrimmed = rawNext.trimmingCharacters(in: .whitespaces)
+                    guard !nextTrimmed.isEmpty,
+                        !["⎿", "●", "⏺", "❯", ">", "─"].contains(where: nextTrimmed.hasPrefix)
+                    else { break }
+                    candidates = Set(candidates.flatMap { [$0 + nextTrimmed, $0 + " " + nextTrimmed] })
+                    if candidates.contains(acknowledgement) {
+                        matchedOffset = offset
+                        break
+                    }
+                }
+                if let matchedOffset {
+                    count += 1
+                    index += matchedOffset + 1
+                    continue
+                }
+            }
+            index += 1
+        }
+        return count
+    }
+
+    private static func agyAcknowledgementStart(of trimmedLine: String) -> String? {
+        var text = trimmedLine
+        if text.hasPrefix("⎿") {
+            text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        return text.hasPrefix("Conversation renamed to: ") ? text : nil
     }
 
     /// A bounded native dialog, not a matching phrase anywhere in the transcript.

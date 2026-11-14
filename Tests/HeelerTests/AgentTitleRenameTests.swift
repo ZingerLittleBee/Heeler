@@ -326,3 +326,109 @@ struct AgentTitleRenameTests {
         }
     }
 }
+
+@MainActor
+@Suite struct AntigravityTitleRenameTests {
+    @MainActor
+    private final class AgyHarness {
+        let empty: ANSIScreen
+        let draft: ANSIScreen
+        var title = "Original"
+        var status: AgentStatus = .idle
+        var session: String? = "5f0d2b6c-1234-4abc-9def-0123456789ab"
+        var screenOverride: ANSIScreen?
+        var commands: [String] = []
+        var refreshes = 0
+        var held = false
+        var onPrompt: ((String, AgyHarness) async -> Void)?
+        var initialTitleProvider: (() async -> String?)?
+
+        init() throws {
+            empty = try ScreenFixture.screen("agy-02-idle-empty-120x40")
+            draft = try ScreenFixture.screen("agy-14-idle-draft-oneline-120x40")
+        }
+
+        func agent() -> Agent {
+            Agent(
+                terminalID: "term-agy", kind: ChatProgram.agy.rawValue, title: title, status: status,
+                workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/project", revision: 1,
+                terminalTitleStripped: title,
+                agentSession: session.map {
+                    AgentSessionInfo(agent: ChatProgram.agy.rawValue, kind: .id, source: "herdr:antigravity_cli", value: $0)
+                })
+        }
+
+        func store() -> AgentTitleRenameStore {
+            AgentTitleRenameStore(
+                agent: agent(), program: .agy,
+                io: AgentTitleRenameIO(
+                    agent: { self.agent() },
+                    screen: { self.screenOverride ?? self.empty },
+                    prompt: { command in
+                        self.commands.append(command)
+                        await self.onPrompt?(command, self)
+                    },
+                    keys: { _ in },
+                    paste: { _ in },
+                    refresh: { self.refreshes += 1 },
+                    initialTitle: initialTitleProvider,
+                    acquire: {
+                        guard !self.held else { return false }
+                        self.held = true
+                        return true
+                    },
+                    release: { self.held = false },
+                    sleep: { _ in }))
+        }
+    }
+
+    @Test func wrappedAgyAcknowledgementMatchesAcrossRowsAndStopsAtSeparators() {
+        let acknowledgement = "Conversation renamed to: Investigate Long Topic Title"
+        let wrappedWithSpaceSplit = """
+            > /rename Investigate Long Topic Title
+              ⎿  Conversation renamed to: Investigate Long Topic
+                 Title
+            """
+        let wrappedMidWord = """
+            > /rename InvestigateLongWordTitle
+              ⎿  Conversation renamed to: InvestigateLong
+                 WordTitle
+            """
+        let incompleteAcrossSeparator = """
+              ⎿  Conversation renamed to: Investigate Long
+            ────────
+                 Topic Title
+            """
+
+        #expect(AgentTitleRenameStore.acknowledgementCount(acknowledgement, program: .agy, in: wrappedWithSpaceSplit) == 1)
+        #expect(
+            AgentTitleRenameStore.acknowledgementCount(
+                "Conversation renamed to: InvestigateLongWordTitle", program: .agy, in: wrappedMidWord) == 1)
+        #expect(AgentTitleRenameStore.acknowledgementCount(acknowledgement, program: .agy, in: incompleteAcrossSeparator) == 0)
+    }
+
+    @Test func refreshInitialTitleUpdatesUneditedInputAndPreservesUserEdit() async throws {
+        let rig = try AgyHarness()
+        rig.title = ""
+        var latestFromDisk: String? = "Title From Host"
+        rig.initialTitleProvider = { latestFromDisk }
+
+        let store = rig.store()
+        #expect(store.input.isEmpty)
+        #expect(!store.canSave)
+
+        await store.refreshInitialTitle()
+        #expect(store.input == "Title From Host")
+        #expect(store.canSave)
+
+        latestFromDisk = "Renamed On Mac"
+        await store.refreshInitialTitle()
+        #expect(store.input == "Renamed On Mac")
+
+        store.input = "Draft By User"
+        latestFromDisk = "Should Not Clobber"
+        await store.refreshInitialTitle()
+        #expect(store.input == "Draft By User")
+    }
+
+}

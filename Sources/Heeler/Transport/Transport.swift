@@ -905,6 +905,56 @@ struct Agent: Sendable, Equatable {
     private static func nonEmpty(_ value: String?) -> String? {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }
+
+    /// Returns a copy carrying an external conversation title (such as Antigravity CLI's
+    /// annotation title) in place of the terminal's OSC title.
+    func applyingConversationTitle(_ conversationTitle: String) -> Agent {
+        Agent(
+            terminalID: terminalID,
+            kind: kind,
+            title: conversationTitle,
+            status: status,
+            workspaceID: workspaceID,
+            tabID: tabID,
+            paneID: paneID,
+            cwd: cwd,
+            revision: revision,
+            name: name,
+            terminalTitle: conversationTitle,
+            terminalTitleStripped: conversationTitle,
+            paneTitle: paneTitle,
+            agentSession: agentSession,
+            tokens: tokens,
+            stateLabels: stateLabels,
+            stateChangeSeq: stateChangeSeq,
+            foregroundCwd: foregroundCwd
+        )
+    }
+
+    /// Returns a copy with untracked terminal-title fields cleared so a confirmed untitled
+    /// conversation does not fall back to the shell directory during Rename.
+    func clearingUntrackedConversationTitle() -> Agent {
+        Agent(
+            terminalID: terminalID,
+            kind: kind,
+            title: "",
+            status: status,
+            workspaceID: workspaceID,
+            tabID: tabID,
+            paneID: paneID,
+            cwd: cwd,
+            revision: revision,
+            name: name,
+            terminalTitle: nil,
+            terminalTitleStripped: nil,
+            paneTitle: paneTitle,
+            agentSession: agentSession,
+            tokens: tokens,
+            stateLabels: stateLabels,
+            stateChangeSeq: stateChangeSeq,
+            foregroundCwd: foregroundCwd
+        )
+    }
 }
 
 /// Where the herdr API socket lives on a Host. Home-relative locations are

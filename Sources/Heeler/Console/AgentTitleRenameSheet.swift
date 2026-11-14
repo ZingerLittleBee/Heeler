@@ -54,6 +54,7 @@ struct AgentTitleRenameSheet: View {
                 }
             }
             .onChange(of: store.state) { if store.state == .renamed { dismiss() } }
+            .task { await store.refreshInitialTitle() }
             .interactiveDismissDisabled(store.isBusy)
         }
         .presentationDetents([.medium, .large])
