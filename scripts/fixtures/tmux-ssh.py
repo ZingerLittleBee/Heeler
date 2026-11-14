@@ -309,6 +309,11 @@ def tmux_version(executable):
     return line[len("tmux "):].strip()
 
 
+def system_tmux():
+    """A tmux on SYSTEM_PATH, which ForceCommand cannot keep off an exec's PATH."""
+    return shutil.which("tmux", path=":".join(backend.SYSTEM_PATH))
+
+
 def start_fixture(args, root):
     source = args.tmux and Path(args.tmux)
     if not source or not source.is_file() or not os.access(source, os.X_OK):
@@ -323,7 +328,7 @@ def start_fixture(args, root):
         raise backend.BackendError(refusal or f"{root} holds or is inside the user's own tmux directory")
     if is_inside(source, root):
         raise backend.BackendError("the input tmux executable must be outside the new fixture root")
-    system = shutil.which("tmux", path=":".join(backend.SYSTEM_PATH))
+    system = system_tmux()
     if system:
         raise backend.BackendError(
             f"{system} is on every exec's PATH, so this fixture cannot keep tmux off it")

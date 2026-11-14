@@ -99,6 +99,8 @@ function runHook(command, payload, child) {
     let stderr = "";
     hook.stderr.on("data", (chunk) => (stderr += chunk));
     hook.on("close", (code) => resolve({ code, stderr }));
+    // Fast-exiting hooks (for example a missing script) close stdin before the payload flushes.
+    hook.stdin.on("error", () => {});
     hook.stdin.end(child ? "" : payload);
   });
 }
@@ -564,6 +566,7 @@ suite("the script in a tmux Pane", { skip }, () => {
         setTimeout(() => {
           const hook = spawn("/bin/sh", ["-c", command], { stdio: ["pipe", "ignore", "ignore"] });
           hook.on("close", resolve);
+          hook.stdin.on("error", () => {});
           hook.stdin.end(payload);
         }, index === 0 ? 0 : 5);
       })));

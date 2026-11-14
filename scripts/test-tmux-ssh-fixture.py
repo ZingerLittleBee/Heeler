@@ -80,13 +80,20 @@ class FixtureTestCase(unittest.TestCase):
                     "tmux": str(FIXTURE.tmux_executable(root))}
         return {"home": str(root / "home"), "tmpdir": str(FIXTURE.exec_tmpdir(root)), "tmux": ""}
 
-    def start(self, tmux: Path | str, facts=None, root: Path | None = None) -> tuple[int, str]:
+    def start(
+        self,
+        tmux: Path | str,
+        facts=None,
+        root: Path | None = None,
+        system_tmux: str | None = None,
+    ) -> tuple[int, str]:
         facts = facts or (lambda _root, _state, through_login_shell: self.good_facts(through_login_shell))
         errors = io.StringIO()
         with patch.object(FIXTURE.backend, "choose_port", return_value=47420), \
              patch.object(FIXTURE.backend, "start_sshd") as sshd, \
              patch.object(FIXTURE.backend, "stop_processes", return_value=[]) as stopped, \
              patch.object(FIXTURE, "session_facts", side_effect=facts), \
+             patch.object(FIXTURE, "system_tmux", return_value=system_tmux), \
              patch.object(FIXTURE.keys, "seed", return_value=bytes(32)), \
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
             status = FIXTURE.main(["start", "--root", str(root or self.root), "--tmux", str(tmux)])
@@ -151,13 +158,19 @@ class SessionEnvironmentTests(FixtureTestCase):
         super().setUp()
         status, errors = self.start(self.fake_tmux())
         self.assertEqual(status, 0, errors)
+        self.caller = self.root.parent / f"{self.root.name}-caller"
+        self.caller.mkdir()
+        self.addCleanup(shutil.rmtree, self.caller, ignore_errors=True)
+        caller_tmux = self.caller / "tmux"
+        caller_tmux.write_text("#!/bin/sh\necho 'tmux caller'\n")
+        caller_tmux.chmod(0o755)
 
     def session(self, command: str, shell: str = "/bin/sh") -> dict:
         """What sshd's ForceCommand gives a command, with the account's login shell."""
         result = subprocess.run(
             ["/bin/sh", str(self.root / "force-command.sh")],
             env={"SSH_ORIGINAL_COMMAND": command, "SHELL": shell, "HOME": "/nonexistent",
-                 "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+                 "PATH": f"{self.caller}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
                  "TMUX": "/tmp/tmux-0/default,1,0", "TMUX_TMPDIR": "/tmp"},
             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -165,7 +178,11 @@ class SessionEnvironmentTests(FixtureTestCase):
 
     def test_the_exec_has_no_tmux_and_a_tmux_directory_of_its_own(self) -> None:
         facts = self.session(FIXTURE.check_script(False))
-        self.assertEqual(facts, self.good_facts(False))
+        self.assertEqual(facts, dict(self.good_facts(False), tmux=FIXTURE.system_tmux() or ""))
+        self.assertEqual(
+            self.session("printf 'heeler-tmux-fixture-check path %s\\n' \"$PATH\"")["path"],
+            FIXTURE.backend.isolated_path(self.root),
+        )
         self.assertEqual(self.session("printf 'heeler-tmux-fixture-check tmux %s\\n' \"$TMUX\"")["tmux"], "")
 
     def test_every_login_shell_finds_tmux_and_the_fixtures_tmux_directory(self) -> None:
@@ -249,9 +266,11 @@ class StartTests(FixtureTestCase):
 
     def test_start_refuses_a_tmux_it_cannot_keep_off_the_execs_path(self) -> None:
         tmux = self.fake_tmux()
-        with patch.object(FIXTURE.shutil, "which", return_value="/usr/bin/tmux"), \
-             patch.object(FIXTURE.backend, "prepare_root") as prepare:
-            status, errors = self.start(tmux)
+        with patch.object(FIXTURE.shutil, "which", return_value="/usr/bin/tmux") as which:
+            self.assertEqual(FIXTURE.system_tmux(), "/usr/bin/tmux")
+        which.assert_called_once_with("tmux", path=":".join(FIXTURE.backend.SYSTEM_PATH))
+        with patch.object(FIXTURE.backend, "prepare_root") as prepare:
+            status, errors = self.start(tmux, system_tmux="/usr/bin/tmux")
         self.assertEqual(status, 2)
         self.assertIn("/usr/bin/tmux", errors)
         prepare.assert_not_called()
