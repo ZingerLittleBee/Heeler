@@ -71,8 +71,10 @@ The APNs request uses `apns-push-type: liveactivity` and
 `apns-topic: ${APNS_TOPIC}.push-type.liveactivity` (suffix-derived from the
 existing topic; no extra config var). The body is `aps` only —
 `timestamp`, `event`, `content-state: {counts, envelope}`, and the optional
-dates — never `alert` or `mutable-content`. The same 4 KB payload cap
-applies.
+dates. Updates also include a numeric `relevance-score` derived from counts
+according to [the Live Activity contract](../docs/agents/live-activity-contract.md).
+End events omit it. The body never includes `alert` or `mutable-content`.
+The same 4 KB payload cap applies.
 
 ### Responses
 
