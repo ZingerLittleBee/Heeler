@@ -101,7 +101,37 @@ enum CodexRecordDecoder {
             return decodeResponse(type, line, classification, context)
         case .retainedContext(let type):
             return decodeRetained(type, line)
+        case .turnContext:
+            return decodeTurnContext(line)
         }
+    }
+
+    private static func decodeTurnContext(_ line: ChatLine) -> CodexLineOutcome {
+        if !line.isTruncated, !CodexJSONPrefix.isCompleteObject(line.data) {
+            return .invalid
+        }
+        guard let context = envelope(line, CodexRawTurnContext.self)?.payload else {
+            return line.isTruncated ? .accepted : .invalid
+        }
+        let turnID = context.turnID.flatMap { $0.isEmpty ? nil : $0 }
+        let model = normalizedModel(context.model)
+        let effort = normalizedEffort(context.effort)
+        guard model != nil || effort != nil else { return .accepted }
+        return CodexLineOutcome(record: .sessionSettings(turnID: turnID, model: model, effort: effort))
+    }
+
+    private static func normalizedModel(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func normalizedEffort(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
+            trimmed.caseInsensitiveCompare("none") != .orderedSame
+        else { return nil }
+        return trimmed
     }
 
     /// A line that is never decoded: accepted when it is one whole object.
@@ -130,6 +160,17 @@ enum CodexRecordDecoder {
         switch type {
         case "task_started", "turn_started", "task_complete", "turn_complete", "turn_aborted":
             break
+        case "thread_settings_applied":
+            if !line.isTruncated, !CodexJSONPrefix.isCompleteObject(line.data) {
+                return .invalid
+            }
+            guard let event = envelope(line, CodexRawEvent.self)?.payload else {
+                return line.isTruncated ? .accepted : .invalid
+            }
+            let model = normalizedModel(event.threadSettings?.model)
+            let effort = normalizedEffort(event.threadSettings?.effort)
+            guard model != nil || effort != nil else { return .accepted }
+            return CodexLineOutcome(record: .sessionSettings(turnID: nil, model: model, effort: effort))
         case "user_message", "agent_message", "agent_reasoning":
             guard legacy else { return shapeChecked(line) }
             if line.isTruncated { return .oversized }

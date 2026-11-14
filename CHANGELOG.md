@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Show and switch a Codex conversation's model and reasoning effort from Chat's header title pill (`<Model> · <effort>`), matching Claude Code's header menu. Choices load from the Host's `$CODEX_HOME/models_cache.json` with built-in presets as a fallback, and selecting a model or effort sends `/model <slug>` or `/model --reasoning=<level>` for the current session once the terminal confirms the change. (PR #734)
 - See and switch an Antigravity CLI conversation's model and effort from Chat's header title pill, as Claude Code's Chat already offers. The pill reads the active model and effort from the live footer, the startup banner, and the transcript's setting changes and planner replies, groups models offered on the Host (`agy models`, with a built-in fallback catalog) by family and effort, and sends `/model` or `/effort` into an idle empty input box while confirming the screen reply. (PR #733)
 - Upload images and files over SFTP from the Composer, Direct Input, and Chat on macOS and Linux tmux Hosts, inspect uncommitted Git changes in Changes, and browse or insert Host skills from Skills and the `/` menu. (PR #731)
 - Connect to macOS and Linux tmux 3.3 or newer Hosts over SSH. Adding a Host by hand detects a running tmux server alongside Herdr TUI and herdr-core so you can confirm Server Kind and pick the tmux socket name. Connecting never starts a server; Host detail warns if variables from an agent session leaked into tmux and shows how to clear them. (#726)

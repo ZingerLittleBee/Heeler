@@ -67,7 +67,7 @@ struct CodexProjection: Equatable, Sendable {
 struct CodexRolloutReducer: ChatTranscriptReducer {
     /// Bumped when the normalization changes, so entries cached by an
     /// older build are dropped instead of mixed with new ones.
-    static let revision = 12
+    static let revision = 13
 
     let rolloutID: String
     private(set) var support: CodexRolloutSupport = .pending
@@ -179,10 +179,12 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
             timeline = Self.liveOnly(timeline, rolloutID: rolloutID)
         }
         let output = CodexTimelineProjector.project(timeline, context: context, liveRolloutID: rolloutID)
-        let transcript = ChatTranscript(
+        var transcript = ChatTranscript(
             entries: output.entries, needsOlderHistory: context.windowStart > 0 || pendingHistoryBase != nil,
             pendingRequests: output.pendingRequests, recordedPrompts: output.recordedPrompts,
             diagnostics: diagnostics, turns: output.chatTurns, precedingTurnEnd: output.precedingTurnEnd)
+        transcript.model = timeline.model
+        transcript.effort = timeline.effort
         return CodexProjection(
             transcript: transcript, turns: output.turns, echoCandidates: output.echoCandidates, ordinals: ordinals)
     }
@@ -301,7 +303,9 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
                     turn.ending = nil
                 }
                 return turn.entries.isEmpty && turn.ending == nil ? nil : turn
-            })
+            },
+            model: timeline.model,
+            effort: timeline.effort)
     }
 
     // MARK: Rebuild

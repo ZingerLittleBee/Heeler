@@ -44,6 +44,8 @@ struct CodexLegacyBuilder {
     private let segment: CodexSegment
     private var turns: [Turn] = []
     private var current: Turn?
+    private var model: String?
+    private var effort: String?
 
     private init(segment: CodexSegment) {
         self.segment = segment
@@ -124,6 +126,13 @@ struct CodexLegacyBuilder {
                 return
             }
             place(item, placement, line: line)
+        case .sessionSettings(_, let settingModel, let settingEffort):
+            if let settingModel {
+                model = settingModel
+                effort = settingEffort
+            } else if let settingEffort {
+                effort = settingEffort
+            }
         case .item, .questionCall, .codeModePatch:
             // Paginated records.
             break
@@ -316,7 +325,9 @@ struct CodexLegacyBuilder {
                         return entry
                     },
                     ending: turn.ending)
-            })
+            },
+            model: model,
+            effort: effort)
     }
 }
 
