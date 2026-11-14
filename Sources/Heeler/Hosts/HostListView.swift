@@ -626,7 +626,8 @@ struct HostListView: View {
     private func retryAction(
         for id: Host.ID
     ) -> (@MainActor @Sendable () async -> Void)? {
-        guard let retryConnection else { return nil }
+        // Host detail offers Reconnect only with an action to run.
+        guard let retryConnection, standingFailures[id]?.offersRetry != false else { return nil }
         return { await retryConnection(id) }
     }
 
@@ -824,17 +825,18 @@ struct HostRowPresentation: Equatable {
         tone = isOutOfSync ? .warning : problem?.tone ?? chip.tone
         isDialing = problem?.isDialing ?? false
         trailing = if case .connected = status { chip.title } else { nil }
+        let retryHelps = canRetry && problem?.failure.offersRetry != false
         switch status {
         case .failed:
             group = .cannotConnect
             detail = problem?.summary ?? chip.title
             isProblem = true
-            offersRetry = canRetry
+            offersRetry = retryHelps
         case .connecting where problem != nil:
             group = .cannotConnect
             detail = problem?.summary ?? chip.title
             isProblem = false
-            offersRetry = canRetry
+            offersRetry = retryHelps
         case .reconnecting:
             group = .trying
             detail = [problem?.summary, problem?.attempt].compactMap { $0 }.joined(separator: " · ")

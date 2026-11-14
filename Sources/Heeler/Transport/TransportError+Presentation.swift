@@ -367,6 +367,13 @@ extension TransportError {
         }
     }
 
+    /// Whether to offer the user a Retry. A retry dials again, so a Host fixed
+    /// since any other failure then connects. A Rex Host's failure comes from
+    /// a build that never dials Rex (ADR 0047), and no retry changes it.
+    var offersRetry: Bool {
+        self != .rexNotConnectableYet
+    }
+
     /// Every route's own failure, in order. A changed key that counts as a
     /// security failure leads, as it would for a Host with one route, so it
     /// does not read as an ordinary outage.

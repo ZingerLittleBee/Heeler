@@ -164,6 +164,23 @@ struct HostRowPresentationTests {
         #expect(!row(.failed(.timedOut), canRetry: false).offersRetry)
     }
 
+    /// This build never dials a Rex Host, so its row explains why without a
+    /// Retry that could change nothing. Other stopped Hosts keep theirs.
+    @Test func aFailureNoRetryChangesOffersNoRetry() {
+        let failure = TransportError.rexNotConnectableYet
+        let rex = HostRowPresentation(
+            host: Host(address: "rex.example", username: "dev", serverKind: .rex),
+            status: .failed(failure), standingFailure: failure, latency: nil)
+
+        #expect(rex.group == .cannotConnect)
+        #expect(rex.isProblem)
+        #expect(rex.detail == failure.presentation.summary)
+        #expect(!rex.offersRetry)
+        #expect(!failure.offersRetry)
+        #expect(TransportError.tmuxNotInstalled.offersRetry)
+        #expect(row(.failed(.tmuxNotInstalled)).offersRetry)
+    }
+
     @Test func theUsersOwnRetryStaysInPlaceWhileItDials() {
         let dialing = row(.connecting, standingFailure: .timedOut)
         #expect(dialing.isDialing)
