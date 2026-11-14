@@ -176,7 +176,10 @@ final class HarnessConfigEditFlow: Identifiable {
     /// stays an offer: `review()` looks again, and says why if it still can't.
     func locate() async {
         guard phase == .locating else { return }
-        remember(try? await makeEdit())
+        let found = try? await makeEdit()
+        guard phase == .locating else { return }
+        if found == nil, Task.isCancelled { return }
+        remember(found)
         // The user can't have acted during this, since nothing is offered yet.
         phase = .idle
     }
@@ -200,6 +203,8 @@ final class HarnessConfigEditFlow: Identifiable {
             case .refused(let path, let reason, let manualInstruction):
                 phase = .refused(path: path, reason: reason, manualInstruction: manualInstruction)
             }
+        } catch where HarnessConfigEditMessage.isCancellation(error) {
+            phase = .idle
         } catch {
             phase = .failed(HarnessConfigEditMessage.text(for: error))
         }
@@ -276,6 +281,10 @@ final class HarnessConfigEditFlow: Identifiable {
 
 /// What the user reads when an edit could not go ahead.
 enum HarnessConfigEditMessage {
+    static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? TransportError) == .cancelled
+    }
+
     static func text(for error: any Error) -> String {
         switch error {
         case let error as HarnessConfigEditError:

@@ -7,6 +7,10 @@ import Foundation
 /// shared with the Host. It goes with the Host. When the Host's core id changes it
 /// starts over, since addresses belong to one core, all but the kernel, which
 /// belongs to the machine.
+///
+/// A tmux Host keeps its server instance here as its core id (ADR 0045): pane
+/// ids belong to one run of the server as addresses belong to one core, and so
+/// do its Panes' turns and seen marks (ADR 0046), which go with the instance.
 @MainActor
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {
@@ -16,6 +20,8 @@ final class HerdrCoreHostMemory {
         var kernel: String?
         var directories: [String: String] = [:]
         var turns: [String: HerdrCoreTurnState] = [:]
+        /// A tmux Host's, by pane id.
+        var tmuxTurns: [String: TmuxTurnState] = [:]
 
         init(coreID: String? = nil) {
             self.coreID = coreID
@@ -28,6 +34,7 @@ final class HerdrCoreHostMemory {
             kernel = try fields.decodeIfPresent(String.self, forKey: .kernel)
             directories = try fields.decodeIfPresent([String: String].self, forKey: .directories) ?? [:]
             turns = try fields.decodeIfPresent([String: HerdrCoreTurnState].self, forKey: .turns) ?? [:]
+            tmuxTurns = try fields.decodeIfPresent([String: TmuxTurnState].self, forKey: .tmuxTurns) ?? [:]
         }
     }
 
@@ -79,6 +86,33 @@ final class HerdrCoreHostMemory {
         change(&state)
         guard entry.turns[address] != state else { return }
         entry.turns[address] = state
+        entries[hostID] = entry
+        save()
+    }
+
+    func tmuxTurnStates(for hostID: Host.ID) -> [String: TmuxTurnState] {
+        entries[hostID]?.tmuxTurns ?? [:]
+    }
+
+    func updateTmuxTurnState(
+        of paneID: String, for hostID: Host.ID, _ change: (inout TmuxTurnState) -> Void
+    ) {
+        var entry = entries[hostID] ?? Entry()
+        var state = entry.tmuxTurns[paneID] ?? TmuxTurnState()
+        change(&state)
+        guard entry.tmuxTurns[paneID] != state else { return }
+        entry.tmuxTurns[paneID] = state
+        entries[hostID] = entry
+        save()
+    }
+
+    /// The panes a tmux server lists: any other's turns are forgotten, since
+    /// the server never gives a closed pane's id out again.
+    func retainTmuxPanes(_ paneIDs: Set<String>, for hostID: Host.ID) {
+        guard var entry = entries[hostID] else { return }
+        let retained = entry.tmuxTurns.filter { paneIDs.contains($0.key) }
+        guard retained != entry.tmuxTurns else { return }
+        entry.tmuxTurns = retained
         entries[hostID] = entry
         save()
     }

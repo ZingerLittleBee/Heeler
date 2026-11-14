@@ -86,7 +86,7 @@ final class HerdrCoreChatViewer: HerdrCoreTypingSeat {
 /// must not get what was meant for the Agent. That is checked again once the viewer
 /// is open, since opening it can take seconds.
 @MainActor
-final class HerdrCoreChatTyping {
+final class HerdrCoreChatTyping: CheckedChatTyping {
     /// Why nothing was typed, for the user: nothing left Heeler.
     struct Refusal: Error, Equatable {
         let message: String

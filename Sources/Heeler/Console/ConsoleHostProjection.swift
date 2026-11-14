@@ -34,6 +34,12 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Display-only metadata for a selected detail during recovery. Never used
     /// as live inventory, and replaced even by an empty fresh snapshot.
     var lastKnownAgentsByPane: [String: ConsoleAgent] { get }
+    /// Why each Agent reading Unknown does, by Pane id (ADRs 0034 and 0046).
+    var statusExplanations: [String: HerdrCoreStatusExplanation] { get }
+    /// What this inventory's Pane ids belong to, on a Host whose ids repeat
+    /// under another: a herdr-core Host's core, a tmux Host's server instance.
+    /// Nil on a Herdr TUI Host, and before the first one is known.
+    var inventoryCore: String? { get }
     var sidebarRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
@@ -109,6 +115,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// `paneID` and `corePin` are for a Host whose files go through the Terminal.
     func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager
     func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager
+    /// Whether staging shows `TransportError`s in their own words, as a Host
+    /// whose uploads ride its own RPC link does.
+    var stagingSaysTransportFailures: Bool { get }
     func sessionFileReader() -> SessionFileReader
     func modelContextWindowResolver() -> ModelContextWindowResolver
     func chatHostFiles() -> ChatHostFiles
@@ -125,10 +134,97 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func withNotificationTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value
+
+    // MARK: Checked input
+
+    /// Checked Composer Send for this Pane, or nil to send with `promptAgent`.
+    /// `live` is the Host's projection at the moment a step runs, which may
+    /// have replaced this one.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)?
+
+    /// Terminal Stop for this Pane. Nil means this projection does not supply
+    /// Stop, so the caller uses Esc. `.keepSend` means it does, and this Pane
+    /// gets none. `live` is the Host's projection when Stop runs.
+    func checkedTerminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer?
+
+    /// How Chat types into this Pane, or nil to use `readAgentScreen`,
+    /// `sendAgentKeys` and `pasteIntoAgent`.
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)?
+
+    /// Chat's Stop for this Pane when the projection runs the Stop plan itself
+    /// (as tmux does over Chat's own Attach), or nil to run `ChatStopPlan`
+    /// through `agentKeys`.
+    func checkedChatStop(
+        for paneID: String,
+        program: ChatProgram,
+        keepingTo corePin: TerminalCorePin,
+        agentKeys: ChatAgentKeysStore?,
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)?,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt?
+
+    // MARK: Process-bound Chat (ADR 0034)
+
+    var kernel: String? { get }
+    var usesProcessBoundChat: Bool { get }
+    var chatCacheScope: String? { get }
+    func sessionEventRevision(of paneID: String) -> UInt64
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason
+    func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer
+    func writeChatPick(_ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String) async throws
+    func dropChatPick(paneID: String, scope: String?, program: ChatProgram)
+    func settleChatPick(paneID: String, program: ChatProgram)
+    func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch?
+}
+
+/// What a checked Composer Send came to. The Composer shows each case itself.
+enum CheckedSendOutcome: Equatable, Sendable {
+    /// The paste and the submit key both left, in that order.
+    case submitted
+    /// Nothing more goes out, and the draft comes back with this.
+    case refused(ComposerRefusal)
+    /// Nothing left Heeler, so sending again is safe.
+    case failed(String)
+    /// A step got no answer and may still reach the program.
+    case outcomeUnknown
+}
+
+/// Composer Send a projection checks itself, in place of `promptAgent`.
+@MainActor
+protocol CheckedComposerSend: AnyObject {
+    func send(
+        _ text: String, route: ComposerRoute, attach: AgentAttachStore?
+    ) async -> CheckedSendOutcome
+}
+
+/// A projection's terminal Stop for one Pane. `.keepSend` is a Pane that gets
+/// none, which is different from a projection that does not supply Stop at all.
+enum TerminalStopOffer {
+    case keepSend
+    case interrupt(AgentComposerInterrupt)
+}
+
+/// Chat's way into a Pane when the projection checks the typing itself.
+@MainActor
+protocol CheckedChatTyping: AnyObject {
+    var blockedScreen: BlockedScreenIO { get }
 }
 
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
+
+    var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }
+
+    var inventoryCore: String? { nil }
 
     /// Until a snapshot proves what the Host runs, its Console rows may be saved
     /// Chat entries, on a Host that offers Chat at all.
@@ -154,4 +250,61 @@ extension ConsoleHostProjection {
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }
 
     var heldTerminalNames: Set<String> { [] }
+
+    var stagingSaysTransportFailures: Bool { false }
+
+    func checkedComposerSend(
+        for _: String,
+        keepingTo _: TerminalCorePin,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? { nil }
+
+    func checkedTerminalStop(
+        for _: String,
+        keepingTo _: TerminalCorePin,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? { nil }
+
+    func checkedChatTyping(at _: String) -> (any CheckedChatTyping)? { nil }
+
+    func checkedChatStop(
+        for _: String,
+        program _: ChatProgram,
+        keepingTo _: TerminalCorePin,
+        agentKeys _: ChatAgentKeysStore? = nil,
+        followThrough _: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt? { nil }
+
+    var kernel: String? { nil }
+
+    var usesProcessBoundChat: Bool { false }
+
+    var chatCacheScope: String? { nil }
+
+    func sessionEventRevision(of _: String) -> UInt64 { 0 }
+
+    func checkChatSession(paneID _: String, program _: ChatProgram) async throws -> ChatSessionEvidence {
+        throw TransportError.cancelled
+    }
+
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
+        .cannotTellSession(program)
+    }
+
+    func chatCandidates(paneID _: String, program _: ChatProgram) async throws -> ChatCandidatesAnswer {
+        throw TransportError.cancelled
+    }
+
+    func writeChatPick(
+        _: ChatSessionCandidate, of _: ChatSessionCandidates, paneID _: String
+    ) async throws {
+        throw TransportError.cancelled
+    }
+
+    func dropChatPick(paneID _: String, scope _: String?, program _: ChatProgram) {}
+
+    func settleChatPick(paneID _: String, program _: ChatProgram) {}
+
+    func claudePermissionLaunch(paneID _: String) async throws -> ClaudePermissionMode.Launch? { nil }
 }

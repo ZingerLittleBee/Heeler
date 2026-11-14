@@ -95,7 +95,8 @@ struct HostOnboardingView: View {
             credentials: dependencies.credentials,
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
-            noteWindowsCore: dependencies.noteWindowsCore)
+            noteWindowsCore: dependencies.noteWindowsCore,
+            noteTmuxPaths: dependencies.noteTmuxPaths)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -156,12 +157,17 @@ struct HostOnboardingView: View {
                 LabeledContent("Account", value: store.host.username)
                 LabeledContent("Server Kind", value: store.serverKindSummary)
                     .accessibilityIdentifier("hosts.detail.serverKind")
-                LabeledContent("Session", value: sessionLine)
+                if store.host.serverKind == .tmux {
+                    LabeledContent("Socket", value: store.host.tmuxSocketName)
+                        .accessibilityIdentifier("hosts.detail.tmuxSocket")
+                } else {
+                    LabeledContent("Session", value: sessionLine)
+                }
                 herdrEndpointRows
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
-                if store.host.serverKind.isConfirmed { pluginRow }
+                if store.host.serverKind == .herdrTUI || store.host.serverKind == .herdrCore { pluginRow }
                 if let helper = store.hostHelper { hostHelperRow(helper) }
             }
 
@@ -173,12 +179,15 @@ struct HostOnboardingView: View {
                 }
                 if let harnessEdits {
                     HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
+                    if store.host.serverKind == .tmux, harnessEdits.hostStatuses[store.host.id] == .connected {
+                        ClaudeCodeHooksSection(flow: harnessEdits.claudeCodeHooksFlow(on: store.host.id))
+                    }
                 }
             } else {
                 serverKindSection
             }
 
-            if let usage, store.host.serverKind.isConfirmed {
+            if let usage, store.host.serverKind.hasHostIntegrations {
                 AgentUsageSection(
                     hostID: store.host.id, hostName: store.host.displayName, store: usage,
                     openUsage: openUsage)
@@ -253,7 +262,7 @@ struct HostOnboardingView: View {
             }
         }
         .onChange(of: store.report) { _, report in
-            isConsoleRecoveryArmed = report == .allPassed
+            handleReportChange(report)
         }
         .onChange(of: consoleRecoveryInput) { _, input in
             switch HostOnboardingConsoleRecovery.action(for: input) {
@@ -276,7 +285,7 @@ struct HostOnboardingView: View {
             let action = HostOnboardingCoreFollow.action(
                 afterConsoleReads: reading, serverKind: store.host.serverKind, phase: store.phase,
                 coreStart: store.coreStart, reportPassed: store.report == .allPassed,
-                offersStart: store.coreStartOffer != nil)
+                offersStart: store.coreStartOffer != nil || store.isWaitingForTmuxServer)
             if action == .runChecks { Task { await store.runChecks() } }
         }
     }
@@ -285,7 +294,7 @@ struct HostOnboardingView: View {
     /// the Server Kind row.
     private var preflightSection: some View {
         Section {
-            ForEach(PreflightCheck.allCases, id: \.self) { @Sendable check in
+            ForEach(PreflightCheck.cases(for: store.host.serverKind), id: \.self) { @Sendable check in
                 MainActorContent {
                     PreflightCheckRow(
                         title: check.title(for: store.host.serverKind), status: status(for: check))
@@ -315,6 +324,18 @@ struct HostOnboardingView: View {
                     .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
                 LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
                     .accessibilityIdentifier("hosts.detail.detection.herdrCore")
+                if detection.tmux != .unsupported {
+                    LabeledContent(ServerKind.tmux.displayName, value: detection.tmux.summary)
+                        .accessibilityIdentifier("hosts.detail.detection.tmux")
+                }
+            }
+            if store.tmuxSocketChoices.count > 1 {
+                Picker("tmux Socket", selection: tmuxSocketSelection) {
+                    ForEach(store.tmuxSocketChoices, id: \.self) { socket in
+                        Text(socket).tag(socket)
+                    }
+                }
+                .accessibilityIdentifier("hosts.detail.tmuxSocketPicker")
             }
             ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
                 MainActorContent {
@@ -340,6 +361,10 @@ struct HostOnboardingView: View {
         return PreflightCheck.allCases.lazy.map { report[$0] }.first {
             if case .failed = $0 { true } else { false }
         }
+    }
+
+    private var tmuxSocketSelection: Binding<String> {
+        Binding(get: { store.tmuxSocket }, set: { store.selectTmuxSocket($0) })
     }
 
     private var confirmationRefusalPresented: Binding<Bool> {
@@ -413,6 +438,16 @@ struct HostOnboardingView: View {
         case .connecting, .reconnecting: true
         default: false
         }
+    }
+
+    private func handleReportChange(_ report: PreflightReport?) {
+        isConsoleRecoveryArmed = report == .allPassed
+        let action = HostOnboardingCoreFollow.action(
+            afterTmuxChecks: report == .allPassed,
+            isWaitingForServer: store.isWaitingForTmuxServer,
+            serverKind: store.host.serverKind,
+            status: connectionStatus)
+        if action == .wakeConsole { retry() }
     }
 
     private func retry() {
@@ -1103,7 +1138,8 @@ struct HostOnboardingConnectionPresentation: Equatable {
 
 /// What a core Host's detail does when the Console finds out something its
 /// checks have not. Only ever the locator and `hello`, so nothing here starts a
-/// core (ADR 0031).
+/// core (ADR 0031). A tmux Host's detail follows its server the same way, with
+/// asks that start none (ADR 0044).
 enum HostOnboardingCoreFollow {
     /// What the Console says of the core, which is what the checks may contradict.
     enum Reading: Equatable {
@@ -1120,7 +1156,7 @@ enum HostOnboardingCoreFollow {
 
     static func reading(_ status: EventsSessionStatus?) -> Reading {
         switch status {
-        case .reconnecting(_, _, .herdrCoreNotRunning): .notRunning
+        case .reconnecting(_, _, .herdrCoreNotRunning), .reconnecting(_, _, .tmuxServerNotRunning): .notRunning
         case .connected: .connected
         default: .other
         }
@@ -1128,12 +1164,14 @@ enum HostOnboardingCoreFollow {
 
     /// Checks that passed read a core that has since stopped, or checks that offer
     /// Start read one that has since come back. After a Start the checks may fail
-    /// on something more exact than not running, so only a pass is run again.
+    /// on something more exact than not running, so only a pass is run again. For a
+    /// tmux Host, `offersStart` is checks that found no server running.
     static func action(
         afterConsoleReads reading: Reading, serverKind: ServerKind, phase: HostOnboardingStore.Phase,
         coreStart: CoreStartState, reportPassed: Bool, offersStart: Bool
     ) -> Action {
-        guard serverKind == .herdrCore, phase == .finished, coreStart != .running else { return .none }
+        guard serverKind == .herdrCore || serverKind == .tmux, phase == .finished, coreStart != .running
+        else { return .none }
         switch reading {
         case .notRunning: return reportPassed ? .runChecks : .none
         case .connected: return offersStart ? .runChecks : .none
@@ -1150,6 +1188,24 @@ enum HostOnboardingCoreFollow {
         switch coreStart {
         case .started, .alreadyRunning: return .wakeConsole
         case .idle, .running, .failed: return .none
+        }
+    }
+
+    /// Checks on a tmux Host that found a running server wake a Console still
+    /// backing off or stopped on an install check; checks that found a usable
+    /// tmux with no server running wake a Console still stopped on an install check.
+    static func action(
+        afterTmuxChecks reportPassed: Bool, isWaitingForServer: Bool, serverKind: ServerKind,
+        status: EventsSessionStatus?
+    ) -> Action {
+        guard serverKind == .tmux else { return .none }
+        switch status {
+        case .failed(.tmuxNotInstalled), .failed(.tmuxUpdateRequired):
+            return reportPassed || isWaitingForServer ? .wakeConsole : .none
+        case .reconnecting:
+            return reportPassed ? .wakeConsole : .none
+        default:
+            return .none
         }
     }
 }

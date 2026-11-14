@@ -171,21 +171,39 @@ struct HostFormView: View {
         } else {
             Section {
                 serverKindRow
-                TextField("Session name", text: $draft.sessionName)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                TextField(
+                    draft.serverKind == .tmux ? String(localized: "Socket name") : String(localized: "Session name"),
+                    text: $draft.sessionName
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
             } header: {
-                Text(draft.serverKind == .herdrTUI ? "herdr Session" : draft.serverKind == .herdrCore ? "herdr-core Session" : "Session")
+                Text(sessionSectionTitle)
             } footer: {
                 if let refusal = draft.sessionNameRefusal(onNativeWindows: isNativeWindowsCore) {
                     Text(refusal)
                         .foregroundStyle(.red)
                 } else {
-                    Text(draft.serverKind == .herdrTUI
-                        ? String(localized: "Leave blank for the default herdr session.")
-                        : String(localized: "Leave blank for the default session."))
+                    Text(sessionSectionHint)
                 }
             }
+        }
+    }
+
+    private var sessionSectionTitle: String {
+        switch draft.serverKind {
+        case .herdrTUI: String(localized: "herdr Session")
+        case .herdrCore: String(localized: "herdr-core Session")
+        case .tmux: String(localized: "tmux Socket")
+        case .unconfirmed: String(localized: "Session")
+        }
+    }
+
+    private var sessionSectionHint: String {
+        switch draft.serverKind {
+        case .herdrTUI: String(localized: "Leave blank for the default herdr session.")
+        case .tmux: String(localized: "Leave blank for the default socket, which a tmux started without -L uses.")
+        case .herdrCore, .unconfirmed: String(localized: "Leave blank for the default session.")
         }
     }
 

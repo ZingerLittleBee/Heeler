@@ -148,6 +148,7 @@ port_block_base_default=55222
 # How many disjoint blocks the machine hands out before it refuses to guess.
 port_block_count=8
 # The herdr-core fixture takes one port from its own pool, outside the block grid.
+# The tmux fixture takes the same port once the herdr-core fixture has stopped.
 core_port_base_default=55400
 core_port_count=8
 # Pin a block explicitly, for a caller that would rather not negotiate.
@@ -203,6 +204,10 @@ password_pid=""
 fake_herdr_pid=""
 weak_network_pid=""
 core_fixture_dir=""
+tmux_fixture_dir=""
+tmux_fixture_executable=""
+# Where a tmux is when it is not on this script's PATH.
+tmux_fixture_candidates=(/opt/homebrew/bin/tmux /usr/local/bin/tmux)
 simulator_udid=""
 simulator_destination=""
 simulator_environment_variables=()
@@ -608,7 +613,7 @@ dump_fixture_logs() {
         [[ -s "$log" ]] || continue
         name=$(basename "$log")
         case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | stall-server.log | fixture-readiness.log) ;;
+            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | tmux-sshd.log | stall-server.log | fixture-readiness.log) ;;
             *) continue ;;
         esac
         echo "===== $log (last $fixture_log_tail_lines lines)" >&2
@@ -669,6 +674,9 @@ cleanup() {
     clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
     if [[ -n "${core_fixture_dir:-}" ]]; then
         stop_core_fixture || { [[ "$status" != 0 ]] || status=1; }
+    fi
+    if [[ -n "${tmux_fixture_dir:-}" ]]; then
+        stop_tmux_fixture || { [[ "$status" != 0 ]] || status=1; }
     fi
     if [[ -n "$stall_pid" ]]; then
         kill "$stall_pid" >/dev/null 2>&1
@@ -1362,6 +1370,21 @@ claim_core_port() {
     return 1
 }
 
+# The tmux fixture links a tmux this machine already has (Homebrew's on CI) and
+# never installs or updates one.
+find_fixture_tmux() {
+    local candidate
+    for candidate in "${HEELER_CI_TMUX:-}" "$(command -v tmux 2>/dev/null || true)" \
+        "${tmux_fixture_candidates[@]}"; do
+        if [[ -n "$candidate" && -f "$candidate" && -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    echo "The mandatory tmux Host suite needs tmux: brew install tmux, or set HEELER_CI_TMUX" >&2
+    return 1
+}
+
 prepare_app_build_directory
 
 if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
@@ -1371,6 +1394,8 @@ printf 'Claimed fixture port block %s-%s\n' \
 if [[ "$ci_lane" == app && -z "$ci_diagnostic_target" ]] \
     && [[ "$ci_app_shard" == all || "$ci_app_shard" == transport ]]; then
     claim_core_port
+    # A runner without tmux stops here, not after the build.
+    tmux_fixture_executable=$(find_fixture_tmux) || exit 1
 fi
 fi
 
@@ -2349,6 +2374,47 @@ run_core_fixture_suite() {
     stop_core_fixture || return 1
 }
 
+# The fixture account owns its home and its tmux directories, so no server of
+# the runner's own is reached, started or stopped (scripts/fixtures/tmux-ssh.py).
+start_tmux_fixture() {
+    [[ -n "${tmux_fixture_executable:-}" ]] \
+        || tmux_fixture_executable=$(find_fixture_tmux) || return 1
+    # Short: the longest socket name must still fit an AF_UNIX path under it.
+    tmux_fixture_dir=$(mktemp -d /tmp/ht-ci.XXXXXX) || return 1
+    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" start \
+        --root "$tmux_fixture_dir" --port "$core_port" \
+        --tmux "$tmux_fixture_executable" || return 1
+}
+
+stop_tmux_fixture() {
+    [[ -n "${tmux_fixture_dir:-}" ]] || return 0
+    local log_copy_status=0
+    if [[ -f "$tmux_fixture_dir/logs/sshd.log" ]]; then
+        cp "$tmux_fixture_dir/logs/sshd.log" "$fixture_dir/tmux-sshd.log" || log_copy_status=1
+    fi
+    # Diagnostic preservation cannot short-circuit process shutdown.
+    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" stop \
+        --root "$tmux_fixture_dir" || {
+        echo "Could not stop isolated tmux fixture; preserved $tmux_fixture_dir" >&2
+        return 1
+    }
+    tmux_fixture_dir=""
+    return "$log_copy_status"
+}
+
+run_tmux_fixture_suite() {
+    start_tmux_fixture || return 1
+    # The same private channel as the herdr-core fixture, restored the same way.
+    HEELER_SSH_E2E_CONFIG=$(<"$tmux_fixture_dir/tmux-test-config")
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    run_suite TmuxTransportE2ETests 40 1 0 TmuxTransportE2ETests || return $?
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    push_simulator_environment HEELER_SSH_E2E_CONFIG \
+        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
+    stop_tmux_fixture || return 1
+}
+
 # These phases share fixture state only within their worker. DirectStreamLocal
 # must observe the stale socket before TransportBehavior relinks it.
 run_app_fixture_suites() {
@@ -2390,6 +2456,7 @@ run_app_fixture_suites() {
                 ln -s SharedFixtureE2ETests.log "$fixture_dir/$suite.log"
             done
             run_core_fixture_suite || return $?
+            run_tmux_fixture_suite || return $?
             ;;
     esac
 }
@@ -2608,6 +2675,15 @@ assert_behavior "Changes untracked directory: lists its files" \
 # against a Linux Host with fish and POSIX sh login shells (#395).
 assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ETests \
     '"Changes, file patches and an untracked directory read correctly on every configured field Host"'
+# A tmux Host is only ever reached, never started (ADR 0044). The fixture's
+# configuration creates a session on start, so a client that could start a
+# server would leave one behind for this test to find.
+assert_behavior "tmux Host connects without starting a server" TmuxTransportE2ETests \
+    '"connecting and detecting start no server, with a configuration that creates a session on start"'
+# The inventory loop is one long exec that speaks only when something changed
+# (ADR 0045): a loop that printed every second would fail this test's count.
+assert_behavior "tmux inventory loop prints only on change" TmuxTransportE2ETests \
+    '"the inventory loop prints once and then only on change, in one ordinary SSH session"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \

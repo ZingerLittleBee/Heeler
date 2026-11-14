@@ -4,7 +4,7 @@ Check Claude Code and Codex Usage Limits on iPhone or iPad, with Home Screen and
 
 Usage also shows how many tokens each Host's Agents used over the last 30 days, with what those tokens would cost at API list prices. The estimated cost is not your subscription bill.
 
-You need a macOS or Linux Host with the Heeler plugin 0.7.0 or newer.
+You need a macOS or Linux Host with the Heeler plugin 0.7.0 or newer, or the Host Helper on a [herdr-core](herdr-core.md#host-helper) or [tmux](tmux.md#host-helper) Host.
 
 ## Set up the Host
 
@@ -34,7 +34,7 @@ The estimated cost is not a bill. It prices the tokens this Host's Transcripts s
 
 ### Turn on Claude Code limits
 
-Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin, or on a herdr-core Host the [Host Helper](herdr-core.md#host-helper), asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
+Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin, or on a herdr-core or tmux Host the [Host Helper](herdr-core.md#host-helper), asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
 
 ## Turn Usage off
 

@@ -356,6 +356,31 @@ struct TerminalConnectionPoolTests {
         await pool.suspend()
     }
 
+    @Test func nonTmuxReconcileKeepsIdlePinnedShellWhileTmuxServerChangeEvictsIt() async throws {
+        let pool = TerminalConnectionPool()
+        let probe = PoolSessionProbe()
+        let host = UUID()
+        let owner = UUID()
+        let shell = identity("one")
+        let pin = TerminalCorePin(joined: "s1")
+        let entry = try await pool.select(
+            hostID: host, identity: shell, ownerID: owner, generation: 1,
+            corePin: pin, runTerminal: runner(probe))
+        entry.store.viewDidResize(cols: 80, rows: 24)
+        try #require(await eventually { await probe.requests.count == 1 })
+        pool.release(hostID: host, identity: shell, ownerID: owner)
+
+        // Non-tmux Hosts pass `tmuxServerInstance: nil`: an idle pinned shell stays.
+        await pool.reconcile(hostID: host, identities: [shell], tmuxServerInstance: nil)
+        #expect(pool.entries[.init(hostID: host, identity: shell)] === entry)
+
+        // A tmux server restart (`s2`) evicts the idle shell pinned to `s1`.
+        await pool.reconcile(hostID: host, identities: [shell], tmuxServerInstance: "s2")
+        #expect(pool.entries.isEmpty)
+        #expect(await probe.ended == ["one"])
+        await pool.suspend()
+    }
+
     private func identity(_ terminalID: String) -> ShellTerminalIdentity {
         ShellTerminalIdentity(paneID: "pane-\(terminalID)", tabID: "tab", terminalID: terminalID)
     }

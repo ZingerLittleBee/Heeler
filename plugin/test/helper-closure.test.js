@@ -90,13 +90,19 @@ suite("Host Helper closure", () => {
     }
   });
 
-  test("the service runs nothing but /bin/ps, so it can never start a core", () => {
-    // The Usage environment's read on macOS, and a Usage lock's owner check there.
-    const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js"]);
+  test("the service runs nothing but /bin/ps and the stored tmux with -N, so it can never start a core or a tmux server", () => {
+    // The Usage environment's read on macOS, a Usage lock's owner check there,
+    // and a tmux Pane's foreground group on macOS (ADR 0046).
+    const mayRunPs = new Set(["shared/usage/process-environment.js", "shared/usage/cache.js", "tmux/foreground.js"]);
+    // The stored tmux, always with `-N` and `-S` (ADR 0046).
+    const mayRunStoredTmux = new Set(["usage/tmux-environment.js", "tmux/client.js"]);
     for (const path of serviceModules()) {
       const source = readFileSync(join(HELPER, path), "utf8");
       if (mayRunPs.has(path)) {
         assert.deepEqual([...new Set(programsStarted(source))], ["\"/bin/ps\""], path);
+      } else if (mayRunStoredTmux.has(path)) {
+        assert.deepEqual([...new Set(programsStarted(source))], ["target.tmux"], path);
+        assert.match(source, /\bexecFile\(\s*target\.tmux,\s*\["-N",\s*"-S",\s*target\.socket,/);
       } else {
         for (const specifier of specifiersIn(source)) {
           assert.notEqual(specifier.replace(/^node:/, ""), "child_process", `${path} imports ${specifier}`);
@@ -109,7 +115,9 @@ suite("Host Helper closure", () => {
     // `executable` is a Usage Limits request's recorded program, or the zstd on the
     // recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
-    // `powerShell` is the session extension's on native Windows, pinned below.
+    // `powerShell` is the session extension's on native Windows, and
+    // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0046);
+    // both are pinned below.
     assert.deepEqual([...started].sort(), [
       '"/bin/ps"',
       '"security"',
@@ -117,6 +125,7 @@ suite("Host Helper closure", () => {
       "powerShell",
       "runtime.claude",
       "runtime.node",
+      "target.tmux",
     ]);
   });
 
@@ -129,8 +138,10 @@ suite("Host Helper closure", () => {
     }
   });
 
+  // The session extension's are PowerShell's and `/bin/ps`'s, and in a tmux
+  // Pane the stored tmux's and `/bin/ps`'s for the Pane's foreground.
   for (const [name, path, calls] of [
-    ["session extension", SESSION_EXTENSION, 2],
+    ["session extension", SESSION_EXTENSION, 4],
     ["OpenCode plugin", OPENCODE_PLUGIN, 1],
   ]) {
     test(`the ${name} starts only what reads its own process start`, () => {
@@ -144,6 +155,14 @@ suite("Host Helper closure", () => {
       assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "lstart=", "-p", String\(pid\)\],/);
     });
   }
+
+  test("in a tmux Pane the session extension starts the stored tmux, which never starts a server", () => {
+    const source = readFileSync(SESSION_EXTENSION, "utf8");
+    // Every tmux command goes through the one call, with `-N` and the Pane's server.
+    assert.match(source, /\bexecFile\(target\.tmux, \["-N", "-S", target\.socket, \.\.\.args\]/);
+    assert.equal([...source.matchAll(/\btarget\.tmux\b/g)].length, 1);
+    assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "pgid=,tpgid=,tty=", "-p", String\(process\.pid\)\],/);
+  });
 
   test("on Windows the session extension starts PowerShell for that read and nothing else", () => {
     const source = readFileSync(SESSION_EXTENSION, "utf8");

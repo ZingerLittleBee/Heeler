@@ -241,13 +241,17 @@ final class AgentTerminalCache {
         }
     }
 
+    /// `tmuxServerInstance` is set only on tmux Hosts, where a server restart over
+    /// the same SSH connection can reuse `%0` without bumping `transportGeneration`.
     func reconcile(
-        hostID: Host.ID, agents: [ConsoleAgent],
+        hostID: Host.ID, agents: [ConsoleAgent], tmuxServerInstance: String? = nil,
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) async {
         for entry in entries.values.filter({ $0.agentID.hostID == hostID }) {
             guard isCurrent() else { return }
-            if !agents.contains(where: {
+            let leftServer = !entry.lifetime.visible
+                && tmuxServerInstance.map { !entry.corePin.admits($0) } == true
+            if leftServer || !agents.contains(where: {
                 $0.id == entry.agentID && $0.agent.terminalID == entry.terminalID
             }) {
                 await evict(entry).value

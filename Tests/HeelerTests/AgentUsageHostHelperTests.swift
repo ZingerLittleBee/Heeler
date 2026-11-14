@@ -226,6 +226,52 @@ struct AgentUsageHostHelperTests {
         #expect(store.hostHome == ScriptedHelperHost.home)
     }
 
+    @Test func aTmuxHostReadsUsageForItsSocketAndWaitsWithoutMakingCoreSessionFolders() async throws {
+        let tmux = ScriptedTmuxHost(sockets: [])
+        await tmux.helper.installApp()
+        let host = Host(
+            address: "box.example", username: "dev", serverKind: .tmux, sessionName: " work ",
+            tmuxPaths: ScriptedTmuxHost.paths("work"))
+        let console = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { ScriptedTransport(snapshot: .fixture(agents: [])) }, keepalive: nil)
+            },
+            connectTmux: { host in
+                await tmux.transport(socketName: host.tmuxSocketName, storedPaths: host.storedTmuxPaths)
+            },
+            makeTmuxSession: { host in
+                TmuxHostSession(
+                    storedPaths: host.storedTmuxPaths,
+                    connect: { paths in await tmux.transport(socketName: host.tmuxSocketName, storedPaths: paths) },
+                    keepalive: nil)
+            })
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+
+        let store = console.agentUsageStore(for: host.id)
+        await store.pullToRefresh()
+
+        #expect(store.state == .hostHelper(.waitingForTmux))
+        #expect(AgentUsageScope.exclusion(for: store.state) == .waitingForTmux)
+        let helperDir = "\(ScriptedTmuxHost.home)/Library/Application Support/heeler/host-helper"
+        #expect(await tmux.helper.folders["\(helperDir)/sessions/work"] == nil)
+        #expect(
+            await tmux.helper.files["\(helperDir)/tmux/work/paths.json"]?.contents
+                == TmuxClaudeCodeHooks.storedPaths(ScriptedTmuxHost.paths("work")))
+
+        await tmux.helper.seedTmuxUsage(try AgentUsageFixture.reportData(refreshing: false), socket: "work")
+        await store.pullToRefresh()
+
+        #expect(store.state == .available(try AgentUsageFixture.report()))
+        let sockets = await tmux.helper.steps.compactMap { step -> String? in
+            guard case .tmuxUsageQuery(_, _, let socket, _) = step else { return nil }
+            return socket
+        }
+        #expect(sockets == ["work", "work"])
+    }
+
     // MARK: A core Host whose Console session never connects
 
     /// How a Console session stays short of connected: a native Windows Host's

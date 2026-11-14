@@ -41,6 +41,10 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
         "core:\(HerdrCoreSessionName.normalized(session)):\(coreID)"
     }
 
+    static func tmuxScope(socketName: String, instanceID: String) -> String {
+        "tmux:\(TmuxSocketName.normalized(socketName)):\(instanceID)"
+    }
+
     /// The document's file name: a digest, so no session name, path or id
     /// appears on disk.
     var storageName: String {

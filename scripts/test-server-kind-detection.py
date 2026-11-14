@@ -4,13 +4,15 @@
 Compiles Sources/Heeler/Hosts/ServerKindDetectionScript.swift and the locator it
 wraps with a small driver, then feeds the script it builds to each POSIX shell
 found here, on standard input as an exec does, and hands the output to the Swift
-parser. Fake `herdr`, `hc` and `herdr-core` programs record every call, so these
-tests never touch a real server. Needs swiftc; uses only Python's standard
-library.
+parser. Fake `herdr`, `hc`, `herdr-core` and `tmux` programs record every call,
+and every run gets a `TMUX_TMPDIR` inside its own temporary root, so these tests
+never touch a real server. Needs swiftc; uses only Python's standard library.
 """
 
 import json
+import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -23,6 +25,9 @@ SOURCES = [
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreLocator.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreSessionName.swift",
     ROOT / "Sources/Heeler/Transport/HerdrCore/HerdrCoreWindowsLocator.swift",
+    ROOT / "Sources/Heeler/Transport/Tmux/TmuxProbe.swift",
+    ROOT / "Sources/Heeler/Transport/Tmux/TmuxVersion.swift",
+    ROOT / "Sources/Heeler/Transport/Tmux/TmuxSocketName.swift",
     ROOT / "scripts/fixtures/herdr-core-tool-stubs.swift",
     ROOT / "scripts/fixtures/string-localized-shim.swift",
 ]
@@ -51,6 +56,11 @@ case "parse":
         "executable": parsed.location?.executablePath,
         "version": parsed.location?.version,
         "socket": parsed.location?.socketPath,
+        "tmuxRead": parsed.tmux != nil,
+        "tmuxExecutable": parsed.tmux?.executable,
+        "tmuxVersion": parsed.tmux?.versionLine,
+        "tmuxDirectory": parsed.tmux?.directory,
+        "tmuxSockets": parsed.tmux?.sockets,
     ]
     let json = try JSONSerialization.data(
         withJSONObject: result.mapValues { $0 ?? NSNull() }, options: [.sortedKeys])
@@ -98,6 +108,12 @@ class DetectionTestCase(unittest.TestCase):
         self.calls = self.root / "calls"
         self.calls.touch()
         self.program(self.path_dir / "hc", "printf 'hc 0.1.13\\n'")
+        # The tmux probe's login shell reads this home's files, and never the
+        # directory the user's own tmux servers listen in.
+        self.tmux_tmp = self.root / "t"
+        self.tmux_tmp.mkdir()
+        self.tmux_directory = self.tmux_tmp / f"tmux-{os.getuid()}"
+        self.assertNotEqual(self.tmux_directory, Path(f"/tmp/tmux-{os.getuid()}").resolve())
 
     def program(self, path: Path, body: str) -> Path:
         """A fake that records every call, then runs `body`."""
@@ -114,11 +130,33 @@ class DetectionTestCase(unittest.TestCase):
             directory / "herdr-core",
             'if [ "$1" = --version ]; then printf \'hc 0.1.13\\n\'; exit 0; fi\nexit 99')
 
+    def tmux(self, directory: Path, version: str = "tmux 3.7b") -> Path:
+        """A fake tmux whose server answers on a socket that has an `.up` file beside it."""
+        return self.program(
+            directory / "tmux",
+            f"if [ \"$1\" = -V ]; then printf '%s\\n' '{version}'; exit 0; fi\n"
+            'if [ "$1" = -N ] && [ "$2" = -S ] && [ "$4" = display-message ] && [ -f "$3.up" ]; then\n'
+            "    printf '1 2\\n'\n    exit 0\nfi\nexit 1")
+
+    def tmux_socket(self, name: str, answers: bool) -> None:
+        self.tmux_directory.mkdir(mode=0o700, exist_ok=True)
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(self.tmux_directory / name))
+        listener.close()
+        if answers:
+            (self.tmux_directory / f"{name}.up").touch()
+
+    def env(self) -> dict:
+        return {
+            "HOME": str(self.home), "PATH": f"{self.path_dir}:/usr/bin:/bin", "SHELL": "/bin/sh",
+            "TMUX_TMPDIR": str(self.tmux_tmp),
+        }
+
     def detect(self, shell: list[str], session: str = "work", banner: bytes = b"") -> dict:
         script = subprocess.run(
             [str(self.binary), "script", session, HERDR_READ], check=True, capture_output=True
         ).stdout
-        env = {"HOME": str(self.home), "PATH": f"{self.path_dir}:/usr/bin:/bin"}
+        env = self.env()
         result = subprocess.run(shell, input=script, env=env, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
         parsed = subprocess.run(
@@ -140,7 +178,47 @@ class FindingTests(DetectionTestCase):
                 self.assertEqual(found["output"].strip(), "")
                 self.assertTrue(found["located"])
                 self.assertIsNone(found["executable"])
+                self.assertTrue(found["tmuxRead"])
         self.assertEqual(self.called(), [])
+
+    def test_all_three_answer_in_one_run(self) -> None:
+        self.herdr(self.path_dir)
+        core = self.core(self.home / ".local/bin")
+        tmux = self.tmux(self.path_dir)
+        self.tmux_socket("default", answers=True)
+        self.tmux_socket("work", answers=True)
+        self.tmux_socket("stale", answers=False)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertEqual(found["status"], 0)
+                self.assertEqual(found["executable"], str(core))
+                self.assertEqual(found["tmuxExecutable"], str(tmux))
+                self.assertEqual(found["tmuxVersion"], "tmux 3.7b")
+                self.assertEqual(found["tmuxDirectory"], str(self.tmux_directory))
+                self.assertEqual(found["tmuxSockets"], ["default", "work"])
+
+    def test_the_tmux_probe_asks_through_the_login_shell(self) -> None:
+        tmux = self.tmux(self.home / "off-the-exec-path")
+        (self.home / ".profile").write_text(f"PATH={tmux.parent}:$PATH; export PATH\necho banner\n")
+        self.tmux_socket("default", answers=True)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertEqual(found["tmuxExecutable"], str(tmux))
+                self.assertEqual(found["tmuxSockets"], ["default"])
+                # The login shell's PATH stays out of the other two reads.
+                self.assertEqual(found["status"], 127)
+                self.assertIsNone(found["executable"])
+
+    def test_tmux_is_only_asked_for_its_version_and_whether_a_server_answers(self) -> None:
+        self.tmux(self.path_dir)
+        self.tmux_socket("default", answers=True)
+        self.detect(["/bin/sh"])
+        self.assertEqual(self.called(), [
+            "tmux -V",
+            f"tmux -N -S {self.tmux_directory}/default display-message -p #{{pid}} #{{start_time}}",
+        ])
 
     def test_both_answer_in_one_run(self) -> None:
         self.herdr(self.path_dir)
@@ -221,8 +299,7 @@ class FindingTests(DetectionTestCase):
         script = subprocess.run(
             [str(self.binary), "script", "work", HERDR_READ], check=True, capture_output=True
         ).stdout
-        env = {"HOME": str(self.home), "PATH": f"{self.path_dir}:/usr/bin:/bin"}
-        whole = subprocess.run(["/bin/sh"], input=script, env=env, capture_output=True).stdout
+        whole = subprocess.run(["/bin/sh"], input=script, env=self.env(), capture_output=True).stdout
         end = f"{NONCE} end".encode()
         status = f"{NONCE} herdr-tui status".encode()
         for cut in (whole.split(end)[0], whole.split(status)[0]):

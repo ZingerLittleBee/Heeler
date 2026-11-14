@@ -80,11 +80,22 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
 enum ServerKind: String, Codable, Hashable, Sendable {
     case herdrTUI
     case herdrCore
+    /// A tmux server the user runs, named by its socket (ADR 0044).
+    case tmux
     /// Added by hand and waiting for the user to confirm one of the others. It
     /// stays in the shared catalog, and only its Host detail ever dials it.
     case unconfirmed
 
     var isConfirmed: Bool { self != .unconfirmed }
+
+    /// Whether Heeler's side of the Host exists for this kind: the plugin or
+    /// the Host Helper behind Usage and Accounts.
+    var hasHostIntegrations: Bool {
+        switch self {
+        case .herdrTUI, .herdrCore, .tmux: true
+        case .unconfirmed: false
+        }
+    }
 
     func isValidSessionName(_ value: String) -> Bool {
         sessionNameRefusal(value) == nil
@@ -100,6 +111,8 @@ enum ServerKind: String, Codable, Hashable, Sendable {
             return String(localized: "herdr refuses the session name \"\(name)\". Its names use letters, digits, \".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes.")
         case .herdrCore:
             return HerdrCoreSessionName.refusal(value)
+        case .tmux:
+            return TmuxSocketName.refusal(value)
         case .unconfirmed:
             return nil
         }
@@ -107,15 +120,18 @@ enum ServerKind: String, Codable, Hashable, Sendable {
 
     /// `value` as this kind stores it.
     func storedSessionName(_ value: String) -> String {
-        self == .herdrCore
-            ? HerdrCoreSessionName.normalized(value)
-            : value.trimmingCharacters(in: .whitespaces)
+        switch self {
+        case .herdrCore: HerdrCoreSessionName.normalized(value)
+        case .tmux: TmuxSocketName.normalized(value)
+        case .herdrTUI, .unconfirmed: value.trimmingCharacters(in: .whitespaces)
+        }
     }
 
     var displayName: String {
         switch self {
         case .herdrTUI: String(localized: "Herdr TUI")
         case .herdrCore: "herdr-core"
+        case .tmux: "tmux"
         case .unconfirmed: String(localized: "Not confirmed")
         }
     }
@@ -142,13 +158,18 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     var serverKind: ServerKind
     /// Persisted session selection; onboarding discovers available sessions,
     /// while this field remains editable for older herdr versions. Blank
-    /// means the default herdr session.
+    /// means the default herdr session. On a tmux Host it is the server's
+    /// socket name, which is never called a session there (ADR 0044).
     var sessionName: String
     /// The Host's own herdr endpoint, from a Pairing Code v2 (ADR 0023). When
     /// set it wins over `sessionName`: every connection uses its socket and
     /// every herdr exec its launcher. nil keeps the home-relative session
     /// socket and the `herdr` on the SSH PATH.
     var herdrEndpoint: HerdrEndpoint?
+    /// A tmux Host's tmux and socket, as its login shell last resolved them
+    /// (ADR 0044). Nil until then, and on every other kind. Read them through
+    /// `storedTmuxPaths`, which knows the socket name they were resolved for.
+    var tmuxPaths: TmuxPaths?
     /// The ways to reach this Host, in the user's order: never empty. The
     /// first is the primary route, which names the Host where one address
     /// is shown and is what builds without Routes connect to.
@@ -164,6 +185,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         // Server Kinds ignore the kind and fail their whole catalog on such a
         // name in `sessionName`.
         case unconfirmedSessionName
+        case tmuxPaths
         case routes
         // The primary route, flattened as Hosts were saved before Routes
         // (ADR 0022), so a build without them still decodes and connects it.
@@ -179,6 +201,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         serverKind: ServerKind = .herdrTUI,
         sessionName: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
+        tmuxPaths: TmuxPaths? = nil,
         routes: [HostRoute]
     ) {
         precondition(!routes.isEmpty, "A Host needs at least one route")
@@ -189,6 +212,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.serverKind = herdrEndpoint == nil ? serverKind : .herdrTUI
         self.sessionName = sessionName
         self.herdrEndpoint = herdrEndpoint
+        self.tmuxPaths = self.serverKind == .tmux ? tmuxPaths : nil
         self.routes = routes
     }
 
@@ -206,6 +230,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         jumpPort: Int = 22,
         jumpUsername: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
+        tmuxPaths: TmuxPaths? = nil,
         overlayNetworkID: UUID? = nil
     ) {
         self.init(
@@ -216,6 +241,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             serverKind: serverKind,
             sessionName: sessionName,
             herdrEndpoint: herdrEndpoint,
+            tmuxPaths: tmuxPaths,
             routes: [
                 HostRoute(
                     id: id,
@@ -249,6 +275,11 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         // A Host saved without a kind is a Herdr TUI Host, and so is any Host
         // with a Herdr Endpoint, which only a Pairing Code gives it.
         serverKind = herdrEndpoint == nil ? decodedKind ?? .herdrTUI : .herdrTUI
+        // Paths that do not read are only a lookup to make again, never a Host
+        // to hide: the next connection resolves them (ADR 0044).
+        tmuxPaths =
+            serverKind == .tmux
+            ? (try? container.decodeIfPresent(TmuxPaths.self, forKey: .tmuxPaths)) ?? nil : nil
         if serverKind == .unconfirmed,
             let name = try container.decodeIfPresent(String.self, forKey: .unconfirmedSessionName)
         {
@@ -301,6 +332,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             try container.encode(sessionName, forKey: .sessionName)
         }
         try container.encodeIfPresent(herdrEndpoint, forKey: .herdrEndpoint)
+        if serverKind == .tmux { try container.encodeIfPresent(tmuxPaths, forKey: .tmuxPaths) }
         try container.encode(routes, forKey: .routes)
         let primary = primaryRoute
         try container.encode(primary.address, forKey: .address)
@@ -355,6 +387,16 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             return String(localized: "\(username) · \(routes.count) routes")
         }
         return port == 22 ? "\(username)@\(address)" : "\(username)@\(address):\(port)"
+    }
+
+    /// The socket name of a tmux Host's server, `default` when none is typed.
+    var tmuxSocketName: String { TmuxSocketName.normalized(sessionName) }
+
+    /// The stored tmux paths, if they were resolved for this Host's socket name.
+    /// Editing the name leaves paths that name another socket, which count as none.
+    var storedTmuxPaths: TmuxPaths? {
+        guard serverKind == .tmux, let tmuxPaths, tmuxPaths.serves(socketName: sessionName) else { return nil }
+        return tmuxPaths
     }
 
     /// The herdr socket this Host targets: its endpoint's socket when it has

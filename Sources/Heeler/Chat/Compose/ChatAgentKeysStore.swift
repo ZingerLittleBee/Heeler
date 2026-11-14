@@ -73,6 +73,21 @@ final class ChatAgentKeysStore {
         return hold
     }
 
+    /// Runs `action` in line with queued keys without marking queued background work,
+    /// as a projection-supplied Chat Stop does before its follow-through.
+    func inOrder<Result: Sendable>(_ action: @escaping @MainActor () async -> Result) async -> Result {
+        let previous = tail
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await action()
+        }
+        tail = Task { @MainActor in
+            _ = await task.value
+            return .sent
+        }
+        return await task.value
+    }
+
     /// Runs `work` once the keys queued before it have gone, and holds keys
     /// queued after it until it ends: work that types over several screens,
     /// such as Antigravity CLI's Stop ending a turn's background commands,

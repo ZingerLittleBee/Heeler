@@ -60,13 +60,12 @@ final class AgentComposerStore: ComposerDraftOperations {
         case ignored
         case deliveredViaPrompt
         case deliveredViaAttach
-        /// A herdr-core Send pasted through the Attach and pressed the submit
-        /// key after its checks.
+        /// A checked Send pasted and pressed the submit key after its checks.
         case submittedViaAttach
         case failed
         /// The policy declined the draft, which is back in the Composer.
         case refused(ComposerRefusal)
-        /// A herdr-core step got no answer. The message stays as it is.
+        /// A checked step got no answer. The message stays as it is.
         case outcomeUnknown
     }
 
@@ -78,6 +77,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
     /// Recovery keeps the draft editable, but never queues it for delivery.
     var isConnectionAvailable = true
+    /// tmux offers Stop while the Agent is Blocked as well as Working.
+    var offersStopWhileBlocked = false
     /// Why the last Send or Retry was refused. Changing the draft ends it,
     /// as does the next Send that goes; a transient refusal also ends when
     /// Agent Status changes, since the Agent it described has moved on.
@@ -109,8 +110,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     private let agentNotReadyRetryDelay: Duration
     private let agentNotReadyRetryBudget: Duration
     private let prompt: @Sendable (AgentPromptParams) async throws -> Agent
-    /// How a herdr-core Host delivers instead of `prompt` (ADR 0035).
-    @ObservationIgnored private let coreSend: HerdrCoreComposerSend?
+    /// How this Host's projection delivers instead of `prompt`, when it checks
+    /// Send itself (ADR 0035).
+    @ObservationIgnored private let checkedSend: (any CheckedComposerSend)?
     @ObservationIgnored private var hasOpened = false
     @ObservationIgnored private var statusTask: Task<Void, Never>?
     /// The detail screen's live Attach writer. Weak: Composer outlives any
@@ -158,7 +160,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentNotReadyRetryDelay: Duration = AgentComposerStore.defaultAgentNotReadyRetryDelay,
         agentNotReadyRetryBudget: Duration = AgentComposerStore.defaultAgentNotReadyRetryBudget,
         stop: AgentComposerStopStore = AgentComposerStopStore(),
-        coreSend: HerdrCoreComposerSend? = nil,
+        checkedSend: (any CheckedComposerSend)? = nil,
         voice: ComposerVoiceInput = ComposerVoiceInput(),
         prompt: @escaping @Sendable (AgentPromptParams) async throws -> Agent
     ) {
@@ -166,7 +168,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         agentStatus = initialStatus
         self.statusUpdates = statusUpdates
         self.stop = stop
-        self.coreSend = coreSend
+        self.checkedSend = checkedSend
         self.voice = voice
         self.agentNotReadyRetryDelay = agentNotReadyRetryDelay
         self.agentNotReadyRetryBudget = agentNotReadyRetryBudget
@@ -536,7 +538,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard agentStatus != status else { return }
         agentStatus = status
         statusRevision &+= 1
-        stop.agentStatusChanged(to: status)
+        stop.agentStatusChanged(to: status, keepWaitingWhileBlocked: offersStopWhileBlocked)
         if notice?.refusal.endsWhenStatusBecomes(status) == true { notice = nil }
         for index in messages.indices {
             guard messages[index].tracksAgentProgress else { continue }
@@ -568,8 +570,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         if Self.containsDropPlaceholder(text) {
             return .ignored
         }
-        if let coreSend {
-            return await deliverThroughCore(id, text: text, policy: policy, using: coreSend)
+        if let checkedSend {
+            return await deliverChecked(id, text: text, policy: policy, using: checkedSend)
         }
         if agentStatus == .blocked {
             return deliverWhileBlocked(id, text: text, policy: policy)
@@ -603,14 +605,14 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    private func deliverThroughCore(
-        _ id: Message.ID, text: String, policy: ComposerDeliveryPolicy, using coreSend: HerdrCoreComposerSend
+    private func deliverChecked(
+        _ id: Message.ID, text: String, policy: ComposerDeliveryPolicy, using checkedSend: any CheckedComposerSend
     ) async -> SendResult {
         let outgoing = policy.outgoingText(text)
         guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await coreSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
+        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         switch outcome {
         case .submitted:

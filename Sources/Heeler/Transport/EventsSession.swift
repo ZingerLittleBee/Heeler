@@ -83,12 +83,18 @@ enum EventsSessionStatus: Sendable, Equatable {
 }
 
 extension EventsSessionStatus {
-    /// This status as a registration read cares about it. A stopped core's next
-    /// retry changes nothing a read could find, and it retries for as long as the
-    /// core stays stopped, so its count and delay do not count as a change.
+    /// This status as a registration read cares about it. A stopped core's or
+    /// tmux server's next retry changes nothing a read could find, and it retries
+    /// for as long as the server stays stopped, so its count and delay do not
+    /// count as a change.
     var forRegistrationRead: EventsSessionStatus {
-        guard case .reconnecting(_, _, let failure) = self, case .herdrCoreNotRunning = failure else { return self }
-        return .reconnecting(attempt: 0, delay: .zero, failure: failure)
+        guard case .reconnecting(_, _, let failure) = self else { return self }
+        switch failure {
+        case .herdrCoreNotRunning, .tmuxServerNotRunning:
+            return .reconnecting(attempt: 0, delay: .zero, failure: failure)
+        default:
+            return self
+        }
     }
 }
 

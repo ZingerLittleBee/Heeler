@@ -14,6 +14,7 @@ Compose scripts live with their exports:
 | Herdr desktop, second image of all three | `output/app-store/desktop/` | `compose_desktop.py` |
 | Voice Input, third image of all three | `output/app-store/voice/` | `compose_voice.py` |
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
+| Listing text (`promo`, `keywords`, `description`) | `output/app-store/copy/` | `test-store-shots.py` |
 
 ## 1. Start the Agents
 
@@ -111,9 +112,9 @@ python3 scripts/store-shots.py asc status --version 0.1.17
 python3 scripts/store-shots.py asc screenshots duo output/app-store/iphone-duo/exports/01-console-and-chat.png --version 0.1.17
 python3 scripts/store-shots.py asc creative header output/app-store/creative-assets/exports/product-page-header-3840x1646.png --version 0.1.17
 python3 scripts/store-shots.py asc whats-new notes.txt --version 0.1.17
-python3 scripts/store-shots.py asc promo promo.txt --version 0.1.17
-python3 scripts/store-shots.py asc keywords keywords.txt --version 0.1.17
-python3 scripts/store-shots.py asc description description.txt --version 0.1.17
+python3 scripts/store-shots.py asc promo output/app-store/copy/promo.txt --version 0.1.17
+python3 scripts/store-shots.py asc keywords output/app-store/copy/keywords.txt --version 0.1.17
+python3 scripts/store-shots.py asc description output/app-store/copy/description.txt --version 0.1.17
 ```
 
 `screenshots` matches by file name and keeps each image's position, deleting the

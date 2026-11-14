@@ -1,14 +1,17 @@
 // The Host Helper's entry point: Heeler's background service on a herdr-core
-// Host (ADR 0033). The user service keeps this process running.
+// or tmux Host (ADRs 0033 and 0046). The user service keeps this process running.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { combineListeners, followRegisteredSessions } from "./core/follower.js";
-import { liveActivityListener } from "./notifications/activity.js";
-import { notificationListener } from "./notifications/notifier.js";
+import { liveActivityListener, tmuxLiveActivityListener } from "./notifications/activity.js";
+import { notificationListener, tmuxNotificationListener } from "./notifications/notifier.js";
+import { combineTmuxListeners, followStoredTmuxServers } from "./tmux/follower.js";
+import { tmuxPipeReaderListener } from "./tmux/pipe-reader.js";
+import { tmuxTranscriptListener } from "./tmux/transcript-watcher.js";
 import { usageSessions } from "./usage/layout.js";
-import { usageListener } from "./usage/recorder.js";
+import { tmuxUsageListener, usageListener } from "./usage/recorder.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 
@@ -26,6 +29,17 @@ followRegisteredSessions({
     usageListener({ directory, log }),
     notificationListener({ directory, log }),
     liveActivityListener({ directory, log }),
+  ),
+});
+followStoredTmuxServers({
+  directory,
+  log,
+  listener: combineTmuxListeners(
+    tmuxUsageListener({ directory, log }),
+    tmuxPipeReaderListener({ log }),
+    tmuxTranscriptListener(),
+    tmuxNotificationListener({ directory, log }),
+    tmuxLiveActivityListener({ directory, log }),
   ),
 });
 

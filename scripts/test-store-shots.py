@@ -72,5 +72,28 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(catalog["hosts"][1]["routes"][0]["id"], "2")
 
 
+class CopyTests(unittest.TestCase):
+    copy_dir = SCRIPT.parent.parent / "output/app-store/copy"
+    limits = {"promo.txt": 170, "keywords.txt": 100, "description.txt": 4000}
+
+    @staticmethod
+    def utf16_units(text: str) -> int:
+        return len(text.encode("utf-16-le")) // 2
+
+    def test_store_copy_names_tmux_within_app_store_connect_limits(self) -> None:
+        for name, limit in self.limits.items():
+            path = self.copy_dir / name
+            self.assertTrue(path.is_file(), f"missing {path}")
+            text = path.read_text(encoding="utf-8").strip()
+            self.assertGreater(len(text), 0, name)
+            self.assertLessEqual(self.utf16_units(text), limit, f"{name} exceeds {limit} UTF-16 code units")
+            self.assertIn("tmux", text, f"{name} must mention tmux")
+
+    def test_keywords_carry_no_wasted_whitespace_around_commas(self) -> None:
+        keywords = (self.copy_dir / "keywords.txt").read_text(encoding="utf-8").strip()
+        self.assertNotIn(", ", keywords)
+        self.assertNotIn("\n", keywords)
+
+
 if __name__ == "__main__":
     unittest.main()

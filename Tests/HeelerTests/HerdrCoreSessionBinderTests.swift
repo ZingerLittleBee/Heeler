@@ -323,6 +323,70 @@ struct HerdrCoreSessionBinderTests {
         #expect(await rig.reads.isEmpty)
     }
 
+    @Test func aWithheldForegroundRootIsNotWalkedIntoOnHerdrCore() async throws {
+        let table = MacOSProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        let scope = ["HC_SCOPE": Self.scope, "HOME": Self.home]
+        await table.add(.init(pid: 100, name: "zsh", start: "987654321", environment: scope))
+        await table.add(.init(pid: 200, parent: 100, name: "sh", start: "987654321", environment: scope))
+        await table.withholdEnvironment(of: 200)
+        await table.add(.init(pid: 201, parent: 200, name: "claude", start: "987654321", environment: scope))
+        await files.write(Self.registryEntry(pid: 201), at: Self.registryPath(pid: 201))
+
+        let binder = HerdrCoreSessionBinder(
+            program: .claude,
+            processes: { try await table.read($0) },
+            files: files.hostFiles(),
+            clearLabels: { _ in },
+            hostSystem: .macOS)
+
+        let evidence = try await binder.check(try Self.record(pid: 100, foreground: 200))
+        #expect(evidence == .unavailable(.cannotTellSession(.claude)))
+        #expect(await files.reads.isEmpty)
+    }
+
+    @Test func aCodexForegroundWithOmittedArgvDoesNotAssumeTheSharedDaemon() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        let scope = ["HC_SCOPE": Self.scope, "HOME": Self.home]
+        await table.add(.init(pid: 4242, name: "codex", start: "987654321", environment: scope))
+        await files.write(
+            Data("sock".utf8),
+            at: CodexLaunch.controlSocketPath(home: Self.home))
+        let recordValue = JSONValue.object([
+            "address": .string("t1"),
+            "cwd": .string("/work/app"),
+            "state": .string("live"),
+            "argv": .array([.string("codex")]),
+            "keep": .bool(false),
+            "title": .string(""),
+            "cols": .number(80),
+            "rows": .number(24),
+            "pid": .number(4242),
+            "foreground": .object([
+                "pid": .number(4242),
+                "name": .string("codex"),
+                "cwd": .string("/work/app"),
+            ]),
+        ])
+        let decoded = try JSONDecoder().decode(
+            HerdrCoreTerminalRecord.self, from: JSONEncoder().encode(recordValue))
+        #expect(decoded.foreground?.argv == [])
+
+        let binder = HerdrCoreSessionBinder(
+            program: .codex,
+            processes: { try await table.read($0) },
+            files: files.hostFiles(),
+            clearLabels: { _ in })
+
+        #expect(try await binder.check(decoded) == .unavailable(.cannotTellSession(.codex)))
+        guard case .listed(let listed) = try await binder.candidates(of: decoded) else {
+            Issue.record("Expected listed candidates instead of sharedDaemon")
+            return
+        }
+        #expect(listed.pid == 4242)
+    }
+
     @Test func aForegroundWithAnotherNameAndNothingUnderItIsTheProcess() async throws {
         let rig = Rig()
         // The Agent rule named it from its arguments: `node .../cli.js`.

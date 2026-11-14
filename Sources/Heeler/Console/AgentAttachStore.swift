@@ -258,6 +258,12 @@ final class AgentAttachStore {
         input.sendEscapeKey()
     }
 
+    /// The Esc quick key, once the byte has left.
+    @discardableResult
+    func sendEscapeKeyAcknowledged() async -> Bool {
+        await input.sendEscapeKeyAcknowledged()
+    }
+
     func scroll(_ sequence: Data, rows: Int) {
         input.scroll(sequence, rows: rows)
     }

@@ -29,9 +29,9 @@ struct HostNotificationSettings {
 
     var offersLiveActivity: Bool { preferences.offersLiveActivity(for: host) }
 
-    /// A core Host's Helper as its Host page shows it, once a read has seen it.
+    /// A core or tmux Host's Helper as its Host page shows it, once a read has seen it.
     var helper: HostHelperPresentation? {
-        guard host.serverKind == .herdrCore else { return nil }
+        guard host.serverKind == .herdrCore || host.serverKind == .tmux else { return nil }
         return preferences.helperPresentation(for: host.id)
     }
 

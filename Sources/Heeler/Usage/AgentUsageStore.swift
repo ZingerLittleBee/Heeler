@@ -10,6 +10,8 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
     case outdated
     /// The Helper holds no record of this session's core yet.
     case waitingForCore
+    /// The Helper holds no record of this tmux server yet.
+    case waitingForTmux
     /// The record and the service both name a Node.js that has gone.
     case nodeGone
     case notOnWindows
@@ -20,6 +22,8 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         case .outdated: String(localized: "Usage needs a newer Host Helper. Update it from this Host's details.")
         case .waitingForCore:
             String(localized: "The Host Helper has not reached this session's core yet. Start the core if it is not running.")
+        case .waitingForTmux:
+            String(localized: "The Host Helper has not reached this tmux server yet. Start tmux if it is not running.")
         case .nodeGone:
             String(localized: "The Node.js the Host Helper was set up with has gone from this Host. Repair it from this Host's details.")
         case .notOnWindows: String(localized: "Usage comes with the Host Helper, which is not available on native Windows yet.")
@@ -32,6 +36,7 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         case .notInstalled: .needsHostHelper
         case .outdated: .updateHostHelper
         case .waitingForCore: .waitingForCore
+        case .waitingForTmux: .waitingForTmux
         case .nodeGone: .repairHostHelper
         case .notOnWindows: .hostHelperNotOnWindows
         }
@@ -291,20 +296,39 @@ final class AgentUsageStore {
     nonisolated static func reading(
         overHelper host: any HostHelperHost, session: String, timeZone: String, claudeLimits: Bool
     ) async throws -> Reading {
+        try await reading(
+            overHelper: host, files: HostHelperFiles(host: host, session: session),
+            waiting: .waitingForCore, timeZone: timeZone, claudeLimits: claudeLimits)
+    }
+
+    /// A tmux Host's read: its Helper's report for the Host's tmux socket, from
+    /// one bounded exec.
+    nonisolated static func reading(
+        overHelper host: any HostHelperHost, tmuxSocket: String, tmuxPaths: TmuxPaths? = nil,
+        timeZone: String, claudeLimits: Bool
+    ) async throws -> Reading {
+        try await reading(
+            overHelper: host, files: HostHelperFiles(host: host, tmuxSocket: tmuxSocket, tmuxPaths: tmuxPaths),
+            waiting: .waitingForTmux, timeZone: timeZone, claudeLimits: claudeLimits)
+    }
+
+    private nonisolated static func reading(
+        overHelper host: any HostHelperHost, files: HostHelperFiles, waiting: AgentUsageHostHelperNeed,
+        timeZone: String, claudeLimits: Bool
+    ) async throws -> Reading {
         guard try await host.hostPlatform() == .posix else {
             return Reading(state: .hostHelper(.notOnWindows), pluginVersion: nil)
         }
         let report: AgentUsageReport
         do {
-            report = try await HostHelperFiles(host: host, session: session)
-                .readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+            report = try await files.readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
         } catch {
-            // A core Host has no plugin to blame or update.
+            // A Host reading over the Helper has no plugin to blame or update.
             guard Self.state(for: error) == .failed(pluginFailureMessage) else { throw error }
             return Reading(state: .failed(helperFailureMessage), pluginVersion: nil)
         }
         return Reading(
-            state: report.runtime == "missing" ? .hostHelper(.waitingForCore) : .available(report),
+            state: report.runtime == "missing" ? .hostHelper(waiting) : .available(report),
             pluginVersion: nil)
     }
 
@@ -337,7 +361,7 @@ final class AgentUsageStore {
     /// refresh backs off. A Helper that has yet to reach a core is read again
     /// too, backing off, since no core may be running. nil stops polling.
     private var pollingInterval: Duration? {
-        if snapshotState == .hostHelper(.waitingForCore) {
+        if snapshotState == .hostHelper(.waitingForCore) || snapshotState == .hostHelper(.waitingForTmux) {
             let doublings = min(max(consecutiveWaits - 1, 0), 4)
             return min(Self.pollInterval * (1 << doublings), Self.maximumRetryInterval)
         }
@@ -399,7 +423,9 @@ final class AgentUsageStore {
             refreshFailure = nil
             readAt = .now
             consecutiveFailures = 0
-            consecutiveWaits = next == .hostHelper(.waitingForCore) ? consecutiveWaits + 1 : 0
+            consecutiveWaits =
+                (next == .hostHelper(.waitingForCore) || next == .hostHelper(.waitingForTmux))
+                ? consecutiveWaits + 1 : 0
         }
         // This read shows the Account changes written before it started; a
         // failed one ends their wait all the same.

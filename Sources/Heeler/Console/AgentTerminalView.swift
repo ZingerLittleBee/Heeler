@@ -1091,7 +1091,7 @@ struct AgentTerminalView: View {
                 }
             },
             showChanges: openWorktreeChanges,
-            readRemovalRisk: host?.serverKind == .herdrCore
+            readRemovalRisk: host?.serverKind == .herdrCore || host?.serverKind == .tmux
                 ? { [console] request in
                     try await console.worktreeRemovalRisk(request, on: hostID)
                 }
@@ -1423,7 +1423,7 @@ struct AgentTerminalView: View {
     /// The Composer's Stop: one Esc over the Attach PTY, or on a core Host the
     /// core's own interrupt, or nil to keep Send (`ConsoleStore.terminalInterrupt`).
     private var stopInterrupt: AgentComposerInterrupt? {
-        console.terminalInterrupt(for: agent, keepingTo: session.corePin) { interruptAgent() }
+        console.terminalInterrupt(for: agent, keepingTo: session.corePin, attach: attach) { interruptAgent() }
     }
 
     /// The interaction probe's Stop, as the Composer's button runs it: the
@@ -1504,6 +1504,18 @@ struct AgentTerminalView: View {
     private func sendAgentQuickKey(_ key: AgentQuickKey) {
         if key == .escape, keyboardControl.pendingModifiers.isEmpty {
             keyboardControl.noteReliableInputBegan()
+            if console.recordsHeelerAnswers(on: agent.hostID),
+                TmuxConsoleProjection.toolsEscapeDeclines(kind: agent.agent.kind, status: agent.agent.status)
+            {
+                let agent = agent
+                let attach = attach
+                let console = console
+                Task {
+                    guard await attach.sendEscapeKeyAcknowledged() else { return }
+                    await console.recordHeelerAnswer(declines: true, for: agent)
+                }
+                return
+            }
             attach.sendEscapeKey()
             return
         }

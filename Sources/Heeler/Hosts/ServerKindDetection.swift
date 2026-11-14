@@ -13,7 +13,8 @@ protocol ServerKindDetectionConnection: Sendable {
     func close() async throws
 }
 
-/// Which servers an SSH target runs, for the user to confirm one (ADR 0031).
+/// Which servers an SSH target runs, for the user to confirm one (ADRs 0031
+/// and 0044).
 struct ServerKindDetection: Equatable, Sendable {
     enum HerdrTUIFinding: Equatable, Sendable {
         case found(sessions: [HerdrSession])
@@ -32,8 +33,26 @@ struct ServerKindDetection: Equatable, Sendable {
         case socketPathTooLong(version: String, socketPath: String, limit: Int)
     }
 
+    /// What the probe says of tmux, through the login shell. A server is one
+    /// that answered: a socket file a killed server left behind is not one.
+    enum TmuxFinding: Equatable, Sendable {
+        /// Not macOS or Linux, where Heeler drives no tmux.
+        case unsupported
+        /// The probe's part of the output did not read.
+        case unreadable
+        case notInstalled
+        /// Older than `TmuxVersion.minimum`.
+        case updateRequired(version: String)
+        case notRunning(version: String)
+        /// The sockets a server answers on, `default` first when it is one.
+        case running(version: String, sockets: [String])
+    }
+
     let herdrTUI: HerdrTUIFinding
     let herdrCore: CoreFinding
+    let tmux: TmuxFinding
+    /// What the probe read, for the paths a confirmed tmux Host stores.
+    private let tmuxReport: TmuxProbe.Report?
     /// The one fact a refused session name still leaves: which exec this Host took.
     let isNativeWindows: Bool
 
@@ -76,6 +95,8 @@ struct ServerKindDetection: Equatable, Sendable {
         self.isNativeWindows = isNativeWindows
         herdrTUI = Self.herdrTUI(status: output.herdrStatus, output: output.herdrOutput)
         herdrCore = Self.herdrCore(output.location, session: session)
+        tmuxReport = output.tmux
+        tmux = Self.tmux(output.tmux, isNativeWindows: isNativeWindows)
     }
 
     private struct SessionList: Decodable {
@@ -105,6 +126,48 @@ struct ServerKindDetection: Equatable, Sendable {
             : .notRunning(version: version, socketPath: location.socketPath)
     }
 
+    private static func tmux(_ report: TmuxProbe.Report?, isNativeWindows: Bool) -> TmuxFinding {
+        guard !isNativeWindows else { return .unsupported }
+        guard let report else { return .unreadable }
+        guard let kernel = report.kernel, tmuxKernels.contains(kernel) else { return .unsupported }
+        switch report.installation {
+        case .notInstalled: return .notInstalled
+        case .updateRequired(let version): return .updateRequired(version: version)
+        case .usable(_, let version):
+            guard !report.sockets.isEmpty else { return .notRunning(version: version) }
+            let defaultName = TmuxSocketName.defaultName
+            let sockets =
+                report.sockets.filter { $0 == defaultName } + report.sockets.filter { $0 != defaultName }
+            return .running(version: version, sockets: sockets)
+        }
+    }
+
+    private static let tmuxKernels = [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel]
+
+    /// The sockets a tmux server answers on, for the user to pick one.
+    var tmuxSockets: [String] {
+        if case .running(_, let sockets) = tmux { sockets } else { [] }
+    }
+
+    /// The socket a confirmation starts on: the typed name when its server
+    /// answers, else `default`, else the first that does. With no server
+    /// answering, the typed name stands, and `default` for a blank one.
+    func preselectedTmuxSocket(typed: String) -> String {
+        let name = TmuxSocketName.normalized(typed)
+        let sockets = tmuxSockets
+        if sockets.contains(name) { return name }
+        return sockets.first ?? name
+    }
+
+    /// What a tmux Host confirmed on this socket stores, from this same read:
+    /// its login shell just resolved both. Nil when tmux is not there to store.
+    func tmuxPaths(socketName: String) -> TmuxPaths? {
+        guard let tmuxReport, case .usable(let executable, _) = tmuxReport.installation,
+            let socket = tmuxReport.socketPath(named: socketName)
+        else { return nil }
+        return TmuxPaths(executable: executable, socket: socket)
+    }
+
     /// The kinds this target runs, in the order the confirmation lists them.
     var foundKinds: [ServerKind] {
         var kinds: [ServerKind] = []
@@ -113,20 +176,30 @@ struct ServerKindDetection: Equatable, Sendable {
         case .notInstalled, .sessionRefused: break
         case .notRunning, .socketFilePresent, .socketPathTooLong: kinds.append(.herdrCore)
         }
+        if case .running = tmux { kinds.append(.tmux) }
         return kinds
+    }
+
+    /// Every kind this target could be: all but tmux where Heeler drives none.
+    var supportedKinds: [ServerKind] {
+        Self.offeredWithoutFindings.filter { $0 != .tmux || tmux != .unsupported }
     }
 
     /// What the user may confirm. A target running nothing yet offers every kind:
     /// the user may be about to install one, and its preflight says how. A refused
     /// session name keeps herdr-core on offer, since only the name stands in its way
-    /// and confirming says why.
+    /// and confirming says why. A tmux with no server running stays on offer beside
+    /// whatever was found: its Host connects once the user starts one (ADR 0044).
     var offeredKinds: [ServerKind] {
-        if case .sessionRefused = herdrCore { return Self.offeredWithoutFindings }
-        return foundKinds.isEmpty ? Self.offeredWithoutFindings : foundKinds
+        if case .sessionRefused = herdrCore { return supportedKinds }
+        let found = foundKinds
+        guard !found.isEmpty else { return supportedKinds }
+        if case .notRunning = tmux { return found + [.tmux] }
+        return found
     }
 
     /// What is on offer when a reached Host could not be read because the exec failed.
-    static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore]
+    static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore, .tmux]
 }
 
 extension ServerKindDetection.HerdrTUIFinding {
@@ -134,6 +207,20 @@ extension ServerKindDetection.HerdrTUIFinding {
         switch self {
         case .found: String(localized: "Found")
         case .notFound: String(localized: "Not found")
+        }
+    }
+}
+
+extension ServerKindDetection.TmuxFinding {
+    var summary: String {
+        switch self {
+        case .unsupported: String(localized: "Not supported on this Host")
+        case .unreadable: String(localized: "Could not read")
+        case .notInstalled: String(localized: "Not installed")
+        case .updateRequired(let version):
+            String(localized: "\(version), needs \(TmuxVersion.minimum) or newer")
+        case .notRunning(let version): String(localized: "\(version), no server running")
+        case .running(let version, _): String(localized: "\(version), running")
         }
     }
 }

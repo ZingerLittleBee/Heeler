@@ -115,7 +115,13 @@ enum HerdrCoreAgentRule {
     /// The shell a foreground names, as its program's own word. Read it only of
     /// one the rule reads as `.shell`.
     static func shellName(of foreground: HerdrCoreForeground) -> String {
-        baseName(foreground.argv.first ?? foreground.name)
+        shellName(arguments: foreground.argv, name: foreground.name)
+    }
+
+    /// The shell a foreground's arguments or OS name come to, as its program's
+    /// own word. Read it only of one the rule reads as `.shell`.
+    static func shellName(arguments: [String], name: String) -> String {
+        baseName(arguments.first ?? name)
     }
 
     /// The foreground, or without one what the Terminal launched. A process
@@ -123,12 +129,18 @@ enum HerdrCoreAgentRule {
     /// a native install running from a versioned path is.
     static func program(of record: HerdrCoreTerminalRecord) -> Program {
         guard let foreground = record.foreground else { return readLaunch(record.argv) }
-        guard !foreground.argv.isEmpty else {
-            return foreground.name.isEmpty ? readLaunch(record.argv) : read([foreground.name]).program
-        }
+        if foreground.argv.isEmpty, foreground.name.isEmpty { return readLaunch(record.argv) }
         if showsPowerShellPrompt(foreground.argv, title: record.title) { return .shell }
-        let program = read(foreground.argv).program
-        if case .other = program, let kind = knownKind(baseName(foreground.name)) {
+        return program(arguments: foreground.argv, name: foreground.name)
+    }
+
+    /// What a foreground process comes to, by its arguments and its OS name.
+    /// The name speaks where the arguments are missing or say nothing known.
+    /// This is all a tmux Pane's foreground is read by (`TmuxAgentRule`).
+    static func program(arguments: [String], name: String) -> Program {
+        guard !arguments.isEmpty else { return name.isEmpty ? .shell : read([name]).program }
+        let program = read(arguments).program
+        if case .other = program, let kind = knownKind(baseName(name)) {
             return .known(kind)
         }
         return program

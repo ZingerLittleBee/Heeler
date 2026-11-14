@@ -58,6 +58,8 @@ final class HerdrCoreWindowsExtensionFlow: Identifiable {
         phase = .locating
         do {
             phase = .ready(folders: try await locate())
+        } catch where HarnessConfigEditMessage.isCancellation(error) {
+            phase = .locating
         } catch {
             phase = .failed(Self.message(for: error))
         }

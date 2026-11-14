@@ -133,4 +133,92 @@ import Testing
             HerdrCoreStatusExplanation(record: try Self.record(foreground: ["grok"])))
         #expect(explanation.agentProcess == 70)
     }
+
+    // MARK: tmux Panes (ADR 0046)
+
+    @Test(arguments: [
+        ("codex", "Codex"),
+        ("grok", "Grok Build"),
+        ("opencode", "OpenCode"),
+    ])
+    func aUserPipedTmuxAgentSaysHeelerLeavesItsPipeAlone(command: String, program: String) throws {
+        let pane = TmuxInventory.Pane.make(
+            processID: 91, command: command, hasPipe: true, pipeMark: "", arguments: [command])
+        let explanation = try #require(HerdrCoreStatusExplanation(pane: pane, agentStatus: .unknown))
+        #expect(
+            explanation.text
+                == "\(program) has no status because this Pane already has a pipe-pane of your own, which Heeler leaves alone.")
+        #expect(!explanation.offersGrokBuildEdit)
+        #expect(explanation.agentProcess == 91)
+    }
+
+    @Test func anUnknownTmuxGrokBuildAgentOffersItsEdit() throws {
+        let unpiped = TmuxInventory.Pane.make(processID: 77, command: "grok", arguments: ["grok"])
+        let withoutHelper = try #require(HerdrCoreStatusExplanation(pane: unpiped, agentStatus: .unknown))
+        #expect(
+            withoutHelper.text
+                == "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper.")
+        #expect(withoutHelper.offersGrokBuildEdit)
+        #expect(withoutHelper.agentProcess == 77)
+
+        let helperPiped = TmuxInventory.Pane.make(
+            processID: 77, command: "grok", hasPipe: true, pipeMark: "grok:77:token", arguments: ["grok"])
+        let withHelper = try #require(HerdrCoreStatusExplanation(pane: helperPiped, agentStatus: .unknown))
+        #expect(withHelper.text == "Grok Build hasn't reported a status.")
+        #expect(withHelper.offersGrokBuildEdit)
+        #expect(withHelper.agentProcess == 77)
+    }
+
+    @Test func unknownTmuxAgentsSayWhereTheirStatusComesFrom() throws {
+        let codexUnpiped = TmuxInventory.Pane.make(command: "codex", arguments: ["codex"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: codexUnpiped, agentStatus: .unknown)?.text
+                == "Codex hasn't reported a status. In tmux its status is read by the Host Helper, from Codex 0.163.")
+
+        let openCodePiped = TmuxInventory.Pane.make(
+            command: "opencode", hasPipe: true, pipeMark: "opencode:50:token", arguments: ["opencode"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: openCodePiped, agentStatus: .unknown)?.text
+                == "OpenCode hasn't reported a status. It reports one from version 2.1, so an older version stays Unknown.")
+
+        let claude = TmuxInventory.Pane.make(
+            command: "claude", hasPipe: true, pipeMark: "", arguments: ["claude"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: claude, agentStatus: .unknown)?.text
+                == "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks.")
+
+        let pi = TmuxInventory.Pane.make(command: "pi", arguments: ["pi"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: pi, agentStatus: .unknown)?.text
+                == "Pi hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+
+        let omp = TmuxInventory.Pane.make(command: "omp", arguments: ["omp"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: omp, agentStatus: .unknown)?.text
+                == "Oh My Pi hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+
+        let gemini = TmuxInventory.Pane.make(command: "gemini", arguments: ["gemini"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: gemini, agentStatus: .unknown)?.text
+                == "Gemini CLI hasn't reported a status.")
+    }
+
+    @Test func aTmuxPaneWithAReportShellOrKnownStatusFollowsTheSameRules() throws {
+        let unrecognized = TmuxInventory.Pane.make(
+            command: "grok", status: "state=thinking:app=grok-build:turn=0:blocked=0", arguments: ["grok"])
+        let reported = try #require(HerdrCoreStatusExplanation(pane: unrecognized, agentStatus: .unknown))
+        #expect(reported.text == "Grok Build has not reported a state yet.")
+        #expect(!reported.offersGrokBuildEdit)
+
+        let leftover = TmuxInventory.Pane.make(
+            command: "grok", status: "state=idle:app=claude-code:turn=1:blocked=0", arguments: ["grok"])
+        let afterClaude = try #require(HerdrCoreStatusExplanation(pane: leftover, agentStatus: .unknown))
+        #expect(afterClaude.offersGrokBuildEdit)
+
+        for status: AgentStatus in [.idle, .done, .working, .blocked, .error] {
+            #expect(HerdrCoreStatusExplanation(pane: leftover, agentStatus: status) == nil)
+        }
+        let shell = TmuxInventory.Pane.make(command: "zsh", arguments: ["/bin/zsh"])
+        #expect(HerdrCoreStatusExplanation(pane: shell, agentStatus: .unknown) == nil)
+    }
 }

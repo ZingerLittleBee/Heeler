@@ -28,16 +28,17 @@ SESSION = "HeelerSSHSessionE2ETests"
 DIRECT = "HeelerSSHDirectStreamLocalE2ETests"
 WEAK = "WeakNetworkE2ETests"
 CORE = "HerdrCoreTransportE2ETests"
-FIXTURE_SUITES = SHARED | {SESSION, DIRECT, WEAK, CORE}
+TMUX = "TmuxTransportE2ETests"
+FIXTURE_SUITES = SHARED | {SESSION, DIRECT, WEAK, CORE, TMUX}
 PACKAGE_SUITES = {
     "SessionDriverE2ETests", "KeyExchangeRetryTests", "DNSServiceAddressResolverTests",
     "SocketConnectorTests", "SSHDiagnosticsTests",
 }
 LAYOUTS = {
     "sharded": {("app", "session-weak"): {SESSION, WEAK},
-                ("app", "transport"): {DIRECT, CORE, "SharedFixtureE2ETests"},
+                ("app", "transport"): {DIRECT, CORE, TMUX, "SharedFixtureE2ETests"},
                 ("app", "ordinary"): {"full-lane"}},
-    "serial": {("app", "all"): {SESSION, DIRECT, CORE, "SharedFixtureE2ETests", "full-lane"}},
+    "serial": {("app", "all"): {SESSION, DIRECT, CORE, TMUX, "SharedFixtureE2ETests", "full-lane"}},
 }
 RUN_NODES = {"Arguments", "Repetition", "Test Case Run", "Device", "Test Plan Configuration"}
 NODE_TYPES = RUN_NODES | {
@@ -395,6 +396,7 @@ def verify_records(records: list[dict], layout: str) -> tuple[set[str], set[str]
             else:
                 count, suites = {
                     SESSION: (13, {SESSION}), DIRECT: (9, {DIRECT}), WEAK: (11, {WEAK}), CORE: (9, {CORE}),
+                    TMUX: (40, {TMUX}),
                     "SharedFixtureE2ETests": (137, SHARED | {WEAK}) if layout == "serial" else (126, SHARED),
                 }[phase]
                 require(len(tests) == count and memberships == suites, f"Fixture suite/count contract changed: {phase}")

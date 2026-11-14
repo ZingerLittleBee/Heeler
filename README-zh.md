@@ -7,7 +7,7 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge-zh.svg" alt="在 TestFlight 下载" height="40" /></a>
 
-**[herdr](https://herdr.dev) 的原生 iOS 伴侣应用 —— herdr 是一个 agent 优先的终端运行时。**
+**[herdr](https://herdr.dev)（agent 优先的终端运行时）与 tmux 的原生 iOS 伴侣应用。**
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,7 +24,7 @@
 
 ---
 
-Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 Herdr TUI 或 Herdr 桌面端（herdr-core）运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
+Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 Herdr TUI、Herdr 桌面端（herdr-core）或 tmux 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
 
 ## 截图
 
@@ -56,6 +56,11 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   Herdr 桌面端或无界面 herdr-core。Console 跟随桌面端的空间与标签页，实时终端、
   Chat、Composer、New Agent 和 New Workspace 同样可用
   （[了解更多](https://docs.heeler.bybee.dev/zh/herdr-core)）。
+- **tmux** —— 连接 macOS 或 Linux 上的 tmux 3.3+ 服务器。会话、窗口与窗格直接
+  呈现在 Console 中，实时终端会调整为适合屏幕的尺寸并保持在同一窗口已打开的
+  桌面终端范围内，Chat、Composer、New Agent、New Workspace 和 Worktrees
+  同样可用，配合 Claude Code 钩子与可选的 Host Helper 提供 Agent 状态、
+  通知、实时活动与 Usage（[了解更多](https://docs.heeler.bybee.dev/zh/tmux)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
@@ -95,6 +100,8 @@ Windows 原生 Host（herdr >= 0.9.3）通过 SSH 连接，需手动添加。
 
 herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并确认 Server Kind。Heeler 与 core 之间只有一条分帧链路：macOS 和 Linux 上经 direct-streamlocal 通道直连 core 的套接字，Windows 原生环境上经 SSH exec 运行 `herdr-core connect`。在 macOS 和 Linux 上，连接本身绝不会启动 core。可选的 Host Helper 在 macOS 和 Linux 上提供通知、实时活动和 Usage（[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)）。
 
+tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式与桌面客户端并存接入，调整为适合屏幕的尺寸并保持在同一窗口已打开的桌面终端范围内。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
+
 如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 
 [查看 Heeler 配置截图](docs/guides/zh/overlay-networks.md#heeler-配置界面截图)，包括 Tailscale、ZeroTier 以及 EasyTier 两种模式（Network 与 Config Server）的设置界面。
@@ -114,6 +121,7 @@ herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并�
 - **macOS / Linux：** 安装 [herdr](https://herdr.dev/docs/install/)，启用 SSH，再按下方步骤配对。
 - **Windows 原生环境：** 参见 [Windows 设置指南](docs/guides/zh/windows-setup.md)。
 - **Herdr 桌面端 / herdr-core：** 先启动桌面端或 herdr-core 并启用 SSH，再手动添加 Host，参见[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)。需要 Heeler 0.1.18 或更高版本。
+- **tmux（macOS / Linux）：** 启动 tmux 3.3 或更高版本（Linux 上也可在连接后通过 New Workspace 启动），启用 SSH，再手动添加 Host，参见[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)。
 
 ## 添加机器
 

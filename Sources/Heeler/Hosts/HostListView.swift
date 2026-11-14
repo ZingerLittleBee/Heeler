@@ -852,6 +852,10 @@ struct HostRowPresentation: Equatable {
                 if !endpoint.session.isEmpty {
                     address += " · " + String(localized: "session \(endpoint.session)")
                 }
+            } else if host.serverKind == .tmux {
+                if host.tmuxSocketName != TmuxSocketName.defaultName {
+                    address += " · " + String(localized: "socket \(host.tmuxSocketName)")
+                }
             } else if case .namedSession(let session) = host.socketLocation {
                 address += " · " + String(localized: "session \(session)")
             }
