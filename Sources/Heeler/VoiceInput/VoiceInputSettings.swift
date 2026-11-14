@@ -1,19 +1,25 @@
 import Foundation
 import Observation
 
-/// Where Voice Input sends recordings: a built-in service or the user's own.
+/// Where Voice Input turns speech into text: this device, a built-in
+/// service, or the user's own.
 enum VoiceInputService: Hashable, Sendable, Identifiable {
+    /// Apple's dictation model on this device, from iOS 26 (ADR 0043).
+    case onDevice
     case preset(VoiceInputPreset)
     case custom
 
     static var allCases: [VoiceInputService] {
-        VoiceInputPreset.allCases.map(VoiceInputService.preset) + [.custom]
+        var cases = VoiceInputPreset.allCases.map(VoiceInputService.preset) + [.custom]
+        if #available(iOS 26.0, *) { cases.insert(.onDevice, at: 0) }
+        return cases
     }
 
     var id: String { storageValue }
 
     var displayName: String {
         switch self {
+        case .onDevice: String(localized: "On Device", comment: "Voice Input service: speech recognition on this device")
         case .preset(let preset): preset.displayName
         case .custom: String(localized: "Custom", comment: "Voice Input service: a service the user configures")
         }
@@ -21,13 +27,17 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
 
     var storageValue: String {
         switch self {
+        case .onDevice: "on-device"
         case .preset(let preset): preset.rawValue
         case .custom: "custom"
         }
     }
 
+    /// Where recordings are uploaded; nil on this device, or while Custom
+    /// is incomplete.
     func endpoint(custom: VoiceInputCustomService) -> VoiceInputEndpoint? {
         switch self {
+        case .onDevice: return nil
         case .preset(let preset): return .preset(preset)
         case .custom:
             if case .success(let url) = VoiceInputCustomURL.normalize(custom.baseURL) {
@@ -42,6 +52,7 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
     /// them only through the Prompt.
     var takesKeywords: Bool {
         switch self {
+        case .onDevice: true
         case .preset(let preset): preset.takesKeywords
         case .custom: false
         }
@@ -73,7 +84,9 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
     private static let vocabularyLabel = "Vocabulary:"
 
     init?(storageValue: String) {
-        if storageValue == "custom" {
+        if storageValue == "on-device" {
+            self = .onDevice
+        } else if storageValue == "custom" {
             self = .custom
         } else if let preset = VoiceInputPreset(rawValue: storageValue) {
             self = .preset(preset)
@@ -161,6 +174,7 @@ final class VoiceInputSettings {
         static let builtInMicrophone = "voice-input-built-in-microphone"
         static let keywords = "voice-input-keywords"
         static let prompt = "voice-input-prompt"
+        static let onDeviceLanguage = "voice-input-on-device-language"
     }
 
     /// Nil while Voice Input is off.
@@ -180,6 +194,10 @@ final class VoiceInputSettings {
     /// What recordings are about, sent with each one. One for every
     /// service; empty when unset.
     private(set) var prompt: String
+    /// The language On Device listens for, as a BCP 47 identifier: one per
+    /// recording, with English words inside it. The device's first
+    /// preferred language until the user picks one.
+    private(set) var onDeviceLanguage: String
 
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults
     @ObservationIgnored private let secrets: any SecretStore
@@ -201,6 +219,8 @@ final class VoiceInputSettings {
         alwaysUsesBuiltInMicrophone = defaults.bool(forKey: Key.builtInMicrophone)
         keywords = defaults.stringArray(forKey: Key.keywords) ?? []
         prompt = defaults.string(forKey: Key.prompt) ?? ""
+        onDeviceLanguage = defaults.string(forKey: Key.onDeviceLanguage)
+            ?? preferredLanguages.first ?? "en-US"
         // Migrate the legacy toggle once, even while the Custom service is off.
         if defaults.object(forKey: Key.requestOptions) == nil {
             if defaults.bool(forKey: Key.customLanguage), let endpoint = VoiceInputService.custom.endpoint(custom: custom) {
@@ -220,8 +240,11 @@ final class VoiceInputSettings {
         service?.endpoint(custom: custom)
     }
 
-    /// Whether a recording can go out now.
+    /// Whether a recording can be transcribed now. On Device needs no key
+    /// or agreement; whether its model is installed is checked as a
+    /// recording starts.
     var isReady: Bool {
+        if service == .onDevice { return true }
         guard let endpoint else { return false }
         return hasKey(for: endpoint) && hasConsent(for: endpoint)
     }
@@ -323,6 +346,15 @@ final class VoiceInputSettings {
         requestOptions = updatedOptions
         defaults.set(optionsData, forKey: Key.requestOptions)
         keyRevision += 1
+        persist()
+    }
+
+    /// Turns On Device on, listening for `language`. Nothing leaves the
+    /// device, so there is no key or agreement.
+    func saveOnDevice(language: String) {
+        service = .onDevice
+        onDeviceLanguage = language
+        defaults.set(language, forKey: Key.onDeviceLanguage)
         persist()
     }
 

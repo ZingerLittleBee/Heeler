@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Turn speech into text on the device with Voice Input's On Device service, from iOS 26. While you speak, the Composer becomes a recorder outlined in red that shows the text as it is heard; Stop puts it in the draft and Send sends the draft with it. It needs no API key, listens for one chosen language with English words inside it, and uses your Keywords as hints. Its speech model downloads from Settings › Voice Input, or from the recorder when it is missing. (PR #727)
 - Rename an Antigravity CLI conversation from its More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save sends `/rename <title>` and confirms the rename from Antigravity CLI's screen reply or updated terminal title; automatic title generation stays disabled because `/rename` with no title is not supported by Antigravity CLI. (PR #723)
 - Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. Its eye button shows the password while you check it. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
 - Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
@@ -29,6 +30,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Keep music and other audio playing where it plays while Voice Input records, including on a Bluetooth speaker or headphones, instead of stopping it. Recordings are kept in memory only, never in a temporary file. (PR #727)
 - Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)
 - Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
 - Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)

@@ -12587,6 +12587,28 @@
         }
       }
     },
+    "Check the network and try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネットワークを確認して、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检查网络后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請檢查網路後再試一次。"
+          }
+        }
+      }
+    },
     "Check this Host's session." : {
       "localizations" : {
         "ja" : {
@@ -13006,6 +13028,28 @@
         }
       }
     },
+    "Choose a speech service in Voice Input settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力の設定で音声サービスを選択してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“语音输入”设置中选择语音服务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「語音輸入」設定中選擇語音服務。"
+          }
+        }
+      }
+    },
     "Choose a terminal or open a new one." : {
       "localizations" : {
         "ja" : {
@@ -13090,6 +13134,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請選擇 Agent 以查看它的即時終端機。"
+          }
+        }
+      }
+    },
+    "Choose another language or a speech service in Voice Input settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力の設定で、別の言語か音声サービスを選択してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“语音输入”设置中换一种语言，或改用语音服务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「語音輸入」設定中換一種語言，或改用語音服務。"
           }
         }
       }
@@ -19649,6 +19715,94 @@
         }
       }
     },
+    "Download" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載"
+          }
+        }
+      }
+    },
+    "Download Speech Model" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声モデルをダウンロード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载语音模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載語音模型"
+          }
+        }
+      }
+    },
+    "Download it once to transcribe on this device, without a network." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一度ダウンロードすれば、このデバイス上でネットワークなしで文字起こしできます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载一次即可在本机识别，之后不需要联网。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載一次即可在本機辨識，之後不需要連網。"
+          }
+        }
+      }
+    },
+    "Downloading Speech Model…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声モデルをダウンロード中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下载语音模型…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下載語音模型…"
+          }
+        }
+      }
+    },
     "Duplicate" : {
       "localizations" : {
         "ja" : {
@@ -23358,6 +23512,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "當 Agent 等待你的輸入或完成時收到通知。"
+          }
+        }
+      }
+    },
+    "Getting the microphone ready…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクを準備しています…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备麦克风…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在準備麥克風…"
           }
         }
       }
@@ -27118,6 +27294,28 @@
         }
       }
     },
+    "Hold the phone a little closer and try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone をもう少し近づけて、もう一度話してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离手机近一点，再说一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離手機近一點，再說一次。"
+          }
+        }
+      }
+    },
     "Hold to read a day" : {
       "localizations" : {
         "ja" : {
@@ -28685,6 +28883,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安裝 Heeler 外掛以使用通知、即時動態更新與 herdr 的側邊欄欄位。"
+          }
+        }
+      }
+    },
+    "Installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストール済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安裝"
           }
         }
       }
@@ -34891,6 +35111,28 @@
         }
       }
     },
+    "Not available on this device" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスでは利用できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备不支持"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這部裝置不支援"
+          }
+        }
+      }
+    },
     "Not completed" : {
       "localizations" : {
         "ja" : {
@@ -36106,6 +36348,29 @@
         }
       }
     },
+    "On Device" : {
+      "comment" : "Voice Input service: speech recognition on this device",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイス上"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本机识别"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本機辨識"
+          }
+        }
+      }
+    },
     "On a Mac, turn on Remote Login in System Settings › General › Sharing. On Linux, run the OpenSSH server." : {
       "localizations" : {
         "ja" : {
@@ -36218,6 +36483,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "One Half Light 與 One Half Dark"
+          }
+        }
+      }
+    },
+    "One language per recording, with English words inside it. Keywords help it spell your terms. Text appears as you speak, and nothing leaves this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1回の録音につき1つの言語を認識し、その中の英単語も認識します。キーワードは用語を正しく綴るのに役立ちます。話している間にテキストが表示され、このデバイスの外には何も送信されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次录音识别一种语言，其中夹杂的英文单词也能识别。关键词有助于拼对你的术语。说话时文字会实时显示，所有内容都不会离开此设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次錄音辨識一種語言，其中夾雜的英文單字也能辨識。關鍵字有助於拼對你的用語。說話時文字會即時顯示，所有內容都不會離開這部裝置。"
           }
         }
       }
@@ -40594,6 +40881,28 @@
         }
       }
     },
+    "Puts the text in the draft" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストを下書きに入れます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把文字放进草稿"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把文字放進草稿"
+          }
+        }
+      }
+    },
     "Putting the Host Helper in place" : {
       "localizations" : {
         "ja" : {
@@ -41768,6 +42077,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "錄音中"
+          }
+        }
+      }
+    },
+    "Recording starts once it is installed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストールが終わると録音が始まります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装完成后自动开始录音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安裝完成後自動開始錄音。"
           }
         }
       }
@@ -45729,6 +46060,28 @@
         }
       }
     },
+    "Sending once the last words settle" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後の言葉が確定したら送信します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理完立即发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理完立即傳送"
+          }
+        }
+      }
+    },
     "Sending this would exit %@. Open the terminal to exit." : {
       "comment" : "Composer refusal; %@ is a program name",
       "localizations" : {
@@ -46389,6 +46742,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定…"
+          }
+        }
+      }
+    },
+    "Settling the last words…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後の言葉を確定しています…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在整理最后几个字…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在整理最後幾個字…"
           }
         }
       }
@@ -48389,6 +48764,72 @@
         }
       }
     },
+    "Speech Model" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声モデル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音模型"
+          }
+        }
+      }
+    },
+    "Speech is turned into text on this device by Apple's dictation model." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声は、このデバイス上で Apple の音声入力モデルによってテキストに変換されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音由 Apple 的听写模型在此设备上转为文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音由 Apple 的聽寫模型在這部裝置上轉成文字。"
+          }
+        }
+      }
+    },
+    "Speech recognition could not start." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声認識を開始できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音识别没能开始。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音辨識無法開始。"
+          }
+        }
+      }
+    },
     "Staged" : {
       "comment" : "Changes list group title and file staging",
       "localizations" : {
@@ -48584,6 +49025,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在新的工作樹中開始"
+          }
+        }
+      }
+    },
+    "Start speaking" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話してください"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请开始说话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請開始說話"
           }
         }
       }
@@ -49165,6 +49628,28 @@
         }
       }
     },
+    "Stop Recording" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音を停止"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止录音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止錄音"
+          }
+        }
+      }
+    },
     "Stop cancels the question and ends Oh My Pi's turn." : {
       "localizations" : {
         "ja" : {
@@ -49548,6 +50033,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "停止錄音並將文字加入草稿"
+          }
+        }
+      }
+    },
+    "Stops recording and sends the draft with its text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音を停止し、そのテキストを含む下書きを送信します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止录音，连同这段文字发送草稿"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止錄音，連同這段文字傳送草稿"
           }
         }
       }
@@ -58694,6 +59201,28 @@
         }
       }
     },
+    "The speech model could not be downloaded." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声モデルをダウンロードできませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法下载语音模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法下載語音模型。"
+          }
+        }
+      }
+    },
     "The speech service is unavailable (HTTP %lld)." : {
       "localizations" : {
         "ja" : {
@@ -60739,6 +61268,50 @@
         }
       }
     },
+    "This device can't transcribe speech on its own." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスだけでは音声を文字起こしできません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备无法独立将语音转为文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這部裝置無法自行將語音轉成文字。"
+          }
+        }
+      }
+    },
+    "This device can't transcribe the chosen language." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスでは選択した言語を文字起こしできません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备无法转写所选语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這部裝置無法轉寫所選語言。"
+          }
+        }
+      }
+    },
     "This device cannot scan QR codes. Paste a Pairing Code, or add the Host manually instead." : {
       "localizations" : {
         "ja" : {
@@ -61465,6 +62038,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這已不是同一個連結的工作樹，未移除任何內容。"
+          }
+        }
+      }
+    },
+    "This language's speech model is needed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この言語の音声モデルが必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要这种语言的语音模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要這種語言的語音模型。"
           }
         }
       }

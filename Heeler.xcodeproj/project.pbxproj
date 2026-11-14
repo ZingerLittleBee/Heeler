@@ -314,6 +314,7 @@
 		4A81FB588B49EDE873586129 /* HerdrCoreStartSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55E70552115069109E2E2CB /* HerdrCoreStartSection.swift */; };
 		4AF54D36B8F0639880713FD1 /* AgentActivityLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E303FCB86A19CCBBF79E15A /* AgentActivityLink.swift */; };
 		4B05BA1966251828850D2AFF /* HeelerSSHTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE62169C67E1ED1082DB98B9 /* HeelerSSHTransport.swift */; };
+		4B3A78D7E57DA4FA9E4B5747 /* VoiceInputOnDeviceSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF229E0342585270ECB4EBF7 /* VoiceInputOnDeviceSection.swift */; };
 		4B4AE725A29A4F1E3AA0B29D /* ConsoleHostIssueRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0735F123FB93D94251790AEE /* ConsoleHostIssueRow.swift */; };
 		4B6FF645BFDFF71B294A7F21 /* GrokInputBoxDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F175A9C079C84F486172EB /* GrokInputBoxDetectorTests.swift */; };
 		4B7CA474D5D80E90C65370AC /* AgentChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98ACE560E5E71FC03C67703 /* AgentChatStore.swift */; };
@@ -368,6 +369,7 @@
 		55E28DF2528DB6DC449D940E /* MacOSProcessTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44A3F64F55A47D8586C9C2C /* MacOSProcessTable.swift */; };
 		563040714D273153AAE447D3 /* HerdrCoreWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493156366347AD36EC1985E8 /* HerdrCoreWireTests.swift */; };
 		57131CD69FE8F9F4D47C92F9 /* ChatFileDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A5B1E17E7BBF6E3F89CF89 /* ChatFileDiffView.swift */; };
+		571FE56A73717578460DB3D7 /* LiveVoiceTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8953460255499CCB2589E59A /* LiveVoiceTranscriber.swift */; };
 		57397D869ECAA1D57E215943 /* OpenCodeProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30F3752FD23CAA0C27F52D10 /* OpenCodeProbe.swift */; };
 		5766D55A0DEE0FD1D4DB01DC /* ChatTranscriptCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DEFD952316075758AE9C93 /* ChatTranscriptCacheTests.swift */; };
 		5789049E3BA965EB057C4577 /* FilePreparerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C833B5BA50276247A54258B /* FilePreparerTests.swift */; };
@@ -838,6 +840,7 @@
 		C577E6F7D424D0B645504650 /* ConsolePaneRowBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2787D9F2267D26DD4012008E /* ConsolePaneRowBuilder.swift */; };
 		C57F86EB262BAC6ABE017179 /* CodexJSONPrefix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BC98C804D7AC9D39D249B99 /* CodexJSONPrefix.swift */; };
 		C5A35948E9981DAB28D10102 /* AgyTranscriptReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6CD0C14B75BD3DB7AA93EC /* AgyTranscriptReducer.swift */; };
+		C6091E60672FFF85AB99EEDE /* ComposerLiveVoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D842B59171066E39D6832108 /* ComposerLiveVoiceRecorder.swift */; };
 		C626797B247A8ED6513D2EBB /* HeelerSSHSessionE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AEA55D1F06B12005DEEE5F /* HeelerSSHSessionE2ETests.swift */; };
 		C6E6E92365F39EDDD50CDE49 /* WeakNetworkE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB8C5EA497D1094E86F69C4 /* WeakNetworkE2ETests.swift */; };
 		C704DD32F915E3C827356276 /* ReadableColumn.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA34B35B5CAE41E2AAC2DF75 /* ReadableColumn.swift */; };
@@ -1718,6 +1721,7 @@
 		88A7E1308B558F009B396A9F /* ClaudeTranscriptLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTranscriptLocator.swift; sourceTree = "<group>"; };
 		88DA44F3EA811A40E96E06F2 /* SidebarLayoutVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarLayoutVectorFile.swift; sourceTree = "<group>"; };
 		88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConsoleProjection.swift; sourceTree = "<group>"; };
+		8953460255499CCB2589E59A /* LiveVoiceTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveVoiceTranscriber.swift; sourceTree = "<group>"; };
 		89669281E7DB73D3A6B63BCD /* CodexRecordDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRecordDecoder.swift; sourceTree = "<group>"; };
 		89A4121CF3A5722FE9B3C1E8 /* KnownHostsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnownHostsStore.swift; sourceTree = "<group>"; };
 		89CECDD19118EEA250C34DCC /* ChatTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscript.swift; sourceTree = "<group>"; };
@@ -2011,6 +2015,7 @@
 		CDFC6DF70F79FC87DCC2ECE0 /* HerdrSidebarSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSidebarSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		CE868FFAE7FC91684AF77452 /* TerminalThemePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemePreview.swift; sourceTree = "<group>"; };
 		CF1E684391B619EEB872E24B /* GitProbe+Patch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbe+Patch.swift"; sourceTree = "<group>"; };
+		CF229E0342585270ECB4EBF7 /* VoiceInputOnDeviceSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOnDeviceSection.swift; sourceTree = "<group>"; };
 		CFB39D40748D247CC747A83D /* AppActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinatorTests.swift; sourceTree = "<group>"; };
 		CFB629793CE953F400295B96 /* BlockedCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedCardView.swift; sourceTree = "<group>"; };
 		CFF4A249FFD87F43D737A529 /* HostHelperSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostHelperSheet.swift; sourceTree = "<group>"; };
@@ -2048,6 +2053,7 @@
 		D75D42118459DEA416288A33 /* ChatSendRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSendRulesTests.swift; sourceTree = "<group>"; };
 		D7986AEFB2416F8754FE42B3 /* herdr-core-frames-windows-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "herdr-core-frames-windows-v1.json"; sourceTree = "<group>"; };
 		D79A0CCBD828E937D32FACCE /* HerdrCorePiChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCorePiChatTests.swift; sourceTree = "<group>"; };
+		D842B59171066E39D6832108 /* ComposerLiveVoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerLiveVoiceRecorder.swift; sourceTree = "<group>"; };
 		D8662F9C006A78F4020F3ADF /* ChatBackgroundWorkPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBackgroundWorkPresentation.swift; sourceTree = "<group>"; };
 		D8B3366BC1B0D37A0C4EE525 /* EdgeDockSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeDockSettingsTests.swift; sourceTree = "<group>"; };
 		D90FC76C9682026600DC1AC5 /* CodexIncrementalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexIncrementalTests.swift; sourceTree = "<group>"; };
@@ -3064,6 +3070,7 @@
 				1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */,
 				24572762858C00624BE837E8 /* ComposerDeliveryPolicy.swift */,
 				D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */,
+				D842B59171066E39D6832108 /* ComposerLiveVoiceRecorder.swift */,
 				974D58E1400071FFEC11333C /* ComposerVoiceControls.swift */,
 				6D83F0739372AE699009E238 /* ConsoleAgent.swift */,
 				0CD8A096E577BF34431CFF3D /* ConsoleCommandAvailability.swift */,
@@ -3332,6 +3339,7 @@
 		842EDE4A55C7154AF6AEBC97 /* VoiceInput */ = {
 			isa = PBXGroup;
 			children = (
+				8953460255499CCB2589E59A /* LiveVoiceTranscriber.swift */,
 				CA3A1778876395662E0E22EF /* VoiceInputEndpoint.swift */,
 				625A08684EDAAA6837566083 /* VoiceInputRequestOptions.swift */,
 				FE30EA02E9CF206CF221AFF7 /* VoiceInputSession.swift */,
@@ -3714,6 +3722,7 @@
 				A2CED0240EA91B680CF3A758 /* TerminalZoomSettings.swift */,
 				4502F9D84E99D59E93A81E9B /* ThemeAppearance.swift */,
 				C7166C68F40482EF9C1E917F /* ThemeColors.swift */,
+				CF229E0342585270ECB4EBF7 /* VoiceInputOnDeviceSection.swift */,
 				C73651B04E7933DB8E85ADD4 /* VoiceInputRequestOptionsView.swift */,
 				50C35405DA6BC65FF0B922B4 /* VoiceInputSettingsView.swift */,
 			);
@@ -3909,10 +3918,10 @@
 			projectRoot = "";
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
-				4E3ED42B1AF2AE6B521A235A /* HeelerLiveTests */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				9806EA6C63028F1217417282 /* HeelerTests */,
 				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
+				4E3ED42B1AF2AE6B521A235A /* HeelerLiveTests */,
+				9806EA6C63028F1217417282 /* HeelerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -4222,6 +4231,7 @@
 				A25D752D1FF77B0A6F4DAA15 /* CommandBlock.swift in Sources */,
 				DB2D4ECC14CBA551236420C2 /* ComposerDeliveryPolicy.swift in Sources */,
 				49924070055C376D1C0E2A8E /* ComposerDrop.swift in Sources */,
+				C6091E60672FFF85AB99EEDE /* ComposerLiveVoiceRecorder.swift in Sources */,
 				DAC71CBDA8D8B092ED157288 /* ComposerStagingStatusBar.swift in Sources */,
 				247E069905D31490FEF889CE /* ComposerStagingStore.swift in Sources */,
 				82D2E1E1417F79DDFD5A3BFF /* ComposerVoiceControls.swift in Sources */,
@@ -4409,6 +4419,7 @@
 				405A7A8AE730C7ABD606DAD7 /* LiveActivityControlling.swift in Sources */,
 				5299E363C0B099498E45E78A /* LiveActivityPreferences.swift in Sources */,
 				2CCF49CE1A3D34AEC4D53469 /* LiveInAnotherWindowPresentation.swift in Sources */,
+				571FE56A73717578460DB3D7 /* LiveVoiceTranscriber.swift in Sources */,
 				F6579EF4995DE0571E316F11 /* LocalMachinePickerView.swift in Sources */,
 				9019E7748FBF71744AB4CE14 /* LocalNetworkDiscovery.swift in Sources */,
 				14CC6A6376D440FC133DE2AA /* LocalizedPhrasing.swift in Sources */,
@@ -4567,6 +4578,7 @@
 				E1EA171B83B12B665B89586D /* UsageWidgetSnapshot.swift in Sources */,
 				62E5FDDA95BC0F64A505A370 /* UsageWidgetViews.swift in Sources */,
 				682303CF3F95C6A03B86FDF1 /* VoiceInputEndpoint.swift in Sources */,
+				4B3A78D7E57DA4FA9E4B5747 /* VoiceInputOnDeviceSection.swift in Sources */,
 				4618B8943739BCCBD113245D /* VoiceInputRequestOptions.swift in Sources */,
 				7B7DF47FB4669F3F0166B7C7 /* VoiceInputRequestOptionsView.swift in Sources */,
 				8FF7B6608E88BAF756D66548 /* VoiceInputSession.swift in Sources */,
@@ -5200,7 +5212,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Heeler records your voice when you tap the microphone in the Composer, and turns it into text on this device or with the speech service you chose in Settings.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -5386,7 +5398,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby, and to find machines that offer SSH.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Heeler records your voice when you tap the microphone in the Composer, and sends the recording to the speech service you chose in Settings to turn it into text.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Heeler records your voice when you tap the microphone in the Composer, and turns it into text on this device or with the speech service you chose in Settings.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
