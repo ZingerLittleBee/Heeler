@@ -68,7 +68,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Date the Usage widgets by when the Host last read its figures, not by when Heeler asked. The first answer after a quiet spell is the Host's cached report while it refreshes, which can be hours old, so a widget could show an earlier 5-hour window as current and skip the next re-read. The background refresh also waits up to 18 seconds for that refresh instead of 9. (PR #PENDING)
+- Date the Usage widgets by when the Host last read its figures, not by when Heeler asked. The first answer after a quiet spell is the Host's cached report while it refreshes, which can be hours old, so a widget could show an earlier 5-hour window as current and skip the next re-read. The background refresh also waits up to 18 seconds for that refresh instead of 9. (PR #736)
 - End Check Again's spinner in Chat on iPhone once Heeler has checked for the conversation, instead of leaving it spinning after SwiftUI's spurious disappear stops the view's task. (PR #728)
 - Align Chat's notice rows, such as finished background commands, with its reasoning and tool rows: their icons and titles now share the same column and text size, their details indent under the title, and every inline row icon fits a uniform square so wide symbols match narrower ones. (PR #729)
 - Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
