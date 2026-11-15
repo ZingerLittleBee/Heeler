@@ -706,7 +706,8 @@ actor RexHostSession {
     /// the view asked for while none is the terminal's is not sent, and never
     /// sent later.
     private func deliverTerminalRequest(
-        _ method: String, payload: JSONValue, deadline: Duration, server: RexServerStatus, generation: UInt64,
+        _ method: String, payload: JSONValue, deadline: RexDeliveryDeadline, server: RexServerStatus,
+        generation: UInt64,
         epoch: UInt64
     ) async -> RexDelivery {
         guard let ready = readyConnection, ready.server == server, ready.generation == generation,

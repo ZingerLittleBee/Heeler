@@ -67,7 +67,8 @@ the whole control connection.
   go nowhere, and the terminal opens again with its next paint.
 - **An unknown outcome is never sent again.** A request that left with no
   answer, because the link ended, the link stayed silent for 10 seconds after
-  it was written or its sender was cancelled, may have reached the program. So
+  it was written, a minute passed since it was written however much else kept
+  arriving, or its sender was cancelled, may have reached the program. So
   may one the server refused. Neither is sent again: what queued behind it is
   dropped, the queue takes nothing more, and the attach ends with
   `RexTerminalEnding.inputFailed`, which the view shows as the other Server
@@ -98,7 +99,9 @@ the whole control connection.
   comes in order with everything else the server sends, so it can wait behind
   a burst of events; and a request can wait behind a slow write of its own. A
   link that keeps delivering is alive, so only a link that says nothing for
-  the whole deadline makes the outcome unknown.
+  the whole deadline makes the outcome unknown. A minute in all bounds that
+  wait, so a server that keeps sending events but never answers cannot hold
+  the input queue for ever.
 - The other Server Kinds reject input while their terminal reconnects rather
   than hold it, since a key typed at a screen the program has left would
   answer whatever it moved on to. Rex keeps that rule.

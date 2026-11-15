@@ -14,6 +14,10 @@ struct RexControlLinkTests {
         let text: String
     }
 
+    /// A delivery's deadline in these tests: ten seconds of silence, a
+    /// minute in all.
+    static let delivery = RexDeliveryDeadline(silence: .seconds(10), limit: .seconds(60))
+
     private func error(_ operation: () async throws -> some Any) async -> (any Error)? {
         do {
             _ = try await operation()
@@ -237,7 +241,7 @@ struct RexControlLinkTests {
         let clock = ManualClock()
         let (server, link) = try await FakeRexServer.open(clock: clock)
         var events = link.events.makeAsyncIterator()
-        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: Self.delivery) }
         let request = await server.nextRequest()
         for number in 1...3 {
             #expect(await clock.parks(for: .seconds(10)))
@@ -255,12 +259,56 @@ struct RexControlLinkTests {
         await link.close()
     }
 
+    /// A server that keeps sending but never answers holds a delivery no
+    /// longer than its limit: the outcome is then unknown, the link stays
+    /// open, and the request is never sent again.
+    @Test func aDeliveryThatHearsOnlyOtherMessagesEndsAtItsLimit() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        var events = link.events.makeAsyncIterator()
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: Self.delivery) }
+        _ = await server.nextRequest()
+        // Six silences fill the limit, and something arrives in each.
+        for number in 1...6 {
+            #expect(await clock.parks(for: .seconds(10)))
+            await server.push("session_destroyed", ["session_id": .string("session:\(number)")])
+            _ = try await events.next()
+            clock.advance(.seconds(10))
+        }
+        guard case .unknown = await delivery.value else {
+            Issue.record("Expected an unknown outcome at the limit")
+            return
+        }
+        #expect(await link.isOpen)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await server.requests.filter { $0.method == "block.event" }.count == 1)
+        await link.close()
+    }
+
+    /// A limit that is not a whole number of silences cuts the last one short.
+    @Test func aDeliveryLimitShorterThanItsSilenceEndsAtTheLimit() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        let delivery = Task {
+            await link.deliver(
+                "block.event", payload: JSONValue.object([:]),
+                deadline: RexDeliveryDeadline(silence: .seconds(10), limit: .seconds(4)))
+        }
+        _ = await server.nextRequest()
+        #expect(await clock.pass(.seconds(4)))
+        guard case .unknown = await delivery.value else {
+            Issue.record("Expected an unknown outcome at the limit")
+            return
+        }
+        await link.close()
+    }
+
     /// A delivery written into a silent link has an unknown outcome once the
     /// deadline passes with nothing arriving.
     @Test func aDeliveryMetBySilenceHasAnUnknownOutcome() async throws {
         let clock = ManualClock()
         let (server, link) = try await FakeRexServer.open(clock: clock)
-        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: Self.delivery) }
         _ = await server.nextRequest()
         #expect(await clock.pass(.seconds(10)))
         guard case .unknown = await delivery.value else {
@@ -277,7 +325,7 @@ struct RexControlLinkTests {
         let (server, link) = try await FakeRexServer.open(clock: clock)
         let writes = await server.channel.writeCount
         await server.channel.holdWrites()
-        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: Self.delivery) }
         await server.channel.waitForWrites(writes + 1)
         try await Task.sleep(for: .milliseconds(50))
         #expect(!clock.isParked(for: .seconds(10)))

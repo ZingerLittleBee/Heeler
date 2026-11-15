@@ -66,8 +66,10 @@ struct RexTerminalConnection: Sendable {
     /// the same server, SSH connection and control client, which a link that
     /// resumed the client keeps. It never waits for a link; with none, the
     /// request is not sent. `deadline` is how long the link may stay silent
-    /// once it is written before its outcome counts as unknown.
-    let deliver: @Sendable (_ method: String, _ payload: JSONValue, _ deadline: Duration) async -> RexDelivery
+    /// once it is written, and how long it may wait in all, before its
+    /// outcome counts as unknown.
+    let deliver: @Sendable (_ method: String, _ payload: JSONValue, _ deadline: RexDeliveryDeadline) async
+        -> RexDelivery
     /// The largest request the terminal's control link accepts, in bytes.
     let maxMessageBytes: Int
 }
@@ -193,12 +195,13 @@ actor RexTerminalAttach {
         var closeGrace: Duration = .seconds(1)
         /// How long the control link may stay silent, once a request of input
         /// is written, before its outcome counts as unknown. Its answer may
-        /// wait behind other messages as long as they keep arriving. Taking
-        /// the size waits as long.
-        var inputDeadline: Duration = .seconds(10)
-        /// How long giving the size back may wait in silence. Short, since
-        /// the attach waits for it as it ends.
-        var giveBackDeadline: Duration = .seconds(2)
+        /// wait behind other messages as long as they keep arriving, up to
+        /// the limit: a server that keeps sending but never answers holds
+        /// the input queue no longer than that. Taking the size waits as long.
+        var inputDeadline = RexDeliveryDeadline(silence: .seconds(10), limit: .seconds(60))
+        /// How long giving the size back may wait. Short, since the attach
+        /// waits for it as it ends.
+        var giveBackDeadline = RexDeliveryDeadline(silence: .seconds(2), limit: .seconds(10))
 
         init() {}
     }

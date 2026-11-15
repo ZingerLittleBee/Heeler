@@ -30,8 +30,8 @@ struct RexTerminalSizeOwnershipTests {
         options.stream.resumeDelay = .milliseconds(20)
         options.sizeSettle = .milliseconds(40)
         options.closeGrace = .milliseconds(150)
-        options.inputDeadline = inputDeadline
-        options.giveBackDeadline = .milliseconds(300)
+        options.inputDeadline.silence = inputDeadline
+        options.giveBackDeadline.silence = .milliseconds(300)
         let dialer = RexHostSessionTests.Dialer(hosts)
         return RexHostSession(
             storedSocket: RexSocket(path: RexTerminalAttachTests.socket), connect: { try await dialer.dial($0, $1) },

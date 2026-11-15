@@ -34,9 +34,10 @@ left it with no owner at its size.
   away, or the retention pool keeps it off screen), when its scene goes to the
   background, and when the attach ends for any reason, before the block is
   free for its next attach. Giving back is best effort: it waits at most two
-  seconds of silence, and one that was not sent or had no answer waits for the
-  next of these to try. A give back while another device has the block takes
-  this client out of line, so the block is not passed to it later.
+  seconds of silence and ten in all, and one that was not sent or had no
+  answer waits for the next of these to try. A give back while another device
+  has the block takes this client out of line, so the block is not passed to
+  it later.
 - **What the server handed over stays.** When the server passes the block to
   this client by itself, as when the device that took it back lets go or
   drops while this client is in line, the block stays as the server made it:
@@ -112,8 +113,9 @@ captures, live tests and fakes, recorded with their sources in
 - `TerminalAttachSession.sizeOwnership` carries the take and the viewer
   leaving; `AttachTerminalStore` publishes `sizeNotice` from the size reports
   it reads, and `TerminalSizeNoticeView` draws it in `ShellTerminalView`.
-- `RexTerminalConnection.deliver` takes a deadline, so input and taking the
-  size wait 10 seconds of silence and giving back two.
+- `RexTerminalConnection.deliver` takes a deadline of silence and a limit in
+  all, so input and taking the size wait 10 seconds of silence and a minute in
+  all, and giving back two and ten.
 - A give back that could not go out leaves this client in line until the
   attach ends; if the owner lets go meanwhile, the block can be passed to it.
 - A terminal that ends and opens again, as after a reset, has given its size

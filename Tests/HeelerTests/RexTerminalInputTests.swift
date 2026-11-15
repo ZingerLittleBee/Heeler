@@ -65,7 +65,7 @@ struct RexTerminalInputTests {
 
     private func hostSession(
         _ hosts: [ScriptedRexHost], closeGrace: Duration = .milliseconds(150),
-        inputDeadline: Duration = .seconds(10)
+        inputDeadline: Duration = .seconds(10), inputLimit: Duration = .seconds(60)
     ) -> RexHostSession {
         var options = RexTerminalAttach.Options()
         options.stream.link = .testing
@@ -73,7 +73,7 @@ struct RexTerminalInputTests {
         options.stream.resumeDelay = .milliseconds(20)
         options.sizeSettle = .milliseconds(40)
         options.closeGrace = closeGrace
-        options.inputDeadline = inputDeadline
+        options.inputDeadline = RexDeliveryDeadline(silence: inputDeadline, limit: inputLimit)
         let dialer = RexHostSessionTests.Dialer(hosts)
         return RexHostSession(
             storedSocket: RexSocket(path: RexTerminalAttachTests.socket), connect: { try await dialer.dial($0, $1) },
@@ -587,6 +587,37 @@ struct RexTerminalInputTests {
         try await Task.sleep(for: .milliseconds(100))
         #expect(await sent(control) == [.text("first\r")])
         #expect(await rig.endpoint.clientCloses == [WebSocketClose(code: .normalClosure)])
+    }
+
+    /// A server that keeps sending events but never answers a write holds
+    /// the input queue only until the limit: the write is never sent again,
+    /// what queued behind it is dropped, and the view says input failed.
+    @Test func aWriteHeardOverByEventsIsNeverSentAgainPastItsLimit() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession(
+            [await rig.host([.server(control)])], inputDeadline: .milliseconds(150), inputLimit: .milliseconds(500))
+        defer { Task { await session.end() } }
+        await session.resume()
+        let input = TerminalInputController()
+        let store = try await openPainted(rig, session: session, input: input)
+
+        type("first\r", into: input)
+        _ = await control.nextRequest()
+        type("second\r", into: input)
+        // Never silent for as long as the input deadline.
+        let chatter = Task {
+            while !Task.isCancelled {
+                await control.push(
+                    "block_event", ["block_id": .string(Self.address.blockID), "name": .string("bell")],
+                    session: Self.address.sessionID)
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        }
+        defer { chatter.cancel() }
+        try await waitUntil("the end") { store.status == .ended(Self.inputFailed) }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await sent(control) == [.text("first\r")])
     }
 
     /// A link that drops with a write out leaves its outcome unknown: even
