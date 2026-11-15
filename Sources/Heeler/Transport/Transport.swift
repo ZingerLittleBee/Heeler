@@ -1116,6 +1116,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// A Rex terminal's output stopped, and starting its stream again did not
     /// bring it back (ADR 0049). Reattach opens it afresh.
     case rexTerminalOutputUnavailable
+    /// A Rex terminal's redraw, its whole history, is too long to paint
+    /// (ADR 0049). Reattaching meets the same history until it is cleared.
+    case rexTerminalHistoryTooLong
     /// Nothing was sent: the action came from a detail opened on one Rex
     /// server's terminal, and the Host now runs another server. The Rex
     /// Host's `.tmuxServerGone`.
@@ -1202,7 +1205,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
-            .rexTerminalOutputUnavailable, .rexServerGone, .rexNotInstalled, .rexLookupFailed, .rexForwardingRefused,
+            .rexTerminalOutputUnavailable, .rexTerminalHistoryTooLong, .rexServerGone, .rexNotInstalled,
+            .rexLookupFailed, .rexForwardingRefused,
             .rexAccountRefused, .rexUnsupportedRevision, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse, .rexAnswerUnreadable:

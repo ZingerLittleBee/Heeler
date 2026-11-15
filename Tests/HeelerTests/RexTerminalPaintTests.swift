@@ -281,6 +281,52 @@ struct RexTerminalPaintTests {
         #expect(harness.drain().dropFirst().first == Harness.painted(first + "漢字end", exact: true))
     }
 
+    /// A redraw up to `redrawByteLimit` paints; the page that takes it past
+    /// ends the stream, and no further page is asked for.
+    @Test func aRedrawPastItsLimitEndsTheStream() {
+        var harness = Harness { $0.redrawByteLimit = 8 }
+        harness.resize()
+        harness.answerModes()
+        harness.answerRedraw("1234", next: 7)
+        harness.answerRedraw("5678", next: 7)
+        #expect(harness.pendingReads == [.title, .blobRead(id: 7, offset: 8)])
+        harness.answerRedraw("9")
+        #expect(harness.drain().dropFirst() == [.ended(.redrawTooLarge)])
+        #expect(harness.engine.hasEnded)
+        #expect(harness.engine.paintCount == 0)
+        harness.answerTitle()
+        harness.output("ignored")
+        #expect(harness.drain().isEmpty)
+        #expect(harness.wait == nil)
+
+        var fits = Harness { $0.redrawByteLimit = 8 }
+        fits.resize()
+        fits.answerModes()
+        fits.answerRedraw("1234", next: 7)
+        fits.answerRedraw("5678")
+        fits.answerTitle()
+        fits.pass(.milliseconds(60))
+        #expect(fits.drain().dropFirst().first == Harness.painted("12345678", exact: true))
+    }
+
+    /// A repaint meets the same limit: the view stops there rather than read
+    /// the whole history again at every quiet spell.
+    @Test func aRepaintPastTheLimitEndsTheStream() {
+        var harness = Harness { $0.redrawByteLimit = 8 }
+        harness.resize()
+        harness.readQuietly("SCREEN")
+        var taller = Harness.grid
+        taller.rows = 40
+        harness.resize(taller)
+        _ = harness.drain()
+        harness.answerModes()
+        harness.answerRedraw("TALLER", next: 3)
+        harness.answerRedraw("ROWS")
+        #expect(harness.drain() == [.ended(.redrawTooLarge)])
+        #expect(harness.engine.paintCount == 1)
+        #expect(harness.wait == nil)
+    }
+
     /// Output after the redraw's first page is kept, so a paint whose state
     /// came before it is fed what followed.
     @Test func outputBetweenPagesIsKept() {

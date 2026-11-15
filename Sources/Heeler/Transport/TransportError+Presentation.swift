@@ -259,6 +259,11 @@ extension TransportError {
                 summary: String(localized: "Rex stopped sending this terminal's output"),
                 detail: nil,
                 recoverySuggestion: String(localized: "Reattach to open it again."))
+        case .rexTerminalHistoryTooLong:
+            TransportErrorPresentation(
+                summary: String(localized: "This terminal's history is too long to show"),
+                detail: nil,
+                recoverySuggestion: String(localized: "Clear its scrollback, then reattach."))
         case .rexServerGone:
             TransportErrorPresentation(
                 summary: String(localized: "This Terminal belongs to a Rex server that is gone"),

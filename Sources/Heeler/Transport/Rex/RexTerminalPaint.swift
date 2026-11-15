@@ -35,6 +35,9 @@ enum RexTerminalEnd: Sendable, Equatable {
     case closedHere
     /// The redraw could not be read, so nothing could be painted.
     case paintFailed
+    /// The redraw grew past `redrawByteLimit`: the block's history is too
+    /// long to paint, and every later attempt would read it whole again.
+    case redrawTooLarge
     /// The server refused a ticket because the control link is not attached
     /// to the block's session.
     case notAttached
@@ -96,6 +99,11 @@ enum RexTerminalAnswer: Sendable, Equatable {
 ///   over from there. Such an attempt is never exact; on the last attempt of
 ///   a first paint it is painted anyway, with that gap until the dirty mark's
 ///   quiet repaint, and a repaint keeps showing the live output instead.
+///   The redraw, which pages the block's whole history, is bounded by
+///   `redrawByteLimit`: one that grows past it ends the stream with
+///   `.redrawTooLarge` rather than be read whole again on every repaint. So
+///   one paint holds at most the redraw, its copy behind the reset, the kept
+///   output, and the page being read.
 struct RexTerminalPaint: Sendable {
     struct Parameters: Sendable, Equatable {
         /// How long after the whole answer no output may arrive for an exact
@@ -114,6 +122,9 @@ struct RexTerminalPaint: Sendable {
         var pageBytes = 983_040
         /// Program output kept for after a paint.
         var replayByteLimit = 4 * 1024 * 1024
+        /// The longest redraw painted: room for a long history, while one
+        /// paint stays within what a phone can hold beside its other views.
+        var redrawByteLimit = 32 * 1024 * 1024
         /// Reads that may fail in a row before a first paint gives up.
         var failedReadLimit = 5
         /// The wait after a failed read before the next try.
@@ -288,6 +299,11 @@ struct RexTerminalPaint: Sendable {
             current.pageID = nil
             guard case .page(let bytes, let next) = answer else { return readFailed() }
             current.cut = true
+            guard current.redraw.count + bytes.count <= parameters.redrawByteLimit else {
+                attempt = nil
+                hasEnded = true
+                return [.emit(.ended(.redrawTooLarge))]
+            }
             current.redraw.append(bytes)
             if let next {
                 let page = makeID()

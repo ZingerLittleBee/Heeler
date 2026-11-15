@@ -36,6 +36,14 @@ terminal for viewing; ADR 0050 adds its input.
   output. A program that never goes quiet for 250 ms, such as a spinner or a
   streaming agent, keeps a best-effort first paint until it pauses: the lines
   that raced the redraw may show twice or not at all until then.
+- **Bounds.** Skipping the snapshot keeps less than one marker's length
+  between reads, however long it is. A view that stops reading holds its
+  block back: the stream stops reading once 1 MiB waits for the view, and the
+  data link reads no more than 256 KiB ahead, so the rest waits on the
+  server. While a paint is read the stream is read regardless, and up to
+  4 MiB of output is kept for after the paint; past that the paint is not
+  exact. A redraw longer than 32 MiB ends the terminal with a message to
+  clear its scrollback, rather than be read whole again at every repaint.
 - **What the redraw leaves out.** The redraw carries no title, cursor shape,
   default colors set with OSC 10 or 11, or saved cursor, and while a program
   uses the alternate screen, none of the primary screen or scrollback behind

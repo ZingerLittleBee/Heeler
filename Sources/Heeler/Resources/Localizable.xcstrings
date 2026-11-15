@@ -13754,6 +13754,7 @@
         }
       }
     },
+    "Clear its scrollback, then reattach." : {},
     "Close" : {
       "localizations" : {
         "ja" : {
@@ -63324,6 +63325,7 @@
         }
       }
     },
+    "This terminal's history is too long to show" : {},
     "This text contains control characters a terminal would read as commands. Remove them and try again." : {
       "localizations" : {
         "ja" : {

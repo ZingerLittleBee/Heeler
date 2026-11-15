@@ -79,13 +79,16 @@ struct RexTerminalAttachTests {
     }
 
     private func hostSession(
-        _ hosts: [ScriptedRexHost], terminalEndingGrace: Duration = .seconds(3)
+        _ hosts: [ScriptedRexHost], terminalEndingGrace: Duration = .seconds(3),
+        configure: (inout RexTerminalAttach.Options) -> Void = { _ in }
     ) -> RexHostSession {
-        hostSession(RexHostSessionTests.Dialer(hosts), terminalEndingGrace: terminalEndingGrace)
+        hostSession(
+            RexHostSessionTests.Dialer(hosts), terminalEndingGrace: terminalEndingGrace, configure: configure)
     }
 
     private func hostSession(
-        _ dialer: RexHostSessionTests.Dialer, terminalEndingGrace: Duration = .seconds(3)
+        _ dialer: RexHostSessionTests.Dialer, terminalEndingGrace: Duration = .seconds(3),
+        configure: (inout RexTerminalAttach.Options) -> Void = { _ in }
     ) -> RexHostSession {
         var options = RexTerminalAttach.Options()
         options.stream.link = .testing
@@ -93,6 +96,7 @@ struct RexTerminalAttachTests {
         options.stream.resumeDelay = .milliseconds(20)
         options.sizeSettle = .milliseconds(40)
         options.closeGrace = .milliseconds(150)
+        configure(&options)
         return RexHostSession(
             storedSocket: RexSocket(path: Self.socket), connect: { try await dialer.dial($0, $1) },
             reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
@@ -342,6 +346,29 @@ struct RexTerminalAttachTests {
         try await waitUntil("the end") { store.status == .finished }
         #expect(chunks.all.last == Data("logout\r\n".utf8))
         #expect(await rig.attachSlotsTaken == 0)
+    }
+
+    /// A history too long to paint ends the terminal with nothing shown, and
+    /// says to clear it rather than to reattach into the same limit.
+    @Test func aHistoryTooLongToPaintSaysSo() async throws {
+        let rig = Rig()
+        let session = hostSession([await rig.host([.server(await rig.server())])]) {
+            $0.stream.paint.redrawByteLimit = 8
+        }
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = store(session, chunks: chunks)
+        store.viewDidResize(cols: 80, rows: 24)
+        await rig.begin()
+
+        let tooLong = AttachTerminalStore.message(for: TransportError.rexTerminalHistoryTooLong)
+        try await waitUntil("the end") { store.status == .ended(tooLong) }
+        #expect(chunks.all.isEmpty)
+        #expect(await rig.endpoint.clientCloses == [WebSocketClose(code: .normalClosure)])
+        #expect(TransportError.rexTerminalHistoryTooLong.presentation.recoverySuggestion
+            == "Clear its scrollback, then reattach.")
+        #expect(!TransportError.rexTerminalHistoryTooLong.isRetryable)
     }
 
     /// A dropped data link, the control link fine, is resumed with every

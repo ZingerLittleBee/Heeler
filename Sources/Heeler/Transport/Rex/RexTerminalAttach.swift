@@ -29,6 +29,8 @@ enum RexTerminalEnding: Error, Sendable, Equatable {
     case connectionReset
     /// The block's output stopped, and starting it again did not bring it back.
     case outputUnavailable
+    /// The block's history is too long to paint.
+    case historyTooLong
     /// Input may have reached the terminal with no answer, or the server
     /// refused it. Nothing typed after it was sent, and it is never sent
     /// again, so nothing lands twice or out of order.
@@ -384,7 +386,9 @@ actor RexTerminalAttach {
                     // the next one attaches again and paints afresh.
                     await connection.forgetAttachment()
                     throw RexTerminalEnding.connectionReset
-                case .paintFailed, .notAttached, .streamUnavailable:
+                case .redrawTooLarge where !blockClosed:
+                    throw RexTerminalEnding.historyTooLong
+                case .paintFailed, .notAttached, .streamUnavailable, .redrawTooLarge:
                     throw blockClosed ? RexTerminalEnding.finished : RexTerminalEnding.outputUnavailable
                 }
             }
