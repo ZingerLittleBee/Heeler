@@ -16,6 +16,17 @@ enum LiveActivityRunState: Sendable, Equatable {
     case stale
     case ended
     case dismissed
+
+    /// Whether the activity still takes updates. iOS lists an ended one
+    /// until it leaves the Lock Screen, up to four hours later.
+    var isRunning: Bool { self == .active || self == .stale }
+}
+
+/// An activity ActivityKit still holds, with its state.
+struct LiveActivitySnapshot: Sendable, Equatable {
+    var id: String
+    var hostID: UUID
+    var state: LiveActivityRunState
 }
 
 enum LiveActivityRequestError: Error, Sendable, Equatable {
@@ -46,7 +57,7 @@ protocol LiveActivityControlling: AnyObject {
         immediate: Bool
     )
 
-    func currentActivities() -> [(id: String, hostID: UUID)]
+    func currentActivities() -> [LiveActivitySnapshot]
 
     func pushTokenUpdates(for handle: LiveActivityHandle) -> AsyncStream<Data>
 
@@ -102,10 +113,10 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         Task { await Self.pushEnd(id: id, content: content, policy: policy) }
     }
 
-    func currentActivities() -> [(id: String, hostID: UUID)] {
+    func currentActivities() -> [LiveActivitySnapshot] {
         Self.systemActivities().compactMap { activity in
             guard let hostID = UUID(uuidString: activity.attributes.hostID) else { return nil }
-            return (activity.id, hostID)
+            return LiveActivitySnapshot(id: activity.id, hostID: hostID, state: Self.runState(activity.activityState))
         }
     }
 
@@ -204,7 +215,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         immediate: Bool
     ) {}
 
-    func currentActivities() -> [(id: String, hostID: UUID)] { [] }
+    func currentActivities() -> [LiveActivitySnapshot] { [] }
 
     func pushTokenUpdates(for handle: LiveActivityHandle) -> AsyncStream<Data> {
         AsyncStream { $0.finish() }

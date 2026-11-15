@@ -38,13 +38,16 @@ final class FakeLiveActivityController: LiveActivityControlling {
         var id: String
         var hostID: UUID
         var content: AgentActivityAttributes.ContentState?
+        /// iOS keeps an ended activity on the Lock Screen for a while, and
+        /// lists it as ended until then.
+        var state: LiveActivityRunState = .active
         var lastToken: Data?
         var tokenContinuations: [AsyncStream<Data>.Continuation] = []
         var stateContinuations: [AsyncStream<LiveActivityRunState>.Continuation] = []
     }
 
-    func seed(id: String, hostID: UUID) {
-        records[id] = Record(id: id, hostID: hostID)
+    func seed(id: String, hostID: UUID, state: LiveActivityRunState = .active) {
+        records[id] = Record(id: id, hostID: hostID, state: state)
     }
 
     func emitToken(id: String, _ data: Data) {
@@ -56,9 +59,16 @@ final class FakeLiveActivityController: LiveActivityControlling {
     }
 
     func emitState(id: String, _ state: LiveActivityRunState) {
+        records[id]?.state = state
         for continuation in records[id]?.stateContinuations ?? [] {
             continuation.yield(state)
         }
+    }
+
+    /// iOS moved the activity on while the app was suspended, so the app
+    /// learns of it only by listing the activities again.
+    func setStateWhileSuspended(id: String, _ state: LiveActivityRunState) {
+        records[id]?.state = state
     }
 
     func activityID(for hostID: UUID) -> String? {
@@ -100,8 +110,8 @@ final class FakeLiveActivityController: LiveActivityControlling {
         }
     }
 
-    func currentActivities() -> [(id: String, hostID: UUID)] {
-        records.values.map { ($0.id, $0.hostID) }
+    func currentActivities() -> [LiveActivitySnapshot] {
+        records.values.map { LiveActivitySnapshot(id: $0.id, hostID: $0.hostID, state: $0.state) }
     }
 
     func pushTokenUpdates(for handle: LiveActivityHandle) -> AsyncStream<Data> {

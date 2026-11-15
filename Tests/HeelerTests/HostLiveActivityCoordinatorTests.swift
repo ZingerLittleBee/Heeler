@@ -672,6 +672,102 @@ struct HostLiveActivityCoordinatorTests {
         }
     }
 
+    @Test func aDismissalWhileAwayStaysDismissedOnReturn() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+
+            controller.setStateWhileSuspended(id: activityID, .dismissed)
+            coordinator.reconcile()
+            try await waitPastSettle()
+            #expect(controller.requested.count == 1, "a swiped-away activity stays away for the same Agents")
+        }
+    }
+
+    // MARK: Ended by iOS
+
+    @Test func anActivityIOSEndsStartsAgainForTheSameAgents() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+
+            controller.emitState(id: activityID, .ended)
+            try await waitUntil("working Agents should get a new activity") {
+                controller.requested.count == 2
+            }
+            #expect(controller.ended.map(\.id) == [activityID], "the ended one leaves the Lock Screen")
+        }
+    }
+
+    @Test func anActivityIOSEndedWhileAwayStartsAgainOnReturn() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+
+            controller.setStateWhileSuspended(id: activityID, .ended)
+            coordinator.reconcile()
+            try await waitUntil("returning with working Agents should start a new activity") {
+                controller.requested.count == 2
+            }
+            #expect(controller.ended.map(\.id) == [activityID], "the ended one leaves the Lock Screen")
+            #expect(controller.updates.isEmpty, "an ended activity takes no updates")
+        }
+    }
+
+    @Test func launchReplacesAnActivityIOSAlreadyEnded() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            controller.seed(id: "act-cold", hostID: host.id, state: .ended)
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("working Agents should get a new activity") {
+                !controller.requested.isEmpty
+            }
+            #expect(controller.ended.map(\.id) == ["act-cold"])
+            #expect(controller.ended.first?.immediate == true)
+            #expect(controller.updates.isEmpty, "an ended activity takes no updates")
+        }
+    }
+
+    @Test func returningToTheAppRetriesAStartIOSRefused() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            // iOS refuses a start while Heeler is in the background.
+            controller.requestError = LiveActivityRequestError.requestFailed("visibility")
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the start should fail") {
+                coordinator.reconcileNotes[host.id]?.hasPrefix("start failed") == true
+            }
+
+            controller.requestError = nil
+            coordinator.reconcile()
+            try await waitUntil("returning to the app should start the activity") {
+                !controller.requested.isEmpty
+            }
+            #expect(controller.requested.count == 1)
+        }
+    }
+
     @Test func layoutChangesUpdateActivityAndRetryBackgroundRegistration() async throws {
         try await withFixture { defaults in
             try await registerDevice()
