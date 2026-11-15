@@ -155,6 +155,16 @@ Lab captures `a_snapshot_skip` and `g_reconnect`, and the committed
   3, and a new HELLO from the same control client then opened a new stream.
 - A second HELLO for a block while the client's first connection to it was
   live got reason 2 (`RexTerminalLiveTests`).
+- A review probe left a control connection and a data connection open, as the
+  server side of a dead SSH connection would, and resumed the client on a new
+  control connection. The server took the client back and closed the old
+  control connection, but kept the old data connection open; that client's
+  HELLOs for the block then got reason 2, four of them a second apart. A HELLO
+  from a new client was welcomed meanwhile. A RESUME of the old stream on a
+  new connection was welcomed with the same nonce and closed the old
+  connection; with a count short of what the server had written into the old
+  one it got reason 3 and still closed it, after which a HELLO was welcomed
+  (review probe).
 - The block's closing closed its connection with 4000 about 0.3 seconds later,
   after the stream's last messages. The control connection that opened the
   stream closing with a close frame closed it at once with 1001 and the reason

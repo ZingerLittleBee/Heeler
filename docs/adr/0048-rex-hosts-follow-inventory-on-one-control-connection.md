@@ -40,7 +40,8 @@ restarted servers without showing a stale or half-read list.
   are read, then on each change once it settles.
 - A control connection that drops without a close frame is followed by a new
   one whose hello carries its reconnect token, on the same SSH connection when
-  that is still up and over a new one when it is not. Rex's API document says
+  that is still up and over a new one when it is not, unless the client opened
+  a terminal's data link (ADR 0049). Rex's API document says
   events sent in between are lost even when the server takes the client back,
   so every new connection reads the whole inventory again. A connection the server closed, as it does
   when too many events queue up for a client, is followed by a plain hello and

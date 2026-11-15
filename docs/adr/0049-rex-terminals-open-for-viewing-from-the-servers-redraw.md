@@ -66,6 +66,13 @@ terminal for viewing; ADR 0050 adds its input.
   - A new control client, or a new SSH connection, ends every open terminal's
     attach as a lost connection: the view keeps its screen, reattaches, and
     paints afresh.
+  - A new SSH connection never takes back a control client that opened a
+    data link; it says hello as a new client. An SSH connection that died
+    half-open can leave that client's data links open on the server, which
+    refuses the same client a second link to a block until it notices the
+    dead one, minutes later. A new client is refused nothing, and the
+    terminals paint afresh either way. A client that opened no data link is
+    taken back as ADR 0048 says.
   - A stream whose new tickets the server keeps refusing for want of an
     attach ends the same way, and the next attach sends `session.attach`
     again on the same client.
@@ -129,6 +136,10 @@ captures, live tests and fakes, recorded with their sources in
   owns the blocks of its own windows.
 - A program writing about every 12 ms got a best-effort first paint and one
   exact repaint once it stopped.
+- With a data connection left open as a dead SSH connection's server side
+  would leave it, the client resumed on a new control connection got a
+  refusal for every new data connection to that block, a second apart; a new
+  client got its data connection at once.
 
 ## Considered options
 
@@ -137,6 +148,11 @@ captures, live tests and fakes, recorded with their sources in
 - Taking ownership on open: rejected; it resizes the desktop's terminal.
 - Keeping a stream across a new control client: rejected; the server cancels
   a client's streams once that client is gone.
+- Clearing a stale data connection on a new SSH connection by resuming its
+  stream there before the new stream's handshake: it works, but needs the
+  old links kept across attaches and every terminal route tied to the client
+  instead of the SSH connection. Retrying a refused handshake instead waits
+  for the server's pings to go unanswered, which takes minutes.
 
 ## Consequences
 
