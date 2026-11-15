@@ -654,6 +654,12 @@ final class AgentChatStore {
         return RemoteFilePath.windowsForSFTP(resolved)
     }
 
+    /// Whether a user request for earlier history can start right now.
+    var canLoadOlder: Bool {
+        guard case .following = conversation.phase else { return false }
+        return conversation.older == .available || isFailedOlder
+    }
+
     /// Reads above the oldest message shown, a page per turn of the loop, for
     /// the user or, `automatic`, for a timeline whose rows do not fill the
     /// screen. Leaving Chat keeps the request; it goes on when Chat returns.
