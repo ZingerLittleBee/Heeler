@@ -49,14 +49,15 @@ its contract.
 
 ## Connection, input, and terminals
 
-- **Conversation title Rename:** [AgentTitleRenameStore](../../Sources/Heeler/Console/AgentTitleRenameStore.swift),
+- **Conversation title Rename:** [AgentTitleRenameStore](../../Sources/Heeler/Console/AgentTitleRenameStore.swift)
+  (including `PendingAgentTitleRenameStore` for titles saved while an Agent is running and flushed once it stops),
   [AgyAnnotationTitle](../../Sources/Heeler/Console/AgyAnnotationTitle.swift),
   and [AgentTitleRenameSheet](../../Sources/Heeler/Console/AgentTitleRenameSheet.swift), created by
   `ConsoleStore.titleRenameStore(for:)` from the list, Chat, and terminal's existing menus, with
   zero-config Antigravity CLI `.pbtxt` annotation title loading on POSIX Hosts.
   This is separate from `RenameStore` and `agent.rename` (the management alias).
   [ADR 0040](../adr/0040-conversation-titles-use-native-agent-commands.md) records native commands,
-  `.pbtxt` title loading, generation capabilities, same-session checks and one-shot delivery. Focused tests:
+  `.pbtxt` title loading, generation capabilities, deferred busy-Agent queueing, same-session checks and one-shot delivery. Focused tests:
   [AgentTitleRenameTests](../../Tests/HeelerTests/AgentTitleRenameTests.swift),
   [AgyAnnotationTitleTests](../../Tests/HeelerTests/AgyAnnotationTitleTests.swift), and opt-in
   [AgentTitleRenameLiveTests](../../Tests/HeelerLiveTests/AgentTitleRenameLiveTests.swift)

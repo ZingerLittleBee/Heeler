@@ -66,7 +66,8 @@ final class HeelerAppModel {
         console: ConsoleStore = ConsoleStore(
             chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
             coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
-            harnessEdits: HarnessConfigEditStore(defaults: .standard)),
+            harnessEdits: HarnessConfigEditStore(defaults: .standard),
+            pendingTitleRenames: PendingAgentTitleRenameStore(defaults: .standard)),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator(),
         liveActivityHosts: LiveActivityHostPublisher = LiveActivityHostPublisher()
