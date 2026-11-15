@@ -178,12 +178,14 @@ enum RexInventoryWire {
                 || (creatorName == nil && flavor?.hasPrefix("\(RexInventoryWire.terminalCreator).") == true)
         }
 
-        /// The label, unless it is the one Rex gives every new block of its
-        /// flavor: the flavor's last name, `shell` (seen on 0.1.0-preview.14).
+        /// The label, unless it is one Rex gives a block it was not named: the
+        /// flavor's last name, `shell`, for a new block, and `Block` and the
+        /// last eight hex digits of its id for one whose label was cleared
+        /// (both seen on 0.1.0-preview.14).
         var customLabel: String? {
             guard let label, !label.isEmpty else { return nil }
             if let flavor, let short = flavor.split(separator: ".").last, label == short { return nil }
-            return label
+            return RexInventoryWire.isDefaultLabel(label, prefix: "Block", id: id) ? nil : label
         }
     }
 
@@ -197,9 +199,16 @@ enum RexInventoryWire {
         /// and the last eight hex digits of its id (seen on 0.1.0-preview.14).
         var customLabel: String? {
             guard let label, !label.isEmpty else { return nil }
-            let digits = id.split(separator: ":").last.map { $0.replacingOccurrences(of: "-", with: "") } ?? ""
-            return digits.count >= 8 && label == "Window \(digits.suffix(8))" ? nil : label
+            return RexInventoryWire.isDefaultLabel(label, prefix: "Window", id: id) ? nil : label
         }
+    }
+
+    /// Whether `label` is `prefix` and the last eight hex digits of `id`, its
+    /// part after the last colon with dashes removed: the label Rex makes
+    /// from an id.
+    static func isDefaultLabel(_ label: String, prefix: String, id: String) -> Bool {
+        let digits = id.split(separator: ":").last.map { $0.replacingOccurrences(of: "-", with: "") } ?? ""
+        return digits.count >= 8 && label == "\(prefix) \(digits.suffix(8))"
     }
 
     struct View: Sendable, Equatable {

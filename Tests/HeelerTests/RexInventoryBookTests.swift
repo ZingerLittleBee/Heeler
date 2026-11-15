@@ -81,6 +81,20 @@ struct RexInventoryBookTests {
         #expect(!book.isDetailSettled)
     }
 
+    /// A block whose label was cleared carries the label Rex makes from its
+    /// id, which reads as unnamed; the same words on another block's id are
+    /// the user's.
+    @Test func aClearedBlockLabelReadsAsUnnamed() {
+        var session = studio
+        var cleared = FakeRexWorld.Block("block:00000000-0000-7000-8000-0000c0ffee01")
+        cleared.label = "Block c0ffee01"
+        var named = FakeRexWorld.Block("block:00000000-0000-7000-8000-0000c0ffee02")
+        named.label = "Block c0ffee01"
+        session.detached = [cleared, named]
+        let book = settled([session])
+        #expect(book.inventory.sessions.first?.detached.map(\.label) == [nil, "Block c0ffee01"])
+    }
+
     /// No more reads are in flight than the limit, structure first.
     @Test func readsStayWithinTheLimit() {
         var book = RexInventoryBook()
