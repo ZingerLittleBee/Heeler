@@ -75,7 +75,7 @@ struct EdgeDockSettingsTests {
         #expect(unclear + handle > jump.lowerBound, "the measured overlap")
 
         let top = WorkspaceTerminalDrawer.handleTop(
-            fraction: 0.5, liftTravel: 0, height: height, clearing: jump)
+            fraction: 0.5, liftTravel: 0, height: height, clearing: [jump])
         #expect(top == jump.lowerBound - gap - handle)
     }
 
@@ -83,16 +83,16 @@ struct EdgeDockSettingsTests {
         let height: CGFloat = 600
         let rested = WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height)
         #expect(WorkspaceTerminalDrawer.handleTop(
-            fraction: 0.5, liftTravel: 0, height: height, clearing: 400...444) == rested)
+            fraction: 0.5, liftTravel: 0, height: height, clearing: [400...444]) == rested)
         #expect(WorkspaceTerminalDrawer.handleTop(
-            fraction: 0.5, liftTravel: 0, height: height, clearing: nil) == rested)
+            fraction: 0.5, liftTravel: 0, height: height, clearing: []) == rested)
     }
 
     @Test func drawerHandleStepsBelowWhenTheJumpButtonsSitAtTheTop() {
         let gap = WorkspaceTerminalDrawer.edgeGap
         let jump: ClosedRange<CGFloat> = 0...44
         let top = WorkspaceTerminalDrawer.handleTop(
-            fraction: 0, liftTravel: 0, height: 400, clearing: jump)
+            fraction: 0, liftTravel: 0, height: 400, clearing: [jump])
         #expect(top == jump.upperBound + gap)
     }
 
@@ -100,14 +100,14 @@ struct EdgeDockSettingsTests {
         let handle = WorkspaceTerminalDrawer.handleSize.height
         let height = handle + 40
         let top = WorkspaceTerminalDrawer.handleTop(
-            fraction: 0.5, liftTravel: 0, height: height, clearing: 10...50)
+            fraction: 0.5, liftTravel: 0, height: height, clearing: [10...50])
         #expect(top == WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height))
     }
 
     @Test func liftingAHandleThatSteppedAsideStartsWhereItSits() {
         let jump: ClosedRange<CGFloat> = 136...180
         func top(lift: CGFloat) -> CGFloat {
-            WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: lift, height: 240, clearing: jump)
+            WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: lift, height: 240, clearing: [jump])
         }
         let rested = top(lift: 0)
         #expect(rested == 64)
@@ -122,13 +122,40 @@ struct EdgeDockSettingsTests {
         let above = jump.lowerBound - gap - handle
         let below = jump.upperBound + gap
         func nudge(_ top: CGFloat, _ step: CGFloat) -> CGFloat {
-            WorkspaceTerminalDrawer.nudged(from: top, by: step, height: 400, clearing: jump)
+            WorkspaceTerminalDrawer.nudged(from: top, by: step, height: 400, clearing: [jump])
         }
         #expect(nudge(above, handle) == below)
         #expect(nudge(below, -handle) == above)
         #expect(nudge(0, handle) == handle, "a nudge clear of the buttons moves by the handle's height")
-        #expect(WorkspaceTerminalDrawer.nudged(from: 300, by: handle, height: 400, clearing: nil) == 400 - handle,
+        #expect(WorkspaceTerminalDrawer.nudged(from: 300, by: handle, height: 400, clearing: []) == 400 - handle,
                 "a nudge stays on the edge")
+    }
+
+    /// A nudge past the buttons is saved as a fraction, which reads back a
+    /// hair short of where it was saved.
+    @Test func aHandleNudgedPastTheJumpButtonsStaysThereOnceSaved() {
+        let height: CGFloat = 632
+        let jump: ClosedRange<CGFloat> = 430...474
+        let start = jump.lowerBound - WorkspaceTerminalDrawer.edgeGap - WorkspaceTerminalDrawer.handleSize.height
+        let nudged = WorkspaceTerminalDrawer.nudged(
+            from: start, by: WorkspaceTerminalDrawer.handleSize.height, height: height, clearing: [jump])
+        #expect(nudged == jump.upperBound + WorkspaceTerminalDrawer.edgeGap)
+        let saved = WorkspaceTerminalDrawer.fraction(handleTop: nudged, height: height)
+        let rested = WorkspaceTerminalDrawer.handleTop(fraction: saved, liftTravel: 0, height: height, clearing: [jump])
+        #expect(abs(rested - nudged) < 0.01)
+    }
+
+    /// Direct Input with Attach Links, both jump buttons docked halfway down
+    /// a 240-point terminal: below the buttons is the Attach Links button.
+    @Test func drawerHandleDoesNotStepOntoAnotherControl() {
+        let height: CGFloat = 240
+        let jump: ClosedRange<CGFloat> = 45.5...134.5
+        let links: ClosedRange<CGFloat> = 188...232
+        let pastJump = WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height, clearing: [jump])
+        #expect(pastJump == jump.upperBound + WorkspaceTerminalDrawer.edgeGap, "with the jump buttons alone it steps below them")
+        let top = WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height, clearing: [jump, links])
+        #expect(top == WorkspaceTerminalDrawer.handleTop(fraction: 0.5, liftTravel: 0, height: height),
+                "with no clear place it stays where it rests")
     }
 
     @Test func drawerPanelCentresOnTheHandleWithoutLeavingTheTerminal() {
