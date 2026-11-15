@@ -5,6 +5,12 @@ import UIKit
 struct ChatTimelineActions {
     /// The user asked for earlier history: Load Earlier Messages or Retry.
     var loadOlder: @MainActor () -> Void = {}
+    /// Whether `loadOlder` can start a Host read right now.
+    var canLoadOlder: @MainActor () -> Bool = { true }
+    /// Haptic feedback when holding Jump to Top triggers loading earlier history.
+    var topJumpLoadFeedback: @MainActor () -> Void = {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
     /// The list asks for earlier history by itself while its rows do not
     /// fill the screen.
     var loadOlderAutomatically: @MainActor () -> Void = {}
@@ -142,8 +148,17 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     /// Set when the list may rest with its end under Collapse Steps; the
     /// next layout pass, which knows the end, moves it clear.
     private var wantsEndClearOfCollapseControl = false
+    private struct PendingTopJumpLoad {
+        let firstContentRowBefore: ChatRowID?
+        var sawLoading = false
+    }
+
     private var isJumpAnimating = false
     private var isTopJumpAnimating = false
+    private var isHoldingTopJump = false
+    private var topJumpHoldLoadTask: Task<Void, Never>?
+    private var pendingTopJumpLoad: PendingTopJumpLoad?
+    private var topJumpHoldSawFailure = false
     private var hasReportedFirstLayout = false
     /// The older-history state the last automatic request was made in, so
     /// one short list asks once.
@@ -167,6 +182,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     /// How far past its top the list is pulled to load earlier history.
     static let pullToLoadDistance: CGFloat = 80
+    /// Pause at the top before holding `↑` loads earlier history.
+    static let topJumpHoldLoadDelay: Duration = .milliseconds(500)
 
     /// How many times a row was built into a cell, for tests.
     private(set) var cellBuilds = 0
@@ -177,15 +194,32 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     var timeline: ChatCollectionView { collectionView }
     var geometry: ChatTimelineGeometry { layout.geometry }
     var canCollapseTrajectory: Bool { collapseTarget != nil }
+    private var canLoadOlderHistory: Bool {
+        guard actions.canLoadOlder() else { return false }
+        switch rowsByID[.olderHistory]?.content {
+        case .olderHistory(.available)?, .olderHistory(.failed)?:
+            return true
+        case .olderHistory(.loading)?:
+            return isHoldingTopJump
+        default:
+            return false
+        }
+    }
     var canJumpToPreviousUserMessage: Bool {
-        if isTopJumpAnimating { return false }
+        if isHoldingTopJump {
+            return offersPreviousMessageAtEnd || canLoadOlderHistory
+        }
+        if isTopJumpAnimating {
+            return canLoadOlderHistory && offersPreviousMessageAtEnd
+        }
         if isJumpAnimating || latch.isFollowing {
             return offersPreviousMessageAtEnd
         }
         if let activeID = activeMessageJumpTarget, let activeOffset = destinationOffset(for: activeID) {
-            return activeOffset > collectionView.minOffsetY + 1
+            return activeOffset > collectionView.minOffsetY + 1 || (canLoadOlderHistory && offersPreviousMessageAtEnd)
         }
         return collectionView.contentOffset.y > collectionView.minOffsetY + 1
+            || (canLoadOlderHistory && offersPreviousMessageAtEnd)
     }
 
     /// Where a row's cell sits in the content, for tests; nil off screen.
@@ -298,6 +332,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        isHoldingTopJump = false
+        cancelTopJumpHoldLoad()
+        pendingTopJumpLoad = nil
+        topJumpHoldSawFailure = false
         PerfTrace.setContext("chat", nil)
     }
 
@@ -373,6 +411,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             disclosureAnchor = nil
             isJumpAnimating = false
             isTopJumpAnimating = false
+            isHoldingTopJump = false
+            cancelTopJumpHoldLoad()
+            pendingTopJumpLoad = nil
+            topJumpHoldSawFailure = false
             activeMessageJumpTarget = nil
             latch.reset()
             noteFollowing()
@@ -448,6 +490,24 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             }
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
+        if var pending = pendingTopJumpLoad {
+            if Self.isLoadingOlderHistory(state) {
+                pending.sawLoading = true
+                pendingTopJumpLoad = pending
+            } else {
+                let firstBuilt = state.rows.first(where: { $0.id != .olderHistory })?.id
+                let prependedAtTop = firstBuilt != pending.firstContentRowBefore
+                if pending.sawLoading || prependedAtTop || !Self.offersOlderHistory(state) {
+                    pendingTopJumpLoad = nil
+                    if Self.isFailedOlderHistory(state) {
+                        topJumpHoldSawFailure = true
+                    }
+                    if olderPull.phase == .requested {
+                        olderPull.phase = .idle
+                    }
+                }
+            }
+        }
         // Once the row shows the request, its own state takes over. A page
         // that landed while the list was held leaves the row available
         // again, with the request over.
@@ -459,12 +519,27 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         requestOlderIfShort()
         noteCollapseAvailability()
         notePreviousMessageAvailability()
+        continueTopJumpHoldIfNeeded()
     }
 
     /// Whether `state`'s Load Earlier row offers a request rather than
     /// showing one.
     private static func offersOlderHistory(_ state: ChatTimelineState) -> Bool {
         guard case .olderHistory(.available)? = state.rows.first(where: { $0.id == .olderHistory })?.content else {
+            return false
+        }
+        return true
+    }
+
+    private static func isLoadingOlderHistory(_ state: ChatTimelineState?) -> Bool {
+        guard case .olderHistory(.loading)? = state?.rows.first(where: { $0.id == .olderHistory })?.content else {
+            return false
+        }
+        return true
+    }
+
+    private static func isFailedOlderHistory(_ state: ChatTimelineState) -> Bool {
+        guard case .olderHistory(.failed)? = state.rows.first(where: { $0.id == .olderHistory })?.content else {
             return false
         }
         return true
@@ -839,6 +914,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     private func cancelProgrammaticJump() {
+        cancelTopJumpHoldLoad()
         let hadJump = isJumpAnimating || isTopJumpAnimating || activeMessageJumpTarget != nil
         isJumpAnimating = false
         isTopJumpAnimating = false
@@ -929,10 +1005,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard let target = previousUserMessageTarget else {
             if !isTopJumpAnimating, collectionView.contentOffset.y > collectionView.minOffsetY + 1 {
                 jumpToTop()
+            } else if isAtTop, canStartTopJumpHoldLoad {
+                olderPull.phase = .requested
+                olderRequestHasShown = false
+                actions.loadOlder()
             }
             return
         }
         animateToMessageJump(target)
+    }
+
+    func refreshPreviousMessageAvailability() {
+        notePreviousMessageAvailability()
     }
 
     /// Newer Message: animates downward to the next user message below the
@@ -982,10 +1066,11 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         collectionView.layoutIfNeeded()
         guard collectionView.contentOffset.y > collectionView.minOffsetY + 0.5 else {
             notePreviousMessageAvailability()
+            continueTopJumpHoldIfNeeded()
             return
         }
         cancelProgrammaticJump()
-        disclosureAnchor = layout.id(at: 0)
+        disclosureAnchor = nil
         layout.holdTopPadding()
         latch.disclosureSettled(isAtEnd: false)
         noteFollowing()
@@ -1008,6 +1093,86 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         notePreviousMessageAvailability()
     }
 
+    /// Tracks whether the user is still holding the `↑` long-press. While held
+    /// at the top with earlier history available, pauses 500ms, vibrates, and
+    /// loads more, then continues scrolling to the new top as updates arrive.
+    func setHoldingTopJump(_ isHolding: Bool) {
+        loadViewIfNeeded()
+        guard isHoldingTopJump != isHolding else { return }
+        isHoldingTopJump = isHolding
+        if isHolding {
+            topJumpHoldSawFailure = false
+            continueTopJumpHoldIfNeeded()
+        } else {
+            cancelTopJumpHoldLoad()
+            pendingTopJumpLoad = nil
+            topJumpHoldSawFailure = false
+        }
+        notePreviousMessageAvailability()
+    }
+
+    private var isAtTop: Bool {
+        collectionView.contentOffset.y <= collectionView.minOffsetY + 0.5
+    }
+
+    private var canStartTopJumpHoldLoad: Bool {
+        guard actions.canLoadOlder() else { return false }
+        switch rowsByID[.olderHistory]?.content {
+        case .olderHistory(.available)?:
+            return true
+        case .olderHistory(.failed)?:
+            return !topJumpHoldSawFailure
+        default:
+            return false
+        }
+    }
+
+    private func cancelTopJumpHoldLoad() {
+        topJumpHoldLoadTask?.cancel()
+        topJumpHoldLoadTask = nil
+    }
+
+    private func continueTopJumpHoldIfNeeded() {
+        guard isHoldingTopJump, !latch.isUserScrolling else {
+            cancelTopJumpHoldLoad()
+            return
+        }
+        if isTopJumpAnimating || pendingTopJumpLoad != nil || Self.isLoadingOlderHistory(applied) {
+            cancelTopJumpHoldLoad()
+            return
+        }
+        if !isAtTop {
+            cancelTopJumpHoldLoad()
+            jumpToTop()
+            return
+        }
+        guard canStartTopJumpHoldLoad else {
+            cancelTopJumpHoldLoad()
+            return
+        }
+        guard topJumpHoldLoadTask == nil else { return }
+        let delay = Self.topJumpHoldLoadDelay
+        topJumpHoldLoadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.topJumpHoldLoadTask = nil
+            self.fireTopJumpHoldLoadIfReady()
+        }
+    }
+
+    private func fireTopJumpHoldLoadIfReady() {
+        guard isHoldingTopJump, !latch.isUserScrolling, !isTopJumpAnimating,
+            pendingTopJumpLoad == nil, !Self.isLoadingOlderHistory(applied),
+            isAtTop, canStartTopJumpHoldLoad
+        else { return }
+        let firstBuilt = applied?.rows.first(where: { $0.id != .olderHistory })?.id
+        pendingTopJumpLoad = PendingTopJumpLoad(firstContentRowBefore: firstBuilt)
+        olderPull.phase = .requested
+        olderRequestHasShown = false
+        actions.topJumpLoadFeedback()
+        actions.loadOlder()
+    }
+
     private func settleTopJump() {
         UIView.performWithoutAnimation {
             collectionView.contentOffset.y = collectionView.minOffsetY
@@ -1017,6 +1182,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         noteCollapseAvailability()
         notePreviousMessageAvailability()
+        continueTopJumpHoldIfNeeded()
         if layout.geometry.count > 0,
             let cell = collectionView.cellForItem(at: IndexPath(item: 0, section: 0))
         {
@@ -1077,8 +1243,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     private func captureAnchor() -> ScrollAnchor {
-        if isTopJumpAnimating, let firstID = layout.id(at: 0) {
-            return .rows([(firstID, 0)])
+        if isTopJumpAnimating {
+            let topRows = (0..<min(2, layout.geometry.count)).compactMap { index -> (ChatRowID, CGFloat)? in
+                guard let id = layout.id(at: index) else { return nil }
+                return (id, layout.geometry.minY(at: index))
+            }
+            if topRows.contains(where: { $0.0 != .olderHistory }) {
+                return .rows(topRows)
+            }
         }
         if let id = activeMessageJumpTarget, let row = rowsByID[id], layout.index(of: id) != nil {
             return .rows([(id, messageAnchorOffset(for: row))])
@@ -1387,6 +1559,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     // MARK: Scrolling
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        cancelTopJumpHoldLoad()
         disclosureAnchor = nil
         isJumpAnimating = false
         isTopJumpAnimating = false
@@ -1438,6 +1611,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        cancelTopJumpHoldLoad()
         disclosureAnchor = nil
         isJumpAnimating = false
         isTopJumpAnimating = false

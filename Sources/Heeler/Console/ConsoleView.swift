@@ -178,11 +178,31 @@ struct ConsoleView: View {
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
     @Environment(\.agentSceneRouting) private var sceneRouting
+    /// Which Hosts hold an older Plugin or Helper than this app carries
+    /// (ADR 0048); nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var hostUpdates: HostUpdatesStore?
 
     var body: some View {
         let _ = PerfTrace.count("ConsoleView.body")
         let _ = contentPass.advance()
         tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
+            .modifier(
+                HostUpdatesPrompt(
+                    updates: hostUpdates,
+                    // Not over a terminal or a Chat someone may be typing in.
+                    // Beside an iPad's sidebar there is always one on stage.
+                    isAtRoot: usesSidebarNavigation || detailOnStage == nil,
+                    isCovered: { isPresentingOverConsole }))
+    }
+
+    /// The Hosts tab's badge: how many Plugin and Helper updates wait, or a
+    /// mark once one failed and nothing is running.
+    private var hostUpdatesBadge: Text? {
+        switch hostUpdates?.snapshot.badge {
+        case .count(let count): Text(verbatim: "\(count)")
+        case .failed: Text(verbatim: "!")
+        case nil: nil
+        }
     }
 
     private var tabs: some View {
@@ -223,6 +243,7 @@ struct ConsoleView: View {
                 }
                 .id(hostsTabGeneration)
             }
+            .badge(hostUpdatesBadge)
             Tab(value: ConsoleTab.settings) {
                 MainActorContent { settingsView() }
                     .id(settingsTabGeneration)
@@ -607,6 +628,7 @@ struct ConsoleView: View {
     private var usageSidebarFooter: some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
+                .overlay(alignment: .topTrailing) { SidebarIconBadge(label: hostUpdatesBadge) }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
         }
@@ -1262,6 +1284,7 @@ struct ConsoleView: View {
     private func sidebarFooter(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
+                .overlay(alignment: .topTrailing) { SidebarIconBadge(label: hostUpdatesBadge) }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
             // A menu's pointer target is its own, not its button style's
@@ -3014,6 +3037,66 @@ private struct SidebarListShown: ViewModifier {
             .allowsHitTesting(isShown)
             .disabled(!isShown)
             .accessibilityHidden(!isShown)
+    }
+}
+
+/// The Hosts tab's badge, on the icon that stands in for the tab beside an
+/// iPad's sidebar.
+private struct SidebarIconBadge: View {
+    let label: Text?
+
+    var body: some View {
+        if let label {
+            label
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .frame(minWidth: 16, minHeight: 16)
+                .background(.red, in: Capsule())
+                .offset(x: -3, y: 3)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Shows Updates once after an app update brought a newer Plugin or Helper
+/// than the Hosts hold (ADR 0048). It waits for a window that is clear: a
+/// list or a tab's own page, with nothing presented over it.
+private struct HostUpdatesPrompt: ViewModifier {
+    let updates: HostUpdatesStore?
+    let isAtRoot: Bool
+    /// Whether the window presents something already, asked as late as can be.
+    let isCovered: @MainActor () -> Bool
+    @State private var isShowing = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var isDue: Bool {
+        updates?.isPromptDue == true && isAtRoot && scenePhase == .active
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $isShowing) {
+                if let updates { HostUpdatesView(store: updates, isPrompt: true) }
+            }
+            // A sheet going away changes nothing this can observe, so it looks
+            // again until the window is clear.
+            .task(id: isDue) {
+                while isDue, !Task.isCancelled {
+                    if !isCovered() {
+                        present()
+                        return
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+    }
+
+    /// The first window to get here shows it; the others find it shown.
+    private func present() {
+        guard let updates, updates.isPromptDue else { return }
+        updates.promptDidShow()
+        isShowing = true
     }
 }
 

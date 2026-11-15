@@ -99,6 +99,7 @@ struct HostOnboardingView: View {
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
             noteTmuxPaths: dependencies.noteTmuxPaths,
+            notePlugin: dependencies.notePlugin,
             noteRexSocket: dependencies.noteRexSocket)
     }
 
@@ -639,6 +640,11 @@ struct HostOnboardingView: View {
                         if store.pluginAction == .running {
                             ProgressView()
                                 .controlSize(.small)
+                        } else if HeelerPluginPresentation.unattendedUpdate(
+                            for: store.pluginStatus, on: store.host) != nil
+                        {
+                            // Nothing is wrong with what is installed.
+                            HostUpdateMark()
                         } else {
                             PluginNoticeIcon(tone: notice.tone)
                         }
@@ -668,6 +674,8 @@ struct HostOnboardingView: View {
                     if helper.running != nil {
                         ProgressView()
                             .controlSize(.small)
+                    } else if helper.installAction == .update {
+                        HostUpdateMark()
                     } else if helper.needsAttention {
                         PluginNoticeIcon(tone: .warning)
                     }

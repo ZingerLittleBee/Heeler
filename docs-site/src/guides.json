@@ -34,7 +34,7 @@
         "en": "Hosts",
         "zh": "Host"
       },
-      "guides": ["herdr-core", "tmux", "rex", "host-routes", "windows-setup", "selinux"]
+      "guides": ["herdr-core", "tmux", "rex", "updates", "host-routes", "windows-setup", "selinux"]
     },
     {
       "title": {
@@ -72,6 +72,7 @@
       "herdr-core": "herdr-core",
       "tmux": "tmux",
       "rex": "Rex",
+      "updates": "Plugin and Helper updates",
       "host-routes": "Multiple routes",
       "windows-setup": "Windows setup",
       "selinux": "Fedora/RHEL SELinux",
@@ -93,6 +94,7 @@
       "herdr-core": "herdr-core",
       "tmux": "tmux",
       "rex": "Rex",
+      "updates": "插件与 Helper 更新",
       "host-routes": "多条路由",
       "windows-setup": "Windows 配置",
       "selinux": "SELinux（Fedora/RHEL）",
@@ -115,6 +117,7 @@
     "herdr-core": "Server",
     "tmux": "SquareTerminal",
     "rex": "Terminal",
+    "updates": "CircleArrowUp",
     "host-routes": "Route",
     "windows-setup": "MonitorCog",
     "selinux": "ShieldAlert",

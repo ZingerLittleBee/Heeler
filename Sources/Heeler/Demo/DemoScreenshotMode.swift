@@ -66,6 +66,7 @@
         @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
         @State private var hostRemoval: HostRemovalDependencies
+        @State private var hostUpdates: HostUpdatesStore
         @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
         /// Off, with process-local settings: the mic shows as in the app, and
         /// nothing reaches the Keychain or a speech service.
@@ -92,12 +93,17 @@
             _liveActivities = State(initialValue: composition.liveActivities)
             _activity = State(initialValue: composition.activity)
             _hostRemoval = State(initialValue: composition.hostRemoval)
+            _hostUpdates = State(initialValue: composition.hostUpdates)
         }
 
         private var terminal: TerminalSettings {
             TerminalSettings(
                 themes: terminalThemes, zoom: terminalZoom, fonts: terminalFonts,
                 snippets: snippets)
+        }
+
+        private var reachableHosts: Set<Host.ID> {
+            Set(hosts.hosts.map(\.id).filter(console.canReachNotificationFiles))
         }
 
         var body: some View {
@@ -120,7 +126,10 @@
             .environment(\.diffLayoutSettings, diffLayout)
             .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
             .environment(\.hostRemovalDependencies, hostRemoval)
+            .environment(hostUpdates)
             .environment(voiceInput)
+            // The app reads a Host's plugin as its connection comes up.
+            .task(id: reachableHosts) { await hostUpdates.hostsDidConnect(Array(reachableHosts)) }
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
@@ -156,6 +165,10 @@
         /// The app's removal over the demo stores: its Notification Keys are
         /// volatile, so removing a demo Host never touches the Keychain.
         let hostRemoval: HostRemovalDependencies
+        /// The app's updates over the demo Hosts, where nothing is ever run:
+        /// an update ends as the Host was. The prompt is left out, since every
+        /// launch starts from fresh settings and would raise it.
+        let hostUpdates: HostUpdatesStore
 
         static func make() -> DemoScreenshotComposition {
             let defaults = DemoScreenshotFixture.makeDefaults()
@@ -219,7 +232,12 @@
                 hostRemoval: HostRemovalDependencies.app(
                     console: console, notificationPreferences: notificationPreferences,
                     liveActivities: liveActivities,
-                    knownHosts: DemoScreenshotFixture.onboardingDependencies.knownHosts))
+                    knownHosts: DemoScreenshotFixture.onboardingDependencies.knownHosts),
+                hostUpdates: HostUpdatesStore(
+                    hosts: { [weak hosts] in hosts?.hosts ?? [] },
+                    isReachable: { [weak console] in console?.canReachNotificationFiles($0) == true },
+                    work: .app(console: console, dialing: DemoScreenshotFixture.onboardingDependencies),
+                    defaults: defaults))
         }
     }
 

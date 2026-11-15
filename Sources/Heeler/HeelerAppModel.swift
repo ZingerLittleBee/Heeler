@@ -46,6 +46,9 @@ final class HeelerAppModel {
     /// What a confirmed Host removal cleans up beyond the catalog (#414).
     let hostRemoval: HostRemovalDependencies
     let hostOnboarding: HostOnboardingDependencies
+    /// Which Hosts hold an older Plugin or Helper than this app carries, and
+    /// the updates that bring them up (ADR 0048).
+    let hostUpdates: HostUpdatesStore
     let activity: AppActivityCoordinator
 
     private var isStarted = false
@@ -66,7 +69,8 @@ final class HeelerAppModel {
         console: ConsoleStore = ConsoleStore(
             chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
             coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
-            harnessEdits: HarnessConfigEditStore(defaults: .standard)),
+            harnessEdits: HarnessConfigEditStore(defaults: .standard),
+            pendingTitleRenames: PendingAgentTitleRenameStore(defaults: .standard)),
         overlayNetworks: OverlayNetworkStore = OverlayNetworkStore(),
         activity: AppActivityCoordinator = AppActivityCoordinator(),
         liveActivityHosts: LiveActivityHostPublisher = LiveActivityHostPublisher()
@@ -102,16 +106,29 @@ final class HeelerAppModel {
             ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
         notificationPreferences.followSeenMarks(of: console)
+        // What each Host holds is read over the Console's connection as it
+        // comes up; an update dials for itself, as a Server's page does.
+        let hostUpdates = HostUpdatesStore(
+            hosts: { [weak hostStore] in hostStore?.hosts ?? [] },
+            isReachable: { [weak console] in console?.canReachNotificationFiles($0) == true },
+            work: .app(
+                console: console,
+                helperDidChange: { [weak notificationPreferences] in
+                    Task { await notificationPreferences?.refresh() }
+                }))
+        self.hostUpdates = hostUpdates
         // Installing or removing a Helper changes what the banner and Live
         // Activity gates may say, with the Console's connection unchanged.
         hostOnboarding = HostOnboardingDependencies(
-            hostHelperDidChange: { [weak notificationPreferences] in
+            hostHelperDidChange: { [weak notificationPreferences, weak hostUpdates] in
                 Task { await notificationPreferences?.refresh() }
+                hostUpdates?.helpersDidChange()
             },
             harnessEdits: console.harnessEdits,
             noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
             coreKernel: { [weak console] in console?.hostCoreKernels[$0] },
             noteTmuxPaths: { [weak hostStore] id, paths in try? hostStore?.noteTmuxPaths(paths, for: id) },
+            notePlugin: { [weak hostUpdates] id, status in hostUpdates?.notePlugin(status, for: id) },
             noteRexSocket: { [weak hostStore] id, socket in try? hostStore?.noteRexSocket(socket, for: id) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
@@ -240,6 +257,9 @@ final class HeelerAppModel {
         liveActivities.start()
 
         observeStores()
+        // A Server already in reach is not one whose connection comes up.
+        Task { await hostUpdates.refresh() }
+        Task { await hostUpdates.decidePrompt() }
         sceneDirectory.observeDisconnects { [console] sceneID in
             console.sceneDidEnd(sceneID)
         }
@@ -295,6 +315,7 @@ final class HeelerAppModel {
         let activity = self.activity
         let pushRegistration = self.pushRegistration
         let notificationPreferences = self.notificationPreferences
+        let hostUpdates = self.hostUpdates
 
         observe({ hostStore.hosts }) { [weak self] hosts in
             guard let self else { return }
@@ -302,6 +323,15 @@ final class HeelerAppModel {
             console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
             notificationPreferences.setHosts(hosts)
             liveActivities.layoutsDidChange()
+            hostUpdates.catalogDidChange()
+        }
+        // Each Server is asked what Plugin or Helper it holds once as it
+        // comes into reach, so an older one shows on the Hosts tab without a
+        // visit to the Server's page (ADR 0048).
+        observeChange({ Set(hostStore.hosts.map(\.id).filter(console.canReachNotificationFiles)) }) { old, new in
+            let arrived = new.subtracting(old)
+            guard !arrived.isEmpty else { return }
+            Task { await hostUpdates.hostsDidConnect(Array(arrived)) }
         }
         observe({ console.agents }) { [weak self] agents in
             self?.bannerStore.agentsDidChange(agents)
