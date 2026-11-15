@@ -197,7 +197,11 @@ actor RexControlLink {
         let welcome: RexWelcome
         do {
             let hello = RexHello(identity: options.identity, reconnectToken: previous?.reconnectToken)
-            try await webSocket.send(text: hello.encoded().text)
+            do {
+                try await webSocket.send(text: hello.encoded().text)
+            } catch let error as WebSocketError {
+                throw Self.openingFailure(error)
+            }
             welcome = try await Self.welcome(on: webSocket, deadline: options.welcomeDeadline, sleep: sleep)
         } catch {
             await webSocket.disconnect()
@@ -230,10 +234,7 @@ actor RexControlLink {
                     do {
                         message = try await webSocket.receive()
                     } catch let error as WebSocketError {
-                        if case .closedByPeer(let close) = error, close.code == .policyViolation {
-                            throw RexControlError.unsupportedVersion(.unknown)
-                        }
-                        throw RexControlError.linkEnded(RexControlEnding(error))
+                        throw Self.openingFailure(error)
                     }
                     guard case .text(let text) = message, case .welcome(let welcome) = RexInbound(text: text) else {
                         continue
@@ -252,6 +253,15 @@ actor RexControlLink {
             }
             return welcome
         }
+    }
+
+    /// A WebSocket that ended between the upgrade and the welcome, as the
+    /// control link reports it.
+    private static func openingFailure(_ error: WebSocketError) -> RexControlError {
+        if case .closedByPeer(let close) = error, close.code == .policyViolation {
+            return .unsupportedVersion(.unknown)
+        }
+        return .linkEnded(RexControlEnding(error))
     }
 
     private func startReading() {

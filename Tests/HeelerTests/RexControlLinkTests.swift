@@ -124,6 +124,23 @@ struct RexControlLinkTests {
         await server.waitUntilClosed()
     }
 
+    /// A connection that fails while the hello is written ends as one that
+    /// fails while the welcome is awaited, never as a WebSocket's own error.
+    @Test func aHelloThatCannotBeWrittenEndsTheLink() async throws {
+        let server = FakeRexServer()
+        let opened = Task { try await RexControlLink.open(over: server.channel, options: .testing, sleep: ManualClock().parkedSleep(for:)) }
+        _ = await server.channel.nextUpgradeRequest()
+        await server.channel.failNextWrite()
+        await server.channel.acceptUpgrade()
+
+        let failure = await error { try await opened.value }
+        guard case .linkEnded(.linkLost)? = failure as? RexControlError else {
+            Issue.record("Expected the lost link, got \(String(describing: failure))")
+            return
+        }
+        await server.channel.waitUntilClosed()
+    }
+
     @Test func anUpgradeRefusalKeepsItsStatus() async throws {
         let server = FakeRexServer()
         let opened = Task { try await RexControlLink.open(over: server.channel, options: .testing, sleep: ManualClock().parkedSleep(for:)) }
