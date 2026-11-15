@@ -114,16 +114,17 @@ ipconfig
 For a local account, use the username shown after the computer name in
 `whoami`. Use the IPv4 address of the active network adapter.
 
-In Heeler, open **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the address and port and tap **Save**, then fill in the Host fields:
+In Heeler, open **Hosts**, tap **+**, and fill in the first step:
 
 | Field | Value |
 | --- | --- |
+| Address | The Windows address reachable from your phone |
 | User | The Windows account running herdr |
-| Address (in Route) | The Windows address reachable from your phone |
-| Port (in Route) | `22`, unless you configured a different SSH port |
+| Port (in More Options) | `22`, unless you configured a different SSH port |
 | Authentication | `Password` |
 | Password | The Windows account password, rather than its Windows Hello PIN |
-| herdr Session | `heeler-win-test` |
+
+Tap **Connect**. On the last step, leave **Herdr TUI · heeler-win-test** checked and add the Host.
 
 Before trusting the first connection, compare Heeler's SSH host key
 fingerprint with the matching public host key on Windows. For Ed25519:

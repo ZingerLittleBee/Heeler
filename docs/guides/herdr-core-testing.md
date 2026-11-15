@@ -169,7 +169,7 @@ and kill only that pid. The core brings a shell back about two seconds later.
 
 | Check | How to get there | Heeler shows |
 | --- | --- | --- |
-| Added plainly | Add the Host by hand, from a build launched with no arguments | **Use herdr-core** is offered, the Host connects, and `hc` was never called |
+| Added plainly | Add the Host by hand, from a build launched with no arguments | The Servers step lists **herdr-core**, the Host connects once it is added with that checked, and `hc` was never called |
 | Agent detail restarts | Open the Agent's detail, then `kill -9` the pid | **Restarting…** with no error and no **Reattach**, then the restored shell in the same detail, with nothing tapped. Typing reaches the new shell |
 | Terminal restarts | Open a kept Terminal from its row, then `kill -9` the pid | The same, and `terminal.get` shows Heeler's size afterwards |
 | Hidden while it restarts | Leave the terminal retained, `kill -9` the pid, and come back after the shell returned | The restored shell at once, attached with no error |
@@ -638,12 +638,12 @@ On 2026-11-05 a Simulator debug build of `5fc2b2c8`, with rename forced on, pass
 
 ## Detection states
 
-Add a Host by hand and read its Server Kind section before confirming. Tap **Run Checks Again** after changing a state.
+Add a Host by hand and read the Servers step, or open a Host and read **Servers**. Tap **Scan Again** after changing a state.
 
 | State | How to get there | herdr-core row reads |
 | --- | --- | --- |
-| Not installed | Rename `~/.local/bin/herdr-core` for the check, and restore it after | **Not installed** |
-| Not running | `server stop` by absolute path, or a session never used | The core's version, then **not running** |
+| Not installed | Rename `~/.local/bin/herdr-core` for the check, and restore it after | **herdr-core not found**, with **Setup Guide** (the Servers step lists it under **Set One Up** when nothing else was found, and leaves it out otherwise) |
+| Not running | `server stop` by absolute path, or a session never used | **herdr-core**, unchecked or off, with **Not running** and the core's version |
 
 Detection must leave the Host as it found it too: no core or herdr server started.
 

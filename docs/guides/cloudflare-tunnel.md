@@ -102,12 +102,13 @@ narrow it when it isn't, as the last troubleshooting row describes.
 Follow [Prepare the Host](overlay-networks.md#prepare-the-host) for the Mac's
 user, sign-in method, and herdr session, then add the Host with these values:
 
-1. Open **Hosts** and tap **Add Host**. Under **Routes**, tap **Add Route**, set
-   **Network** to **Direct**, fill in the address from step 2 and port `22`,
-   leave **Jump Host** blank, and tap **Save**. (**Direct** means Heeler dials
-   the address itself; the VPN app is what makes it reachable.)
-2. In **Add Host**, fill in the remaining fields and tap **Save**.
-3. Tap **Trust** only if the fingerprint matches the one from the Mac.
+1. Open **Hosts** and tap **+**. Fill in the address from step 2. Under **More
+   Options**, **Network** stays **Direct**, the port `22`, and **Jump Host**
+   blank. (**Direct** means Heeler dials the address itself; the VPN app is
+   what makes it reachable.)
+2. Fill in **User** and the sign-in method, and tap **Connect**.
+3. Tap **Trust and Continue** only if the fingerprint matches the one from the
+   Mac, then add the Host with the Servers you want checked.
 4. If iOS asks whether Heeler may find devices on your local network, allow it.
    The Mac's address is a private one, and the route fails without that
    permission.
@@ -120,8 +121,8 @@ connects first. See [multiple routes](host-routes.md).
 
 1. Cloudflare One Agent shows **Connected**, and the tunnel is **Healthy** in
    **Networking > Tunnels**.
-2. Open the Host from **Hosts** and check that the route marked **In Use** is the
-   one pointing at the Mac's private address.
+2. Open the Host from **Hosts**, tap one of its Servers, and check that the route
+   marked **In Use** is the one pointing at the Mac's private address.
 3. The Host checks pass and the session's Agents or Terminals load.
 4. In a **New Terminal**, `pwd` prints a folder on the Mac.
 5. Turn off Wi-Fi on the phone and repeat over cellular, checking **In Use**
@@ -140,7 +141,7 @@ connects first. See [multiple routes](host-routes.md).
 | Settings were changed, nothing changed on the phone | Wait ten minutes, then disconnect and reconnect the VPN app. |
 | **Can't Connect** with a timeout, on a phone that is on the Mac's own LAN | iOS may have denied local network access to Heeler. Check **Settings > Privacy & Security > Local Network** on the phone. |
 | SSH login fails | Check the username, Remote Login access, and the key or password. |
-| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account or the session name is wrong. |
+| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account, or the Server that is on is not the session herdr runs. |
 | Another device on the LAN can reach services it shouldn't | A CIDR route exposes every address inside it, and by default every enrolled device may use it. Narrow the route to the Mac's `/32`, and add Gateway network policies under **Traffic policies** to allow only the destinations you want. |
 
 ## Appendix: use a VPS instead of a VPN app

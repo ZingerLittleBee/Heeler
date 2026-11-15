@@ -1,6 +1,6 @@
 # Connect tmux
 
-Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH, alongside Herdr TUI and [herdr-core](herdr-core.md). Each tmux socket is its own Host in Heeler, with your sessions, windows, and coding Agents in the Console and native [Chat](#chat).
+Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH, alongside Herdr TUI and [herdr-core](herdr-core.md). Each tmux socket is a Server of its Host in Heeler, with your sessions, windows, and coding Agents in the Console and native [Chat](#chat).
 
 ## Before you start
 
@@ -13,31 +13,27 @@ Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH,
 
 Heeler never starts a tmux server when connecting or checking.
 
-### 1. Enter the SSH settings
+### 1. Connect
 
-1. In **Hosts**, tap **Add Host**, or **Add Manually** when empty. A [Pairing Code](pairing.md) always adds a Herdr TUI Host.
-2. Enter your SSH **User**, add a Route, and pick **Device Key**, **RSA Key**, or **Password**.
-3. For **Device Key**, copy the form's public-key line into the Host's `~/.ssh/authorized_keys`.
-4. Set **Session name** if your tmux server was started with `tmux -L <name>`, then tap **Save** and **Trust** after checking the Host's key fingerprint. Once confirmed as tmux, this field is shown as **Socket name** under **tmux Socket**. Custom socket file paths (`tmux -S <path>`) cannot be typed.
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. A [Pairing Code](pairing.md) always adds a Herdr TUI Server.
+2. Enter the **Address** and your SSH **User**. **More Options** has the port, a Jump Host and an overlay network.
+3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
+4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
 
-| Field | Value |
-| --- | --- |
-| **Session name** / **Socket name** | Blank for `default` (a tmux started without `-L`), or the `-L <name>` socket name |
+### 2. Choose the Servers
 
-### 2. Confirm the Server Kind
-
-Heeler checks once through your login shell without starting anything, then asks you to confirm **Server Kind**:
+Heeler looks once through your login shell without starting anything and lists what the machine runs:
 
 | Heeler found | What to do |
 | --- | --- |
-| One tmux server | Tap **Use tmux**. |
-| More than one tmux server | Pick the socket under **tmux Socket**, then tap **Use tmux**. |
-| tmux alongside Herdr TUI or herdr-core | Confirm one here, then add the machine again as another Host for the other. |
-| No running server | Tap **Use tmux** if this Host will run tmux. Its checks then say what to start or install. |
+| One tmux server | Leave **tmux** checked and tap **Add Host with 1 Server**. |
+| More than one tmux server | Each socket is listed by name, such as **tmux · work** for `tmux -L work`. Check the ones you want. |
+| tmux alongside Herdr TUI or herdr-core | Check each one you want in Heeler. They are all Servers of this one Host. |
+| No running server | Add the Host anyway. Start tmux, open the Host, and tap **Scan Again**. |
 
-Once confirmed, **Server Kind** is fixed. You can edit **Socket name** later in Host detail.
+Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its connection, checks and Host Helper. To turn on a socket before its server runs, tap **Add by Name…** on the Host's page, choose **tmux**, and type the `-L <name>` socket name (blank for `default`). Custom socket file paths (`tmux -S <path>`) cannot be typed.
 
-**It worked if** Host detail shows **Server Kind** as `tmux` with the version, **Socket** with your socket name, and **tmux server running** passing.
+**It worked if** the Host's row shows a green **tmux** tag, and the Server's page shows **Server Kind** as `tmux` with the version, **Socket** with your socket name, and **tmux server running** passing.
 
 ## When it does not connect
 
@@ -53,7 +49,7 @@ While the tmux server is stopped, Heeler rechecks on its own, or you can tap **R
 On Linux when no tmux server is running, choosing **New Workspace** in **New Agent** or **New Terminal** starts the server through your interactive login shell so new windows inherit your shell setup.
 
 > [!NOTE]
-> Host detail warns if variables from an agent session leaked into tmux and shows how to clear them.
+> The Server's page warns if variables from an agent session leaked into tmux and shows how to clear them.
 
 ## The Console
 
@@ -71,7 +67,7 @@ Heeler maps your tmux layout directly into the Console without changing your exi
 | **Done** | Finished a turn while closed here. Opening the Agent clears **Done** on this device only. |
 | **Unknown** | No status reported yet. Tap **Unknown** to see what this program needs on tmux. |
 
-When Grok Build shows **Unknown**, tap **Unknown**, then **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and install the [Host Helper](#host-helper) so Heeler can read its reports. Revert the file change anytime with **Undo** or under **Harness Edits** in Host detail.
+When Grok Build shows **Unknown**, tap **Unknown**, then **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and install the [Host Helper](#host-helper) so Heeler can read its reports. Revert the file change anytime with **Undo** or under **Harness Edits** on the Server's page.
 
 ## Starting things
 
@@ -109,7 +105,7 @@ Claude Code Agents you launch from **New Agent** report **Working**, **Blocked**
 
 To get the same status and [Chat](#chat) session hint for Claude Code Agents you start yourself in a tmux terminal:
 
-1. Connect the Host, open it in **Hosts**, and find **Claude Code Hooks**.
+1. Connect the Host, open it in **Hosts**, tap its **tmux** Server, and find **Claude Code Hooks**.
 2. On **Default** (`~/.claude/settings.json`), or on any added [Claude Code Account](usage.md#add-claude-code-accounts), tap **Add Hooks**.
 3. Review the exact settings diff and script files Heeler will write, then tap **Apply This Change**.
 
@@ -145,7 +141,7 @@ Everyday terminal and Chat use do not require the Host Helper. Install it on mac
 - **Pi and Oh My Pi status and Chat:** installs Heeler's extension so panes you start yourself report **Idle**, **Working**, **Done**, **Error**, and their active Chat conversation;
 - **Desktop Esc cleanup for Claude Code:** clears **Blocked** when you decline a permission prompt with Esc on the desktop.
 
-Open the Host in **Hosts**, tap **Host Helper**, review **Files This Writes**, tap **Install**, and turn on the Host under **Settings > Notifications**, following the same steps and status table as [Connect herdr-core](herdr-core.md#host-helper). Removing the Host Helper leaves any [Claude Code hooks](#claude-code-hooks) you added working.
+Open the Host in **Hosts**, tap its **tmux** Server, tap **Host Helper**, review **Files This Writes**, tap **Install**, and turn on the Host under **Settings > Notifications**, following the same steps and status table as [Connect herdr-core](herdr-core.md#host-helper). Removing the Host Helper leaves any [Claude Code hooks](#claude-code-hooks) you added working.
 
 ## Known limits
 

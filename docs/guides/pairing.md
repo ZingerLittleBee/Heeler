@@ -40,7 +40,7 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the Host's page in Heeler says so and can update it for you; running the same command on the Host also updates it.
+herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the **Herdr TUI** Server's page in Heeler (open the Host, then the Server) says so and can update it for you; running the same command on the Host also updates it.
 
 ## 3. Show a Pairing Code
 
@@ -82,7 +82,7 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 - Open **Agents** to see coding Agents across your connected Hosts. Open one to use its terminal or [Chat](chat.md).
 - The Host is named after your username and its address. To rename it, open it from **Hosts** and tap **Edit**.
 - Heeler signs in with this device's Device Key. To pair another iPhone or iPad, repeat steps 3 and 4 on it.
-- Pairing a machine that is already in **Hosts** adds a second entry. Swipe left on the one you no longer need and tap **Remove**.
+- Pairing a machine that is already in **Hosts** adds it again: as a second entry, or as a second **Herdr TUI** Server of the same Host when both reach it the same way. Swipe left on the entry you no longer need and tap **Remove**, or switch the extra Server off on the Host's page.
 - To get notifications on your iPhone or iPad when an Agent needs you (**Blocked**) or finishes (**Done**), go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on this Host's switch under **Hosts**.
 
 ## Use it away from home
