@@ -29,7 +29,10 @@ left it with no owner at its size.
   the order asked, each once. A take that was refused, not sent, or left with
   no answer is never sent again on its own; the notice says which, and only
   another tap tries again. A take with no answer may have arrived, so it counts
-  as taken for giving back.
+  as taken for giving back. The owner an answer names is shown only when no
+  owner change or grid was heard while the answer was on its way: one heard
+  meanwhile may be newer, and the server's own owner change follows any take
+  that moved the block.
 - **What gives it back.** A size the user took goes back with
   `disown_block` when the view stops showing the terminal (the user navigates
   away, or the retention pool keeps it off screen), when its scene goes to the

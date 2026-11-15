@@ -295,6 +295,10 @@ actor RexTerminalAttach {
     /// stays as it is, for that owner to get back when it resumes. One its
     /// owner let go of or left is given back like any size the user took.
     private var handed = false
+    /// Counts what said who owns the block: owner events and the stream's
+    /// grids. A take or give back whose answer comes after more of them
+    /// leaves the owner to them, since they may be newer than the answer.
+    private var ownerNews: UInt64 = 0
     /// The claim last kept with the Host session.
     private var keptClaim: RexSizeClaim?
     /// The last take or give back, which the next one waits for, so they
@@ -382,6 +386,7 @@ actor RexTerminalAttach {
             case .grid(let grid):
                 report.server = Grid(columns: grid.columns, rows: grid.rows)
                 report.owner = grid.owner
+                ownerNews &+= 1
                 reports.yield(report)
             case .paint(let bytes, _):
                 guard !bytes.isEmpty else { continue }
@@ -596,6 +601,7 @@ actor RexTerminalAttach {
             }
         case .ownerChanged(let owner, let reason):
             report.owner = owner
+            ownerNews &+= 1
             if owner == nil || owner != connection.clientID {
                 handed = false
             } else if reason == Self.lostReason {
@@ -714,13 +720,14 @@ actor RexTerminalAttach {
 
     private func performTake() async -> TerminalSizeTake {
         guard !stopped, ending == nil, !blockClosed, !Task.isCancelled else { return .notSent }
+        let news = ownerNews
         let delivery = await connection.deliver(
             Self.takeMethod, Self.ownershipPayload(connection.address, take: true), connection.options.inputDeadline)
         switch delivery {
         case .answered(let response):
             claimed = true
             handed = false
-            noteOwner(in: response)
+            noteOwner(in: response, unless: news)
             keepClaim()
             await sendTakenSize()
             return .taken
@@ -779,13 +786,14 @@ actor RexTerminalAttach {
             return
         }
         if handed, report.owner == connection.clientID { return }
+        let news = ownerNews
         let delivery = await connection.deliver(
             Self.giveBackMethod, Self.ownershipPayload(connection.address, take: false),
             connection.options.giveBackDeadline)
         switch delivery {
         case .answered(let response):
             claimed = false
-            noteOwner(in: response)
+            noteOwner(in: response, unless: news)
         case .refused:
             claimed = false
         case .notSent, .unknown:
@@ -794,9 +802,10 @@ actor RexTerminalAttach {
         keepClaim()
     }
 
-    /// The block's owner as an answer to a take or give back lists it.
-    private func noteOwner(in response: RexResponse) {
-        guard let answer = try? response.result(RexOwnershipAnswer.self),
+    /// The block's owner as an answer to a take or give back lists it,
+    /// unless owner news came after `news` while the answer was on its way.
+    private func noteOwner(in response: RexResponse, unless news: UInt64) {
+        guard ownerNews == news, let answer = try? response.result(RexOwnershipAnswer.self),
             let block = answer.blocks?.first(where: { $0.blockID == connection.address.blockID })
         else { return }
         report.owner = block.owner

@@ -510,6 +510,34 @@ struct RexTerminalSizeOwnershipTests {
         #expect(await ownership(control) == [Self.take, Self.giveBack])
     }
 
+    /// An owner change heard while a take's answer is on its way may be newer
+    /// than the answer: the owner it names stands, and the notice comes back
+    /// for the other device's size.
+    @Test func anOwnerChangeDuringATakeOutranksItsAnswer() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let store = try await openSizedElsewhere(rig, session: session)
+        await control.stopAnswering(Self.take)
+        store.takeSize()
+        let take = await control.nextRequest()
+        #expect(take.method == Self.take)
+
+        await pushOwner(control, Self.thisClient, previous: Self.otherDevice, reason: "take")
+        try await waitUntil("this client's take") { store.sizeReport?.owner == Self.thisClient }
+        await pushOwner(control, Self.otherDevice, previous: Self.thisClient, reason: "take")
+        try await waitUntil("the other device's take") { store.sizeReport?.owner == Self.otherDevice }
+        await control.respond(
+            to: take, with: ["blocks": [["block_id": "block:left", "owner": .string(Self.thisClient)]]])
+        try await waitUntil("the take's end") { store.sizeNotice?.phase != .taking }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(store.sizeReport?.owner == Self.otherDevice)
+        try await waitUntil("the notice again") { store.sizeNotice?.phase == .offered }
+        await store.stop()
+    }
+
     /// A give back asked for while the take is out waits for its answer, so
     /// the two never overlap.
     @Test func takingAndGivingBackNeverOverlap() async throws {
