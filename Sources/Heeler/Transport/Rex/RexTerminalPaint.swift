@@ -466,7 +466,8 @@ struct RexTerminalPaint: Sendable {
         if exact { exactPaintCount += 1 }
         isPainted = true
         isDirty = !exact
-        modes = TerminalModeTracker()
+        // The paint starts with RIS, which leaves the tracker as new from
+        // whatever it was in, a sequence cut short included.
         modes.receive(bytes)
         paintedOnAlternateScreen = modes.isAlternateScreen
         modes.receive(current.replay)

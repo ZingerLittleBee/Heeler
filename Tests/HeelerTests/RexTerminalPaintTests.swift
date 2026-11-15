@@ -377,6 +377,27 @@ struct RexTerminalPaintTests {
         #expect(harness.reads.isEmpty, "a paint on the primary screen is not redone")
     }
 
+    /// Output that stopped partway into a sequence leaves nothing behind once
+    /// a repaint comes: the paint's reset starts the modes afresh.
+    @Test func aRepaintAfterACutSequenceStartsClean() {
+        var harness = Harness()
+        harness.resize()
+        harness.readQuietly("\u{1B}[?1049hFULLSCREEN")
+        harness.output("\u{1B}[?104")
+        var taller = Harness.grid
+        taller.rows = 40
+        harness.resize(taller)
+        _ = harness.drain()
+        harness.readQuietly("\u{1B}[?1049hTALLER")
+        #expect(harness.drain() == [Harness.painted("\u{1B}[?1049hTALLER", exact: true), .title("shell")])
+        // Had the cut sequence outlived the paint, this would end it as a
+        // leave of the alternate screen.
+        harness.output("9l")
+        #expect(harness.reads.isEmpty)
+        harness.output("\u{1B}[?1049l")
+        #expect(harness.pendingReads == [.modes])
+    }
+
     @Test func leavingTheAlternateScreenInTheKeptOutputRepaintsAtOnce() {
         var harness = Harness { $0.attempts = 1 }
         harness.resize()
