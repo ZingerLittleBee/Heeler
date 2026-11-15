@@ -310,8 +310,8 @@ where noted.
   protocol breaches close it with 1002, and a binary message with 1003.
 - Calling `session.attach_all` a second time changes the connection's event
   scope.
-- Events raised while a client has no connection are not delivered later, and
-  the new connection numbers its events from 1 again. Heeler reads the whole
+- A client misses for good any event raised while it had no connection, and
+  its next connection restarts event numbering at 1. Heeler reads the whole
   inventory on every new connection either way.
 - A close frame ends the client at once, so its token no longer resumes it.
 - Reads on a connection attached to no session are refused with 409.

@@ -4,24 +4,26 @@ import HeelerSSH
 /// How a data link ended, and what may follow it.
 enum RexDataEnding: Sendable, Equatable {
     /// This side dropped the connection with no close frame, by `disconnect`
-    /// or a cancelled receive. The server keeps the stream for a resume.
+    /// or a cancelled receive. The stream waits on the server for a resume.
     case disconnectedHere
     /// This side closed with 1000, which ends the stream on the server.
     case closedHere
-    /// 4000: the block closed. Nothing follows.
+    /// 4000: the block is gone, and so is its stream.
     case blockClosed
-    /// The server stopped the stream (1001, `data provider canceled`), as it
-    /// does when the control client that opened it leaves. A new stream needs
-    /// a ticket from a control link attached to the session.
+    /// The server ended the stream (1001, `data provider canceled`); one
+    /// cause is the control client that asked for it going away. Only a
+    /// fresh ticket, from a control link attached to the session, opens
+    /// another.
     case providerCanceled
     /// The server answered the handshake with a REJECT.
     case refused(RexDataRefusal)
-    /// The server closed with another code: 1000 when the stream ended, 1001
-    /// when this client stopped answering its pings, 1008 or 1011 when the
-    /// block's data source is unavailable or failed.
+    /// Any other close code: 1000 for a stream that is over, 1001 for a
+    /// client that went quiet on pings, 1008 or 1011 for a data source that
+    /// is missing or broken.
     case serverWentAway(code: UInt16)
-    /// 1013: start a new stream, as when more output piled up while the
-    /// client was away than the server could keep.
+    /// 1013: this stream cannot go on and a new one must start, as when the
+    /// server could not hold all the output that came while this side was
+    /// away.
     case tryAgainLater
     /// One side broke the protocol, or the handshake's answer was unreadable.
     case protocolFailure
@@ -181,7 +183,7 @@ actor RexDataLink {
 
     /// Marks the stream's own control sequences. The same after a resume.
     nonisolated let nonce: UInt64
-    /// How long the server keeps the stream after the connection drops.
+    /// How long a dropped stream waits on the server for a resume.
     nonisolated let retention: Duration
     /// This connection continues a stream an earlier one opened.
     nonisolated let resumed: Bool
@@ -417,8 +419,8 @@ actor RexDataLink {
     /// allows it, or has not ended, and no RESUME went out yet.
     var canResume: Bool { !resumeSpent && (ending?.recovery ?? .resume) == .resume }
 
-    /// Drops the connection with no close frame, so the server keeps the
-    /// stream for a resume, and returns once the channel is closed.
+    /// Drops the connection with no close frame, so the stream waits on the
+    /// server for a resume, and returns once the channel is closed.
     func disconnect() async {
         _ = ended(.disconnectedHere)
         await webSocket.disconnect()

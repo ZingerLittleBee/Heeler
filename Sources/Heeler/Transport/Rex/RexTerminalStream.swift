@@ -6,9 +6,10 @@ import Foundation
 ///
 /// Before `start` or the first `next`, the route's control link must be
 /// attached to the block's session with `session.attach`, and must stay
-/// attached: Rex refuses tickets otherwise, and cancels the stream when the
-/// client that opened it leaves. When the transport replaces its control
-/// link, the new one needs the attach again before the stream starts over.
+/// attached: otherwise Rex hands out no ticket, and it ends the stream once
+/// the client that asked for it is gone. When the transport replaces its
+/// control link, the new one needs the attach again before the stream starts
+/// over.
 ///
 /// Endings the stream gets past on its own:
 /// - A dropped connection is resumed on a new channel, once per connection.

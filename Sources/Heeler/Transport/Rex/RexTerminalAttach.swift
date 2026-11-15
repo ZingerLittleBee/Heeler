@@ -51,8 +51,9 @@ struct RexTerminalConnection: Sendable {
     let route: RexDataRoute
     let options: RexTerminalAttach.Options
     let sleep: RexTerminalStream.Sleep
-    /// Attaches the control client to the block's session with
-    /// `session.attach` unless it already is. Data links need it.
+    /// Makes sure the control client is attached to the block's session,
+    /// sending `session.attach` only when it is not; no data link opens
+    /// without it.
     let attachSession: @Sendable () async throws -> Void
     /// The server refused the block's stream for want of an attach: the
     /// next `attachSession` sends `session.attach` again.

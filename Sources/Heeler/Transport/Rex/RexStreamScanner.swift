@@ -4,32 +4,34 @@ import Foundation
 struct RexTerminalGrid: Sendable, Equatable {
     var columns: Int
     var rows: Int
-    /// A cell's size in pixels, or 0 when the server does not know it.
+    /// Pixel size of one cell; 0 where the server has no figure.
     var cellWidth: Int
     var cellHeight: Int
-    /// The client that owned the block when the size was set, or nil.
+    /// Who owned the block when this size was set; nil for no one.
     var owner: String?
 }
 
-/// A terminal's default colors as its stream reports them. A color left out
-/// is the server's built-in one.
+/// The default colors a stream reports for its terminal. A missing color
+/// means the server's built-in default.
 struct RexTerminalTheme: Sendable, Equatable {
     var foreground: String?
     var background: String?
     var cursor: String?
-    /// Changes to the 256-color palette, each `index=RRGGBB`.
+    /// Entries of the 256-color palette that differ, as `index=RRGGBB`.
     var palette: [String]
-    /// `light` or `dark`; nil when the terminal decides from the background.
+    /// `light` or `dark`, or nil to let the background decide.
     var scheme: String?
 }
 
 /// One of the stream's own messages.
 enum RexStreamMessage: Sendable, Equatable {
-    /// The terminal's size: one right after the snapshot, then one per change.
+    /// The terminal's size, first just after the snapshot and again whenever
+    /// it changes.
     case resize(RexTerminalGrid)
-    /// The terminal's default colors, each replacing the last.
+    /// The default colors; a later one supersedes an earlier one.
     case theme(RexTerminalTheme)
-    /// The program exited. No program output follows; the stream stays open.
+    /// The program has exited: the stream remains open but carries no more
+    /// of its output.
     case childExited(exitCode: Int?)
     /// A message of a type this build does not read, which it skips.
     case unknown(type: String)
@@ -40,8 +42,8 @@ enum RexStreamMessage: Sendable, Equatable {
 /// depend on how the stream is cut into chunks, apart from where runs of
 /// program bytes are split.
 ///
-/// A stream starts with a snapshot of the terminal, which Heeler never
-/// decodes: it paints from the server's VT redraw instead. The scanner skips
+/// Each stream opens with the server's snapshot of the terminal, which
+/// Heeler skips undecoded: it paints from the server's VT redraw instead. The scanner skips
 /// everything before the first control sequence that carries this stream's
 /// nonce, `ESC _ rex1;<nonce>;<json> ESC \`, keeping only a tail shorter
 /// than that sequence's prefix between chunks. Rex 0.1.0-preview.14 (API

@@ -2,12 +2,12 @@ import Foundation
 
 /// The handshake of a Rex data connection (ADR 0047), written by hand from
 /// what Rex 0.1.0-preview.14 (API revision 12) was seen to do. A data
-/// connection is a WebSocket at `/api/data` that carries one block's output,
-/// server to client only. The client opens it with a HELLO carrying a ticket
-/// from `data.connect`, or continues a dropped one with a RESUME carrying the
-/// last WELCOME's token and how many stream bytes it used. The server answers
-/// once, with a WELCOME or a REJECT, each one binary message. Integers are
-/// unsigned and little-endian.
+/// connection is a one-way WebSocket at `/api/data`: one block's output flows
+/// to this side. This side speaks first, either a HELLO that spends a
+/// `data.connect` ticket or a RESUME that picks a dropped stream back up from
+/// the last WELCOME's token and this side's own count of stream bytes. One
+/// binary message answers it, a WELCOME or a REJECT. Every number in them is
+/// an unsigned little-endian integer.
 enum RexDataProtocol {
     static let path = "/api/data"
     /// The subprotocol of a terminal's stream.
@@ -73,36 +73,34 @@ extension RexDataResumeToken: CustomStringConvertible, CustomDebugStringConverti
 /// What a WELCOME says about the stream it opened or resumed.
 struct RexDataWelcome: Sendable, Equatable {
     let resumeToken: RexDataResumeToken
-    /// How long the server keeps the stream for a resume after the
-    /// connection drops.
+    /// How long a dropped stream waits on the server for a RESUME.
     let retention: Duration
-    /// Marks the stream's own control sequences, so they can be told apart
-    /// from look-alikes a program prints. The same on every connection of
-    /// one stream.
+    /// Tags the sequences the stream adds itself, which is how they differ
+    /// from copies a program prints. A resumed stream keeps it.
     let nonce: UInt64
 }
 
-/// Why the server refused a handshake. A HELLO uses up its ticket even when
-/// refused, and after a refused RESUME the stream is gone for good: either
-/// way, what follows is a new ticket and a HELLO.
+/// Why the server turned a handshake down. Neither kind can be tried again
+/// as it was: a refused HELLO has spent its ticket, and a refused RESUME's
+/// stream no longer exists. The way on is always a new ticket and a HELLO.
 enum RexDataRefusal: Sendable, Equatable {
-    /// 1: the ticket or token is unknown, expired, used, someone else's, or
-    /// its session is gone.
+    /// 1: the server will not take the credential: it does not know it, it
+    /// is stale or spent, it is another client's, or its session has gone.
     case unknownCredential
-    /// 2: this client already has a live connection to the block's data
-    /// source.
+    /// 2: the server still counts a link of this client's to the block's
+    /// data source, and allows a client only one.
     case alreadyConnected
-    /// 3: the stream is not available, as when its block closed or a RESUME
-    /// counted fewer bytes than the server sent.
+    /// 3: there is no stream to serve: its block closed, say, or a RESUME
+    /// claimed fewer bytes than had been sent.
     case streamUnavailable
-    /// 4: a limit would be passed; try again later.
+    /// 4: the server is at a limit; worth trying later.
     case limitReached
-    /// 5: the handshake was malformed or late, or a RESUME counted more bytes
-    /// than the server sent.
+    /// 5: the handshake was garbled or came too late, or a RESUME claimed
+    /// more bytes than had been sent.
     case malformedHandshake
-    /// 6: the server failed.
+    /// 6: something failed on the server's side.
     case serverFailed
-    /// 7: the ticket or token was issued for another subprotocol.
+    /// 7: the credential belongs to a different subprotocol.
     case wrongSubprotocol
     /// A reason this build does not know: a failure all the same.
     case other(UInt8)
@@ -149,15 +147,15 @@ enum RexDataHandshake {
         Data([RexDataProtocol.helloType] + ticket.bytes)
     }
 
-    /// RESUME: the type byte, the latest token's 16 bytes, then the number of
-    /// stream bytes used so far as a 64-bit integer.
+    /// RESUME: the type byte and the newest token's 16 bytes, followed by a
+    /// 64-bit count of the stream bytes read so far.
     static func resume(_ token: RexDataResumeToken, receivedByteCount: UInt64) -> Data {
         Data([RexDataProtocol.resumeType] + token.bytes + littleEndianBytes(receivedByteCount))
     }
 
-    /// A WELCOME is exactly 32 bytes: the type byte, the token, three bytes
-    /// that are zero, the retention in milliseconds as a 32-bit integer, and
-    /// the nonce as a 64-bit integer. A REJECT is the type byte and a reason.
+    /// Reads the server's answer. A WELCOME has a fixed 32 bytes: type,
+    /// token, three bytes of zero padding, a 32-bit retention in milliseconds
+    /// and a 64-bit nonce. A REJECT is two bytes, its type and then a reason.
     static func answer(_ message: Data) -> Answer {
         let bytes = [UInt8](message)
         switch bytes.first {

@@ -10,7 +10,7 @@ enum RexTerminalInstruction: Sendable, Equatable {
     /// for a best-effort paint taken while the program kept writing; a later
     /// paint replaces it once the stream goes quiet.
     case paint(Data, exact: Bool)
-    /// The title, as a program last set it; empty when none is set. The
+    /// The title a program set most recently, or empty if none did. The
     /// redraw does not carry it, so it follows each paint.
     case title(String)
     /// Program output, in order.
