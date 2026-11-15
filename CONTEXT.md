@@ -25,25 +25,26 @@ _Avoid_: backend, server type, flavor
 A Host whose Server Kind is Rex: one Rex server on macOS or Linux that is
 already running, found by the Unix socket it listens on and stored with that
 socket's path. Heeler never starts the server and never runs the `rex`
-command-line tool to find it. It lists Terminals only: no Agent status, Chat,
-Composer, notifications, Live Activities or Usage. Every build offers it; the
-user guide and the changelog call it experimental (ADR 0047). One control
-connection follows the whole server: every
-session's terminals, kept current by Rex's events and read again after any
-new connection. Another server instance on the socket is another server, as
-with tmux (ADR 0048). A Rex Host's Terminals open from the server's own
+command-line tool to find it. It shows in the Console's Terminals list only:
+no Agent status, Chat, Composer, notifications, Live Activities or Usage.
+Every build offers it; the user guide and the changelog call it experimental
+(ADR 0047). One control connection follows the whole server: every session's
+terminals, kept current by Rex's events and read again after any new
+connection. Another server instance on the socket is another server, as
+with tmux (ADR 0048). A Rex Host's terminals open from the server's own
 redraw, and their size is asked for (ADR 0049). They take input from their
 first paint, one request at a time on the control connection, never sent
-twice (ADR 0050). A Terminal another device sized says so; its size is taken
+twice (ADR 0050). A terminal another device sized says so; its size is taken
 only when the user taps to fit it to the screen, and given back once the view
 stops showing it (ADR 0051).
 _Avoid_: Rex session (for the Host), Rex app (for the server)
 
-**Detached Terminal**:
-A Rex terminal block that belongs to a session but to none of its windows. It
-is still the user's terminal: the Console lists a session's Detached Terminals
-under one Tab of their own, named Detached, after its windows (ADR 0048).
-_Avoid_: hidden terminal, orphan
+**Detached Tab**:
+The Tab, named Detached, that a Rex session's detached terminals share: the
+terminal blocks that belong to the session but to none of its windows. They
+are still the user's terminals, so the Console lists them after the session's
+windows instead of leaving them out (ADR 0048).
+_Avoid_: Detached Terminal, hidden terminal, orphan
 
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
@@ -204,8 +205,8 @@ is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
 Workspace, one Terminal's own Tab. A Terminal without desktop labels started
 from inside another, such as a subagent, joins that Terminal's Tab as another
 Pane. On tmux it is a tmux window. On Rex it is a Rex window, its Panes in
-reading order, tiled before floating; a session's Detached Terminals share one
-Tab of their own.
+reading order, tiled before floating; a session's detached terminals share
+its Detached Tab.
 _Avoid_: window, page
 
 **Terminal**:
@@ -547,7 +548,10 @@ and the last one to type, resize or come into focus sets the size. tmux has no
 Take Over either: while a device shows a Pane, its window takes the device's
 size, no larger than a terminal of the user's showing the same window, and once
 the device stops showing it tmux sizes the window by its other terminals
-again. libghostty renders it, and direct keyboard
+again. Rex has no Take Over: any viewer may type, and a terminal no device has
+sized follows the view. One another device sized keeps that size, cut to the
+view, under a notice whose Fit to Screen takes the size until the view stops
+showing the terminal (ADR 0051). libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
