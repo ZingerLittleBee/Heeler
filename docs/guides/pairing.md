@@ -64,6 +64,9 @@ Leave the popup open and don't press any keys while you scan. Any key except `c`
 **Run on: iPhone or iPad**
 
 1. Open **Hosts** and tap **Scan to Pair** (the QR code button next to **+**). On an iPad with the sidebar, open **Hosts** from the bottom of the sidebar.
+
+   <a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab with the Scan to Pair QR code button next to + at the top right, and a connected Host below"></a>
+
 2. Allow camera access and, if iOS asks, access to devices on your local network. Then point the camera at the QR code.
 3. Pairing starts right away and Heeler shows each step as it completes. There is no fingerprint to compare: the code carries it.
 
