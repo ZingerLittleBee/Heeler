@@ -24,10 +24,10 @@ restarted servers without showing a stale or half-read list.
 - The inventory is read, never assumed: the session list from
   `session.attach_all`, each session's structure from `session.view` and
   `session.list_blocks`, and each terminal's details once per connection from
-  its `title` and `process` methods. Every response carries the seq of the last
-  event the server queued before it started the request, so an event with a
-  higher seq is newer than the response and one with a lower or equal seq is
-  already part of it. An event that changes a session's layout reads its
+  its `title` and `process` methods. A response's seq says how far the
+  connection's event stream had got when the server took the request up, so an
+  event numbered above it is newer than the response and one at or below it is
+  already in it. An event that changes a session's layout reads its
   structure again. One structure read is in flight per session, so a burst of
   events costs that read and one more. No response replaces what a newer event
   or response said: a closed block stays closed, a view with a lower revision
@@ -40,9 +40,9 @@ restarted servers without showing a stale or half-read list.
   are read, then on each change once it settles.
 - A control connection that drops without a close frame is followed by a new
   one whose hello carries its reconnect token, on the same SSH connection when
-  that is still up and over a new one when it is not. Events sent in between
-  are lost even when the server takes the client back, so every new connection
-  reads the whole inventory again. A connection the server closed, as it does
+  that is still up and over a new one when it is not. Rex's API document says
+  events sent in between are lost even when the server takes the client back,
+  so every new connection reads the whole inventory again. A connection the server closed, as it does
   when too many events queue up for a client, is followed by a plain hello and
   a fresh read. The exception is a close with 1001, which Rex sends a client
   that stopped answering its pings and then keeps as it keeps a dropped one:
@@ -75,8 +75,9 @@ restarted servers without showing a stale or half-read list.
   reconnects by the number of sessions.
 - Response seqs order reads against events exactly, so the inventory never
   needs a timer or a full re-read to settle a race.
-- Rex does not replay events after a resume, so anything short of a full
-  re-read after a new connection could keep a stale row forever.
+- Rex's API document says events are not replayed after a resume, so
+  anything short of a full re-read after a new connection could keep a stale
+  row forever.
 - Subscribing to every event costs a little traffic at human pace and saves a
   poll of every terminal's title and process.
 - Detached terminals are still the user's terminals; leaving them out would
@@ -85,20 +86,26 @@ restarted servers without showing a stale or half-read list.
 ## Evidence
 
 Against Rex 0.1.0-preview.14 (API revision 12) on macOS 27.0, from a lab
-client on the local socket (2026-11-15, recorded in
-`docs/agents/rex-compatibility.md`):
+client on the local socket, a review probe and the live tests (2026-11-15,
+recorded with their sources in `docs/agents/rex-compatibility.md`):
 
-- `session.attach_all` answered with the session list and a seq, and
-  attachments survived a resume; calling it again replaced the event scope.
+- `session.attach_all` answered with the session list and seq 0, and a client
+  attached with `session.attach` kept getting that session's events after a
+  resume.
 - A connection with only `session.attach_all` could read `session.view`,
   `session.list_blocks` and a terminal's title, process and size.
 - Each layout operation's events arrived in a fixed order, with window and
   label events before the `session_view_changed` of the same change, and
   `session_view_changed` carrying only a revision.
-- Events sent while a dropped client was away were not replayed after it
-  resumed, and seqs started again at 1 on the new connection.
+- A client that stopped answering pings was closed with 1001 and could still
+  be resumed with its token.
 - New windows were labeled `Window` and the last eight hex digits of their id,
   and new shell blocks `shell`.
+
+That events sent while a client is away are lost, and that a detached block's
+relabel raises no event, come from Rex's API document for revision 12 and
+were not tested; Heeler re-reads the inventory on every new connection, and a
+session with detached terminals once a minute, whichever holds.
 
 ## Considered options
 

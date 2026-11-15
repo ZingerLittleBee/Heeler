@@ -4,9 +4,9 @@ import Foundation
 /// has to read (ADR 0048). Pure: `RexInventoryFollower` sends the reads it
 /// asks for and hands back their answers and the link's events.
 ///
-/// Every answer carries the seq of the last event the server queued before it
-/// started the request, so an event with a higher seq is newer than the answer
-/// and one with a lower or equal seq is already part of it. A session's
+/// An answer's seq says how far the connection's event stream had got when
+/// the server took the request up, so an event numbered above it is newer than
+/// the answer and one at or below it is already in it. A session's
 /// structure (its view and its block listing) is read again after any event
 /// that changed it, one read in flight per session, so a burst of events costs
 /// one read and the one after it. No answer replaces what an event or answer
