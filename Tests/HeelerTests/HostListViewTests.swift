@@ -149,9 +149,10 @@ struct HostRowPresentationTests {
         #expect(mixed.detail == TransportError.timedOut.presentation.summary)
         #expect(mixed.isProblem)
         #expect(mixed.trailing == nil)
-        #expect(mixed.servers.map(\.label) == ["Herdr TUI", "tmux · work"])
+        #expect(mixed.servers.map(\.label) == ["Herdr TUI", "Tmux · work"])
         #expect(mixed.servers.map(\.tone) == [.connected, .unavailable])
         #expect(mixed.retryIDs == [tmux.id])
+        #expect(mixed.subtitle == mixed.detail)
 
         let healthy = HostMachineRowPresentation(
             machine: machine,
@@ -159,11 +160,13 @@ struct HostRowPresentationTests {
             latencies: [tui.id: .milliseconds(148), tmux.id: .milliseconds(12)])
         #expect(healthy.group == .connected)
         #expect(healthy.detail == "dev@box.example")
+        #expect(healthy.subtitle == "dev@box.example")
         #expect(healthy.trailing == "12 ms")
         #expect(healthy.retryIDs.isEmpty)
     }
 
-    /// A Host named by no record reads as how it is reached.
+    /// A Host named by no record reads as how it is reached, without repeating
+    /// that same `user@address` on a second subtitle line.
     @Test func aHostWithNoNameReadsAsItsAccountAndAddress() {
         let tui = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
         let tmux = Host(address: "box.example", username: "dev", serverKind: .tmux)
@@ -171,8 +174,19 @@ struct HostRowPresentationTests {
             machine: HostMachine.grouped([tui, tmux])[0], statuses: [tui.id: .connected, tmux.id: .connected])
 
         #expect(presentation.name == "dev@box.example")
-        #expect(presentation.servers.map(\.label) == ["Herdr TUI", "tmux"])
+        #expect(presentation.detail == "dev@box.example")
+        #expect(presentation.subtitle == nil)
+        #expect(presentation.servers.map(\.label) == ["Herdr TUI", "Tmux"])
         #expect(presentation.servers.map(\.id) == [tui.id, tmux.id])
+    }
+
+    @Test func hostListBadgesFormatServerNamesCompactly() {
+        #expect(HostServerKey(kind: .herdrTUI, name: "").badgeLabel == "Herdr TUI")
+        #expect(HostServerKey(kind: .herdrTUI, name: "heeler-win-test").badgeLabel == "heeler-win-test")
+        #expect(HostServerKey(kind: .herdrCore, name: "").badgeLabel == "Herdr Core")
+        #expect(HostServerKey(kind: .herdrCore, name: "work").badgeLabel == "Herdr Core · work")
+        #expect(HostServerKey(kind: .tmux, name: "").badgeLabel == "Tmux")
+        #expect(HostServerKey(kind: .tmux, name: "work").badgeLabel == "Tmux · work")
     }
 
     /// Among connected Servers the one out of sync speaks for the row, and
