@@ -174,6 +174,12 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// first is the primary route, which names the Host where one address
     /// is shown and is what builds without Routes connect to.
     var routes: [HostRoute]
+    /// What tells this record from its Host's other Servers where they would
+    /// read alike, as `HostMachine.serverLabels` words it. The catalog sets it
+    /// and never stores it: it follows from the other records (ADR 0047). A
+    /// label that appears or goes is a rename to everything holding this
+    /// record, which is what it is on screen.
+    var serverLabel: String?
 
     /// `socatPath` is deliberately absent: Hosts serialized before ADR 0011
     /// still carry it on disk, and leaving it out of the keys both ignores it
@@ -373,9 +379,17 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         }
     }
 
-    var displayName: String {
+    /// The name of the Host this record reaches: the user's, or `user@address`.
+    var machineName: String {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? "\(username)@\(address)" : trimmed
+    }
+
+    /// What this record's Agents and Terminals are filed under: the Host's
+    /// name, and which of its Servers where that alone would not tell.
+    var displayName: String {
+        guard let serverLabel else { return machineName }
+        return "\(machineName) · \(serverLabel)"
     }
 
     /// One line for how the Host is reached: `user@address`, with the port
