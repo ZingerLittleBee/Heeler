@@ -128,7 +128,7 @@ struct RexDataRoute: Sendable {
     }
 }
 
-/// One connection of a Rex terminal's data stream (ADR 0047): a WebSocket
+/// One connection of a Rex terminal's data stream (ADR 0049): a WebSocket
 /// for `rex.data.terminal.v1` at `/api/data`, on a channel of its own to the
 /// server's socket.
 ///
