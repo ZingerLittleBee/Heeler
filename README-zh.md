@@ -61,6 +61,10 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   桌面终端范围内，Chat、Composer、New Agent、New Workspace 和 Worktrees
   同样可用，配合 Claude Code 钩子与可选的 Host Helper 提供 Agent 状态、
   通知、实时活动与 Usage（[了解更多](https://docs.heeler.bybee.dev/zh/tmux)）。
+- **Rex**（实验性）—— 打开 macOS 或 Linux 上已在运行的 Rex 服务器中的终端。
+  会话、窗口与终端呈现在 Terminals 中，实时终端支持输入、粘贴与 Snippets，
+  只有在你轻点 Fit to Screen 时才会接管其他设备设定的尺寸
+  （[了解更多](https://docs.heeler.bybee.dev/zh/rex)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
   供稍后打开。
@@ -102,6 +106,8 @@ herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并�
 
 tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式与桌面客户端并存接入，调整为适合屏幕的尺寸并保持在同一窗口已打开的桌面终端范围内。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
 
+Rex Host（实验性；适用于 macOS 与 Linux，基于 Rex 0.1.0-preview.14 开发）同样需手动添加，并确认 Server Kind。Heeler 通过 direct-streamlocal 通道连接正在运行的 Rex 服务器的 Unix 套接字，绝不会启动它，并且只支持 Rex API revision 12。Rex Host 只列出 Terminals：没有 Agent、Chat、通知或 Usage，也不能从 Heeler 新建、重命名或关闭任何内容（[连接 Rex](https://docs.heeler.bybee.dev/zh/rex)）。
+
 如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 
 [查看 Heeler 配置截图](docs/guides/zh/overlay-networks.md#heeler-配置界面截图)，包括 Tailscale、ZeroTier 以及 EasyTier 两种模式（Network 与 Config Server）的设置界面。
@@ -122,6 +128,7 @@ tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确�
 - **Windows 原生环境：** 参见 [Windows 设置指南](docs/guides/zh/windows-setup.md)。
 - **Herdr 桌面端 / herdr-core：** 先启动桌面端或 herdr-core 并启用 SSH，再手动添加 Host，参见[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)。需要 Heeler 0.1.18 或更高版本。
 - **tmux（macOS / Linux）：** 启动 tmux 3.3 或更高版本（Linux 上也可在连接后通过 New Workspace 启动），启用 SSH，再手动添加 Host，参见[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)。
+- **Rex（macOS / Linux，实验性）：** 启动 Rex，启用 SSH，再手动添加 Host，参见[连接 Rex](https://docs.heeler.bybee.dev/zh/rex)。
 
 ## 添加机器
 

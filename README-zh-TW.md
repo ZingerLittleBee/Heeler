@@ -63,6 +63,10 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
   與工作樹同樣可用，並透過 Claude Code hooks 與選用的 Host Helper 加入
   Agent 狀態、通知、即時動態與用量
   （[了解更多](https://docs.heeler.bybee.dev/tmux)）。
+- **Rex**（實驗性）——開啟 macOS 或 Linux 上已在執行的 Rex 伺服器中的終端機。
+  工作階段、視窗與終端機會出現在 Terminals 中，即時終端機支援輸入、貼上與
+  Snippets，只有在你點選 Fit to Screen 時才會接管其他裝置設定的大小
+  （[了解更多](https://docs.heeler.bybee.dev/rex)）。
 - **接入**——以 libghostty 繪製 Agent 的真實終端機：原生捲動回溯、
   同樣能操作全螢幕 TUI 的慣性觸控捲動、長按選取、接管已失效的
   終端機擁有者，以及默默收集、稍後再開啟的網頁連結。
@@ -105,6 +109,8 @@ herdr-core 主機（包括執行 Herdr 桌面應用程式的機器）需手動�
 
 tmux 主機（macOS 與 Linux 上的 tmux >= 3.3）同樣需手動新增，並確認其伺服器類型與 socket 名稱。連線時絕不會啟動 tmux 伺服器；在 Linux 上可依你的指示透過新增 Workspace 啟動。即時終端機以 tmux 控制模式與桌面用戶端並存接入，配合螢幕調整大小並保持在同一視窗已開啟的桌面終端機範圍內。Claude Code hooks 可回報受阻、完成與對話 ID，選用的 Host Helper 則加入狀態讀取、Pi 與 Oh My Pi 擴充功能、通知、即時動態與用量功能（[連線到 tmux](https://docs.heeler.bybee.dev/tmux)）。
 
+Rex 主機（實驗性；適用於 macOS 與 Linux，以 Rex 0.1.0-preview.14 為基準開發）同樣需手動新增，並確認其伺服器類型。Heeler 透過 direct-streamlocal 通道連到正在執行的 Rex 伺服器的 Unix socket，絕不會啟動它，且只支援 Rex API revision 12。Rex 主機只列出 Terminals：沒有 Agent、對話、通知或用量，也不能從 Heeler 新增、重新命名或關閉任何項目（[連線到 Rex](https://docs.heeler.bybee.dev/rex)）。
+
 若要透過 Tailscale、ZeroTier 或 EasyTier 連線，請參考[覆蓋網路設定指南](docs/guides/overlay-networks.md)。內容涵蓋 macOS 安裝、Mac 上不使用 VPN 的 Tailscale、Heeler 設定與連線檢查。Heeler 在應用程式內加入這些網路，不需要 iOS 的 VPN 設定；你需要含有 **設定 > 覆蓋網路** 的 Heeler 版本。
 
 [查看 Heeler 設定螢幕截圖](docs/guides/overlay-networks.md#heeler-setup-screenshots)，涵蓋 Tailscale、ZeroTier 與兩種 EasyTier 模式。
@@ -131,6 +137,8 @@ tmux 主機（macOS 與 Linux 上的 tmux >= 3.3）同樣需手動新增，並�
 - **tmux（macOS / Linux）**：啟動 tmux 3.3 或更新版本（在 Linux 上也可由
   新增 Workspace 啟動）、啟用 SSH，然後手動新增主機：
   [連線到 tmux](https://docs.heeler.bybee.dev/tmux)。
+- **Rex（macOS / Linux，實驗性）**：啟動 Rex、啟用 SSH，然後手動新增主機：
+  [連線到 Rex](https://docs.heeler.bybee.dev/rex)。
 
 ## 新增機器
 

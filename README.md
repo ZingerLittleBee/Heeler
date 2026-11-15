@@ -64,6 +64,11 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   Claude Code hooks plus the optional Host Helper add Agent Status,
   notifications, Live Activities, and Usage
   ([Read more](https://docs.heeler.bybee.dev/tmux)).
+- **Rex** (experimental) — open the terminals of a Rex server already running
+  on macOS or Linux. Sessions, windows, and terminals appear in Terminals, and
+  live terminals take typing, pastes, and Snippets, taking over a size another
+  device set only when you tap Fit to Screen
+  ([Read more](https://docs.heeler.bybee.dev/rex)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
   long-press selection, takeover of a stale terminal owner, and quietly
@@ -117,6 +122,8 @@ herdr-core Hosts, including machines running the Herdr desktop app, are added ma
 
 tmux Hosts (tmux >= 3.3 on macOS and Linux) are added manually with their Server Kind and socket name confirmed. Connecting never starts a tmux server; on Linux, New Workspace can start one when you ask. Live terminals attach per Pane in tmux control mode alongside desktop clients, sizing to fit your screen and staying within an open desktop terminal on the same window. Claude Code hooks report Blocked, Done, and conversation ids, and the optional Host Helper adds status readers, Pi and Oh My Pi extensions, notifications, Live Activities, and Usage ([Connect tmux](https://docs.heeler.bybee.dev/tmux)).
 
+Rex Hosts (experimental; macOS and Linux, built against Rex 0.1.0-preview.14) are added manually with their Server Kind confirmed. Heeler reaches the running Rex server's Unix socket over a direct-streamlocal channel, never starts it, and works with Rex API revision 12 only. Rex Hosts list Terminals only: no Agents, Chat, notifications, or Usage, and nothing is started, renamed, or closed from Heeler ([Connect Rex](https://docs.heeler.bybee.dev/rex)).
+
 For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
 
 [View the Heeler setup screenshots](docs/guides/overlay-networks.md#heeler-setup-screenshots) for Tailscale, ZeroTier, and both EasyTier modes.
@@ -143,6 +150,8 @@ or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
 - **tmux (macOS / Linux):** Start tmux 3.3 or newer (or let New Workspace
   start it on Linux), enable SSH, then add the Host manually:
   [Connect tmux](https://docs.heeler.bybee.dev/tmux).
+- **Rex (macOS / Linux, experimental):** Start Rex, enable SSH, then add the
+  Host manually: [Connect Rex](https://docs.heeler.bybee.dev/rex).
 
 ## Adding a machine
 

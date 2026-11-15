@@ -53,6 +53,7 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 - **Console** — すべてのマシン上のすべての Agent を、ステータス順（Blocked が先頭）の 1 つのリストにまとめます。Host で絞り込むことができ、リアルタイムで更新されます。
 - **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
 - **tmux** — macOS または Linux で動作する tmux 3.3+ サーバーに接続します。セッション、ウィンドウ、ペインが Console に表示され、ライブターミナルは画面に合わせてサイズ調整されつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Chat、Composer、New Agent、New Workspace、Worktrees も利用でき、Claude Code のフックとオプションの Host Helper によって Agent のステータス、通知、ライブアクティビティ、Usage を追加できます（[詳しくはこちら](https://docs.heeler.bybee.dev/tmux)）。
+- **Rex**（実験的）— macOS または Linux ですでに動作している Rex サーバーのターミナルを開きます。セッション、ウィンドウ、ターミナルが Terminals に表示され、ライブターミナルでは入力、ペースト、Snippets を使えます。ほかのデバイスが設定したサイズを引き継ぐのは、Fit to Screen をタップしたときだけです（[詳しくはこちら](https://docs.heeler.bybee.dev/rex)）。
 - **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
 - **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
 - **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
@@ -75,6 +76,8 @@ herdr-core の Host（Herdr デスクトップアプリを実行しているマ�
 
 tmux の Host（macOS と Linux の tmux >= 3.3）も手動で追加し、Server Kind とソケット名を確認します。接続しただけで tmux サーバーが起動することはありませんが、Linux では必要に応じて New Workspace から起動できます。ライブターミナルは tmux の制御モードでデスクトップクライアントと共存してペインごとに接続し、画面に合わせてサイズ調整しつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Claude Code のフックで Blocked、Done、会話 ID を報告でき、オプションの Host Helper を入れるとステータスの読み取り、Pi と Oh My Pi の拡張機能、通知、ライブアクティビティ、Usage を利用できます（[tmux に接続する](https://docs.heeler.bybee.dev/tmux)）。
 
+Rex の Host（実験的。macOS と Linux、Rex 0.1.0-preview.14 を基準に開発）も手動で追加し、Server Kind を確認します。Heeler は動作中の Rex サーバーの Unix ソケットに direct-streamlocal チャネルで接続し、サーバーを起動することはなく、Rex API revision 12 のみに対応します。Rex の Host は Terminals のみを表示し、Agent、Chat、通知、Usage はなく、Heeler から作成、名前の変更、終了を行うこともできません（[Rex に接続する](https://docs.heeler.bybee.dev/rex)）。
+
 Tailscale、ZeroTier、EasyTier でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
 
 Tailscale、ZeroTier、および EasyTier の 2 つのモードについて、[Heeler のセットアップのスクリーンショットを見る](docs/guides/overlay-networks.md#heeler-setup-screenshots)ことができます。
@@ -94,6 +97,7 @@ Host には、自宅では LAN のアドレス、外出先では Overlay Network
 - **ネイティブの Windows:** [Windows のセットアップガイド](docs/guides/windows-setup.md)に従ってください。
 - **Herdr デスクトップアプリ / herdr-core:** デスクトップアプリまたは herdr-core を起動し、SSH を有効にしてから、Host を手動で追加してください。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)をご覧ください。Heeler 0.1.18 以降が必要です。
 - **tmux（macOS / Linux）:** tmux 3.3 以降を起動し（Linux では New Workspace から起動することも可能）、SSH を有効にしてから、Host を手動で追加してください。[tmux に接続する](https://docs.heeler.bybee.dev/tmux)をご覧ください。
+- **Rex（macOS / Linux、実験的）:** Rex を起動し、SSH を有効にしてから、Host を手動で追加してください。[Rex に接続する](https://docs.heeler.bybee.dev/rex)をご覧ください。
 
 ## マシンの追加
 
