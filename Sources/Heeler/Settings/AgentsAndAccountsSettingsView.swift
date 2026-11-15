@@ -47,15 +47,19 @@ struct AgentsAndAccountsSettingsView: View {
                 if hosts.isEmpty {
                     Text("Add a Host to keep its Accounts.").foregroundStyle(.secondary)
                 }
-                ForEach(hosts) { host in
+                // A Host's Servers keep one set of Accounts on it, so the Host
+                // is listed once and reached over the Server Usage reads through.
+                ForEach(AgentUsageHost.grouped(hosts)) { host in
+                    let record = console.usageRecord(of: host)
                     NavigationLink {
                         HostAccountsView(
-                            hostName: host.displayName, store: console.hostAccountsStore(for: host.id),
-                            usage: console.isUsageEnabled ? console.agentUsageStore(for: host.id) : nil)
+                            hostName: host.name, store: console.hostAccountsStore(for: record.id),
+                            usage: console.isUsageEnabled ? console.agentUsageStore(for: record.id) : nil)
                     } label: {
-                        HostAccountsRowLabel(host: host, store: console.hostAccountsStore(for: host.id))
+                        HostAccountsRowLabel(
+                            name: host.name, recordID: record.id, store: console.hostAccountsStore(for: record.id))
                     }
-                    .accessibilityIdentifier("settings.accounts.\(host.displayName)")
+                    .accessibilityIdentifier("settings.accounts.\(host.name)")
                 }
             } header: {
                 Text("Accounts")
@@ -81,7 +85,10 @@ struct AgentsAndAccountsSettingsView: View {
 /// A Host's row: its name and how many Accounts it keeps beyond each
 /// harness's Default.
 private struct HostAccountsRowLabel: View {
-    let host: Host
+    let name: String
+    /// The record `store` reaches the Host over, which changes when another
+    /// of the Host's Servers takes over.
+    let recordID: Host.ID
     let store: HostAccountsStore
 
     var body: some View {
@@ -89,8 +96,8 @@ private struct HostAccountsRowLabel: View {
         LabeledContent {
             if count > 0 { Text(count.formatted()).monospacedDigit() }
         } label: {
-            Label(host.displayName, systemImage: "server.rack")
+            Label(name, systemImage: "server.rack")
         }
-        .task { if store.loadState == .idle { try? await store.load() } }
+        .task(id: recordID) { if store.loadState == .idle { try? await store.load() } }
     }
 }

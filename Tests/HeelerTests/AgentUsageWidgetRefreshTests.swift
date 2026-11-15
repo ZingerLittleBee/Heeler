@@ -252,6 +252,28 @@ struct AgentUsageWidgetRefreshTests {
         #expect(snapshot.host(unreachable.id)?.excludedReason == .notConnected)
     }
 
+    /// A Host's Servers read the same Transcripts, so the run asks each of
+    /// them and the widgets count the Host once, under its first record.
+    @Test func theBackgroundRunCountsAHostWithTwoServersOnce() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let herdr = Self.host("Studio Mac")
+        var tmux = Self.host("Studio Mac")
+        tmux.serverKind = .tmux
+        let report = try AgentUsageFixture.report(refreshing: false)
+
+        await AgentUsageBackgroundRefresh(read: { record, _ in
+            record.id == herdr.id
+                ? .requirement("Usage needs the Heeler plugin 0.7.0 or newer on this Host.") : .available(report)
+        }).run(hosts: [herdr, tmux], publisher: publisher, isUsageEnabled: { true })
+
+        let snapshot = try #require(Self.snapshot(directory))
+        #expect(snapshot.hosts.map(\.id) == [herdr.id])
+        #expect(snapshot.hosts.first?.name == "Studio Mac")
+        #expect(snapshot.hosts.first?.programs == UsageWidgetSnapshot.Host(
+            id: herdr.id, name: "", report: report, readAt: .now).programs)
+    }
+
     @Test func theLiveReaderUsesItsOwnConnectionAndClosesIt() async throws {
         let transport = ScriptedTransport()
         await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.7.0")))
@@ -370,6 +392,51 @@ struct AgentUsageWidgetRefreshTests {
         await console.reactivate()
         try await Task.sleep(for: .milliseconds(200))
         #expect(await transport.agentUsageReads == 1)
+    }
+
+    /// Two Servers of one Host both report its Usage. Usage and the widgets
+    /// list the Host once, so All Hosts does not add its figures up twice.
+    @Test func aHostWithTwoServersIsCountedOnce() async throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        var work = Self.host("Studio Mac")
+        work.sessionName = "work"
+        let workID = work.id
+        let report = try AgentUsageFixture.report(refreshing: false)
+        let (first, second) = (
+            ScriptedTransport(snapshot: .fixture(agents: [])), ScriptedTransport(snapshot: .fixture(agents: [])))
+        for transport in [first, second] {
+            await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.7.0")))
+            await transport.setAgentUsage(.success(report))
+        }
+        let console = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10), usageWidgets: publisher, usageSettings: AgentUsageSettings()
+        ) { record, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions, connect: { record.id == workID ? second : first },
+                reconnectPolicy: Self.fastPolicy, keepalive: nil)
+        }
+        defer { console.setHosts([]) }
+        console.setHosts([host, work])
+
+        await console.resume()
+        try await Self.waitUntil("both Servers connect") {
+            console.hostStatuses[host.id] == .connected && console.hostStatuses[workID] == .connected
+        }
+        await console.agentUsageStore(for: host.id).refresh()
+        await console.agentUsageStore(for: workID).refresh()
+        try await Self.waitUntil("both Servers report") {
+            [host.id, workID].allSatisfy { console.agentUsageStore(for: $0).state == .available(report) }
+        }
+
+        let entries = console.agentUsageEntries(for: [host, work])
+        #expect(entries.map(\.id) == [host.id])
+        #expect(entries.first?.servers.map(\.id) == [host.id, work.id])
+        try await Self.waitUntil("the widgets get the Host once") {
+            Self.snapshot(directory)?.hosts.map(\.id) == [host.id]
+                && Self.snapshot(directory)?.host(host.id)?.reports == true
+        }
     }
 
     @Test func withoutAUsageWidgetConnectingReadsNothing() async throws {
@@ -538,8 +605,11 @@ struct AgentUsageWidgetRefreshTests {
         UsageWidgetSnapshotStore(containerURL: directory).read()
     }
 
+    /// A Host on an address of its own: records that share a connection are
+    /// Servers of one Host, which Usage counts once.
     private static func host(_ name: String) -> Host {
-        Host(name: name, username: "dev", routes: [HostRoute(address: "studio.local")])
+        let address = name.lowercased().replacing(" ", with: "-") + ".local"
+        return Host(name: name, username: "dev", routes: [HostRoute(address: address)])
     }
 
     private static func reading(

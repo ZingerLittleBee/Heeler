@@ -1993,13 +1993,29 @@ final class ConsoleStore {
         return store
     }
 
-    /// One Host as the Usage tab reads it.
-    func agentUsageEntry(for host: Host) -> AgentUsageHostEntry {
-        let store = agentUsageStore(for: host.id)
-        return AgentUsageHostEntry(
-            id: host.id, name: host.displayName, store: store,
-            isConnected: usageHasConnection(host, state: store.state),
-            readsOverHostHelper: host.serverKind == .herdrCore || host.serverKind == .tmux)
+    /// The Hosts the Usage tab reads among `records`, each once however many
+    /// of its Servers are on (`AgentUsageHost`).
+    func agentUsageEntries(for records: [Host]) -> [AgentUsageHostEntry] {
+        AgentUsageHost.grouped(records).map { host in
+            let record = usageRecord(of: host)
+            let store = agentUsageStore(for: record.id)
+            return AgentUsageHostEntry(
+                id: host.id, name: host.name, store: store,
+                isConnected: usageHasConnection(record, state: store.state),
+                readsOverHostHelper: record.serverKind == .herdrCore || record.serverKind == .tmux,
+                recordID: record.id,
+                servers: host.records.map { .init(id: $0.id, store: agentUsageStore(for: $0.id)) })
+        }
+    }
+
+    /// The record of the Server a Host's Usage is read through now, and its
+    /// Accounts are reached over. A Server never read counts as still to answer.
+    func usageRecord(of host: AgentUsageHost) -> Host {
+        let chosen = AgentUsageHost.chosen(among: host.records.map { record in
+            let state = agentUsageStores[record.id]?.state ?? .idle
+            return (state, usageHasConnection(record, state: state))
+        })
+        return host.records[chosen]
     }
 
     /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
@@ -2086,24 +2102,27 @@ final class ConsoleStore {
         refreshStaleWidgetUsage()
     }
 
-    /// Hands every catalog Host's current Usage reading to the widgets.
+    /// Hands every catalog Host's current Usage reading to the widgets, each
+    /// Host once through the Server it is read through now.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
         guard isUsageEnabled else {
             usageWidgets.publishUsageOff(hosts: usageCatalog)
             return
         }
-        usageWidgets.publish(usageCatalog.map { host in
-            let store = agentUsageStores[host.id]
+        usageWidgets.publish(AgentUsageHost.grouped(usageCatalog).map { host in
+            let record = usageRecord(of: host)
+            let store = agentUsageStores[record.id]
             let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
-                id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
-                isConnected: usageHasConnection(host, state: state),
-                keepsLastAnswerUntilRead: host.serverKind == .herdrCore || host.serverKind == .tmux)
+                id: host.id, name: host.name, state: state, readAt: store?.readAt,
+                isConnected: usageHasConnection(record, state: state),
+                keepsLastAnswerUntilRead: record.serverKind == .herdrCore || record.serverKind == .tmux)
         })
     }
 
-    /// The catalog's Hosts that have Usage to read, in its order.
+    /// The catalog's records that have Usage to read, in its order: one for
+    /// each Server of a Host.
     private var usageCatalog: [Host] {
         catalog.filter(\.serverKind.hasHostIntegrations)
     }
@@ -2118,15 +2137,20 @@ final class ConsoleStore {
 
     /// Reads Usage again for each Host that can be read and whose widget figures
     /// went stale, so returning to the app updates the widgets without opening
-    /// Usage. Nothing is read while no Usage widget is installed.
+    /// Usage. A stale Host is read through every one of its Servers, so the
+    /// widgets follow whichever one answers. Nothing is read while no Usage
+    /// widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive, isUsageEnabled else { return }
-        let hostIDs = usageCatalog.map(\.id).filter { id in
-            canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
-                && agentUsageStores[id]?.isLoading != true
-                && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.figuresReadAt)
+        let recordIDs = AgentUsageHost.grouped(usageCatalog).flatMap { host -> [Host.ID] in
+            let readAt = host.records.compactMap { agentUsageStores[$0.id]?.figuresReadAt }.max()
+            guard usageWidgets.isStale(host.id, readAt: readAt) else { return [] }
+            return host.records.map(\.id).filter { id in
+                canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
+                    && agentUsageStores[id]?.isLoading != true
+            }
         }
-        for id in hostIDs {
+        for id in recordIDs {
             let refresh = UUID()
             let task = Task { [weak self] in
                 defer {

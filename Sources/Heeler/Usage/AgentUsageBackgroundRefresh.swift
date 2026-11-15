@@ -34,34 +34,76 @@ struct AgentUsageBackgroundRefresh {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: identifier)
     }
 
-    /// Reads every stale Host at once, publishing each reading as it lands,
-    /// so a task iOS expires keeps the readings that finished. Usage turned
-    /// off during the run ends it, so no later reading replaces the widgets'
-    /// "Usage is off" snapshot.
+    /// Reads every stale Host at once, through each of its Servers, publishing
+    /// each Host's reading as it lands, so a task iOS expires keeps the
+    /// readings that finished. Usage turned off during the run ends it, so no
+    /// later reading replaces the widgets' "Usage is off" snapshot.
     func run(
-        hosts: [Host], publisher: AgentUsageWidgetPublisher, isUsageEnabled: @MainActor () -> Bool
+        hosts records: [Host], publisher: AgentUsageWidgetPublisher, isUsageEnabled: @MainActor () -> Bool
     ) async {
-        let stale = hosts.filter { publisher.isStale($0.id, readAt: nil) }
+        let stale = AgentUsageHost.grouped(records).filter { publisher.isStale($0.id, readAt: nil) }
         let read = self.read
-        var readings: [AgentUsageWidgetReading] = []
-        await withTaskGroup(of: (Host, AgentUsageStore.State?, Date).self) { group in
+        var answered: [Host.ID: Int] = [:]
+        var landed: [Host.ID: [Int: Answer]] = [:]
+        var readings: [Host.ID: AgentUsageWidgetReading] = [:]
+        await withTaskGroup(of: (Host.ID, Int, Answer?).self) { group in
             for host in stale {
-                let claudeLimits = defaults.bool(forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: host.id))
-                group.addTask { (host, await read(host, claudeLimits), .now) }
+                for (index, record) in host.records.enumerated() {
+                    let claudeLimits = defaults.bool(
+                        forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: record.id))
+                    group.addTask {
+                        let answer = await read(record, claudeLimits).map { state in
+                            Answer(
+                                state: state,
+                                isConnected: (record.serverKind != .herdrCore && record.serverKind != .tmux)
+                                    || !state.couldNotReachHost,
+                                readAt: .now)
+                        }
+                        return (host.id, index, answer)
+                    }
+                }
             }
-            for await (host, state, readAt) in group {
+            for await (hostID, index, answer) in group {
                 guard isUsageEnabled() else {
                     group.cancelAll()
                     return
                 }
-                guard let state, !Task.isCancelled else { continue }
-                readings.append(AgentUsageWidgetReading(
-                    id: host.id, name: host.displayName, state: state, readAt: readAt,
-                    isConnected: (host.serverKind != .herdrCore && host.serverKind != .tmux)
-                        || !state.couldNotReachHost))
-                publisher.publish(readings, updating: hosts)
+                guard !Task.isCancelled else { continue }
+                answered[hostID, default: 0] += 1
+                if let answer { landed[hostID, default: [:]][index] = answer }
+                guard let host = stale.first(where: { $0.id == hostID }),
+                    let reading = Self.reading(
+                        of: host, from: landed[hostID] ?? [:],
+                        everyServerAnswered: answered[hostID] == host.records.count)
+                else { continue }
+                readings[hostID] = reading
+                publisher.publish(stale.compactMap { readings[$0.id] }, updating: records)
             }
         }
+    }
+
+    /// What one of a Host's Servers answered.
+    private struct Answer: Sendable {
+        let state: AgentUsageStore.State
+        let isConnected: Bool
+        let readAt: Date
+    }
+
+    /// A Host's reading, once what its Servers answered settles it: the Server
+    /// `AgentUsageHost.chosen` picks among those that answered, by their place
+    /// among the Host's records. nil while that Server has no reading and
+    /// another is still out, so a Server that cannot report does not take the
+    /// Host's figures away before the others have answered.
+    private static func reading(
+        of host: AgentUsageHost, from landed: [Int: Answer], everyServerAnswered: Bool
+    ) -> AgentUsageWidgetReading? {
+        let answers = landed.sorted { $0.key < $1.key }.map(\.value)
+        guard !answers.isEmpty else { return nil }
+        let chosen = answers[AgentUsageHost.chosen(among: answers.map { ($0.state, $0.isConnected) })]
+        if case .available = chosen.state {} else if !everyServerAnswered { return nil }
+        return AgentUsageWidgetReading(
+            id: host.id, name: host.name, state: chosen.state, readAt: chosen.readAt,
+            isConnected: chosen.isConnected)
     }
 }
 
