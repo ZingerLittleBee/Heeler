@@ -74,6 +74,9 @@ struct RexInventoryBook {
     /// events wait in `pending`.
     private var listedSeq: UInt64?
     private var pending: [RexControlEvent] = []
+    /// Reads handed out whose answer has not come back. Counted apart from the
+    /// records, since an event can drop a record while its read is in flight.
+    private var readsInFlight = 0
 
     /// The session list needs reading again: an event that changed it could
     /// not be read, or events went missing.
@@ -228,12 +231,13 @@ struct RexInventoryBook {
 
     /// The reads to send now, at most `limit` in flight in all: each session's
     /// structure ahead of any terminal's details. Each one returned counts as
-    /// in flight until its answer or failure is handed back.
+    /// in flight until its answer or failure is handed back, even when its
+    /// session or terminal has gone meanwhile.
     mutating func takeReads(limit: Int) -> [Read] {
         guard listedSeq != nil else { return [] }
-        var inFlight =
-            sessions.values.count(where: \.reading) + details.values.count(where: \.reading)
         var reads: [Read] = []
+        defer { readsInFlight += reads.count }
+        var inFlight = readsInFlight
         for id in order where inFlight < limit {
             guard var record = sessions[id], record.needsRead else { continue }
             record.reading = true
@@ -261,6 +265,7 @@ struct RexInventoryBook {
     mutating func structureRead(
         _ sessionID: String, view: Answer<RexInventoryWire.View?>, listing: Answer<[RexInventoryWire.ListedBlock]?>
     ) {
+        readEnded()
         guard var record = sessions[sessionID] else { return }
         record.reading = false
         record.hasSettled = true
@@ -294,6 +299,7 @@ struct RexInventoryBook {
     /// The server could not answer a structure read. It is not asked again
     /// until something changes.
     mutating func structureReadFailed(_ sessionID: String) {
+        readEnded()
         guard var record = sessions[sessionID] else { return }
         record.reading = false
         record.hasSettled = true
@@ -301,8 +307,9 @@ struct RexInventoryBook {
         sessions[sessionID] = record
     }
 
-    /// The server no longer knows the session.
+    /// A structure read's answer: the server no longer knows the session.
     mutating func sessionGone(_ sessionID: String) {
+        readEnded()
         destroyed.insert(sessionID)
         forget(sessionID)
     }
@@ -311,6 +318,7 @@ struct RexInventoryBook {
     mutating func detailsRead(
         _ address: RexPaneAddress, title: Answer<String?>?, process: Answer<RexInventoryWire.Process>?
     ) {
+        readEnded()
         guard var record = details[address] else { return }
         record.reading = false
         if let title, title.seq >= record.titleSeq {
@@ -323,6 +331,12 @@ struct RexInventoryBook {
             record.processSeq = process.seq
         }
         details[address] = record
+    }
+
+    /// One read handed out came back. Answers to reads never handed out, as
+    /// tests give, count nothing.
+    private mutating func readEnded() {
+        readsInFlight = max(0, readsInFlight - 1)
     }
 
     // MARK: What it knows

@@ -96,6 +96,29 @@ struct RexInventoryBookTests {
         #expect(book.takeReads(limit: 2) == [.details(address("block:right"))])
     }
 
+    /// A read whose session or terminal went while it was in flight still
+    /// counts against the limit until its answer comes back.
+    @Test func readsOfWhatWentStayWithinTheLimit() {
+        var book = RexInventoryBook()
+        let other = FakeRexWorld.studio(id: "session:other", label: "other")
+        let third = FakeRexWorld.studio(id: "session:third", label: "third")
+        book.beginListing()
+        book.listed([studio, other, third].map { .init(id: $0.id, label: $0.label) }, seq: 0)
+        #expect(book.takeReads(limit: 2) == [.structure(sessionID: studio.id), .structure(sessionID: other.id)])
+        book.apply(event(1, .sessionDestroyed(sessionID: studio.id), session: nil))
+        #expect(book.takeReads(limit: 2) == [])
+        answer(&book, studio, seq: 0)
+        #expect(book.takeReads(limit: 2) == [.structure(sessionID: third.id)])
+        answer(&book, other, seq: 0)
+        #expect(book.takeReads(limit: 2) == [.details(address("block:left", session: other.id))])
+
+        // A terminal closed while its details are read holds its place too.
+        book.apply(event(2, .blockClosed(blockID: "block:left"), session: other.id))
+        #expect(book.takeReads(limit: 2) == [])
+        book.detailsRead(address("block:left", session: other.id), title: nil, process: nil)
+        #expect(book.takeReads(limit: 2) == [.structure(sessionID: other.id)])
+    }
+
     @Test func detailsFillTheirTerminal() throws {
         var book = settled([studio])
         _ = book.takeReads(limit: 8)
