@@ -190,6 +190,19 @@ final class HostHelperStore {
         }
     }
 
+    /// Updates a Helper that is already in place, with no sheet listing the
+    /// files first (ADR 0048): Update All's, and the Repair it offers after an
+    /// update that left the Helper damaged. It writes only where the Host, read
+    /// again now, still offers that: a first install is never made from here.
+    func updateInstalled(repairing: Bool = false) async {
+        let readPaths = tmuxPaths
+        await perform(.install) { installer, reading, bundle, _ in
+            guard reading.installAction == .update || (repairing && reading.installAction == .repair) else { return }
+            let paths = await readPaths()
+            _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
+        }
+    }
+
     func remove() async {
         editsLeft = nil
         await perform(.remove) { [self] installer, reading, _, services in

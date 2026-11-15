@@ -85,6 +85,35 @@
     "%@ %@" : {
       "shouldTranslate" : false
     },
+    "%@ %@ keeps working on %@." : {
+      "comment" : "Under a failed update. Arguments: Heeler Plugin or Host Helper, the version the Host holds, the Host's name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ keeps working on %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ では %1$@ %2$@ が引き続き動作します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ 上的 %1$@ %2$@ 仍可继续使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ 上的 %1$@ %2$@ 仍可繼續使用。"
+          }
+        }
+      }
+    },
     "%@ (%@)" : {
       "shouldTranslate" : false
     },
@@ -2098,6 +2127,29 @@
         }
       }
     },
+    "%@ was not updated." : {
+      "comment" : "Argument: Heeler Plugin or Host Helper.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は更新されませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未更新。"
+          }
+        }
+      }
+    },
     "%@ · " : {
       "shouldTranslate" : false
     },
@@ -2787,6 +2839,47 @@
         }
       }
     },
+    "%lld Hosts have older ones." : {
+      "comment" : "Closes the Updates prompt's opening line. Argument: how many Hosts hold an older Plugin or Helper.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Host has an older one."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Hosts have older ones."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストに古いバージョンがあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的版本较旧。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的版本較舊。"
+          }
+        }
+      }
+    },
     "%lld Hosts not connected" : {
       "localizations" : {
         "ja" : {
@@ -2827,6 +2920,129 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 台主機尚未就緒"
+          }
+        }
+      }
+    },
+    "%lld Updates" : {
+      "comment" : "Tag after a Host's name on the Hosts list. Argument: how many Plugin and Helper updates wait there.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Update"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 %lld 件"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個更新"
+          }
+        }
+      }
+    },
+    "%lld Updates Available" : {
+      "comment" : "Title of the card over the Hosts list. Argument: how many Plugin and Helper updates wait.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Update Available"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates Available"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の更新があります"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个可用更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個可用更新"
+          }
+        }
+      }
+    },
+    "%lld Updates Failed" : {
+      "comment" : "Title of the card over the Hosts list once updates failed. Argument: how many.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Update Failed"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates Failed"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の更新に失敗しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个更新失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個更新失敗"
           }
         }
       }
@@ -8433,6 +8649,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所有狀態"
+          }
+        }
+      }
+    },
+    "All Up to Date" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて最新です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部已是最新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部已是最新"
           }
         }
       }
@@ -16361,6 +16599,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "複製指令"
+          }
+        }
+      }
+    },
+    "Copy Details" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製詳細資料"
           }
         }
       }
@@ -24874,6 +25134,93 @@
         }
       }
     },
+    "Heeler %@ carries Heeler Plugin %@ and Host Helper %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Plugin and Helper versions it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Heeler Plugin %2$@ and Host Helper %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Heeler プラグイン %2$@ と Host Helper %3$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Heeler 插件 %2$@ 和 Host Helper %3$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Heeler 外掛 %2$@ 和 Host Helper %3$@。"
+          }
+        }
+      }
+    },
+    "Heeler %@ carries Heeler Plugin %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Plugin version it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Heeler Plugin %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Heeler プラグイン %2$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Heeler 插件 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Heeler 外掛 %2$@。"
+          }
+        }
+      }
+    },
+    "Heeler %@ carries Host Helper %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Helper version it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Host Helper %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Host Helper %2$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Host Helper %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Host Helper %2$@。"
+          }
+        }
+      }
+    },
     "Heeler Plugin" : {
       "localizations" : {
         "ja" : {
@@ -24892,6 +25239,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 外掛"
+          }
+        }
+      }
+    },
+    "Heeler Plugin on %lld Hosts" : {
+      "comment" : "Under the updates card's title: only plugins have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler Plugin on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler Plugin on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストの Heeler プラグイン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的 Heeler 插件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的 Heeler 外掛"
           }
         }
       }
@@ -25565,6 +25953,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 在變更前無法讀取主機的外掛，因此未做任何變更。請重新執行檢查。"
+          }
+        }
+      }
+    },
+    "Heeler could not read the Host's plugin, so nothing changed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はホストのプラグインを読み取れなかったため、変更は行われていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法读取主机的插件，因此未做任何更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法讀取主機的外掛，因此未做任何變更。"
           }
         }
       }
@@ -27057,6 +27467,28 @@
         }
       }
     },
+    "Hide" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏"
+          }
+        }
+      }
+    },
     "Hide Composer" : {
       "localizations" : {
         "ja" : {
@@ -27620,6 +28052,47 @@
         }
       }
     },
+    "Host Helper on %lld Hosts" : {
+      "comment" : "Under the updates card's title: only Helpers have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Host Helper on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Host Helper on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストの Host Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的 Host Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的 Host Helper"
+          }
+        }
+      }
+    },
     "Host Helper: %@. %@ %@" : {
       "localizations" : {
         "ja" : {
@@ -27992,6 +28465,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此裝置在你的 tailnet 中的顯示方式。"
+          }
+        }
+      }
+    },
+    "How to Update Manually" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動で更新する方法"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手动更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手動更新"
           }
         }
       }
@@ -28532,6 +29027,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在「主機」頁面中點一下「掃描以配對」，並將相機對準代碼。"
+          }
+        }
+      }
+    },
+    "In This App" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアプリ内"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 App 内置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 App 內建"
           }
         }
       }
@@ -38277,6 +38794,28 @@
         }
       }
     },
+    "Opens Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「更新」を開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“更新”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟「更新」"
+          }
+        }
+      }
+    },
     "Opens a large preview of the image" : {
       "comment" : "Accessibility hint on a Composer image pill.",
       "localizations" : {
@@ -40273,6 +40812,69 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "外掛 %@ 已推出。此外掛連結自本機的 checkout；請將該 checkout 更新到 %@ 以上版本。"
+          }
+        }
+      }
+    },
+    "Plugin & Helper" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プラグインと Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件与 Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外掛與 Helper"
+          }
+        }
+      }
+    },
+    "Plugin and Helper on %lld Hosts" : {
+      "comment" : "Under the updates card's title: plugins and Helpers have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Plugin and Helper on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Plugin and Helper on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストのプラグインと Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的插件和 Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的外掛和 Helper"
           }
         }
       }
@@ -48185,6 +48787,28 @@
         }
       }
     },
+    "Shows why the update failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新が失敗した理由を表示します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示更新失败的原因"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示更新失敗的原因"
+          }
+        }
+      }
+    },
     "Shows why this Host can't connect." : {
       "localizations" : {
         "ja" : {
@@ -54261,6 +54885,28 @@
         }
       }
     },
+    "The Host did not finish in time. Heeler is reading what is installed there now." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが時間内に完了しませんでした。Heeler が現在インストールされている内容を読み取っています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未及时完成操作。Heeler 正在读取主机上当前安装的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未及時完成。Heeler 正在讀取主機上目前安裝的內容。"
+          }
+        }
+      }
+    },
     "The Host did not finish in time. The change may still complete there, so run the checks again in a minute." : {
       "localizations" : {
         "ja" : {
@@ -56395,6 +57041,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "變更期間連線已中斷，該變更可能仍會在主機上完成。請再次執行檢查。"
+          }
+        }
+      }
+    },
+    "The connection ended or the Host took too long, and Heeler could not read what is installed there now. Try again once the Host is connected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が終わったか、ホストの処理に時間がかかりすぎたため、Heeler は現在インストールされている内容を読み取れませんでした。ホストが接続されてから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已断开或主机耗时过长，Heeler 无法读取主机上当前安装的内容。请在主机连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已中斷或主機花費太久，Heeler 無法讀取主機上目前安裝的內容。請在主機連線後再試一次。"
+          }
+        }
+      }
+    },
+    "The connection ended or the Host took too long, and it still has %@ %@. The update may still finish there, so check again in a minute." : {
+      "comment" : "Arguments: Heeler Plugin or Host Helper, then the version the Host holds.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The connection ended or the Host took too long, and it still has %1$@ %2$@. The update may still finish there, so check again in a minute."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が終わったか、ホストの処理に時間がかかりすぎました。ホストはまだ %1$@ %2$@ のままです。更新はホスト側で完了する可能性があるため、1分後にもう一度確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已断开或主机耗时过长，主机上仍是 %1$@ %2$@。更新可能仍会在主机上完成，请一分钟后再检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已中斷或主機花費太久，主機上仍是 %1$@ %2$@。更新可能仍會在主機上完成，請一分鐘後再檢查。"
           }
         }
       }
@@ -64619,6 +65316,28 @@
         }
       }
     },
+    "Up to Date" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是最新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是最新"
+          }
+        }
+      }
+    },
     "Update" : {
       "comment" : "Host Helper action button: updates the Host Helper.",
       "localizations" : {
@@ -64660,6 +65379,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新此主機上的 %@，以讀取用量上限。"
+          }
+        }
+      }
+    },
+    "Update All" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部更新"
+          }
+        }
+      }
+    },
+    "Update Failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新に失敗"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新失敗"
           }
         }
       }
@@ -64772,6 +65535,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新並啟用"
+          }
+        }
+      }
+    },
+    "Update available" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新があります"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有可用更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有可用更新"
           }
         }
       }
@@ -65000,6 +65785,36 @@
         }
       }
     },
+    "Update waiting its turn" : {
+      "comment" : "On a Plugin or Helper row: its update starts after another on the same Host.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Waiting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
+          }
+        }
+      }
+    },
     "Updated" : {
       "comment" : "A file a command changed",
       "localizations" : {
@@ -65092,6 +65907,101 @@
         }
       }
     },
+    "Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        }
+      }
+    },
+    "Updates for Your Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机的更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機的更新"
+          }
+        }
+      }
+    },
+    "Updating" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中"
+          }
+        }
+      }
+    },
+    "Updating %lld of %lld…" : {
+      "comment" : "Arguments: which update is running, then how many were started.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Updating %1$lld of %2$lld…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 件中 %1$lld 件目を更新中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新第 %1$lld 个，共 %2$lld 个…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新第 %1$lld 個，共 %2$lld 個…"
+          }
+        }
+      }
+    },
     "Updating session…" : {
       "localizations" : {
         "ja" : {
@@ -65110,6 +66020,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在更新工作階段…"
+          }
+        }
+      }
+    },
+    "Updating…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中…"
           }
         }
       }
@@ -67146,6 +68078,29 @@
         }
       }
     },
+    "What Heeler installed on %@. Newer versions arrive with updates to the app." : {
+      "comment" : "Under Host detail's Plugin & Helper section. Argument: the Host's name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler が %@ にインストールしたものです。新しいバージョンはアプリの更新とともに届きます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在 %@ 上安装的内容。新版本会随 App 更新一同提供。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在 %@ 上安裝的內容。新版本會隨 App 更新一併提供。"
+          }
+        }
+      }
+    },
     "What it cannot see" : {
       "localizations" : {
         "ja" : {
@@ -68098,6 +69053,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你主機的來源 IP 位址，與任何網路請求相同。"
+          }
+        }
+      }
+    },
+    "Your Hosts are up to date." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはすべて最新です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的主机均已是最新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的主機皆已是最新。"
           }
         }
       }
