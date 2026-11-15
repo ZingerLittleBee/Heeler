@@ -52,9 +52,12 @@ left it with no owner at its size.
   "Sized for another device", with Fit to Screen and a way to dismiss it. It
   goes as soon as the grids agree or this client owns the block. Dismissed, it
   stays away while the same client keeps the size, and comes back when another
-  client takes it. It sits over the terminal's top rows below the back header,
-  in the terminal's colors, and never takes a row of its own. Other Server
-  Kinds size their terminals to the view and have no notice.
+  client takes it. It sits over the terminal's bottom rows, above the input
+  row, while the last row with text is in the upper half of the view, and
+  over its top rows below the back header otherwise, so it stays clear of
+  where the output ends and the prompt and cursor usually are. It is drawn in
+  the terminal's colors and never takes a row of its own. Other Server Kinds
+  size their terminals to the view and have no notice.
 - **No scaled view.** Heeler does not scale the other device's grid down to
   the screen. As with tmux (ADR 0045), that needs a terminal view whose grid
   the remote side fixes, which no Attach has.
@@ -76,7 +79,9 @@ left it with no owner at its size.
   keeping it would only hold this screen's size on every other device.
 - A notice in a row of its own would shrink the view's grid, which could then
   match or miss the other device's and make the notice come and go by itself.
-  Over the grid it changes nothing, and it can be dismissed.
+  Over the grid it changes nothing, and it can be dismissed. Over the top rows
+  alone it hid the prompt of a terminal with a few lines of output, which is
+  where a short screen's cursor is, so it moves to the blank rows under them.
 
 ## Evidence
 

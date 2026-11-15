@@ -157,6 +157,20 @@ struct TerminalSizeNoticeTests {
         await store.stop()
     }
 
+    /// The notice sits away from where the output ends, which is where the
+    /// prompt and cursor usually are: over the blank rows under a short
+    /// screen of output, over the top rows of a full one.
+    @Test func itSitsAwayFromWhereTheOutputEnds() {
+        let blank = Array(repeating: "", count: 10)
+        let short = ["row1", "row2", "$ echo hi", "hi", "$ "] + Array(repeating: "   ", count: 15)
+        let full = (1...20).map { "line \($0)" }
+        let lowerHalf = Array(repeating: "", count: 10) + ["$ "] + Array(repeating: "", count: 9)
+        #expect(TerminalSizeNotice.edge(forViewport: blank.joined(separator: "\n")) == .bottom)
+        #expect(TerminalSizeNotice.edge(forViewport: short.joined(separator: "\n")) == .bottom)
+        #expect(TerminalSizeNotice.edge(forViewport: full.joined(separator: "\n")) == .top)
+        #expect(TerminalSizeNotice.edge(forViewport: lowerHalf.joined(separator: "\n")) == .top)
+    }
+
     /// The notice goes as soon as the sizes agree or this client sets the
     /// size, and comes back when another device takes it again.
     @Test func itGoesAndComesBackWithTheSize() async throws {

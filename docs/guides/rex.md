@@ -75,7 +75,7 @@ When a terminal stops, it says why:
 
 ### Sized for another device
 
-A Rex terminal has one size, set by one device at a time. When no device has set it, the terminal fits your screen. When another device has, such as the Rex app on your Mac, Heeler shows the terminal at that size without scaling it: lines wider than your screen wrap onto the next row, so a program drawn to the full width, such as a table or an editor, can look jumbled. After a second **Sized for another device** appears over its top rows:
+A Rex terminal has one size, set by one device at a time. When no device has set it, the terminal fits your screen. When another device has, such as the Rex app on your Mac, Heeler shows the terminal at that size without scaling it: lines wider than your screen wrap onto the next row, so a program drawn to the full width, such as a table or an editor, can look jumbled. After a second **Sized for another device** appears over the terminal, at the bottom while the output ends in its upper half and at the top otherwise, so it stays clear of the prompt:
 
 - **Fit to Screen** takes the size for your screen. Rex resizes the terminal itself, not only your view of it, so every device showing it, the Rex app included, gets your screen's size while you have it open here.
 - Heeler gives the size back when you leave the terminal, when Heeler goes to the background, or when the terminal ends, and the device that had it gets it back. Coming back never takes it again on its own; tap **Fit to Screen** again.

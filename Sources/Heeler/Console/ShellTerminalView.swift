@@ -75,6 +75,8 @@ struct ShellTerminalView: View {
     private var keyboardInset: TerminalKeyboardInset { keyboardInsetOverride ?? ownKeyboardInset }
     @State private var isConfirmingClose = false
     @State private var passwordPrompts = ShellTerminalPasswordPrompts()
+    /// Where the size notice sits, away from where the output ends.
+    @State private var sizeNoticeEdge: VerticalEdge = .top
     @State private var passwordRequest: ShellTerminalPasswordRequest?
     /// Whether the terminal takes the keyboard back once the password sheet
     /// has gone: it had it before, or a password went in and Return is next.
@@ -124,8 +126,10 @@ struct ShellTerminalView: View {
         screen.onPaste = { text, bracketed in
             store.requestPaste(text, bracketedPaste: bracketed)
         }
-        screen.onViewportTextChanged = { [passwordPrompts] text in
+        screen.onViewportTextChanged = { [passwordPrompts, noticeEdge = $sizeNoticeEdge] text in
             passwordPrompts.viewportDidChange(text)
+            let edge = TerminalSizeNotice.edge(forViewport: text)
+            if edge != noticeEdge.wrappedValue { noticeEdge.wrappedValue = edge }
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
@@ -299,6 +303,14 @@ struct ShellTerminalView: View {
     var body: some View {
         terminalScreen
             .id(store.terminalID)
+            // Over the output, above the input row; the status dialog, the
+            // drawers and the back header stay on top of it.
+            .modifier(TerminalSizeNoticeOverlay(
+                store: store, palette: themePalette,
+                colorScheme: terminal.themes.selection(for: themeAppearance)
+                    .chromeColorScheme(for: themeAppearance),
+                edge: sizeNoticeEdge, top: sizeNoticeTop - terminalTopInset,
+                bottom: sizeNoticeBottom, isHidden: isHeaderDrawerOpen))
             .overlay(alignment: .bottomTrailing) { passwordButton }
             .overlay { statusOverlay }
             // Above the status dialog, whose dim would take every touch
@@ -365,13 +377,6 @@ struct ShellTerminalView: View {
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
             .padding(.top, terminalTopInset)
-            // Below the back header and under it, so the header's menu and
-            // the drawer it opens stay on top.
-            .modifier(TerminalSizeNoticeOverlay(
-                store: store, palette: themePalette,
-                colorScheme: terminal.themes.selection(for: themeAppearance)
-                    .chromeColorScheme(for: themeAppearance),
-                top: sizeNoticeTop, isHidden: isHeaderDrawerOpen))
             .overlay(alignment: .top) {
                 AgentDetailHeader(
                     palette: themePalette,
@@ -527,6 +532,16 @@ struct ShellTerminalView: View {
     /// top edge.
     private var sizeNoticeTop: CGFloat {
         max(backHeaderTop + AgentDetailHeader.controlSize, terminalTopInset) + 8
+    }
+
+    /// Above the output's bottom edge, and above the password button while
+    /// it shows there: 44 points of touch area and the 4 under it.
+    private var sizeNoticeBottom: CGFloat {
+        showsPasswordButton ? 44 + 4 + 8 : 8
+    }
+
+    private var showsPasswordButton: Bool {
+        passwordPrompts.offered != nil && store.canInsertPassword && passwordRequest == nil
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }
@@ -718,7 +733,7 @@ struct ShellTerminalView: View {
     @ViewBuilder
     private var passwordButton: some View {
         Group {
-            if passwordPrompts.offered != nil, store.canInsertPassword, passwordRequest == nil {
+            if showsPasswordButton {
                 ShellTerminalPasswordButton(palette: themePalette, action: openPasswordSheet)
                     .padding(.trailing, MessageJumpPlacement.trailingPadding)
                     .padding(.bottom, 4)

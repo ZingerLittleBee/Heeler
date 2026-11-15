@@ -16,14 +16,24 @@ struct TerminalSizeNotice: Equatable {
     /// The size the terminal has, as the other device set it.
     var server: TerminalSizeReport.Grid
     var phase: Phase
+
+    /// The end of the terminal the notice sits at, away from where the
+    /// output ends, which is where the prompt and cursor usually are: the
+    /// bottom while the last row with text is in the upper half of the
+    /// `viewport` (one line per row), the top otherwise.
+    static func edge(forViewport viewport: String) -> VerticalEdge {
+        let rows = viewport.split(separator: "\n", omittingEmptySubsequences: false)
+        let lastText = rows.lastIndex { !$0.allSatisfy(\.isWhitespace) } ?? -1
+        return lastText < rows.count / 2 ? .bottom : .top
+    }
 }
 
-/// A small control at the top of a terminal that shows at a size another
-/// device set: it says so, offers to fit the terminal to this screen, and goes
-/// away when dismissed. It sits over the grid's top rows rather than taking a
-/// row of its own, so the view's grid stays as it is, and it never stays
-/// there for good. Drawn in the terminal's own colors, as
-/// `TerminalStatusDialog` is.
+/// A small control over a terminal that shows at a size another device set:
+/// it says so, offers to fit the terminal to this screen, and goes away when
+/// dismissed. It sits over the grid's top or bottom rows, away from where the
+/// output ends, rather than taking a row of its own, so the view's grid stays
+/// as it is, and it never stays there for good. Drawn in the terminal's own
+/// colors, as `TerminalStatusDialog` is.
 struct TerminalSizeNoticeView: View {
     let notice: TerminalSizeNotice
     let palette: TerminalThemePalette
@@ -164,15 +174,19 @@ struct TerminalSizeNoticeView: View {
     }
 }
 
-/// Lays a shell terminal's size notice over the top of its screen at `top`,
-/// and gives back a size the user took when the scene goes to the
-/// background; coming back to the foreground takes nothing (ADR 0051).
+/// Lays a shell terminal's size notice over its screen at `edge`, `top` or
+/// `bottom` in from that edge, and gives back a size the user took when the
+/// scene goes to the background; coming back to the foreground takes
+/// nothing (ADR 0051).
 struct TerminalSizeNoticeOverlay: ViewModifier {
     let store: ShellTerminalStore
     let palette: TerminalThemePalette
     /// The terminal chrome's color scheme, as the back header takes it.
     let colorScheme: ColorScheme
+    /// See `TerminalSizeNotice.edge(forViewport:)`.
+    let edge: VerticalEdge
     let top: CGFloat
+    let bottom: CGFloat
     /// Out of the way of what opens in the same place, such as the drawer
     /// the back header's menu opens.
     let isHidden: Bool
@@ -181,7 +195,7 @@ struct TerminalSizeNoticeOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .top) {
+            .overlay(alignment: edge == .top ? .top : .bottom) {
                 Group {
                     if let notice = store.sizeNotice, !isHidden {
                         TerminalSizeNoticeView(
@@ -190,8 +204,8 @@ struct TerminalSizeNoticeOverlay: ViewModifier {
                             onDismiss: { store.dismissSizeNotice() })
                         .environment(\.colorScheme, colorScheme)
                         .padding(.horizontal, 12)
-                        .padding(.top, top)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(edge == .top ? .top : .bottom, edge == .top ? top : bottom)
+                        .transition(.move(edge: edge == .top ? .top : .bottom).combined(with: .opacity))
                     }
                 }
                 .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: store.sizeNotice != nil)
