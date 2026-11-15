@@ -389,7 +389,7 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
-        .onChange(of: composer.draft) { _, draft in
+        .onChange(of: composer.composedDraft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
         // Also on appearing: Chat may have followed another while it was away.
@@ -415,8 +415,7 @@ struct AgentChatSurfaceView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            let staging = session.staging
-            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
+            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
@@ -1794,7 +1793,7 @@ struct AgentChatSurfaceView: View {
             attachLinkCount: 0,
             addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
             pasteImage: capabilities.uploads
-                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
             addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal

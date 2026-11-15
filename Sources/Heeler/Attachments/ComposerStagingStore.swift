@@ -173,7 +173,9 @@ final class ComposerStagingStore {
             preparationObserverForTesting?("started")
             defer { preparationObserverForTesting?("finished") }
             #endif
-            return .image(try await preparer.prepare(selection))
+            let prepared = try await preparer.prepare(selection)
+            let preview = ComposerImageAttachment.makePreview(from: prepared)
+            return .image(prepared, preview)
         }
 
         func upload(
@@ -201,7 +203,7 @@ final class ComposerStagingStore {
     }
 
     private enum PreparedSource: Sendable {
-        case image(PreparedImage)
+        case image(PreparedImage, ComposerImageAttachment.Preview)
         case file(PreparedFile)
 
         var medium: Medium {
@@ -213,14 +215,21 @@ final class ComposerStagingStore {
 
         var byteCount: Int64 {
             switch self {
-            case .image(let image): image.byteCount
+            case .image(let image, _): image.byteCount
             case .file(let file): file.byteCount
+            }
+        }
+
+        var imagePreview: ComposerImageAttachment.Preview? {
+            switch self {
+            case .image(_, let preview): preview
+            case .file: nil
             }
         }
 
         func remove() throws {
             switch self {
-            case .image(let image): try image.remove()
+            case .image(let image, _): try image.remove()
             case .file(let file): try file.remove()
             }
         }
@@ -297,8 +306,11 @@ final class ComposerStagingStore {
     func begin(_ source: Source, insertPathIntoComposer: Bool = true) -> UInt64? {
         guard !state.isBusy, operationTask == nil else { return nil }
         switch state {
-        case .failed, .backgroundInterrupted:
-            publish(.dismissed(id: operationID))
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            if failure.medium == .image {
+                composer.imageStagingDidDismiss(operationID: operationID)
+            }
+            publish(.dismissed(id: operationID), advancesQueue: false)
         case .idle, .completed, .preparing, .uploading:
             break
         }
@@ -308,6 +320,9 @@ final class ComposerStagingStore {
         operationID &+= 1
         let currentID = operationID
         state = .preparing(source.medium)
+        if source.medium == .image {
+            composer.imageStagingDidBegin(operationID: currentID)
+        }
         operationTask = Task { [weak self] in
             guard let self else { return }
             await self.runSelection(source, operationID: currentID)
@@ -356,10 +371,16 @@ final class ComposerStagingStore {
         discardRetainedPreparedSource()
         state = .idle
         switch previous {
-        case .preparing, .uploading:
+        case .preparing(let medium), .uploading(let medium, _):
+            if medium == .image {
+                composer.imageStagingDidCancel(operationID: abandonedID)
+            }
             publish(.cancelled(id: abandonedID))
-        case .failed, .backgroundInterrupted:
-            publish(.dismissed(id: abandonedID))
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            if failure.medium == .image {
+                composer.imageStagingDidDismiss(operationID: abandonedID)
+            }
+            publish(.dismissed(id: abandonedID), advancesQueue: false)
         case .idle, .completed:
             break
         }
@@ -386,11 +407,16 @@ final class ComposerStagingStore {
         cancellationDisposition = nil
         // Keep the failed operation's id so Composer can match Retry.
         let currentID = operationID
-        state = .uploading(
-            preparedSource.medium,
-            AttachmentStageProgress(
-                transferredBytes: 0,
-                totalBytes: preparedSource.byteCount))
+        let initialProgress = AttachmentStageProgress(
+            transferredBytes: 0,
+            totalBytes: preparedSource.byteCount)
+        state = .uploading(preparedSource.medium, initialProgress)
+        if let preview = preparedSource.imagePreview {
+            composer.imageStagingDidPrepare(
+                operationID: currentID,
+                preview: preview,
+                progress: initialProgress)
+        }
         operationTask = Task { [weak self] in
             guard let self else { return }
             await self.runUpload(preparedSource, operationID: currentID)
@@ -415,7 +441,10 @@ final class ComposerStagingStore {
         discardRetainedPreparedSource()
         state = .idle
         switch previous {
-        case .failed, .backgroundInterrupted:
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            if failure.medium == .image {
+                composer.imageStagingDidDismiss(operationID: id)
+            }
             publish(.dismissed(id: id))
         case .idle, .preparing, .uploading, .completed:
             break
@@ -437,11 +466,16 @@ final class ComposerStagingStore {
             }
             preparedSource = prepared
             unclaimedSource = nil
-            state = .uploading(
-                prepared.medium,
-                AttachmentStageProgress(
-                    transferredBytes: 0,
-                    totalBytes: prepared.byteCount))
+            let initialProgress = AttachmentStageProgress(
+                transferredBytes: 0,
+                totalBytes: prepared.byteCount)
+            state = .uploading(prepared.medium, initialProgress)
+            if let preview = prepared.imagePreview {
+                composer.imageStagingDidPrepare(
+                    operationID: operationID,
+                    preview: preview,
+                    progress: initialProgress)
+            }
             await runUploadBody(prepared, operationID: operationID)
         } catch {
             try? unclaimedSource?.remove()
@@ -469,7 +503,7 @@ final class ComposerStagingStore {
             }
             let staged: StagedSource
             switch source {
-            case .image(let image):
+            case .image(let image, _):
                 staged = try await imageAdapter.upload(image, reporter: reporter)
             case .file(let file):
                 staged = try await fileAdapter.upload(file, reporter: reporter)
@@ -486,6 +520,9 @@ final class ComposerStagingStore {
             case .uploading(let medium, _) = state
         else { return }
         state = .uploading(medium, progress)
+        if medium == .image {
+            composer.imageStagingDidProgress(operationID: operationID, progress: progress)
+        }
     }
 
     private func finishSuccess(_ staged: StagedSource, operationID: UInt64) {
@@ -496,21 +533,33 @@ final class ComposerStagingStore {
         }
         operationTask = nil
         cancellationDisposition = nil
-        discardRetainedPreparedSource()
+        let retainedPreview: ComposerImageAttachment.Preview?
+        if staged.medium == .image, composer.retainsImageAttachments {
+            retainedPreview = preparedSource?.imagePreview
+            preparedSource = nil
+        } else {
+            retainedPreview = nil
+            discardRetainedPreparedSource()
+        }
 
         var copied = false
         do {
             try clipboard.copy(staged.path)
             copied = true
         } catch {}
-        if insertsPathIntoComposer {
-            composer.insertPathIntoDraft(staged.path)
-        }
         state = .completed(
             Outcome(medium: staged.medium, path: staged.path, copied: copied))
-        publish(.completed(id: operationID, path: staged.path))
+        if staged.medium == .image, composer.retainsImageAttachments {
+            composer.imageStagingDidComplete(
+                operationID: operationID,
+                path: staged.path,
+                preview: retainedPreview)
+        } else if insertsPathIntoComposer {
+            composer.insertPathIntoDraft(staged.path)
+        }
         // Nothing is left to do with a path that was copied: the line goes by itself.
         if copied { dismissCompleted(operationID, after: Self.completedLinger) }
+        publish(.completed(id: operationID, path: staged.path))
     }
 
     /// How long a copied path's line stays before it goes by itself.
@@ -536,11 +585,21 @@ final class ComposerStagingStore {
                     medium: medium,
                     message: medium.uploadPaused,
                     isRetryable: preparedSource != nil)
+                let preview = preparedSource?.imagePreview
                 state = .backgroundInterrupted(failure)
+                if medium == .image {
+                    composer.imageStagingDidFail(
+                        operationID: operationID,
+                        failure: failure,
+                        preview: preview)
+                }
                 publish(.failed(id: operationID, retryable: failure.isRetryable))
             case .user, .none:
                 discardRetainedPreparedSource()
                 state = .idle
+                if medium == .image {
+                    composer.imageStagingDidCancel(operationID: operationID)
+                }
                 publish(.cancelled(id: operationID))
             }
             cancellationDisposition = nil
@@ -548,15 +607,28 @@ final class ComposerStagingStore {
         }
 
         let failure = Self.failure(for: error, medium: medium, saysTransportFailures: saysTransportFailures)
-        if !failure.isRetryable {
+        let preview: ComposerImageAttachment.Preview?
+        if failure.isRetryable {
+            preview = preparedSource?.imagePreview
+        } else {
+            preview = nil
             discardRetainedPreparedSource()
         }
         state = .failed(failure)
+        if medium == .image {
+            composer.imageStagingDidFail(
+                operationID: operationID,
+                failure: failure,
+                preview: preview)
+        }
         publish(.failed(id: operationID, retryable: failure.isRetryable))
     }
 
-    private func publish(_ event: OperationEvent) {
+    private func publish(_ event: OperationEvent, advancesQueue: Bool = true) {
         onOperationEvent?(event)
+        if advancesQueue {
+            composer.stagingDidSettle()
+        }
     }
 
     private func discardRetainedPreparedSource() {
