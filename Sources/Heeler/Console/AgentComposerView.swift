@@ -305,6 +305,7 @@ struct AgentComposerView: View {
     /// leaves the mic out.
     @Environment(VoiceInputSession.self) private var voiceInput: VoiceInputSession?
     @State private var isVoiceSetupPresented = false
+    @State private var previewedImage: ComposerImagePreviewSheet.Item?
     @State private var isInputFocused = false
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
@@ -388,6 +389,18 @@ struct AgentComposerView: View {
                 NavigationStack {
                     VoiceInputSettingsView(settings: voiceInput.settings, isSheet: true)
                 }
+            }
+        }
+        .sheet(item: $previewedImage) { item in
+            ComposerImagePreviewSheet(item: item) {
+                previewedImage = nil
+            }
+            .presentationDetents([.large])
+            .ignoresSafeArea()
+        }
+        .onChange(of: store.imageAttachments.map(\.id)) { _, ids in
+            if let current = previewedImage, !ids.contains(current.id) {
+                previewedImage = nil
             }
         }
         .onAppear {
@@ -480,11 +493,15 @@ struct AgentComposerView: View {
     private var inputArea: some View {
         VStack(alignment: .leading, spacing: 8) {
             suggestions
-            editorRow
-            if isCollapsed, store.hasPendingDroppedImages {
-                pendingDropHint
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            if !store.imageAttachments.isEmpty {
+                ComposerImageStrip(
+                    attachments: store.imageAttachments,
+                    horizontalMargin: 12,
+                    onPreview: { previewedImage = $0 },
+                    onRetry: { store.retryImageAttachment(id: $0) },
+                    onRemove: { store.removeImageAttachment(id: $0) })
             }
+            editorRow
             if let failure = latestFailure {
                 failureRow(failure)
             }
@@ -733,9 +750,6 @@ struct AgentComposerView: View {
             }
 
             Spacer(minLength: 0)
-            if store.hasPendingDroppedImages {
-                pendingDropHint
-            }
         }
     }
 
@@ -770,15 +784,6 @@ struct AgentComposerView: View {
 
     private var voiceBar: some View {
         ComposerVoiceBar(voice: store.voice) { store.voice.cancel() }
-    }
-
-    /// Why Send waits; its VoiceOver hint already says so.
-    private var pendingDropHint: some View {
-        Text(store.sendAccessibilityHint)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .accessibilityHidden(true)
     }
 
     private var offersAdd: Bool {
@@ -839,13 +844,17 @@ struct AgentComposerView: View {
     private var primaryControl: AgentComposerPrimaryControl {
         AgentComposerPrimaryControl(
             status: status, draft: store.draft,
+            hasAttachments: !store.imageAttachments.isEmpty,
             canStop: store.isConnectionAvailable && interrupt != nil && !store.stop.isHeldAfterSend,
             alsoWhileBlocked: store.offersStopWhileBlocked)
     }
 
     private var inputAreaInsets: EdgeInsets {
         EdgeInsets(
-            top: isCollapsed ? 6 : 12, leading: 12, bottom: isCollapsed ? 6 : 8, trailing: 12)
+            top: isCollapsed ? (store.imageAttachments.isEmpty ? 6 : 10) : (store.imageAttachments.isEmpty ? 12 : 14),
+            leading: 12,
+            bottom: isCollapsed ? 6 : 8,
+            trailing: 12)
     }
 
     private var isCollapsed: Bool {

@@ -476,6 +476,106 @@ struct ChatImagePreviewTests {
         }
     }
 
+    @Test func composerPreviewReadsRetainedLocalImageAndHonorsCustomTitleAndDone() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("image.jpg")
+        let bytes = Self.png()
+        try bytes.write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL, format: .jpeg, pixelWidth: 240, pixelHeight: 160, byteCount: Int64(bytes.count))
+        let previewInfo = ComposerImageAttachment.makePreview(from: prepared)
+        #expect(previewInfo.thumbnail != nil)
+
+        var doneTapped = false
+        let controller = ChatImagePreviewController(
+            path: fileURL.path,
+            displayTitle: "Image 1 · 240×160",
+            placeholder: previewInfo.thumbnail,
+            onDone: { doneTapped = true }
+        ) { _ in
+            try Data(contentsOf: fileURL)
+        }
+        let navigation = UINavigationController(rootViewController: controller)
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 640), rootViewController: navigation) { _ in
+            let deadline = ContinuousClock.now + .seconds(3)
+            while !controller.isLoaded, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(controller.isLoaded)
+            #expect(controller.title == "Image 1 · 240×160")
+            let doneItem = try #require(controller.navigationItem.rightBarButtonItem)
+            _ = doneItem.target?.perform(doneItem.action, with: doneItem)
+            #expect(doneTapped)
+        }
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func composerImageStripRendersOptionCPills(scheme: ColorScheme) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-strip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("image.jpg")
+        let bytes = Self.png()
+        try bytes.write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL, format: .jpeg, pixelWidth: 1_280, pixelHeight: 960, byteCount: 145_408)
+        let preview = ComposerImageAttachment.makePreview(from: prepared)
+        let attachments = [
+            ComposerImageAttachment(
+                id: UUID(), preview: preview, phase: .ready(path: "/tmp/heeler/stage-1/image.jpg")),
+            ComposerImageAttachment(
+                id: UUID(), preview: preview,
+                phase: .uploading(AttachmentStageProgress(transferredBytes: 98_000, totalBytes: 145_408))),
+        ]
+        let rendered = try RenderedBitmap(
+            ComposerImageStrip(
+                attachments: attachments,
+                onPreview: { _ in },
+                onRetry: { _ in },
+                onRemove: { _ in })
+                .padding(12)
+                .frame(width: 390)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .environment(\.colorScheme, scheme),
+            proposedSize: .unspecified,
+            scale: 3)
+        Attachment.record(try rendered.image(), named: "composer-image-strip-\(scheme)", as: .png)
+        #expect(rendered.width > 0)
+        #expect(rendered.height > 0)
+    }
+
+    @Test func composerImageStripAutoScrollsOnAppendAndFinalCompletionWithoutJumpingOnDelete() {
+        let a = UUID(), b = UUID(), c = UUID()
+        let entry = { (id: UUID, phase: ComposerImageAttachment.Phase) in
+            ComposerImageStrip.ScrollEntry(ComposerImageAttachment(id: id, phase: phase))
+        }
+        let progress = AttachmentStageProgress(transferredBytes: 50, totalBytes: 100)
+
+        // Single image stays at leading margin without auto-scrolling.
+        #expect(!ComposerImageStrip.shouldScrollToEnd(from: [], to: [entry(a, .preparing)]))
+        // Appending a second or third image scrolls to the trailing end.
+        let twoUploading = [entry(a, .ready(path: "/a")), entry(b, .uploading(progress))]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: [entry(a, .ready(path: "/a"))], to: twoUploading))
+        // Completing the trailing upload scrolls again once its metadata widens the pill.
+        let twoReady = [entry(a, .ready(path: "/a")), entry(b, .ready(path: "/b"))]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: twoUploading, to: twoReady))
+        // Batch of 3 keeps trailing pinned as earlier items widen, then settles on #3 ready.
+        let threeQueued = [entry(a, .uploading(progress)), entry(b, .queued), entry(c, .queued)]
+        let threeAfterA = [entry(a, .ready(path: "/a")), entry(b, .uploading(progress)), entry(c, .queued)]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: [], to: threeQueued))
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: threeQueued, to: threeAfterA))
+        // Deleting an attachment never jumps to the end.
+        #expect(!ComposerImageStrip.shouldScrollToEnd(
+            from: [entry(a, .ready(path: "/a")), entry(b, .ready(path: "/b")), entry(c, .ready(path: "/c"))],
+            to: [entry(a, .ready(path: "/a")), entry(c, .ready(path: "/c"))]))
+    }
+
     private static func png() -> Data {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 160), format: {
             let format = UIGraphicsImageRendererFormat(); format.scale = 1; return format

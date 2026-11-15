@@ -103,7 +103,7 @@ struct ComposerStagingOwnershipTests {
         try await fixture.waitForRetainedTerminal(in: controller)
         let held = try await fixture.dropHeldImage()
         fixture.composer.acceptDrop([.image(try ConnectedAgentFixture.tinyJPEGData(), suggestedName: "next.jpg")])
-        #expect(fixture.composer.pendingDropPlaceholders.count == 2)
+        #expect(fixture.composer.imageAttachments.count == 2)
 
         host.showsDetail = false
         try #require(
@@ -114,8 +114,8 @@ struct ComposerStagingOwnershipTests {
         await held.gate.open()
         try #require(await Self.eventually { fixture.session.staging.state == .idle })
 
-        #expect(!AgentComposerStore.containsDropPlaceholder(fixture.composer.draft))
-        #expect(!fixture.composer.draft.contains(ConnectedAgentFixture.stagedPath))
+        #expect(fixture.composer.imageAttachments.isEmpty)
+        #expect(fixture.composer.draft.isEmpty)
         #expect(await fixture.transport.stageRequests.count == 1)
         await fixture.tearDown()
     }
@@ -170,10 +170,11 @@ struct ComposerStagingOwnershipTests {
             })
 
         #expect(fixture.session.staging.presentation?.commands == [.retry, .dismiss])
-        #expect(fixture.composer.pendingDropPlaceholders == [held.placeholder])
+        #expect(fixture.composer.imageAttachments.map(\.id) == [held.attachmentID])
         #expect(!fixture.composer.canSend)
         fixture.session.staging.perform(.dismiss)
         #expect(!fixture.composer.hasPendingDroppedImages)
+        #expect(fixture.composer.imageAttachments.isEmpty)
         await fixture.tearDown()
     }
 
@@ -216,9 +217,10 @@ struct ComposerStagingOwnershipTests {
         await leave.value
         try #require(
             await Self.eventually {
-                fixture.composer.draft == "/tmp/heeler-staged/second.jpg "
+                fixture.composer.readyImagePaths == ["/tmp/heeler-staged/second.jpg"]
                     && !fixture.composer.hasPendingDroppedImages
             })
+        #expect(fixture.composer.draft.isEmpty)
         #expect(await fixture.stager.calls == 2)
     }
 
@@ -249,7 +251,7 @@ private struct ConnectedAgentFixture {
     /// An image whose Host upload waits on `gate`.
     struct HeldDrop {
         let gate: ScriptedTransportCallGate
-        let placeholder: String
+        let attachmentID: UUID
     }
 
     let transport: ScriptedTransport
@@ -317,20 +319,21 @@ private struct ConnectedAgentFixture {
         await transport.configureImageStaging(
             outcomes: [.success(try StagedImage(path: Self.stagedPath))], gate: gate)
         composer.acceptDrop([.image(try Self.tinyJPEGData(), suggestedName: "drop.jpg")])
-        let placeholder = try #require(composer.pendingDropPlaceholders.first)
+        let attachmentID = try #require(composer.imageAttachments.first?.id)
         try #require(
             await ComposerStagingOwnershipTests.eventually { await gate.entryCount == 1 },
             "the upload should reach the Host")
-        return HeldDrop(gate: gate, placeholder: placeholder)
+        return HeldDrop(gate: gate, attachmentID: attachmentID)
     }
 
-    /// Lets a held upload finish and expects its Host path in the draft.
+    /// Lets a held upload finish and expects its Host path in `readyImagePaths`.
     func expectUploaded(_ held: HeldDrop) async throws {
         await held.gate.open()
         let uploaded = await ComposerStagingOwnershipTests.eventually {
-            composer.draft.contains(Self.stagedPath) && !composer.hasPendingDroppedImages
+            composer.readyImagePaths == [Self.stagedPath] && !composer.hasPendingDroppedImages
         }
-        #expect(uploaded, "the Host path should replace the drop's placeholder")
+        #expect(uploaded, "the Host path should settle on the attachment without touching draft")
+        #expect(composer.draft.isEmpty)
         #expect(await transport.stageRequests.count == 1)
     }
 
