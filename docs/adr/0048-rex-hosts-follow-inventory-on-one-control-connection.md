@@ -130,3 +130,7 @@ session with detached terminals once a minute, whichever holds.
   control connection before a data link, and `RexHostSession.withConnection`
   hands both out. Until then a Rex Pane's detail says it cannot open yet,
   with a way back and nothing to retry, and an Attach fails with that reason.
+  (ADR 0049 took that step and replaced this: `RexHostSession.withTerminal`
+  attaches the session on this connection, holds the block to one data
+  stream and hands out the terminal's connection, and a Rex Pane's detail
+  opens its terminal. Its input goes on this connection too (ADR 0050).)
