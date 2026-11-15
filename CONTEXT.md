@@ -65,15 +65,20 @@ Route; other Routes of the same Host may reach it without one.
 _Avoid_: bastion, proxy server
 
 **Overlay Network**:
-A Tailscale, ZeroTier, or EasyTier network the user configures in Settings,
-which Heeler joins with a node running inside the app. It is not a system VPN
-and carries nothing but Heeler's own connections. A Route that names one dials
+A Tailscale, ZeroTier, or EasyTier network, or a tailcat tunnel, the user
+configures in Settings, which Heeler joins with a node running inside the
+app. It is not a system VPN and carries nothing but Heeler's own
+connections. A Route that names one dials
 its first hop through it: the Host itself, or its Jump Host when one is set,
 addressed by its overlay IP or name. Only the byte stream changes; SSH
 authentication, host-key trust, and every channel are the same as a direct
 connection (ADR 0021). Its secrets stay in the Keychain, and its node runs
 only while the app does. EasyTier networks each run as an instance of their
-own, side by side; ZeroTier networks share one device identity.
+own, side by side; ZeroTier networks share one device identity. A tailcat
+tunnel is the one kind with a single peer, the machine running
+`tailcat serve`: its address is the whole configuration and the credential,
+and a Route names that machine by a label Heeler derives from the network
+(ADR 0048).
 _Avoid_: VPN, tunnel, tailnet (for the general term)
 
 **Config Server**:
