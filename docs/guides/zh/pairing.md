@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/pairing.md at 5171f178 -->
 
 # 扫码配对 Host
 
@@ -42,7 +42,7 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中该 Host 的页面会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
+herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中 **Herdr TUI** Server 的页面（先打开 Host，再打开该 Server）会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
 
 ## 3. 显示配对码
 
@@ -84,7 +84,7 @@ herdr plugin action invoke heeler.pair
 - 打开 **Agents** 查看已连接 Host 上的编程 Agent，再打开某个 Agent 使用它的终端或 [Chat](chat.md)。
 - Host 会以你的用户名和这台机器的地址命名。如需重命名，请从 **Hosts** 中打开它并轻点 **Edit**。
 - Heeler 使用这台设备的 Device Key（设备密钥）登录。如需配对另一台 iPhone 或 iPad，请在那台设备上重复步骤 3 和步骤 4。
-- 如果这台机器已经在 **Hosts** 中，再次配对会新增一个条目。在不再需要的条目上向左轻扫并轻点 **Remove** 即可移除。
+- 如果这台机器已经在 **Hosts** 中，再次配对会把它再添加一次：新增一个条目，或者在两者的连接方式相同时，成为同一个 Host 下的第二个 **Herdr TUI** Server。在不再需要的条目上向左轻扫并轻点 **Remove**，或在 Host 页面上关闭多余的 Server。
 - 如需在 iPhone 或 iPad 上收到 Agent 等待处理（**Blocked**）或任务完成（**Done**）的通知，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后在 **Hosts** 下打开该 Host 的开关。
 
 ## 外出时使用

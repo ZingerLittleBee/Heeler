@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/vps-jump-host.md at ed1e9e66 -->
+<!-- Translated from docs/guides/vps-jump-host.md at 5171f178 -->
 
 # VPS Jump Host 与反向隧道部署参考
 
@@ -397,19 +397,19 @@ macOS 用户级 LaunchAgent 仅在该用户登录后启动；如果 Mac 重启�
 
 ## 9. 配置 Heeler
 
-在 **Hosts > Add Host** 中，轻点 **Routes** 下的 **Add Route** 填写隧道与 Jump Host 字段并轻点 **Save** 保存路由，再填写其余 Host 字段：
+在 **Hosts** 中轻点 **+**，轻点 **More Options** 填写隧道与 Jump Host 字段，返回后填写第一步的其余内容：
 
 | 字段 | 值 |
 |---|---|
 | User | `MAC_USER` |
-| Address（在 Route 中） | `127.0.0.1` |
-| Port（在 Route 中） | `2222` |
-| Jump Host address（在 Route 中） | `VPS_PUBLIC_IP` |
-| Jump Host port（在 Route 中） | `22` |
-| Jump Host user（在 Route 中） | `herdr-jump` |
+| Address | `127.0.0.1` |
+| Port（在 More Options 中） | `2222` |
+| Jump Host address（在 More Options 中） | `VPS_PUBLIC_IP` |
+| Jump Host port（在 More Options 中） | `22` |
+| Jump Host user（在 More Options 中） | `herdr-jump` |
 | Authentication | `Device Key` |
 
-在 **Add Host** 页面轻点 **Save** 开始 **Preflight** 预检，并分别独立确认两跳的主机密钥：
+轻点 **Connect**，并在 Heeler 先后显示两跳的主机密钥时分别独立确认：
 
 - VPS 的公网端点指纹；
 - 通过 `127.0.0.1:2222` 呈现的 Mac 主机密钥指纹。
