@@ -113,7 +113,8 @@ struct AgentChatStoreTests {
             cachedSession: @escaping @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil },
             screen: BlockedScreenIO = .unavailable,
             processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil,
-            heldStatus: HeldStatus? = nil
+            heldStatus: HeldStatus? = nil,
+            onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
         ) {
             let agent = AgentChatStoreTests.agent(session: session, program: program)
             let server = Server(agent)
@@ -137,7 +138,8 @@ struct AgentChatStoreTests {
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
                     files: hostFiles, agentInfo: { try await server.read() }, cache: cache,
                     adapter: adapter ?? NumberedChatReducer.adapter(limits: limits, wantsFirstLine: program == .codex),
-                    cachedSession: cachedSession, processInfo: processInfo, screen: screen),
+                    cachedSession: cachedSession, processInfo: processInfo, screen: screen,
+                    onRunningBackgroundWorkChanged: onRunningBackgroundWorkChanged),
                 timing: timing, now: { clock.now })
         }
 
@@ -4115,6 +4117,420 @@ struct AgentChatStoreTests {
         #expect(fixture.store.conversationGeneration == generation + 1)
         #expect(fixture.store.conversation.phase == .following(path: agyPath(otherRootID)))
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+    }
+
+    @Test func agyPrefetchContinuesWatchingBackgroundWorkWhileHiddenAndStopsOnceDone() async throws {
+        let rootID = "72f562e4-129f-4e43-87dc-be2f661d5633"
+        let subID = "11111111-1111-4000-8000-000000000001"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            timing: AgentChatStore.Timing(activeInterval: .milliseconds(10), idleInterval: .milliseconds(10)),
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let initialSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nAudit router in background\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "invoke_subagent": .object([
+                        "TypeName": .string("research"),
+                        "Role": .string("Codebase Researcher"),
+                        "Prompt": .string("Inspect Router.swift"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", content: AgyTranscriptReducerTests.launchedSubagentResult(subID)),
+            AgyToolActivityTests.step(
+                3, "MODEL", "PLANNER_RESPONSE", content: "Subagent launched; waiting for its findings."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(initialSteps), at: path)
+
+        #expect(await fixture.store.prefetch())
+        #expect(!fixture.store.isVisible)
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true])
+
+        // Without opening Chat or receiving any further Host event, the hidden
+        // watch loop notices when the Subagent posts its reply and stops polling.
+        let completionSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                4, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyTranscriptReducerTests.systemMessage(
+                    timestamp: "2026-11-07T16:26:00Z", sender: subID,
+                    content: "Found 3 callers in Router.swift.")),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", content: "All callers verified."),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(completionSteps), to: path)
+
+        try await Self.waitUntil { !fixture.store.hasRunningBackgroundWork }
+        #expect(reported == [true, false])
+        try await Task.sleep(for: .milliseconds(25))
+        let readsAfterCompletion = await fixture.files.reads.count
+        await fixture.files.append(
+            AgyToolActivityTests.jsonl([
+                AgyToolActivityTests.step(
+                    6, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nFollow up\n</USER_REQUEST>")
+            ]),
+            to: path)
+        try await Task.sleep(for: .milliseconds(35))
+        #expect(await fixture.files.reads.count == readsAfterCompletion, "hidden watch loop stops once background work finishes")
+    }
+
+    @Test func agyRunningBackgroundWorkSkipsDaemonsAndDropsOnDisconnectOrStaleness() async throws {
+        let rootID = "82f562e4-129f-4e43-87dc-be2f661d5634"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let daemonOnly: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nStart server\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string("npm run dev"),
+                        "IsDaemon": .bool(true),
+                    ]),
+                    "schedule": .object([
+                        "DurationSeconds": .number(30),
+                        "Prompt": .string("Check status"),
+                    ]),
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID, task: 2, "npm run dev")),
+            AgyToolActivityTests.step(
+                3, "MODEL", "GENERIC", status: "RUNNING",
+                content: "Timer scheduled for 30s."),
+            AgyToolActivityTests.step(4, "MODEL", "PLANNER_RESPONSE", content: "Dev server running."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(daemonOnly), at: path)
+
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported.isEmpty)
+
+        // A non-daemon background command activates running Background Work.
+        let commandSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                5, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string("pytest -q"),
+                        "IsDaemon": .bool(false),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                6, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID, task: 6, "pytest -q")),
+            AgyToolActivityTests.step(7, "MODEL", "PLANNER_RESPONSE", content: "Running test suite in background."),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(commandSteps), to: path)
+
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true])
+
+        fixture.store.hostConnectionChanged(false)
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false])
+
+        fixture.store.hostConnectionChanged(true)
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false, true])
+
+        // Once silent past the staleness window, it stops claiming to run.
+        fixture.advance(4 * 3600)
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false, true, false])
+    }
+
+    @Test func agyLongRunningBackgroundCommandStaysActiveViaScreenAndTaskLogAndRetiresCleanly() async throws {
+        let rootID = "93f562e4-129f-4e43-87dc-be2f661d5635"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        let pythonCmd = "python3 -c '\nimport subprocess, time\nsubprocess.run([\"python3\", \"scripts/scratch.py\"])\n'"
+        let rule = String(repeating: "\u{2500}", count: 62)
+        let runningScreen = ScreenFixture.synthetic([
+            rule,
+            ">",
+            rule,
+            "  \u{25CF} [16:00:42] python3 -c ' import subprocess, t... running",
+            rule,
+            "? for shortcuts       Gemini 3.1 Pro \u{00B7} high \u{00B7} 1 task(s) \u{00B7} /tasks",
+        ])
+        let idleEmptyScreen = try AgyTaskPanelTests.captured("agy-185-idle-after-tasks-62x46")
+        final class ScreenBox: @unchecked Sendable {
+            var current: ANSIScreen
+            init(_ initial: ANSIScreen) { current = initial }
+        }
+        let screenBox = ScreenBox(runningScreen)
+        let screenIO = BlockedScreenIO(
+            readScreen: { screenBox.current },
+            sendKeys: { _ in },
+            paste: { _ in })
+
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            screen: screenIO,
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        // Launched at 16:20:00Z; now is 20:14:00Z (3h 54m later, well past 3h staleness).
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T20:14:00Z"))
+
+        let steps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nRun scratch watcher\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string(pythonCmd),
+                        "IsDaemon": .bool(false),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID, task: 2, "Run scratch watcher")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Started in background."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(steps), at: path)
+
+        // Screen check confirms the 3h 54m command is still running.
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.map(\.isStale) == [false])
+        let presentation = ChatBackgroundWorkPresentation(
+            work: fixture.store.backgroundWork, isHostConnected: true, now: fixture.clock.now,
+            locale: Locale(identifier: "en_US"), calendar: Calendar(identifier: .gregorian))
+        #expect(presentation.running.count == 1)
+        #expect(presentation.notUpdating.isEmpty)
+        #expect(presentation.running.first?.time == "3h 52m")
+
+        // When killed via `/tasks` -> `k`, `noteAgyBackgroundWorkMayHaveChanged()`
+        // checks the idle screen immediately and retires the command to `.stopped`.
+        screenBox.current = idleEmptyScreen
+        fixture.store.noteAgyBackgroundWorkMayHaveChanged()
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .stopped)
+        #expect(reported == [true, false])
+
+        // Task log SFTP growth alone also keeps a 4h silent command fresh even without screen reads,
+        // and the screen check's transcript re-poll preserves `.completed` when a `SYSTEM_MESSAGE`
+        // lands right as the task leaves the screen.
+        let rootID2 = "a4f562e4-129f-4e43-87dc-be2f661d5636"
+        let path2 = "/home/dev/.gemini/antigravity-cli/brain/\(rootID2)/.system_generated/logs/transcript_full.jsonl"
+        let taskLog2 = "/home/dev/.gemini/antigravity-cli/brain/\(rootID2)/.system_generated/tasks/task-2.log"
+        let logOnlyFixture = Fixture(
+            session: rootID2, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy))
+        logOnlyFixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+        let steps2: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nRun build\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: ["run_command": .object(["CommandLine": .string("make check"), "IsDaemon": .bool(false)])]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID2, task: 2, "Run build")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Building."),
+        ]
+        await logOnlyFixture.files.write(AgyToolActivityTests.jsonl(steps2), at: path2)
+        await logOnlyFixture.files.write("step 1\n", at: taskLog2)
+        await logOnlyFixture.store.step()
+        #expect(logOnlyFixture.store.hasRunningBackgroundWork)
+
+        logOnlyFixture.advance(4 * 3_600)
+        await logOnlyFixture.files.append("step 2\n", to: taskLog2)
+        await logOnlyFixture.store.step()
+        #expect(logOnlyFixture.store.hasRunningBackgroundWork)
+        #expect(logOnlyFixture.store.backgroundWork.rows.map(\.isStale) == [false])
+
+        // Race guard: `SYSTEM_MESSAGE` appended while `readScreen()` observes the idle empty box
+        // settles as `.completed` from the transcript re-poll rather than `.stopped`.
+        let rootID3 = "b5f562e4-129f-4e43-87dc-be2f661d5637"
+        let path3 = "/home/dev/.gemini/antigravity-cli/brain/\(rootID3)/.system_generated/logs/transcript_full.jsonl"
+        var raceFixtureBox: Fixture?
+        let raceScreen = BlockedScreenIO(
+            readScreen: {
+                if let raceFixture = await MainActor.run(body: { raceFixtureBox }) {
+                    await raceFixture.files.append(
+                        AgyToolActivityTests.jsonl([
+                            AgyToolActivityTests.step(
+                                4, "SYSTEM", "SYSTEM_MESSAGE",
+                                content: AgyToolActivityTests.system(
+                                    "Task id \"\(rootID3)/task-2\" finished with result:\nCommand exited with code 0."))
+                        ]),
+                        to: path3)
+                }
+                return idleEmptyScreen
+            },
+            sendKeys: { _ in },
+            paste: { _ in })
+        let raceFixture = Fixture(
+            session: rootID3, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            screen: raceScreen)
+        raceFixtureBox = raceFixture
+        raceFixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+        let steps3: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nRun fast check\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: ["run_command": .object(["CommandLine": .string("make check"), "IsDaemon": .bool(false)])]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID3, task: 2, "Run fast check")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Checking."),
+        ]
+        await raceFixture.files.write(AgyToolActivityTests.jsonl(steps3), at: path3)
+        await raceFixture.store.step()
+        #expect(!raceFixture.store.hasRunningBackgroundWork)
+        #expect(raceFixture.store.backgroundWork.rows.first?.item.state == .completed)
+    }
+
+    @Test func agySubagentTranscriptKeepsLongSubagentFreshSettlesInterruptedParentAndRevives() async throws {
+        let rootID = "c6f562e4-129f-4e43-87dc-be2f661d5638"
+        let subID = "22222222-2222-4000-8000-000000000002"
+        let parentPath = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        let subPath = "/home/dev/.gemini/antigravity-cli/brain/\(subID)/.system_generated/logs/transcript_full.jsonl"
+
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            timing: AgentChatStore.Timing(
+                activeInterval: .milliseconds(5), idleInterval: .milliseconds(5),
+                agySubagentIdleSettle: 5),
+            adapter: ChatTranscriptAdapter.standard(for: .agy))
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let parentInitial: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nDeep audit\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "invoke_subagent": .object([
+                        "TypeName": .string("research"),
+                        "Role": .string("Security Auditor"),
+                        "Prompt": .string("Audit auth boundaries"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", content: AgyTranscriptReducerTests.launchedSubagentResult(subID)),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Auditor launched."),
+        ]
+        let subWorking: [JSONValue] = [
+            .object([
+                "step_index": .number(0), "source": .string("USER_EXPLICIT"), "type": .string("USER_INPUT"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T16:22:05Z"),
+                "content": .string("<USER_REQUEST>\nAudit auth boundaries\n</USER_REQUEST>"),
+            ]),
+            .object([
+                "step_index": .number(1), "source": .string("MODEL"), "type": .string("PLANNER_RESPONSE"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T16:22:10Z"),
+                "tool_calls": .array([
+                    .object(["name": .string("read_file"), "args": .object(["Path": .string("/repo/Auth.swift")])])
+                ]),
+            ]),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(parentInitial), at: parentPath)
+        await fixture.files.write(AgyToolActivityTests.jsonl(subWorking), at: subPath)
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+
+        // 4 hours later, the subagent appends a new step (including messaging the parent,
+        // which is NOT a child subagent): stays active and non-stale.
+        fixture.advance(4 * 3_600)
+        let subLater: [JSONValue] = [
+            .object([
+                "step_index": .number(2), "source": .string("MODEL"), "type": .string("GENERIC"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T20:24:00Z"),
+                "content": .string("Showing lines 1-50"),
+            ]),
+            .object([
+                "step_index": .number(3), "source": .string("MODEL"), "type": .string("PLANNER_RESPONSE"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T20:24:10Z"),
+                "tool_calls": .array([
+                    .object([
+                        "name": .string("send_message"),
+                        "args": .object(["Recipient": .string(rootID), "Message": .string("Audit complete.")]),
+                    ])
+                ]),
+            ]),
+            .object([
+                "step_index": .number(4), "source": .string("MODEL"), "type": .string("GENERIC"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T20:24:11Z"),
+                "content": .string("Message sent"),
+            ]),
+            .object([
+                "step_index": .number(5), "source": .string("MODEL"), "type": .string("PLANNER_RESPONSE"),
+                "status": .string("DONE"), "created_at": .string("2026-11-07T20:24:12Z"),
+                "content": .string("Audit complete."),
+            ]),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(subLater), to: subPath)
+        await fixture.store.step()
+        // Within the 5s settle window so a normal parent `SYSTEM_MESSAGE` can arrive first:
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.map(\.isStale) == [false])
+
+        // Once `agySubagentIdleSettle` elapses with no parent `SYSTEM_MESSAGE`,
+        // the subagent settles to `.completed`.
+        fixture.advance(6)
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .completed)
+
+        // Reviving the subagent via `send_message` in the parent clears the earlier
+        // completion and resumes tracking until new subagent steps arrive.
+        fixture.advance(10)
+        let reviveAt = "2026-11-07T20:25:30Z"
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: reviveAt))
+        let parentRevive: [JSONValue] = [
+            .object([
+                "step_index": .number(4), "source": .string("USER_EXPLICIT"), "type": .string("USER_INPUT"),
+                "status": .string("DONE"), "created_at": .string(reviveAt),
+                "content": .string("<USER_REQUEST>\nCheck OAuth too\n</USER_REQUEST>"),
+            ]),
+            .object([
+                "step_index": .number(5), "source": .string("MODEL"), "type": .string("PLANNER_RESPONSE"),
+                "status": .string("DONE"), "created_at": .string(reviveAt),
+                "tool_calls": .array([
+                    .object([
+                        "name": .string("send_message"),
+                        "args": .object(["Recipient": .string(subID), "Message": .string("Check OAuth too")]),
+                    ])
+                ]),
+            ]),
+            .object([
+                "step_index": .number(6), "source": .string("MODEL"), "type": .string("GENERIC"),
+                "status": .string("DONE"), "created_at": .string(reviveAt),
+                "content": .string("Message delivered"),
+            ]),
+            .object([
+                "step_index": .number(7), "source": .string("MODEL"), "type": .string("PLANNER_RESPONSE"),
+                "status": .string("DONE"), "created_at": .string(reviveAt),
+                "content": .string("Asked auditor to check OAuth."),
+            ]),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(parentRevive), to: parentPath)
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {

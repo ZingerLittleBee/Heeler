@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/easytier.md at 57da6542 -->
+<!-- Translated from docs/guides/easytier.md at d65d8b36 -->
 
 # 通过 EasyTier 连接 Heeler
 
@@ -98,7 +98,7 @@ ET_LISTEN_HOST=192.168.1.20
 - User：你的 Mac 用户名，以及所选的登录方式
 - Jump Host：留空
 
-保存后，核对 SSH 指纹与 Mac 一致再轻点信任，然后完成[验证连接](overlay-networks.md#验证连接)。如需测试蜂窝网络连接，请先完成下方的[在局域网外连接 Mac](#在局域网外连接-mac)。
+轻点 **Connect**。确认 SSH 指纹与 Mac 一致后再轻点 **Trust and Continue**，保持勾选需要的 Server 并添加 Host，然后完成[验证连接](overlay-networks.md#验证连接)。如需测试蜂窝网络连接，请先完成下方的[在局域网外连接 Mac](#在局域网外连接-mac)。
 
 ## Config Server 模式：从 Web 控制台下发网络
 

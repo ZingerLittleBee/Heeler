@@ -8,6 +8,7 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     let path: String
     /// The row's thumbnail, shown until the file is read.
     private let placeholder: UIImage?
+    private let onDone: (() -> Void)?
     private let loadImage: Loader
     private let scroll = UIScrollView()
     private let imageView = UIImageView()
@@ -18,12 +19,19 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     private var lastSize = CGSize.zero
     private(set) var isLoaded = false
 
-    init(path: String, placeholder: UIImage? = nil, loadImage: @escaping Loader) {
+    init(
+        path: String,
+        displayTitle: String? = nil,
+        placeholder: UIImage? = nil,
+        onDone: (() -> Void)? = nil,
+        loadImage: @escaping Loader
+    ) {
         self.path = path
         self.placeholder = placeholder
+        self.onDone = onDone
         self.loadImage = loadImage
         super.init(nibName: nil, bundle: nil)
-        title = (path as NSString).lastPathComponent
+        title = displayTitle ?? (path as NSString).lastPathComponent
         preferredContentSize = CGSize(width: 340, height: 340)
     }
 
@@ -36,6 +44,9 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         scroll.delegate = self
         scroll.maximumZoomScale = 6
         scroll.accessibilityIdentifier = "chat.image-preview.zoom"
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        scroll.addGestureRecognizer(doubleTap)
         imageView.contentMode = .scaleAspectFit
         imageView.isAccessibilityElement = true
         imageView.accessibilityLabel = title
@@ -53,7 +64,14 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         retry.addAction(UIAction { [weak self] _ in self?.startLoading() }, for: .touchUpInside)
         view.addSubview(retry)
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            systemItem: .done,
+            primaryAction: UIAction { [weak self] _ in
+                if let onDone = self?.onDone {
+                    onDone()
+                } else {
+                    self?.dismiss(animated: true)
+                }
+            })
         startLoading()
     }
 
@@ -85,6 +103,23 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        guard isLoaded || imageView.image != nil else { return }
+        if scroll.zoomScale > 1.01 {
+            scroll.setZoomScale(1, animated: true)
+            return
+        }
+        let targetScale: CGFloat = 2.5
+        let point = recognizer.location(in: imageView)
+        let size = CGSize(
+            width: scroll.bounds.width / targetScale,
+            height: scroll.bounds.height / targetScale)
+        let origin = CGPoint(
+            x: point.x - size.width / 2,
+            y: point.y - size.height / 2)
+        scroll.zoom(to: CGRect(origin: origin, size: size), animated: true)
+    }
 
     private func startLoading() {
         loadTask?.cancel()

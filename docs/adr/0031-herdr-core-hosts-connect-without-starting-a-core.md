@@ -4,6 +4,12 @@ status: proposed
 
 # herdr-core Hosts bind one Server Kind and connect without starting a core
 
+Amended by [ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md):
+a Host is the machine and lists its Servers, so a target that runs both kinds
+is one Host, and a Server's kind is set when it is turned on instead of being
+confirmed in Host detail. What this ADR calls a Host is one such Server's
+record, which still never changes kind.
+
 herdr-core (`hc`) is the vendor's headless terminal runtime. It shares no
 Agents with Herdr TUI, has no workspaces, tabs, or plugins, and speaks its own
 JSON-RPC 2.0 protocol, which switches to a framed multiplex after

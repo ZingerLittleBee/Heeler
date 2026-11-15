@@ -117,31 +117,193 @@ struct HostRowPresentationTests {
             latency: .milliseconds(148), syncIssue: syncIssue, canRetry: canRetry)
     }
 
-    @Test func theRowNamesTheServerKind() {
-        for (kind, label) in [
-            (ServerKind.herdrTUI, "Herdr TUI"), (.herdrCore, "herdr-core"), (.unconfirmed, "Not confirmed"),
-        ] {
-            let presentation = HostRowPresentation(
-                host: Host(address: "box.example", username: "dev", serverKind: kind),
-                status: .connected, standingFailure: nil, latency: nil)
-            #expect(presentation.serverKind == label)
-        }
-    }
-
-    /// Nothing dials an unconfirmed Host, so its row asks for what it needs
-    /// rather than reading as connecting.
-    @Test func anUnconfirmedHostAsksToBeConfirmed() {
-        let presentation = HostRowPresentation(
-            host: Host(address: "box.example", username: "dev", serverKind: .unconfirmed),
-            status: nil, standingFailure: nil, latency: nil)
+    /// Nothing dials a Host with no Server on, so its row says how it is
+    /// reached rather than reading as connecting.
+    @Test func aHostWithNoServerOnIsNotConnected() {
+        let record = Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        let presentation = HostMachineRowPresentation(machine: HostMachine.grouped([record])[0])
 
         #expect(presentation.group == .notConnected)
         #expect(presentation.tone == .paused)
-        #expect(presentation.detail == "Confirm its Server Kind")
+        #expect(presentation.detail == "dev@box.example")
         #expect(!presentation.isProblem)
-        #expect(!presentation.offersRetry)
-        #expect(!presentation.isDialing)
+        #expect(presentation.servers.isEmpty)
+        #expect(presentation.retryIDs.isEmpty)
         #expect(presentation.trailing == nil)
+    }
+
+    /// One row for a Host with several Servers on: the one that stopped files
+    /// the row and names its reason, and each keeps its own state on its chip.
+    @Test func aHostReadsFromTheServerThatMostNeedsTheUser() {
+        let tui = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tmux = Host(
+            name: "studio", address: "box.example", username: "dev", serverKind: .tmux, sessionName: "work")
+        let machine = HostMachine.grouped([tui, tmux])[0]
+
+        let mixed = HostMachineRowPresentation(
+            machine: machine,
+            statuses: [tui.id: .connected, tmux.id: .failed(.timedOut)],
+            latencies: [tui.id: .milliseconds(148)])
+        #expect(mixed.name == "studio")
+        #expect(mixed.group == .cannotConnect)
+        #expect(mixed.detail == TransportError.timedOut.presentation.summary)
+        #expect(mixed.isProblem)
+        #expect(mixed.trailing == nil)
+        #expect(mixed.servers.map(\.label) == ["Herdr TUI", "Tmux · work"])
+        #expect(mixed.servers.map(\.tone) == [.connected, .unavailable])
+        #expect(mixed.retryIDs == [tmux.id])
+        #expect(mixed.subtitle == mixed.detail)
+
+        let healthy = HostMachineRowPresentation(
+            machine: machine,
+            statuses: [tui.id: .connected, tmux.id: .connected],
+            latencies: [tui.id: .milliseconds(148), tmux.id: .milliseconds(12)])
+        #expect(healthy.group == .connected)
+        #expect(healthy.detail == "dev@box.example")
+        #expect(healthy.subtitle == "dev@box.example")
+        #expect(healthy.trailing == "12 ms")
+        #expect(healthy.retryIDs.isEmpty)
+    }
+
+    /// A Host named by no record reads as how it is reached, without repeating
+    /// that same `user@address` on a second subtitle line.
+    @Test func aHostWithNoNameReadsAsItsAccountAndAddress() {
+        let tui = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tmux = Host(address: "box.example", username: "dev", serverKind: .tmux)
+        let presentation = HostMachineRowPresentation(
+            machine: HostMachine.grouped([tui, tmux])[0], statuses: [tui.id: .connected, tmux.id: .connected])
+
+        #expect(presentation.name == "dev@box.example")
+        #expect(presentation.detail == "dev@box.example")
+        #expect(presentation.subtitle == nil)
+        #expect(presentation.servers.map(\.label) == ["Herdr TUI", "Tmux"])
+        #expect(presentation.servers.map(\.id) == [tui.id, tmux.id])
+    }
+
+    @Test func hostListBadgesFormatServerNamesCompactly() {
+        #expect(HostServerKey(kind: .herdrTUI, name: "").badgeLabel == "Herdr TUI")
+        #expect(HostServerKey(kind: .herdrTUI, name: "heeler-win-test").badgeLabel == "heeler-win-test")
+        #expect(HostServerKey(kind: .herdrCore, name: "").badgeLabel == "Herdr Core")
+        #expect(HostServerKey(kind: .herdrCore, name: "work").badgeLabel == "Herdr Core · work")
+        #expect(HostServerKey(kind: .tmux, name: "").badgeLabel == "Tmux")
+        #expect(HostServerKey(kind: .tmux, name: "work").badgeLabel == "Tmux · work")
+    }
+
+    /// Among connected Servers the one out of sync speaks for the row, and
+    /// the latency is still the best one measured.
+    @Test func aServerOutOfSyncLeadsOneThatIsHealthy() {
+        let tui = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tmux = Host(name: "studio", address: "box.example", username: "dev", serverKind: .tmux)
+        let presentation = HostMachineRowPresentation(
+            machine: HostMachine.grouped([tui, tmux])[0],
+            statuses: [tui.id: .connected, tmux.id: .connected],
+            latencies: [tui.id: .milliseconds(12), tmux.id: .milliseconds(148)],
+            syncIssues: [tmux.id: "Could not sync this Host's Agents. Retrying…"])
+
+        #expect(presentation.group == .connected)
+        #expect(presentation.tone == .warning)
+        #expect(presentation.detail == "Sync issue")
+        #expect(!presentation.isProblem)
+        #expect(presentation.trailing == "12 ms")
+        #expect(presentation.servers.map(\.tone) == [.connected, .warning])
+    }
+
+    @Test func aHostWithAServerStillConnectingIsFiledAsTrying() {
+        let tui = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tmux = Host(name: "studio", address: "box.example", username: "dev", serverKind: .tmux)
+        let presentation = HostMachineRowPresentation(
+            machine: HostMachine.grouped([tui, tmux])[0],
+            statuses: [tui.id: .connected, tmux.id: .connecting],
+            latencies: [tui.id: .milliseconds(12)])
+
+        #expect(presentation.group == .trying)
+        #expect(presentation.tone == .pending)
+        #expect(presentation.detail == "Connecting…")
+        #expect(presentation.trailing == nil)
+        #expect(presentation.servers.map(\.tone) == [.connected, .pending])
+        #expect(presentation.retryIDs.isEmpty)
+    }
+
+    /// One Retry dials every Server that stopped, and none where the list
+    /// cannot retry at all.
+    @Test func retryDialsEveryServerThatStopped() {
+        let tui = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let tmux = Host(name: "studio", address: "box.example", username: "dev", serverKind: .tmux)
+        let core = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrCore)
+        let machine = HostMachine.grouped([tui, tmux, core])[0]
+        let statuses: [Host.ID: EventsSessionStatus] = [
+            tui.id: .failed(.timedOut), tmux.id: .connected, core.id: .failed(.authenticationFailed),
+        ]
+
+        let stopped = HostMachineRowPresentation(machine: machine, statuses: statuses)
+        #expect(stopped.retryIDs == [tui.id, core.id])
+        // The first Server that stopped names the reason.
+        #expect(stopped.detail == TransportError.timedOut.presentation.summary)
+        #expect(stopped.servers.map(\.offersRetry) == [true, false, true])
+
+        let fixed = HostMachineRowPresentation(machine: machine, statuses: statuses, canRetry: false)
+        #expect(fixed.retryIDs.isEmpty)
+        #expect(fixed.group == .cannotConnect)
+    }
+
+    /// The user's own retry stays where it was while it dials.
+    @Test func aServerTheUserIsRetryingReadsAsDialing() {
+        let tui = Host(name: "studio", address: "box.example", username: "dev", serverKind: .herdrTUI)
+        let presentation = HostMachineRowPresentation(
+            machine: HostMachine.grouped([tui])[0],
+            statuses: [tui.id: .connecting], standingFailures: [tui.id: .timedOut])
+
+        #expect(presentation.group == .cannotConnect)
+        #expect(presentation.servers.map(\.isDialing) == [true])
+        #expect(presentation.retryIDs == [tui.id])
+        #expect(!presentation.isProblem)
+    }
+
+    // MARK: The chips in words
+
+    private func chip(_ label: String, _ tone: HostConnectionTone) -> HostMachineRowPresentation.Server {
+        HostMachineRowPresentation.Server(
+            id: UUID(), label: label, tone: tone, offersRetry: false, isDialing: false)
+    }
+
+    /// A Hosts list row is one VoiceOver stop: where only a colored mark shows
+    /// a Server's state, a word does.
+    @MainActor
+    @Test func eachServerThatIsOnIsSpokenWithItsState() {
+        let chips = HostServerChips(
+            servers: [
+                chip("Herdr TUI", .connected), chip("tmux · work", .unavailable), chip("herdr-core", .pending),
+                chip("tmux", .paused), chip("tmux · logs", .reconnecting), chip("Herdr TUI · play", .warning),
+            ],
+            unseen: [])
+
+        #expect(
+            chips.spokenSummary
+                == "Herdr TUI, connected; tmux · work, unavailable; herdr-core, connecting; tmux, paused; "
+                + "tmux · logs, reconnecting; Herdr TUI · play, sync issue")
+    }
+
+    @MainActor
+    @Test func aHostWithNoServerOnSaysSo() {
+        #expect(HostServerChips(servers: [], unseen: []).spokenSummary == "No servers on")
+    }
+
+    /// The row points at news and Host detail lists it: two are named and the
+    /// rest counted.
+    @MainActor
+    @Test func serversFoundSinceAreSpokenAfterTheOnesThatAreOn() {
+        let on = [chip("Herdr TUI", .connected)]
+
+        #expect(
+            HostServerChips(servers: on, unseen: ["tmux", "herdr-core"]).spokenSummary
+                == "Herdr TUI, connected; tmux, found, not on; herdr-core, found, not on")
+        #expect(
+            HostServerChips(servers: on, unseen: ["tmux", "herdr-core", "tmux · work", "tmux · logs"])
+                .spokenSummary
+                == "Herdr TUI, connected; tmux, found, not on; herdr-core, found, not on; 2 more found")
+        #expect(
+            HostServerChips(servers: [], unseen: ["tmux"]).spokenSummary
+                == "No servers on; tmux, found, not on")
     }
 
     @Test func hostsGroupByWhatTheyNeedFromTheUser() {
@@ -245,14 +407,17 @@ struct HostRowPresentationTests {
     }
 
     @Test func onlyNonEmptyGroupsShowInOrder() {
-        let entries = [
-            HostListEntry(host: Host.fixture(name: "a"), presentation: row(.connected)),
-            HostListEntry(host: Host.fixture(name: "b"), presentation: row(.failed(.timedOut))),
-            HostListEntry(host: Host.fixture(name: "c"), presentation: row(.connected)),
-        ]
+        let entries = [("a", EventsSessionStatus.connected), ("b", .failed(.timedOut)), ("c", .connected)].map {
+            name, status in
+            let record = Host.fixture(name: name, address: "\(name).example")
+            let machine = HostMachine.grouped([record])[0]
+            return HostListEntry(
+                machine: machine,
+                presentation: HostMachineRowPresentation(machine: machine, statuses: [record.id: status]))
+        }
         let sections = HostListEntry.grouped(entries)
         #expect(sections.map(\.group) == [.cannotConnect, .connected])
-        #expect(sections.last?.entries.map(\.host.displayName) == ["a", "c"])
+        #expect(sections.last?.entries.map(\.presentation.name) == ["a", "c"])
     }
 
     @Test func collapsedGroupsSurviveARelaunch() throws {

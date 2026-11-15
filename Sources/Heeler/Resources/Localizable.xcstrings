@@ -4,9 +4,6 @@
     "" : {
       "shouldTranslate" : false
     },
-    " %@" : {
-      "shouldTranslate" : false
-    },
     " (no newline)" : {
       "localizations" : {
         "ja" : {
@@ -25,28 +22,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " (無換行)"
-          }
-        }
-      }
-    },
-    " copy" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " のコピー"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " 副本"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " 副本"
           }
         }
       }
@@ -581,28 +556,6 @@
         }
       }
     },
-    "%@ copy" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ のコピー"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 副本"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 副本"
-          }
-        }
-      }
-    },
     "%@ could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh." : {
       "localizations" : {
         "ja" : {
@@ -1089,6 +1042,7 @@
         }
       }
     },
+    "%@ is already in Heeler. Checked servers are turned on there." : {},
     "%@ is no longer a Template on this Host, so nothing started. Detect Again refreshes the list." : {
       "localizations" : {
         "ja" : {
@@ -1536,6 +1490,7 @@
         }
       }
     },
+    "%@ not found" : {},
     "%@ now shows another conversation. Chat is switching to it; check it, then send again." : {
       "localizations" : {
         "ja" : {
@@ -2412,6 +2367,7 @@
         }
       }
     },
+    "%@, found, not on" : {},
     "%@, needs %@ or newer" : {
       "localizations" : {
         "en" : {
@@ -3497,6 +3453,7 @@
         }
       }
     },
+    "%lld more found" : {},
     "%lld more line" : {
       "comment" : "Blocked card change preview: lines past the limit; singular, %lld is 1",
       "localizations" : {
@@ -6590,6 +6547,48 @@
         }
       }
     },
+    "Add Host Without Servers" : {},
+    "Add Host with %lld Servers" : {
+      "comment" : "Button on Add Host's last step. Argument: how many servers are checked.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add Host with %lld Server"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add Host with %lld Servers"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストと %lld 個のサーバーを追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加主机及 %lld 个服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增主機及 %lld 個伺服器"
+          }
+        }
+      }
+    },
     "Add Host…" : {
       "localizations" : {
         "ja" : {
@@ -6898,6 +6897,7 @@
         }
       }
     },
+    "Add a Jump Host or an overlay network under More Options." : {},
     "Add a Note" : {
       "localizations" : {
         "ja" : {
@@ -7008,6 +7008,8 @@
         }
       }
     },
+    "Add by Name" : {},
+    "Add by Name…" : {},
     "Add compaction focus in the Agent terminal." : {
       "localizations" : {
         "ja" : {
@@ -8592,6 +8594,7 @@
         }
       }
     },
+    "Already on" : {},
     "Already there: %@" : {
       "localizations" : {
         "ja" : {
@@ -9898,28 +9901,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音訊"
-          }
-        }
-      }
-    },
-    "Auth" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "認証"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "认证"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驗證"
           }
         }
       }
@@ -11658,6 +11639,29 @@
         }
       }
     },
+    "Cancel %@" : {
+      "comment" : "Accessibility label for cancelling an uploading image pill in the Composer.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をキャンセル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消%@"
+          }
+        }
+      }
+    },
     "Cancel Checks" : {
       "localizations" : {
         "ja" : {
@@ -12757,6 +12761,7 @@
         }
       }
     },
+    "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off." : {},
     "Checking" : {
       "localizations" : {
         "ja" : {
@@ -14495,6 +14500,28 @@
         }
       }
     },
+    "Codex limits" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex の制限"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 限额"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 用量上限"
+          }
+        }
+      }
+    },
     "Codex offers only an answer or a skip here." : {
       "localizations" : {
         "ja" : {
@@ -15190,28 +15217,6 @@
         }
       }
     },
-    "Confirm its Server Kind" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバーの種類を確定してください"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请确认其服务器类型"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "確認它的伺服器類型"
-          }
-        }
-      }
-    },
     "Conflicted" : {
       "comment" : "File change kind",
       "localizations" : {
@@ -15258,6 +15263,7 @@
         }
       }
     },
+    "Connect" : {},
     "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
@@ -15635,6 +15641,7 @@
         }
       }
     },
+    "Connection failed" : {},
     "Connection paused" : {
       "localizations" : {
         "ja" : {
@@ -16629,6 +16636,7 @@
         }
       }
     },
+    "Copy the Command That Prints It" : {},
     "Copy the address on %@" : {
       "comment" : "VoiceOver label. %@ is an EasyTier network name.",
       "localizations" : {
@@ -16696,28 +16704,7 @@
         }
       }
     },
-    "Could Not Confirm" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "確認できませんでした"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法确认"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法確認"
-          }
-        }
-      }
-    },
+    "Could Not Finish" : {},
     "Could Not Remove Host" : {
       "localizations" : {
         "ja" : {
@@ -16762,6 +16749,7 @@
         }
       }
     },
+    "Could Not Turn On" : {},
     "Could not change the Accounts. Check the Host connection and try again." : {
       "localizations" : {
         "ja" : {
@@ -17690,6 +17678,7 @@
         }
       }
     },
+    "Couldn't reach %@" : {},
     "Couldn't reach %@. Rows unchanged." : {
       "comment" : "Sync from plugin failure. %@ is the Host name.",
       "localizations" : {
@@ -18115,6 +18104,7 @@
         }
       }
     },
+    "Credentials unavailable" : {},
     "Ctrl+C went, but the Agent still shows Working. A queued message may have started." : {
       "localizations" : {
         "ja" : {
@@ -19954,28 +19944,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在下載語音模型…"
-          }
-        }
-      }
-    },
-    "Duplicate" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "複製"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "建立副本"
           }
         }
       }
@@ -23077,6 +23045,16 @@
         }
       }
     },
+    "First connection to %@:%@. Verify the fingerprint matches the Host's key before trusting." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "First connection to %1$@:%2$@. Verify the fingerprint matches the Host's key before trusting."
+          }
+        }
+      }
+    },
     "Fit to Screen" : {},
     "Fitting to this screen…" : {},
     "Fix it in Settings › Overlay Networks." : {
@@ -23321,6 +23299,7 @@
         }
       }
     },
+    "For a session or socket that Scan Again does not list. Heeler connects to it by this name once it runs on %@." : {},
     "For languages[], add zh and en as separate values. Enter numbers and booleans as text." : {
       "localizations" : {
         "ja" : {
@@ -23475,29 +23454,6 @@
         }
       }
     },
-    "Found" : {
-      "comment" : "Server Kind detection: Herdr TUI was found on the Host.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "見つかりました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已找到"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已找到"
-          }
-        }
-      }
-    },
     "Found %@ Account folders" : {
       "localizations" : {
         "ja" : {
@@ -23542,7 +23498,7 @@
         }
       }
     },
-    "Found when the Host was confirmed." : {},
+    "Found on %@" : {},
     "From %@" : {
       "comment" : "Changes row: the path a file was renamed from",
       "localizations" : {
@@ -25645,28 +25601,6 @@
         }
       }
     },
-    "Heeler could not read what this Host runs, so the choice is yours. %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler はこのホストで何が動作しているかを読み取れなかったため、あなたの判断で選んでください。%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler 无法读取此主机上运行的服务，请自行选择。%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler 無法讀取此主機執行的內容，因此由你自行選擇。%@"
-          }
-        }
-      }
-    },
     "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
@@ -26646,6 +26580,7 @@
         }
       }
     },
+    "Heeler looked for %@." : {},
     "Heeler made these changes. Removing the Host Helper undoes OpenCode's and leaves any other in place." : {
       "localizations" : {
         "ja" : {
@@ -26845,6 +26780,7 @@
         }
       }
     },
+    "Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
         "ja" : {
@@ -28321,6 +28257,52 @@
         }
       }
     },
+    "Image #%@" : {
+      "comment" : "Short label shown in a sent Chat message bubble in place of a staged image's temporary Host path, numbered in order within the message (e.g. Image #1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像#%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片#%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片#%@"
+          }
+        }
+      }
+    },
+    "Image %@" : {
+      "comment" : "Title of an attached image pill in the Composer, numbered in order (e.g. Image 1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片 %@"
+          }
+        }
+      }
+    },
     "Image generation" : {
       "localizations" : {
         "ja" : {
@@ -29086,6 +29068,7 @@
         }
       }
     },
+    "Install or start one on the Host, then scan again." : {},
     "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields." : {
       "localizations" : {
         "ja" : {
@@ -29448,6 +29431,7 @@
         }
       }
     },
+    "Its Agents, Terminals and notifications leave this device, and its Notification Key is deleted from the Keychain." : {},
     "Its first start can take up to 35 seconds." : {
       "localizations" : {
         "ja" : {
@@ -29915,6 +29899,28 @@
         }
       }
     },
+    "Jump to Top" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先頭へ移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳至顶部"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳到頂部"
+          }
+        }
+      }
+    },
     "Keep the phrases you send an Agent over and over, one tap away." : {
       "localizations" : {
         "ja" : {
@@ -29983,6 +29989,7 @@
         }
       }
     },
+    "Key Fingerprint" : {},
     "Keyboard" : {
       "comment" : "Agent input mode segment",
       "localizations" : {
@@ -30117,6 +30124,7 @@
         }
       }
     },
+    "Kind" : {},
     "Label name" : {
       "localizations" : {
         "ja" : {
@@ -30492,28 +30500,6 @@
         }
       }
     },
-    "Launcher" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ランチャー"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "启动器"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "啟動器"
-          }
-        }
-      }
-    },
     "Learn More" : {
       "localizations" : {
         "ja" : {
@@ -30554,72 +30540,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 Tailscale 帳號時請留空。若要使用自己的 Headscale 伺服器，請輸入 https URL。"
-          }
-        }
-      }
-    },
-    "Leave blank for the default herdr session." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "既定の herdr セッションを使う場合は空欄のままにしてください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空以使用默认 herdr 会话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空則使用預設的 herdr 工作階段。"
-          }
-        }
-      }
-    },
-    "Leave blank for the default session." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "既定のセッションを使う場合は空欄のままにしてください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空以使用默认会话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空則使用預設的工作階段。"
-          }
-        }
-      }
-    },
-    "Leave blank for the default socket, which a tmux started without -L uses." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "既定のソケットを使う場合は空欄のままにしてください。-L を付けずに起動した tmux が使うソケットです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空以使用默认套接字，即未加 -L 启动的 tmux 所用的套接字。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空則使用預設的 socket，也就是未加 -L 啟動的 tmux 所使用的 socket。"
           }
         }
       }
@@ -30974,28 +30894,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "限額"
-          }
-        }
-      }
-    },
-    "Limits off" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制限オフ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限额已关闭"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限額已關閉"
           }
         }
       }
@@ -31797,6 +31695,7 @@
         }
       }
     },
+    "Looking for servers…" : {},
     "Looking for the conversation…" : {
       "localizations" : {
         "ja" : {
@@ -32538,6 +32437,7 @@
         }
       }
     },
+    "More Options" : {},
     "Move Left" : {
       "localizations" : {
         "ja" : {
@@ -33060,28 +32960,6 @@
         }
       }
     },
-    "Neither was found. Choose the one you will use, and its checks say how to set it up." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "どちらも見つかりませんでした。使う方を選ぶと、そのチェックが設定方法を示します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "两者均未找到。请选择你要使用的类型，其检查项会说明如何配置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "兩者都找不到。請選擇你要使用的那一個，它的檢查會說明如何設定。"
-          }
-        }
-      }
-    },
     "Network" : {
       "localizations" : {
         "ja" : {
@@ -33214,6 +33092,7 @@
         }
       }
     },
+    "New" : {},
     "New Agent" : {
       "localizations" : {
         "ja" : {
@@ -33281,6 +33160,7 @@
         }
       }
     },
+    "New Host" : {},
     "New Preset" : {
       "localizations" : {
         "ja" : {
@@ -34766,6 +34646,7 @@
         }
       }
     },
+    "No password saved" : {},
     "No peers with an address" : {
       "localizations" : {
         "ja" : {
@@ -34877,6 +34758,9 @@
         }
       }
     },
+    "No servers found" : {},
+    "No servers on" : {},
+    "No servers yet" : {},
     "No skills found for this agent." : {
       "localizations" : {
         "ja" : {
@@ -35162,28 +35046,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無"
-          }
-        }
-      }
-    },
-    "None of them was found. Choose the one you will use, and its checks say how to set it up." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "いずれも見つかりませんでした。使うものを選ぶと、そのチェックが設定方法を示します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "均未找到。请选择你要使用的类型，其检查项会说明如何配置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全都找不到。請選擇你要使用的那一個，它的檢查會說明如何設定。"
           }
         }
       }
@@ -36516,6 +36378,7 @@
         }
       }
     },
+    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {
@@ -38450,6 +38313,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟變更"
+          }
+        }
+      }
+    },
+    "Opens a large preview of the image" : {
+      "comment" : "Accessibility hint on a Composer image pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像の拡大プレビューを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开图片的大图预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開圖片的大圖預覽"
           }
         }
       }
@@ -40542,6 +40428,7 @@
         }
       }
     },
+    "Port %@." : {},
     "Possibly incomplete · %@" : {
       "comment" : "Changes freshness, then the read time",
       "localizations" : {
@@ -40738,6 +40625,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在準備上傳"
+          }
+        }
+      }
+    },
+    "Preparing…" : {
+      "comment" : "Subtitle on a Composer image pill while decoding and resizing locally.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备中…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
           }
         }
       }
@@ -42934,6 +42844,29 @@
         }
       }
     },
+    "Remove %@" : {
+      "comment" : "Accessibility label for removing an attached image pill from the Composer.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@を削除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        }
+      }
+    },
     "Remove %@ worktree?" : {
       "comment" : "Worktree removal confirmation title; %@ is the Workspace label",
       "localizations" : {
@@ -44760,7 +44693,6 @@
       }
     },
     "Rex Hosts" : {},
-    "Rex Server" : {},
     "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
     "Rex did not finish opening the connection." : {},
     "Rex did not let this account in" : {},
@@ -45260,6 +45192,7 @@
         }
       }
     },
+    "Run the command on the Host and compare what it prints with this fingerprint." : {},
     "Run these on the machine. The second command shows a QR code." : {
       "localizations" : {
         "ja" : {
@@ -46840,6 +46773,7 @@
         }
       }
     },
+    "Servers" : {},
     "Service" : {
       "localizations" : {
         "ja" : {
@@ -46906,6 +46840,7 @@
         }
       }
     },
+    "Session (blank for default)" : {},
     "Session Ended" : {
       "localizations" : {
         "ja" : {
@@ -46924,28 +46859,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "工作階段已結束"
-          }
-        }
-      }
-    },
-    "Session name" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "セッション名"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话名称"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作階段名稱"
           }
         }
       }
@@ -46972,6 +46885,7 @@
         }
       }
     },
+    "Set One Up" : {},
     "Set Up herdr on Windows" : {
       "localizations" : {
         "ja" : {
@@ -46990,28 +46904,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Windows 上設定 herdr"
-          }
-        }
-      }
-    },
-    "Set by this Host's Pairing Code." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホストのペアリングコードにより設定されています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由此主机的配对码设置。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由此主機的配對碼設定。"
           }
         }
       }
@@ -47766,6 +47658,7 @@
         }
       }
     },
+    "Show in Heeler" : {},
     "Show keyboard" : {
       "localizations" : {
         "ja" : {
@@ -49133,30 +49026,9 @@
         }
       }
     },
+    "Socket (blank for default)" : {},
     "Socket found" : {},
     "Socket found, but this account cannot use it" : {},
-    "Socket name" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ソケット名"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套接字名称"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "socket 名稱"
-          }
-        }
-      }
-    },
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -50047,6 +49919,16 @@
         }
       }
     },
+    "Step %lld of %lld, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld of %2$lld, %3$@"
+          }
+        }
+      }
+    },
     "Stop" : {
       "localizations" : {
         "ja" : {
@@ -50522,6 +50404,7 @@
         }
       }
     },
+    "Stops looking without waiting for the timeout" : {},
     "Stops recording and adds its text to the draft" : {
       "localizations" : {
         "ja" : {
@@ -53978,6 +53861,7 @@
         }
       }
     },
+    "The Host could not be saved." : {},
     "The Host couldn't be reached. The tab is still open there." : {
       "localizations" : {
         "ja" : {
@@ -56003,29 +55887,8 @@
         }
       }
     },
-    "The Server Kind could not be saved. (%@)" : {
-      "comment" : "Server Kind confirmation failure; %@ is the error",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバーの種類を保存できませんでした。（%@）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法保存服务器类型。（%@）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法儲存伺服器類型。（%@）"
-          }
-        }
-      }
-    },
+    "The Server could not be turned off." : {},
+    "The Server could not be turned on. (%@)" : {},
     "The Snippet could not be saved." : {
       "localizations" : {
         "ja" : {
@@ -59348,7 +59211,6 @@
         }
       }
     },
-    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {
@@ -60124,6 +59986,7 @@
         }
       }
     },
+    "The terminal isn't connected, so Stop wasn't sent." : {},
     "The terminal was created, but its Workspace hasn't refreshed yet." : {
       "localizations" : {
         "ja" : {
@@ -62794,50 +62657,6 @@
         }
       }
     },
-    "This machine runs both. A Host is one kind: confirm one here, then add the machine again for the other." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このマシンは両方を動作させています。ホストはどちらか 1 種類です。ここでは 1 つを確定し、もう 1 つのためにこのマシンを再追加してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此机器同时运行了两种服务。每台主机只能对应一种类型：请先在此确认其中一种，然后再重新添加该机器以使用另一种。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這台機器兩者都有執行。一個主機只能是一種類型：請先在這裡確認其中一種，再為另一種重新新增這台機器。"
-          }
-        }
-      }
-    },
-    "This machine runs more than one. A Host is one kind: confirm one here, then add the machine again for each of the others." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このマシンは複数を動作させています。ホストはどれか 1 種類です。ここでは 1 つを確定し、残りのそれぞれのためにこのマシンを再追加してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此机器同时运行了多种服务。每台主机只能对应一种类型：请先在此确认其中一种，然后为其余每一种重新添加该机器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這台機器執行了不只一種。一個主機只能是一種類型：請先在這裡確認其中一種，再為其餘每一種重新新增這台機器。"
-          }
-        }
-      }
-    },
     "This may be another terminal's conversation." : {
       "localizations" : {
         "ja" : {
@@ -63105,6 +62924,7 @@
         }
       }
     },
+    "This server is already on." : {},
     "This service does not document a language setting." : {
       "localizations" : {
         "ja" : {
@@ -63441,6 +63261,7 @@
         }
       }
     },
+    "Through the Jump Host %@." : {},
     "Timed out" : {
       "localizations" : {
         "ja" : {
@@ -63485,7 +63306,6 @@
         }
       }
     },
-    "To add this machine as a Rex Host, start Rex on it, then run the checks again." : {},
     "Today" : {
       "localizations" : {
         "ja" : {
@@ -64088,6 +63908,49 @@
         }
       }
     },
+    "Turn Off" : {},
+    "Turn On" : {},
+    "Turn On %lld Servers" : {
+      "comment" : "Button on Add Host's last step for a Host that is already added. Argument: how many servers are checked.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Turn On %lld Server"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Turn On %lld Servers"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個のサーバーをオンにする"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启 %lld 个服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 %lld 個伺服器"
+          }
+        }
+      }
+    },
     "Turn On Grok Build's Status" : {
       "comment" : "Button",
       "localizations" : {
@@ -64174,6 +64037,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這一輪失敗"
+          }
+        }
+      }
+    },
+    "Turn off %@ on %@?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Turn off %1$@ on %2$@?"
           }
         }
       }
@@ -65343,6 +65216,52 @@
         }
       }
     },
+    "Upload failed · Tap to retry" : {
+      "comment" : "Subtitle on a retryable failed Composer image pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップロード失敗 · タップして再試行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传失败 · 点击重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上傳失敗 · 點擊重試"
+          }
+        }
+      }
+    },
+    "Uploading %@…" : {
+      "comment" : "Subtitle on a Composer image pill while uploading; placeholder is a formatted percentage such as 64%.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップロード中 %@…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在上传 %@…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在上傳 %@…"
+          }
+        }
+      }
+    },
     "Uploading File, %lld percent" : {
       "localizations" : {
         "ja" : {
@@ -65856,28 +65775,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用量時段"
-          }
-        }
-      }
-    },
-    "Use %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ を使用"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 %@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 %@"
           }
         }
       }
@@ -67211,6 +67108,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待重試"
+          }
+        }
+      }
+    },
+    "Waiting…" : {
+      "comment" : "Subtitle on a queued Composer image pill waiting for an earlier upload to finish.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
           }
         }
       }
@@ -68718,29 +68638,8 @@
         }
       }
     },
-    "blocked" : {
-      "comment" : "Agent status VoiceOver reads after a Live Activity row",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "対応待ち"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待处理"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待處理"
-          }
-        }
-      }
-    },
+    "connected" : {},
+    "connecting" : {},
     "context %@" : {
       "localizations" : {
         "ja" : {
@@ -69124,28 +69023,6 @@
         }
       }
     },
-    "herdr Endpoint" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr エンドポイント"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 端点"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 端點"
-          }
-        }
-      }
-    },
     "herdr Install Guide" : {
       "localizations" : {
         "ja" : {
@@ -69186,28 +69063,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr 啟動器"
-          }
-        }
-      }
-    },
-    "herdr Session" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr セッション"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 会话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 工作階段"
           }
         }
       }
@@ -70382,28 +70237,6 @@
         }
       }
     },
-    "herdr-core Session" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core セッション"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 会话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 工作階段"
-          }
-        }
-      }
-    },
     "herdr-core at %@ did not report its version" : {
       "comment" : "Argument: a file path on the Host.",
       "localizations" : {
@@ -71177,29 +71010,6 @@
         }
       }
     },
-    "idle" : {
-      "comment" : "Agent status VoiceOver reads after a Live Activity row",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待機中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空闲"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "閒置"
-          }
-        }
-      }
-    },
     "idle — iOS has Live Activities disabled for Heeler" : {
       "comment" : "Settings Live Activity status line",
       "localizations" : {
@@ -71744,6 +71554,7 @@
         }
       }
     },
+    "paused" : {},
     "per Host" : {
       "localizations" : {
         "ja" : {
@@ -71788,6 +71599,7 @@
         }
       }
     },
+    "reconnecting" : {},
     "remote environment" : {
       "localizations" : {
         "ja" : {
@@ -72175,6 +71987,7 @@
         }
       }
     },
+    "sync issue" : {},
     "tcp://host:11010, one per line" : {
       "localizations" : {
         "ja" : {
@@ -72357,28 +72170,6 @@
         }
       }
     },
-    "tmux Socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux ソケット"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux socket"
-          }
-        }
-      }
-    },
     "tmux installed" : {
       "localizations" : {
         "ja" : {
@@ -72448,6 +72239,7 @@
     "tmux: %@" : {},
     "tmux: A launch needs a directory." : {},
     "tmux: A reply came that no command asked for." : {},
+    "tmux: The Attach has no send queue." : {},
     "tmux: The Host's tmux or its socket is at a path Heeler cannot use." : {
       "localizations" : {
         "ja" : {
@@ -72470,10 +72262,13 @@
         }
       }
     },
+    "tmux: The Pane's foreground could not be read." : {},
     "tmux: The Pane's screen could not be read." : {},
     "tmux: The command failed." : {},
     "tmux: The command printed no pane." : {},
+    "tmux: The command printed no session." : {},
     "tmux: The control client ended before it attached." : {},
+    "tmux: The control client ended before it painted." : {},
     "tmux: The control client printed a line too long to read." : {},
     "tmux: The probe exited with status %d." : {
       "localizations" : {
@@ -72519,6 +72314,7 @@
         }
       }
     },
+    "tmux: The session name is already taken." : {},
     "tokens" : {
       "localizations" : {
         "ja" : {
@@ -72566,6 +72362,7 @@
         }
       }
     },
+    "unavailable" : {},
     "undecodable response line: %@" : {
       "comment" : "Argument: a preview of the line.",
       "localizations" : {
@@ -72633,29 +72430,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "經由 %@"
-          }
-        }
-      }
-    },
-    "working" : {
-      "comment" : "Agent status VoiceOver reads after a Live Activity row",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作中"
           }
         }
       }

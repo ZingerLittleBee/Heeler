@@ -161,7 +161,9 @@ struct HerdrCoreWindowsStagingTests {
         let puts = await fixture.scripted.puts
         #expect(puts.map(\.name) == ["image.jpg"])
         #expect(puts.first?.contents.isEmpty == false)
-        #expect(session.composer.draft == Self.filesFolder + "image.jpg ")
+        #expect(session.composer.draft.isEmpty)
+        #expect(session.composer.readyImagePaths == [Self.filesFolder + "image.jpg"])
+        #expect(session.composer.composedDraft == Self.filesFolder + "image.jpg ")
         await fixture.finish()
     }
 

@@ -666,9 +666,21 @@ the app's update notice installs from that branch. See
   once the Host runs 0.9.0, and older apps keep the section when they rewrite
   the file.
 
+### Updating to 0.10.0
+
+- Plugin 0.10.0 adds [Antigravity CLI (`agy`) Usage](#usage): local Token Usage
+  from `transcript_full.jsonl`, per-Host Usage Limits (on by default, disabled
+  with `--no-agy-limits`) via `agy -p "/usage" --output-format json` (`agy`
+  1.1.11 or newer, and `usage-agy-limits` in herdr's macOS GUI session), and
+  `programs.agy` Accounts.
+- Because Antigravity CLI signs in once per Host, added Antigravity Accounts
+  report their own Token Usage while reporting Usage Limits on the Default
+  Account (`singleSignIn`).
+
 ## Usage
 
-Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
+Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts, and
+plugin 0.10.0 (and Host Helper 0.5.8) adds Antigravity CLI (`agy`).
 Open the Host's Usage section in Heeler, then **View Usage Details** for
 today, 7-day and 30-day Token Usage, a daily chart, per-model totals and the
 top 10 working directories. Usage Limits show the account's windows and
@@ -699,6 +711,12 @@ use, so the plugin's `usage-claude-limits` action reads the limits in
 herdr's session. Start herdr from a terminal on the Mac, not over SSH.
 Current terms remain a pre-release check in the
 [design's open questions](../docs/design/agent-usage.md#open-questions).
+
+**Codex limits** is on by default per Host on the device, with a toggle in
+Usage Limits to turn it off (`--no-codex-limits`, Host Helper 0.5.9). Turning
+it off hides Codex plan windows across Usage and widgets, skips spawning
+`codex app-server` on updated Helpers and plugins, and keeps Codex Token Usage
+counted.
 
 **Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
 Host runs several, each from its own config directory (for example an Agent

@@ -237,6 +237,7 @@ final class ConsoleStore {
     @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
+    @ObservationIgnored private var isRebuilding = false
     @ObservationIgnored private lazy var agyTitles = AgyAnnotationTitleStore(
         retryDelay: chatPrefetchRetryDelay
     ) { [weak self] in
@@ -1066,9 +1067,17 @@ final class ConsoleStore {
                     root: root, rootID: rootID)
                 self.reconcileAgyAnnotationTitles()
             }
+            source.onRunningBackgroundWorkChanged = { [weak self] _ in
+                guard let self, !self.isRebuilding else { return }
+                self.rebuild()
+            }
         }
+        let rawAgent =
+            projections[hostID]?.agentsByPane[paneID].map { agyTitles.applying(to: $0).agent }
+            ?? agent.agent
         let store = AgentChatStore(
-            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
+            agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
+        store.hostConnectionChanged(hostStatuses[hostID] == .connected)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
@@ -1686,7 +1695,11 @@ final class ConsoleStore {
 
     private func rebuild() {
         let span = PerfTrace.begin("console.rebuild")
-        defer { PerfTrace.end(span) }
+        isRebuilding = true
+        defer {
+            isRebuilding = false
+            PerfTrace.end(span)
+        }
         let current = Array(projections.values)
         let nextCoreKernels = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
@@ -1840,9 +1853,9 @@ final class ConsoleStore {
             .map { agyTitles.applying(to: $0) }
             .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
         if departedAgents != nextDeparted { departedAgents = nextDeparted }
+        publishChatAgents()
         rebuildAgentOrder()
         publishAgentStatuses()
-        publishChatAgents()
         reconcileChatCache()
         reconcileAgyAnnotationTitles()
         // A reconnecting Host's empty projection is not proof its Agents
@@ -1974,25 +1987,28 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits in
+        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits, codexLimits, agyLimits in
             guard let self else { throw TransportError.cancelled }
             if let host = self.coreHost(hostID) {
                 return try await self.withCoreConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, session: host.sessionName,
-                        timeZone: timeZone, claudeLimits: claudeLimits)
+                        timeZone: timeZone, claudeLimits: claudeLimits,
+                        codexLimits: codexLimits, agyLimits: agyLimits)
                 }
             }
             if let host = self.tmuxHost(hostID) {
                 return try await self.withTmuxConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
-                        tmuxPaths: host.storedTmuxPaths, timeZone: timeZone, claudeLimits: claudeLimits)
+                        tmuxPaths: host.storedTmuxPaths, timeZone: timeZone,
+                        claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits)
                 }
             }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
-                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
+                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits,
+                    codexLimits: codexLimits, agyLimits: agyLimits)
             }
         })
         store.didChange = { [weak self] in self?.publishUsageWidgets() }
@@ -2000,13 +2016,29 @@ final class ConsoleStore {
         return store
     }
 
-    /// One Host as the Usage tab reads it.
-    func agentUsageEntry(for host: Host) -> AgentUsageHostEntry {
-        let store = agentUsageStore(for: host.id)
-        return AgentUsageHostEntry(
-            id: host.id, name: host.displayName, store: store,
-            isConnected: usageHasConnection(host, state: store.state),
-            readsOverHostHelper: host.serverKind == .herdrCore || host.serverKind == .tmux)
+    /// The Hosts the Usage tab reads among `records`, each once however many
+    /// of its Servers are on (`AgentUsageHost`).
+    func agentUsageEntries(for records: [Host]) -> [AgentUsageHostEntry] {
+        AgentUsageHost.grouped(records).map { host in
+            let record = usageRecord(of: host)
+            let store = agentUsageStore(for: record.id)
+            return AgentUsageHostEntry(
+                id: host.id, name: host.name, store: store,
+                isConnected: usageHasConnection(record, state: store.state),
+                readsOverHostHelper: record.serverKind == .herdrCore || record.serverKind == .tmux,
+                recordID: record.id,
+                servers: host.records.map { .init(id: $0.id, store: agentUsageStore(for: $0.id)) })
+        }
+    }
+
+    /// The record of the Server a Host's Usage is read through now, and its
+    /// Accounts are reached over. A Server never read counts as still to answer.
+    func usageRecord(of host: AgentUsageHost) -> Host {
+        let chosen = AgentUsageHost.chosen(among: host.records.map { record in
+            let state = agentUsageStores[record.id]?.state ?? .idle
+            return (state, usageHasConnection(record, state: state))
+        })
+        return host.records[chosen]
     }
 
     /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
@@ -2093,24 +2125,27 @@ final class ConsoleStore {
         refreshStaleWidgetUsage()
     }
 
-    /// Hands every catalog Host's current Usage reading to the widgets.
+    /// Hands every catalog Host's current Usage reading to the widgets, each
+    /// Host once through the Server it is read through now.
     private func publishUsageWidgets() {
         guard let usageWidgets else { return }
         guard isUsageEnabled else {
             usageWidgets.publishUsageOff(hosts: usageCatalog)
             return
         }
-        usageWidgets.publish(usageCatalog.map { host in
-            let store = agentUsageStores[host.id]
+        usageWidgets.publish(AgentUsageHost.grouped(usageCatalog).map { host in
+            let record = usageRecord(of: host)
+            let store = agentUsageStores[record.id]
             let state = store?.state ?? .idle
             return AgentUsageWidgetReading(
-                id: host.id, name: host.displayName, state: state, readAt: store?.readAt,
-                isConnected: usageHasConnection(host, state: state),
-                keepsLastAnswerUntilRead: host.serverKind == .herdrCore || host.serverKind == .tmux)
+                id: host.id, name: host.name, state: state, readAt: store?.readAt,
+                isConnected: usageHasConnection(record, state: state),
+                keepsLastAnswerUntilRead: record.serverKind == .herdrCore || record.serverKind == .tmux)
         })
     }
 
-    /// The catalog's Hosts that have Usage to read, in its order.
+    /// The catalog's records that have Usage to read, in its order: one for
+    /// each Server of a Host.
     private var usageCatalog: [Host] {
         catalog.filter(\.serverKind.hasHostIntegrations)
     }
@@ -2125,15 +2160,20 @@ final class ConsoleStore {
 
     /// Reads Usage again for each Host that can be read and whose widget figures
     /// went stale, so returning to the app updates the widgets without opening
-    /// Usage. Nothing is read while no Usage widget is installed.
+    /// Usage. A stale Host is read through every one of its Servers, so the
+    /// widgets follow whichever one answers. Nothing is read while no Usage
+    /// widget is installed.
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive, isUsageEnabled else { return }
-        let hostIDs = usageCatalog.map(\.id).filter { id in
-            canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
-                && agentUsageStores[id]?.isLoading != true
-                && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
+        let recordIDs = AgentUsageHost.grouped(usageCatalog).flatMap { host -> [Host.ID] in
+            let readAt = host.records.compactMap { agentUsageStores[$0.id]?.figuresReadAt }.max()
+            guard usageWidgets.isStale(host.id, readAt: readAt) else { return [] }
+            return host.records.map(\.id).filter { id in
+                canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
+                    && agentUsageStores[id]?.isLoading != true
+            }
         }
-        for id in hostIDs {
+        for id in recordIDs {
             let refresh = UUID()
             let task = Task { [weak self] in
                 defer {
@@ -2162,11 +2202,36 @@ final class ConsoleStore {
         }
     }
 
+    /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
+    /// foreground turn finishes, even while its Subagents, Workflows, or
+    /// non-daemon background commands keep running. Present the Agent as
+    /// `Working` across Console and Composer surfaces while a live connected
+    /// transcript confirms running, non-stale Background Work.
+    private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
+        guard row.agent.kind == ChatProgram.agy.rawValue,
+            row.agent.status == .idle || row.agent.status == .done,
+            hostStatuses[row.hostID] == .connected,
+            !hostsAwaitingSnapshot.contains(row.hostID),
+            let store = chatStores[row.id],
+            store.program == .agy,
+            store.hasRunningBackgroundWork,
+            store.agent.terminalID == row.agent.terminalID,
+            store.agent.workspaceID == row.agent.workspaceID,
+            store.agent.tabID == row.agent.tabID,
+            store.agent.paneID == row.agent.paneID
+        else {
+            return row
+        }
+        var copy = row
+        copy.agent.status = .working
+        return copy
+    }
+
     private func rebuildAgentOrder() {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-            .map { agyTitles.applying(to: $0) }
+            .map { applyingAgyBackgroundWork(to: agyTitles.applying(to: $0)) }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
         let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
@@ -2778,8 +2843,19 @@ final class ConsoleStore {
         guard !chatStores.isEmpty else { return }
         let span = PerfTrace.begin("console.rebuild.chat-agents")
         defer { PerfTrace.end(span) }
-        let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
+        // Pass the Host's underlying reported status (with title overlays only,
+        // before client-side Background Work promotion) so Chat stores,
+        // Antigravity CLI idle permission checks, and echo clocks see true
+        // foreground turn state.
+        let current = Dictionary(
+            projections.values.flatMap { $0.agentsByPane.values }
+                .map { row in
+                    let titled = agyTitles.applying(to: row)
+                    return (titled.id, titled)
+                }
+        ) { first, _ in first }
         for (id, store) in chatStores {
+            store.hostConnectionChanged(hostStatuses[id.hostID] == .connected)
             let processBound = projections[id.hostID].flatMap { $0.usesProcessBoundChat ? $0 : nil }
             // Another core's or server instance's Agents are other Agents: its
             // Transcripts are keyed apart, and this store is keyed to the last one.
@@ -2790,7 +2866,7 @@ final class ConsoleStore {
                 chatSessionEventRevisions[id] = nil
                 // A Chat on screen says so only once, when it appears, and it
                 // stays on screen across this.
-                if !viewers.isEmpty, let agent = agents.first(where: { $0.id == id }),
+                if !viewers.isEmpty, let agent = current[id],
                     let next = chatStore(for: agent, program: store.program)
                 {
                     for viewer in viewers { next.show(viewer) }
@@ -2803,7 +2879,7 @@ final class ConsoleStore {
                     store.sessionEvidenceMayHaveChanged()
                 }
             }
-            if let agent = current[id] ?? departedAgents.first(where: { $0.id == id })?.agent {
+            if let agent = current[id]?.agent ?? departedAgents.first(where: { $0.id == id })?.agent {
                 store.agentDidChange(agent)
             } else if hostStatuses[id.hostID] == .connected,
                 !hostsAwaitingSnapshot.contains(id.hostID)

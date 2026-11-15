@@ -553,7 +553,8 @@ struct HostAccountsSheetPresenter: ViewModifier {
         content.sheet(isPresented: Binding(get: { hostID != nil }, set: { if !$0 { hostID = nil } })) {
             if let entry = entries.first(where: { $0.id == hostID }), let hostAccounts {
                 HostAccountsView(
-                    hostName: entry.name, store: hostAccounts.store(entry.id), usage: entry.store, isPushed: false
+                    hostName: entry.name, store: hostAccounts.store(entry.recordID), usage: entry.store,
+                    isPushed: false
                 )
                 .presentationSizing(.form)
             }

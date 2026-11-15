@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 5
+    static let revision = 6
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -40,7 +40,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
         let ordered = steps.values.sorted { $0.offset < $1.offset }
-        var projection = Projection(activity: context.activity)
+        var projection = Projection(activity: context.activity, windowStart: context.windowStart)
         // A fork's file starts where its parent stopped numbering, without
         // the parent's steps.
         if context.windowStart == 0, let first = ordered.first, let index = first.stepIndex, index > 0 {
@@ -65,8 +65,15 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             guard step.status != .running else { return nil }
             return .preview(AgyToolCall.preview(of: step, kind: tool.kind))
         case .systemMessage:
-            guard let end = Self.taskEnd(in: step) else { return nil }
-            return .preview(AgyToolCall.preview(ofTaskResult: end.result))
+            if let end = Self.taskEnd(in: step) {
+                return .preview(AgyToolCall.preview(ofTaskResult: end.result))
+            }
+            guard tool.kind == .agent else { return nil }
+            if let error = Self.subagentError(in: step) {
+                return .preview(AgyToolCall.preview(ofSubagentMessage: error.detail))
+            }
+            guard let text = step.systemMessageText else { return nil }
+            return .preview(AgyToolCall.preview(ofSubagentMessage: text))
         default:
             return nil
         }
@@ -100,8 +107,67 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         return nil
     }
 
+    /// A subagent error from `system`:
+    /// `The subagent <role> (<type>) with id "<id>" encountered an error …: <detail>`.
+    static func subagentError(in step: AgyStep) -> (subagentID: String, detail: String)? {
+        guard let message = step.systemMessage, message.sender == "system" || message.sender == nil else {
+            return nil
+        }
+        let text = message.text
+        guard text.hasPrefix("The subagent "),
+            let marker = text.range(of: "\" encountered an error", options: .backwards),
+            let idPrefix = text[..<marker.lowerBound].range(of: " with id \"", options: .backwards)
+        else { return nil }
+        let id = String(text[idPrefix.upperBound..<marker.lowerBound])
+        guard !id.isEmpty else { return nil }
+        let tail = text[marker.upperBound...]
+        let detail: String
+        if let colon = tail.range(of: ": ") {
+            detail = String(tail[colon.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            detail = text
+        }
+        return (id, detail.isEmpty ? text : detail)
+    }
+
     /// The notice agy adds to a conversation resumed after it restarted.
     static let restartNotice = "[Notice] All your subagents and background tasks have been stopped due to server restart"
+
+    /// `<conv>/task-<step>` in a result agy sent to the background.
+    static func backgroundTaskID(in body: String) -> String? {
+        guard let start = body.range(of: "background task with task id: ") else { return nil }
+        let id = body[start.upperBound...].prefix { !$0.isWhitespace }
+        return id.isEmpty ? nil : String(id)
+    }
+
+    /// `conversationId` in `invoke_subagent`'s `Created the following subagent:` JSON block.
+    static func launchedSubagentID(in body: String) -> String? {
+        let normalized = AgyToolCall.normalized(body)
+        guard normalized.hasPrefix("Created the following subagent:"),
+            let brace = normalized.firstIndex(of: "{"),
+            let data = normalized[brace...].data(using: .utf8),
+            let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+            let id = value["conversationId"]?.stringValue, !id.isEmpty
+        else { return nil }
+        return id
+    }
+
+    /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
+    static func jsonArray(in body: String) -> [JSONValue] {
+        let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
+        let start: String.Index
+        if normalized.hasPrefix("[") {
+            start = normalized.startIndex
+        } else if let line = normalized.range(of: "\n[") {
+            start = normalized.index(after: line.lowerBound)
+        } else {
+            return []
+        }
+        guard let data = normalized[start...].data(using: .utf8),
+            case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return [] }
+        return items
+    }
 
     // MARK: Projection
 
@@ -126,6 +192,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
 
     private struct Projection {
         let activity: ChatAgentActivity
+        let windowStart: UInt64
         var transcript = ChatTranscript()
         var open: OpenTurn?
         var calls: [AgyToolCall] = []
@@ -133,14 +200,17 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// first in line first.
         var pending: [Int] = []
         var tasks: [String: Int] = [:]
+        var subagents: [String: Int] = [:]
+        var backgroundIndexByID: [String: Int] = [:]
         /// Waits sent to the background (`AgyToolCall.waitTools`) no step
         /// has come after yet.
         var waits: [Int] = []
         /// The steps read so far, for a step agy wrote twice.
         var seenSteps: Set<Int> = []
 
-        init(activity: ChatAgentActivity) {
+        init(activity: ChatAgentActivity, windowStart: UInt64 = 0) {
             self.activity = activity
+            self.windowStart = windowStart
             open = OpenTurn(turn: nil, isAboveWindow: true, startedAt: nil, isCompact: false)
         }
 
@@ -274,7 +344,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             for (position, call) in step.calls.enumerated() {
                 let entryID = Self.id(step, "tool:\(position)")
                 let index = calls.count
-                calls.append(AgyToolCall(entryID: entryID, call: call))
+                calls.append(AgyToolCall(entryID: entryID, call: call, offset: step.offset, createdAt: step.createdAt))
                 pending.append(index)
                 open?.calls.append(index)
                 let placeholder = ChatToolActivity(kind: .other, name: call.name, title: call.name, status: .running)
@@ -291,13 +361,200 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             note(step)
             let index = pending.removeFirst()
             calls[index].result = step
-            guard step.status == .running else { return }
-            // A wait gets no task end, so it is no task a restart stops.
-            if AgyToolCall.waitTools.contains(calls[index].name) {
-                waits.append(index)
-            } else if let taskID = Self.backgroundTaskID(in: step.resultBody) {
-                calls[index].taskID = taskID
-                tasks[taskID] = index
+            if step.status == .running {
+                // A wait gets no task end, so it is no task a restart stops.
+                if AgyToolCall.waitTools.contains(calls[index].name) {
+                    waits.append(index)
+                } else if let taskID = Self.backgroundTaskID(in: step.resultBody) {
+                    calls[index].taskID = taskID
+                    tasks[taskID] = index
+                    // Daemons (`IsDaemon: true`) are meant to outlive turns
+                    // indefinitely, so Chat neither lists them as Background
+                    // Work nor holds active polling for them.
+                    if !calls[index].isDaemon {
+                        let kind: ChatBackgroundWorkItem.Kind = calls[index].name == "run_workflow" ? .workflow : .command
+                        let (rawTitle, subtitle) = calls[index].titles
+                        let fallback = kind == .workflow ? String(localized: "Workflow") : String(localized: "Command")
+                        let title = rawTitle == calls[index].name ? fallback : rawTitle
+                        addBackgroundWork(
+                            ChatBackgroundWorkItem(
+                                id: Self.taskWorkID(taskID), kind: kind, title: title, subtitle: subtitle,
+                                state: .running, launchOffset: calls[index].callOffset,
+                                launchedAt: step.createdAt ?? calls[index].callCreatedAt))
+                    }
+                }
+                return
+            }
+            guard step.status == .done else { return }
+            switch calls[index].name {
+            case "invoke_subagent":
+                guard let subagentID = Self.launchedSubagentID(in: step.resultBody) else { return }
+                calls[index].subagentID = subagentID
+                subagents[subagentID] = index
+                let role = calls[index].args?["Role"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                let typeName = calls[index].args?["TypeName"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                let title = role ?? typeName ?? String(localized: "Subagent")
+                addBackgroundWork(
+                    ChatBackgroundWorkItem(
+                        id: Self.subagentWorkID(subagentID), kind: .subagent, title: title,
+                        subtitle: typeName == title ? nil : typeName, state: .running,
+                        launchOffset: calls[index].callOffset,
+                        launchedAt: step.createdAt ?? calls[index].callCreatedAt))
+            case "send_message":
+                guard let recipient = calls[index].args?["Recipient"]?.stringValue, !recipient.isEmpty else { return }
+                let resumedAt = step.createdAt ?? calls[index].callCreatedAt
+                if let subCall = subagents[recipient] {
+                    calls[subCall].subagentEnd = nil
+                    calls[subCall].stoppedByRestart = false
+                }
+                if let workIndex = backgroundIndexByID[Self.subagentWorkID(recipient)] {
+                    if transcript.backgroundWork[workIndex].state != .running {
+                        transcript.backgroundWork[workIndex].state = .running
+                        transcript.backgroundWork[workIndex].endOffset = nil
+                        transcript.backgroundWork[workIndex].endedAt = nil
+                        transcript.backgroundWork[workIndex].launchedAt = resumedAt
+                    }
+                    transcript.backgroundWork[workIndex].lastActivityAt = resumedAt
+                }
+            case "manage_subagents":
+                readManageSubagents(callIndex: index, result: step)
+            case "manage_task":
+                readManageTask(callIndex: index, result: step)
+            default:
+                break
+            }
+        }
+
+        private mutating func readManageSubagents(callIndex: Int, result: AgyStep) {
+            let args = calls[callIndex].args
+            switch args?["Action"]?.stringValue {
+            case "kill":
+                guard case .array(let values)? = args?["ConversationIds"] else { return }
+                for subagentID in values.compactMap(\.stringValue) where !subagentID.isEmpty {
+                    if let subCall = subagents[subagentID], calls[subCall].subagentEnd == nil,
+                        !calls[subCall].stoppedByRestart
+                    {
+                        calls[subCall].subagentEnd = .init(outcome: .killed, text: nil, line: nil)
+                    }
+                    let workID = Self.subagentWorkID(subagentID)
+                    if let workIndex = backgroundIndexByID[workID],
+                        transcript.backgroundWork[workIndex].state == .running
+                    {
+                        endBackgroundWork(
+                            id: workID, state: .stopped, offset: result.offset, step: result,
+                            fallbackDate: result.createdAt ?? calls[callIndex].callCreatedAt)
+                    }
+                }
+            case "kill_all":
+                for subCall in subagents.values
+                where calls[subCall].subagentEnd == nil && !calls[subCall].stoppedByRestart {
+                    calls[subCall].subagentEnd = .init(outcome: .killed, text: nil, line: nil)
+                }
+                for workIndex in transcript.backgroundWork.indices
+                where transcript.backgroundWork[workIndex].kind == .subagent
+                    && transcript.backgroundWork[workIndex].state == .running
+                {
+                    transcript.backgroundWork[workIndex].state = .stopped
+                    transcript.backgroundWork[workIndex].endOffset = result.offset
+                    transcript.backgroundWork[workIndex].endedAt = result.createdAt ?? calls[callIndex].callCreatedAt
+                }
+            case "list":
+                for entry in Self.jsonArray(in: result.resultBody) {
+                    guard let subagentID = entry["conversationId"]?.stringValue, !subagentID.isEmpty else { continue }
+                    let state = entry["state"]?.stringValue
+                    let lastStepTime = entry["lastStepTime"]?.stringValue.flatMap(AgyStep.date)
+                    let seenAt = [lastStepTime, result.createdAt].compactMap(\.self).max()
+                    let workID = Self.subagentWorkID(subagentID)
+                    if let workIndex = backgroundIndexByID[workID] {
+                        guard transcript.backgroundWork[workIndex].state == .running else { continue }
+                        switch state {
+                        case "running", "waiting_for_dependents":
+                            transcript.backgroundWork[workIndex].lastActivityAt =
+                                [transcript.backgroundWork[workIndex].lastActivityAt, seenAt].compactMap(\.self).max()
+                        case "idle":
+                            endBackgroundWork(
+                                id: workID, state: .completed, offset: result.offset, step: result,
+                                fallbackDate: lastStepTime ?? result.createdAt)
+                            if let subCall = subagents[subagentID], calls[subCall].subagentEnd == nil {
+                                calls[subCall].subagentEnd = .init(outcome: .completed, text: nil, line: nil)
+                            }
+                        case "errored":
+                            let detail = entry["stateDetail"]?.stringValue
+                            endBackgroundWork(
+                                id: workID, state: .failed, offset: result.offset, step: result,
+                                fallbackDate: lastStepTime ?? result.createdAt)
+                            if let subCall = subagents[subagentID], calls[subCall].subagentEnd == nil {
+                                calls[subCall].subagentEnd = .init(outcome: .failed, text: detail, line: nil)
+                            }
+                        default:
+                            break
+                        }
+                    } else if windowStart > 0, state == "running" || state == "waiting_for_dependents" {
+                        let role = entry["role"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                        let typeName = entry["type"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                        let title = role ?? typeName ?? String(localized: "Subagent")
+                        addBackgroundWork(
+                            ChatBackgroundWorkItem(
+                                id: workID, kind: .subagent, title: title,
+                                subtitle: typeName == title ? nil : typeName, state: .running, launchOffset: 0,
+                                launchedAt: lastStepTime ?? result.createdAt, lastActivityAt: seenAt))
+                    }
+                }
+            default:
+                break
+            }
+        }
+
+        private mutating func readManageTask(callIndex: Int, result: AgyStep) {
+            let args = calls[callIndex].args
+            switch args?["Action"]?.stringValue {
+            case "kill":
+                guard let taskID = args?["TaskId"]?.stringValue, !taskID.isEmpty else { return }
+                if let taskCall = tasks[taskID], calls[taskCall].taskEnd == nil, !calls[taskCall].stoppedByRestart {
+                    calls[taskCall].killedByManageTask = true
+                }
+                let workID = Self.taskWorkID(taskID)
+                if let workIndex = backgroundIndexByID[workID], transcript.backgroundWork[workIndex].state == .running {
+                    endBackgroundWork(
+                        id: workID, state: .stopped, offset: result.offset, step: result,
+                        fallbackDate: result.createdAt ?? calls[callIndex].callCreatedAt)
+                }
+            case "status":
+                guard let taskID = args?["TaskId"]?.stringValue, !taskID.isEmpty,
+                    result.resultBody.contains("\nStatus: RUNNING") || result.resultBody.hasPrefix("Status: RUNNING"),
+                    let workIndex = backgroundIndexByID[Self.taskWorkID(taskID)],
+                    transcript.backgroundWork[workIndex].state == .running,
+                    let seenAt = result.createdAt
+                else { return }
+                transcript.backgroundWork[workIndex].lastActivityAt =
+                    [transcript.backgroundWork[workIndex].lastActivityAt, seenAt].compactMap(\.self).max()
+            case "list":
+                for entry in Self.jsonArray(in: result.resultBody) {
+                    guard let taskID = entry["taskId"]?.stringValue, !taskID.isEmpty else { continue }
+                    let toolName = entry["toolName"]?.stringValue ?? ""
+                    guard !AgyToolCall.waitTools.contains(toolName) else { continue }
+                    let workID = Self.taskWorkID(taskID)
+                    if let workIndex = backgroundIndexByID[workID] {
+                        if transcript.backgroundWork[workIndex].state == .running, let seenAt = result.createdAt {
+                            transcript.backgroundWork[workIndex].lastActivityAt =
+                                [transcript.backgroundWork[workIndex].lastActivityAt, seenAt].compactMap(\.self).max()
+                        }
+                    } else if windowStart > 0 {
+                        let kind: ChatBackgroundWorkItem.Kind = toolName == "run_workflow" ? .workflow : .command
+                        let desc = entry["description"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                        let summary = entry["toolSummary"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                        let fallback = kind == .workflow ? String(localized: "Workflow") : String(localized: "Command")
+                        let title = desc ?? summary ?? fallback
+                        let startTime = entry["startTime"]?.stringValue.flatMap(AgyStep.date)
+                        addBackgroundWork(
+                            ChatBackgroundWorkItem(
+                                id: workID, kind: kind, title: title, subtitle: summary == title ? nil : summary,
+                                state: .running, launchOffset: 0, launchedAt: startTime ?? result.createdAt,
+                                lastActivityAt: result.createdAt))
+                    }
+                }
+            default:
+                break
             }
         }
 
@@ -306,16 +563,53 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 readTaskEnd(step, end)
                 return
             }
+            if let error = AgyTranscriptReducer.subagentError(in: step) {
+                let line = ChatOutputReference(offset: step.offset, length: step.length)
+                if let subCall = subagents[error.subagentID] {
+                    calls[subCall].subagentEnd = .init(outcome: .failed, text: error.detail, line: line)
+                }
+                endBackgroundWork(
+                    id: Self.subagentWorkID(error.subagentID), state: .failed, offset: step.offset, step: step)
+                return
+            }
+            if let message = step.systemMessage, let sender = message.sender {
+                let workID = Self.subagentWorkID(sender)
+                if subagents[sender] != nil || backgroundIndexByID[workID] != nil {
+                    let line = ChatOutputReference(offset: step.offset, length: step.length)
+                    if let subCall = subagents[sender] {
+                        calls[subCall].subagentEnd = .init(outcome: .completed, text: message.text, line: line)
+                    }
+                    endBackgroundWork(id: workID, state: .completed, offset: step.offset, step: step)
+                    return
+                }
+            }
             guard let text = step.systemMessageText, text.hasPrefix(AgyTranscriptReducer.restartNotice) else {
                 // Messages from other agents and reminders are the agent's
                 // context, not the conversation.
                 return
             }
             // agy adds the notice to every resumed conversation; it says
-            // something only when a task was still running.
-            let stopped = tasks.values.filter { calls[$0].taskEnd == nil && !calls[$0].stoppedByRestart }
-            guard !stopped.isEmpty else { return }
-            for index in stopped {
+            // something only when a task or subagent was still running.
+            let stoppedTasks = tasks.values.filter {
+                calls[$0].taskEnd == nil && !calls[$0].killedByManageTask && !calls[$0].stoppedByRestart
+            }
+            let stoppedSubagents = subagents.values.filter {
+                calls[$0].subagentEnd == nil && !calls[$0].stoppedByRestart
+            }
+            var stoppedWork = 0
+            for workIndex in transcript.backgroundWork.indices where transcript.backgroundWork[workIndex].state == .running {
+                let launchedAt = transcript.backgroundWork[workIndex].launchedAt
+                transcript.backgroundWork[workIndex].state = .stopped
+                transcript.backgroundWork[workIndex].endOffset = step.offset
+                transcript.backgroundWork[workIndex].endedAt = Self.endDate(of: step, launchedAt: launchedAt)
+                stoppedWork += 1
+            }
+            let stoppedCount = max(stoppedTasks.count + stoppedSubagents.count, stoppedWork)
+            guard stoppedCount > 0 else { return }
+            for index in stoppedTasks {
+                calls[index].stoppedByRestart = true
+            }
+            for index in stoppedSubagents {
                 calls[index].stoppedByRestart = true
             }
             ensureOpen()
@@ -324,7 +618,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 ChatNotice(
                     kind: .system,
                     title: String(
-                        localized: "\(stopped.count) background tasks stopped",
+                        localized: "\(stoppedCount) background tasks stopped",
                         comment: "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted"),
                     detail: String(
                         localized: "Antigravity CLI restarted.",
@@ -344,8 +638,11 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                     line: ChatOutputReference(offset: step.offset, length: step.length))
                 command = calls[index].command
             }
+            let exitCode = end.wasCanceled ? nil : AgyToolCall.exitCode(in: end.result)
+            let workState: ChatBackgroundWorkItem.State =
+                end.wasCanceled ? .stopped : ((exitCode ?? 0) == 0 ? .completed : .failed)
             var detail = command.map { [$0] } ?? []
-            if !end.wasCanceled, let code = AgyToolCall.exitCode(in: end.result) {
+            if let code = exitCode {
                 detail.append(String(localized: "Exit code \(code)"))
             }
             let notice = ChatNotice(
@@ -364,10 +661,14 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             if let open, let turn = open.turn, open.lastStep?.kind == .userInput,
                 let prompt = transcript.entries.lastIndex(where: { $0.id == transcript.turns[turn].firstEntryID })
             {
+                let promptOffset = transcript.entries[prompt].sourceOffset
+                endBackgroundWork(
+                    id: Self.taskWorkID(end.taskID), state: workState, offset: promptOffset, step: step)
                 transcript.entries.insert(
                     ChatEntry(id: Self.id(step), sourceOffset: step.offset, content: .notice(notice)), at: prompt)
                 return
             }
+            endBackgroundWork(id: Self.taskWorkID(end.taskID), state: workState, offset: step.offset, step: step)
             if open?.hasReply ?? true {
                 if let open { close(open, ending: .completed, interruptedNotice: false) }
                 open = OpenTurn(turn: nil, isAboveWindow: false, startedAt: step.createdAt, isCompact: false)
@@ -424,11 +725,49 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             }
         }
 
-        /// `<conv>/task-<step>` in a result agy sent to the background.
         static func backgroundTaskID(in body: String) -> String? {
-            guard let start = body.range(of: "background task with task id: ") else { return nil }
-            let id = body[start.upperBound...].prefix { !$0.isWhitespace }
-            return id.isEmpty ? nil : String(id)
+            AgyTranscriptReducer.backgroundTaskID(in: body)
+        }
+
+        static func launchedSubagentID(in body: String) -> String? {
+            AgyTranscriptReducer.launchedSubagentID(in: body)
+        }
+
+        static func jsonArray(in body: String) -> [JSONValue] {
+            AgyTranscriptReducer.jsonArray(in: body)
+        }
+
+        private static func taskWorkID(_ taskID: String) -> String { "agy:task:\(taskID)" }
+        private static func subagentWorkID(_ subagentID: String) -> String { "agy:subagent:\(subagentID)" }
+
+        private mutating func addBackgroundWork(_ item: ChatBackgroundWorkItem) {
+            if let existing = backgroundIndexByID[item.id] {
+                transcript.backgroundWork[existing] = item
+            } else {
+                backgroundIndexByID[item.id] = transcript.backgroundWork.count
+                transcript.backgroundWork.append(item)
+            }
+        }
+
+        private mutating func endBackgroundWork(
+            id: String, state: ChatBackgroundWorkItem.State, offset: UInt64, step: AgyStep,
+            fallbackDate: Date? = nil
+        ) {
+            guard let index = backgroundIndexByID[id] else { return }
+            let launchedAt = transcript.backgroundWork[index].launchedAt
+            transcript.backgroundWork[index].state = state
+            transcript.backgroundWork[index].endOffset = offset
+            transcript.backgroundWork[index].endedAt = fallbackDate ?? Self.endDate(of: step, launchedAt: launchedAt)
+        }
+
+        private static func endDate(of step: AgyStep, launchedAt: Date?) -> Date? {
+            if let messageDate = step.systemMessage?.timestamp {
+                if let launchedAt, messageDate < launchedAt {
+                    return step.createdAt ?? messageDate
+                }
+                return messageDate
+            }
+            return step.createdAt
         }
 
         // MARK: Entries

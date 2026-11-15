@@ -1,14 +1,59 @@
 import Foundation
 import Observation
+import os
 
-/// Local draft operations shared by the plain-text Composer now and future
-/// Snippet, Skill, and Staged Image path insertion surfaces.
+/// Local draft operations shared by the plain-text Composer, Snippet and Skill
+/// insertion, file path insertion, and staged image attachments.
 @MainActor
 protocol ComposerDraftOperations: AnyObject {
     func replaceDraft(with text: String)
     func insertIntoDraft(_ text: String)
     /// Inserts a staged Host path as a word of its own (ADR 0006).
     func insertPathIntoDraft(_ path: String)
+    /// True when staged images are held as visual Composer attachments
+    /// instead of raw path insertions into `draft`.
+    var retainsImageAttachments: Bool { get }
+    func imageStagingDidBegin(operationID: UInt64)
+    func imageStagingDidPrepare(
+        operationID: UInt64,
+        preview: ComposerImageAttachment.Preview,
+        progress: AttachmentStageProgress)
+    func imageStagingDidProgress(operationID: UInt64, progress: AttachmentStageProgress)
+    func imageStagingDidComplete(
+        operationID: UInt64,
+        path: String,
+        preview: ComposerImageAttachment.Preview?)
+    func imageStagingDidFail(
+        operationID: UInt64,
+        failure: ComposerStagingStore.Failure,
+        preview: ComposerImageAttachment.Preview?)
+    func imageStagingDidCancel(operationID: UInt64)
+    func imageStagingDidDismiss(operationID: UInt64)
+    func stagingDidSettle()
+}
+
+extension ComposerDraftOperations {
+    var retainsImageAttachments: Bool { false }
+    func imageStagingDidBegin(operationID: UInt64) {}
+    func imageStagingDidPrepare(
+        operationID: UInt64,
+        preview: ComposerImageAttachment.Preview,
+        progress: AttachmentStageProgress
+    ) {}
+    func imageStagingDidProgress(operationID: UInt64, progress: AttachmentStageProgress) {}
+    func imageStagingDidComplete(
+        operationID: UInt64,
+        path: String,
+        preview: ComposerImageAttachment.Preview?
+    ) {}
+    func imageStagingDidFail(
+        operationID: UInt64,
+        failure: ComposerStagingStore.Failure,
+        preview: ComposerImageAttachment.Preview?
+    ) {}
+    func imageStagingDidCancel(operationID: UInt64) {}
+    func imageStagingDidDismiss(operationID: UInt64) {}
+    func stagingDidSettle() {}
 }
 
 /// Owns Agent detail's local draft and delivery state. Draft edits do not
@@ -25,6 +70,9 @@ final class AgentComposerStore: ComposerDraftOperations {
         let id: UUID
         let text: String
         let route: ComposerRoute
+        let stagedImagePaths: [String]
+        fileprivate let draftText: String
+        fileprivate var stagedImages: [ComposerImageAttachment]
         fileprivate var agentWasWorkingAtSend: Bool
         fileprivate var statusRevisionAtSend: UInt64
         fileprivate var observedWorkingAfterSend: Bool
@@ -75,6 +123,8 @@ final class AgentComposerStore: ComposerDraftOperations {
             if draft != oldValue { notice = nil }
         }
     }
+    /// Staged and uploading images attached above the text input.
+    private(set) var imageAttachments: [ComposerImageAttachment] = []
     /// Recovery keeps the draft editable, but never queues it for delivery.
     var isConnectionAvailable = true
     /// tmux offers Stop while the Agent is Blocked as well as Working.
@@ -122,36 +172,21 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// ADR 0006 picker path. Weak through the bind so staging can keep the
     /// Composer as its draft owner without a retain cycle.
     @ObservationIgnored private weak var staging: ComposerStagingStore?
-    /// Dropped images waiting for `ComposerStagingStore.begin(_:)`. Each item
-    /// owns a unique placeholder already inserted in `draft`.
-    @ObservationIgnored private var pendingDroppedImages: [PendingDroppedImage] = []
+    /// Queued image selections waiting for `ComposerStagingStore.begin(_:)`.
+    @ObservationIgnored private var queuedImageSelections: [UUID: any ImageSelection] = [:]
+    /// Maps active `ComposerStagingStore` operation ids to attachment ids.
+    @ObservationIgnored private var activeImageOperations: [UInt64: UUID] = [:]
+    /// Identifies the queued attachment currently entering `staging.begin(_:)`.
+    @ObservationIgnored private var startingQueuedAttachmentID: UUID?
     /// Set by ``abandonDroppedImagesForTeardown()`` so leave/cancel events
     /// cannot start the next queued upload.
-    @ObservationIgnored private var isTearingDownDroppedImages = false
+    @ObservationIgnored private var isTearingDownImages = false
+    /// Tracks local `PreparedImage` files owned by this store so `deinit`
+    /// removes any uncollected temporary copies safely across isolation.
+    @ObservationIgnored private let retainedPreviewURLs = OSAllocatedUnfairLock(initialState: Set<URL>())
     /// The editor holds marked text. Writing the draft then would destroy
     /// it, so Voice Input's text waits until the composition ends.
     @ObservationIgnored private var isEditorComposing = false
-
-    private struct PendingDroppedImage {
-        enum Status: Equatable {
-            case queued
-            case staging(operationID: UInt64)
-            case awaitingOutcome(operationID: UInt64, retryable: Bool)
-        }
-
-        let data: Data
-        let placeholder: String
-        var status: Status
-
-        var blocksQueue: Bool {
-            switch status {
-            case .queued:
-                false
-            case .staging, .awaitingOutcome:
-                true
-            }
-        }
-    }
 
     init(
         target: String,
@@ -186,31 +221,60 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     deinit {
         statusTask?.cancel()
+        let urls = retainedPreviewURLs.withLock { urls -> Set<URL> in
+            let copy = urls
+            urls.removeAll()
+            return copy
+        }
+        for url in urls {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
-    var canSend: Bool {
-        isConnectionAvailable && !hasPendingDroppedImages && !voice.blocksSend
-            && draft.contains(where: { !$0.isWhitespace })
+    var retainsImageAttachments: Bool { true }
+
+    var readyImagePaths: [String] {
+        imageAttachments.compactMap(\.phase.readyPath)
+    }
+
+    var hasPendingImages: Bool {
+        imageAttachments.contains(where: \.phase.isPending)
     }
 
     var hasPendingDroppedImages: Bool {
-        !pendingDroppedImages.isEmpty
+        hasPendingImages
     }
 
-    /// VoiceOver hint for the Send button. Pending drops and Voice Input
+    /// The text Send delivers: typed prose plus any ready staged image paths.
+    var composedDraft: String {
+        Self.composePrompt(draft: draft, imagePaths: readyImagePaths)
+    }
+
+    static func composePrompt(draft: String, imagePaths: [String]) -> String {
+        guard !imagePaths.isEmpty else { return draft }
+        let joinedPaths = imagePaths.joined(separator: " ") + " "
+        guard draft.contains(where: { !$0.isWhitespace }) else { return joinedPaths }
+        if let last = draft.last, last.isWhitespace {
+            return draft + joinedPaths
+        }
+        return "\(draft) \(joinedPaths)"
+    }
+
+    var canSend: Bool {
+        isConnectionAvailable && !hasPendingImages && !voice.blocksSend
+            && (!readyImagePaths.isEmpty || draft.contains(where: { !$0.isWhitespace }))
+    }
+
+    /// VoiceOver hint for the Send button. Pending images and Voice Input
     /// disable Send.
     var sendAccessibilityHint: String {
         !isConnectionAvailable
             ? String(localized: "Waiting for the Host connection")
-            : hasPendingDroppedImages
+            : hasPendingImages
             ? String(localized: "Waiting for image…")
             : voice.blocksSend
             ? String(localized: "Waiting for Voice Input…")
             : String(localized: "Delivers the complete draft to the Agent")
-    }
-
-    var pendingDropPlaceholders: [String] {
-        pendingDroppedImages.map(\.placeholder)
     }
 
     func replaceDraft(with text: String) {
@@ -308,22 +372,28 @@ final class AgentComposerStore: ComposerDraftOperations {
         insertIntoDraft(VoiceInputSpacing.fitted(text, after: before, before: after))
     }
 
-    /// Forwards dropped images onto ``ComposerStagingStore.begin(_:)``, the
-    /// same call the photo picker uses. One operation at a time; extras queue.
+    /// Binds ``ComposerStagingStore`` so queued picks, pastes, and drops stage
+    /// one operation at a time and feed visual attachments above the input.
     /// `AgentComposerSession` binds its staging once.
     func bindStaging(_ staging: ComposerStagingStore) {
         self.staging = staging
-        isTearingDownDroppedImages = false
-        staging.onOperationEvent = { [weak self] event in
-            self?.handleDroppedImageStagingEvent(event)
-        }
-        startNextDroppedImageIfNeeded()
+        isTearingDownImages = false
+        startNextQueuedImageIfNeeded()
     }
 
-    /// Maps a drop onto draft insertion and/or the ADR 0006 staging path.
+    /// Queues one or more image selections (Photos picker, Paste Image, or drop)
+    /// as visual attachments above the input, staging them sequentially.
+    func enqueueImages(_ selections: [any ImageSelection]) {
+        guard !selections.isEmpty else { return }
+        for selection in selections {
+            enqueueQueuedSelection(selection)
+        }
+        startNextQueuedImageIfNeeded()
+    }
+
+    /// Maps a drop onto draft text insertion and/or queued image attachments.
     /// Empty and unsupported items are skipped without touching the draft or
-    /// submitting it. Each image inserts a unique placeholder; later text
-    /// stays after it, and the Host path replaces that token.
+    /// submitting it.
     func acceptDrop(_ items: [ComposerDropItem]) {
         for item in items {
             switch item {
@@ -332,56 +402,74 @@ final class AgentComposerStore: ComposerDraftOperations {
                 insertIntoDraft(text)
             case .image(let data, _):
                 guard !data.isEmpty else { continue }
-                reserveDroppedImage(data)
+                enqueueQueuedSelection(DataImageSelection(data: data))
             case .unsupported:
                 continue
             }
         }
-        startNextDroppedImageIfNeeded()
+        startNextQueuedImageIfNeeded()
     }
 
-    /// Visible token inserted for a queued drop. Private-use scalars plus a
-    /// UUID fragment so ordinary user text cannot collide with it.
-    static func makeDropPlaceholder(uuid: UUID = UUID()) -> String {
-        let hex = String(
-            uuid.uuidString.replacingOccurrences(of: "-", with: "").prefix(8)
-        ).lowercased()
-        return "\u{E000}img:\(hex)\u{E001}"
-    }
-
-    static func containsDropPlaceholder(_ text: String) -> Bool {
-        let prefix = "\u{E000}img:"
-        let suffix: Character = "\u{E001}"
-        var search = text.startIndex
-        while let start = text[search...].range(of: prefix) {
-            let hexStart = start.upperBound
-            guard let hexEnd = text.index(hexStart, offsetBy: 8, limitedBy: text.endIndex),
-                hexEnd < text.endIndex,
-                text[hexEnd] == suffix,
-                text[hexStart..<hexEnd].allSatisfy(\.isHexDigit)
-            else {
-                search = start.upperBound
-                continue
+    func removeImageAttachment(id: UUID) {
+        guard let index = imageAttachments.firstIndex(where: { $0.id == id }) else { return }
+        switch imageAttachments[index].phase {
+        case .queued:
+            queuedImageSelections[id] = nil
+            let removed = imageAttachments.remove(at: index)
+            releaseLocalPreviewIfUnreferenced(removed.preview)
+        case .preparing, .uploading:
+            if let staging {
+                staging.perform(.cancel)
+            } else {
+                activeImageOperations = activeImageOperations.filter { $0.value != id }
+                let removed = imageAttachments.remove(at: index)
+                releaseLocalPreviewIfUnreferenced(removed.preview)
             }
-            return true
+        case .failed:
+            if let staging {
+                staging.perform(.dismiss)
+            } else {
+                activeImageOperations = activeImageOperations.filter { $0.value != id }
+                let removed = imageAttachments.remove(at: index)
+                releaseLocalPreviewIfUnreferenced(removed.preview)
+            }
+        case .ready(let path):
+            let removed = imageAttachments.remove(at: index)
+            notice = nil
+            releaseLocalPreviewIfUnreferenced(removed.preview)
+            if let staging,
+                case .completed(let outcome) = staging.state,
+                outcome.medium == .image,
+                outcome.path == path
+            {
+                staging.perform(.dismiss)
+            }
         }
-        return false
     }
 
-    /// Clears queued drops and their tokens before staging teardown. Later
-    /// cancel/dismiss events must not start another upload.
+    func retryImageAttachment(id: UUID) {
+        guard activeImageOperations.values.contains(id),
+            let attachment = imageAttachments.first(where: { $0.id == id }),
+            case .failed(_, let isRetryable) = attachment.phase,
+            isRetryable
+        else { return }
+        staging?.perform(.retry)
+    }
+
+    /// Clears pending/queued image uploads before staging teardown while
+    /// preserving any attachments that have already finished staging.
     func abandonDroppedImagesForTeardown() {
-        isTearingDownDroppedImages = true
-        for item in pendingDroppedImages {
-            applyTokenReplacement(item.placeholder, firstReplacement: "")
-        }
-        pendingDroppedImages.removeAll()
+        isTearingDownImages = true
+        queuedImageSelections.removeAll()
+        activeImageOperations.removeAll()
+        startingQueuedAttachmentID = nil
+        imageAttachments.removeAll { $0.phase.isPending }
     }
 
-    /// Called once the staging's leave has finished: later drops may start.
+    /// Called once the staging's leave has finished: later uploads may start.
     func resumeDroppedImages() {
-        isTearingDownDroppedImages = false
-        startNextDroppedImageIfNeeded()
+        isTearingDownImages = false
+        startNextQueuedImageIfNeeded()
     }
 
     /// Completes an inline Skill suggestion: swaps the typed trigger token at
@@ -423,10 +511,16 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
-        guard canSend, !containsPendingPlaceholderInDraft else { return .ignored }
-        if let refusal = policy.validate(draft) { return .refused(refusal) }
+        guard canSend else { return .ignored }
+        let promptText = composedDraft
+        if let refusal = policy.validate(promptText) { return .refused(refusal) }
         let message = Message(
-            id: UUID(), text: draft, route: policy.route,
+            id: UUID(),
+            text: promptText,
+            route: policy.route,
+            stagedImagePaths: readyImagePaths,
+            draftText: draft,
+            stagedImages: imageAttachments,
             agentWasWorkingAtSend: agentStatus == .working,
             statusRevisionAtSend: statusRevision,
             observedWorkingAfterSend: false,
@@ -434,6 +528,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             state: .sending)
         draft = ""
         draftSelection = NSRange(location: 0, length: 0)
+        imageAttachments = []
         stop.holdAfterSend()
         messages.append(message)
         if let preflight = policy.preflight, let refusal = await preflight(message.text) {
@@ -516,13 +611,19 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
     }
 
-    /// Removes an echo and puts its text back in front of whatever has been
-    /// typed since.
+    /// Removes an echo and puts its text and staged images back in front of
+    /// whatever has been added since.
     private func returnToDraft(_ id: Message.ID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
-        let text = messages.remove(at: index).text
-        draft = draft.isEmpty ? text : "\(text)\n\(draft)"
-        draftSelection = NSRange(location: (draft as NSString).length, length: 0)
+        let removed = messages.remove(at: index)
+        if !removed.stagedImages.isEmpty {
+            imageAttachments.insert(contentsOf: removed.stagedImages, at: 0)
+        }
+        let text = removed.draftText
+        if !text.isEmpty {
+            draft = draft.isEmpty ? text : "\(text)\n\(draft)"
+            draftSelection = NSRange(location: (draft as NSString).length, length: 0)
+        }
     }
 
     /// The Transcript recorded these, so a step with no answer reached the
@@ -531,6 +632,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         for index in messages.indices
         where messages[index].state == .outcomeUnknown && recorded.contains(messages[index].id) {
             messages[index].state = .delivered(.acknowledged)
+            releaseStagedImages(ofMessageAt: index)
         }
     }
 
@@ -567,9 +669,6 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func deliver(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         let text = messages[index].text
-        if Self.containsDropPlaceholder(text) {
-            return .ignored
-        }
         if let checkedSend {
             return await deliverChecked(id, text: text, policy: policy, using: checkedSend)
         }
@@ -587,6 +686,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             }
             messages[acknowledgedIndex].state = .delivered(
                 progressAfterAcknowledgment(for: messages[acknowledgedIndex]))
+            releaseStagedImages(ofMessageAt: acknowledgedIndex)
             if let input, let generation {
                 input.recordSubmitted(outgoing, generation: generation)
             }
@@ -617,6 +717,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         switch outcome {
         case .submitted:
             messages[index].state = .delivered(progressAfterAcknowledgment(for: messages[index]))
+            releaseStagedImages(ofMessageAt: index)
             if let verify = policy.verify {
                 Task { [weak self] in
                     guard !(await verify(outgoing)) else { return }
@@ -652,6 +753,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         else { return }
         messages[index].tracksAgentProgress = false
         messages[index].state = .undelivered
+        releaseStagedImages(ofMessageAt: index)
     }
 
     /// Delivers one `agent.prompt` request, waiting out a fresh launch's
@@ -686,7 +788,6 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Those bytes already cross `TerminalInputController`'s writer, which
     /// indexes them; do not also `record(submitted:)` here.
     private func deliverThroughAttach(_ id: Message.ID, text: String) -> SendResult {
-        guard !Self.containsDropPlaceholder(text) else { return .ignored }
         guard TerminalTextSafety.containsOnlySafeScalars(text) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
@@ -698,6 +799,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         }
         messages[deliveredIndex].tracksAgentProgress = false
         messages[deliveredIndex].state = .delivered(.acknowledged)
+        releaseStagedImages(ofMessageAt: deliveredIndex)
         return .deliveredViaAttach
     }
 
@@ -760,131 +862,155 @@ final class AgentComposerStore: ComposerDraftOperations {
     private static let unsafeTextMessage =
         String(localized: "The message contains unsafe terminal control characters.")
 
-    private var containsPendingPlaceholderInDraft: Bool {
-        pendingDroppedImages.contains { draft.contains($0.placeholder) }
-            || Self.containsDropPlaceholder(draft)
-    }
-
-    private func reserveDroppedImage(_ data: Data) {
-        let placeholder = Self.makeDropPlaceholder()
-        insertIntoDraft(placeholder)
-        pendingDroppedImages.append(
-            PendingDroppedImage(
-                data: data,
-                placeholder: placeholder,
-                status: .queued))
-    }
-
-    private func handleDroppedImageStagingEvent(_ event: ComposerStagingStore.OperationEvent) {
-        guard !isTearingDownDroppedImages else { return }
-        switch event {
-        case .completed(let id, let path):
-            fulfillDroppedImage(id: id, path: path)
-        case .cancelled(let id), .dismissed(let id):
-            abandonDroppedImage(id: id)
-        case .failed(let id, let retryable):
-            failDroppedImage(id: id, retryable: retryable)
-        }
-        startNextDroppedImageIfNeeded()
-    }
-
-    private func fulfillDroppedImage(id: UInt64, path: String) {
-        guard let index = indexOfDroppedImage(id: id) else { return }
-        let placeholder = pendingDroppedImages[index].placeholder
-        pendingDroppedImages.remove(at: index)
-        let slot = (draft as NSString).range(of: placeholder)
-        guard slot.location != NSNotFound else {
-            insertPathIntoDraft(path)
+    func imageStagingDidBegin(operationID: UInt64) {
+        if let queuedID = startingQueuedAttachmentID,
+            let index = imageAttachments.firstIndex(where: { $0.id == queuedID })
+        {
+            startingQueuedAttachmentID = nil
+            queuedImageSelections[queuedID] = nil
+            activeImageOperations[operationID] = queuedID
+            imageAttachments[index].phase = .preparing
             return
         }
-        let insertion = Self.pathInsertion(path, after: (draft as NSString).substring(to: slot.location))
-        applyTokenReplacement(placeholder, firstReplacement: insertion)
+        startingQueuedAttachmentID = nil
+        let id = UUID()
+        activeImageOperations[operationID] = id
+        imageAttachments.append(ComposerImageAttachment(id: id, preview: nil, phase: .preparing))
     }
 
-    private func abandonDroppedImage(id: UInt64) {
-        guard let index = indexOfDroppedImage(id: id) else { return }
-        let placeholder = pendingDroppedImages[index].placeholder
-        pendingDroppedImages.remove(at: index)
-        applyTokenReplacement(placeholder, firstReplacement: "")
+    func imageStagingDidPrepare(
+        operationID: UInt64,
+        preview: ComposerImageAttachment.Preview,
+        progress: AttachmentStageProgress
+    ) {
+        guard let attachmentID = activeImageOperations[operationID],
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        else { return }
+        imageAttachments[index].preview = preview
+        imageAttachments[index].phase = .uploading(progress)
     }
 
-    private func failDroppedImage(id: UInt64, retryable: Bool) {
-        guard let index = indexOfDroppedImage(id: id) else { return }
-        if retryable {
-            pendingDroppedImages[index].status = .awaitingOutcome(
-                operationID: id,
-                retryable: true)
+    func imageStagingDidProgress(operationID: UInt64, progress: AttachmentStageProgress) {
+        guard let attachmentID = activeImageOperations[operationID],
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        else { return }
+        imageAttachments[index].phase = .uploading(progress)
+    }
+
+    func imageStagingDidComplete(
+        operationID: UInt64,
+        path: String,
+        preview: ComposerImageAttachment.Preview?
+    ) {
+        retainLocalPreview(preview)
+        if let attachmentID = activeImageOperations.removeValue(forKey: operationID),
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        {
+            if let preview {
+                imageAttachments[index].preview = preview
+            }
+            imageAttachments[index].phase = .ready(path: path)
+        } else if !isTearingDownImages {
+            imageAttachments.append(
+                ComposerImageAttachment(id: UUID(), preview: preview, phase: .ready(path: path)))
+        } else {
+            releaseLocalPreviewIfUnreferenced(preview)
+        }
+        notice = nil
+    }
+
+    func imageStagingDidFail(
+        operationID: UInt64,
+        failure: ComposerStagingStore.Failure,
+        preview: ComposerImageAttachment.Preview?
+    ) {
+        guard let attachmentID = activeImageOperations[operationID],
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        else { return }
+        if failure.isRetryable, let preview {
+            imageAttachments[index].preview = preview
+            imageAttachments[index].phase = .failed(
+                message: failure.message,
+                isRetryable: true)
             return
         }
-        abandonDroppedImage(id: id)
+        activeImageOperations[operationID] = nil
+        let removed = imageAttachments.remove(at: index)
+        releaseLocalPreviewIfUnreferenced(removed.preview)
     }
 
-    private func startNextDroppedImageIfNeeded() {
-        guard let staging, !isTearingDownDroppedImages else { return }
-        if pendingDroppedImages.contains(where: { $0.blocksQueue }) { return }
+    func imageStagingDidCancel(operationID: UInt64) {
+        if let attachmentID = activeImageOperations.removeValue(forKey: operationID),
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        {
+            let removed = imageAttachments.remove(at: index)
+            releaseLocalPreviewIfUnreferenced(removed.preview)
+        }
+    }
+
+    func imageStagingDidDismiss(operationID: UInt64) {
+        if let attachmentID = activeImageOperations.removeValue(forKey: operationID),
+            let index = imageAttachments.firstIndex(where: { $0.id == attachmentID })
+        {
+            let removed = imageAttachments.remove(at: index)
+            releaseLocalPreviewIfUnreferenced(removed.preview)
+        }
+    }
+
+    func stagingDidSettle() {
+        startNextQueuedImageIfNeeded()
+    }
+
+    private func enqueueQueuedSelection(_ selection: any ImageSelection) {
+        let id = UUID()
+        queuedImageSelections[id] = selection
+        imageAttachments.append(ComposerImageAttachment(id: id, preview: nil, phase: .queued))
+    }
+
+    private func startNextQueuedImageIfNeeded() {
+        guard let staging, !isTearingDownImages else { return }
+        guard activeImageOperations.isEmpty else { return }
         switch staging.state {
         case .idle, .completed:
             break
         case .failed, .backgroundInterrupted, .preparing, .uploading:
             return
         }
-        guard let index = pendingDroppedImages.firstIndex(where: { $0.status == .queued })
+        guard let next = imageAttachments.first(where: { $0.phase == .queued }),
+            let selection = queuedImageSelections[next.id]
         else { return }
-        guard
-            let id = staging.begin(
-                .photo(DataImageSelection(data: pendingDroppedImages[index].data)),
-                insertPathIntoComposer: false)
-        else { return }
-        pendingDroppedImages[index].status = .staging(operationID: id)
-    }
-
-    private func indexOfDroppedImage(id: UInt64) -> Int? {
-        pendingDroppedImages.firstIndex { item in
-            switch item.status {
-            case .staging(let operationID), .awaitingOutcome(let operationID, _):
-                operationID == id
-            case .queued:
-                false
-            }
+        startingQueuedAttachmentID = next.id
+        if staging.begin(.photo(selection), insertPathIntoComposer: false) == nil {
+            startingQueuedAttachmentID = nil
         }
     }
 
-    /// Replaces the first exact token and deletes any later copies the user
-    /// duplicated. Returns false when the token is gone.
-    @discardableResult
-    private func applyTokenReplacement(_ token: String, firstReplacement: String) -> Bool {
-        guard !token.isEmpty else { return false }
-        var found = false
-        var isFirst = true
-        while true {
-            let range = (draft as NSString).range(of: token)
-            guard range.location != NSNotFound else { break }
-            let replacement = isFirst ? firstReplacement : ""
-            draft = (draft as NSString).replacingCharacters(in: range, with: replacement)
-            draftSelection = Self.selection(
-                afterReplacing: range,
-                with: (replacement as NSString).length,
-                current: draftSelection)
-            found = true
-            isFirst = false
-        }
-        return found
+    private func retainLocalPreview(_ preview: ComposerImageAttachment.Preview?) {
+        guard let url = preview?.fileURL else { return }
+        _ = retainedPreviewURLs.withLock { $0.insert(url) }
     }
 
-    private static func selection(
-        afterReplacing range: NSRange,
-        with replacementLength: Int,
-        current: NSRange
-    ) -> NSRange {
-        let delta = replacementLength - range.length
-        let rangeEnd = range.location + range.length
-        if current.location >= rangeEnd {
-            return NSRange(location: current.location + delta, length: current.length)
+    private func releaseStagedImages(ofMessageAt index: Int) {
+        let released = messages[index].stagedImages
+        guard !released.isEmpty else { return }
+        messages[index].stagedImages = []
+        for attachment in released {
+            releaseLocalPreviewIfUnreferenced(attachment.preview)
         }
-        if current.location + current.length <= range.location {
-            return current
+    }
+
+    private func releaseLocalPreviewIfUnreferenced(_ preview: ComposerImageAttachment.Preview?) {
+        guard let preview else { return }
+        let url = preview.fileURL
+        let stillReferencedInDraft = imageAttachments.contains { $0.preview?.fileURL == url }
+        let stillReferencedInMessages = messages.contains { message in
+            message.stagedImages.contains { $0.preview?.fileURL == url }
         }
-        return NSRange(location: range.location + replacementLength, length: 0)
+        guard !stillReferencedInDraft, !stillReferencedInMessages else { return }
+        let removedFromTracking = retainedPreviewURLs.withLock { $0.remove(url) != nil }
+        if removedFromTracking {
+            preview.removeLocalFile()
+        }
     }
 
     private static func clamped(_ range: NSRange, to text: String) -> NSRange {

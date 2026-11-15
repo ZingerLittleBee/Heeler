@@ -314,3 +314,50 @@ struct ClaudeUsageLimitsNote: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 }
+
+/// One Host's preference to read Codex's plan limits. Enabled by default;
+/// while it is off, the row says so in place of the windows.
+struct CodexUsageLimitsToggle: View {
+    @Bindable var store: AgentUsageStore
+
+    var body: some View {
+        Toggle(isOn: $store.codexLimitsEnabled) {
+            Text("Codex limits")
+            if !store.codexLimitsEnabled {
+                Text("Usage Limits are off.")
+            }
+        }
+        .accessibilityIdentifier("usage.codex-limits")
+    }
+}
+
+/// One Host's preference to read Antigravity's plan limits. Enabled by default;
+/// while it is off, the row says so in place of the windows.
+struct AgyUsageLimitsToggle: View {
+    @Bindable var store: AgentUsageStore
+
+    var body: some View {
+        Toggle(isOn: $store.agyLimitsEnabled) {
+            Text("Antigravity limits")
+            if !store.agyLimitsEnabled {
+                Text("Usage Limits are off.")
+            }
+        }
+        .accessibilityIdentifier("usage.agy-limits")
+    }
+}
+
+/// How Antigravity limits are read, shown beside the toggle.
+struct AgyUsageLimitsNote: View {
+    /// A herdr-core or tmux Host has no plugin: its Host Helper asks.
+    var readsOverHostHelper = false
+
+    var body: some View {
+        Text(readsOverHostHelper
+            ? String(localized: "The Host Helper asks Antigravity on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in.")
+            : String(localized: "The plugin asks Antigravity on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in."))
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}

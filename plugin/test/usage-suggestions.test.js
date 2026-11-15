@@ -220,6 +220,7 @@ process.stdout.write(JSON.stringify({ result: { type: "pane_process_info", proce
   assert.deepEqual(await programs(), {
     claude: [],
     codex: [{ directory: agentHome, name: "team", source: "agent" }, { directory: work, name: "codex-work", source: "home" }],
+    agy: [],
   });
 
   writeFileSync(join(env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1,

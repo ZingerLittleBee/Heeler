@@ -1,5 +1,5 @@
 {
-  "version": "0.5.7",
+  "version": "0.5.9",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -127,19 +127,27 @@
     },
     {
       "path": "shared/usage/agent-directories.js",
-      "sha256": "e9ebe184b5c5ac31650f6b951c4ebb299b59338ae9711d24ef8fc8406482d08b"
+      "sha256": "1476e1b20cb0daeae63a60b1e2fe3c620f97e9514908c9005d8341b22747c93d"
+    },
+    {
+      "path": "shared/usage/agy-limits.js",
+      "sha256": "4e0a7d8bb482d96f28c286499b04c43a380de67485bca99479c2acfba0da67a7"
+    },
+    {
+      "path": "shared/usage/agy-scanner.js",
+      "sha256": "4a27766357443ce1f559a7583b31a3d12273d0eb404db3479e501e0b735091ca"
     },
     {
       "path": "shared/usage/buckets.js",
-      "sha256": "dd4e202dc7418549c82f91614e50c19764cad6c99a7d786f65cb9a81362f6dd9"
+      "sha256": "4e5b9ea8fdf5730d988d10e935948a9ffd4e67974396bef2c731b999dd050d00"
     },
     {
       "path": "shared/usage/cache.js",
-      "sha256": "174b15738163a8fda024d339b1bf529ff32e901a213a2c07da789e3edfaf3f7a"
+      "sha256": "8cd8c169dfed6cdc505a87e1f050a1e6252c4e7f20437f7d4f27416b7fd934aa"
     },
     {
       "path": "shared/usage/checkpoint.js",
-      "sha256": "51b84a92b6a86e07888edbcf5c1dcb1a7bc4823d763048a7752648f2075e1ed3"
+      "sha256": "df3dbfd3c6c36943b56feefe52f723b840af65f6b8c682600172e09f005e43b7"
     },
     {
       "path": "shared/usage/claude-limits.js",
@@ -175,11 +183,11 @@
     },
     {
       "path": "shared/usage/pricing.js",
-      "sha256": "fa3419168c395514f8f3c1bf8dd9960173c170ad0df04ed4b1f748cfa2b0bc56"
+      "sha256": "76a046b1fab174ddd8f81dc6aa77d15ac33294fd74b232b9bf5f666cc5666ca6"
     },
     {
       "path": "shared/usage/pricing.json",
-      "sha256": "a25a60d69d5c49119d3e4d10fc1b5aedc678881db45cc22418c1ee5b12553875"
+      "sha256": "132d33eb2a28919b7da995fcf1fbdd0799130cc9c09004f7eedac16855701b85"
     },
     {
       "path": "shared/usage/process-environment.js",
@@ -187,19 +195,19 @@
     },
     {
       "path": "shared/usage/programs.js",
-      "sha256": "6856bd2c17de68919ecc5c34053c64d6ec433962af4cbe805f8269d387108b29"
+      "sha256": "f903d873292153c5a8e5d861f4305c9d2a4afa6c99a91f0c7fd459c83a56a597"
     },
     {
       "path": "shared/usage/query.js",
-      "sha256": "406b7e455b008312a829b60f534c3f4b9aefb44d2a27960c19c6bb451c31f517"
+      "sha256": "75e42952be87078e4c0cffffadf844fad27a97e4c63c8c670793b68f960c7559"
     },
     {
       "path": "shared/usage/runtime-record.js",
-      "sha256": "85f3ee71cbc03f09cd6be2b5ffed4dfe3ed147ed81177535110fc70760688df7"
+      "sha256": "c9d3f079f41562f7034766cf32caf0a03a49b8a9b7d9d2870f17b947fd12e9f7"
     },
     {
       "path": "shared/usage/worker.js",
-      "sha256": "0fbc4df78372ecc022db51307e39bea872971f0f14284f54701b408870156f60"
+      "sha256": "aface49e6fd0e220509f3ebbd0ecd5f601ad6ca319faf65a69bfa615cf1ffee5"
     },
     {
       "path": "tmux/client.js",
@@ -247,7 +255,7 @@
     },
     {
       "path": "usage-query.js",
-      "sha256": "8478dd9c20e5c7263c6e4b62d2c9f0ead8749719dce388267ef2aac61deb98b1"
+      "sha256": "0fac00a13221c5fb9a288b22eb69007c0cef53b65cdc2f0a6916e59ebceb2957"
     },
     {
       "path": "usage-worker.js",
@@ -271,7 +279,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "d3067a2dc8cce607e39dc20bc0b1ae4d6458c620c436220158239bafdd7bd010"
+      "sha256": "b4df6a904780f51d5f0630845fba2fcae0869434dee7802dfbf7a69d78c7d89b"
     }
   ]
 }

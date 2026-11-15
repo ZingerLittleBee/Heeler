@@ -7,7 +7,7 @@ struct HostOnboardingView: View {
     /// The catalog's copy of this Host. Onboarding restarts for it when it
     /// changes (see `adopt`).
     let host: Host
-    /// The Host catalog, for the Edit sheet.
+    /// The Host catalog: the Host this Server is on, and its other records.
     let catalog: HostStore
     let usage: AgentUsageStore?
     /// Shows this Host on the Usage tab; nil where the Host detail stands
@@ -30,18 +30,17 @@ struct HostOnboardingView: View {
     /// Stops the Console's attempt to connect this Host; nil where the
     /// Host detail does not offer it.
     let stopConnecting: (@MainActor @Sendable () async -> Void)?
+    /// Turns this Server off (ADR 0047); nil where the page offers no switch.
+    let turnOff: (@MainActor () -> Void)?
+    /// Opens the Host this Server is on; nil where that page is the one
+    /// underneath.
+    let openHost: (@MainActor () -> Void)?
     private let dependencies: HostOnboardingDependencies
     @State private var store: HostOnboardingStore
-    @State private var isEditing = false
-    /// From Edit until its sheet is fully gone, which `isEditing` turns
-    /// false before. A Host saved meanwhile waits, so its checks never
-    /// present a trust prompt over the dismissing sheet.
-    @State private var isEditorOnScreen = false
     /// Set by a route change until its first checks finish, which then ask
     /// about a changed key at once: the edit may now reach another machine.
     @State private var offersHostKeyReplacement = false
     @State private var isConfirmingHostKeyReplacement = false
-    @State private var didCopyFingerprintCommand = false
     @State private var sessionSelectionError: String?
     /// A passing preflight not yet acted on: it may restart the Console's
     /// connection once (see `HostOnboardingConsoleRecovery`).
@@ -65,6 +64,8 @@ struct HostOnboardingView: View {
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable () async -> Void)? = nil,
+        turnOff: (@MainActor () -> Void)? = nil,
+        openHost: (@MainActor () -> Void)? = nil,
         opensHostHelper: Bool = false,
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
@@ -80,6 +81,8 @@ struct HostOnboardingView: View {
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         self.stopConnecting = stopConnecting
+        self.turnOff = turnOff
+        self.openHost = openHost
         self.dependencies = dependencies
         _store = State(initialValue: Self.makeStore(host, dependencies))
         _opensHostHelperOnArrival = State(initialValue: opensHostHelper)
@@ -95,23 +98,16 @@ struct HostOnboardingView: View {
             credentials: dependencies.credentials,
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
-            noteWindowsCore: dependencies.noteWindowsCore,
             noteTmuxPaths: dependencies.noteTmuxPaths,
             noteRexSocket: dependencies.noteRexSocket)
     }
 
-    /// The page with its Edit sheet, outside `page`'s modifier chain, which
+    /// The page with its sheets, outside `page`'s modifier chain, which
     /// stays under Xcode 26.6's type-checking limit.
     var body: some View {
         page
-            .sheet(isPresented: $isEditing, onDismiss: { isEditorOnScreen = false }) {
-                HostFormView(store: catalog, editing: store.host)
-            }
             .onChange(of: host) { _, updated in
-                if !isEditorOnScreen { adopt(updated) }
-            }
-            .onChange(of: isEditorOnScreen) { _, isOnScreen in
-                if !isOnScreen { adopt(host) }
+                adopt(updated)
             }
             .onChange(of: store.phase) { _, phase in
                 guard phase == .finished, offersHostKeyReplacement else { return }
@@ -125,21 +121,15 @@ struct HostOnboardingView: View {
                 HostHelperOnArrival(
                     isReady: store.hostHelper != nil, isRequested: $opensHostHelperOnArrival,
                     isShowing: $isShowingHostHelper))
-            .alert("Could Not Confirm", isPresented: confirmationRefusalPresented) {
-                Button("OK", role: .cancel) { store.dismissConfirmationRefusal() }
-            } message: {
-                Text(store.confirmationRefusal ?? "")
-            }
     }
 
-    /// Restarts onboarding for a changed Host: a selected session at once,
-    /// an edit once its sheet is gone.
+    /// Restarts onboarding for a changed Host: a selected session, or an edit
+    /// made in Host detail.
     private func adopt(_ updated: Host) {
         guard updated != store.host else { return }
         offersHostKeyReplacement = updated.routes != store.host.routes
         store = Self.makeStore(updated, dependencies)
         isConfirmingHostKeyReplacement = false
-        didCopyFingerprintCommand = false
         sessionSelectionError = nil
         isConsoleRecoveryArmed = false
         isShowingPluginNotice = false
@@ -148,14 +138,20 @@ struct HostOnboardingView: View {
 
     private var listPage: some View {
         List {
+            showInHeelerSection
+
             connectionSection
 
-            hostKeyReplacementSection
+            if let replacement = store.pendingHostKeyReplacement {
+                HostKeyReplacementSection(replacement: replacement) {
+                    isConfirmingHostKeyReplacement = true
+                }
+            }
 
             routesSection
 
-            Section("Host") {
-                LabeledContent("Account", value: store.host.username)
+            Section("Server") {
+                hostRow
                 LabeledContent("Server Kind", value: store.serverKindSummary)
                     .accessibilityIdentifier("hosts.detail.serverKind")
                 if store.host.serverKind == .tmux {
@@ -168,27 +164,20 @@ struct HostOnboardingView: View {
                     LabeledContent("Session", value: sessionLine)
                 }
                 herdrEndpointRows
-                LabeledContent(
-                    "Auth",
-                    value: authenticationLabel)
                 if store.host.serverKind == .herdrTUI || store.host.serverKind == .herdrCore { pluginRow }
                 if let helper = store.hostHelper { hostHelperRow(helper) }
             }
 
-            if store.host.serverKind.isConfirmed {
-                preflightSection
-                HerdrCoreStartSection(store: store)
-                if let coreEnvironmentNotice {
-                    HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
+            preflightSection
+            HerdrCoreStartSection(store: store)
+            if let coreEnvironmentNotice {
+                HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
+            }
+            if let harnessEdits {
+                HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
+                if store.host.serverKind == .tmux, harnessEdits.hostStatuses[store.host.id] == .connected {
+                    ClaudeCodeHooksSection(flow: harnessEdits.claudeCodeHooksFlow(on: store.host.id))
                 }
-                if let harnessEdits {
-                    HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
-                    if store.host.serverKind == .tmux, harnessEdits.hostStatuses[store.host.id] == .connected {
-                        ClaudeCodeHooksSection(flow: harnessEdits.claudeCodeHooksFlow(on: store.host.id))
-                    }
-                }
-            } else {
-                serverKindSection
             }
 
             if let usage, store.host.serverKind.hasHostIntegrations {
@@ -205,16 +194,8 @@ struct HostOnboardingView: View {
         .refreshable {
             if let usage { await usage.pullToRefresh() }
         }
-        .navigationTitle(store.host.displayName)
+        .navigationTitle(store.host.serverKey?.label ?? store.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Edit") {
-                    isEditorOnScreen = true
-                    isEditing = true
-                }
-            }
-        }
         .pluginNoticeSheet(
             pluginPresentation.notice, isPresented: $isShowingPluginNotice,
             actionState: store.pluginAction,
@@ -231,19 +212,11 @@ struct HostOnboardingView: View {
             Text(
                 String(localized: "First connection to \(candidate.host):\(String(candidate.port)).\n\nKey fingerprint:\n\(candidate.fingerprint.displayString)\n\nVerify it matches the Host's key before trusting."))
         }
-        // An alert, which also opens on its own after a route edit: iOS 26
-        // shows a confirmation dialog as a popover without Cancel.
-        .alert(
-            store.pendingHostKeyReplacement?.confirmationTitle ?? "",
-            isPresented: $isConfirmingHostKeyReplacement,
-            presenting: store.pendingHostKeyReplacement
-        ) { _ in
-            Button("Trust New Key", role: .destructive) {
-                Task { await store.trustPresentedHostKey() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { replacement in
-            Text(replacement.confirmationMessage)
+        // Also opens on its own after a route edit.
+        .hostKeyReplacementAlert(store.pendingHostKeyReplacement, isPresented: $isConfirmingHostKeyReplacement) {
+            // One Host presents one key, whichever of its Servers is asked.
+            let siblings = hostMachine?.members.map(\.id).filter { $0 != store.host.id } ?? []
+            Task { await store.trustPresentedHostKey(sharedWith: siblings) }
         }
         .alert(
             "Could Not Select Session",
@@ -318,79 +291,6 @@ struct HostOnboardingView: View {
         }
     }
 
-    /// What detection found on a Host added unconfirmed, and the kinds it may
-    /// be confirmed as (ADR 0031).
-    private var serverKindSection: some View {
-        Section {
-            PreflightCheckRow(title: PreflightCheck.connection.title(for: .unconfirmed), status: reachStatus)
-            if let detection = store.detection {
-                LabeledContent(ServerKind.herdrTUI.displayName, value: detection.herdrTUI.summary)
-                    .accessibilityIdentifier("hosts.detail.detection.herdrTUI")
-                LabeledContent(ServerKind.herdrCore.displayName, value: detection.herdrCore.summary)
-                    .accessibilityIdentifier("hosts.detail.detection.herdrCore")
-                if detection.tmux != .unsupported {
-                    LabeledContent(ServerKind.tmux.displayName, value: detection.tmux.summary)
-                        .accessibilityIdentifier("hosts.detail.detection.tmux")
-                }
-                // Only where Heeler finds Rex: macOS and Linux.
-                if detection.rex != .unsupported {
-                    LabeledContent(ServerKind.rex.displayName, value: detection.rex.summary)
-                        .accessibilityIdentifier("hosts.detail.detection.rex")
-                }
-            }
-            if store.tmuxSocketChoices.count > 1 {
-                Picker("tmux Socket", selection: tmuxSocketSelection) {
-                    ForEach(store.tmuxSocketChoices, id: \.self) { socket in
-                        Text(socket).tag(socket)
-                    }
-                }
-                .accessibilityIdentifier("hosts.detail.tmuxSocketPicker")
-            }
-            ForEach(store.offeredKinds, id: \.self) { @Sendable kind in
-                MainActorContent {
-                    Button("Use \(kind.displayName)") {
-                        Task { await store.confirmServerKind(kind, in: catalog) }
-                    }
-                    .accessibilityIdentifier("hosts.detail.confirm.\(kind.rawValue)")
-                }
-            }
-        } header: {
-            preflightHeader
-        } footer: {
-            if store.confirmationNote != nil || store.rexNote != nil {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let note = store.confirmationNote {
-                        Text(note)
-                    }
-                    if let rexNote = store.rexNote {
-                        Text(rexNote)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Whether detection reached the Host: nil while it is still trying.
-    private var reachStatus: PreflightCheckStatus? {
-        if store.detection != nil || store.detectionFailure != nil { return .passed }
-        guard let report = store.report else { return nil }
-        return PreflightCheck.allCases.lazy.map { report[$0] }.first {
-            if case .failed = $0 { true } else { false }
-        }
-    }
-
-    private var tmuxSocketSelection: Binding<String> {
-        Binding(get: { store.tmuxSocket }, set: { store.selectTmuxSocket($0) })
-    }
-
-    private var confirmationRefusalPresented: Binding<Bool> {
-        Binding(
-            get: { store.confirmationRefusal != nil },
-            set: { isPresented in
-                if !isPresented { store.dismissConfirmationRefusal() }
-            })
-    }
-
     private var consoleRecoveryInput: HostOnboardingConsoleRecovery.Input {
         HostOnboardingConsoleRecovery.Input(
             isArmed: isConsoleRecoveryArmed,
@@ -398,11 +298,50 @@ struct HostOnboardingView: View {
             isManualReconnectInFlight: isManualReconnectInFlight)
     }
 
-    private var authenticationLabel: String {
-        switch store.host.authMethod {
-        case .deviceKey: String(localized: "Device Key")
-        case .rsaKey: String(localized: "RSA Key")
-        case .password: String(localized: "Password")
+    /// The Host this Server is on.
+    private var hostMachine: HostMachine? {
+        catalog.machine(containing: store.host.id)
+    }
+
+    /// The switch that keeps this Server in Heeler, on for as long as this
+    /// page has a Server to show.
+    @ViewBuilder
+    private var showInHeelerSection: some View {
+        if let turnOff {
+            Section {
+                Toggle("Show in Heeler", isOn: Binding(get: { true }, set: { if !$0 { turnOff() } }))
+                    .accessibilityIdentifier("hosts.detail.showInHeeler")
+            } footer: {
+                Text(
+                    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on \(hostMachine?.name ?? store.host.machineName) keeps running.")
+            }
+        }
+    }
+
+    /// The Host's name, leading to its page where that is not the one behind
+    /// this.
+    @ViewBuilder
+    private var hostRow: some View {
+        let name = hostMachine?.name ?? store.host.machineName
+        if let openHost {
+            Button(action: openHost) {
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Text(name)
+                        Image(systemName: "chevron.forward")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                } label: {
+                    // Not the button tint: the row reads like its neighbors.
+                    Text("Host")
+                        .foregroundStyle(Color.primary)
+                }
+            }
+            .accessibilityIdentifier("hosts.detail.host")
+        } else {
+            LabeledContent("Host", value: name)
         }
     }
 
@@ -501,7 +440,7 @@ struct HostOnboardingView: View {
     /// as footer.
     @ViewBuilder
     private var connectionSection: some View {
-        if store.host.serverKind.isConfirmed, connectionStatus != nil || retryConnection != nil {
+        if connectionStatus != nil || retryConnection != nil {
             let status = routeStatus
             Section {
                 HostConnectionStatusCard(presentation: status) {
@@ -635,7 +574,7 @@ struct HostOnboardingView: View {
     /// limit.
     private var preflightHeader: some View {
         HStack {
-            Text(store.host.serverKind.isConfirmed ? "Preflight" : "Server Kind")
+            Text("Preflight")
             if store.phase == .running {
                 ProgressView()
                     .controlSize(.mini)
@@ -657,60 +596,6 @@ struct HostOnboardingView: View {
             }
             .font(.subheadline)
             .textCase(nil)
-        }
-    }
-
-    /// Right under the status card, which a changed key leaves failed: the
-    /// new key, the command that prints it on the machine, then the trust.
-    @ViewBuilder
-    private var hostKeyReplacementSection: some View {
-        if let replacement = store.pendingHostKeyReplacement {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New key")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    // One line: a wrapped fingerprint gains hyphens that are
-                    // not in it.
-                    Text(replacement.presented.displayString)
-                        .font(.callout.monospaced())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .textSelection(.enabled)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(replacement.checkPrompt)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(replacement.fingerprintCommand)
-                        .font(.callout.monospaced())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .textSelection(.enabled)
-                }
-                Button {
-                    UIPasteboard.general.string = replacement.fingerprintCommand
-                    didCopyFingerprintCommand = true
-                } label: {
-                    Label {
-                        Text(didCopyFingerprintCommand ? "Copied" : "Copy Command")
-                    } icon: {
-                        // The tall two-page glyph otherwise outgrows the text.
-                        Image(systemName: didCopyFingerprintCommand ? "checkmark" : "doc.on.doc")
-                            .font(.footnote)
-                    }
-                }
-                Button(
-                    replacement.trustActionTitle, systemImage: "key.horizontal", role: .destructive
-                ) {
-                    isConfirmingHostKeyReplacement = true
-                }
-                // A List row tints the icon with the accent color; the role
-                // only reddens the title.
-                .listItemTint(.red)
-            } footer: {
-                Text(replacement.verificationNote)
-            }
         }
     }
 
@@ -803,7 +688,7 @@ struct HostOnboardingView: View {
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(session.name)
-                                    Text(session.isRunning ? "Running" : "Stopped")
+                                    Text(isOnElsewhere(session) ? "Already on" : session.isRunning ? "Running" : "Stopped")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -813,7 +698,9 @@ struct HostOnboardingView: View {
                                 }
                             }
                         }
-                        .disabled(isSelected(session) || (!session.isDefault && !session.isRunning))
+                        .disabled(
+                            isSelected(session) || isOnElsewhere(session)
+                                || (!session.isDefault && !session.isRunning))
                     }
                 }
                 if let error = store.sessionDiscoveryError {
@@ -833,60 +720,21 @@ struct HostOnboardingView: View {
         session.isDefault ? store.host.sessionName.isEmpty : store.host.sessionName == session.name
     }
 
+    /// Whether the Host already has `session` on as a Server of its own, which
+    /// this record must not become a second copy of (ADR 0047).
+    private func isOnElsewhere(_ session: HerdrSession) -> Bool {
+        var moved = store.host
+        moved.sessionName = session.isDefault ? "" : session.name
+        guard let server = moved.serverKey, let hostMachine else { return false }
+        return hostMachine.members.contains { $0.id != store.host.id && $0.serverKey == server }
+    }
+
     private func select(_ session: HerdrSession) {
         do {
             try store.selectSession(session, in: catalog)
         } catch {
             sessionSelectionError = String(localized: "The selected session could not be saved.")
         }
-    }
-}
-
-/// The re-trust flow's words, naming whose key changed, and how to check
-/// the new key on that machine before trusting it.
-extension HostKeyReplacement {
-    /// Prints the fingerprint of the macOS or Linux host key of the
-    /// presented key's type, which sshd serves.
-    var fingerprintCommand: String {
-        let keyType =
-            if presented.algorithm.contains("ecdsa") {
-                "ecdsa"
-            } else if presented.algorithm.contains("rsa") {
-                "rsa"
-            } else {
-                "ed25519"
-            }
-        // A command the user runs, not copy: it stays the same in every locale.
-        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
-    }
-
-    fileprivate var trustActionTitle: String {
-        jumpHost == nil ? String(localized: "Trust New Host Key") : String(localized: "Trust New Jump Host Key")
-    }
-
-    fileprivate var checkPrompt: String {
-        jumpHost == nil ? String(localized: "On the Host, run") : String(localized: "On the Jump Host, run")
-    }
-
-    fileprivate var verificationNote: String {
-        // The folder goes in as an argument: a `%` in the catalog key would
-        // read as a format specifier.
-        let windowsFolder = #"%ProgramData%\ssh"#
-        return String(
-            localized: "Trust the new key only if this prints the same fingerprint. On Windows, the key is under \(windowsFolder).")
-    }
-
-    fileprivate var confirmationTitle: String {
-        jumpHost == nil ? String(localized: "Replace the trusted Host key?") : String(localized: "Replace the Jump Host's trusted key?")
-    }
-
-    /// Leaves the fingerprint to the page: an alert wraps it with hyphens
-    /// that are not in it.
-    fileprivate var confirmationMessage: String {
-        guard let jumpHost else {
-            return String(localized: "Compare the new key with what the command prints on the Host first. A changed key can indicate a reinstalled Host or an attack.")
-        }
-        return String(localized: "Jump Host: \(jumpHost.endpointDescription)\n\nCompare the new key with what the command prints on the Jump Host first. A changed key can indicate a reinstalled Jump Host or an attack.")
     }
 }
 

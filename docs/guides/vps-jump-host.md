@@ -441,25 +441,28 @@ no user logs in, this user-level tunnel is not yet running.
 
 ## 9. Configure Heeler
 
-In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, tap **Save** on the route page, and fill in the remaining Host fields:
+In **Hosts**, tap **+**, tap **More Options** to enter the tunnel and Jump Host fields, go back, and fill in the rest of the first step:
 
 | Field | Value |
 |---|---|
 | User | `MAC_USER` |
-| Address (in Route) | `127.0.0.1` |
-| Port (in Route) | `2222` |
-| Jump Host address (in Route) | `VPS_PUBLIC_IP` |
-| Jump Host port (in Route) | `22` |
-| Jump Host user (in Route) | `herdr-jump` |
+| Address | `127.0.0.1` |
+| Port (in More Options) | `2222` |
+| Jump Host address (in More Options) | `VPS_PUBLIC_IP` |
+| Jump Host port (in More Options) | `22` |
+| Jump Host user (in More Options) | `herdr-jump` |
 | Authentication | `Device Key` |
 
-Tap **Save** on **Add Host** to start the **Preflight** checks, and confirm both host keys independently:
+Tap **Connect**, and confirm both host keys independently with **Trust and Continue** as Heeler shows them, one after the other:
 
 - the public VPS endpoint;
 - the Mac host key presented through `127.0.0.1:2222`.
 
 The Jump Host does not make the Mac trusted. A changed fingerprint on either
 hop is a separate security event.
+
+On the last step, leave **Herdr TUI** checked, name the Host if you like, and
+add it. Open the Host and tap **Herdr TUI** for its **Preflight** checks.
 
 ## macOS Authentication Hardening
 
@@ -579,7 +582,7 @@ The route target and Host user remain:
 | Port (in Route) | `2222` |
 | User | `MAC_USER` |
 
-Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, then complete the **Preflight** checks and open an Agent through Attach. This is the functional cutover point.
+Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, open the Server's page to complete its **Preflight** checks, and open an Agent through Attach. This is the functional cutover point.
 
 ### Phase 4: Retire the Old VPS
 

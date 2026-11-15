@@ -519,9 +519,22 @@ struct ConsoleView: View {
         console.isUsageEnabled ? [.agents, .terminals, .usage] : [.agents, .terminals]
     }
 
-    /// Every Host the Usage tab can read, in catalog order.
+    /// Every Host the Usage tab can read, in catalog order, each once.
     private var usageEntries: [AgentUsageHostEntry] {
-        hosts.integratedHosts.map(console.agentUsageEntry(for:))
+        console.agentUsageEntries(for: hosts.integratedHosts)
+    }
+
+    /// The Usage scope as its views read it: the Host a scope names, whichever
+    /// of its Servers named it, such as the Server's page that opened Usage.
+    private var usageScope: Binding<Host.ID?> {
+        Binding(
+            get: {
+                guard let id = usageScopeHostID, let machine = hosts.machine(containing: id) else {
+                    return usageScopeHostID
+                }
+                return usageEntries.first { machine.contains($0.id) }?.id ?? id
+            },
+            set: { usageScopeHostID = $0 })
     }
 
     /// Usage, as a tab; beside an iPad's sidebar, its own split view whose
@@ -535,7 +548,7 @@ struct ConsoleView: View {
     private func usageTabContent() -> some View {
         if usesSidebarNavigation {
             NavigationSplitView {
-                AgentUsageSidebar(entries: usageEntries, scopeHostID: $usageScopeHostID, metric: usageMetric)
+                AgentUsageSidebar(entries: usageEntries, scopeHostID: usageScope, metric: usageMetric)
                     .navigationTitle(ConsoleTab.usage.title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -569,11 +582,11 @@ struct ConsoleView: View {
             } detail: {
                 NavigationStack {
                     AgentUsageDashboard(
-                        entries: usageEntries, scopeHostID: $usageScopeHostID, metric: $usageMetric,
+                        entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
                         allowsColumns: true)
                         .navigationTitle(
-                            usageScopeHostID.flatMap { id in hosts.consoleHosts.first { $0.id == id }?.displayName }
+                            usageScope.wrappedValue.flatMap { id in usageEntries.first { $0.id == id }?.name }
                                 ?? String(localized: "All Hosts"))
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
@@ -584,7 +597,7 @@ struct ConsoleView: View {
             .toolbarVisibility(.hidden, for: .tabBar)
         } else {
             AgentUsageTabView(
-                entries: usageEntries, scopeHostID: $usageScopeHostID, metric: $usageMetric,
+                entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
                 limitsRequested: $usageLimitsRequested)
         }
     }

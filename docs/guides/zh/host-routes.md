@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/host-routes.md at 93baae40 -->
+<!-- Translated from docs/guides/host-routes.md at a76a7a53 -->
 # 通过多条路由访问 Host
 
 一台 Host 可以配置不止一条路由：在家时使用局域网地址，在外时使用 Overlay Network 或跳板机（Jump Host）。每次连接时，Heeler 都会尝试所有路由并采用最先连通 Host 的那一条，因此无需手动切换任何设置。
@@ -7,14 +7,16 @@
 
 1. 前往 **Hosts**，打开目标 Host，然后轻点 **Edit**。
 2. 在 **Routes** 下方，轻点 **Add Route**。
-3. 在 **Network** 下选择该路由的通信方式：
+3. 输入 **Address** 和 **Port**（除非修改过 Mac 的 SSH 端口，否则填 22），或轻点 **Find on Local Network**。
+4. 如需经过跳板机，请填写 **Jump Host**；否则留空。详情参见[通过跳板机远程访问](vps-jump-host-setup.md)。
+5. 在 **Network** 下选择该路由的通信方式：
    - **Direct**：当前 iPhone 或 iPad 可在自身网络上直接访问的地址，例如 Mac 的局域网地址或公网地址。
-   - 来自 **Settings > Overlay Networks** 的 Overlay Network（Tailscale、ZeroTier 或 EasyTier）。对于 Tailscale 和 EasyTier，轻点 **Choose from Tailnet…** 或 **Choose from Network…** 并选择目标 Mac 即可自动填入地址；对于 ZeroTier，请手动输入 ZeroTier Central 中显示的 Mac 地址。配置方法参见 [Overlay Network 指南](overlay-networks.md)。
-4. 输入 **Address** 和 **Port**（除非修改过 Mac 的 SSH 端口，否则填 22）。
-5. 如需经过跳板机，请填写 **Jump Host** 相关字段；否则留空。详情参见[通过跳板机远程访问](vps-jump-host-setup.md)。
+   - 来自 **Settings > Overlay Networks** 的 Overlay Network（Tailscale、ZeroTier 或 EasyTier，添加网络后会显示在顶部）。对于 Tailscale 和 EasyTier，轻点 **Choose from Tailnet…** 或 **Choose from Network…** 并选择目标 Mac 即可自动填入地址；对于 ZeroTier，请手动输入 ZeroTier Central 中显示的 Mac 地址。配置方法参见 [Overlay Network 指南](overlay-networks.md)。
 6. 轻点右上角的 **Save**，然后在 Edit Host 页面再次轻点 **Save**。
 
-**Add Host** 初始不包含任何路由；轻点 **Add Route** 即可按相同方式输入第一个地址。[扫描配对码（Pairing Code）](pairing.md)时，配对码提供的每个地址都会分别添加为一条独立路由。
+<a href="../images/hosts/add-route.png"><img src="../images/hosts/add-route.png" width="300" alt="New Route 表单，包含 Address 192.168.1.10、端口 22、Find on Local Network、可选的 Jump Host 字段，以及设为 Direct 的 Network"></a>
+
+添加 Host 时，第一步会要求填写它的第一个地址，端口、跳板机和网络在 **More Options** 下；之后可在这里添加更多路由。[扫描配对码（Pairing Code）](pairing.md)时，配对码提供的每个地址都会分别添加为一条独立路由。
 
 ## Heeler 如何选择路由
 
@@ -25,15 +27,15 @@
 
 ## 查看当前使用的路由
 
-从 **Hosts** 打开目标 Host，顶部的卡片会显示当前连接状态：
+从 **Hosts** 打开目标 Host，然后轻点其中一个 Server。每个 Server 都有自己的连接，其页面上 **Show in Heeler** 下方的卡片会显示该连接的状态：
 
 - **Connected** 会指明当前使用的路由，同时该路由在 **Routes** 下会标记为 **In Use**。轻点 ↻ 可重新连接。
-- 当 Heeler 正在连接时，轻点 ■ 可停止尝试。该 Host 会保持暂停状态，直到你轻点 **Reconnect**。
+- 当 Heeler 正在连接时，轻点 ■ 可停止尝试。该 Server 会保持暂停状态，直到你轻点 **Reconnect**。
 - **Can't Connect** 表示没有任何路由能连上该 Host。每条路由都会标记为 **Failed** 并附上各自的原因，例如连接超时或 Overlay Network 尚未连接。
 
-<a href="../images/overlay-networks/host-routes-in-use.png"><img src="../images/overlay-networks/host-routes-in-use.png" width="300" alt="已连接的 Host，跳板机路由标记为 In Use，Direct 路由未被选中"></a>
+<a href="../images/hosts/routes-in-use.png"><img src="../images/hosts/routes-in-use.png" width="300" alt="Herdr TUI Server 页面，显示通过 127.0.0.1 Direct 已连接，Routes 下 127.0.0.1 标记为 In Use，192.168.1.10 未被选中"></a>
 
-图中跳板机路由标记为 **In Use**，**Direct** 路由未被选中。这是路由选择示例，不是 Overlay 连接测试。名称与地址已匿名化，轻点图片可放大查看。
+图中 `127.0.0.1` **Direct** 路由标记为 **In Use**，`192.168.1.10` **Direct** 路由未被选中。轻点图片可放大查看。
 
 ## 修改、排序或删除路由
 
@@ -45,7 +47,7 @@ Heeler 只会确认一次 Host 的主机密钥，所有路由都必须连向持�
 
 ## 当某条路由总是失败时
 
-- 在该 Host 页面的 **Routes** 下查看具体失败原因。
+- 在该 Server 的页面上的 **Routes** 下查看具体失败原因。
 - 对于 Overlay Network 路由，检查该网络在 **Settings > Overlay Networks** 中是否显示为已连接，并确认 Mac 在该 Overlay Network 中处于在线状态。
 - 对于跳板机路由，检查跳板机本身是否可达，以及它是否接受与目标 Host 相同的设备密钥（Device Key）、RSA 密钥（RSA Key）或密码。参见[跳板机配置指南](vps-jump-host-setup.md)。
 - 对于局域网地址，它仅在对应局域网内有效。离开家后该路由会自然失败，并由其他路由接管连接。

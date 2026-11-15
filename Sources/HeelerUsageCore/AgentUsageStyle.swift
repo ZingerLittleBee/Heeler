@@ -52,6 +52,9 @@ enum AgentUsageStyle {
         case "codex":
             Color(light: UIColor(red: 0.110, green: 0.110, blue: 0.118, alpha: 1),
                 dark: UIColor(red: 0.949, green: 0.949, blue: 0.969, alpha: 1))
+        case "agy":
+            Color(light: UIColor(red: 0.192, green: 0.525, blue: 1.000, alpha: 1),
+                dark: UIColor(red: 0.302, green: 0.592, blue: 1.000, alpha: 1))
         default:
             Color(uiColor: .systemGray)
         }

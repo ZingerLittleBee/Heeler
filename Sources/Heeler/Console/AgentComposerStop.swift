@@ -84,8 +84,14 @@ enum AgentComposerPrimaryControl: Equatable {
     case send
     case stop
 
-    init(status: AgentStatus, draft: String, canStop: Bool, alsoWhileBlocked: Bool = false) {
-        let isBlank = !draft.contains(where: { !$0.isWhitespace })
+    init(
+        status: AgentStatus,
+        draft: String,
+        hasAttachments: Bool = false,
+        canStop: Bool,
+        alsoWhileBlocked: Bool = false
+    ) {
+        let isBlank = !hasAttachments && !draft.contains(where: { !$0.isWhitespace })
         let offered = status == .working || (alsoWhileBlocked && status == .blocked)
         self = canStop && offered && isBlank ? .stop : .send
     }

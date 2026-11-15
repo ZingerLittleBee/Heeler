@@ -39,7 +39,7 @@ struct AgentUsageHostHelperTests {
 
     private func queries(_ helper: ScriptedHelperHost) async -> [(limits: Bool, session: String)] {
         await helper.steps.compactMap { step in
-            guard case .usageQuery(_, let limits, let session) = step else { return nil }
+            guard case .usageQuery(_, let limits, _, _, let session) = step else { return nil }
             return (limits, session)
         }
     }
@@ -266,7 +266,7 @@ struct AgentUsageHostHelperTests {
 
         #expect(store.state == .available(try AgentUsageFixture.report()))
         let sockets = await tmux.helper.steps.compactMap { step -> String? in
-            guard case .tmuxUsageQuery(_, _, let socket, _) = step else { return nil }
+            guard case .tmuxUsageQuery(_, _, _, _, let socket, _) = step else { return nil }
             return socket
         }
         #expect(sockets == ["work", "work"])
@@ -366,7 +366,7 @@ struct AgentUsageHostHelperTests {
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        let entry = console.agentUsageEntry(for: host)
+        let entry = console.agentUsageEntries(for: [host])[0]
         let scope = AgentUsageScope(readings: [entry.reading])
         let (reason, sentence) = session == .nativeWindows
             ? ("Comes with the Host Helper, not available yet",
@@ -386,7 +386,7 @@ struct AgentUsageHostHelperTests {
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        let entry = console.agentUsageEntry(for: host)
+        let entry = console.agentUsageEntries(for: [host])[0]
         #expect(entry.readsOverHostHelper)
         #expect(AgentUsageScope(readings: [entry.reading]).excluded.map(\.reason) == ["Waiting for the core"])
         let sentence = "The Host Helper has not reached this session's core yet. Start the core if it is not running."
@@ -401,7 +401,7 @@ struct AgentUsageHostHelperTests {
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        let entry = console.agentUsageEntry(for: host)
+        let entry = console.agentUsageEntries(for: [host])[0]
         #expect(AgentUsageScope(readings: [entry.reading]).included.map(\.name) == [host.displayName])
         // The Limits card reads the same report the totals added up.
         let limits = UIHostingController(rootView: AgentUsageLimitsSheet(entries: [entry])
@@ -419,7 +419,7 @@ struct AgentUsageHostHelperTests {
         let (console, host) = try await unconnectedConsole(ScriptedHelperHost())
         defer { console.setHosts([]) }
 
-        let scope = AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading])
+        let scope = AgentUsageScope(readings: [console.agentUsageEntries(for: [host])[0].reading])
 
         #expect(scope.loading.map(\.name) == [host.displayName])
         #expect(scope.excluded.isEmpty)
@@ -433,7 +433,7 @@ struct AgentUsageHostHelperTests {
 
         await console.agentUsageStore(for: host.id).pullToRefresh()
 
-        let scope = AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading])
+        let scope = AgentUsageScope(readings: [console.agentUsageEntries(for: [host])[0].reading])
         #expect(scope.excluded.map(\.exclusion) == [.notConnected])
     }
 
@@ -447,7 +447,7 @@ struct AgentUsageHostHelperTests {
         let store = console.agentUsageStore(for: host.id)
         await store.pullToRefresh()
 
-        let scope = AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading])
+        let scope = AgentUsageScope(readings: [console.agentUsageEntries(for: [host])[0].reading])
         #expect(scope.excluded.map(\.reason) == ["Could not read Usage"])
         // This Server Kind has no plugin to update.
         #expect(store.state == .failed(AgentUsageStore.helperFailureMessage))
@@ -485,10 +485,10 @@ struct AgentUsageHostHelperTests {
         console.setHosts([host])
         defer { console.setHosts([]) }
 
-        #expect(AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading]).excluded.map(\.reason)
+        #expect(AgentUsageScope(readings: [console.agentUsageEntries(for: [host])[0].reading]).excluded.map(\.reason)
             == ["Not connected"])
         await console.agentUsageStore(for: host.id).pullToRefresh()
-        #expect(AgentUsageScope(readings: [console.agentUsageEntry(for: host).reading]).excluded.map(\.reason)
+        #expect(AgentUsageScope(readings: [console.agentUsageEntries(for: [host])[0].reading]).excluded.map(\.reason)
             == ["Not connected"])
     }
 

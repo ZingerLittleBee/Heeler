@@ -17,9 +17,9 @@ struct HostOnboardingCoreStartTests {
         clock: ManualClock = ManualClock(),
         connectorOutcome: FakeTransportConnector.Outcome = .connects(
             pingResult: .success(ServerInfo(version: "0.7.5", protocolVersion: 17)))
-    ) -> (HostOnboardingStore, HostStore) {
+    ) -> HostOnboardingStore {
         let host = Host(address: "box.example", username: "dev", serverKind: kind, sessionName: session)
-        let store = HostOnboardingStore(
+        return HostOnboardingStore(
             host: host,
             connector: FakeTransportConnector(outcome: connectorOutcome, core: core),
             knownHosts: InMemoryKnownHostsStore(),
@@ -28,14 +28,13 @@ struct HostOnboardingCoreStartTests {
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: InMemorySecretStore()),
             sleep: clock.clock.sleep)
-        return (store, HostStore(volatileHosts: [host]))
     }
 
     /// A Host that read not running, with the Start already confirmed.
     private func started(
         _ core: ScriptedCoreHost, session: String = "work"
     ) async -> HostOnboardingStore {
-        let (store, _) = makeStore(core, session: session)
+        let store = makeStore(core, session: session)
         await store.runChecks()
         store.requestCoreStart()
         await store.confirmCoreStart()
@@ -55,7 +54,7 @@ struct HostOnboardingCoreStartTests {
 
     @Test func aLinuxHostThatReadsNotRunningOffersStartInHostDetail() async {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(core)
+        let store = makeStore(core)
 
         await store.runChecks()
 
@@ -64,24 +63,12 @@ struct HostOnboardingCoreStartTests {
         #expect(await core.log == ["locator", "open \(ScriptedCoreHost.socketPath)", "close"])
     }
 
-    @Test func aLinuxHostThatReadsNotRunningOffersStartInOnboarding() async {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, catalog) = makeStore(core, kind: .unconfirmed)
-
-        await store.runChecks()
-        #expect(store.coreStartOffer == nil)
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.coreStartOffer == .start)
-        await expectOnlyLocators(core)
-    }
-
     @Test func aMacOSHostShowsInstructionsNamingThePathAndTheSessionInstead() async {
         let core = ScriptedCoreHost(
             locator: ScriptedCoreHost.locatorLines(
                 executable: "/Users/me/.local/bin/herdr-core", kernel: "Darwin", shell: "/bin/zsh"),
             channel: .refused)
-        let (store, _) = makeStore(core, session: "phone")
+        let store = makeStore(core, session: "phone")
 
         await store.runChecks()
 
@@ -106,7 +93,7 @@ struct HostOnboardingCoreStartTests {
             ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply(features: ["framed"]))),
         ]
         for core in cases {
-            let (store, _) = makeStore(core)
+            let store = makeStore(core)
             await store.runChecks()
             #expect(store.coreStartOffer == nil)
             store.requestCoreStart()
@@ -117,7 +104,7 @@ struct HostOnboardingCoreStartTests {
 
     @Test func aHerdrTUIHostIsOfferedNothing() async {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(core, kind: .herdrTUI)
+        let store = makeStore(core, kind: .herdrTUI)
 
         await store.runChecks()
 
@@ -129,7 +116,7 @@ struct HostOnboardingCoreStartTests {
 
     @Test func aRequestAloneRunsNothingAndNamesWhatItWillStart() async throws {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(core, session: "  work team ")
+        let store = makeStore(core, session: "  work team ")
         await store.runChecks()
         let before = await core.log
 
@@ -148,7 +135,7 @@ struct HostOnboardingCoreStartTests {
 
     @Test func cancellingRunsNothing() async {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(core)
+        let store = makeStore(core)
         await store.runChecks()
         let before = await core.log
 
@@ -163,7 +150,7 @@ struct HostOnboardingCoreStartTests {
 
     @Test func aConfirmationWithoutARequestRunsNothing() async {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(core)
+        let store = makeStore(core)
         await store.runChecks()
         let before = await core.log
 
@@ -175,19 +162,11 @@ struct HostOnboardingCoreStartTests {
     /// Retries and reconnects are preflight runs. Only the locator goes out.
     @Test func repeatedRetriesOfANotRunningHostOnlyEverRunTheLocator() async {
         let detail = ScriptedCoreHost(channel: .refused)
-        let (store, _) = makeStore(detail)
+        let store = makeStore(detail)
         for _ in 0..<4 { await store.runChecks() }
         #expect(await detail.log.filter { $0 == "locator" }.count == 4)
         #expect(await detail.scripts.count == 4)
         await expectOnlyLocators(detail)
-
-        let onboarding = ScriptedCoreHost(channel: .refused)
-        let (added, catalog) = makeStore(onboarding, kind: .unconfirmed)
-        await added.runChecks()
-        await added.confirmServerKind(.herdrCore, in: catalog)
-        for _ in 0..<4 { await added.runChecks() }
-        #expect(await onboarding.log.filter { $0 == "locator" }.count == 5)
-        await expectOnlyLocators(onboarding)
     }
 
     // MARK: The confirmed Start
@@ -248,7 +227,7 @@ struct HostOnboardingCoreStartTests {
         let core = ScriptedCoreHost(
             locator: ScriptedCoreHost.locatorLines(socketFile: true), start: .alreadyRunning, channel: .refused)
         let clock = ManualClock()
-        let (store, _) = makeStore(core, clock: clock)
+        let store = makeStore(core, clock: clock)
         await store.runChecks()
         guard case .failed(let before) = store.report?[.serverRunning] else {
             Issue.record("A refused channel should fail its check")

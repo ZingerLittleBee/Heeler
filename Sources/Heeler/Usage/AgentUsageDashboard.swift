@@ -3,12 +3,39 @@ import SwiftUI
 /// One Host the Usage tab can read, with the store that reads it.
 @MainActor
 struct AgentUsageHostEntry: Identifiable {
+    /// One of the Host's Servers Usage can be read through, by its record.
+    struct Server: Identifiable {
+        let id: Host.ID
+        let store: AgentUsageStore
+    }
+
     let id: Host.ID
     let name: String
     let store: AgentUsageStore
     let isConnected: Bool
     /// A herdr-core Host, whose Host Helper reads Usage in place of the plugin.
     var readsOverHostHelper = false
+    /// The record of the Server `store` reads through, which the Host's
+    /// Accounts are reached over too. `id` stays the Host's whichever Server
+    /// that is (`AgentUsageHost`).
+    let recordID: Host.ID
+    /// Every Server the Host's Usage can be read through, `store`'s among
+    /// them. All are kept read while the page is on screen, so the Host's
+    /// reading moves to another Server when this one stops answering.
+    let servers: [Server]
+
+    init(
+        id: Host.ID, name: String, store: AgentUsageStore, isConnected: Bool, readsOverHostHelper: Bool = false,
+        recordID: Host.ID? = nil, servers: [Server]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.store = store
+        self.isConnected = isConnected
+        self.readsOverHostHelper = readsOverHostHelper
+        self.recordID = recordID ?? id
+        self.servers = servers ?? [Server(id: recordID ?? id, store: store)]
+    }
 
     var reading: AgentUsageScope.HostReading {
         .init(id: id, name: name, state: store.state, refreshFailure: store.refreshFailure,
@@ -101,10 +128,13 @@ struct AgentUsageDashboard: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .modifier(AgentUsageSubtitle(scope: scope))
         // Every Host polls while the page is on screen: the scope menu and
-        // an iPad's sidebar show each one's figures whatever the scope.
+        // an iPad's sidebar show each one's figures whatever the scope. So
+        // does every Server of a Host, whichever one its reading comes from.
         .background {
             ForEach(entries) { entry in
-                Color.clear.task(id: entry.store.refreshKey) { await entry.store.refresh() }
+                ForEach(entry.servers) { server in
+                    Color.clear.task(id: server.store.refreshKey) { await server.store.refresh() }
+                }
             }
         }
         .refreshable { await refresh() }
@@ -129,7 +159,7 @@ struct AgentUsageDashboard: View {
     private var isWide: Bool { allowsColumns && width >= 860 }
 
     private func refresh() async {
-        let stores = scopedEntries.map(\.store)
+        let stores = scopedEntries.flatMap(\.servers).map(\.store)
         await withDiscardingTaskGroup { group in
             for store in stores {
                 group.addTask { await store.pullToRefresh() }
@@ -293,22 +323,37 @@ struct AgentUsageDashboard: View {
     // MARK: Usage Limits
 
     private func limitsSection(_ scope: AgentUsageScope) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(String(localized: "Usage Limits"), detail: scope.included.count > 1 ? String(localized: "per Host") : nil) {
+        let chips = AgentUsageLimitChip.chips(in: scope)
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(
+                String(localized: "Usage Limits"),
+                detail: scope.included.count > 1 && !chips.isEmpty ? String(localized: "per Host") : nil
+            ) {
                 Button("Details") { isShowingLimits = true }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AgentUsageLimitChip.chips(in: scope)) { chip in
-                        Button { isShowingLimits = true } label: {
-                            AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            if chips.isEmpty {
+                Button { isShowingLimits = true } label: {
+                    Text("Usage Limits are off.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 16)
+                .buttonStyle(.plain)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(chips) { chip in
+                            Button { isShowingLimits = true } label: {
+                                AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.horizontal, -16)
             }
-            .padding(.horizontal, -16)
         }
         .padding(.top, 22)
     }

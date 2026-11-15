@@ -236,6 +236,15 @@ struct ChatBackgroundWorkTests {
             transcript: ChatTranscript(backgroundWork: [Self.item("long", launchedAgo: 250, at: 3)]), progress: [:],
             isLive: true, now: Self.now, staleness: staleness)
         #expect(!allStale.holdsActivePace)
+
+        var checked = Self.item("checked", kind: .command, launchedAgo: 250, at: 5)
+        checked.lastActivityAt = Self.now.addingTimeInterval(-20)
+        let refreshed = ChatBackgroundWork(
+            transcript: ChatTranscript(backgroundWork: [checked]), progress: [:],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(refreshed.rows.map(\.isStale) == [false])
+        #expect(refreshed.rows.first?.lastActivity == Self.now.addingTimeInterval(-20))
+        #expect(refreshed.holdsActivePace)
     }
 
     @Test func workAnEarlierReadListedCarriesIntoALaterWindow() {
@@ -264,5 +273,43 @@ struct ChatBackgroundWorkTests {
         #expect(!ChatBackgroundWork(transcript: transcript, progress: [:], isLive: false, now: Self.now).holdsActivePace)
         let finished = ChatTranscript(backgroundWork: [Self.item("b", state: .completed, at: 20, endedAt: 30)])
         #expect(!ChatBackgroundWork(transcript: finished, progress: [:], isLive: true, now: Self.now).holdsActivePace)
+    }
+
+    @Test func hostEvidenceKeepsLongRunningWorkFreshAndRetiresEndedWorkUnlessRevived() {
+        let staleness = ChatBackgroundWork.Staleness(workflowQuiet: 100, subagentRun: 200)
+        let longCommand = Self.item("agy:task:conv/task-3", kind: .command, launchedAgo: 14_100, at: 10)
+        var revived = Self.item("agy:subagent:sub-1", launchedAgo: 500, at: 20)
+        revived.lastActivityAt = Self.now.addingTimeInterval(-15)
+
+        let aliveEvidence = [
+            longCommand.id: ChatBackgroundWorkEvidence(lastSeenAt: Self.now.addingTimeInterval(-5)),
+            revived.id: ChatBackgroundWorkEvidence(
+                lastSeenAt: Self.now.addingTimeInterval(-100),
+                endedState: .completed,
+                endedAt: Self.now.addingTimeInterval(-90)),
+        ]
+        let alive = ChatBackgroundWork(
+            transcript: ChatTranscript(backgroundWork: [longCommand, revived]),
+            progress: [:], evidence: aliveEvidence, isLive: true, now: Self.now, staleness: staleness)
+        #expect(alive.rows.map(\.isRunning) == [true, true])
+        #expect(alive.rows.map(\.isStale) == [false, false])
+        #expect(alive.rows[0].lastActivity == Self.now.addingTimeInterval(-5))
+        #expect(alive.holdsActivePace)
+
+        let stoppedAt = Self.now.addingTimeInterval(-2)
+        let retired = ChatBackgroundWork(
+            transcript: ChatTranscript(backgroundWork: [longCommand]),
+            progress: [:],
+            evidence: [
+                longCommand.id: ChatBackgroundWorkEvidence(
+                    lastSeenAt: Self.now.addingTimeInterval(-5),
+                    endedState: .stopped,
+                    endedAt: stoppedAt)
+            ],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(retired.rows.map(\.isRunning) == [false])
+        #expect(retired.rows.first?.item.state == .stopped)
+        #expect(retired.rows.first?.item.endedAt == stoppedAt)
+        #expect(!retired.holdsActivePace)
     }
 }

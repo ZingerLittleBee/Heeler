@@ -77,6 +77,8 @@ final class AgentUsageStore {
     /// carries, and a generation the store advances to restart polling.
     struct RefreshKey: Hashable {
         let claudeLimits: Bool
+        let codexLimits: Bool
+        let agyLimits: Bool
         let generation: Int
     }
 
@@ -89,16 +91,31 @@ final class AgentUsageStore {
     private var snapshotState: State = .idle
     /// Whether the shown report's query asked for Claude Code limits.
     private var snapshotIncludesClaudeLimits = false
+    /// Whether the shown report's query asked for Codex limits.
+    private var snapshotIncludesCodexLimits = true
+    /// Whether the shown report's query asked for Antigravity limits.
+    private var snapshotIncludesAgyLimits = true
     var state: State {
-        guard case .available(let report) = snapshotState else { return snapshotState }
-        if !claudeLimitsEnabled { return .available(report.hidingClaudeLimits()) }
-        // The toggle turned on after this report: its "off" reading is no
-        // longer this device's choice while the re-query is underway, and
-        // a failed re-query must not leave it reading.
-        if !snapshotIncludesClaudeLimits {
-            return .available(refreshFailure == nil ? report.readingClaudeLimits() : report.failedClaudeLimits())
+        guard case .available(var report) = snapshotState else { return snapshotState }
+        if !claudeLimitsEnabled {
+            report = report.hidingClaudeLimits()
+        } else if !snapshotIncludesClaudeLimits {
+            // The toggle turned on after this report: its "off" reading is no
+            // longer this device's choice while the re-query is underway, and
+            // a failed re-query must not leave it reading.
+            report = refreshFailure == nil ? report.readingClaudeLimits() : report.failedClaudeLimits()
         }
-        return snapshotState
+        if !codexLimitsEnabled {
+            report = report.hidingCodexLimits()
+        } else if !snapshotIncludesCodexLimits {
+            report = refreshFailure == nil ? report.readingCodexLimits() : report.failedCodexLimits()
+        }
+        if !agyLimitsEnabled {
+            report = report.hidingAgyLimits()
+        } else if !snapshotIncludesAgyLimits {
+            report = refreshFailure == nil ? report.readingAgyLimits() : report.failedAgyLimits()
+        }
+        return .available(report)
     }
     /// A refresh is running: a read is in flight or polling continues.
     private(set) var isLoading = false
@@ -106,10 +123,16 @@ final class AgentUsageStore {
     private(set) var refreshFailure: String?
     /// When the state was last read from the Host.
     private(set) var readAt: Date?
+    /// When the shown figures were read on the Host, which a refreshing
+    /// report puts before `readAt`.
+    var figuresReadAt: Date? {
+        guard let readAt, case .available(let report) = snapshotState else { return readAt }
+        return report.figuresDate(readAt: readAt)
+    }
     /// The plugin release behind the shown state, when its read learned it.
     private(set) var pluginVersion: PluginVersion?
-    /// Called after the state or the Claude Code limits choice changes, so
-    /// the widgets' snapshot can follow.
+    /// Called after the state or a Usage Limits choice changes, so the
+    /// widgets' snapshot can follow.
     @ObservationIgnored var didChange: (@MainActor () -> Void)?
     /// Advanced when visible surfaces should start polling again.
     private(set) var refreshGeneration = 0
@@ -121,9 +144,27 @@ final class AgentUsageStore {
             didChange?()
         }
     }
+    var codexLimitsEnabled: Bool {
+        didSet {
+            guard oldValue != codexLimitsEnabled else { return }
+            defaults.set(codexLimitsEnabled, forKey: codexPreferenceKey)
+            endRefresh()
+            didChange?()
+        }
+    }
+    var agyLimitsEnabled: Bool {
+        didSet {
+            guard oldValue != agyLimitsEnabled else { return }
+            defaults.set(agyLimitsEnabled, forKey: agyPreferenceKey)
+            endRefresh()
+            didChange?()
+        }
+    }
 
     var refreshKey: RefreshKey {
-        RefreshKey(claudeLimits: claudeLimitsEnabled, generation: refreshGeneration)
+        RefreshKey(
+            claudeLimits: claudeLimitsEnabled, codexLimits: codexLimitsEnabled,
+            agyLimits: agyLimitsEnabled, generation: refreshGeneration)
     }
 
     /// Whether a failed refresh is retried without another pull.
@@ -131,7 +172,9 @@ final class AgentUsageStore {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let preferenceKey: String
-    @ObservationIgnored private let read: @MainActor (String, Bool) async throws -> Reading
+    @ObservationIgnored private let codexPreferenceKey: String
+    @ObservationIgnored private let agyPreferenceKey: String
+    @ObservationIgnored private let read: @MainActor (String, Bool, Bool, Bool) async throws -> Reading
     @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private var request: UUID?
     @ObservationIgnored private var lastRead: ContinuousClock.Instant?
@@ -148,9 +191,11 @@ final class AgentUsageStore {
     convenience init(hostID: Host.ID, transports: any NotificationTransportProvider,
         defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
-        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits in
+        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits, codexLimits, agyLimits in
             try await transports.withNotificationTransport(for: hostID) { transport in
-                try await Self.reading(over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
+                try await Self.reading(
+                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits,
+                    codexLimits: codexLimits, agyLimits: agyLimits)
             }
         }, defaults: defaults, sleep: sleep)
     }
@@ -160,16 +205,40 @@ final class AgentUsageStore {
     convenience init(hostID: Host.ID, defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         read: @escaping @MainActor (String, Bool) async throws -> State) {
-        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits in
+        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits, _, _ in
             Reading(state: try await read(timeZone, claudeLimits), pluginVersion: nil)
         }, defaults: defaults, sleep: sleep)
     }
 
+    convenience init(hostID: Host.ID, defaults: UserDefaults = .standard,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        readWithAgy: @escaping @MainActor (String, Bool, Bool) async throws -> State) {
+        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits, _, agyLimits in
+            Reading(state: try await readWithAgy(timeZone, claudeLimits, agyLimits), pluginVersion: nil)
+        }, defaults: defaults, sleep: sleep)
+    }
+
     /// How a store reads its Host: the time zone and whether to ask for
-    /// Claude Code limits in, a reading out. Not a bare closure, so a
-    /// trailing closure always means the read-only `read:`.
+    /// Claude Code, Codex, and Antigravity limits in, a reading out. Not a bare
+    /// closure, so a trailing closure always means the read-only `read:`.
     struct Reader {
-        let read: @MainActor (String, Bool) async throws -> Reading
+        let read: @MainActor (String, Bool, Bool, Bool) async throws -> Reading
+
+        init(_ read: @escaping @MainActor (String, Bool, Bool, Bool) async throws -> Reading) {
+            self.read = read
+        }
+
+        init(_ read: @escaping @MainActor (String, Bool, Bool) async throws -> Reading) {
+            self.read = { timeZone, claudeLimits, _, agyLimits in
+                try await read(timeZone, claudeLimits, agyLimits)
+            }
+        }
+
+        init(_ read: @escaping @MainActor (String, Bool) async throws -> Reading) {
+            self.read = { timeZone, claudeLimits, _, _ in
+                try await read(timeZone, claudeLimits)
+            }
+        }
     }
 
     /// Console uses weak captures here so its retained stores cannot keep it alive.
@@ -179,7 +248,11 @@ final class AgentUsageStore {
         self.sleep = sleep
         self.defaults = defaults
         preferenceKey = Self.claudeLimitsPreferenceKey(for: hostID)
+        codexPreferenceKey = Self.codexLimitsPreferenceKey(for: hostID)
+        agyPreferenceKey = Self.agyLimitsPreferenceKey(for: hostID)
         claudeLimitsEnabled = defaults.bool(forKey: preferenceKey)
+        codexLimitsEnabled = Self.isCodexLimitsEnabled(in: defaults, for: hostID)
+        agyLimitsEnabled = Self.isAgyLimitsEnabled(in: defaults, for: hostID)
     }
 
     /// The device-local Claude Code limits consent for one Host.
@@ -187,11 +260,33 @@ final class AgentUsageStore {
         "usage.claude-limits.\(hostID.uuidString)"
     }
 
+    /// The device-local Codex limits preference for one Host. Enabled by
+    /// default unless the user turns it off on this device.
+    nonisolated static func codexLimitsPreferenceKey(for hostID: Host.ID) -> String {
+        "usage.codex-limits.\(hostID.uuidString)"
+    }
+
+    nonisolated static func isCodexLimitsEnabled(in defaults: UserDefaults, for hostID: Host.ID) -> Bool {
+        defaults.object(forKey: codexLimitsPreferenceKey(for: hostID)) as? Bool ?? true
+    }
+
+    /// The device-local Antigravity limits preference for one Host. Enabled by
+    /// default unless the user turns it off on this device.
+    nonisolated static func agyLimitsPreferenceKey(for hostID: Host.ID) -> String {
+        "usage.agy-limits.\(hostID.uuidString)"
+    }
+
+    nonisolated static func isAgyLimitsEnabled(in defaults: UserDefaults, for hostID: Host.ID) -> Bool {
+        defaults.object(forKey: agyLimitsPreferenceKey(for: hostID)) as? Bool ?? true
+    }
+
     /// Reads, then keeps reading while the plugin's worker is refreshing or
     /// a failed refresh of a shown report is retried. A newer refresh
     /// supersedes this one; cancelling the caller stops it.
     func refresh(timeZone: String = TimeZone.current.identifier) async {
         let claudeLimits = claudeLimitsEnabled
+        let codexLimits = codexLimitsEnabled
+        let agyLimits = agyLimitsEnabled
         guard !Task.isCancelled else { return }
         let id = beginRefresh()
         defer { finishRefresh(id) }
@@ -202,7 +297,9 @@ final class AgentUsageStore {
             if remaining > .zero { await pause(for: remaining) }
         }
         while request == id && !Task.isCancelled {
-            guard await readOnce(id: id, timeZone: timeZone, claudeLimits: claudeLimits),
+            guard await readOnce(
+                id: id, timeZone: timeZone, claudeLimits: claudeLimits,
+                codexLimits: codexLimits, agyLimits: agyLimits),
                 let interval = pollingInterval
             else { return }
             await pause(for: interval)
@@ -220,10 +317,15 @@ final class AgentUsageStore {
             return
         }
         let claudeLimits = claudeLimitsEnabled
+        let codexLimits = codexLimitsEnabled
+        let agyLimits = agyLimitsEnabled
         guard !Task.isCancelled else { return }
         let id = beginRefresh()
         defer { finishRefresh(id) }
-        guard await readOnce(id: id, timeZone: timeZone, claudeLimits: claudeLimits) else { return }
+        guard await readOnce(
+            id: id, timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits)
+        else { return }
         if pollingInterval != nil { refreshGeneration += 1 }
     }
 
@@ -247,6 +349,8 @@ final class AgentUsageStore {
         endRefresh()
         snapshotState = .idle
         snapshotIncludesClaudeLimits = false
+        snapshotIncludesCodexLimits = true
+        snapshotIncludesAgyLimits = true
         refreshFailure = nil
         readAt = nil
         pluginVersion = nil
@@ -256,13 +360,18 @@ final class AgentUsageStore {
     }
 
     nonisolated static func read(
-        over transport: any Transport, timeZone: String, claudeLimits: Bool
+        over transport: any Transport, timeZone: String, claudeLimits: Bool,
+        codexLimits: Bool = true, agyLimits: Bool = true
     ) async throws -> State {
-        try await reading(over: transport, timeZone: timeZone, claudeLimits: claudeLimits).state
+        try await reading(
+            over: transport, timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits
+        ).state
     }
 
     nonisolated static func reading(
-        over transport: any Transport, timeZone: String, claudeLimits: Bool
+        over transport: any Transport, timeZone: String, claudeLimits: Bool,
+        codexLimits: Bool = true, agyLimits: Bool = true
     ) async throws -> Reading {
         // The read's only plugin listing: the query runs the installation
         // it resolved.
@@ -281,8 +390,11 @@ final class AgentUsageStore {
         } else if !plugin.isEnabled {
             state = .requirement(String(localized: "Enable the Heeler plugin on this Host to read Usage."))
         } else if let pluginRoot = plugin.pluginRoot {
+            let effectiveAgyLimits =
+                HeelerPluginFeature.antigravityUsage.isSupported(by: version) ? agyLimits : true
             let report = try await transport.readAgentUsage(
-                timeZone: timeZone, claudeLimits: claudeLimits, pluginRoot: pluginRoot)
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: effectiveAgyLimits, pluginRoot: pluginRoot)
             state = report.runtime == "missing" ? .runtimeMissing : .available(report)
         } else {
             state = .requirement(String(localized:
@@ -294,34 +406,39 @@ final class AgentUsageStore {
     /// A herdr-core Host's read: its Helper's report for the Host's session, from
     /// one bounded exec. A native Windows Host has no Helper and runs nothing.
     nonisolated static func reading(
-        overHelper host: any HostHelperHost, session: String, timeZone: String, claudeLimits: Bool
+        overHelper host: any HostHelperHost, session: String, timeZone: String,
+        claudeLimits: Bool, codexLimits: Bool = true, agyLimits: Bool = true
     ) async throws -> Reading {
         try await reading(
             overHelper: host, files: HostHelperFiles(host: host, session: session),
-            waiting: .waitingForCore, timeZone: timeZone, claudeLimits: claudeLimits)
+            waiting: .waitingForCore, timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits)
     }
 
     /// A tmux Host's read: its Helper's report for the Host's tmux socket, from
     /// one bounded exec.
     nonisolated static func reading(
         overHelper host: any HostHelperHost, tmuxSocket: String, tmuxPaths: TmuxPaths? = nil,
-        timeZone: String, claudeLimits: Bool
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool = true, agyLimits: Bool = true
     ) async throws -> Reading {
         try await reading(
             overHelper: host, files: HostHelperFiles(host: host, tmuxSocket: tmuxSocket, tmuxPaths: tmuxPaths),
-            waiting: .waitingForTmux, timeZone: timeZone, claudeLimits: claudeLimits)
+            waiting: .waitingForTmux, timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits)
     }
 
     private nonisolated static func reading(
         overHelper host: any HostHelperHost, files: HostHelperFiles, waiting: AgentUsageHostHelperNeed,
-        timeZone: String, claudeLimits: Bool
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool
     ) async throws -> Reading {
         guard try await host.hostPlatform() == .posix else {
             return Reading(state: .hostHelper(.notOnWindows), pluginVersion: nil)
         }
         let report: AgentUsageReport
         do {
-            report = try await files.readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+            report = try await files.readUsage(
+                timeZone: timeZone, claudeLimits: claudeLimits,
+                codexLimits: codexLimits, agyLimits: agyLimits)
         } catch {
             // A Host reading over the Helper has no plugin to blame or update.
             guard Self.state(for: error) == .failed(pluginFailureMessage) else { throw error }
@@ -396,12 +513,14 @@ final class AgentUsageStore {
 
     /// One read, applied unless a newer request or the caller's cancellation
     /// superseded it. false stops the caller's loop.
-    private func readOnce(id: UUID, timeZone: String, claudeLimits: Bool) async -> Bool {
+    private func readOnce(
+        id: UUID, timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool
+    ) async -> Bool {
         readsStarted += 1
         let number = readsStarted
         let reading: Reading
         do {
-            reading = try await read(timeZone, claudeLimits)
+            reading = try await read(timeZone, claudeLimits, codexLimits, agyLimits)
         } catch {
             reading = Reading(state: Self.state(for: error), pluginVersion: nil)
         }
@@ -419,6 +538,8 @@ final class AgentUsageStore {
         } else {
             snapshotState = next
             snapshotIncludesClaudeLimits = claudeLimits
+            snapshotIncludesCodexLimits = codexLimits
+            snapshotIncludesAgyLimits = agyLimits
             pluginVersion = reading.pluginVersion
             refreshFailure = nil
             readAt = .now
@@ -517,10 +638,15 @@ extension AgentUsageStore {
     /// refreshing answer restarts the visible surfaces' polling.
     private func readAfterAccountChange(timeZone: String = TimeZone.current.identifier) async {
         let claudeLimits = claudeLimitsEnabled
+        let codexLimits = codexLimitsEnabled
+        let agyLimits = agyLimitsEnabled
         pendingPause?.cancel()
         let id = beginRefresh()
         defer { finishRefresh(id) }
-        guard await readOnce(id: id, timeZone: timeZone, claudeLimits: claudeLimits) else { return }
+        guard await readOnce(
+            id: id, timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits)
+        else { return }
         if pollingInterval != nil { refreshGeneration += 1 }
     }
 }

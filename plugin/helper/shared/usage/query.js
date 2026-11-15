@@ -15,11 +15,19 @@ const sameAccounts = (before, now) => Array.isArray(before) && before.length ===
  * Start one detached worker unless another holds the lock; true while one runs.
  * Throws when no worker can start (an unwritable cache, a full disk).
  */
-function startWorker(runtime, directory, claudeLimits, worker) {
+function startWorker(runtime, directory, claudeLimits, codexLimits, agyLimits, worker) {
   const lock = reserveWorker(directory);
   if (!lock) return Boolean(activeLock(directory));
   try {
-    const child = spawn(runtime.node, [worker.path, ...worker.args, "--lock-token", lock.token, ...(claudeLimits ? ["--claude-limits"] : [])], {
+    const child = spawn(runtime.node, [
+      worker.path,
+      ...worker.args,
+      "--lock-token",
+      lock.token,
+      ...(claudeLimits ? ["--claude-limits"] : []),
+      ...(!codexLimits ? ["--no-codex-limits"] : []),
+      ...(!agyLimits ? ["--no-agy-limits"] : []),
+    ], {
       detached: true, stdio: "ignore", env: {
         ...Object.fromEntries(Object.entries(runtime.env).filter(([, value]) => typeof value === "string")),
         ...worker.env,
@@ -45,7 +53,7 @@ function startWorker(runtime, directory, claudeLimits, worker) {
  * `accountDirectory` the Account file, and `worker` says how to start the
  * worker: its `path`, the `args` naming those directories, and any added `env`.
  */
-export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountDirectory, worker }) {
+export function usageReport({ timeZone, claudeLimits, codexLimits = true, agyLimits = true, runtimeDirectory, accountDirectory, worker }) {
   if (!timeZone || !/^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)*$/.test(timeZone)) {
     throw new Error("invalid time zone");
   }
@@ -60,10 +68,12 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
   const countedOf = program => programs[program].filter(account => account.state === "ok").map(account => account.id);
   const counted = countedOf("claude");
   const codexCounted = countedOf("codex");
+  const agyCounted = countedOf("agy");
   // An Account added, removed or back since the last run is counted at once.
-  // A snapshot from before Codex Accounts counted the Default one.
+  // A snapshot from before Codex or Antigravity Accounts counted the Default one.
   const accountsChanged = !sameAccounts(snapshot?.countedAccounts, counted)
-    || !sameAccounts(snapshot?.countedCodexAccounts ?? ["default"], codexCounted);
+    || !sameAccounts(snapshot?.countedCodexAccounts ?? ["default"], codexCounted)
+    || !sameAccounts(snapshot?.countedAgyAccounts ?? ["default"], agyCounted);
   const stale = !snapshot?.complete || !checkpointCurrent(snapshot?.checkpoint) || accountsChanged
     || snapshot?.breakdownsVersion !== 1 || !(Date.now() - Date.parse(snapshot.generatedAt) <= 60_000);
   let refreshing = false;
@@ -73,9 +83,11 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
     // Claude Code's next read is the earliest over the Accounts the last run
     // counted; an Account added since then makes the snapshot stale.
     if (!refreshing && !failures.paused && (stale
-        || snapshot.limitsVersion !== 1 || !snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt
-        || (claudeLimits && (!snapshot.nextClaudeLimitsAt || Date.now() >= snapshot.nextClaudeLimitsAt)))) {
-      refreshing = startWorker(runtime, directory, claudeLimits, worker);
+        || snapshot.limitsVersion !== 1
+        || (codexLimits && (!snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt))
+        || (claudeLimits && (!snapshot.nextClaudeLimitsAt || Date.now() >= snapshot.nextClaudeLimitsAt))
+        || (agyLimits && (!snapshot.nextAgyLimitsAt || Date.now() >= snapshot.nextAgyLimitsAt)))) {
+      refreshing = startWorker(runtime, directory, claudeLimits, codexLimits, agyLimits, worker);
     }
   } catch {
     // The cache cannot be written (read-only, a full disk), so no worker runs.
@@ -86,9 +98,10 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
   // a failing refresh instead, keeping a program's own scan error.
   const failed = failures.failing ? "The background refresh failed repeatedly."
     : startFailed && stale ? "The background refresh could not start." : null;
-  const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed,
+  const served = failed ? { ...snapshot, errors: { claude: failed, codex: failed, agy: failed,
     ...Object.fromEntries(counted.map(id => [`claude:${id}`, failed])),
-    ...Object.fromEntries(codexCounted.map(id => [`codex:${id}`, failed])), ...snapshot?.errors } } : snapshot;
+    ...Object.fromEntries(codexCounted.map(id => [`codex:${id}`, failed])),
+    ...Object.fromEntries(agyCounted.map(id => [`agy:${id}`, failed])), ...snapshot?.errors } } : snapshot;
   // Suggestions are checked against the Account file as it is now, not as the last run saw it.
   const suggestions = Object.fromEntries(ACCOUNT_PROGRAMS.map(program => {
     const candidates = snapshot?.[`${program}Candidates`];
@@ -96,6 +109,9 @@ export function usageReport({ timeZone, claudeLimits, runtimeDirectory, accountD
       ignored: files[program].ignored, candidates: Array.isArray(candidates) ? candidates : [] })];
   }));
   return reportFromSnapshot(served, timeZone, refreshing, Date.now(), claudeLimits, {
-    accounts: programs.claude, suggestions: suggestions.claude,
-    programs: { codex: { accounts: programs.codex, suggestions: suggestions.codex } } });
+    accounts: programs.claude, suggestions: suggestions.claude, codexLimits, agyLimits,
+    programs: {
+      codex: { accounts: programs.codex, suggestions: suggestions.codex },
+      agy: { accounts: programs.agy, suggestions: suggestions.agy },
+    } });
 }

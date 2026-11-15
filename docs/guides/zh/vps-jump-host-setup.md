@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/vps-jump-host-setup.md at ed1e9e66 -->
+<!-- Translated from docs/guides/vps-jump-host-setup.md at 5171f178 -->
 
 # 通过 VPS 配置远程访问
 
@@ -112,7 +112,7 @@ ssh-keygen -lf ~/.ssh/VPS_NAME-tunnel.pub
 
 **运行位置：iOS**
 
-在 Heeler 中前往 **Hosts > Add Host**，在 **Authentication** 下保持选中 **Device Key**（设备密钥），轻点 **Copy authorized_keys Line** 复制公钥行。格式形如：
+在 Heeler 中打开 **Hosts** 并轻点 **+**，在 **Authentication** 下保持选中 **Device Key**（设备密钥），轻点 **Copy authorized_keys Line** 复制公钥行。格式形如：
 
 ```text
 ssh-ed25519 AAAA... heeler
@@ -511,32 +511,30 @@ tail -n 50 ~/Library/Logs/VPS_NAME-reverse-ssh.error.log
 
 **运行位置：iOS**
 
-前往 **Hosts > Add Host**，在 **Routes** 下轻点 **Add Route** 填写隧道与 Jump Host 字段并轻点 **Save** 保存路由，再填写其余 Host 字段：
+在 **Hosts** 中轻点 **+**，轻点 **More Options** 填写隧道与 Jump Host 字段，返回后填写第一步的其余内容：
 
 | 字段 | 值 |
 |---|---|
-| Name | 任意易于识别的名称 |
 | User | `MAC_USER` |
-| Address（在 Route 中） | `127.0.0.1` |
-| Port（在 Route 中） | `TUNNEL_PORT` |
-| Jump Host address（在 Route 中） | `VPS_PUBLIC_IP` |
-| Jump Host port（在 Route 中） | `VPS_SSH_PORT` |
-| Jump Host user（在 Route 中） | `herdr-jump` |
+| Address | `127.0.0.1` |
+| Port（在 More Options 中） | `TUNNEL_PORT` |
+| Jump Host address（在 More Options 中） | `VPS_PUBLIC_IP` |
+| Jump Host port（在 More Options 中） | `VPS_SSH_PORT` |
+| Jump Host user（在 More Options 中） | `herdr-jump` |
 | Authentication | `Device Key` |
-| herdr Session | 留空 |
 
-在路由页面中，只有填写了 Jump Host address 后，Jump Host port 与 Jump Host user 字段才会显示。如果将 Jump Host user 留空，Heeler 会默认复用 Host user，从而被 VPS 当作未知账户拒绝。
+在 More Options 下，只有填写了 Jump Host address 后，Jump Host port 与 Jump Host user 字段才会显示。如果将 Jump Host user 留空，Heeler 会默认复用 Host user，从而被 VPS 当作未知账户拒绝。
 
-将 herdr Session 留空即可使用位于 `~/.config/herdr/herdr.sock` 的默认会话。填写任何值（包括 `default`）都会连接 `~/.config/herdr/sessions/<name>/herdr.sock`。
+轻点 **Connect**。
 
-在 **Add Host** 页面轻点 **Save** 开始预检（**Preflight**）。
-
-Heeler 会分两次独立询问主机密钥确认：
+Heeler 会先后分两次独立询问主机密钥确认：
 
 1. VPS Jump Host 的主机密钥；
 2. 通过反向隧道连上的 Mac 主机密钥。
 
 请分别对照各自信任的系统核对指纹，不要因为信任了 VPS 就直接跳过 Mac 指纹核对。
+
+在最后一步，保持勾选 **Herdr TUI**（即位于 `~/.config/herdr/herdr.sock` 的默认会话；正在运行的具名会话会列为 **Herdr TUI · name**），按需为 Host 命名，然后添加它。打开该 Host 并轻点 **Herdr TUI**，即可查看它的预检（**Preflight**）。
 
 预检通过需同时验证以下四项：
 
@@ -571,7 +569,7 @@ launchctl print "gui/$(id -u)/dev.herdr.VPS_NAME-reverse-ssh"
 
 输出应显示新的 PID 以及 `state = running`。
 
-在 Heeler 中轻点 **Preflight** 旁的 **Run Checks Again** 重新运行预检，或打开一个 Agent。仅进程重启而没有验证应用端连接恢复，不足以证明自动重连正常。
+在 Heeler 中，在该 Server 的页面上轻点 **Preflight** 旁的 **Run Checks Again** 重新运行预检，或打开一个 Agent。仅进程重启而没有验证应用端连接恢复，不足以证明自动重连正常。
 
 ## 步骤 15：加固 Mac 认证配置
 

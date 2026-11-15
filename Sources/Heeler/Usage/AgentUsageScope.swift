@@ -14,7 +14,7 @@ struct AgentUsageScope: Equatable {
         var isRetryingRefresh = false
         /// A Host's Usage has a connection to answer over: without one it
         /// cannot answer until it reconnects. See
-        /// `ConsoleStore.agentUsageEntry(for:)`, which sets it per Server Kind.
+        /// `ConsoleStore.agentUsageEntries(for:)`, which sets it per Server Kind.
         var isConnected = true
     }
 

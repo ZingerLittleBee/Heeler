@@ -50,6 +50,10 @@ struct AgentChatSurfaceView: View {
     @State private var bottomChromeHeight: CGFloat = 0
     @State private var surfaceHeight: CGFloat = 0
     @State private var jumpRequest = 0
+    @State private var previousMessageRequest = 0
+    @State private var nextMessageRequest = 0
+    @State private var topJumpRequest = 0
+    @State private var canJumpToPreviousMessage = false
     @State private var followRequest = 0
     @State private var collapseRequest = 0
     @State private var canCollapseTrajectory = false
@@ -385,7 +389,7 @@ struct AgentChatSurfaceView: View {
             let earlier = Set(previous.map(\.id))
             if messages.contains(where: { !earlier.contains($0.id) }) { followRequest += 1 }
         }
-        .onChange(of: composer.draft) { _, draft in
+        .onChange(of: composer.composedDraft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
         // Also on appearing: Chat may have followed another while it was away.
@@ -411,8 +415,7 @@ struct AgentChatSurfaceView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            let staging = session.staging
-            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
+            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
@@ -570,12 +573,12 @@ struct AgentChatSurfaceView: View {
         .prioritizesVerticalDetailToolbar()
     }
 
-    /// Over the list's bottom edge, which keeps Collapse Steps' band clear
-    /// of rows while it shows.
+    /// Over the list's bottom edge, which keeps the floating controls' bottom
+    /// band clear of rows while either shows at the end.
     private var floatingTimelineControls: some View {
         // The buttons' hit areas reach past their circles, which already
         // leaves a gap between them.
-        HStack(spacing: 0) {
+        HStack(alignment: .bottom, spacing: 0) {
             Spacer(minLength: 0)
             ChatCollapseTrajectoryButton(
                 isVisible: presentation == .timeline && timeline.state.isReady && canCollapseTrajectory
@@ -583,25 +586,31 @@ struct AgentChatSurfaceView: View {
                 collapseRequest += 1
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapseControlHeight = $0 }
-            ChatJumpToLatestButton(
-                isVisible: presentation == .timeline && timeline.state.isReady && !isFollowing
-            ) {
-                jumpRequest += 1
-            }
+            ChatMessageJumpControl(
+                showsPrevious: presentation == .timeline && timeline.state.isReady && canJumpToPreviousMessage,
+                showsLatest: presentation == .timeline && timeline.state.isReady && !isFollowing,
+                jumpPrevious: { previousMessageRequest += 1 },
+                jumpTop: { topJumpRequest += 1 },
+                jumpNext: { nextMessageRequest += 1 },
+                jumpLatest: { jumpRequest += 1 })
         }
-        .chatContentColumn()
-        .padding(.trailing, edgeHandleReserve)
+        // Align the jump capsule's visible right edge with the status line's
+        // trailing latency caption (`ChatTimelineMetrics.horizontalPadding`).
+        .padding(.leading, ChatTimelineMetrics.horizontalPadding)
+        .padding(.trailing, max(0, ChatTimelineMetrics.horizontalPadding - ChatMessageJumpControl.hitInset))
+        .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
+        .frame(maxWidth: .infinity)
         .onChange(of: workspaceDrawer != nil, initial: true) { _, offers in
             if offers, !hasOfferedWorkspaceDrawer { hasOfferedWorkspaceDrawer = true }
         }
     }
 
-    /// How much further than their own margin Chat's rows and floating
-    /// buttons keep from the trailing edge, for the Workspace terminals
-    /// handle resting there. Kept while the back header is out and the
-    /// handle hides, so folding the header does not re-measure every row,
-    /// and once offered, through a reconnect that empties the Workspace's
-    /// Terminals for a moment, so the rows do not re-wrap twice.
+    /// How much further than their own margin Chat's rows keep from the
+    /// trailing edge, for the Workspace terminals handle resting there. Kept
+    /// while the back header is out and the handle hides, so folding the
+    /// header does not re-measure every row, and once offered, through a
+    /// reconnect that empties the Workspace's Terminals for a moment, so the
+    /// rows do not re-wrap twice.
     private var edgeHandleReserve: CGFloat {
         guard workspaceDrawer != nil || hasOfferedWorkspaceDrawer else { return 0 }
         return max(0, WorkspaceTerminalDrawer.contentClearance - ChatTimelineMetrics.horizontalPadding)
@@ -613,11 +622,16 @@ struct AgentChatSurfaceView: View {
     private var conversation: some View {
         ZStack(alignment: .top) {
             ChatTimelineView(
-                state: timeline.state, jumpRequest: jumpRequest, followRequest: followRequest,
+                state: timeline.state, jumpRequest: jumpRequest,
+                previousMessageRequest: previousMessageRequest,
+                nextMessageRequest: nextMessageRequest,
+                topJumpRequest: topJumpRequest,
+                followRequest: followRequest,
                 collapseRequest: collapseRequest,
                 topObstruction: topInset + headerObstruction + bannerHeight,
                 bottomEdge: bottomEdge,
                 collapseControlClearance: collapseControlHeight,
+                jumpControlClearance: AgentDetailHeader.controlSize,
                 trailingReserve: edgeHandleReserve,
                 textSize: ChatTextSettings.size(system: dynamicTypeSize, offset: textSizeOffset),
                 font: chatFont,
@@ -928,8 +942,11 @@ struct AgentChatSurfaceView: View {
         var isReady = !conversation.transcript.entries.isEmpty || !pending.isEmpty
         if case .locating = conversation.phase {} else { isReady = true }
         // Work that has shown no sign of itself for hours keeps no turn open.
+        // Use the Host's underlying foreground activity so a completed or
+        // earlier interrupted turn does not sprout a foreground Working timer
+        // while Antigravity CLI's Background Work promotes the Console row.
         let signals = ChatTurnSignals(
-            activity: ChatAgentActivity(agent.agent.status),
+            activity: ChatAgentActivity(chat.agent.status),
             isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: ChatTurnSignals.isLive(hostStatus: console.hostStatuses[agent.hostID], conversation: conversation),
@@ -953,7 +970,8 @@ struct AgentChatSurfaceView: View {
                 return try await chat.readImage(at: path)
             },
             thumbnails: chat?.thumbnails,
-            collapseAvailabilityChanged: { canCollapseTrajectory = $0 })
+            collapseAvailabilityChanged: { canCollapseTrajectory = $0 },
+            previousMessageAvailabilityChanged: { canJumpToPreviousMessage = $0 })
     }
 
     /// What an expanded row whose output was never read says until it can
@@ -1671,16 +1689,26 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Antigravity CLI's Stop also ends the commands the turn sent to the
-    /// background, which its Esc leaves running (ADR 0024).
+    /// background, which its Esc leaves running (ADR 0024). When only
+    /// Background Work keeps the Agent Working after its foreground turn
+    /// already finished, there is no open foreground turn to place.
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
         guard program == .agy, let chat else { return nil }
         let composer = composer
         return {
-            AgyBackgroundTaskStop.followThrough(
-                reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
-                    ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
-                },
-                io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            guard chat.agent.status == .working else { return nil }
+            guard
+                let followThrough = AgyBackgroundTaskStop.followThrough(
+                    reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
+                        ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
+                    },
+                    io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            else { return nil }
+            return {
+                let notice = await followThrough()
+                chat.noteAgyBackgroundWorkMayHaveChanged()
+                return notice
+            }
         }
     }
 
@@ -1772,7 +1800,7 @@ struct AgentChatSurfaceView: View {
             attachLinkCount: 0,
             addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
             pasteImage: capabilities.uploads
-                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
             addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal

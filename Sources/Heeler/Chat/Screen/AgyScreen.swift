@@ -84,6 +84,14 @@ struct AgyScreen: Sendable {
         var selected: Int?
     }
 
+    /// One row of the background-task strip agy draws right under the input
+    /// box (`● [16:00:42] python3 -c ' import subprocess, t... running`),
+    /// or focused by Down (`> ● [03:08:03] sleep 40 running`).
+    struct RunningTaskStripRow: Equatable, Sendable {
+        var command: String
+        var isTruncated: Bool
+    }
+
     /// The `/` popup's selected row under a `/` draft, such as `/tasks` and
     /// `View background tasks`.
     struct SlashSelection: Equatable, Sendable {
@@ -234,6 +242,10 @@ struct AgyScreen: Sendable {
     /// the footer's right (`· 1 task(s) · /tasks`), which a narrow footer
     /// can cut (72) and a popup keeps (176).
     let showsRunningTasks: Bool
+    /// The running task rows listed directly under the input box, when shown.
+    let runningTaskStripRows: [RunningTaskStripRow]
+    /// The running task count in the footer (`· N task(s)`), when visible.
+    let footerRunningTaskCount: Int?
 
     /// Footer hints of an idle box Enter sends from. Ctrl+C or Ctrl+D on an
     /// idle box arms an exit with no timeout, and a paste disarms it before
@@ -260,13 +272,27 @@ struct AgyScreen: Sendable {
         var footerRow: ScreenRow?
         var below: String?
         var showsRunningTasks = false
+        var runningTaskStripRows: [RunningTaskStripRow] = []
+        var footerRunningTaskCount: Int?
         if let box = composer {
             var index = box.bottomRule + 1
-            showsRunningTasks = rows[index...].contains(where: Self.countsTasks)
+            for row in rows[index...] {
+                if let count = Self.runningTaskCount(in: row), count > 0 {
+                    showsRunningTasks = true
+                    footerRunningTaskCount = count
+                }
+            }
             // The background-task panel: its task rows, then a rule.
             if index < rows.count, Self.isTaskRow(rows[index]) {
                 showsRunningTasks = true
-                while index < rows.count, Self.isTaskRow(rows[index]) { index += 1 }
+                while index < rows.count, Self.isTaskRow(rows[index]) {
+                    if let stripRow = Self.runningTaskStripRow(
+                        inText: rows[index].trimmedText, requireRunningSuffix: false)
+                    {
+                        runningTaskStripRows.append(stripRow)
+                    }
+                    index += 1
+                }
                 if index < rows.count, Self.rulePalette(rows[index], width: ruleWidth) == box.palette { index += 1 }
             }
             let later = rows.indices.contains(index) ? rows[(index + 1)...].filter { !$0.isBlank } : []
@@ -288,6 +314,20 @@ struct AgyScreen: Sendable {
         {
             composer?.draft = ""
             composer?.placeholder = hint
+        } else if let box = composer, box.palette == .colorless,
+            let footer = footerHint, Self.modeHintFooters.contains(footer),
+            !box.draft.isEmpty
+        {
+            // Under NO_COLOR, a task row focused by Down sits between full-width
+            // rules and reads as the bottom box's draft while the empty box above
+            // keeps `? for shortcuts` in the footer (180). Keep `composer` as
+            // read for input checks, while still noting the running task strip.
+            let draftLines = box.draft.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+            let parsed = draftLines.compactMap { Self.runningTaskStripRow(inText: $0, requireRunningSuffix: true) }
+            if !parsed.isEmpty, parsed.count == draftLines.count {
+                showsRunningTasks = true
+                runningTaskStripRows = parsed + runningTaskStripRows
+            }
         }
         self.composer = composer
         self.footerHint = footerHint
@@ -311,6 +351,8 @@ struct AgyScreen: Sendable {
         welcomeModel = exited ? nil : Self.welcomeModel(in: rows, from: live, upTo: composer?.topRule ?? rows.count)
         showsRunningTurn = footerHint.map(Self.workingHints.contains) == true || Self.showsSpinner(rows)
         self.showsRunningTasks = showsRunningTasks
+        self.runningTaskStripRows = exited ? [] : runningTaskStripRows
+        self.footerRunningTaskCount = exited ? nil : footerRunningTaskCount
     }
 
     // MARK: Box
@@ -415,15 +457,38 @@ struct AgyScreen: Sendable {
 
     // MARK: Under the box
 
-    /// A row of the background-task panel, such as `● [00:10:32]  sleep 30;
-    /// echo probe-two  running`.
+    /// A row of the background-task strip, such as `● [00:10:32]  sleep 30;
+    /// echo probe-two  running`, or focused by Down (`> ● [03:08:03] ...`).
     private static func isTaskRow(_ row: ScreenRow) -> Bool {
-        row.trimmedText.range(of: #"^\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
+        row.trimmedText.range(of: #"^(?:> )?\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
     }
 
-    /// The footer's count of running background tasks.
-    private static func countsTasks(_ row: ScreenRow) -> Bool {
-        row.text.range(of: #"\d+ task\(s\)"#, options: .regularExpression) != nil
+    /// The footer's count of running background tasks (`· N task(s)`).
+    private static func runningTaskCount(in row: ScreenRow) -> Int? {
+        let text = ScreenRow.normalizedSpaces(row.text)
+        guard let match = text.firstMatch(of: #/(\d+)\s+task\(s\)/#) else { return nil }
+        return Int(match.1)
+    }
+
+    /// Parses one running task row from the strip under the input box.
+    private static func runningTaskStripRow(inText rawText: String, requireRunningSuffix: Bool) -> RunningTaskStripRow? {
+        let text = ScreenRow.normalizedSpaces(rawText).trimmingCharacters(in: .whitespaces)
+        let body = text.hasPrefix("> ") ? String(text.dropFirst(2)) : text
+        guard let match = body.wholeMatch(of: #/\S \[\d{1,2}:\d{2}:\d{2}\]\s+(.*\S)/#) else { return nil }
+        let rest = String(match.1)
+        if let runningMatch = rest.wholeMatch(of: #/(.*\S)\s+running/#) {
+            let command = normalizedTaskText(String(runningMatch.1))
+            return command.isEmpty ? nil : RunningTaskStripRow(command: command, isTruncated: command.hasSuffix(cutMark))
+        }
+        if !requireRunningSuffix, rest.hasSuffix(cutMark) {
+            let command = normalizedTaskText(rest)
+            return command.isEmpty ? nil : RunningTaskStripRow(command: command, isTruncated: true)
+        }
+        return nil
+    }
+
+    private static func normalizedTaskText(_ text: String) -> String {
+        ScreenRow.normalizedSpaces(text).split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     /// The `/tasks` panel right under the box's bottom rule: `Tasks`, then
@@ -583,4 +648,151 @@ struct AgyScreen: Sendable {
     /// How many of the bottom rows a dialog's question is looked for in:
     /// the options, a wrapped option's rows, the hint row and the footer.
     private static let dialogRows = 16
+
+    // MARK: Background work evidence
+
+    /// What this screen proves about the conversation's running Antigravity CLI
+    /// Background Work (`agy:task:*` and `agy:subagent:*`).
+    ///
+    /// - `hasExited` stops both tasks and subagents, since subagents run in the
+    ///   same `agy` process.
+    /// - `taskPanel` (`/tasks`) lists every background task of the conversation,
+    ///   newest first, with its live status (`running`, `cancelled`, `completed`).
+    /// - An unobstructed composer box (`composer != nil && below == nil`) always
+    ///   lists running tasks directly under `bottomRule`, regardless of terminal
+    ///   width; when neither tasks nor a foreground turn run there, any task the
+    ///   transcript still lists as running has already ended (for instance after
+    ///   `k` in `/tasks` or after an interrupted turn held its completion notice).
+    ///   Subagents never list under the box or in `/tasks`, so `!showsRunningTasks`
+    ///   never ends `agy:subagent:*`.
+    /// - Under a popup (`below != nil` without `taskPanel`) or dialog, a visible
+    ///   footer task count still confirms running tasks, while its absence is
+    ///   inconclusive.
+    func backgroundWorkEvidence(
+        for items: [ChatBackgroundWorkItem], at now: Date
+    ) -> [String: ChatBackgroundWorkEvidence] {
+        let runningItems = items.filter {
+            $0.state == .running && ($0.id.hasPrefix("agy:task:") || $0.id.hasPrefix("agy:subagent:"))
+        }
+        guard !runningItems.isEmpty else { return [:] }
+
+        if hasExited {
+            var evidence: [String: ChatBackgroundWorkEvidence] = [:]
+            for item in runningItems {
+                evidence[item.id] = ChatBackgroundWorkEvidence(endedState: .stopped, endedAt: now)
+            }
+            return evidence
+        }
+
+        let taskItems = runningItems.filter { $0.id.hasPrefix("agy:task:") }
+        guard !taskItems.isEmpty else { return [:] }
+
+        if let panel = taskPanel {
+            var evidence: [String: ChatBackgroundWorkEvidence] = [:]
+            let anyRunning = panel.rows.contains(where: \.isRunning)
+            for item in taskItems {
+                let matches = panel.rows.filter {
+                    Self.matchesTaskItem(
+                        screenCommand: $0.command, isTruncated: $0.command.hasSuffix(Self.cutMark), item: item)
+                }
+                if matches.contains(where: \.isRunning) {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
+                } else if !anyRunning {
+                    if !showsRunningTurn {
+                        let ended = matches.first.map { Self.endedState(forPanelStatus: $0.status) } ?? .stopped
+                        evidence[item.id] = ChatBackgroundWorkEvidence(endedState: ended, endedAt: now)
+                    }
+                } else if item.kind == .command, Self.hasDistinctCommandTitle(item) {
+                    if !showsRunningTurn {
+                        if let newest = matches.first, newest.hasEnded {
+                            evidence[item.id] = ChatBackgroundWorkEvidence(
+                                endedState: Self.endedState(forPanelStatus: newest.status), endedAt: now)
+                        } else if matches.isEmpty {
+                            evidence[item.id] = ChatBackgroundWorkEvidence(endedState: .stopped, endedAt: now)
+                        }
+                    }
+                } else {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
+                }
+            }
+            return evidence
+        }
+
+        if composer != nil, below == nil {
+            var evidence: [String: ChatBackgroundWorkEvidence] = [:]
+            if !showsRunningTasks {
+                guard !showsRunningTurn else { return [:] }
+                for item in taskItems {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(endedState: .stopped, endedAt: now)
+                }
+                return evidence
+            }
+            let stripCoversAllRunning =
+                !runningTaskStripRows.isEmpty && footerRunningTaskCount == runningTaskStripRows.count
+            for item in taskItems {
+                let matchedInStrip = runningTaskStripRows.contains {
+                    Self.matchesTaskItem(screenCommand: $0.command, isTruncated: $0.isTruncated, item: item)
+                }
+                if matchedInStrip {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
+                } else if !showsRunningTurn, stripCoversAllRunning,
+                    item.kind == .command, Self.hasDistinctCommandTitle(item)
+                {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(endedState: .stopped, endedAt: now)
+                } else {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
+                }
+            }
+            return evidence
+        }
+
+        if showsRunningTasks {
+            var evidence: [String: ChatBackgroundWorkEvidence] = [:]
+            for item in taskItems {
+                evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
+            }
+            return evidence
+        }
+
+        return [:]
+    }
+
+    private static func hasDistinctCommandTitle(_ item: ChatBackgroundWorkItem) -> Bool {
+        let trimmed = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != "Command" && trimmed != String(localized: "Command")
+    }
+
+    private static func matchesTaskItem(
+        screenCommand: String, isTruncated: Bool, item: ChatBackgroundWorkItem
+    ) -> Bool {
+        let candidates = [item.title, item.subtitle].compactMap(\.self)
+        return candidates.contains {
+            taskTextMatches(screenCommand: screenCommand, isTruncated: isTruncated, candidate: $0)
+        }
+    }
+
+    private static func taskTextMatches(screenCommand: String, isTruncated: Bool, candidate: String) -> Bool {
+        let screen = normalizedTaskText(screenCommand)
+        let target = normalizedTaskText(candidate)
+        guard !screen.isEmpty, !target.isEmpty else { return false }
+        if screen == target { return true }
+        if isTruncated || screen.hasSuffix(cutMark) {
+            let rawPrefix = screen.hasSuffix(cutMark) ? String(screen.dropLast(cutMark.count)) : screen
+            let prefix = rawPrefix.trimmingCharacters(in: .whitespaces)
+            if !prefix.isEmpty, target.hasPrefix(prefix) { return true }
+        }
+        return false
+    }
+
+    private static func endedState(forPanelStatus status: String) -> ChatBackgroundWorkItem.State {
+        if status == "cancelled" { return .stopped }
+        if status.hasPrefix("failed") { return .failed }
+        if status.hasPrefix("completed") {
+            if let match = status.firstMatch(of: #/completed \(exit (-?\d+)\)/#), let code = Int(match.1) {
+                return code == 0 ? .completed : .failed
+            }
+            return .completed
+        }
+        return .stopped
+    }
 }

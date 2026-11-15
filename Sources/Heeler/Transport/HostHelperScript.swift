@@ -45,12 +45,16 @@ struct HostHelperScript: Sendable, Equatable {
         /// Runs the Helper's own Usage query for a session, whose folder it makes
         /// so the Helper comes to follow that session's core. The whole answer
         /// is framed and capped, so a cut-off report can never read as complete.
-        case usageQuery(timeZone: String, claudeLimits: Bool, session: String)
+        case usageQuery(
+            timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, session: String)
         /// Runs the Helper's own Usage query for a tmux server, whose stored
         /// paths live under `tmux/<socket>`, and writes `storedPaths` there when
         /// the Helper is installed so it comes to follow that server too. Makes
         /// no core session folder.
-        case tmuxUsageQuery(timeZone: String, claudeLimits: Bool, socket: String, storedPaths: String? = nil)
+        case tmuxUsageQuery(
+            timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, socket: String, storedPaths: String? = nil)
         /// Updates `tmux/<socket>/paths.json` when `tmux` moved on a Host that
         /// already holds the Helper or placed `paths.json` for Claude Code's hooks.
         case refreshTmuxPaths(socket: String, storedPaths: String)
@@ -186,11 +190,12 @@ struct HostHelperScript: Sendable, Equatable {
             }
         case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
             lines = tidy(directory: directory, record: record, quietMinutes: quietMinutes)
-        case .usageQuery(let timeZone, let claudeLimits, let session):
+        case .usageQuery(let timeZone, let claudeLimits, let codexLimits, let agyLimits, let session):
             lines = usageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits, folder: "sessions", flag: "--session",
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, folder: "sessions", flag: "--session",
                 name: session, prepare: ["  mkdir -p -- \"$__h_target\" || return 1"], nonce: nonce)
-        case .tmuxUsageQuery(let timeZone, let claudeLimits, let socket, let storedPaths):
+        case .tmuxUsageQuery(let timeZone, let claudeLimits, let codexLimits, let agyLimits, let socket, let storedPaths):
             let prepare: [String] =
                 if let storedPaths, !storedPaths.isEmpty {
                     writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: nil)
@@ -198,7 +203,8 @@ struct HostHelperScript: Sendable, Equatable {
                     []
                 }
             lines = usageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits, folder: "tmux", flag: "--tmux",
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, folder: "tmux", flag: "--tmux",
                 name: socket, prepare: prepare, nonce: nonce)
         case .refreshTmuxPaths(let socket, let storedPaths):
             lines = [
@@ -259,12 +265,35 @@ struct HostHelperScript: Sendable, Equatable {
     }
 
     private static func usageQuery(
-        timeZone: String, claudeLimits: Bool, folder: String, flag: String, name: String,
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool,
+        folder: String, flag: String, name: String,
         prepare: [String], nonce: String
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
         let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) \(flag) \(quote(name))\(flags)"
+        var setupExtra: [String] = []
+        let runRecorded: [String]
+        let runService: [String]
+        if codexLimits && agyLimits {
+            runRecorded = ["  \"$__h_node\" \(query)"]
+            runService = ["      \"$__h_service_node\" \(query)"]
+        } else {
+            // Helpers older than 0.5.8 lack `--no-agy-limits`; older than 0.5.9 lack `--no-codex-limits`.
+            setupExtra.append("  __h_extra=''")
+            if !codexLimits {
+                setupExtra.append(
+                    "  grep -q 'no-codex-limits' \"$__h_app/usage-query.js\" 2>/dev/null && __h_extra=\"$__h_extra --no-codex-limits\""
+                )
+            }
+            if !agyLimits {
+                setupExtra.append(
+                    "  grep -q 'no-agy-limits' \"$__h_app/usage-query.js\" 2>/dev/null && __h_extra=\"$__h_extra --no-agy-limits\""
+                )
+            }
+            runRecorded = ["  \"$__h_node\" \(query)$__h_extra"]
+            runService = ["      \"$__h_service_node\" \(query)$__h_extra"]
+        }
         return [
             "LC_ALL=C; export LC_ALL",
             "umask 077",
@@ -281,7 +310,7 @@ struct HostHelperScript: Sendable, Equatable {
         ] + prepare + [
             "  if ! IFS= read -r __h_node < \"$__h_target/runtime-node\"; then \(missing); return 0; fi 2>/dev/null",
             "  case \"$__h_node\" in /*) ;; *) \(missing); return 0 ;; esac",
-            "  \"$__h_node\" \(query)",
+        ] + setupExtra + runRecorded + [
             "  __h_result=$?",
             "  case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
             // The record names the binary the Helper started on, while the
@@ -300,7 +329,7 @@ struct HostHelperScript: Sendable, Equatable {
             "  esac",
             "  case \"$__h_service_node\" in *\\\\*) ;; /*)",
             "    if [ \"$__h_service_node\" != \"$__h_node\" ] && [ -f \"$__h_service_node\" ] && [ -x \"$__h_service_node\" ]; then",
-            "      \"$__h_service_node\" \(query)",
+        ] + runService + [
             "      __h_result=$?",
             "      case \"$__h_result\" in 126|127) ;; *) return \"$__h_result\" ;; esac",
             "    fi ;;",

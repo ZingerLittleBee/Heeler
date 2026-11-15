@@ -283,6 +283,29 @@ conversation (`--conversation`, `-c`) appends after the next prompt a
 low-priority `[Notice] All your subagents and background tasks have been
 stopped due to server restart. …`, whether or not anything was running.
 
+**Subagents (agy 1.5.9, 100 local transcripts, 2026-11-15).** `invoke_subagent`
+(`Role`, `TypeName`, `Prompt`, optional `Model` and `Workspace`) writes a
+`GENERIC` `DONE` step whose body starts with `Created the following subagent:`
+followed by a JSON object `{ "conversationId": "<uuid>", "logAbsoluteUri": …,
+"workspaceUris": […] }`. The parent then ends its foreground turn and returns
+to the idle prompt (`herdr` 0.9.5 reports `idle` by design, since `agy.toml`
+treats a prompt waiting on background tasks or subagents as idle). When the
+subagent finishes its turn and messages its parent, the parent records a
+`SYSTEM_MESSAGE` with `sender=<conversationId>` and `content=<report>` (the
+subagent's own closing turn winds down to `idle` a few seconds after that
+`send_message` executes). A subagent runtime failure arrives as a
+`SYSTEM_MESSAGE` with `sender=system` and `content=The subagent <role> (<type>)
+with id "<conversationId>" encountered an error and has either stopped or
+failed to start execution: <detail>`. Sending `send_message` (`Recipient:
+"<conversationId>"`, `GENERIC` `DONE`) revives an idle, errored or
+restart-stopped subagent for another turn; `manage_subagents` with `Action:
+"kill"` (`ConversationIds: [...]`) or `"kill_all"` ends it permanently, and
+`"list"` prints `You have N active subagent(s):` followed by a JSON array with
+`conversationId`, `role`, `type`, `state` (`running`, `waiting_for_dependents`,
+`idle`, `errored`) and `lastStepTime`. `manage_task` `list` prints a JSON array
+with `taskId`, `toolName`, `description`, `toolSummary` and `startTime`, and
+`kill` prints `Task "<taskId>" cancelled.`.
+
 **Compaction.** `/compact` reaches the model as an ordinary prompt; no
 `type` marks it in history. Its result is one `CHECKPOINT`, whose content
 holds `# Resuming from a compaction`, a `<summary>` with numbered bold

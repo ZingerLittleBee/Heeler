@@ -102,7 +102,8 @@ struct ChatMarkdownView: View {
                 result[run.range].font = runFont.monospaced()
             }
             if opensImages, let path = run[ChatImageLink.PathAttribute.self] {
-                result[run.range].link = ChatImageLink.url(for: path)
+                result[run.range].link = ChatImageLink.url(
+                    for: path, title: run[ChatImageLink.TitleAttribute.self])
             }
         }
         return result
@@ -117,7 +118,8 @@ struct ChatMarkdownView: View {
         var result = content
         for run in content.runs {
             if let path = run[ChatImageLink.PathAttribute.self] {
-                result[run.range].link = ChatImageLink.url(for: path)
+                result[run.range].link = ChatImageLink.url(
+                    for: path, title: run[ChatImageLink.TitleAttribute.self])
             }
         }
         return result
@@ -155,7 +157,15 @@ struct ChatMarkdownView: View {
 /// Opens an image file a message names, by its path as written
 /// (`ChatImageLink`). Rows that can open images put one in the environment.
 struct ChatImageOpener {
-    let open: @MainActor (String) -> Void
+    let open: @MainActor (String, String?) -> Void
+
+    init(open: @escaping @MainActor (String, String?) -> Void) {
+        self.open = open
+    }
+
+    init(open: @escaping @MainActor (String) -> Void) {
+        self.open = { path, _ in open(path) }
+    }
 }
 
 extension EnvironmentValues {
@@ -168,8 +178,8 @@ extension View {
     /// the model wrote acts on the phone.
     func chatMessageLinks(opener: ChatImageOpener?) -> some View {
         environment(\.openURL, OpenURLAction { url in
-            if let path = ChatImageLink.path(opening: url) {
-                opener?.open(path)
+            if let reference = ChatImageLink.opening(url) {
+                opener?.open(reference.path, reference.title)
                 return opener == nil ? .discarded : .handled
             }
             return ChatLinkPolicy.allows(url) ? .systemAction : .discarded

@@ -161,6 +161,85 @@ struct AgyTaskPanelTests {
         #expect(!AgyBackgroundTaskStop.showsTasksPopup(screen))
     }
 
+    @Test func screenEvidenceConfirmsRunningTasksAndRetiresStoppedOrExitedWork() throws {
+        let now = Date(timeIntervalSince1970: 1_791_300_000)
+        let launched = now.addingTimeInterval(-14_100)
+        func cmd(_ id: String, _ title: String) -> ChatBackgroundWorkItem {
+            ChatBackgroundWorkItem(
+                id: id, kind: .command, title: title, state: .running, launchOffset: 0, launchedAt: launched)
+        }
+        let subagent = ChatBackgroundWorkItem(
+            id: "agy:subagent:11111111-1111-4000-8000-000000000001", kind: .subagent, title: "Codebase Researcher",
+            state: .running, launchOffset: 0, launchedAt: launched)
+
+        // Idle strip (`agy-170`, `sleep 40` running, `1 task(s)`): confirms the
+        // matched command, stops an unmatched command, and leaves subagents alone.
+        let sleep40 = cmd("agy:task:conv/task-1", "sleep 40")
+        let other = cmd("agy:task:conv/task-2", "pytest -q")
+        let idleStrip = AgyScreen(try ScreenFixture.screen("agy-170-plain-idle-background-task-after-esc-120x40"))
+        let stripEvidence = idleStrip.backgroundWorkEvidence(for: [sleep40, other, subagent], at: now)
+        #expect(stripEvidence[sleep40.id] == ChatBackgroundWorkEvidence(lastSeenAt: now))
+        #expect(stripEvidence[other.id]?.endedState == .stopped)
+        #expect(stripEvidence[subagent.id] == nil)
+
+        // Down-focused colorless task strip (`agy-180`, `> ● [03:08:03] sleep 40 running`):
+        // still confirms the running command without altering composer input detection.
+        let focusedStrip = AgyScreen(try ScreenFixture.screen("agy-180-plain-active-task-focused-by-down-120x40"))
+        #expect(focusedStrip.showsRunningTasks)
+        #expect(focusedStrip.backgroundWorkEvidence(for: [sleep40], at: now)[sleep40.id]?.lastSeenAt == now)
+        #expect(focusedStrip.backgroundWorkEvidence(for: [sleep40], at: now)[sleep40.id]?.endedState == nil)
+
+        // Multi-line truncated command in the strip (`● [16:00:42] python3 -c ' import subprocess, t... running`):
+        let pythonCmd = cmd(
+            "agy:task:conv/task-3",
+            "python3 -c '\nimport subprocess, time\nsubprocess.run([\"python3\", \"scripts/scratch.py\"])\n'")
+        let rule = String(repeating: "\u{2500}", count: 62)
+        let truncatedScreen = ScreenFixture.synthetic([
+            rule,
+            ">",
+            rule,
+            "  \u{25CF} [16:00:42] python3 -c ' import subprocess, t... running",
+            rule,
+            "? for shortcuts       Gemini 3.1 Pro \u{00B7} high \u{00B7} 1 task(s) \u{00B7} /tasks",
+        ])
+        let truncatedEvidence = AgyScreen(truncatedScreen).backgroundWorkEvidence(for: [pythonCmd, other], at: now)
+        #expect(truncatedEvidence[pythonCmd.id] == ChatBackgroundWorkEvidence(lastSeenAt: now))
+        #expect(truncatedEvidence[other.id]?.endedState == .stopped)
+
+        // Active agy started below an exited agy (`agy-192`, `sleep 60` running):
+        let sleep60 = cmd("agy:task:conv/task-45", "sleep 60")
+        let underExited = AgyScreen(try Self.captured("agy-192-core-idle-background-task-under-exited-agy-200x113"))
+        #expect(!underExited.hasExited)
+        #expect(underExited.backgroundWorkEvidence(for: [sleep60], at: now)[sleep60.id] == ChatBackgroundWorkEvidence(lastSeenAt: now))
+
+        // Popup over a running task (`agy-182`): confirms liveness, never retires unmatched items.
+        let popup = AgyScreen(try Self.captured("agy-182-tasks-popup-62x46"))
+        let popupEvidence = popup.backgroundWorkEvidence(for: [sleep60, other], at: now)
+        #expect(popupEvidence[sleep60.id] == ChatBackgroundWorkEvidence(lastSeenAt: now))
+        #expect(popupEvidence[other.id]?.endedState == nil)
+
+        // `/tasks` panel after `k` (`agy-184`): retires the cancelled command.
+        let killedPanel = AgyScreen(try Self.captured("agy-184-tasks-panel-after-k-62x46"))
+        let killedEvidence = killedPanel.backgroundWorkEvidence(for: [sleep60, subagent], at: now)
+        #expect(killedEvidence[sleep60.id]?.endedState == .stopped)
+        #expect(killedEvidence[subagent.id] == nil)
+
+        // Idle unobstructed box with no tasks (`agy-185`): retires tasks, keeps subagent untouched.
+        let idleEmpty = AgyScreen(try Self.captured("agy-185-idle-after-tasks-62x46"))
+        let emptyEvidence = idleEmpty.backgroundWorkEvidence(for: [sleep60, subagent], at: now)
+        #expect(emptyEvidence[sleep60.id]?.endedState == .stopped)
+        #expect(emptyEvidence[subagent.id] == nil)
+
+        // Exited agy (`agy-88` and `agy-151`): retires both tasks and subagents.
+        for exitedStem in ["agy-88-exit-with-conversation-120x40", "agy-151-nocolor-exit-with-conversation-92x47"] {
+            let exited = AgyScreen(try Self.captured(exitedStem))
+            #expect(exited.hasExited)
+            let exitedEvidence = exited.backgroundWorkEvidence(for: [sleep60, subagent], at: now)
+            #expect(exitedEvidence[sleep60.id]?.endedState == .stopped)
+            #expect(exitedEvidence[subagent.id]?.endedState == .stopped)
+        }
+    }
+
     private static func panel(_ stem: String) -> AgyScreen.TaskPanel? {
         (try? ScreenFixture.screen(stem)).flatMap { AgyScreen($0).taskPanel }
     }

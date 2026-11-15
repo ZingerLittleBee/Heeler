@@ -58,20 +58,20 @@ Keep the network private and keep automatic IPv4 addresses on. If its address ra
 
 ## 4. Heeler: add the Mac as a Host
 
-In **Hosts > Add Host**, tap **Add Route** under **Routes** and follow [Connect from Heeler](overlay-networks.md#connect-from-heeler) with these values:
+In **Hosts**, tap **+** and follow [Connect from Heeler](overlay-networks.md#connect-from-heeler) with these values:
 
 | Field | Value |
 | --- | --- |
+| Address | The Mac's managed IP, without the `/` part |
 | User | Your Mac username |
-| Network (in Route) | The ZeroTier network you just connected |
-| Address (in Route) | The Mac's managed IP, without the `/` part |
-| Port (in Route) | The Mac's SSH port, normally `22` |
-| Jump Host (in Route) | Blank |
+| Network (in More Options) | The ZeroTier network you just connected |
+| Port (in More Options) | The Mac's SSH port, normally `22` |
+| Jump Host (in More Options) | Blank |
 | Authentication | The sign-in method you picked |
 
-Type the IP address, not a name or an ID from Heeler's network screen. Save the route, then save the Host.
+Type the IP address, not a name or an ID from Heeler's network screen. Then tap **Connect**.
 
-Check the fingerprint, let the Host checks finish, then [verify the connection](overlay-networks.md#verify-the-connection).
+Tap **Trust and Continue** only if the fingerprint matches, add the Host with the Servers you want checked, then [verify the connection](overlay-networks.md#verify-the-connection).
 
 ## Troubleshooting
 

@@ -34,7 +34,9 @@ struct HostHelperFiles: HostNotificationFiles {
 
     /// The Helper's report for this target. Throws `AgentUsageHostHelperNeed`
     /// when no Helper here can answer.
-    func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+    func readUsage(
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool = true, agyLimits: Bool = true
+    ) async throws -> AgentUsageReport {
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
             throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
@@ -42,8 +44,8 @@ struct HostHelperFiles: HostNotificationFiles {
         switch target {
         case .coreSession(let session):
             step = .usageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits,
-                session: HerdrCoreSessionName.normalized(session))
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, session: HerdrCoreSessionName.normalized(session))
         case .tmuxSocket(let socket, let paths):
             let normalized = TmuxSocketName.normalized(socket)
             let storedPaths = paths.flatMap {
@@ -52,8 +54,8 @@ struct HostHelperFiles: HostNotificationFiles {
                     : nil
             }
             step = .tmuxUsageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits,
-                socket: normalized, storedPaths: storedPaths)
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, socket: normalized, storedPaths: storedPaths)
         }
         let script = HostHelperScript(step, nonce: nonce())
         let result = try await host.runHostHelperScript(script)
@@ -62,9 +64,12 @@ struct HostHelperFiles: HostNotificationFiles {
 
     /// The query is the Helper's own, wherever a plugin would sit.
     func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+        agyLimits: Bool = true, pluginRoot: String
     ) async throws -> AgentUsageReport {
-        try await readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        try await readUsage(
+            timeZone: timeZone, claudeLimits: claudeLimits,
+            codexLimits: codexLimits, agyLimits: agyLimits)
     }
 
     func readNotificationRegistration() async throws -> Data? {

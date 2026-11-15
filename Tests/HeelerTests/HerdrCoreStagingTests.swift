@@ -128,9 +128,11 @@ struct HerdrCoreStagingTests {
             "/tmp/heeler-stage/stage-0/image.jpg", "/tmp/heeler-stage/stage-1/meeting_notes.txt",
         ])
         #expect(staged.last?.contents == contents)
+        #expect(session.composer.readyImagePaths == ["/tmp/heeler-stage/stage-0/image.jpg"])
+        #expect(session.composer.draft == "/tmp/heeler-stage/stage-1/meeting_notes.txt ")
         #expect(
-            session.composer.draft
-                == "/tmp/heeler-stage/stage-0/image.jpg /tmp/heeler-stage/stage-1/meeting_notes.txt ")
+            session.composer.composedDraft
+                == "/tmp/heeler-stage/stage-1/meeting_notes.txt /tmp/heeler-stage/stage-0/image.jpg ")
 
         // The path waits in the draft; delivering it is Send's job.
         #expect(Set(await fixture.scripted.methods).isSubset(of: Self.consoleReads))

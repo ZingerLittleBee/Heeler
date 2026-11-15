@@ -57,31 +57,33 @@ final class AgentUsageWidgetPublisher {
         return now.timeIntervalSince(last) >= Self.staleInterval
     }
 
-    /// Every catalog Host's reading, in catalog order.
+    /// Every catalog Host's reading, in catalog order: one for each Host,
+    /// under its `AgentUsageHost` id.
     func publish(_ readings: [AgentUsageWidgetReading], now: Date = .now) {
         commit(UsageWidgetSnapshot(readings: readings, previous: published, now: now))
     }
 
-    /// Readings for some of `hosts`; every other Host keeps what the snapshot holds.
-    func publish(_ readings: [AgentUsageWidgetReading], updating hosts: [Host], now: Date = .now) {
+    /// Readings for some of the Hosts `records` reach; every other Host keeps
+    /// what the snapshot holds.
+    func publish(_ readings: [AgentUsageWidgetReading], updating records: [Host], now: Date = .now) {
         let read = Dictionary(readings.map { ($0.id, $0) }) { _, last in last }
         let previous = published
-        commit(UsageWidgetSnapshot(hosts: hosts.map { host in
+        commit(UsageWidgetSnapshot(hosts: AgentUsageHost.grouped(records).map { host in
             if let reading = read[host.id] {
                 return UsageWidgetSnapshot.Host(reading: reading, previous: previous, now: now)
             }
             if var kept = previous?.host(host.id) {
-                kept.name = host.displayName
+                kept.name = host.name
                 return kept
             }
-            return UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, excludedReason: .notReadYet)
+            return UsageWidgetSnapshot.Host(id: host.id, name: host.name, excludedReason: .notReadYet)
         }))
     }
 
-    /// Usage is off: every Host loses its figures and names why.
-    func publishUsageOff(hosts: [Host]) {
-        commit(UsageWidgetSnapshot(hosts: hosts.map { host in
-            UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, excludedReason: .usageOff)
+    /// Usage is off: every Host `records` reach loses its figures and names why.
+    func publishUsageOff(hosts records: [Host]) {
+        commit(UsageWidgetSnapshot(hosts: AgentUsageHost.grouped(records).map { host in
+            UsageWidgetSnapshot.Host(id: host.id, name: host.name, excludedReason: .usageOff)
         }))
     }
 
@@ -110,12 +112,16 @@ extension UsageWidgetSnapshot.Host {
         case .available(let report):
             let readAt = reading.readAt ?? now
             // A reading made while the app was away is newer than the
-            // report the app still holds from before.
+            // report the app still holds from before. Any later read is the
+            // Host's latest answer: its Accounts and this device's opt-out
+            // are current even while its figures are the last run's, so it
+            // replaces what the snapshot holds and is dated by its figures.
             if var kept, let keptAt = kept.readAt, keptAt > readAt {
                 kept.name = reading.name
                 self = kept
             } else {
-                self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
+                self.init(
+                    id: reading.id, name: reading.name, report: report, readAt: report.figuresDate(readAt: readAt))
             }
         case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.exclusion(for: reading.state))
@@ -182,7 +188,7 @@ extension UsageWidgetSnapshot.Limits {
             self.init(
                 program: card.program, name: name, account: account, accountID: accountID, message: reason,
                 isLastReading: false, source: nil, observedAt: nil, windows: [])
-        case .claudeToggle:
+        case .claudeToggle, .codexToggle, .agyToggle:
             return nil
         }
     }

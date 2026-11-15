@@ -18,7 +18,7 @@ struct AgentUsageStoreTests {
             #expect(today["unpricedTokens"] is Int)
         }
         let report = try AgentUsageFixture.report()
-        #expect(report.pricingVersion == "2026-10-30")
+        #expect(report.pricingVersion == "2026-11-15")
         for program in report.programs ?? [] {
             #expect(program.tokenUsage.totals?.today.estimatedCostUSD != nil)
             #expect(program.tokenUsage.totals?.today.unpricedTokens == 0)
@@ -574,11 +574,12 @@ enum AgentUsageFixture {
     private final class BundleLocator {}
 
     /// The shared vector as a plugin before Codex Accounts (0.8.x) reports
-    /// it: Codex's `accounts` and `accountSuggestions` left out, so the
-    /// Claude Code Account cases keep one Codex entry.
+    /// it: Antigravity and Codex's `accounts` / `accountSuggestions` left
+    /// out, so legacy 2-program cases keep Claude Code and one Codex entry.
     static func data() throws -> Data {
         var object = try #require(JSONSerialization.jsonObject(with: vectorData()) as? [String: Any])
         var programs = try #require(object["programs"] as? [[String: Any]])
+        programs.removeAll { $0["program"] as? String == "agy" }
         for index in programs.indices where programs[index]["program"] as? String == "codex" {
             programs[index].removeValue(forKey: "accounts")
             programs[index].removeValue(forKey: "accountSuggestions")
@@ -587,14 +588,24 @@ enum AgentUsageFixture {
         return try JSONSerialization.data(withJSONObject: object)
     }
 
-    /// The shared vector as plugin 0.9.0 writes it, Codex Accounts included.
+    /// The shared vector as plugin 0.10.0 writes it, Antigravity and Codex
+    /// Accounts included.
     static func vectorData() throws -> Data {
         let url = try #require(Bundle(for: BundleLocator.self)
             .url(forResource: "usage-v1", withExtension: "json"))
         return try Data(contentsOf: url)
     }
 
+    /// The shared vector as plugin 0.9.0 writes it, Codex Accounts included.
     static func codexAccountsReport() throws -> AgentUsageReport {
+        var object = try #require(JSONSerialization.jsonObject(with: vectorData()) as? [String: Any])
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        programs.removeAll { $0["program"] as? String == "agy" }
+        object["programs"] = programs
+        return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+    }
+
+    static func antigravityReport() throws -> AgentUsageReport {
         try AgentUsageReport.decode(vectorData())
     }
 
@@ -776,10 +787,20 @@ struct ClaudeUsagePreferenceTests {
                     Issue.record("Demo Usage must be sample data, not \(state)")
                     return
                 }
-                #expect(report.programs?.map(\.program) == ["claude", "codex"])
+                #expect(report.programs?.map(\.program) == ["claude", "codex", "agy"])
                 #expect(report.timeZone == "Asia/Kolkata")
                 #expect(report.programs?.first?.usageLimits.state == (claudeLimits ? "ok" : "disabled"))
+                #expect(report.codexProgram?.usageLimits.state == "ok")
+                #expect(report.agyProgram?.usageLimits.state == "ok")
                 #expect(report.programs?.last?.usageLimits.windows?.allSatisfy { !$0.expired } == true)
+                let codexOff = try await AgentUsageStore.read(
+                    over: transport, timeZone: "Asia/Kolkata", claudeLimits: claudeLimits, codexLimits: false)
+                if case .available(let codexOffReport) = codexOff {
+                    #expect(codexOffReport.codexProgram?.usageLimits.state == "disabled")
+                    #expect(codexOffReport.codexProgram?.tokenUsage.state == "ok")
+                } else {
+                    Issue.record("Demo Usage with codexLimits off must be sample data, not \(codexOff)")
+                }
                 var calendar = Calendar(identifier: .gregorian)
                 calendar.timeZone = try #require(TimeZone(identifier: "Asia/Kolkata"))
                 let today = calendar.dateComponents([.year, .month, .day], from: Date())
@@ -894,3 +915,175 @@ struct ClaudeUsagePreferenceTests {
         }
     }
 #endif
+
+@MainActor
+@Suite("Antigravity usage", .timeLimit(.minutes(1)))
+struct AntigravityUsageTests {
+    @Test func theSharedVectorCarriesAntigravityUsageLimitsAndAccounts() throws {
+        let report = try AgentUsageFixture.antigravityReport()
+        #expect(report.programs?.map(\.program) == ["claude", "codex", "agy"])
+        let agy = try #require(report.agyProgram)
+        #expect(agy.displayName == "Antigravity")
+        #expect(agy.tokenUsage.state == "ok")
+        #expect((agy.tokenUsage.totals?.today.tokens.total ?? 0) > 0)
+        #expect(agy.usageLimits.state == "ok")
+        #expect(agy.usageLimits.windows?.map(\.id) == ["agy:gemini_5h", "agy:claude_weekly"])
+        #expect(agy.usageLimits.windows?.map(\.label) == ["Gemini · 5-hour", "Claude & GPT · Weekly"])
+        #expect(agy.accounts?.map(\.displayName) == ["Default", "agy-work"])
+        #expect(agy.accounts?.first?.usageLimits?.state == "ok")
+        #expect(agy.accounts?.last?.usageLimits?.state == "unavailable")
+        #expect(agy.accounts?.last?.usageLimits?.reason == "singleSignIn")
+        #expect(agy.accountSuggestions?.map(\.name) == ["antigravity-cli-personal"])
+    }
+
+    @Test func antigravityLimitsAreEnabledByDefaultAndCanBeTurnedOffPerHost() async throws {
+        let suite = "AntigravityUsageTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hostID = UUID()
+        let report = try AgentUsageFixture.antigravityReport()
+        let transport = ScriptedTransport()
+        await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.10.0")))
+        await transport.setAgentUsage(.success(report))
+        let provider = ScriptedTransportProvider(transports: [hostID: transport])
+        let store = AgentUsageStore(hostID: hostID, transports: provider, defaults: defaults)
+
+        #expect(store.agyLimitsEnabled == true)
+        await store.refresh()
+        #expect(await transport.agentUsageAgyLimits == [true])
+        if case .available(let shown) = store.state {
+            #expect(shown.agyProgram?.usageLimits.state == "ok")
+        } else {
+            Issue.record("Expected report")
+        }
+
+        // Turning off hides cached windows immediately and re-queries with agyLimits = false.
+        store.agyLimitsEnabled = false
+        if case .available(let hidden) = store.state {
+            #expect(hidden.agyProgram?.usageLimits.state == "disabled")
+            #expect(hidden.agyProgram?.accounts?.compactMap(\.usageLimits?.state) == ["disabled", "disabled"])
+            #expect(AgentUsageLimitsCard.cards(for: hidden).filter { $0.program == "agy" } == [.agyToggle])
+        } else {
+            Issue.record("Expected hidden report")
+        }
+        await transport.setAgentUsage(.success(report.hidingAgyLimits()))
+        await store.refresh()
+        #expect(await transport.agentUsageAgyLimits == [true, false])
+
+        // Turning back on shows "Reading" for the Default Account while added Accounts keep singleSignIn.
+        store.agyLimitsEnabled = true
+        if case .available(let reading) = store.state {
+            #expect(reading.agyProgram?.usageLimits.state == "unavailable")
+            #expect(reading.agyProgram?.usageLimits.reason == "notReadYet")
+            #expect(reading.agyProgram?.accounts?.first?.usageLimits?.reason == "notReadYet")
+            #expect(reading.agyProgram?.accounts?.last?.usageLimits?.reason == "singleSignIn")
+        } else {
+            Issue.record("Expected reading report")
+        }
+
+        // Removing the Host clears its Antigravity preference so a new Host starts enabled.
+        store.agyLimitsEnabled = false
+        #expect(AgentUsageStore.isAgyLimitsEnabled(in: defaults, for: hostID) == false)
+        let catalog = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        try catalog.add(Host(id: hostID, name: "Mac", address: "mac.local", username: "u"))
+        try catalog.remove(hostID)
+        #expect(AgentUsageStore.isAgyLimitsEnabled(in: defaults, for: hostID) == true)
+    }
+
+    @Test func pluginsOlderThan0100NeverReceiveNoAgyLimitsFlag() async throws {
+        let suite = "AntigravityOldPlugin.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hostID = UUID()
+        defaults.set(false, forKey: AgentUsageStore.agyLimitsPreferenceKey(for: hostID))
+        let transport = ScriptedTransport()
+        await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.9.0")))
+        await transport.setAgentUsage(.success(try AgentUsageFixture.codexAccountsReport()))
+        let provider = ScriptedTransportProvider(transports: [hostID: transport])
+        let store = AgentUsageStore(hostID: hostID, transports: provider, defaults: defaults)
+
+        await store.refresh()
+        #expect(await transport.agentUsageAgyLimits == [true])
+    }
+}
+
+@MainActor
+@Suite("Codex usage preference", .timeLimit(.minutes(1)))
+struct CodexUsagePreferenceTests {
+    @Test func codexLimitsAreEnabledByDefaultAndCanBeTurnedOffPerHost() async throws {
+        let suite = "CodexUsagePreferenceTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hostID = UUID()
+        let report = try AgentUsageFixture.codexAccountsReport()
+        let transport = ScriptedTransport()
+        await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.10.0")))
+        await transport.setAgentUsage(.success(report))
+        let provider = ScriptedTransportProvider(transports: [hostID: transport])
+        let store = AgentUsageStore(hostID: hostID, transports: provider, defaults: defaults)
+
+        #expect(store.codexLimitsEnabled == true)
+        await store.refresh()
+        #expect(await transport.agentUsageCodexLimits == [true])
+
+        // Turning off hides cached windows immediately, rejects an in-flight opted-in read,
+        // preserves Token Usage, and re-queries with codexLimits = false.
+        let gate = ScriptedTransportCallGate()
+        await transport.setAgentUsage(.success(try AgentUsageFixture.costReport(cost: 9.99, unpriced: 0)))
+        await transport.gateNextAgentUsageRead(gate)
+        let inFlight = Task { await store.refresh() }
+        await gate.waitForEntry()
+        store.codexLimitsEnabled = false
+        guard case .available(let hidden) = store.state else {
+            await gate.open()
+            await inFlight.value
+            Issue.record("Expected hidden report")
+            return
+        }
+        #expect(hidden.codexProgram?.usageLimits.state == "disabled")
+        #expect(hidden.codexProgram?.accounts?.compactMap(\.usageLimits?.state) == ["disabled", "disabled"])
+        #expect(hidden.codexProgram?.tokenUsage == report.codexProgram?.tokenUsage)
+        #expect(AgentUsageLimitsCard.cards(for: hidden).filter { $0.program == "codex" } == [.codexToggle])
+        let hiddenScope = AgentUsageScope(readings: [
+            .init(id: hostID, name: "Mac", state: .available(hidden), refreshFailure: nil,
+                isRetryingRefresh: false, isConnected: true)
+        ])
+        #expect(AgentUsageLimitChip.chips(in: hiddenScope).filter { $0.program == "codex" }.isEmpty)
+        #expect(AgentUsageLimitsStrip.activeReadings(for: hidden).filter { $0.program == "codex" }.isEmpty)
+        #expect(!store.isLoading)
+        await gate.open()
+        await inFlight.value
+        #expect(store.state == .available(hidden))
+
+        await transport.setAgentUsage(.success(report.hidingCodexLimits()))
+        await store.refresh()
+        #expect(await transport.agentUsageCodexLimits == [true, true, false])
+
+        // Turning back on shows "Reading" for all readable Codex Accounts, then failure or live data.
+        store.codexLimitsEnabled = true
+        if case .available(let reading) = store.state {
+            #expect(reading.codexProgram?.usageLimits.state == "unavailable")
+            #expect(reading.codexProgram?.usageLimits.reason == "notReadYet")
+            #expect(reading.codexProgram?.accounts?.compactMap(\.usageLimits?.reason) == ["notReadYet", "notReadYet"])
+        } else {
+            Issue.record("Expected reading report")
+        }
+
+        await transport.setAgentUsage(.failure(TransportError.sshUnreachable(detail: "offline")))
+        await store.pullToRefresh()
+        if case .available(let failed) = store.state {
+            #expect(failed.codexProgram?.usageLimits.state == "error")
+            #expect(failed.codexProgram?.usageLimits.reason == "requestFailed")
+        } else {
+            Issue.record("Expected failed report")
+        }
+
+        // Removing the Host clears its Codex preference so a new Host starts enabled.
+        store.codexLimitsEnabled = false
+        #expect(AgentUsageStore.isCodexLimitsEnabled(in: defaults, for: hostID) == false)
+        let catalog = HostStore(defaults: defaults, secrets: InMemorySecretStore())
+        try catalog.add(Host(id: hostID, name: "Mac", address: "mac.local", username: "u"))
+        try catalog.remove(hostID)
+        #expect(AgentUsageStore.isCodexLimitsEnabled(in: defaults, for: hostID) == true)
+    }
+}

@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/windows-setup.md at b42822c8 -->
+<!-- Translated from docs/guides/windows-setup.md at d65d8b36 -->
 # Windows 配置
 
 为 Heeler 配置原生 Windows Host，包括 SSH 登录以及 SSH 与 herdr 的开机自启。
@@ -99,22 +99,23 @@ ipconfig
 
 对于本地账户，请使用 `whoami` 输出中计算机名称后面的用户名，并使用当前活动网络适配器的 IPv4 地址。
 
-在 Heeler 中前往 **Hosts > Add Host**，先在 **Routes** 下轻点 **Add Route** 填写地址和端口并保存，再填写其余 Host 字段：
+在 Heeler 中打开 **Hosts**，轻点 **+**，并填写第一步：
 
 | 字段 | 值 |
 | --- | --- |
+| Address | 手机可访问到的 Windows 地址 |
 | User | 运行 herdr 的 Windows 账户名 |
-| Address（在 Route 中） | 手机可访问到的 Windows 地址 |
-| Port（在 Route 中） | `22`（除非配置了其他 SSH 端口） |
+| Port（在 More Options 中） | `22`（除非配置了其他 SSH 端口） |
 | Authentication | `Password` |
 | Password | Windows 账户密码（而非 Windows Hello PIN 码） |
-| herdr Session | `heeler-win-test` |
 
-在信任首次连接之前，请将 Heeler 显示的 SSH 主机密钥指纹与 Windows 上对应的主机公钥进行比对。对于 Ed25519 密钥：
+轻点 **Connect**。在轻点 **Trust and Continue** 之前，请将 Heeler 显示的 SSH 主机密钥指纹与 Windows 上对应的主机公钥进行比对。对于 Ed25519 密钥：
 
 ```powershell
 ssh-keygen -lf "$env:ProgramData\ssh\ssh_host_ed25519_key.pub"
 ```
+
+在最后一步，保持勾选 **Herdr TUI · heeler-win-test**，然后添加 Host。
 
 连接检查应当全部通过，随后控制台（Console）会显示所选会话中的终端（Terminals）和 Agent（Agents）。你也可以从另一台设备测试 SSH：
 

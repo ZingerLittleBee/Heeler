@@ -35,6 +35,7 @@ struct OverlayNetworkDetailView: View {
     /// Injected app-wide by `ContentView`; absent in previews, where
     /// machines offer no Add Host….
     @Environment(HostStore.self) private var hostStore: HostStore?
+    @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
 
     private static let adminConsoleURL = URL(string: "https://login.tailscale.com/admin/machines")
 
@@ -74,8 +75,8 @@ struct OverlayNetworkDetailView: View {
         // Leaving the screen abandons a sign-in it started.
         .onDisappear { cancelSignIn() }
         .sheet(item: $hostRequest, onDismiss: {
-            // As in Hosts, wait for the form to close before onboarding can
-            // present its first-connection trust alert (#359, #426).
+            // Hosts opens on the new Host once the wizard's sheet is gone, so
+            // one presentation never starts under another (#359, #426).
             guard let id = pendingOnboardingHostID else { return }
             pendingOnboardingHostID = nil
             onHostAdded(id)
@@ -83,12 +84,15 @@ struct OverlayNetworkDetailView: View {
             if let hostStore {
                 switch request {
                 case .add(let request):
-                    HostFormView(store: hostStore, prefill: request.draft, focusesUsername: true) {
-                        saved in
-                        pendingOnboardingHostID = saved.id
+                    NewHostWizardView(
+                        catalog: hostStore, discoveries: .shared, dependencies: onboardingDependencies,
+                        prefill: request.draft
+                    ) { member in
+                        pendingOnboardingHostID = member
                     }
                 case .edit(let host):
-                    HostFormView(store: hostStore, editing: host)
+                    HostFormView(
+                        store: hostStore, editing: hostStore.machine(containing: host.id)?.formRecord ?? host)
                 }
             }
         }

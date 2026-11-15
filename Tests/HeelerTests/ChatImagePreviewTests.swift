@@ -97,7 +97,78 @@ struct ChatImageLinkTests {
         let url = try #require(ChatImageLink.url(for: path))
         #expect(!ChatLinkPolicy.allows(url))
         #expect(ChatImageLink.path(opening: url) == path)
+        #expect(ChatImageLink.opening(url) == ChatImageLink.Reference(path: path, title: nil))
+        let titledURL = try #require(ChatImageLink.url(for: path, title: "图片 #1"))
+        #expect(ChatImageLink.opening(titledURL) == ChatImageLink.Reference(path: path, title: "图片 #1"))
         #expect(ChatImageLink.path(opening: try #require(URL(string: "https://x.test/?path=/a.png"))) == nil)
+    }
+
+    @Test func stagedImagePathsShortenToNumberedLabelsWhileKeepingTheirHostPaths() {
+        let first =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.Ud2jiH1T/stage-8ecc3e99-15a3-4637-8778-0f6a3f67fb31/image.jpg"
+        let second =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.xMNHghek/stage-2b71c120-91df-42da-a910-12ab34cd56ef/image.png"
+        let label1 = ChatImageLink.stagedImageLabel(number: 1)
+        let label2 = ChatImageLink.stagedImageLabel(number: 2)
+
+        let text = "这个状态显示不对吧 \(first) \(second) "
+        let marked = ChatImageLink.marking(text)
+        #expect(String(marked.characters) == "这个状态显示不对吧 \(label1) \(label2)")
+        #expect(
+            ChatImageLink.references(in: marked) == [
+                ChatImageLink.Reference(path: first, title: label1),
+                ChatImageLink.Reference(path: second, title: label2),
+            ])
+
+        // Non-staged paths stay as written while staged paths shorten.
+        let mixed = ChatImageLink.marking("Compare /tmp/c.png with \(first) and \(first)")
+        #expect(String(mixed.characters) == "Compare /tmp/c.png with \(label1) and \(label1)")
+        #expect(
+            ChatImageLink.references(in: mixed) == [
+                ChatImageLink.Reference(path: "/tmp/c.png", title: nil),
+                ChatImageLink.Reference(path: first, title: label1),
+            ])
+
+        // Native Windows herdr-core staged image paths shorten as well.
+        let windowsPath = #"C:\Users\me\AppData\Local\herdr-core\work\files\t1\image.jpg"#
+        let windowsMarked = ChatImageLink.marking("Check \(windowsPath) ")
+        #expect(String(windowsMarked.characters) == "Check \(label1)")
+        #expect(
+            ChatImageLink.references(in: windowsMarked) == [
+                ChatImageLink.Reference(path: windowsPath, title: label1)
+            ])
+    }
+
+    @Test func stagedUserMessageAndPendingEchoExposeNumberedImagesAndCompactExtent() async {
+        let first = "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.Ud2jiH1T/stage-11111111/image.jpg"
+        let second = "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.Ud2jiH1T/stage-22222222/image.jpg"
+        let label1 = ChatImageLink.stagedImageLabel(number: 1)
+        let label2 = ChatImageLink.stagedImageLabel(number: 2)
+        let rawPrompt = "看看 \(first) \(second) "
+
+        let userEntry = ChatEntry(
+            id: ChatEntryID("user"), sourceOffset: 0,
+            content: .user(ChatUserMessage(text: rawPrompt)))
+        let echo = ChatPendingEcho(
+            id: UUID(), text: rawPrompt, state: .sending, stagedImagePaths: [first, second])
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [userEntry], pending: [echo]))
+
+        #expect(rows.count == 2)
+        let expectedRefs = [
+            ChatImageLink.Reference(path: first, title: label1),
+            ChatImageLink.Reference(path: second, title: label2),
+        ]
+        #expect(rows[0].messageImages == expectedRefs)
+        #expect(rows[1].messageImages == expectedRefs)
+        #expect(rows[0].copyText == rawPrompt)
+        #expect(rows[1].copyText == rawPrompt)
+        #expect((rows[0].extent?.textBytes ?? .max) < 40)
+    }
+
+    @Test func stagedImageLabelShipsTranslationsInEveryLanguage() {
+        #expect(LocalizationTables.table("Localizable", localization: "zh-Hans")?["Image #%@"] == "图片#%@")
+        #expect(LocalizationTables.table("Localizable", localization: "zh-Hant")?["Image #%@"] == "圖片#%@")
+        #expect(LocalizationTables.table("Localizable", localization: "ja")?["Image #%@"] == "画像#%@")
     }
 
     @Test func aSentImagesPlaceholdersOpenTheFilesItCameFrom() {
@@ -474,6 +545,160 @@ struct ChatImagePreviewTests {
             #expect(image.image === thumbnail)
             #expect(!preview.isLoaded)
         }
+    }
+
+    @Test func composerPreviewReadsRetainedLocalImageAndHonorsCustomTitleAndDone() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("image.jpg")
+        let bytes = Self.png()
+        try bytes.write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL, format: .jpeg, pixelWidth: 240, pixelHeight: 160, byteCount: Int64(bytes.count))
+        let previewInfo = ComposerImageAttachment.makePreview(from: prepared)
+        #expect(previewInfo.thumbnail != nil)
+
+        var doneTapped = false
+        let controller = ChatImagePreviewController(
+            path: fileURL.path,
+            displayTitle: "Image 1 · 240×160",
+            placeholder: previewInfo.thumbnail,
+            onDone: { doneTapped = true }
+        ) { _ in
+            try Data(contentsOf: fileURL)
+        }
+        let navigation = UINavigationController(rootViewController: controller)
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 640), rootViewController: navigation) { _ in
+            let deadline = ContinuousClock.now + .seconds(3)
+            while !controller.isLoaded, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(controller.isLoaded)
+            #expect(controller.title == "Image 1 · 240×160")
+            let doneAction = try #require(controller.navigationItem.rightBarButtonItem?.primaryAction)
+            doneAction.performWithSender(nil, target: nil)
+            #expect(doneTapped)
+        }
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func composerImageStripRendersOptionCPills(scheme: ColorScheme) async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-strip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("image.jpg")
+        let bytes = Self.png()
+        try bytes.write(to: fileURL)
+        let prepared = PreparedImage(
+            fileURL: fileURL, format: .jpeg, pixelWidth: 1_280, pixelHeight: 960, byteCount: 145_408)
+        let preview = ComposerImageAttachment.makePreview(from: prepared)
+        let attachments = [
+            ComposerImageAttachment(
+                id: UUID(), preview: preview, phase: .ready(path: "/tmp/heeler/stage-1/image.jpg")),
+            ComposerImageAttachment(
+                id: UUID(), preview: preview,
+                phase: .uploading(AttachmentStageProgress(transferredBytes: 98_000, totalBytes: 145_408))),
+        ]
+        let host = UIHostingController(
+            rootView: ComposerImageStrip(
+                attachments: attachments,
+                onPreview: { _ in },
+                onRetry: { _ in },
+                onRemove: { _ in })
+                .padding(12)
+                .frame(width: 390)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .environment(\.colorScheme, scheme)
+                .fixedSize(horizontal: false, vertical: true))
+        host.safeAreaRegions = []
+        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 120), rootViewController: host) { window in
+            window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
+            host.view.layoutIfNeeded()
+            let labels = AccessibilityProbe.labels(in: host.view)
+            #expect(labels.contains { $0.contains("Image 1") })
+            #expect(labels.contains { $0.contains("Image 2") })
+            let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            Attachment.record(image, named: "composer-image-strip-\(scheme)", as: .png)
+            #expect(image.size.width > 0)
+            #expect(image.size.height > 0)
+        }
+    }
+
+    @Test func composerImageStripAutoScrollsOnAppendAndFinalCompletionWithoutJumpingOnDelete() {
+        let a = UUID(), b = UUID(), c = UUID()
+        let entry = { (id: UUID, phase: ComposerImageAttachment.Phase) in
+            ComposerImageStrip.ScrollEntry(ComposerImageAttachment(id: id, phase: phase))
+        }
+        let progress = AttachmentStageProgress(transferredBytes: 50, totalBytes: 100)
+
+        // Single image stays at leading margin without auto-scrolling.
+        #expect(!ComposerImageStrip.shouldScrollToEnd(from: [], to: [entry(a, .preparing)]))
+        // Appending a second or third image scrolls to the trailing end.
+        let twoUploading = [entry(a, .ready(path: "/a")), entry(b, .uploading(progress))]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: [entry(a, .ready(path: "/a"))], to: twoUploading))
+        // Completing the trailing upload scrolls again once its metadata widens the pill.
+        let twoReady = [entry(a, .ready(path: "/a")), entry(b, .ready(path: "/b"))]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: twoUploading, to: twoReady))
+        // Batch of 3 keeps trailing pinned as earlier items widen, then settles on #3 ready.
+        let threeQueued = [entry(a, .uploading(progress)), entry(b, .queued), entry(c, .queued)]
+        let threeAfterA = [entry(a, .ready(path: "/a")), entry(b, .uploading(progress)), entry(c, .queued)]
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: [], to: threeQueued))
+        #expect(ComposerImageStrip.shouldScrollToEnd(from: threeQueued, to: threeAfterA))
+        // Deleting an attachment never jumps to the end.
+        #expect(!ComposerImageStrip.shouldScrollToEnd(
+            from: [entry(a, .ready(path: "/a")), entry(b, .ready(path: "/b")), entry(c, .ready(path: "/c"))],
+            to: [entry(a, .ready(path: "/a")), entry(c, .ready(path: "/c"))]))
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func sentUserAndPendingBubblesRenderNumberedImageLinksInsteadOfRawStagedPaths(scheme: ColorScheme) async throws {
+        let first =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.Ud2jiH1T/stage-8ecc3e99-15a3-4637-8778-0f6a3f67fb31/image.jpg"
+        let second =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.xMNHghek/stage-2b71c120-91df-42da-a910-12ab34cd56ef/image.png"
+        let label1 = ChatImageLink.stagedImageLabel(number: 1)
+        let label2 = ChatImageLink.stagedImageLabel(number: 2)
+        let prompt = "Check this \(first) \(second) "
+
+        let entry = ChatEntry(
+            id: ChatEntryID("user"), sourceOffset: 0, content: .user(ChatUserMessage(text: prompt)))
+        let echo = ChatPendingEcho(
+            id: UUID(), text: prompt, state: .sending, stagedImagePaths: [first, second])
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry], pending: [echo]))
+        let actions = ChatRowActions(
+            toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
+
+        let view = VStack(spacing: 12) {
+            ForEach(rows) { row in
+                ChatRowView(row: row, isExpanded: false, actions: actions)
+            }
+        }
+        .padding(.vertical, 16)
+        .frame(width: 390)
+        .background(Color(uiColor: .systemBackground))
+        .environment(\.colorScheme, scheme)
+
+        let controller = UIHostingController(rootView: view.fixedSize(horizontal: false, vertical: true))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 320), rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        let labels = AccessibilityProbe.labels(in: controller.view)
+        #expect(labels.contains { $0.contains("\(label1) \(label2)") })
+        #expect(!labels.contains { $0.contains("/var/folders") })
+
+        let rendered = try RenderedBitmap(view, proposedSize: .unspecified, scale: 3)
+        Attachment.record(try rendered.image(), named: "chat-staged-image-bubbles-\(scheme)", as: .png)
+        #expect(rendered.width > 0)
+        #expect(rendered.height > 0)
     }
 
     private static func png() -> Data {

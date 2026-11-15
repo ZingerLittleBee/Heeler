@@ -72,7 +72,7 @@ struct RexHostModelTests {
         #expect(host.rexSocket == nil)
     }
 
-    @Test func editKeepsTheSocketAndACopyLooksItUpAgain() throws {
+    @Test func editKeepsTheSocket() throws {
         let socket = try makeSocket()
         let host = Host(address: "mac.example", username: "dev", serverKind: .rex, rexSocket: socket)
 
@@ -82,10 +82,6 @@ struct RexHostModelTests {
         #expect(edited.serverKind == .rex)
         #expect(edited.rexSocket == socket)
         #expect(edited.sessionName == "")
-
-        let copy = HostDraft(duplicating: host, password: nil, existingNames: [])
-        #expect(copy.serverKind == .rex)
-        #expect(copy.makeHost()?.rexSocket == nil)
     }
 }
 

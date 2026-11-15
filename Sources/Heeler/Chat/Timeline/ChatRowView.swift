@@ -57,7 +57,9 @@ struct ChatRowView: View {
     /// thumbnail opens.
     private var imageOpener: ChatImageOpener {
         let actions = actions
-        return ChatImageOpener { path in actions.previewImage(path, actions.thumbnails?.image(of: path)) }
+        return ChatImageOpener { path, title in
+            actions.previewImage(path, title, actions.thumbnails?.image(of: path))
+        }
     }
 
     @ViewBuilder
@@ -73,11 +75,13 @@ struct ChatRowView: View {
             if let activity = tool.subagentActivity {
                 ChatSubagentActivityRow(activity: activity, isExpanded: isExpanded) { actions.toggle(row.id) }
             } else {
+                let actions = actions
                 ChatToolRow(
                     tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
                     missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
                     files: fileActions, textActions: row.hasInnerControls ? textActions : nil,
-                    thumbnails: actions.thumbnails, previewImage: actions.previewImage)
+                    thumbnails: actions.thumbnails,
+                    previewImage: { path, image in actions.previewImage(path, nil, image) })
             }
         case .plan(let plan, let blocks):
             ChatPlanRow(plan: plan, blocks: blocks)
@@ -140,9 +144,10 @@ private struct ChatRowAccessibility: ViewModifier {
     /// One action per image the message names, as its links open.
     private var imageActions: some View {
         let opener = imageOpener
-        return ForEach(row.messageImagePaths, id: \.self) { @Sendable path in
-            Button("Preview \(RemoteHostPath.lastComponent(of: path))") { @MainActor in
-                opener?.open(path)
+        return ForEach(row.messageImages, id: \.path) { @Sendable image in
+            let name = image.title ?? RemoteHostPath.lastComponent(of: image.path)
+            Button("Preview \(name)") { @MainActor in
+                opener?.open(image.path, image.title)
             }
         }
     }
@@ -183,18 +188,24 @@ private struct ChatUserBubble: View {
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
+        let marked = markedContent
         ChatBubble {
             VStack(alignment: .trailing, spacing: 6) {
                 if let command = message.command {
-                    (Text("/\(command.name)").fontDesign(.monospaced).foregroundStyle(.tint)
-                        + Text(command.arguments.isEmpty ? "" : " \(command.arguments)"))
-                        .font(.body)
+                    if command.arguments.isEmpty {
+                        Text("/\(command.name)").fontDesign(.monospaced).foregroundStyle(.tint)
+                            .font(.body)
+                    } else {
+                        (Text("/\(command.name)").fontDesign(.monospaced).foregroundStyle(.tint)
+                            + Text(verbatim: " ")
+                            + ChatMarkdownView.text(marked, in: .body, opensImages: imageOpener != nil))
+                            .font(.body)
+                            .chatMessageLinks(opener: imageOpener)
+                    }
                 } else {
                     // Image paths open as in the Agent's messages, and so do
                     // the placeholders of images pasted from a file.
-                    ChatMarkdownView.text(
-                        ChatImageLink.marking(message.text, imagePaths: message.imagePaths), in: .body,
-                        opensImages: imageOpener != nil)
+                    ChatMarkdownView.text(marked, in: .body, opensImages: imageOpener != nil)
                         .font(.body)
                         .chatMessageLinks(opener: imageOpener)
                 }
@@ -205,13 +216,29 @@ private struct ChatUserBubble: View {
             // One element with one label: a label on the stack alone goes
             // to each child, and VoiceOver read the text once per chip.
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(accessibilityLabel)
+            .accessibilityLabel(accessibilityLabel(marked: marked))
         }
     }
 
+    private var markedContent: AttributedString {
+        if let command = message.command {
+            return command.arguments.isEmpty
+                ? AttributedString()
+                : ChatImageLink.marking(command.arguments, imagePaths: message.imagePaths)
+        }
+        return ChatImageLink.marking(message.text, imagePaths: message.imagePaths)
+    }
+
     /// "You: text", then what the chips say.
-    private var accessibilityLabel: String {
-        var parts = [String(localized: "You: \(message.displayText)")]
+    private func accessibilityLabel(marked: AttributedString) -> String {
+        let displayText: String
+        if let command = message.command {
+            let arguments = String(marked.characters)
+            displayText = arguments.isEmpty ? "/\(command.name)" : "/\(command.name) \(arguments)"
+        } else {
+            displayText = String(marked.characters)
+        }
+        var parts = [String(localized: "You: \(displayText)")]
         if message.imageCount > 0 {
             parts.append(message.imageCount == 1 ? String(localized: "1 image") : String(localized: "\(message.imageCount) images"))
         }
@@ -256,12 +283,16 @@ private struct ChatAttachmentChips: View {
 
 private struct ChatPendingBubble: View {
     let echo: ChatPendingEcho
+    @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
             ChatBubble {
-                Text(verbatim: echo.text)
+                ChatMarkdownView.text(
+                    ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths),
+                    in: .body, opensImages: imageOpener != nil)
                     .font(.body)
+                    .chatMessageLinks(opener: imageOpener)
             }
             .opacity(echo.state == .sending ? 0.6 : 1)
             if let status {
@@ -583,6 +614,10 @@ private struct ChatSubagentActivityRow: View {
 
     private var presentation: ChatSubagentPresentation { ChatSubagentPresentation(activity: activity) }
 
+    private var hasExpandableContent: Bool {
+        (activity.agentPath?.isEmpty == false) || !presentation.history.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: toggle) {
@@ -596,7 +631,9 @@ private struct ChatSubagentActivityRow: View {
                             .font(.subheadline.weight(.medium))
                             .lineLimit(isExpanded ? nil : 2)
                         Spacer(minLength: 4)
-                        disclosureIcon
+                        if hasExpandableContent {
+                            disclosureIcon
+                        }
                     }
                     Text("\(presentation.status) · \(presentation.eventCount)")
                         .font(.caption)
@@ -608,14 +645,20 @@ private struct ChatSubagentActivityRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .disabled(!hasExpandableContent)
             .accessibilityLabel("Subagent, \(presentation.name)")
             .accessibilityValue(
-                [
-                    presentation.status, presentation.eventCount,
-                    isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"),
-                ].joined(separator: ", "))
-            .accessibilityHint(isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
-            if isExpanded {
+                (
+                    [presentation.status, presentation.eventCount]
+                    + (hasExpandableContent
+                        ? [isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed")]
+                        : [])
+                ).joined(separator: ", "))
+            .accessibilityHint(
+                hasExpandableContent
+                    ? (isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
+                    : "")
+            if isExpanded, hasExpandableContent {
                 VStack(alignment: .leading, spacing: 8) {
                     if let path = activity.agentPath, !path.isEmpty {
                         Text(verbatim: path)
@@ -682,6 +725,15 @@ private struct ChatToolRow: View {
     let previewImage: @MainActor (String, UIImage?) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var titleIsTruncated = false
+
+    private var needsTitleTruncationProbe: Bool {
+        !tool.hasExpandableDetails && !tool.title.contains(where: \.isNewline)
+    }
+
+    private var canExpand: Bool {
+        tool.hasExpandableDetails || tool.title.contains(where: \.isNewline) || titleIsTruncated
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -689,10 +741,7 @@ private struct ChatToolRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
                     // A read that showed an image reads as one.
                     ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
-                    Text(verbatim: tool.title)
-                        .font(.subheadline)
-                        .modifier(ChatFontDesign(isCode: titleIsCode))
-                        .lineLimit(isExpanded ? nil : 1)
+                    titleText
                     if let diff = tool.diff {
                         ChatDiffBadge(diff: diff)
                     }
@@ -701,10 +750,12 @@ private struct ChatToolRow: View {
                             status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer,
                             isNotUpdating: tool.isNotUpdating)
                     }
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
+                    if canExpand {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
+                    }
                     Spacer(minLength: 0)
                 }
                 .font(.subheadline)
@@ -713,8 +764,9 @@ private struct ChatToolRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(hint)
+            .disabled(!canExpand)
+            .accessibilityValue(canExpand ? (isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed")) : "")
+            .accessibilityHint(canExpand ? hint : "")
             .accessibilityActions {
                 if let textActions {
                     Button("Copy", action: textActions.copy)
@@ -725,7 +777,7 @@ private struct ChatToolRow: View {
                 ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
-            if isExpanded {
+            if isExpanded, tool.hasExpandableDetails {
                 details
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
@@ -735,6 +787,22 @@ private struct ChatToolRow: View {
                     missingOutputText: fileMissingOutputText, actions: files)
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var titleText: some View {
+        let base = Text(verbatim: tool.title)
+            .font(.subheadline)
+            .modifier(ChatFontDesign(isCode: titleIsCode))
+            .lineLimit(canExpand && isExpanded ? nil : 1)
+        if needsTitleTruncationProbe {
+            base.modifier(
+                ChatTextTruncationProbe(
+                    text: tool.title, font: .subheadline, isCode: titleIsCode, lineLimit: 1,
+                    isTruncated: $titleIsTruncated))
+        } else {
+            base
         }
     }
 

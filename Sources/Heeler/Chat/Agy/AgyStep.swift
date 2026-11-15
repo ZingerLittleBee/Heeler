@@ -49,6 +49,12 @@ struct AgyStep: Sendable {
         let uri: String?
     }
 
+    struct SystemMessage: Equatable, Sendable {
+        let timestamp: Date?
+        let sender: String?
+        let text: String
+    }
+
     let offset: UInt64
     let length: Int
     let isTruncated: Bool
@@ -199,10 +205,10 @@ struct AgyStep: Sendable {
         return String(lines)
     }
 
-    /// The text of a `<SYSTEM_MESSAGE>`: after the preamble agy puts before
-    /// the tag, which names the tag too, and for a message from another
-    /// sender, after its `[Message] … content=` header.
-    var systemMessageText: String? {
+    /// A `<SYSTEM_MESSAGE>`: after the preamble agy puts before the tag,
+    /// which names the tag too, with the `timestamp` and `sender` of a
+    /// `[Message] … content=` header split out when present.
+    var systemMessage: SystemMessage? {
         guard let content else { return nil }
         var body = content[...]
         if let open = body.range(of: "<SYSTEM_MESSAGE>\n") {
@@ -212,9 +218,25 @@ struct AgyStep: Sendable {
             }
         }
         body = body.drop { $0.isNewline }
-        if body.hasPrefix("[Message]"), let header = body.range(of: " content=") {
-            body = body[header.upperBound...]
+        guard body.hasPrefix("[Message]"),
+            let headerEnd = body.range(of: " content="),
+            !body[..<headerEnd.lowerBound].contains("\n")
+        else {
+            return SystemMessage(timestamp: nil, sender: nil, text: String(body))
         }
-        return String(body)
+        let header = body[..<headerEnd.lowerBound]
+        let timestamp = Self.headerValue("timestamp=", in: header).flatMap(Self.date)
+        let sender = Self.headerValue("sender=", in: header)
+        return SystemMessage(timestamp: timestamp, sender: sender, text: String(body[headerEnd.upperBound...]))
+    }
+
+    /// The text of a `<SYSTEM_MESSAGE>` after any `[Message] … content=`
+    /// header.
+    var systemMessageText: String? { systemMessage?.text }
+
+    private static func headerValue(_ key: String, in header: Substring) -> String? {
+        guard let start = header.range(of: key) else { return nil }
+        let token = header[start.upperBound...].prefix { !$0.isWhitespace }
+        return token.isEmpty ? nil : String(token)
     }
 }

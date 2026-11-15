@@ -10,12 +10,13 @@ Implementation status does not close the real-Host and terms checks under
 
 ## Summary
 
-Heeler shows, per Host, how much of each Claude Code and Codex account's
-Usage Limits is used and when each window resets, beside the Token Usage those
+Heeler shows, per Host, how much of each Claude Code, Codex, and Antigravity
+account's Usage Limits is used and when each window resets, beside the Token Usage those
 programs recorded on the Host over the last 30 days with an estimated API cost.
 
-All collection happens on the Host inside the Heeler herdr plugin. The plugin
-reads Transcripts locally, asks Codex and Claude Code themselves for their
+All collection happens on the Host inside the Heeler herdr plugin (or Host
+Helper on herdr-core and tmux Hosts). The plugin reads Transcripts locally,
+asks Codex, Claude Code, and Antigravity CLI (`agy`) themselves for their
 Usage Limits, and answers the app with a small, filtered JSON document. The
 app reaches the plugin with one bounded SSH exec per query. No SFTP, no new
 port, the plugin never reads a credential, and the user installs nothing
@@ -23,9 +24,9 @@ beyond the plugin.
 
 ## Goals
 
-- Usage Limits for Claude Code and Codex: each window's used percentage and
+- Usage Limits for Claude Code, Codex, and Antigravity CLI: each window's used percentage and
   reset time, with the source and age of the reading.
-- Token Usage for Claude Code and Codex: today, the last 7 days and the last
+- Token Usage for Claude Code, Codex, and Antigravity CLI: today, the last 7 days and the last
   30 days; a 30-day daily series; a per-model split; the top 10 working
   directories over 30 days. Each with an estimated API cost where the model is
   priced.
@@ -563,6 +564,12 @@ size:
 
 ### Codex
 
+Per-Host Codex limits are enabled by default on each device
+(`usage.codex-limits.<hostID>`), with a toggle in Usage Limits to turn them off.
+When turned off, Heeler hides cached Codex limits (`disabled`), keeps local
+Token Usage, and passes `--no-codex-limits` when supported so the worker skips
+spawning `codex app-server`.
+
 1. **Primary:** `codex -s read-only -a never app-server` over stdio JSON-RPC,
    using the `codex` and the environment recorded in `runtime.json` (`PATH`,
    `HOME`, `CODEX_HOME`, proxy and CA variables): `initialize` → `initialized` → `account/read` →
@@ -722,11 +729,13 @@ OAuth token and calling `/api/oauth/usage` directly was rejected (ADR 0028).
 ## Accounts
 
 Claude Code usage is read per Account
-([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md)), and
-since plugin 0.9.0 Codex usage too, from the Account file's `programs.codex`
-section. Codex's Default Account is `${CODEX_HOME:-~/.codex}` in the
-recorded environment. The rules below are Claude Code's; Codex's differ only
-where [Codex Accounts](#codex-accounts) says.
+([ADR 0030](../adr/0030-usage-counts-the-accounts-the-user-adds.md)),
+since plugin 0.9.0 Codex usage too from `programs.codex`, and since plugin
+0.10.0 Antigravity CLI usage from `programs.agy`. Codex's Default Account is
+`${CODEX_HOME:-~/.codex}` and Antigravity's is `~/.gemini/antigravity-cli`
+in the recorded environment.
+The rules below are Claude Code's; Codex's and Antigravity's differ only where
+their sections say.
 
 ### Default Account
 
@@ -864,6 +873,26 @@ run at once, and until it ends the report already leaves the Account out.
 - Suggestions: a running Codex Agent's `CODEX_HOME` (in
   `usage/codex-agents.json`), and `.codex*` directories in `$HOME` that hold
   `auth.json` or `sessions/`.
+
+### Antigravity CLI Usage and Accounts
+
+- Token Usage scans `<root>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`
+  locally, resolving working directories from `<root>/history.jsonl` and
+  read-only `<root>/conversation_summaries.db` (walking `parent_conversation_id`
+  for subagent conversations). Effort/thinking suffixes (`-low`, `-medium`,
+  `-high`, `-xhigh`, `-max`, `-thinking`) are normalized to base models in
+  `pricing.json`; internal unpriced codenames remain unpriced.
+- Usage Limits delegate exclusively to the installed `agy` CLI (`>= 1.1.11`)
+  via `agy -p "/usage" --output-format json` (and on macOS Herdr TUI through
+  the plugin's `usage-agy-limits` action in herdr's GUI session), never reading
+  Keychain items or OAuth tokens directly. Per-Host Antigravity limits are on
+  by default and can be turned off (`--no-agy-limits`).
+- Antigravity CLI signs in once per Host rather than per Account directory, so
+  added `programs.agy` Accounts report their own Token Usage while reporting
+  Usage Limits `unavailable` with reason `singleSignIn` (the Default Account
+  carries the Host's plan windows). Suggestions come from a running Agent's
+  user-named `programs.agy.variable` (`usage/agy-agents.json`) and
+  `~/.gemini/antigravity-cli*` directories holding `brain/`.
 
 ### Suggestions
 
@@ -1171,8 +1200,18 @@ tests and decoded by the Swift tests.
     returns to the foreground. An app refresh task, which iOS runs at its
     discretion (at most every 30 minutes), reads the stale Hosts while the
     app is closed: one short-lived SSH connection per Host with the same
-    credentials and trusted host keys, up to three re-reads 3 seconds
-    apart while `refreshing`, then close. It skips Overlay Network routes
+    credentials and trusted host keys, up to six re-reads 3 seconds
+    apart while `refreshing`, then close. A refreshing report can still
+    serve the last run's figures: the worker commits its scan before it
+    reads the limits, so the scan turns current within about a second
+    while the limits stay the last run's until the worker ends. Its
+    reading is therefore dated by the oldest of `scan.coveredThrough` and
+    the `observedAt` of each limits reading the program itself answered
+    (`state: ok`, `source: service`), not by when the app read it: the
+    "Updated" capsule shows its true age and the Host stays stale for the
+    next foreground or background read. A reading from a past session or
+    kept through a failed read is no older for the wait, so it leaves the
+    date alone. It skips Overlay Network routes
     and leaves the Console suspended. Background App Refresh off, Low Power
     Mode, or a force-quit app leaves the widgets to the foreground reads. Usage
     Limits countdowns step each minute while a reset is under a day away.

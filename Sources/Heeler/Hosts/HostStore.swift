@@ -208,6 +208,7 @@ final class HostStore {
             kindCatalogEntries = entries
             kindCatalogLoadErrors = errors
             catalogLoadError = nil
+            labelServers()
         } catch {
             hosts = []
             catalogEntries = []
@@ -276,6 +277,7 @@ final class HostStore {
                 .map(PersistedHosts.Entry.known)
         }
         catalogLoadError = nil
+        labelServers()
     }
 
     /// Adds a Host, storing `password` in the secret store when given.
@@ -285,6 +287,7 @@ final class HostStore {
         if let own { try ensureIsWritable(own) }
         try applyPassword(password, to: host)
         hosts.append(host)
+        labelServers()
         if let own {
             kindCatalogEntries[own, default: []].append(.known(host))
             try persist(own)
@@ -312,6 +315,7 @@ final class HostStore {
     /// Writes `host` over its entry, in whichever catalog holds it.
     private func replaceEntry(of host: Host, at index: Int) throws {
         hosts[index] = host
+        labelServers()
         if let own = KindCatalog.allCases.first(where: { holds(host.id, in: $0) }),
             let entryIndex = kindCatalogEntries[own]?.firstIndex(where: { $0.knownHostID == host.id })
         {
@@ -363,6 +367,7 @@ final class HostStore {
         confirmed.tmuxPaths = kind == .tmux ? tmuxPaths : nil
         confirmed.rexSocket = kind == .rex ? rexSocket : nil
         hosts[index] = confirmed
+        labelServers()
         if let own {
             kindCatalogEntries[own, default: []].append(.known(confirmed))
             try persist(own)
@@ -371,7 +376,7 @@ final class HostStore {
             catalogEntries[entryIndex] = .known(confirmed)
         }
         try persistSharedCatalog()
-        return confirmed
+        return hosts[index]
     }
 
     /// Stores what a tmux Host's login shell last resolved, for its next
@@ -406,6 +411,83 @@ final class HostStore {
         var host = hosts[index]
         host.rexSocket = socket
         try replaceEntry(of: host, at: index)
+    }
+
+    /// The catalog as the Hosts it reaches (ADR 0047).
+    var machines: [HostMachine] { HostMachine.grouped(hosts) }
+
+    func machine(containing id: Host.ID) -> HostMachine? {
+        machines.first { $0.contains(id) }
+    }
+
+    /// Turns `server` on for the Host that `member` is a record of. A record with
+    /// no Server yet becomes it; otherwise the Host gains a record under
+    /// `newRecordID`, with the same connection and password. Host key trust lives
+    /// outside the catalog, so a caller that sees `HostMachine.needsRecord` puts it
+    /// in place under that id first: the record's first connection then finds it.
+    @discardableResult
+    func turnOn(
+        _ server: HostServerKey, onHostOf member: Host.ID, tmuxPaths: TmuxPaths? = nil,
+        newRecordID: Host.ID = UUID()
+    ) throws -> Host {
+        guard let machine = machine(containing: member) else { throw HostStoreError.unknownHost }
+        guard server.kind.isConfirmed, server.endpointSocketPath == nil else {
+            throw HostStoreError.serverKindChanged
+        }
+        if let record = machine.record(of: server) { return record }
+        if let spare = machine.spareRecord {
+            return try confirmServerKind(
+                server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths)
+        }
+        if let reason = server.kind.sessionNameRefusal(server.name) {
+            throw HostStoreError.sessionNameRefused(reason: reason)
+        }
+        let source = machine.representative
+        let record = Host(
+            id: newRecordID,
+            name: machine.givenName,
+            username: source.username,
+            authMethod: source.authMethod,
+            serverKind: server.kind,
+            sessionName: server.name,
+            tmuxPaths: tmuxPaths,
+            routes: source.routes)
+        try add(record, password: source.authMethod == .password ? try password(for: source) : nil)
+        return hosts.first { $0.id == record.id } ?? record
+    }
+
+    /// Keeps a Host in the catalog once `server`, its last Server on, is removed:
+    /// adds the record with no Server that holds it from then on. Nil while
+    /// another record of the Host stays. The caller carries the host key trust
+    /// over from `server` before removing it.
+    func holdHost(beyond server: Host.ID) throws -> Host? {
+        guard let machine = machine(containing: server) else { throw HostStoreError.unknownHost }
+        guard machine.members.count == 1, machine.spareRecord == nil else { return nil }
+        let source = machine.representative
+        let record = Host(
+            name: source.name,
+            username: source.username,
+            authMethod: source.authMethod,
+            serverKind: .unconfirmed,
+            routes: source.routes)
+        try add(record, password: source.authMethod == .password ? try password(for: source) : nil)
+        return record
+    }
+
+    /// Gives every record of the Host that `edited` belonged to its name,
+    /// account, authentication and Routes. `edited` is one of those records,
+    /// with the changes made. `password` nil leaves each stored password alone.
+    func updateHost(with edited: Host, password: String? = nil) throws {
+        guard let machine = machine(containing: edited.id) else { throw HostStoreError.unknownHost }
+        try update(edited, password: password)
+        for member in machine.members where member.id != edited.id {
+            var record = member
+            record.name = edited.name
+            record.username = edited.username
+            record.authMethod = edited.authMethod
+            record.routes = edited.routes
+            try update(record, password: password)
+        }
     }
 
     /// Hosts the catalog keeps that this build cannot read, as an older build
@@ -456,7 +538,10 @@ final class HostStore {
         }
         try secrets.removeSecret(account: Self.passwordAccount(for: id))
         defaults?.removeObject(forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: id))
+        defaults?.removeObject(forKey: AgentUsageStore.codexLimitsPreferenceKey(for: id))
+        defaults?.removeObject(forKey: AgentUsageStore.agyLimitsPreferenceKey(for: id))
         hosts.remove(at: index)
+        labelServers()
         if let own = KindCatalog.allCases.first(where: { holds(id, in: $0) }) {
             kindCatalogEntries[own]?.removeAll { $0.knownHostID == id }
             try persist(own)
@@ -489,6 +574,15 @@ final class HostStore {
             if let password {
                 try secrets.write(Data(password.utf8), account: account)
             }
+        }
+    }
+
+    /// Words each record among its Host's Servers. Only a label that moved is
+    /// written, so a change elsewhere in the catalog leaves the rest as it was.
+    private func labelServers() {
+        let labels = HostMachine.serverLabels(for: hosts)
+        for index in hosts.indices where hosts[index].serverLabel != labels[hosts[index].id] {
+            hosts[index].serverLabel = labels[hosts[index].id]
         }
     }
 

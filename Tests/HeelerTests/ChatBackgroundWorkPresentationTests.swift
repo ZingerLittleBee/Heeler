@@ -180,9 +180,76 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(Self.present((1...3).map { Self.row("work \($0)") }).overflow == 0)
     }
 
+    @Test func aCommandRowShowsItsKindAndSummary() {
+        let presentation = Self.present([
+            Self.row("python3 -c '\nimport os'", kind: .command, subtitle: "Run Python tests", launchedAgo: 42),
+            Self.row("make lint", kind: .command, state: .stopped, launchedAgo: 90, endedAgo: 30),
+        ])
+        #expect(presentation.rows.map(\.caption) == ["Command", "Command"])
+        #expect(presentation.rows.map(\.kindBadge) == ["Command", "Command"])
+        #expect(presentation.rows.map(\.detail) == ["Run Python tests", nil])
+        #expect(presentation.rows.map(\.stripHeadline) == ["Run Python tests", "make lint"])
+        #expect(presentation.rows.map(\.cardHeadline) == ["Run Python tests", nil])
+        #expect(presentation.rows.map(\.terminalPreview) == ["$ python3 -c ' import os'", "$ make lint"])
+        #expect(presentation.rows.map(\.fullTerminalText) == ["$ python3 -c '\nimport os'", "$ make lint"])
+        #expect(presentation.rows[0].accessibilityLabel == "python3 -c '\nimport os', Command, running, 42 seconds")
+        #expect(presentation.rows[1].accessibilityLabel == "make lint, Command, stopped, 1 minute")
+        #expect(presentation.summary?.text == "1 running · python3 -c '\nimport os'")
+    }
+
     @Test(arguments: [(0.0, "0s"), (38.9, "38s"), (138, "2m 18s"), (3_900, "1h 5m"), (-5, "0s")])
     func durationsReadAsThoughtForDoes(seconds: TimeInterval, text: String) {
         #expect(ChatBackgroundWorkPresentation.duration(seconds, width: .narrow, locale: Self.english) == text)
+    }
+
+    @Test func runningAndNotUpdatingSplitUnfinishedRowsCoherently() {
+        let mixed = Self.present([
+            Self.row("active-cmd", kind: .command, launchedAgo: 14_100),
+            Self.row("quiet-subagent", isStale: true, lastActivity: Self.now.addingTimeInterval(-12_000)),
+            Self.row("done-subagent", state: .completed, launchedAgo: 120, endedAgo: 60),
+        ])
+        #expect(mixed.running.map(\.id) == ["active-cmd"])
+        #expect(mixed.running.first?.time == "3h 55m")
+        #expect(mixed.notUpdating.map(\.id) == ["quiet-subagent"])
+        #expect(mixed.unfinished.map(\.id) == ["active-cmd", "quiet-subagent"])
+        #expect(mixed.finished.map(\.id) == ["done-subagent"])
+
+        let offline = Self.present([
+            Self.row("active-cmd", kind: .command, launchedAgo: 14_100),
+            Self.row("done-subagent", state: .completed, launchedAgo: 120, endedAgo: 60),
+        ], isHostConnected: false)
+        #expect(offline.running.isEmpty)
+        #expect(offline.notUpdating.map(\.id) == ["active-cmd"])
+        #expect(offline.notUpdating.first?.status == .unconfirmed)
+    }
+
+    @Test func intrinsicExpandableContentRequiresAgentsOrMultiLineCommand() {
+        let singleLineCmd = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "cmd-1", kind: .command, title: "pytest -q", subtitle: "Run unit tests",
+                state: .completed, launchOffset: 1))
+        let multiLineCmd = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "cmd-2", kind: .command, title: "cd /tmp\npytest -q", subtitle: "Run unit tests",
+                state: .completed, launchOffset: 2))
+        let emptyWorkflow = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "wf-1", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
+                state: .running, launchOffset: 3))
+        let populatedWorkflow = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "wf-2", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
+                state: .running, launchOffset: 4),
+            progress: ChatWorkflowProgress(agents: [
+                .init(id: "a1", label: "reader", phase: "Scan", state: .running)
+            ]))
+        let subagent = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "sub-1", kind: .subagent, title: "Codebase Researcher", subtitle: "research",
+                state: .running, launchOffset: 5))
+
+        let rows = Self.present([singleLineCmd, multiLineCmd, emptyWorkflow, populatedWorkflow, subagent]).rows
+        #expect(rows.map(\.hasIntrinsicExpandableContent) == [false, true, false, true, false])
     }
 }
 
@@ -255,5 +322,122 @@ struct ChatBackgroundWorkStripHostedTests {
         // Three rows and "+N more" outgrow two rows, and stop there.
         #expect(four > two + 40, "\(two) against \(four)")
         #expect(abs(five - four) < 0.5, "\(four) against \(five)")
+    }
+
+    @Test func activityCardHidesDisclosureChevronUntilContentActuallyExpands() async throws {
+        // Use rows without a duration (`launchedAt == nil`, `endedAt == nil`) so
+        // the top-right header region only contains ink when `chevron.right` is drawn.
+        let shortCommand = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "short-cmd", kind: .command, title: "pytest -q", subtitle: "Run unit tests",
+                state: .completed, launchOffset: 1))
+        let multiLineCommand = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "multi-cmd", kind: .command, title: "cd /tmp\npytest -q", subtitle: "Run unit tests",
+                state: .completed, launchOffset: 2))
+        let truncatedSingleLineCommand = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "long-cmd", kind: .command,
+                title: "python3 scripts/verify-everything.py --workspace /Users/example/Documents/worktree/Heeler/worktree-rapid-field-9516 --configuration Debug --strict-checks --report-output /tmp/report.json",
+                subtitle: "Run full verification command",
+                state: .completed, launchOffset: 3))
+        let shortSubagent = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "short-sub", kind: .subagent, title: "Codebase Researcher", subtitle: "research",
+                state: .completed, launchOffset: 4))
+        let emptyWorkflow = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "empty-wf", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
+                state: .completed, launchOffset: 5))
+        let agentWorkflow = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "agent-wf", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
+                state: .completed, launchOffset: 6),
+            progress: ChatWorkflowProgress(agents: [
+                .init(id: "a1", label: "audit:links", phase: "Audit", state: .done)
+            ]))
+
+        var work = ChatBackgroundWork()
+        work.isLive = true
+        work.rows = [
+            shortCommand, multiLineCommand, truncatedSingleLineCommand,
+            shortSubagent, emptyWorkflow, agentWorkflow,
+        ]
+        let presented = ChatBackgroundWorkPresentation(
+            work: work, isHostConnected: true, now: Date(), locale: Locale(identifier: "en_US")
+        ).rows
+
+        var hasChevron: [Bool] = []
+        for row in presented {
+            hasChevron.append(try await Self.cardTopRightHasChevronInk(row: row, width: 358))
+        }
+        #expect(hasChevron == [false, true, true, false, false, true], "chevron visibility per row: \(hasChevron)")
+    }
+
+    private static func cardTopRightHasChevronInk(
+        row: ChatBackgroundWorkPresentation.Row, width: CGFloat
+    ) async throws -> Bool {
+        let controller = UIHostingController(
+            rootView: ChatBackgroundWorkActivityCard(row: row, expandedCards: .constant([]))
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+                .environment(\.locale, Locale(identifier: "en_US")))
+        controller.safeAreaRegions = []
+        controller.view.backgroundColor = .clear
+        var hasInk = false
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: width, height: 320), rootViewController: controller
+        ) { window in
+            window.overrideUserInterfaceStyle = .dark
+            // Let SwiftUI's `onGeometryChange` truncation probe settle across layout passes.
+            for _ in 0..<4 {
+                controller.view.setNeedsLayout()
+                controller.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let size = controller.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+            controller.view.frame = CGRect(origin: .zero, size: size)
+            controller.view.layoutIfNeeded()
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 2
+            format.opaque = true
+            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { ctx in
+                UIColor.black.setFill()
+                ctx.fill(controller.view.bounds)
+                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+            guard let cgImage = image.cgImage,
+                let data = cgImage.dataProvider?.data,
+                let bytes = CFDataGetBytePtr(data)
+            else { return }
+            let scale: CGFloat = 2
+            let bytesPerRow = cgImage.bytesPerRow
+            let bytesPerPixel = cgImage.bitsPerPixel / 8
+            // Card inset is 13pt; top row sits around y = 13...37pt, trailing chevron around width - 28 ... width - 12pt.
+            let minX = Int(((width - 30) * scale).rounded(.down))
+            let maxX = Int(((width - 11) * scale).rounded(.up))
+            let minY = Int((14 * scale).rounded(.down))
+            let maxY = Int((36 * scale).rounded(.up))
+            // Sample card background inside the header row to the left of the chevron slot (`width - 48`).
+            let sampleX = Int(((width - 48) * scale).rounded())
+            let sampleY = Int((25 * scale).rounded())
+            let bgOffset = sampleY * bytesPerRow + sampleX * bytesPerPixel
+            let bgR = Int(bytes[bgOffset])
+            let bgG = Int(bytes[bgOffset + 1])
+            let bgB = Int(bytes[bgOffset + 2])
+            for py in minY..<min(maxY, cgImage.height) {
+                for px in minX..<min(maxX, cgImage.width) {
+                    let offset = py * bytesPerRow + px * bytesPerPixel
+                    let dr = abs(Int(bytes[offset]) - bgR)
+                    let dg = abs(Int(bytes[offset + 1]) - bgG)
+                    let db = abs(Int(bytes[offset + 2]) - bgB)
+                    if max(dr, max(dg, db)) > 18 {
+                        hasInk = true
+                        return
+                    }
+                }
+            }
+        }
+        return hasInk
     }
 }

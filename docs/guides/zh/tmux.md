@@ -1,7 +1,7 @@
-<!-- Translated from docs/guides/tmux.md at bb0ae7a6 -->
+<!-- Translated from docs/guides/tmux.md at a76a7a53 -->
 # 连接 tmux
 
-通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是各自的 Host，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
+通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是其 Host 的一个 Server，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
 
 ## 开始之前
 
@@ -14,31 +14,39 @@
 
 Heeler 在连接或检查时绝不会启动 tmux 服务端。
 
-### 1. 填写 SSH 设置
+### 1. 连接
 
-1. 在 **Hosts** 中轻点 **Add Host**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Host。
-2. 输入 SSH **User**，添加一条 Route，并选择 **Device Key**、**RSA Key** 或 **Password**。
-3. 若选择 **Device Key**，请将表单中的公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
-4. 如果你的 tmux 服务端是以 `tmux -L <name>` 启动的，请填写 **Session name**，然后轻点 **Save**，并在核对 Host 的密钥指纹后轻点 **Trust**。确认为 tmux 后，该字段会在 **tmux Socket** 下显示为 **Socket name**。不支持手动输入自定义 socket 文件路径（`tmux -S <path>`）。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Server。
+2. 输入 **Address** 和 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
+3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
+4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
 
-| 字段 | 值 |
+| Connect | Trust |
 | --- | --- |
-| **Session name** / **Socket name** | 留空表示 `default`（未带 `-L` 启动的 tmux），或填写 `-L <name>` 的 socket 名称 |
+| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-trust.png"><img src="../images/hosts/add-host-trust.png" width="260" alt="New Host 面板的 Trust 步骤，显示 Trust this Host?、密钥指纹、Copy the Command That Prints It 和 Trust and Continue"></a> |
 
-### 2. 确认 Server Kind
+### 2. 选择 Server
 
-Heeler 会通过你的登录 shell 在不启动任何服务的情况下检查一次，随后请你确认 **Server Kind**：
+Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一次，并列出这台机器上运行的内容：
+
+<a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="300" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、herdr-core 和 tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a>
 
 | Heeler 检测到 | 操作方法 |
 | --- | --- |
-| 一个 tmux 服务端 | 轻点 **Use tmux**。 |
-| 多个 tmux 服务端 | 在 **tmux Socket** 下选择对应的 socket，然后轻点 **Use tmux**。 |
-| 同时检测到 tmux 与 Herdr TUI 或 herdr-core | 先在此确认其中一种，再为同一台机器重新添加一个 Host 以使用另一种。 |
-| 未检测到正在运行的服务端 | 如果这台 Host 将用于运行 tmux，请轻点 **Use tmux**。随后它的检查项会说明需要启动或安装什么。 |
+| 一个 tmux 服务端 | 保持勾选 **tmux**，然后轻点 **Add Host with 1 Server**。 |
+| 多个 tmux 服务端 | 每个 socket 按名称列出，例如 `tmux -L work` 显示为 **tmux · work**。勾选你想要的那些。 |
+| 同时检测到 tmux 与 Herdr TUI 或 herdr-core | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
+| 未检测到正在运行的服务端 | 仍然添加该 Host。启动 tmux，打开该 Host，轻点 **Scan Again**，然后开启 **tmux**。 |
 
-确认后，**Server Kind** 即固定不变。之后你可以在 Host 详情中修改 **Socket name**。
+每个 Server 在 Host 页面上都有一个开关。轻点已开启的 Server 可打开它自己的页面，其中有它的连接、检查项和 Host Helper。要在某个 socket 的服务端运行之前开启它，请在 Host 页面上轻点 **Add by Name…**，选择 **tmux**，输入 `-L <name>` 的 socket 名称（留空表示 `default`），然后轻点 **Turn On**。不支持手动输入自定义 socket 文件路径（`tmux -S <path>`）。
 
-**成功的标志是** Host 详情将 **Server Kind** 显示为带版本号的 `tmux`，**Socket** 显示你的 socket 名称，且 **tmux server running** 检查通过。
+| 该 Host 的页面 | Add by Name |
+| --- | --- |
+| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、Routes 和 Account"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
+
+**成功的标志是**该 Host 所在的行显示绿色的 **tmux** 标签，且该 Server 的页面将 **Server Kind** 显示为带版本号的 `tmux`，**Socket** 显示你的 socket 名称，**tmux server running** 检查通过。
+
+<a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
 
 ## 无法连接时
 
@@ -54,7 +62,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下检查一
 在 Linux 上当没有 tmux 服务端运行时，在 **New Agent** 或 **New Terminal** 中选择 **New Workspace** 会通过你的交互式登录 shell 启动服务端，使新建窗口继承你的 shell 配置。
 
 > [!NOTE]
-> 如果某个 Agent 会话的变量泄漏到了 tmux 中，Host 详情会发出提醒并说明清理方法。
+> 如果某个 Agent 会话的变量泄漏到了 tmux 中，该 Server 的页面会发出提醒并说明清理方法。
 
 ## 控制台
 
@@ -72,7 +80,7 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 | **Done** | 在当前设备未打开该 Agent 时完成了一轮对话。打开该 Agent 仅会清除当前设备上的 **Done**。 |
 | **Unknown** | 尚未上报状态。轻点 **Unknown** 可查看该程序在 tmux 中需要什么配置。 |
 
-当 Grok Build 显示 **Unknown** 时，轻点 **Unknown**，再轻点 **Turn On Grok Build's Status** 和 **Apply This Change**，即可在 `$GROK_HOME/config.toml` 或 `~/.grok/config.toml` 中设置 `program_status = "on"`，并安装 [Host Helper](#host-helper) 以便 Heeler 读取其状态上报。可随时通过 **Undo** 或在 Host 详情的 **Harness Edits** 下还原该文件改动。
+当 Grok Build 显示 **Unknown** 时，轻点 **Unknown**，再轻点 **Turn On Grok Build's Status** 和 **Apply This Change**，即可在 `$GROK_HOME/config.toml` 或 `~/.grok/config.toml` 中设置 `program_status = "on"`，并安装 [Host Helper](#host-helper) 以便 Heeler 读取其状态上报。可随时通过 **Undo** 或在该 Server 页面的 **Harness Edits** 下还原该文件改动。
 
 ## 启动项目
 
@@ -110,7 +118,7 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 
 若想让你自己在 tmux 终端中手动启动的 Claude Code Agent 也获得同样的状态与 [Chat](#chat) 会话提示：
 
-1. 连接该 Host，在 **Hosts** 中打开它，找到 **Claude Code Hooks**。
+1. 连接该 Host，在 **Hosts** 中打开它，轻点它的 **tmux** Server，找到 **Claude Code Hooks**。
 2. 在 **Default**（`~/.claude/settings.json`）或任意已添加的 [Claude Code Account](usage.md#添加-claude-code-account) 上轻点 **Add Hooks**。
 3. 查看 Heeler 将写入的具体设置差异与脚本文件，然后轻点 **Apply This Change**。
 
@@ -146,7 +154,7 @@ Heeler 会直接将你的 tmux 结构映射到控制台中，而不会改动你�
 - **Pi 与 Oh My Pi 状态及 Chat：** 安装 Heeler 扩展，使你手动启动的窗格也能上报 **Idle**、**Working**、**Done**、**Error** 及当前 Chat 对话；
 - **Claude Code 桌面端 Esc 清理：** 当你在桌面端按 Esc 拒绝权限提示时自动清除 **Blocked**。
 
-在 **Hosts** 中打开该 Host，轻点 **Host Helper**，查看 **Files This Writes**，轻点 **Install**，并在 **Settings > Notifications** 下开启该 Host，具体步骤与状态说明同[连接 herdr-core](herdr-core.md#host-helper)。移除 Host Helper 后，你已添加的 [Claude Code hooks](#claude-code-hooks) 仍会继续工作。
+在 **Hosts** 中打开该 Host，轻点它的 **tmux** Server，再轻点 **Host Helper**，查看 **Files This Writes**，轻点 **Install**，并在 **Settings > Notifications** 下开启该 Host，具体步骤与状态说明同[连接 herdr-core](herdr-core.md#host-helper)。移除 Host Helper 后，你已添加的 [Claude Code hooks](#claude-code-hooks) 仍会继续工作。
 
 ## 已知限制
 

@@ -312,6 +312,10 @@ struct AgentTerminalView: View {
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
+    /// Where the message-jump buttons sit, for the drawer handle to clear.
+    @State private var messageJumpFrame: CGRect?
+    /// Where the Attach Links button sits, for the drawer handle to clear.
+    @State private var attachLinksFrame: CGRect?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
@@ -461,6 +465,8 @@ struct AgentTerminalView: View {
     }
 
     private static let sessionUsageInterval: Double = 5
+    /// The terminal surface's own space, which its edge controls report in.
+    private static let surfaceSpace = "agent-terminal-surface"
 
     private var terminalScreen: TerminalScreenView {
         var screen = TerminalScreenView(feed: attach.terminalFeed)
@@ -778,8 +784,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            let staging = session.staging
-            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
+            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -1002,7 +1007,7 @@ struct AgentTerminalView: View {
             attachLinkCount: attach.attachLinks.count,
             addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
             pasteImage: capabilities.uploads
-                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
             addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
@@ -1120,6 +1125,7 @@ struct AgentTerminalView: View {
         .overlay {
             if let workspaceDrawer {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                    .clearing([messageJumpFrame, attachLinksFrame].compactMap { $0.map { $0.minY...$0.maxY } })
                 // The back header's menu stands in for the edge handle
                 // while the header is out; folded, the handle comes back.
                 if isBackHeaderExpanded {
@@ -1131,6 +1137,7 @@ struct AgentTerminalView: View {
                 }
             }
         }
+        .coordinateSpace(.named(Self.surfaceSpace))
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerStagingStatusBar(staging: session.staging)
                 .ridesKeyboard(
@@ -1970,6 +1977,10 @@ struct AgentTerminalView: View {
             .accessibilityLabel("Attach Links")
             .accessibilityValue(links.accessibilityValue)
             .modifier(attachLinksPopover(from: .floatingButton))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.surfaceSpace)) } action: {
+                attachLinksFrame = $0
+            }
+            .onDisappear { attachLinksFrame = nil }
             .padding(.trailing, MessageJumpPlacement.trailingPadding)
             .padding(.bottom, 8)
         }
@@ -1986,7 +1997,9 @@ struct AgentTerminalView: View {
             edgeFraction: terminal.edgeDock.fraction(for: .messageJump),
             onOlder: { jumpToOlderMessage() },
             onNewer: { jumpToNewerMessageOrLive() },
-            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) })
+            onDock: { terminal.edgeDock.setFraction($0, for: .messageJump) },
+            // Reported from UIKit layout, so the state changes after it.
+            onFrameChange: { frame in Task { @MainActor in messageJumpFrame = frame } })
         // Hit-test only while enabled. The in-flight spinner must not eat
         // terminal drags. Placement and pass-through live in
         // MessageJumpChromeContainer.

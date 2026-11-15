@@ -8,7 +8,10 @@ export const pricingFingerprint = createHash("sha256").update(source).digest("he
 
 /** Attach one request's estimate before deduplication and bucket aggregation. */
 export function priceContribution(record) {
-  const model = table.models[record.model];
+  let model = table.models[record.model];
+  if (!model && record.program === "agy" && typeof record.model === "string") {
+    model = table.models[record.model.replace(/-(?:low|medium|high|xhigh|max|thinking)$/, "")];
+  }
   if (!model) return { ...record, estimatedCostUSD: null, unpricedTokens: record.tokens.total };
   const tokens = record.tokens;
   const context = tokens.input + tokens.cacheRead + tokens.cacheWrite;

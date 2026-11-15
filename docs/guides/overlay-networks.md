@@ -52,7 +52,7 @@ Do these steps on the Mac that runs herdr, signed in as the account Heeler will 
    ```
 
    If Heeler shows a different key type, read that type's `.pub` file in `/etc/ssh/` instead.
-4. Pick how Heeler signs in. For **Device Key** (recommended), go to Heeler > **Hosts** > **Add Host**, choose **Device Key**, tap **Copy authorized_keys Line**, then cancel the form. Get the line onto the Mac (for example with Universal Clipboard) and run:
+4. Pick how Heeler signs in. For **Device Key** (recommended), go to Heeler > **Hosts** and tap **+**, keep **Device Key**, tap **Copy authorized_keys Line**, then tap **Cancel**. Get the line onto the Mac (for example with Universal Clipboard) and run:
 
    ```sh
    mkdir -p ~/.ssh
@@ -65,22 +65,26 @@ Do these steps on the Mac that runs herdr, signed in as the account Heeler will 
 
 Come here from your provider guide once the Mac and Heeler are on the same network.
 
-1. Open **Hosts** and tap **Add Host**. Under **Routes**, tap **Add Route**, set **Network** to your saved network, fill in **Address** and **Port**, and tap **Save**. For Tailscale and EasyTier, you can instead open the network in Settings and tap **Add** next to the Mac; this pre-fills the route. (**Direct** means Heeler does not use the overlay network.)
-2. Back in **Add Host**, fill in the remaining fields below and tap **Save**.
-3. Tap **Trust** only if the fingerprint matches the one from the Mac. If a check fails, fix it and tap **Run Checks Again**.
+1. Open **Hosts** and tap **+**. Tap **More Options**, set **Network** to your saved network, fill in **Address** and **Port**, and go back. For Tailscale and EasyTier, you can instead open the network in Settings and tap **Add** next to the Mac; this pre-fills the address and network. (**Direct** means Heeler does not use the overlay network.)
+2. Fill in **User** and the sign-in method from the table below, and tap **Connect**.
+3. Tap **Trust and Continue** only if the fingerprint matches the one from the Mac.
+4. Leave the Servers you want checked, name the Host if you like, and add it. If nothing connects afterwards, open the Host, tap the Server, fix what its checks name, and tap **Run Checks Again**.
+
+| Connect | Servers |
+| --- | --- |
+| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="260" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a> |
 
 | Field | Value |
 | --- | --- |
-| Name | Any label for this Mac |
+| Address | The Mac's IP address on the network, with no port or `/24`-style suffix |
 | User | Your Mac username (from `id -un`) |
-| Network (in Route) | Your saved overlay network |
-| Address (in Route) | The Mac's IP address on the network, with no port or `/24`-style suffix |
-| Port (in Route) | `22`, unless your guide says otherwise |
-| Jump Host (in Route) | Leave blank |
+| Network (in More Options) | Your saved overlay network |
+| Port (in More Options) | `22`, unless your guide says otherwise |
+| Jump Host (in More Options) | Leave blank |
 | Authentication | The sign-in method you picked |
-| herdr Session | The session name, or blank for the default |
+| Name (last step) | Any label for this Mac |
 
-To fill in the address on the route page, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central.
+To fill in the address under **More Options**, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central.
 
 ## Verify the connection
 
@@ -89,7 +93,7 @@ To fill in the address on the route page, Tailscale offers **Choose from Tailnet
 **Connected** here means Heeler has joined the network, not that a Host is using it. Follow the checks below to verify the Host's route. Network names have been anonymized; you only need the network you chose, not all three. Tap the image to enlarge it.
 
 1. The network shows **Connected** in **Settings > Overlay Networks**.
-2. Open the Host from **Hosts** and check which route is marked **In Use** under **Routes**. Confirm it uses the overlay network you are testing. If another route wins, this connection does not verify the overlay route. See [which route is in use](host-routes.md#see-which-route-is-in-use).
+2. Open the Host from **Hosts**, tap one of its Servers, and check which route is marked **In Use** under **Routes**. Confirm it uses the overlay network you are testing. If another route wins, this connection does not verify the overlay route. See [which route is in use](host-routes.md#see-which-route-is-in-use).
 3. The Host checks pass and the session's Agents or Terminals load.
 4. In a **New Terminal**, `pwd` prints a folder on the Mac. Use a new terminal for tests, not an Agent's terminal.
 5. Turn off Wi-Fi on the phone and repeat over cellular, checking **In Use** again. Another available route, such as a Jump Host or a different overlay network, can still win.
@@ -106,7 +110,7 @@ To fill in the address on the route page, Tailscale offers **Choose from Tailnet
 | **Waiting for a network** (EasyTier Config Server) | Assign a network to Heeler's Machine ID in the EasyTier console. |
 | Network is connected, but SSH times out | Check the route's Network, address, and port. Make sure the Mac is awake and Remote Login is on. |
 | SSH login fails | Check the username, Remote Login access, and the key or password. |
-| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account or the session name is wrong. |
+| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account, or the Server that is on is not the session herdr runs. |
 | Network turns back on after you switch it off | A Host route is using it. To keep it off, change that route's **Network** or remove the Host. |
 
 Last checked on 2026-10-09 on macOS.

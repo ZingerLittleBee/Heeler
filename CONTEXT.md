@@ -5,20 +5,30 @@ A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host targets one server, so an SSH target running several, of one kind or more, is one Host for each.
+A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes and its account.
 _Avoid_: server, machine, connection
 
+**Server**:
+One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
+session, or a tmux server. Each is on or off on this device (Show in Heeler).
+One that is on has its own connection, Agents, Terminals, notifications and
+settings, and its own page under Host detail. A look at the Host finds its
+Servers; ones found after the Host was added arrive off. In code, and wherever
+this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
+Server that is on: the catalog still stores one `Host` record for each (ADR
+0047).
+_Avoid_: service, backend, instance
+
 **Server Kind**:
-Which server a Host's Agents live in: Herdr TUI (the original herdr server),
-herdr-core (the vendor's headless terminal runtime, `hc`), or a tmux server.
-Rex is a fourth kind, offered in every build and still experimental for users
-(ADR 0048). They share no Agents. A herdr-core Host whose core also serves the
-Herdr desktop app is still herdr-core; the app's organization is data the Host
-carries, not another kind. Adding a Host by hand saves it unconfirmed, a stored
-state no connection, Agent or notification reaches. Its Host detail detects the
-kinds and the user confirms one, once; a Pairing Code always adds a confirmed
-Herdr TUI Host, so a tmux or Rex Host is always added by hand. The Host keeps
-it: neither a connection nor an edit switches a Host to another kind (ADR 0031).
+Which kind a Server is: Herdr TUI (the original herdr server), herdr-core (the
+vendor's headless terminal runtime, `hc`), a tmux server, or a Rex server. Rex
+is offered in every build and still experimental for users (ADR 0048). They
+share no Agents. A herdr-core Server whose core also serves the Herdr desktop
+app is still herdr-core; the app's organization is data it carries, not
+another kind. A Server keeps its kind: neither a connection nor an edit
+changes it, and turning it off and on again makes a new record (ADRs 0031 and
+0047). A Pairing Code always adds a Herdr TUI Server; herdr-core and tmux
+Servers are found by a look or turned on by name.
 _Avoid_: backend, server type, flavor
 
 **Rex Host**:
@@ -168,7 +178,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -463,8 +473,8 @@ Antigravity CLI, herdr names the conversation id, whose folder Chat finds
 under `~/.gemini/antigravity-cli/brain`. The session
 herdr reports names it; on herdr-core, the session Chat bound (ADR 0034). Heeler only reads it: the app over SFTP, or for
 OpenCode by that query, keeping decoded entries, never tool output, in an
-on-device cache; and the Heeler plugin on the Host itself, or on herdr-core the
-Host Helper, to total Claude Code and Codex Token Usage (ADR 0028).
+on-device cache; and the Heeler plugin on the Host itself, or on herdr-core and
+tmux the Host Helper, to total Claude Code, Codex, and Antigravity CLI Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
 
 **Account**:
@@ -474,7 +484,7 @@ Account** per harness: the directory the harness uses in herdr's own
 environment, or on herdr-core in the core's. The user may add more Accounts for any harness by choosing their
 directories in Settings › Agents & Accounts, the one place Accounts are kept;
 Heeler may suggest directories that look like one, but counts none until the
-user adds it. Usage reads the Accounts of Claude Code and Codex, Chat searches
+user adds it. Usage reads the Accounts of Claude Code, Codex, and Antigravity CLI, Chat searches
 every harness's Accounts for a Transcript, and Launch Presets start an Agent
 in one. A harness's **Folder Variable** (such as `CLAUDE_CONFIG_DIR` or
 `CODEX_HOME`) is what points it at an Account; Heeler knows some and the user
@@ -493,16 +503,16 @@ every Host that has that folder and is untouched when an Account is removed
 _Avoid_: alias, profile, template
 
 **Usage Limits**:
-The windows a Claude Code or Codex Account may use before the service slows
+The windows a Claude Code, Codex, or Antigravity CLI Account may use before the service slows
 or stops it, such as five hours or a week, each with the share used and when
 it resets, as the service reports them for each Account on a Host. They
 describe the Account, not the Host or an Agent, and are never merged across
 Accounts. Claude Code's are read only when the user turns them on for that
-Host (ADR 0028).
+Host; Antigravity CLI's are on by default per Host and can be turned off (ADR 0028).
 _Avoid_: quota, rate limit (in copy), plan usage, billing
 
 **Token Usage**:
-The tokens a Host's Claude Code and Codex Transcripts record over at most the
+The tokens a Host's Claude Code, Codex, and Antigravity CLI Transcripts record over at most the
 last 30 days, by program, Account, day, model and working directory, with the
 estimated cost of those tokens at API list prices. It counts only what the
 Transcripts of the Host's Accounts still hold, and is never an Account's Usage
@@ -521,12 +531,14 @@ says why instead, since its prompt would act on those keys.
 _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Background Work**:
-The Subagents and Workflows a Claude Code Agent runs in the background, which
-Chat lists over the Composer from their launch and end records in the
-Transcript and, for a Workflow, its journal beside it. Running work comes
-first; finished work stays until the user's next prompt. Chat only shows it
-and stops none of it. A Subagent is one background agent; a Workflow is a
-script that runs many and is listed as one row with its agents done.
+The Subagents, Workflows and non-daemon background commands an Agent runs in
+the background (Claude Code Subagents and Workflows; Antigravity CLI Subagents,
+Workflows and background commands), which Chat lists over the Composer from
+their launch and end records in the Transcript and, for a Claude Code Workflow,
+its journal beside it. Running work comes first; finished work stays until the
+user's next prompt. Chat only shows it and stops none of it. A Subagent is one
+background agent; a Workflow is a script that runs many and is listed as one
+row with its agents done when its journal records them.
 _Avoid_: background task, task list, jobs
 
 **Turn**:
@@ -738,8 +750,8 @@ it.
 It exists so Host Connection Status can report running work honestly without
 the app withdrawing the explanation at the moment the user is reading it: a
 Host re-proved on a foreground return is Connecting, and every status-derived
-surface but Host detail keeps presenting the Standing Failure until the
-activation answers. Host detail, where the user asks for Reconnect, reads only
+surface but the Server's page keeps presenting the Standing Failure until the
+activation answers. The Server's page, where the user asks for Reconnect, reads only
 Connecting… once the activation begins, since there the old failure read as the
 new attempt's own. The failure remains stored and continues to render on Agent
 detail, the Console, and the Hosts list.
@@ -769,7 +781,7 @@ instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
 Detail with it. A Hosts list row names a problem by its Summary alone, beside
-Retry once the Host stops; Host detail, one tap away, shows the rest. A first-hop failure is presented against the Jump Host; where no
+Retry once the Host stops; Host detail names it against the Server that stopped, and that Server's page shows the rest. A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the
@@ -778,11 +790,11 @@ _Avoid_: Connection Guidance, error message, connection error, retry hint,
 actionable error
 
 **Reconnect Request**:
-A user's explicit Reconnect press on Host detail, and the brief window in which
+A user's explicit Reconnect press on a Server's page, and the brief window in which
 the app shows that press being served. It is feedback about a request, not a
 Host Connection Status: it is never derived from the status and never changes
 it, an automatic Reconnecting is not a Reconnect Request, and a press in flight
-suppresses the Host detail failure footer while driving the button's own
+suppresses that page's failure footer while driving the button's own
 progress (#160).
 _Avoid_: retry, reconnecting, manual reconnect state
 

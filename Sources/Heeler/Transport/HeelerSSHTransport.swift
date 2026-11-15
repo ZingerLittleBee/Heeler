@@ -1931,12 +1931,13 @@ actor HeelerSSHTransport: Transport {
     /// Executes an already resolved plugin installation, so one read lists
     /// plugins once. Real-SSH fixtures supply a scratch installation.
     func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+        agyLimits: Bool = true, pluginRoot: String
     ) async throws -> AgentUsageReport {
         let nonce = UUID().uuidString
         let script = try AgentUsageProbe.script(
             pluginRoot: pluginRoot, timeZone: timeZone, claudeLimits: claudeLimits,
-            nonce: nonce, launcher: herdrLauncher)
+            codexLimits: codexLimits, agyLimits: agyLimits, nonce: nonce, launcher: herdrLauncher)
         let result = try await runBoundedScript(
             script, feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)

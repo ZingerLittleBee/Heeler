@@ -365,6 +365,22 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         }
     }
 
+    /// Whether expanding the row reveals a detail block beneath its header.
+    var hasExpandableDetails: Bool {
+        if let subtitle, !subtitle.isEmpty { return true }
+        if let note, !note.isEmpty { return true }
+        if !questions.isEmpty { return true }
+        if showsDiffAsOutput, fileChanges != nil { return true }
+        if preview != nil { return true }
+        if let outputRead {
+            switch outputRead {
+            case .loading, .failed, .unavailable: return true
+            case .read: return ran
+            }
+        }
+        return ran
+    }
+
     // `preview`, `cardAnswer`, `outputRead` and `isNotUpdating` are
     // deliberately absent: decoding leaves them unset.
     private enum CodingKeys: String, CodingKey {
@@ -1121,14 +1137,16 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     }
 }
 
-/// One piece of Background Work: a Subagent or Workflow the program started
-/// beside the conversation, as the transcript records its launch and its
-/// end. Saved with the conversation only to carry a launch above a later
-/// read's window into it, where that read's records can still end it.
+/// One piece of Background Work: a Subagent, Workflow or background command
+/// the program started beside the conversation, as the transcript records its
+/// launch and its end. Saved with the conversation only to carry a launch
+/// above a later read's window into it, where that read's records can still
+/// end it.
 struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     enum Kind: Equatable, Codable, Sendable {
         case subagent
         case workflow
+        case command
     }
 
     enum State: Equatable, Codable, Sendable {
@@ -1176,13 +1194,15 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     var endOffset: UInt64?
     /// On the Host's clock, from the records' timestamps.
     var launchedAt: Date?
+    /// A later sign in the transcript that running work is still active.
+    var lastActivityAt: Date?
     var endedAt: Date?
     var usage: Usage?
 
     init(
         id: String, kind: Kind, title: String, subtitle: String? = nil, state: State = .running,
         journalPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil, launchedAt: Date? = nil,
-        endedAt: Date? = nil, usage: Usage? = nil
+        lastActivityAt: Date? = nil, endedAt: Date? = nil, usage: Usage? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -1193,6 +1213,7 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
         self.launchOffset = launchOffset
         self.endOffset = endOffset
         self.launchedAt = launchedAt
+        self.lastActivityAt = lastActivityAt
         self.endedAt = endedAt
         self.usage = usage
     }

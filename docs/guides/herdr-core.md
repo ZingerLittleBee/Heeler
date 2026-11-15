@@ -1,6 +1,6 @@
 # Connect herdr-core
 
-Agents in the Herdr desktop app belong to herdr-core, a server separate from Herdr TUI. Each server is its own Host in Heeler even under one SSH account. Most people run herdr-core with the Herdr desktop app on a Mac, and Heeler also connects to Linux herdr-core and [native Windows](#native-windows) `herdr-core.exe`. On macOS and Linux, Agent Notifications, Live Activity, and Usage need the [Host Helper](#host-helper).
+Agents in the Herdr desktop app belong to herdr-core, a server separate from Herdr TUI. On a machine that runs both, each is a Server of the same Host in Heeler. Most people run herdr-core with the Herdr desktop app on a Mac, and Heeler also connects to Linux herdr-core and [native Windows](#native-windows) `herdr-core.exe`. On macOS and Linux, Agent Notifications, Live Activity, and Usage need the [Host Helper](#host-helper).
 
 ## Before you start
 
@@ -12,30 +12,39 @@ Agents in the Herdr desktop app belong to herdr-core, a server separate from Her
 
 Heeler never starts a core when connecting or checking. Start the Herdr desktop app or herdr-core first.
 
-### 1. Enter the SSH settings
+### 1. Connect
 
-1. In **Hosts**, tap **Add Host**, or **Add Manually** when empty. A Pairing Code always adds a Herdr TUI Host.
-2. Enter your SSH **User**, add a Route, and pick **Device Key**, **RSA Key**, or **Password**.
-3. For **Device Key**, copy the form's public-key line into the Host's `~/.ssh/authorized_keys`.
-4. Set **Session name** if needed, then tap **Save** and **Trust** after checking the Host's key fingerprint.
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. A Pairing Code always adds a Herdr TUI Server.
+2. Enter the **Address** and your SSH **User**. **More Options** has the port, a Jump Host and an overlay network.
+3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
+4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
 
-| Field | Value |
+| Connect | Trust |
 | --- | --- |
-| **Session name** | Blank for `default`, or the core's `HC_SESSION` name |
+| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-trust.png"><img src="images/hosts/add-host-trust.png" width="260" alt="New Host sheet on the Trust step showing Trust this Host?, the key fingerprint, Copy the Command That Prints It, and Trust and Continue"></a> |
 
-### 2. Confirm the Server Kind
+### 2. Choose the Servers
 
-Heeler checks once without starting anything, then asks you to confirm **Server Kind**:
+Heeler looks once without starting anything and lists what the machine runs:
+
+<a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="300" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a>
 
 | Heeler found | What to do |
 | --- | --- |
-| herdr-core | Tap **Use herdr-core**. |
-| Both herdr-core and Herdr TUI | Confirm one here, then add the machine again for the other. |
-| Neither | Confirm the kind you will run. Its checks then say how to set it up. |
+| herdr-core | Leave it checked and tap **Add Host with 1 Server**. |
+| herdr-core beside Herdr TUI or tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
+| No herdr-core | Add the Host anyway. Start the core, open the Host, tap **Scan Again**, and turn on **herdr-core**. |
+| A core started with `HC_SESSION=<name>` | Add the Host, open it, tap **Add by Name…**, choose **herdr-core**, type the name, and tap **Turn On**. |
 
-Once confirmed, **Server Kind** is fixed.
+Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its connection, checks and Host Helper.
 
-**It worked if** Host detail shows **Server Kind** as herdr-core with the version and **herdr-core running** passing.
+| The Host's page | Add by Name |
+| --- | --- |
+| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux with their switches on, Scan Again, Add by Name…, Routes, and Account"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
+
+**It worked if** the Host's row shows a green **herdr-core** tag, and the Server's page shows **Server Kind** as herdr-core with the version and **herdr-core running** passing.
+
+<a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, tmux, and herdr-core"></a>
 
 ## When it does not connect
 
@@ -43,13 +52,13 @@ While the core is stopped, Heeler rechecks on its own, or you can tap **Run Chec
 
 | Host reads | What to do |
 | --- | --- |
-| **herdr-core is not running** | Start the Herdr desktop app or herdr-core, or check **Session name**. If a crash left a socket file, start the core or allow stream-local forwarding. |
+| **herdr-core is not running** | Start the Herdr desktop app or herdr-core. A core started under another name is a Server of its own: turn it on with **Add by Name…**. If a crash left a socket file, start the core or allow stream-local forwarding. |
 | **herdr-core is not installed** | Install herdr-core on the SSH `PATH`, at `~/.local/bin/herdr-core`, or with its Windows installer, then tap **Run Checks Again**. |
-| **herdr-core needs an update** | Run the update command in Host detail, then tap **Run Checks Again**. |
+| **herdr-core needs an update** | Run the update command on the Server's page, then tap **Run Checks Again**. |
 | **The SSH server refuses socket forwarding** | Set `AllowStreamLocalForwarding yes` in `sshd_config`, reload `sshd`, and tap **Run Checks Again**. |
-| **The herdr-core socket path is too long** | Use a shorter **Session name** or socket path. |
+| **The herdr-core socket path is too long** | Use a shorter session name or socket path. |
 
-On Linux when the core is stopped, tap **Start herdr-core** under the checks and confirm **Start** to launch the session via your login shell and turn on systemd linger. On macOS and Windows, Host detail shows the command to run there.
+On Linux when the core is stopped, tap **Start herdr-core** under the checks and confirm **Start** to launch the session via your login shell and turn on systemd linger. On macOS and Windows, the Server's page shows the command to run there.
 
 ## The Console
 
@@ -68,7 +77,7 @@ When the core belongs to the Herdr desktop app, Heeler follows its spaces and ta
 | **Done** | Finished a turn while closed here. Opening the Agent clears **Done** on this device only. |
 | **Unknown** | No status reported yet. Tap **Unknown** to see why. |
 
-On macOS and Linux, when Grok Build shows **Unknown**, tap **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`. Revert it with **Undo** or under **Harness Edits** in Host detail.
+On macOS and Linux, when Grok Build shows **Unknown**, tap **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`. Revert it with **Undo** or under **Harness Edits** on the Server's page.
 
 On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Agent's Composer **More** menu to rename that space in both apps.
 
@@ -81,7 +90,7 @@ On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Ag
 - **Worktrees:** On macOS and Linux, turn on **Start in a new worktree** in **New Agent** and enter a **Branch** to check out `~/.herdr/worktrees/<repository>/<branch>`. To remove it, tap **More > Worktree Details > Remove Worktree**. Heeler ends every Terminal of that Workspace first, then removes the checkout.
 
 > [!NOTE]
-> If herdr-core inherited variables such as `CLAUDECODE` or `TMUX`, Host detail shows **Core Environment** naming each variable and its effect. Restart the core from a clean terminal to clear them.
+> If herdr-core inherited variables such as `CLAUDECODE` or `TMUX`, the Server's page shows **Core Environment** naming each variable and its effect. Restart the core from a clean terminal to clear them.
 
 ## Working with an Agent
 
@@ -135,7 +144,7 @@ The Helper never starts a core; while none runs, it waits. Everything it writes 
 
 ### 1. Review the files
 
-1. Open the Host in **Hosts** and tap **Host Helper**.
+1. Open the Host in **Hosts**, tap its **herdr-core** Server, and tap **Host Helper**.
 2. Under **Files This Writes**, tap **Helper**, **systemd Unit** on Linux or **LaunchAgent** on macOS, and **Pi & Oh My Pi** to browse their folders: `~/.local/share/heeler/host-helper` on Linux or `~/Library/Application Support/heeler/host-helper` on macOS, the service file, and Pi and Oh My Pi `agent/extensions` folders.
 
 <a href="images/herdr-core/host-helper-sheet.png"><img src="images/herdr-core/host-helper-sheet.png" width="300" alt="Host Helper sheet before install: Not Installed, an Install button, and Files This Writes listing Helper, LaunchAgent, and Pi & Oh My Pi with file counts"></a>
@@ -149,7 +158,7 @@ The Helper needs Node.js 20 or newer on the Host, and runs as a `systemd` user s
 
 **It worked if** the **Host Helper** row shows the installed version and the sheet reads **The Host Helper is running.**
 
-macOS may notify that `node` can run in the background and list it under Login Items. After a Mac restart, the Helper runs again only once Heeler reads it when Host detail opens or a device that allows notifications connects. On a Mac, Claude Code's Usage Limits may read **need your own login on this Mac**, while Token Usage still counts.
+macOS may notify that `node` can run in the background and list it under Login Items. After a Mac restart, the Helper runs again only once Heeler reads it when the Server's page opens or a device that allows notifications connects. On a Mac, Claude Code's Usage Limits may read **need your own login on this Mac**, while Token Usage still counts.
 
 | Row reads | What it means |
 | --- | --- |
@@ -183,7 +192,7 @@ Open **Host Helper** and tap **Remove** to stop the service and delete its files
 
 Add a Windows machine over OpenSSH:
 
-- **Location and start:** Heeler looks for `%LOCALAPPDATA%\Programs\herdr-core\herdr-core.exe` and connects only when its named pipe exists. Start the core in a non-administrator PowerShell window in your desktop session with the command in Host detail.
+- **Location and start:** Heeler looks for `%LOCALAPPDATA%\Programs\herdr-core\herdr-core.exe` and connects only when its named pipe exists. Start the core in a non-administrator PowerShell window in your desktop session with the command on the Server's page.
 - **What works:** Workspaces, statuses, live terminals, **New Terminal**, **New Agent**, and **New Workspace**. **New Agent** runs through Windows PowerShell and reads its profile, not PowerShell 7's. **New Workspace** uses the checkout or folder name until the desktop app names it. Composer **Send**, **Stop**, and **Add** up to 8 MiB per file in `%LOCALAPPDATA%\herdr-core\<session>\files\<terminal>\` work, plus **Chat** for Claude Code, Grok Build, Pi, and Oh My Pi.
 - **Not offered on Windows:** **Rename Workspace**, **Worktrees**, **Changes**, **Skills**, **Choose a Conversation**, automatic configuration edits, and **Host Helper**, which reads **Not Available**.
 

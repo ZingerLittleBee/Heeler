@@ -342,8 +342,11 @@ struct HostStoreTests {
         try store.add(tui)
         try store.add(core)
 
-        let confirmedTUI = try store.confirmServerKind(.herdrTUI, for: tui.id)
+        var confirmedTUI = try store.confirmServerKind(.herdrTUI, for: tui.id)
         let confirmedCore = try store.confirmServerKind(.herdrCore, for: core.id)
+        // Both reach one Host the same way, so the second Server gives the
+        // first a label to tell them apart (ADR 0047).
+        confirmedTUI.serverLabel = confirmedTUI.serverKey?.label
 
         #expect(confirmedTUI.serverKind == .herdrTUI)
         #expect(confirmedCore.serverKind == .herdrCore)
@@ -1513,24 +1516,6 @@ struct HostStoreTests {
         // The catalog record itself never carries the secret.
         #expect(defaults.data(forKey: "hosts").map { String(decoding: $0, as: UTF8.self) }?
             .contains("hunter2") == false)
-    }
-
-    @Test func duplicatingAPasswordHostStoresItsOwnCopyOfThePassword() throws {
-        let (defaults, cleanup) = try makeDefaults()
-        defer { cleanup() }
-        let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
-        let original = Host.fixture(authMethod: .password)
-        try store.add(original, password: "hunter2")
-
-        let draft = HostDraft(
-            duplicating: original, password: try store.password(for: original),
-            existingNames: store.hosts.map(\.displayName))
-        let copy = try #require(draft.makeHost())
-        try store.add(copy, password: draft.passwordUpdate)
-        try store.remove(original.id)
-
-        #expect(store.hosts.map(\.id) == [copy.id])
-        #expect(try store.password(for: copy) == "hunter2")
     }
 
     @Test func editKeepingPasswordFieldEmptyPreservesTheStoredPassword() throws {

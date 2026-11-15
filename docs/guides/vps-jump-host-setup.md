@@ -117,7 +117,7 @@ Checkpoint:
 
 **Run on: iOS**
 
-In Heeler, open **Hosts > Add Host**. Under **Authentication**, keep **Device
+In Heeler, open **Hosts** and tap **+**. Under **Authentication**, keep **Device
 Key** selected and tap **Copy authorized_keys Line**. It looks like:
 
 ```text
@@ -534,37 +534,36 @@ pre-login FileVault screen.
 
 **Run on: iOS**
 
-In **Hosts > Add Host**, tap **Add Route** under **Routes** to enter the tunnel and Jump Host fields, tap **Save** on the route page, and fill in the remaining Host fields:
+In **Hosts**, tap **+**, tap **More Options** to enter the tunnel and Jump Host fields, go back, and fill in the rest of the first step:
 
 | Field | Value |
 |---|---|
-| Name | Any descriptive name |
 | User | `MAC_USER` |
-| Address (in Route) | `127.0.0.1` |
-| Port (in Route) | `TUNNEL_PORT` |
-| Jump Host address (in Route) | `VPS_PUBLIC_IP` |
-| Jump Host port (in Route) | `VPS_SSH_PORT` |
-| Jump Host user (in Route) | `herdr-jump` |
+| Address | `127.0.0.1` |
+| Port (in More Options) | `TUNNEL_PORT` |
+| Jump Host address (in More Options) | `VPS_PUBLIC_IP` |
+| Jump Host port (in More Options) | `VPS_SSH_PORT` |
+| Jump Host user (in More Options) | `herdr-jump` |
 | Authentication | `Device Key` |
-| herdr Session | Leave blank |
 
-The Jump Host port and user fields appear on the route page only after Jump Host
-address is filled in. If Jump Host user is left blank, Heeler reuses the Host
-user, and the VPS rejects it as an unknown account.
+The Jump Host port and user fields appear under More Options only after Jump
+Host address is filled in. If Jump Host user is left blank, Heeler reuses the
+Host user, and the VPS rejects it as an unknown account.
 
-Leave herdr Session blank to use the default session at
-`~/.config/herdr/herdr.sock`. Any value, including `default`, selects
-`~/.config/herdr/sessions/<name>/herdr.sock`.
+Tap **Connect**.
 
-Tap **Save** on **Add Host** to start the **Preflight** checks.
-
-Heeler presents two independent host-key confirmations:
+Heeler presents two independent host-key confirmations, one after the other:
 
 1. the VPS Jump Host key;
 2. the Mac host key reached through the reverse tunnel.
 
 Confirm each fingerprint through its trusted system. Do not assume that
 trusting the VPS also trusts the Mac.
+
+On the last step, leave **Herdr TUI** checked (the default session at
+`~/.config/herdr/herdr.sock`; a named session that runs is listed as
+**Herdr TUI · name**), name the Host if you like, and add it. Open the Host
+and tap **Herdr TUI** for its **Preflight** checks.
 
 Successful preflight must verify:
 
@@ -599,7 +598,8 @@ launchctl print "gui/$(id -u)/dev.herdr.VPS_NAME-reverse-ssh"
 
 It must show a new PID and `state = running`.
 
-In Heeler, tap **Run Checks Again** next to **Preflight** or open an Agent. A
+In Heeler, tap **Run Checks Again** next to **Preflight** on the Server's page,
+or open an Agent. A
 restarted process without a working app connection is not sufficient proof.
 
 ## Step 15: Harden Mac Authentication

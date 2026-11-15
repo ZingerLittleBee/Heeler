@@ -6,14 +6,16 @@ A Host can have more than one route: its LAN address for when you are at home, a
 
 1. Go to **Hosts**, open the Host, and tap **Edit**.
 2. Under **Routes**, tap **Add Route**.
-3. Under **Network**, choose how this route travels:
+3. Enter the **Address** and **Port** (22 unless you changed the Mac's SSH port), or tap **Find on Local Network**.
+4. To go through a Jump Host, fill in **Jump Host**. Otherwise leave it blank. See [remote access through a Jump Host](vps-jump-host-setup.md).
+5. Under **Network**, choose how this route travels:
    - **Direct** for an address this iPhone or iPad can reach on its own network, such as the Mac's LAN address or a public address.
-   - An overlay network from **Settings > Overlay Networks** for Tailscale, ZeroTier, or EasyTier. For Tailscale and EasyTier, tap **Choose from Tailnet…** or **Choose from Network…** and pick the Mac to fill in its address; for ZeroTier, type the Mac's address from ZeroTier Central. See the [Overlay Network guides](overlay-networks.md) to set one up.
-4. Enter the **Address** and **Port** (22 unless you changed the Mac's SSH port).
-5. To go through a Jump Host, fill in the **Jump Host** fields. Otherwise leave them blank. See [remote access through a Jump Host](vps-jump-host-setup.md).
+   - An overlay network from **Settings > Overlay Networks** for Tailscale, ZeroTier, or EasyTier (shown at the top once you have added a network). For Tailscale and EasyTier, tap **Choose from Tailnet…** or **Choose from Network…** and pick the Mac to fill in its address; for ZeroTier, type the Mac's address from ZeroTier Central. See the [Overlay Network guides](overlay-networks.md) to set one up.
 6. Tap **Save** at the top right, then **Save** in Edit Host.
 
-**Add Host** starts with no route; tap **Add Route** to enter the first address the same way. [Scanning a Pairing Code](pairing.md) adds every address the code offers as a route of its own.
+<a href="images/hosts/add-route.png"><img src="images/hosts/add-route.png" width="300" alt="New Route form with Address 192.168.1.10, port 22, Find on Local Network, an optional Jump Host field, and Network set to Direct"></a>
+
+Adding a Host asks for its first address on the first step, with the port, Jump Host and network under **More Options**; add further routes here afterwards. [Scanning a Pairing Code](pairing.md) adds every address the code offers as a route of its own.
 
 ## How Heeler picks a route
 
@@ -24,15 +26,15 @@ A Host can have more than one route: its LAN address for when you are at home, a
 
 ## See which route is in use
 
-Open the Host from **Hosts**. The card at the top shows the connection:
+Open the Host from **Hosts** and tap one of its Servers. Each Server keeps a connection of its own, and the card under **Show in Heeler** shows it:
 
 - **Connected** names the route it used, and that route is marked **In Use** under **Routes**. Tap ↻ to reconnect.
-- While Heeler is connecting, tap ■ to stop trying. The Host stays paused until you tap **Reconnect**.
+- While Heeler is connecting, tap ■ to stop trying. The Server stays paused until you tap **Reconnect**.
 - **Can't Connect** means no route reached the Host. Each route is marked **Failed** with its own reason, such as a timeout or an overlay network that isn't connected.
 
-<a href="images/overlay-networks/host-routes-in-use.png"><img src="images/overlay-networks/host-routes-in-use.png" width="300" alt="Connected Host with a Jump Host route marked In Use and a Direct route not selected"></a>
+<a href="images/hosts/routes-in-use.png"><img src="images/hosts/routes-in-use.png" width="300" alt="Herdr TUI Server page showing Connected on 127.0.0.1 Direct, with 127.0.0.1 marked In Use and 192.168.1.10 not selected under Routes"></a>
 
-Here the Jump Host route is **In Use**; the **Direct** route is not selected. This illustrates route selection, not an overlay connection test. Names and addresses have been anonymized. Tap the image to enlarge it.
+Here the `127.0.0.1` **Direct** route is **In Use**, and the `192.168.1.10` **Direct** route is not selected. Tap the image to enlarge it.
 
 ## Change, reorder, or remove routes
 
@@ -44,7 +46,7 @@ Heeler confirms a Host's key once, and every route has to reach the machine with
 
 ## If a route always fails
 
-- Read its reason under **Routes** on the Host's page.
+- Read its reason under **Routes** on the Server's page.
 - For an overlay network route, check that the network shows as connected in **Settings > Overlay Networks** and that the Mac is online in it.
 - For a Jump Host route, check that you can reach the Jump Host and that it accepts the same Device Key, RSA Key, or password as the Host. See [the Jump Host guide](vps-jump-host-setup.md).
 - For a LAN address, it only answers on that network. Away from home it fails, and another route connects instead.

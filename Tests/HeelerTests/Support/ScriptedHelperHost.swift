@@ -355,9 +355,9 @@ actor ScriptedHelperHost: HostHelperHost {
             removeTree(path, keeping: keeping)
         case .tidyInterruptedInstall(let directory, let record, let quietMinutes):
             lines = tidy(directory: directory, record: record, waitsForQuiet: quietMinutes != nil)
-        case .usageQuery(_, _, let session):
+        case .usageQuery(_, _, _, _, let session):
             lines = ["__HEELER_USAGE_BEGIN_\(script.nonce)", usageBody(session: session), "__HEELER_USAGE_END_\(script.nonce):0"]
-        case .tmuxUsageQuery(_, _, let socket, let storedPaths):
+        case .tmuxUsageQuery(_, _, _, _, let socket, let storedPaths):
             lines = [
                 "__HEELER_USAGE_BEGIN_\(script.nonce)",
                 tmuxUsageBody(socket: socket, storedPaths: storedPaths),
@@ -649,8 +649,8 @@ actor ScriptedHelperHost: HostHelperHost {
         case .removeEmptyFolders(let paths): "removeEmptyFolders \(paths.joined(separator: " "))"
         case .removeTree(let path, _): "removeTree \(path)"
         case .tidyInterruptedInstall(_, _, let quietMinutes): quietMinutes == nil ? "tidy" : "tidy when quiet"
-        case .usageQuery(_, _, let session): "usageQuery \(session)"
-        case .tmuxUsageQuery(_, _, let socket, _): "tmuxUsageQuery \(socket)"
+        case .usageQuery(_, _, _, _, let session): "usageQuery \(session)"
+        case .tmuxUsageQuery(_, _, _, _, let socket, _): "tmuxUsageQuery \(socket)"
         case .refreshTmuxPaths(let socket, _): "refreshTmuxPaths \(socket)"
         }
     }
