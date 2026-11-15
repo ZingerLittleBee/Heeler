@@ -42,9 +42,9 @@ struct ChatRowActions {
     var olderPull: ChatOlderPull?
     /// The pictures image rows show.
     var thumbnails: ChatImageThumbnails?
-    /// Opens an image row's file in the zoomable sheet, showing the
-    /// thumbnail, when there is one, until the file is read.
-    var previewImage: @MainActor (String, UIImage?) -> Void = { _, _ in }
+    /// Opens an image row's file in the zoomable sheet, showing an optional
+    /// display title and the thumbnail, when there is one, until the file is read.
+    var previewImage: @MainActor (String, String?, UIImage?) -> Void = { _, _, _ in }
 }
 
 /// A pull past the timeline's top, as the Load Earlier row shows it.
@@ -324,11 +324,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             retryOutput: { [weak self] id in self?.retryOutput(id) },
             olderPull: olderPull,
             thumbnails: actions.thumbnails,
-            previewImage: { [weak self] path, thumbnail in self?.previewImage(path, thumbnail: thumbnail) })
+            previewImage: { [weak self] path, title, thumbnail in
+                self?.previewImage(path, title: title, thumbnail: thumbnail)
+            })
     }
 
-    private func previewImage(_ path: String, thumbnail: UIImage?) {
-        ChatImagePreviewController(path: path, placeholder: thumbnail, loadImage: actions.loadImage)
+    private func previewImage(_ path: String, title: String? = nil, thumbnail: UIImage?) {
+        ChatImagePreviewController(
+            path: path, displayTitle: title, placeholder: thumbnail, loadImage: actions.loadImage)
             .present(from: self)
     }
 
@@ -1546,7 +1549,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let preview: UIContextMenuContentPreviewProvider? = path.map { path in
             { ChatImagePreviewController(path: path, placeholder: thumbnail, loadImage: loader) }
         }
-        let named = path == nil ? row.messageImagePaths : []
+        let named = path == nil ? row.messageImages : []
         return UIContextMenuConfiguration(identifier: path as NSString?, previewProvider: preview) { [weak self] _ in
             var items: [UIMenuElement] = []
             if let path {
@@ -1554,13 +1557,17 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
                     self?.previewImage(path, thumbnail: thumbnail)
                 })
             }
-            // The images a message names, by file name when it names several.
-            let previews = named.map { path in
+            // The images a message names, by display title or file name when it names several.
+            let previews = named.map { image in
                 UIAction(
-                    title: named.count == 1 ? String(localized: "Preview Image") : RemoteHostPath.lastComponent(of: path),
+                    title: named.count == 1
+                        ? String(localized: "Preview Image")
+                        : (image.title ?? RemoteHostPath.lastComponent(of: image.path)),
                     image: UIImage(systemName: "photo")
                 ) { [weak self] _ in
-                    self?.previewImage(path, thumbnail: self?.actions.thumbnails?.image(of: path))
+                    self?.previewImage(
+                        image.path, title: image.title,
+                        thumbnail: self?.actions.thumbnails?.image(of: image.path))
                 }
             }
             if previews.count == 1 {

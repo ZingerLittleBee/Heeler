@@ -92,7 +92,11 @@ enum ChatComposerEchoes {
                 // Only the program's log naming another session says more.
                 state = status == .misdirected ? .misdirected : .outcomeUnknown
             }
-            return ChatPendingEcho(id: message.id, text: message.text, state: state)
+            return ChatPendingEcho(
+                id: message.id,
+                text: message.text,
+                state: state,
+                stagedImagePaths: message.stagedImagePaths)
         }
     }
 }

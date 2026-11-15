@@ -636,7 +636,7 @@ final class AgentChatStore {
         guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
             throw ChatImagePreviewError.invalidPath
         }
-        return resolved
+        return RemoteFilePath.windowsForSFTP(resolved)
     }
 
     /// Reads above the oldest message shown, a page per turn of the loop, for

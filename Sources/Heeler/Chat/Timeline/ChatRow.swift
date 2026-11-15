@@ -57,6 +57,7 @@ struct ChatPendingEcho: Identifiable, Equatable, Sendable {
     let id: UUID
     let text: String
     var state: State
+    var stagedImagePaths: [String] = []
 }
 
 /// One row of the timeline, ready to draw. Assistant Markdown is parsed
@@ -115,7 +116,9 @@ struct ChatRow: Identifiable, Sendable {
             ChatRowExtent(textBytes: plan.text.utf8.count, blocks: blocks.count, chrome: topSpacing + 56, inset: 24)
         case .user(let message) where message.command == nil:
             // The bubble's padding, and the room it leaves at the leading edge.
-            ChatRowExtent(textBytes: message.text.utf8.count, blocks: 1, chrome: topSpacing + 20, inset: 76)
+            ChatRowExtent(
+                textBytes: ChatImageLink.displayedByteCount(of: message.text, imagePaths: message.imagePaths),
+                blocks: 1, chrome: topSpacing + 20, inset: 76)
         default:
             nil
         }
@@ -164,26 +167,50 @@ struct ChatRow: Identifiable, Sendable {
         return tool.imagePath
     }
 
-    /// The image files the row's message names by path or carried, as
-    /// written and each once (`ChatImageLink`).
-    var messageImagePaths: [String] {
+    /// The image files the row's message names by path or carried, each path
+    /// once in reading order, with any numbered display title (`ChatImageLink`).
+    var messageImages: [ChatImageLink.Reference] {
         switch content {
         case .user(let message):
+            let sourceText = message.command?.arguments ?? message.text
             let linked =
-                message.command == nil
-                ? ChatImageLink.paths(in: ChatImageLink.marking(message.text, imagePaths: message.imagePaths)) : []
-            var seen: Set<String> = []
-            return (linked + message.imagePaths).filter { seen.insert($0).inserted }
+                sourceText.isEmpty
+                ? []
+                : ChatImageLink.references(
+                    in: ChatImageLink.marking(sourceText, imagePaths: message.imagePaths))
+            var seen = Set(linked.map(\.path))
+            var nextNumber = linked.count + 1
+            var extras: [ChatImageLink.Reference] = []
+            for path in message.imagePaths where seen.insert(path).inserted {
+                let title: String?
+                if ChatImageLink.isStagedImagePath(path) {
+                    title = ChatImageLink.stagedImageLabel(number: nextNumber)
+                    nextNumber += 1
+                } else {
+                    title = nil
+                }
+                extras.append(ChatImageLink.Reference(path: path, title: title))
+            }
+            return linked + extras
+        case .pending(let echo):
+            return ChatImageLink.references(
+                in: ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths))
         case .assistant(_, let blocks), .plan(_, let blocks):
             var seen: Set<String> = []
             return blocks.flatMap { block in
                 [block.content] + (block.table?.rows.flatMap(\.self) ?? [])
             }
-            .flatMap(ChatImageLink.paths(in:))
-            .filter { seen.insert($0).inserted }
+            .flatMap(ChatImageLink.references(in:))
+            .filter { seen.insert($0.path).inserted }
         default:
             return []
         }
+    }
+
+    /// The image files the row's message names by path or carried, as
+    /// written and each once (`ChatImageLink`).
+    var messageImagePaths: [String] {
+        messageImages.map(\.path)
     }
 
     /// What Copy and Select Text take: the whole message as written, the
