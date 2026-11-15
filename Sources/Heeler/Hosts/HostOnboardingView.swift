@@ -98,7 +98,8 @@ struct HostOnboardingView: View {
             credentials: dependencies.credentials,
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
-            noteTmuxPaths: dependencies.noteTmuxPaths)
+            noteTmuxPaths: dependencies.noteTmuxPaths,
+            notePlugin: dependencies.notePlugin)
     }
 
     /// The page with its sheets, outside `page`'s modifier chain, which
@@ -629,6 +630,11 @@ struct HostOnboardingView: View {
                         if store.pluginAction == .running {
                             ProgressView()
                                 .controlSize(.small)
+                        } else if HeelerPluginPresentation.unattendedUpdate(
+                            for: store.pluginStatus, on: store.host) != nil
+                        {
+                            // Nothing is wrong with what is installed.
+                            HostUpdateMark()
                         } else {
                             PluginNoticeIcon(tone: notice.tone)
                         }
@@ -658,6 +664,8 @@ struct HostOnboardingView: View {
                     if helper.running != nil {
                         ProgressView()
                             .controlSize(.small)
+                    } else if helper.installAction == .update {
+                        HostUpdateMark()
                     } else if helper.needsAttention {
                         PluginNoticeIcon(tone: .warning)
                     }

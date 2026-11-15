@@ -640,6 +640,17 @@ Heeler's extensions for Pi and Oh My Pi, which tell Chat their session, placed
 in those programs' own extension folders and removed with it (ADR 0033).
 _Avoid_: daemon, plugin (on herdr-core), agent
 
+**Updates**:
+The page that lists, Host by Host, the Heeler plugin on each Herdr TUI Server
+and the Host Helper wherever the app carries a newer version than the Host
+holds. A card above the Hosts list, a badge on the Hosts tab and a tag on the
+Host's row count them. Each Server is asked what it holds once as it connects.
+Update All starts every listed update at once without the sheets a first
+install goes through, and only for what is already installed. A failed update
+stays listed with why: nothing changed, the Host gave no answer and was read
+again, or the Helper needs Repair (ADR 0048).
+_Avoid_: upgrades, app update (the App Store's), sync
+
 **Notification Key**:
 The symmetric key generated on device and stored on a Host during Notification Registration; encrypts Agent Notification content end to end so the Push Relay cannot read it.
 _Avoid_: shared secret, push key

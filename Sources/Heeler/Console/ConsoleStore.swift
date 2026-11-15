@@ -2300,13 +2300,14 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits, agyLimits in
+        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits, codexLimits, agyLimits in
             guard let self else { throw TransportError.cancelled }
             if let host = self.coreHost(hostID) {
                 return try await self.withCoreConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, session: host.sessionName,
-                        timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits)
+                        timeZone: timeZone, claudeLimits: claudeLimits,
+                        codexLimits: codexLimits, agyLimits: agyLimits)
                 }
             }
             if let host = self.tmuxHost(hostID) {
@@ -2314,12 +2315,13 @@ final class ConsoleStore {
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
                         tmuxPaths: host.storedTmuxPaths, timeZone: timeZone,
-                        claudeLimits: claudeLimits, agyLimits: agyLimits)
+                        claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits)
                 }
             }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
-                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits)
+                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits,
+                    codexLimits: codexLimits, agyLimits: agyLimits)
             }
         })
         store.didChange = { [weak self] in self?.publishUsageWidgets() }

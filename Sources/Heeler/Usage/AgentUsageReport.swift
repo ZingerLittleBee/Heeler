@@ -231,6 +231,9 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     /// Claude Code's entry, when the report has one.
     var claudeProgram: Program? { programs?.first { $0.program == "claude" } }
 
+    /// Codex's entry, when the report has one.
+    var codexProgram: Program? { programs?.first { $0.program == "codex" } }
+
     /// Antigravity's entry, when the report has one.
     var agyProgram: Program? { programs?.first { $0.program == "agy" } }
 
@@ -268,6 +271,22 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     /// turned on failed; they read as failed, not as still being read.
     func failedClaudeLimits() -> Self {
         replacingLimits(forProgram: "claude", state: "error", reason: "requestFailed")
+    }
+
+    /// A device that turned off Codex limits hides any cached reading.
+    func hidingCodexLimits() -> Self {
+        replacingLimits(forProgram: "codex", state: "disabled", reason: nil)
+    }
+
+    /// Right after Codex limits turn back on, this report's query did not ask
+    /// for them; they read as not read yet, not as off.
+    func readingCodexLimits() -> Self {
+        replacingLimits(forProgram: "codex", state: "unavailable", reason: "notReadYet")
+    }
+
+    /// The re-query after turning Codex limits back on failed.
+    func failedCodexLimits() -> Self {
+        replacingLimits(forProgram: "codex", state: "error", reason: "requestFailed")
     }
 
     /// A device that turned off Antigravity limits hides any cached reading.

@@ -88,7 +88,7 @@ function tokenUsage(buckets, dates, dayInZone) {
  * suggestions the same way; without it, the Codex entry lists none.
  */
 export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.now(), claudeLimits = false,
-  { accounts, suggestions = [], programs: others = {}, agyLimits = true }) {
+  { accounts, suggestions = [], programs: others = {}, codexLimits = true, agyLimits = true }) {
   const dayInZone = calendarDays(timeZone);
   const today = dayInZone(now);
   const dates = Array.from({ length: 30 }, (_, index) => new Date(Date.parse(today + "T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10));
@@ -99,6 +99,7 @@ export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.no
   const limits = reading => expireLimitWindows(reading
     || (refreshing ? { state: "unavailable", reason: "notReadYet" } : { state: "error", reason: "requestFailed" }), now);
   const claudeLimitsOf = reading => claudeLimits ? limits(reading) : { state: "disabled" };
+  const codexLimitsOf = reading => codexLimits ? limits(reading) : { state: "disabled" };
   const agyLimitsOf = (reading, isDefault = true) => !agyLimits ? { state: "disabled" }
     : isDefault ? limits(reading) : { state: "unavailable", reason: "singleSignIn" };
   const counted = new Map(accounts.filter(account => account.state === "ok").map(account => [account.id, []]));
@@ -126,13 +127,13 @@ export function reportFromSnapshot(snapshot, timeZone, refreshing, now = Date.no
   // the Default Account's, and the program's error covers the Accounts its
   // snapshot counted.
   const codexBefore = Array.isArray(snapshot?.countedCodexAccounts) ? snapshot.countedCodexAccounts : ["default"];
-  const codexLimits = snapshot?.usageLimits?.codex;
-  const codex = { program: "codex", tokenUsage: usage([...codexCounted.values()].flat(), errors.codex), usageLimits: limits(codexLimits),
+  const codexReading = snapshot?.usageLimits?.codex;
+  const codex = { program: "codex", tokenUsage: usage([...codexCounted.values()].flat(), errors.codex), usageLimits: codexLimitsOf(codexReading),
     ...(others.codex ? {
       accounts: codexAccounts.map(({ id, isDefault, name, directory, state }) => state !== "ok" ? { id, isDefault, name, directory, state } : {
         id, isDefault, name, directory, state,
         tokenUsage: usage(codexCounted.get(id), errors[`codex:${id}`] ?? (codexBefore.includes(id) ? errors.codex : undefined)),
-        usageLimits: limits(isDefault ? codexLimits : snapshot?.usageLimits?.codexAccounts?.[id]),
+        usageLimits: codexLimitsOf(isDefault ? codexReading : snapshot?.usageLimits?.codexAccounts?.[id]),
       }),
       accountSuggestions: others.codex.suggestions ?? [],
     } : {}) };

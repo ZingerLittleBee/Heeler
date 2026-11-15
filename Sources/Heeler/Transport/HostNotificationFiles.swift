@@ -33,7 +33,7 @@ protocol HostNotificationFiles: Sendable {
     /// the caller resolved with `readHeelerPlugin()`. Reads aggregate usage,
     /// never credentials or Transcripts.
     func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, agyLimits: Bool, pluginRoot: String
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport
 
     /// Reads the Claude Code Account file (`usage-accounts.json`, ADR 0030)
@@ -82,11 +82,20 @@ extension HostNotificationFiles {
         timeZone: String, claudeLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport {
         try await readAgentUsage(
-            timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: true, pluginRoot: pluginRoot)
+            timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: true, agyLimits: true,
+            pluginRoot: pluginRoot)
     }
 
     func readAgentUsage(
         timeZone: String, claudeLimits: Bool, agyLimits: Bool, pluginRoot: String
+    ) async throws -> AgentUsageReport {
+        try await readAgentUsage(
+            timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: true, agyLimits: agyLimits,
+            pluginRoot: pluginRoot)
+    }
+
+    func readAgentUsage(
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool, pluginRoot: String
     ) async throws -> AgentUsageReport {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Usage"))
     }

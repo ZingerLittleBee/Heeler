@@ -64,8 +64,8 @@ readline.createInterface({input: process.stdin}).on('line', line => {
 `, { mode: 0o755 });
   const hook = spawnSync(process.execPath, [join(plugin, "src/sidebar-hook.js")], { env, encoding: "utf8" });
   assert.equal(hook.status, 0, hook.stderr);
-  const query = () => {
-    const result = spawnSync(process.execPath, [join(plugin, "src/usage-query.js"), "--tz", "UTC"], {
+  const query = (...extra) => {
+    const result = spawnSync(process.execPath, [join(plugin, "src/usage-query.js"), "--tz", "UTC", ...extra], {
       env: { HERDR_PLUGIN_CONFIG_DIR: env.HERDR_PLUGIN_CONFIG_DIR, HOME: join(root, "wrong-home"), PATH: "/usr/bin:/bin" },
       encoding: "utf8", timeout: 10_000,
     });
@@ -73,8 +73,8 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     return JSON.parse(result.stdout);
   };
   const cache = () => join(env.HERDR_PLUGIN_STATE_DIR, "usage", readdirSync(join(env.HERDR_PLUGIN_STATE_DIR, "usage"))[0]);
-  const finish = async () => {
-    for (let count = 0; count < 500; count++) { const report = query(); if (!report.refreshing) return report; await sleep(25); }
+  const finish = async (...extra) => {
+    for (let count = 0; count < 500; count++) { const report = query(...extra); if (!report.refreshing) return report; await sleep(25); }
     assert.fail("worker did not finish");
   };
   const transcript = records => {
@@ -281,4 +281,25 @@ test("the rollout fallback skips newer snapshots without any window", async t =>
   assert.equal(limits.source, "lastSession");
   assert.equal(limits.windows.length, 1);
   assert.equal(limits.windows[0].usedPercent, 7);
+});
+
+test("--no-codex-limits skips codex app-server while scanning Token Usage, and turning it back on reads immediately", async t => {
+  const f = fixture(t);
+  f.transcript([{
+    type: "event_msg", timestamp: new Date().toISOString(),
+    payload: { type: "token_count", info: {
+      total_token_usage: { input_tokens: 40, cached_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 0, total_tokens: 50 },
+      last_token_usage: { input_tokens: 40, cached_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 0, total_tokens: 50 },
+    } },
+  }]);
+  const disabled = await f.finish("--no-codex-limits");
+  const codex = disabled.programs.find(program => program.program === "codex");
+  assert.deepEqual(codex.usageLimits, { state: "disabled" });
+  assert.equal(codex.tokenUsage.totals.today.tokens.total, 50);
+  assert.throws(() => readFileSync(f.requests, "utf8"), { code: "ENOENT" });
+
+  // Re-enabling starts a worker right away even while the 60s token scan is still fresh.
+  const enabled = await f.finish();
+  assert.equal(codexLimits(enabled).state, "ok");
+  assert.equal(codexLimits(enabled).windows[0].usedPercent, 18);
 });

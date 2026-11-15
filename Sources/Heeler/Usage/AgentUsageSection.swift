@@ -315,6 +315,22 @@ struct ClaudeUsageLimitsNote: View {
     }
 }
 
+/// One Host's preference to read Codex's plan limits. Enabled by default;
+/// while it is off, the row says so in place of the windows.
+struct CodexUsageLimitsToggle: View {
+    @Bindable var store: AgentUsageStore
+
+    var body: some View {
+        Toggle(isOn: $store.codexLimitsEnabled) {
+            Text("Codex limits")
+            if !store.codexLimitsEnabled {
+                Text("Usage Limits are off.")
+            }
+        }
+        .accessibilityIdentifier("usage.codex-limits")
+    }
+}
+
 /// One Host's preference to read Antigravity's plan limits. Enabled by default;
 /// while it is off, the row says so in place of the windows.
 struct AgyUsageLimitsToggle: View {

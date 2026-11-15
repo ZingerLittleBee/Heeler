@@ -15,7 +15,7 @@ const sameAccounts = (before, now) => Array.isArray(before) && before.length ===
  * Start one detached worker unless another holds the lock; true while one runs.
  * Throws when no worker can start (an unwritable cache, a full disk).
  */
-function startWorker(runtime, directory, claudeLimits, agyLimits, worker) {
+function startWorker(runtime, directory, claudeLimits, codexLimits, agyLimits, worker) {
   const lock = reserveWorker(directory);
   if (!lock) return Boolean(activeLock(directory));
   try {
@@ -25,6 +25,7 @@ function startWorker(runtime, directory, claudeLimits, agyLimits, worker) {
       "--lock-token",
       lock.token,
       ...(claudeLimits ? ["--claude-limits"] : []),
+      ...(!codexLimits ? ["--no-codex-limits"] : []),
       ...(!agyLimits ? ["--no-agy-limits"] : []),
     ], {
       detached: true, stdio: "ignore", env: {
@@ -52,7 +53,7 @@ function startWorker(runtime, directory, claudeLimits, agyLimits, worker) {
  * `accountDirectory` the Account file, and `worker` says how to start the
  * worker: its `path`, the `args` naming those directories, and any added `env`.
  */
-export function usageReport({ timeZone, claudeLimits, agyLimits = true, runtimeDirectory, accountDirectory, worker }) {
+export function usageReport({ timeZone, claudeLimits, codexLimits = true, agyLimits = true, runtimeDirectory, accountDirectory, worker }) {
   if (!timeZone || !/^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)*$/.test(timeZone)) {
     throw new Error("invalid time zone");
   }
@@ -82,10 +83,11 @@ export function usageReport({ timeZone, claudeLimits, agyLimits = true, runtimeD
     // Claude Code's next read is the earliest over the Accounts the last run
     // counted; an Account added since then makes the snapshot stale.
     if (!refreshing && !failures.paused && (stale
-        || snapshot.limitsVersion !== 1 || !snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt
+        || snapshot.limitsVersion !== 1
+        || (codexLimits && (!snapshot.nextLimitsAt || Date.now() >= snapshot.nextLimitsAt))
         || (claudeLimits && (!snapshot.nextClaudeLimitsAt || Date.now() >= snapshot.nextClaudeLimitsAt))
         || (agyLimits && (!snapshot.nextAgyLimitsAt || Date.now() >= snapshot.nextAgyLimitsAt)))) {
-      refreshing = startWorker(runtime, directory, claudeLimits, agyLimits, worker);
+      refreshing = startWorker(runtime, directory, claudeLimits, codexLimits, agyLimits, worker);
     }
   } catch {
     // The cache cannot be written (read-only, a full disk), so no worker runs.
@@ -107,7 +109,7 @@ export function usageReport({ timeZone, claudeLimits, agyLimits = true, runtimeD
       ignored: files[program].ignored, candidates: Array.isArray(candidates) ? candidates : [] })];
   }));
   return reportFromSnapshot(served, timeZone, refreshing, Date.now(), claudeLimits, {
-    accounts: programs.claude, suggestions: suggestions.claude, agyLimits,
+    accounts: programs.claude, suggestions: suggestions.claude, codexLimits, agyLimits,
     programs: {
       codex: { accounts: programs.codex, suggestions: suggestions.codex },
       agy: { accounts: programs.agy, suggestions: suggestions.agy },
