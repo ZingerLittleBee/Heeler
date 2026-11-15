@@ -474,7 +474,8 @@ struct ShellTerminalView: View {
             .onChange(of: activity.activationCount, initial: true) { _, _ in
                 store.didBecomeActive(
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
-            }            // A recovered terminal is a fresh surface that starts in Text and
+            }
+            // A recovered terminal is a fresh surface that starts in Text and
             // decides the keyboard itself from the user's last intent (see
             // `claimsKeyboard`); app-side mode state has to follow it back to
             // Text without raising anything on its own.
