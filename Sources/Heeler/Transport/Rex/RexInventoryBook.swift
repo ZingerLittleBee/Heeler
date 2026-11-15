@@ -125,6 +125,16 @@ struct RexInventoryBook {
         needsListing = true
     }
 
+    /// Each session with a detached terminal reads its structure again. Rex
+    /// raises no event when a detached block's label changes, so only a read
+    /// shows it. A session whose read is in flight reads once more after it.
+    mutating func rereadDetached() {
+        for id in order {
+            guard let record = sessions[id], session(id, record)?.detached.isEmpty == false else { continue }
+            sessions[id]?.forced = true
+        }
+    }
+
     // MARK: Events
 
     mutating func apply(_ event: RexControlEvent) {

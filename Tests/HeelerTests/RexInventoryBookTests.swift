@@ -238,6 +238,28 @@ struct RexInventoryBookTests {
         #expect(structureReads(&book) == [])
     }
 
+    /// No event says a detached terminal's label changed, so a session with
+    /// detached terminals can be read again on demand; one with none is not.
+    @Test func onlySessionsWithDetachedTerminalsAreReadAgain() throws {
+        var placedOnly = FakeRexWorld.studio(id: "session:placed", label: "placed")
+        placedOnly.detached = []
+        var book = settled([studio, placedOnly])
+        for read in book.takeReads(limit: 16) {
+            guard case .details(let address) = read else { continue }
+            book.detailsRead(address, title: nil, process: nil)
+        }
+        #expect(book.takeReads(limit: 16) == [])
+
+        book.rereadDetached()
+        #expect(!book.isStructureSettled)
+        #expect(book.takeReads(limit: 16) == [.structure(sessionID: studio.id)])
+        var renamed = studio
+        renamed.detached[0].label = "deploy"
+        answer(&book, renamed, seq: 0)
+        #expect(book.isStructureSettled)
+        #expect(book.inventory.sessions.first?.detached.map(\.label) == ["deploy"])
+    }
+
     // MARK: Order
 
     /// A details answer started before an event does not undo the event, and

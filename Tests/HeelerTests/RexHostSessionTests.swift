@@ -157,6 +157,40 @@ struct RexHostSessionTests {
         await session.end()
     }
 
+    /// Rex raises no event when a detached terminal's label changes, so the
+    /// follower reads a session with detached terminals again on its interval.
+    @Test func aDetachedTerminalsLabelIsReadAgainOnAnInterval() async throws {
+        final class Published: Sendable {
+            let inventories = Mutex<[RexInventory]>([])
+            var last: RexInventory? { inventories.withLock { $0.last } }
+        }
+        let world = world()
+        let (server, link) = try await FakeRexServer.open()
+        await world.install(on: server)
+        let clock = ManualClock()
+        let published = Published()
+        let follower = RexInventoryFollower(
+            link: link, detachedRereadInterval: .seconds(60), sleep: clock.parkedSleep(for:)
+        ) { inventory in published.inventories.withLock { $0.append(inventory) } }
+        let following = Task { await follower.run() }
+        func waitUntil(_ what: String, _ condition: () -> Bool) async throws {
+            for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(condition(), "Timed out waiting for \(what)")
+        }
+        try await waitUntil("the inventory with details") {
+            published.last?.sessions.first?.terminals.first?.details.title == "make test"
+        }
+        let viewReads = await server.requests.count(where: { $0.method == "session.view" })
+
+        world.update { $0[0].detached[0].label = "deploy" }
+        #expect(await clock.pass(.seconds(60)))
+        try await waitUntil("the new label") { published.last?.sessions.first?.detached.first?.label == "deploy" }
+        #expect(await server.requests.count(where: { $0.method == "session.view" }) == viewReads + 1)
+
+        await link.close()
+        #expect(await following.value == .linkEnded(.closedHere))
+    }
+
     // MARK: Drops
 
     /// A link that drops without a close frame is resumed with its reconnect

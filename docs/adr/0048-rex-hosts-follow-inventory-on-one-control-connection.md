@@ -32,7 +32,9 @@ restarted servers without showing a stale or half-read list.
   events costs that read and one more. No response replaces what a newer event
   or response said: a closed block stays closed, a view with a lower revision
   is not applied, and a title an event set is not undone by an older read. At
-  most four reads are in flight per Host, structure ahead of details.
+  most four reads are in flight per Host, structure ahead of details. Rex's
+  API document says relabeling a detached block raises no event, so a session
+  with detached terminals also reads its structure again once a minute.
 - The Console sees an inventory only once every session's structure is
   current: first with the structure, then again when the terminals' details
   are read, then on each change once it settles.

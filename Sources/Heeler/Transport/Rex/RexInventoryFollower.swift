@@ -5,7 +5,9 @@ import Foundation
 /// in flight at most, applies the link's events, and publishes the inventory
 /// once every session's structure has settled, and again as it changes. A
 /// burst of changes publishes once it settles; a change to a terminal's
-/// details alone publishes once no details read is left.
+/// details alone publishes once no details read is left. A session with
+/// detached terminals is read again on an interval, since no event says when
+/// one of their labels changes.
 ///
 /// It follows until the link ends, a read stalls past its deadline, or the
 /// server refuses to attach. It never ends the link: whoever opened the link
@@ -24,14 +26,19 @@ actor RexInventoryFollower {
     /// own events, so titles, programs and directories stay current.
     static let eventScope = "all"
 
+    typealias Sleep = @Sendable (Duration) async throws -> Void
+
     private let link: RexControlLink
     private let maxReadsInFlight: Int
+    private let detachedRereadInterval: Duration?
+    private let sleep: Sleep
     private let publish: @Sendable (RexInventory) -> Void
     private var book: RexInventoryBook
     private var listing: Task<Void, Never>?
     private var reads: [UInt64: Task<Void, Never>] = [:]
     private var nextRead: UInt64 = 0
     private var eventTask: Task<Void, Never>?
+    private var rereadTask: Task<Void, Never>?
     private var published: RexInventory?
     private var ending: Ending?
     private var waiter: CheckedContinuation<Ending, Never>?
@@ -40,13 +47,18 @@ actor RexInventoryFollower {
     var hasPublished: Bool { published != nil }
 
     /// `carrying` is what the last link knew of each terminal, shown until
-    /// this one reads it again. `publish` hears each inventory in order.
+    /// this one reads it again. `detachedRereadInterval` is how often sessions
+    /// with detached terminals are read again; nil never. `publish` hears each
+    /// inventory in order.
     init(
         link: RexControlLink, carrying: [RexPaneAddress: RexTerminalDetails] = [:], maxReadsInFlight: Int = 4,
+        detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
         publish: @escaping @Sendable (RexInventory) -> Void
     ) {
         self.link = link
         self.maxReadsInFlight = max(1, maxReadsInFlight)
+        self.detachedRereadInterval = detachedRereadInterval
+        self.sleep = sleep
         self.publish = publish
         book = RexInventoryBook(carrying: carrying)
     }
@@ -67,6 +79,14 @@ actor RexInventoryFollower {
             }
         }
         startListing()
+        if let interval = detachedRereadInterval {
+            rereadTask = Task { [weak self, sleep] in
+                while !Task.isCancelled {
+                    do { try await sleep(interval) } catch { return }
+                    await self?.rereadDetached()
+                }
+            }
+        }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 if let ending {
@@ -84,6 +104,7 @@ actor RexInventoryFollower {
         guard ending == nil else { return }
         ending = reason
         eventTask?.cancel()
+        rereadTask?.cancel()
         listing?.cancel()
         for read in reads.values { read.cancel() }
         reads = [:]
@@ -101,6 +122,12 @@ actor RexInventoryFollower {
         case .sequenceBroken:
             book.sequenceBroke()
         }
+        advance()
+    }
+
+    private func rereadDetached() {
+        guard ending == nil else { return }
+        book.rereadDetached()
         advance()
     }
 
