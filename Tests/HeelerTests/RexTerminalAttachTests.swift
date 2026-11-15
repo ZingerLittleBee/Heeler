@@ -196,6 +196,32 @@ struct RexTerminalAttachTests {
         #expect(await rig.attachSlotsTaken == 0)
     }
 
+    /// A redraw sets only the modes that are on, so the paint's full reset is
+    /// what turns off those the program left while no stream was read: a
+    /// touch scroll at the shell it went back to sends nothing.
+    @Test func aRepaintLeavesNoStaleModes() async throws {
+        let rig = Rig()
+        rig.reads.set(redraw: "\u{1B}[?1049h\u{1B}[?1000h\u{1B}[?1006h\u{1B}[Hpager")
+        let session = hostSession([await rig.host([.server(await rig.server())])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+        #expect(store.modes.isAlternateScreen && store.modes.tracksMouse)
+
+        await rig.endpoint.script(.refuse(reason: 3))
+        rig.reads.set(redraw: Self.redraw)
+        await rig.endpoint.drop()
+        await rig.begin(stream: 1)
+        try await waitUntil("the repaint") { chunks.all.count == 2 }
+
+        #expect(chunks.all.last == Self.painted())
+        #expect(!store.modes.isAlternateScreen)
+        #expect(!store.modes.tracksMouse)
+        #expect(store.modes.remoteScrollSequence(towardOlderContent: true, columns: 80, rows: 24) == nil)
+        await store.stop()
+    }
+
     // MARK: Size
 
     /// The view's grid is asked for on arrival and once it settles after a

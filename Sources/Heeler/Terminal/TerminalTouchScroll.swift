@@ -106,9 +106,9 @@ struct TerminalKeyboardResponderGate {
 }
 
 /// What the remote application asked of its terminal, read from the output
-/// stream in order. Only set and reset requests change a mode: a restore
-/// (`CSI ? Pm r`) leaves the tracker where it was, although an emulator would
-/// go back to the saved value.
+/// stream in order. Only set and reset requests and a full reset (`ESC c`)
+/// change a mode: a restore (`CSI ? Pm r`) leaves the tracker where it was,
+/// although an emulator would go back to the saved value.
 struct TerminalModeTracker: Equatable {
     private enum ParseState: Equatable {
         case ground
@@ -309,6 +309,7 @@ struct TerminalModeTracker: Equatable {
         case .ground:
             break
         case .escape:
+            if byte == 0x63 { resetModes() }
             enter(byte == 0x5B ? .controlSequence : .ground)
         case .controlSequence:
             switch byte {
@@ -334,6 +335,21 @@ struct TerminalModeTracker: Equatable {
                 enter(.ground)
             }
         }
+    }
+
+    /// A full reset (RIS, `ESC c`) puts every mode back to its default, as the
+    /// emulator does, so a paint that starts with one and sets only the modes
+    /// that are on leaves the tracker where the emulator is. Whether the
+    /// stream ever named DECSET 9001 is a fact about the stream, which a
+    /// herdr-core paint relies on, so it stays.
+    private mutating func resetModes() {
+        mainKittyStack = KittyKeyboardStack()
+        alternateKittyStack = KittyKeyboardStack()
+        mouseTrackingModes = []
+        usesApplicationCursorKeys = false
+        isAlternateScreen = false
+        usesSGRMouseEncoding = false
+        bracketedPasteSetting = false
     }
 
     /// Whatever state comes next, a sequence in progress is over.
