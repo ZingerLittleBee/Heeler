@@ -249,6 +249,38 @@ struct RexInventoryBookTests {
         #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
     }
 
+    /// A listing newer than the view may place a terminal the view does not
+    /// show yet. It is not shown as detached; the events that placed it read
+    /// the structure again, and that read shows it in its window.
+    @Test func aTerminalPlacedAfterTheViewIsNotDetached() throws {
+        var book = settled([studio])
+        book.apply(event(1, .sessionViewChanged(revision: 4)))
+        #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+        var older = studio
+        older.revision = 4
+        var newer = studio
+        newer.revision = 5
+        newer.windows[0].layers[0].blocks.append(FakeRexWorld.Block("block:new"))
+        newer.windows[0].layers[0].layout = .split(.block("block:left"), .split(.block("block:right"), .block("block:new")))
+        book.structureRead(
+            studio.id, view: .init(value: RexInventoryWire.view(FakeRexWorld.view(older)), seq: 1),
+            listing: .init(value: RexInventoryWire.blocks(FakeRexWorld.listing(newer)), seq: 3))
+
+        #expect(book.isStructureSettled)
+        var session = try #require(book.inventory.sessions.first)
+        #expect(session.detached.map(\.blockID) == ["block:detached"])
+        #expect(!session.terminals.map(\.blockID).contains("block:new"))
+
+        book.apply(event(2, .blockCreated(blockID: "block:new")))
+        book.apply(event(3, .sessionViewChanged(revision: 5)))
+        #expect(!book.isStructureSettled)
+        #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+        answer(&book, newer, seq: 3)
+        session = try #require(book.inventory.sessions.first)
+        #expect(session.windows.first?.terminals.map(\.blockID) == ["block:left", "block:right", "block:new"])
+        #expect(session.detached.map(\.blockID) == ["block:detached"])
+    }
+
     /// An answer older than the view already held is not applied.
     @Test func anOlderViewDoesNotReplaceANewerOne() throws {
         var book = settled([studio])

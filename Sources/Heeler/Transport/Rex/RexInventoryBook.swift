@@ -371,8 +371,14 @@ struct RexInventoryBook {
             RexInventory.Window(id: window.id, label: window.customLabel, terminals: window.blocks.compactMap(terminal))
         }
         let placed = Set((record.view?.windows ?? []).flatMap { $0.blocks.map(\.id) })
-        // A listed block the view does not place is detached.
-        let detached = (record.listing ?? []).filter { !placed.contains($0.facts.id) }.compactMap { terminal($0.facts) }
+        // A block is detached when the listing says so. One the listing places
+        // in a window the held view does not show yet is newer than that view,
+        // and shows once a view that places it is read: the events that placed
+        // it ask for that read. With no view read at all, every listed block
+        // shows, detached, rather than none.
+        let detached = (record.listing ?? [])
+            .filter { ($0.windowID == nil || record.view == nil) && !placed.contains($0.facts.id) }
+            .compactMap { terminal($0.facts) }
         let session = RexInventory.Session(
             id: id, label: record.label, activeWindowID: record.view?.activeWindowID, windows: windows,
             detached: detached)
