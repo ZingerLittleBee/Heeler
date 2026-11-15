@@ -226,6 +226,11 @@ server did. Where Rex differs from tmux, this says how and why.
 - **Found later.** A Rex server that starts on a Host added earlier is marked in
   the Hosts list and tagged New in Host detail, and stays off, as any Server
   found later does.
+- **Remembered apart.** The device's memory of what each look found keeps a
+  Rex Server under a key of its own, as Rex Hosts keep a catalog of their
+  own. A build with that memory and without Rex reads the shared key whole,
+  so one Rex Server in it would make that build forget what it found on
+  every Host and point out each Server that is off as new again.
 - **Kept out by kind.** Usage reads a Host through its records that can read
   Usage, so a Rex record is never what a Host is read through or named by, and
   a Host whose only Server is Rex has no Usage entry. Agents, Chat, Composer,

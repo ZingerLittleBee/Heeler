@@ -148,10 +148,21 @@ final class HostServerDiscoveryStore {
         var lookedAt: Date
     }
 
+    /// An entry's Rex Server, kept under a key of its own as Rex Hosts keep a
+    /// catalog of their own (ADR 0048): a build before Rex reads the shared
+    /// key whole, and one Rex Server in it would lose that build everything
+    /// it remembers.
+    private struct RexShare: Codable {
+        var connection: HostMachine.Connection
+        var found: [FoundServer]
+        var shown: Set<HostServerKey>
+    }
+
     /// The app's own, which every Hosts list and Add Host wizard shares.
     static let shared = HostServerDiscoveryStore()
 
     private static let defaultsKey = "host-server-discoveries"
+    private static let rexDefaultsKey = "host-server-discoveries-rex"
 
     private var entries: [Entry]
     /// When each Host was last looked at in the background, found or not. Not
@@ -162,9 +173,21 @@ final class HostServerDiscoveryStore {
 
     init(defaults: UserDefaults? = .standard) {
         self.defaults = defaults
-        entries =
+        var entries =
             defaults?.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
+        let rexShares =
+            defaults?.data(forKey: Self.rexDefaultsKey)
+            .flatMap { try? JSONDecoder().decode([RexShare].self, from: $0) } ?? []
+        // A Rex Server joins its Host's entry, last as a look lists it. One
+        // whose Host has no entry went with it, in this build or another.
+        for share in rexShares {
+            guard let index = entries.firstIndex(where: { $0.connection == share.connection }) else { continue }
+            let listed = Set(entries[index].found.map(\.key))
+            entries[index].found += share.found.filter { !listed.contains($0.key) }
+            entries[index].shown.formUnion(share.shown)
+        }
+        self.entries = entries
     }
 
     /// The Servers the last look at `host` found, none before the first.
@@ -244,7 +267,25 @@ final class HostServerDiscoveryStore {
     }
 
     private func persist() {
-        guard let defaults, let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: Self.defaultsKey)
+        guard let defaults else { return }
+        var shared = entries
+        var rexShares: [RexShare] = []
+        for index in shared.indices {
+            let found = shared[index].found.filter { $0.key.kind == .rex }
+            let shown = shared[index].shown.filter { $0.kind == .rex }
+            guard !found.isEmpty || !shown.isEmpty else { continue }
+            rexShares.append(RexShare(connection: shared[index].connection, found: found, shown: shown))
+            shared[index].found.removeAll { $0.key.kind == .rex }
+            shared[index].shown.subtract(shown)
+        }
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(shared) {
+            defaults.set(data, forKey: Self.defaultsKey)
+        }
+        if rexShares.isEmpty {
+            defaults.removeObject(forKey: Self.rexDefaultsKey)
+        } else if let data = try? encoder.encode(rexShares) {
+            defaults.set(data, forKey: Self.rexDefaultsKey)
+        }
     }
 }
