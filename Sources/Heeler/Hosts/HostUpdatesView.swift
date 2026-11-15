@@ -161,7 +161,10 @@ struct HostUpdatesView: View {
                     // disabled button fades its words past reading.
                     Button {} label: {
                         HStack(spacing: 8) {
+                            // Not the button's size, which would make this
+                            // bar taller than the button it stands in for.
                             ProgressView()
+                                .controlSize(.small)
                             Text(
                                 "Updating \(progress.position) of \(progress.total)…",
                                 comment: "Arguments: which update is running, then how many were started.")
