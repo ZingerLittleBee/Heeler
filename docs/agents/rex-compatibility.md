@@ -151,6 +151,11 @@ Lab captures `a_snapshot_skip` and `g_reconnect`, and the committed
 - A `data.connect` ticket is 16 bytes written as base64url without padding.
   It is good for one HELLO, within 60 seconds. A connection that sent no HELLO
   was closed after 5 seconds with 1002 (`g_reconnect`).
+- A connection that stayed silent before its upgrade request was answered with
+  the upgrade after 1 and 6 seconds and closed after 10 seconds (review probe).
+  Heeler opens the channel before it asks for the ticket and sends the upgrade
+  and the HELLO at once, so neither clock runs while it waits for an attach
+  slot.
 - The WELCOME said 60000 ms of retention. A connection dropped without a close
   frame was resumed with the exact byte count: same nonce, no new snapshot, and
   the output went on with nothing lost or repeated (`g_reconnect`; the resume

@@ -132,8 +132,8 @@ struct RexDataRoute: Sendable {
 /// for `rex.data.terminal.v1` at `/api/data`, on a channel of its own to the
 /// server's socket.
 ///
-/// `open` asks `data.connect` for a ticket, upgrades a new channel, sends
-/// the HELLO at once (Rex drops a connection that stays silent for a few
+/// `open` opens a channel, asks `data.connect` for a ticket, upgrades the
+/// channel, sends the HELLO at once (Rex drops a connection that stays silent for a few
 /// seconds) and waits for the WELCOME. `receive` returns the stream's bytes
 /// in order, one server message at a time, and counts every byte it returns.
 /// That count, across every connection of the stream, is what a RESUME
@@ -215,21 +215,38 @@ actor RexDataLink {
 
     // MARK: Opening
 
-    /// Asks for a ticket for `block`'s terminal data, opens a channel on
-    /// `route`, and says HELLO. The session must be attached on the route's
+    /// Opens a channel on `route`, asks for a ticket for `block`'s terminal
+    /// data, and says HELLO. The session must be attached on the route's
     /// control link. Throws `RexDataLinkError` (`.ended(.refused)` for a
     /// REJECT), what opening the channel throws, or `CancellationError`.
+    ///
+    /// The channel comes first: waiting for an attach slot can outlast a
+    /// ticket, which Rex honors for a minute. Rex (0.1.0-preview.14, API
+    /// revision 12) kept a connection that sent nothing for 10 seconds before
+    /// its upgrade, and a ticket takes a round trip on the control link. A
+    /// channel the ticket never comes for is closed.
     static func open(
         session: String, block: String, route: RexDataRoute, options: Options = Options(),
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
     ) async throws -> RexDataLink {
-        let ticket = try await ticket(session: session, block: block, route: route, deadline: options.ticketDeadline)
-        let webSocket = try await upgrade(try await route.openChannel(), options: options, sleep: sleep)
+        let channel = try await route.openChannel()
+        let ticket: RexDataTicket
+        do {
+            ticket = try await Self.ticket(
+                session: session, block: block, route: route, deadline: options.ticketDeadline)
+        } catch {
+            try? await channel.close(timeout: Self.channelCloseTimeout)
+            throw error
+        }
+        let webSocket = try await upgrade(channel, options: options, sleep: sleep)
         let welcome = try await exchange(RexDataHandshake.hello(ticket), on: webSocket, options: options, sleep: sleep)
         return RexDataLink(
             webSocket: webSocket, welcome: welcome, receivedByteCount: 0, resumed: false, options: options,
             sleep: sleep)
     }
+
+    /// How long closing a channel that never carried a WebSocket may take.
+    private static let channelCloseTimeout: Duration = .seconds(2)
 
     private struct TicketRequest: Encodable, Sendable {
         let sessionID: String

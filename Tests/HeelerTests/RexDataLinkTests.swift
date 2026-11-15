@@ -157,7 +157,53 @@ struct RexDataLinkTests {
             return
         }
         #expect(server.kind == .conflict)
-        #expect(await fixture.endpoint.channels.isEmpty)
+        // The channel opened for it is closed, never upgraded.
+        let channel = try #require(await fixture.endpoint.channels.first)
+        await channel.waitUntilClosed()
+        #expect(await channel.upgradeRequest == nil)
+        #expect(await fixture.endpoint.handshakes.isEmpty)
+    }
+
+    /// Waiting for an attach slot can outlast a ticket, which is good for one
+    /// minute: the ticket is asked for only once the channel is in hand.
+    @Test func theTicketIsAskedForOnlyOnceTheChannelIsInHand() async throws {
+        let fixture = try await Self.fixture()
+        let slot = AsyncStream.makeStream(of: Void.self)
+        let route = RexDataRoute(
+            control: { fixture.link },
+            openChannel: {
+                for await _ in slot.stream { break }
+                return await fixture.endpoint.connect()
+            })
+        let opening = Task {
+            try await RexDataLink.open(
+                session: Self.session, block: Self.block, route: route, options: .testing,
+                sleep: fixture.clock.parkedSleep(for:))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(fixture.endpoint.tickets.requests.isEmpty)
+
+        slot.continuation.yield()
+        let link = try await opening.value
+        #expect(fixture.endpoint.tickets.requests.count == 1)
+        #expect(await fixture.endpoint.handshakes == [.init(kind: .hello, byteCount: 17, outcome: .welcomed(stream: 0))])
+        await link.close()
+    }
+
+    /// A data link cancelled while its ticket is on the way closes the
+    /// channel it opened, and says no HELLO.
+    @Test func cancellingWhileTheTicketIsOnItsWayClosesTheChannel() async throws {
+        let fixture = try await Self.fixture()
+        await fixture.control.stopAnswering("data.connect")
+        let opening = Task { try await fixture.open() }
+        _ = await fixture.control.nextRequest()
+        opening.cancel()
+
+        let failure = await error { try await opening.value }
+        #expect(failure is CancellationError)
+        let channel = try #require(await fixture.endpoint.channels.first)
+        await channel.waitUntilClosed()
+        #expect(await channel.upgradeRequest == nil)
     }
 
     @Test func aRefusedUpgradeSaysItsStatus() async throws {

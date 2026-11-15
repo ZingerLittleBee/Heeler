@@ -631,6 +631,9 @@ struct RexTerminalAttachTests {
         try await Task.sleep(for: .milliseconds(150))
         #expect(await rig.endpoint.handshakes.count == 5)
         #expect(sixth.status == .connecting)
+        // A ticket is good for a minute, which a wait for a slot can outlast:
+        // the sixth asks for one only once it has its channel.
+        #expect(rig.endpoint.tickets.requests.count == 5)
 
         await stores.removeFirst().stop()
         await rig.begin(stream: 5)

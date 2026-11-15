@@ -190,7 +190,12 @@ struct RexTerminalStreamTests {
         let fixture = try await Self.fixture()
         fixture.endpoint.tickets.fail(with: [.error(code: "not_found", message: "no block", status: 404)])
         #expect(await fixture.stream.next() == .ended(.blockClosed))
-        #expect(await fixture.endpoint.channels.isEmpty)
+        let channels = await fixture.endpoint.channels
+        #expect(channels.count == 1)
+        for channel in channels {
+            await channel.waitUntilClosed()
+            #expect(await channel.upgradeRequest == nil)
+        }
     }
 
     /// Tickets refused for want of an attach are tried again, in case the

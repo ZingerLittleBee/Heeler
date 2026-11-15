@@ -17,8 +17,10 @@ terminal for viewing; ADR 0050 adds its input.
 - **Opening.** The view's runner waits for the Host's live control
   connection, calls `session.attach` for the Pane's session on it, then opens
   the block's data link (`RexTerminalStream`) on a channel of its own under an
-  attach slot. `RexHostSession` remembers which sessions its control client
-  attached. A client the server took back keeps them; after a new client, it
+  attach slot. It asks `data.connect` for the ticket only once that channel is
+  open, so a wait for a slot never spends the ticket's minute, and closes the
+  channel if the ticket does not come. `RexHostSession` remembers which
+  sessions its control client attached. A client the server took back keeps them; after a new client, it
   sends `session.attach` again for every session with an open terminal.
 - **The first paint skips the snapshot.** Heeler never decodes the snapshot.
   It reads the server's `vt` redraw of screen and scrollback, every `extra_*`
