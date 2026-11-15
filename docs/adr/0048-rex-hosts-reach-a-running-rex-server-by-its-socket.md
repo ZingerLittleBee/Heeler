@@ -213,10 +213,13 @@ server did. Where Rex differs from tmux, this says how and why.
 - **On and off.** Turning Rex on, in Add Host or in Host detail, stores the
   socket the look found, in the `rexHosts` catalog. Turned on while Rex is not
   running, it stores none and looks the socket up on each connection, as a
-  stored path that does not read already did. Turning it off removes its
-  record, which ends its connections, and leaves the Host's other Servers as
-  they are. A Rex Host saved before this change keeps its stored shape and is
-  the Rex Server of the Host its connection matches.
+  stored path that does not read already did. The socket its page's checks
+  note later is taken without a reconnect, as a tmux Host's resolved paths
+  are, so open terminals stay; any other change to the record is another
+  Host, as before. Turning it off removes its record, which ends its
+  connections, and leaves the Host's other Servers as they are. A Rex Host
+  saved before this change keeps its stored shape and is the Rex Server of
+  the Host its connection matches.
 - **Not by name.** Add by Name does not offer Rex. A Rex Server has no name to
   type, its socket is found and never typed, and a look already lists an
   installed Rex that is not running.

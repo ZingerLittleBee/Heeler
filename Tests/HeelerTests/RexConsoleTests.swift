@@ -238,6 +238,55 @@ struct RexConsoleTests {
         #expect(await rig.attachSlotsTaken == 0)
     }
 
+    /// A Rex Server turned on while Rex was not running stores no socket, and
+    /// its connections look one up. The socket its Server page's checks note
+    /// later is the same Host: the connection and an open terminal stay, and
+    /// nothing dials again. Another socket is another Host.
+    @Test func aSocketNotedForTheFirstTimeKeepsTheConnection() async throws {
+        let rex = rex
+        let rig = RexTerminalAttachTests.Rig()
+        let server = await rig.server()
+        let socket = try #require(rex.rexSocket)
+        let host = ScriptedRexHost(
+            probe: ScriptedRexHost.probeFinding(socket.path), control: [.server(server)], admission: rig.admission)
+        await host.serveData(from: rig.endpoint)
+        let dials = Dials()
+        let console = store(dials: dials, rexConnect: { stored, previous in
+            dials.append("rex connect \(stored?.path ?? "looked up")")
+            return try await RexSSHTransport.connect(
+                over: host, socket: stored, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        var bare = rex
+        bare.rexSocket = nil
+        console.setHosts([bare])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+        let paneID = try #require(console.terminals.first?.paneID)
+        let terminal = AttachTerminalStore(
+            target: .terminal(paneID), input: TerminalInputController(),
+            runTerminal: console.terminalRunner(for: bare.id, keepingTo: console.corePin(on: bare.id)))
+        terminal.viewDidResize(cols: 80, rows: 24)
+        await rig.begin()
+        try await waitUntil("the first paint") { terminal.status == .live }
+
+        console.setHosts([rex])
+        for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
+
+        #expect(dials.all == ["rex session Rex", "rex connect looked up"])
+        #expect(console.hostStatuses[rex.id] == .connected)
+        #expect(console.terminals.count == 5)
+        #expect(terminal.status == .live)
+        #expect(await server.clientClose == nil)
+
+        var moved = rex
+        moved.rexSocket = RexSocket(path: "/run/user/1000/rex/other.sock")
+        console.setHosts([moved])
+        try await waitUntil("another Host's session") { dials.all.count >= 3 }
+        #expect(dials.all.dropFirst(2).first == "rex session Rex")
+        await terminal.stop()
+    }
+
     /// A Rex Host lists Terminals only: the Agents list, its Host filter and
     /// its issues leave it out, and the Terminals list keeps its problem.
     @Test func onlyTheTerminalsListShowsARexHost() async throws {

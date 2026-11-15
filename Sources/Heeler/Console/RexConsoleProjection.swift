@@ -11,7 +11,7 @@ import Foundation
 /// (ADR 0051); every action a Host offers is unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
-    let host: Host
+    private(set) var host: Host
     let session: RexHostSession
 
     private(set) var status: EventsSessionStatus?
@@ -112,6 +112,19 @@ final class RexConsoleProjection: ConsoleHostProjection {
         consumeTask = nil
         latencyTask = nil
         Task { [session] in await session.end() }
+    }
+
+    /// The catalog's Host changed. A socket noted where the record had none is
+    /// what a connection looked up, here or on the Server page: it is taken as
+    /// it is, and the connection stays, since the session keeps the socket it
+    /// found and looks one up on each dial (ADR 0048). Anything else, another
+    /// socket included, is another Host.
+    func adoptSocket(of catalogHost: Host) {
+        guard host.rexSocket == nil, catalogHost.rexSocket != nil else { return }
+        var noted = host
+        noted.rexSocket = catalogHost.rexSocket
+        guard noted == catalogHost else { return }
+        host = catalogHost
     }
 
     private func beginNewActivation() {

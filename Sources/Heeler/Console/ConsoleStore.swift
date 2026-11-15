@@ -333,10 +333,15 @@ final class ConsoleStore {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
         // A tmux Host's stored paths are what a connection last resolved (ADR
-        // 0044): they move without making it another Host.
+        // 0044), and a Rex Host's first stored socket what one looked up (ADR
+        // 0048): they move without making it another Host.
         for (id, projection) in projections {
-            guard let tmux = projection as? TmuxConsoleProjection, let host = incoming[id] else { continue }
-            tmux.adoptPaths(of: host)
+            guard let host = incoming[id] else { continue }
+            if let tmux = projection as? TmuxConsoleProjection {
+                tmux.adoptPaths(of: host)
+            } else if let rex = projection as? RexConsoleProjection {
+                rex.adoptSocket(of: host)
+            }
         }
         if let hostsOutOfSight {
             let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
