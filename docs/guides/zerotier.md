@@ -62,16 +62,16 @@ In **Hosts**, tap **+** and follow [Connect from Heeler](overlay-networks.md#con
 
 | Field | Value |
 | --- | --- |
+| Address | The Mac's managed IP, without the `/` part |
 | User | Your Mac username |
 | Network (in More Options) | The ZeroTier network you just connected |
-| Address | The Mac's managed IP, without the `/` part |
 | Port (in More Options) | The Mac's SSH port, normally `22` |
 | Jump Host (in More Options) | Blank |
 | Authentication | The sign-in method you picked |
 
 Type the IP address, not a name or an ID from Heeler's network screen. Then tap **Connect**.
 
-Check the fingerprint, let the Host checks finish, then [verify the connection](overlay-networks.md#verify-the-connection).
+Tap **Trust and Continue** only if the fingerprint matches, add the Host with the Servers you want checked, then [verify the connection](overlay-networks.md#verify-the-connection).
 
 ## Troubleshooting
 

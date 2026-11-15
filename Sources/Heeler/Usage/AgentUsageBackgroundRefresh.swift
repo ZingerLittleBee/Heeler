@@ -10,9 +10,10 @@ struct AgentUsageBackgroundRefresh {
     nonisolated static let identifier = "dev.bybee.heeler.usage-refresh"
     /// The earliest next run after one is scheduled.
     nonisolated static let interval: TimeInterval = 30 * 60
-    /// Re-reads while the plugin's worker is refreshing, within the few
-    /// seconds iOS grants the task.
-    nonisolated static let refreshingRereads = 3
+    /// Re-reads while the plugin's worker is refreshing, within the about 30
+    /// seconds iOS grants the task. A Helper left quiet for half an hour took
+    /// 13 seconds to refresh; six re-reads wait up to 18.
+    nonisolated static let refreshingRereads = 6
 
     /// One Host's reading, with or without Claude Code limits; nil when the
     /// Host cannot be read in the background.

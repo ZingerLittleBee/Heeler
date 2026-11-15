@@ -90,6 +90,123 @@ struct AgentUsageWidgetRefreshTests {
             host.id, readAt: Self.now.addingTimeInterval(60), now: Self.now.addingTimeInterval(interval)))
     }
 
+    @Test func aRefreshingReadingIsAsOldAsTheScanItServes() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let cached = try AgentUsageFixture.tokenReport(refreshing: true)
+        let scannedAt = try #require(AgentUsageLimitsView.date(cached.scan?.coveredThrough))
+
+        publisher.publish([Self.reading(host, .available(cached), readAt: Self.now)], now: Self.now)
+        #expect(Self.snapshot(directory)?.host(host.id)?.readAt == scannedAt)
+        #expect(publisher.isStale(host.id, readAt: nil, now: Self.now))
+    }
+
+    @Test func aRefreshingReadingIsAsOldAsTheLimitsItStillServes() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        // The worker commits its scan before it reads the limits, so a report
+        // read then pairs seconds-old tokens with the last run's limits.
+        var object = try #require(JSONSerialization.jsonObject(with: AgentUsageFixture.data()) as? [String: Any])
+        object["refreshing"] = true
+        var scan = try #require(object["scan"] as? [String: Any])
+        scan["coveredThrough"] = Self.now.addingTimeInterval(-3).ISO8601Format()
+        object["scan"] = scan
+        let report = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        let limitsReadAt = try #require(AgentUsageLimitsView.date(report.claudeProgram?.usageLimits.observedAt))
+
+        publisher.publish([Self.reading(host, .available(report), readAt: Self.now)], now: Self.now)
+        #expect(Self.snapshot(directory)?.host(host.id)?.readAt == limitsReadAt)
+        #expect(publisher.isStale(host.id, readAt: nil, now: Self.now))
+    }
+
+    @Test func turningClaudeCodeLimitsOffHidesThemWhileTheHostRefreshes() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let complete = try AgentUsageReport.decode(AgentUsageFixture.data())
+        // What the store hands on once the toggle is off: limits hidden.
+        let optedOut = try AgentUsageFixture.report(refreshing: true)
+        let shown = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: complete, readAt: Self.now)
+        let hidden = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: optedOut, readAt: Self.now)
+        #expect(shown.limits.contains { $0.program == "claude" && !$0.windows.isEmpty })
+
+        publisher.publish([Self.reading(host, .available(complete), readAt: Self.now)], now: Self.now)
+        let later = Self.now.addingTimeInterval(60)
+        publisher.publish([Self.reading(host, .available(optedOut), readAt: later)], now: later)
+
+        let published = try #require(Self.snapshot(directory)?.host(host.id))
+        #expect(published.programs == shown.programs)
+        #expect(published.limits.filter { $0.program == "claude" } == hidden.limits.filter { $0.program == "claude" })
+        #expect(published.limits.filter { $0.program != "claude" } == shown.limits.filter { $0.program != "claude" })
+        #expect(published.limits.map(\.program).first == "claude", "Claude Code keeps its place")
+    }
+
+    @Test func removingAnAccountDropsItsFiguresWhileTheHostRefreshes() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let removedID = "7f3c9a2e"
+        let complete = try AgentUsageReport.decode(AgentUsageFixture.data())
+        // The next refreshing report serves the last run's figures without the Account.
+        var object = try #require(JSONSerialization.jsonObject(with: AgentUsageFixture.data()) as? [String: Any])
+        object["refreshing"] = true
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        var accounts = try #require(programs[0]["accounts"] as? [[String: Any]])
+        accounts.removeAll { $0["id"] as? String == removedID }
+        programs[0]["accounts"] = accounts
+        object["programs"] = programs
+        let removed = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        let later = Self.now.addingTimeInterval(60)
+        let fresh = UsageWidgetSnapshot.Host(
+            id: host.id, name: host.displayName, report: removed, readAt: removed.figuresDate(readAt: later))
+        let shown = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: complete, readAt: Self.now)
+        #expect(shown.limits.contains { $0.accountID == removedID })
+        #expect(try #require(fresh.readAt) < Self.now, "the report's figures are older than the widget's")
+
+        publisher.publish([Self.reading(host, .available(complete), readAt: Self.now)], now: Self.now)
+        publisher.publish([Self.reading(host, .available(removed), readAt: later)], now: later)
+
+        let published = try #require(Self.snapshot(directory)?.host(host.id))
+        #expect(!published.limits.contains { $0.accountID == removedID })
+        #expect(published == fresh)
+    }
+
+    @Test func removingAnAccountDropsItsTokensWhileClaudeCodeLimitsAreOff() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let complete = try AgentUsageFixture.report(refreshing: false)
+        // The next refreshing report no longer counts the removed Account,
+        // which held every Claude Code token.
+        var object = try #require(
+            JSONSerialization.jsonObject(with: AgentUsageFixture.reportData(refreshing: true)) as? [String: Any])
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        var accounts = try #require(programs[0]["accounts"] as? [[String: Any]])
+        accounts.removeAll { $0["id"] as? String == "7f3c9a2e" }
+        programs[0]["accounts"] = accounts
+        programs[0]["tokenUsage"] = ["state": "noData"]
+        object["programs"] = programs
+        let removed = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        let countsClaudeCode = { Self.snapshot(directory)?.host(host.id)?.programs.contains { $0.program == "claude" } }
+
+        publisher.publish([Self.reading(host, .available(complete), readAt: Self.now)], now: Self.now)
+        #expect(countsClaudeCode() == true)
+        let later = Self.now.addingTimeInterval(60)
+        publisher.publish([Self.reading(host, .available(removed), readAt: later)], now: later)
+        #expect(countsClaudeCode() == false)
+    }
+
+    @Test func aStoreShowingARefreshingReportDatesItsFiguresByTheScan() async throws {
+        let cached = try AgentUsageFixture.tokenReport(refreshing: true)
+        let scannedAt = try #require(AgentUsageLimitsView.date(cached.scan?.coveredThrough))
+        let store = AgentUsageStore(hostID: UUID()) { _, _ in .available(cached) }
+
+        await store.pullToRefresh()
+        #expect(store.figuresReadAt == scannedAt)
+    }
+
     @Test func onlyAUsageOrUsageLimitsWidgetCounts() async throws {
         for (kinds, installed) in [
             ([], false), (["dev.bybee.heeler.other"], false),
@@ -183,6 +300,21 @@ struct AgentUsageWidgetRefreshTests {
         overlayOnly.routes = [HostRoute(address: "100.64.0.7", overlayNetworkID: UUID())]
         #expect(await refresh.read(overlayOnly, false) == nil)
         #expect(connector.connects.withLock { $0 } == 1)
+    }
+
+    @Test func theBackgroundReadWaitsOutAColdRefresh() async throws {
+        let transport = ScriptedTransport()
+        await transport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.7.0")))
+        await transport.setAgentUsage(.success(try AgentUsageFixture.report(refreshing: true)))
+        let complete = try AgentUsageFixture.report(refreshing: false)
+        let pauses = PauseCount()
+        // A Helper left quiet for half an hour took 13 seconds to refresh,
+        // so the run finishes only after the fifth 3-second pause.
+        let refresh = Self.backgroundRead(RecordingConnector(transport: transport)) { _ in
+            if await pauses.next() == 5 { await transport.setAgentUsage(.success(complete)) }
+        }
+
+        #expect(await refresh.read(Self.host("Studio Mac"), true) == .available(complete))
     }
 
     private static func backgroundRead(
@@ -496,6 +628,15 @@ struct AgentUsageWidgetRefreshTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
+    }
+}
+
+private actor PauseCount {
+    private var count = 0
+
+    func next() -> Int {
+        count += 1
+        return count
     }
 }
 

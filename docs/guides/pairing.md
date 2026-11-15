@@ -64,10 +64,13 @@ Leave the popup open and don't press any keys while you scan. Any key except `c`
 **Run on: iPhone or iPad**
 
 1. Open **Hosts** and tap **Scan to Pair** (the QR code button next to **+**). On an iPad with the sidebar, open **Hosts** from the bottom of the sidebar.
+
+   <a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab with the Scan to Pair QR code button next to + at the top right, and a connected Host below"></a>
+
 2. Allow camera access and, if iOS asks, access to devices on your local network. Then point the camera at the QR code.
 3. Pairing starts right away and Heeler shows each step as it completes. There is no fingerprint to compare: the code carries it.
 
-When pairing finishes, Heeler opens the new Host and runs its checks.
+When pairing finishes, Heeler opens the new **Herdr TUI** Server's page and runs its checks.
 
 If you can't use the camera, press `c` in the popup. On a Mac this copies the code; get it onto your iPhone or iPad (for example with Universal Clipboard) and tap **Paste Pairing Code** in **Scan to Pair**. On Linux, `c` prints the code below the QR code instead: send it to your iPhone or iPad, for example in a note or message to yourself, then copy it there and paste it the same way.
 
@@ -134,4 +137,4 @@ Checked against Heeler plugin 0.6.0 on 2026-10-14.
 
 ## herdr-app / herdr-core
 
-The legacy plugin's Pairing Code connects to herdr, not to herdr-core. For Agents started in the desktop client, [add a herdr-core Host with SSH authentication](herdr-core.md).
+The legacy plugin's Pairing Code adds a **Herdr TUI** Server, not **herdr-core**. For Agents started in the desktop client, turn on **herdr-core** on the Host's page, or [add the Host over SSH](herdr-core.md).

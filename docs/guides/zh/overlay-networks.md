@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/overlay-networks.md at 5171f178 -->
+<!-- Translated from docs/guides/overlay-networks.md at a76a7a53 -->
 
 # 通过 Overlay Network 连接 Heeler
 
@@ -72,17 +72,21 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 3. 仅在显示的指纹与 Mac 上的指纹一致时轻点 **Trust and Continue**。
 4. 保持勾选你想要的 Server，按需为 Host 命名，然后添加它。如果之后无法连接，请打开该 Host，轻点对应的 Server，按其检查项指出的问题排查后轻点 **Run Checks Again**。
 
+| Connect | Servers |
+| --- | --- |
+| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="260" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、herdr-core 和 tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a> |
+
 | 字段 | 值 |
 | --- | --- |
+| Address | Mac 在该 Overlay Network 中的 IP 地址（不带端口号或 `/24` 等后缀） |
 | User | 你的 Mac 用户名（来自 `id -un`） |
 | Network（在 More Options 中） | 你保存的 Overlay Network |
-| Address | Mac 在该 Overlay Network 中的 IP 地址（不带端口号或 `/24` 等后缀） |
 | Port（在 More Options 中） | `22`（除非具体指南另有说明） |
 | Jump Host（在 More Options 中） | 留空 |
 | Authentication | 你在上面选择的登录方式 |
 | Name（最后一步） | 标识这台 Mac 的任意名称 |
 
-在路由页面填写地址时，Tailscale 支持 **Choose from Tailnet…**（保持选中 **IP Address**），EasyTier 支持 **Choose from Network…**。对于 ZeroTier，请从 ZeroTier Central 复制 Mac 的 IP 地址。
+在 **More Options** 中填写地址时，Tailscale 支持 **Choose from Tailnet…**（保持选中 **IP Address**），EasyTier 支持 **Choose from Network…**。对于 ZeroTier，请从 ZeroTier Central 复制 Mac 的 IP 地址。
 
 ## 验证连接
 

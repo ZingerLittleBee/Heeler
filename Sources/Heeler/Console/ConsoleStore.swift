@@ -2143,7 +2143,7 @@ final class ConsoleStore {
     private func refreshStaleWidgetUsage() {
         guard let usageWidgets, isActive, isUsageEnabled else { return }
         let recordIDs = AgentUsageHost.grouped(usageCatalog).flatMap { host -> [Host.ID] in
-            let readAt = host.records.compactMap { agentUsageStores[$0.id]?.readAt }.max()
+            let readAt = host.records.compactMap { agentUsageStores[$0.id]?.figuresReadAt }.max()
             guard usageWidgets.isStale(host.id, readAt: readAt) else { return [] }
             return host.records.map(\.id).filter { id in
                 canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil

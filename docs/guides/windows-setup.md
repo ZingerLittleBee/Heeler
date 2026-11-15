@@ -124,14 +124,15 @@ In Heeler, open **Hosts**, tap **+**, and fill in the first step:
 | Authentication | `Password` |
 | Password | The Windows account password, rather than its Windows Hello PIN |
 
-Tap **Connect**. On the last step, leave **Herdr TUI · heeler-win-test** checked and add the Host.
-
-Before trusting the first connection, compare Heeler's SSH host key
-fingerprint with the matching public host key on Windows. For Ed25519:
+Tap **Connect**. Before tapping **Trust and Continue**, compare Heeler's SSH
+host key fingerprint with the matching public host key on Windows. For Ed25519:
 
 ```powershell
 ssh-keygen -lf "$env:ProgramData\ssh\ssh_host_ed25519_key.pub"
 ```
+
+On the last step, leave **Herdr TUI · heeler-win-test** checked and add the
+Host.
 
 The connection checks should pass, and Console should show the selected
 session's Terminals and Agents. You can also check SSH from another device:

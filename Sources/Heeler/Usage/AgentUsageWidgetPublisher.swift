@@ -112,12 +112,16 @@ extension UsageWidgetSnapshot.Host {
         case .available(let report):
             let readAt = reading.readAt ?? now
             // A reading made while the app was away is newer than the
-            // report the app still holds from before.
+            // report the app still holds from before. Any later read is the
+            // Host's latest answer: its Accounts and this device's opt-out
+            // are current even while its figures are the last run's, so it
+            // replaces what the snapshot holds and is dated by its figures.
             if var kept, let keptAt = kept.readAt, keptAt > readAt {
                 kept.name = reading.name
                 self = kept
             } else {
-                self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
+                self.init(
+                    id: reading.id, name: reading.name, report: report, readAt: report.figuresDate(readAt: readAt))
             }
         case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.exclusion(for: reading.state))

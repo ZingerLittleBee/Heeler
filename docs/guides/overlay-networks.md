@@ -70,17 +70,21 @@ Come here from your provider guide once the Mac and Heeler are on the same netwo
 3. Tap **Trust and Continue** only if the fingerprint matches the one from the Mac.
 4. Leave the Servers you want checked, name the Host if you like, and add it. If nothing connects afterwards, open the Host, tap the Server, fix what its checks name, and tap **Run Checks Again**.
 
+| Connect | Servers |
+| --- | --- |
+| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="260" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a> |
+
 | Field | Value |
 | --- | --- |
+| Address | The Mac's IP address on the network, with no port or `/24`-style suffix |
 | User | Your Mac username (from `id -un`) |
 | Network (in More Options) | Your saved overlay network |
-| Address | The Mac's IP address on the network, with no port or `/24`-style suffix |
 | Port (in More Options) | `22`, unless your guide says otherwise |
 | Jump Host (in More Options) | Leave blank |
 | Authentication | The sign-in method you picked |
 | Name (last step) | Any label for this Mac |
 
-To fill in the address on the route page, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central.
+To fill in the address under **More Options**, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central.
 
 ## Verify the connection
 

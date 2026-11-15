@@ -19,20 +19,32 @@ Heeler never starts a core when connecting or checking. Start the Herdr desktop 
 3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
 4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
 
+| Connect | Trust |
+| --- | --- |
+| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-trust.png"><img src="images/hosts/add-host-trust.png" width="260" alt="New Host sheet on the Trust step showing Trust this Host?, the key fingerprint, Copy the Command That Prints It, and Trust and Continue"></a> |
+
 ### 2. Choose the Servers
 
 Heeler looks once without starting anything and lists what the machine runs:
+
+<a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="300" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a>
 
 | Heeler found | What to do |
 | --- | --- |
 | herdr-core | Leave it checked and tap **Add Host with 1 Server**. |
 | herdr-core beside Herdr TUI or tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
-| No herdr-core | Add the Host anyway. Start the core, open the Host, and tap **Scan Again**. |
-| A core started with `HC_SESSION=<name>` | Add the Host, open it, tap **Add by Name…**, choose **herdr-core**, and type the name. |
+| No herdr-core | Add the Host anyway. Start the core, open the Host, tap **Scan Again**, and turn on **herdr-core**. |
+| A core started with `HC_SESSION=<name>` | Add the Host, open it, tap **Add by Name…**, choose **herdr-core**, type the name, and tap **Turn On**. |
 
 Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its connection, checks and Host Helper.
 
+| The Host's page | Add by Name |
+| --- | --- |
+| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux with their switches on, Scan Again, Add by Name…, Routes, and Account"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
+
 **It worked if** the Host's row shows a green **herdr-core** tag, and the Server's page shows **Server Kind** as herdr-core with the version and **herdr-core running** passing.
+
+<a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, tmux, and herdr-core"></a>
 
 ## When it does not connect
 
