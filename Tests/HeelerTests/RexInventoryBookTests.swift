@@ -6,7 +6,7 @@ import Testing
 /// What a Rex server's inventory reads as, and how events and answers keep it
 /// current in order: no answer undoes a newer event or answer, a burst of
 /// changes costs one read and the one after it, and sessions that come and go
-/// during reads come out right (ADR 0049). Fixtures are invented, in the
+/// during reads come out right (ADR 0050). Fixtures are invented, in the
 /// shapes Rex 0.1.0-preview.14 was seen to answer.
 @Suite("Rex inventory book")
 struct RexInventoryBookTests {

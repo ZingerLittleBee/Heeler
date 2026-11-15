@@ -4,7 +4,7 @@ import Testing
 @testable import Heeler
 
 /// Explicit opt-in only: taking a Rex terminal's size for the view and giving
-/// it back (ADR 0052), through the Console's runner and the store a view uses,
+/// it back (ADR 0053), through the Console's runner and the store a view uses,
 /// against a Rex server that already runs on this Mac, over its local Unix
 /// socket. It never runs in the HeelerTests target or in CI, and fails rather
 /// than skips when selected without its configuration.

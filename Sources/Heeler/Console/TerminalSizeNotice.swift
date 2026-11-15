@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What a terminal says while it shows at a size another device set, on a
-/// Server Kind whose terminals keep their own size (ADR 0052).
+/// Server Kind whose terminals keep their own size (ADR 0053).
 struct TerminalSizeNotice: Equatable {
     enum Phase: Equatable {
         /// It offers to fit the terminal to this screen.
@@ -177,7 +177,7 @@ struct TerminalSizeNoticeView: View {
 /// Lays a shell terminal's size notice over its screen at `edge`, `top` or
 /// `bottom` in from that edge, and gives back a size the user took when the
 /// scene goes to the background; coming back to the foreground takes
-/// nothing (ADR 0052).
+/// nothing (ADR 0053).
 struct TerminalSizeNoticeOverlay: ViewModifier {
     let store: ShellTerminalStore
     let palette: TerminalThemePalette

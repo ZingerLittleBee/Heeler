@@ -1,6 +1,6 @@
 import Foundation
 
-/// The messages of a Rex server's control connection (ADR 0048), written by
+/// The messages of a Rex server's control connection (ADR 0049), written by
 /// hand from what Rex 0.1.0-preview.14 (API revision 12) was seen to send.
 ///
 /// Reading is tolerant: unknown fields are ignored, and a message of an

@@ -354,7 +354,7 @@ struct NewHostWizardTests {
     }
 
     /// A running Rex is listed after tmux and starts checked like any Server
-    /// that runs; its record keeps the socket the look found (ADR 0048).
+    /// that runs; its record keeps the socket the look found (ADR 0049).
     @Test func aRunningRexIsCheckedAndSavedWithItsSocket() async throws {
         let socket = "/Users/dev/Library/Application Support/rex/server.sock"
         let rex = HostServerKey(kind: .rex, name: "")
@@ -391,7 +391,7 @@ struct NewHostWizardTests {
     }
 
     /// The Servers step says what checked Servers bring: Terminals where Rex is
-    /// all that is in question (ADR 0048), Agents wherever another kind is.
+    /// all that is in question (ADR 0049), Agents wherever another kind is.
     @Test func checkedServersBringTerminalsOnlyWhereRexStandsAlone() async throws {
         let socket = "/Users/dev/Library/Application Support/rex/server.sock"
         let rex = HostServerKey(kind: .rex, name: "")

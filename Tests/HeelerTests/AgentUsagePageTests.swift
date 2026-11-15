@@ -74,7 +74,7 @@ struct AgentUsagePageTests {
     }
 
     /// With no Host to read, the page asks for one, unless Hosts has Hosts and
-    /// only Rex Servers are on: then it says Rex reports none (ADR 0048).
+    /// only Rex Servers are on: then it says Rex reports none (ADR 0049).
     @Test func withOnlyRexOnThePageSaysRexReportsNoUsage() async throws {
         for hasOnlyRexServersOn in [false, true] {
             let controller = UIHostingController(rootView:

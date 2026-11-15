@@ -4,13 +4,13 @@ status: proposed
 
 # Rex terminals open for viewing from the server's redraw
 
-A Rex Host lists its Terminals (ADR 0049). Opening one means showing its
+A Rex Host lists its Terminals (ADR 0050). Opening one means showing its
 screen and scrollback, following its output, surviving the drops a phone
 sees, and ending cleanly when the block goes. Rex's terminal data stream
 starts with a snapshot in Rex's own format, not with bytes a terminal can
 show, and Rex answers a program's terminal queries itself. Rex also gives
 each block one owner client whose size it uses. This slice opens a Rex
-terminal for viewing; ADR 0051 adds its input.
+terminal for viewing; ADR 0052 adds its input.
 
 ## Decision
 
@@ -53,7 +53,7 @@ terminal for viewing; ADR 0051 adds its input.
   uses the alternate screen, none of the primary screen or scrollback behind
   it; that history is painted again once the program leaves the alternate
   screen. With autowrap off, soft wraps are not joined. The title follows the
-  inventory's `title_changed` events (ADR 0049), and the colors stay Heeler's.
+  inventory's `title_changed` events (ADR 0050), and the colors stay Heeler's.
 - **Query answers are dropped.** Rex answers a program's queries (device
   attributes, cursor and status reports, mode reports, colors) itself, so the
   answers Heeler's own Ghostty writes back must never reach the program.
@@ -62,15 +62,15 @@ terminal for viewing; ADR 0051 adds its input.
   terminated in the same write, while keys, text, mouse reports and pastes
   pass. Ghostty writes an answer in one piece, so a string opener with no
   terminator is an Alt key (`ESC ]`, `ESC P`) and passes. Focus reports are
-  real input, and go as focus events (ADR 0051).
+  real input, and go as focus events (ADR 0052).
 - **Size is a request, not ownership.** The view's grid is asked for with
   the terminal's `resize` method on arrival and once a change has held for
   150 ms, never twice the same, and again when the block's owner lets go,
   since a size asked for under another owner is not applied then. Opening a
   terminal never calls `own_block`; only the user's tap takes the size, and
-  ADR 0052 sets out when it is taken and given back. The view shows the block
+  ADR 0053 sets out when it is taken and given back. The view shows the block
   at the server's size; the server's grid, the view's grid, the owner and this
-  client reach the view as `TerminalSizeReport`, from which ADR 0052's notice
+  client reach the view as `TerminalSizeReport`, from which ADR 0053's notice
   says when another device set the size.
 - **Resume or a fresh paint.**
   - A data link that drops while the control link is fine is resumed with the
@@ -87,7 +87,7 @@ terminal for viewing; ADR 0051 adds its input.
     refuses the same client a second link to a block until it notices the
     dead one, minutes later. A new client is refused nothing, and the
     terminals paint afresh either way. A client that opened no data link is
-    taken back as ADR 0049 says.
+    taken back as ADR 0050 says.
   - A stream whose new tickets the server keeps refusing for want of an
     attach ends the same way, and the next attach sends `session.attach`
     again on the same client.
@@ -111,7 +111,7 @@ terminal for viewing; ADR 0051 adds its input.
   terminals before the inventory applies it: a block's close, its owner, and
   its own events. The inventory is unchanged by them.
 - **Input** begins with the first paint and goes out one request at a time
-  (ADR 0051).
+  (ADR 0052).
 
 ## Why
 
@@ -175,7 +175,7 @@ captures, live tests and fakes, recorded with their sources in
 - `RexTerminalAttach` turns one stream into one view's bytes, size requests
   and endings; `RexHostSession.withTerminal` holds the block, waits for the
   connection and hands out a `RexTerminalConnection` with the block's signals.
-- ADR 0051 sends the view's input; ADR 0052 shows `TerminalSizeReport`'s
+- ADR 0052 sends the view's input; ADR 0053 shows `TerminalSizeReport`'s
   mismatch and takes the size when the user asks.
 - A first paint costs the snapshot and the redraw, each about the size of the
   scrollback; on a slow link a long history takes seconds to appear.

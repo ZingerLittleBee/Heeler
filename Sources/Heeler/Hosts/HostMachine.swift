@@ -6,7 +6,7 @@ struct HostServerKey: Hashable, Codable, Sendable {
     let kind: ServerKind
     /// The session or socket name, as the kind stores it. Blank is Herdr TUI's
     /// default session, and Rex's only Server: a Host has one, whatever socket
-    /// its record holds (ADR 0048).
+    /// its record holds (ADR 0049).
     let name: String
     /// The socket of a Pairing Code endpoint (ADR 0023), which is a herdr of
     /// its own beside the one on the SSH PATH.
@@ -24,7 +24,7 @@ struct HostServerKey: Hashable, Codable, Sendable {
         case .herdrTUI: name.isEmpty ? nil : name
         case .herdrCore: name == HerdrCoreSessionName.normalized("") ? nil : name
         case .tmux: name == TmuxSocketName.defaultName ? nil : name
-        // A Host has one Rex Server, which names no session (ADR 0048).
+        // A Host has one Rex Server, which names no session (ADR 0049).
         case .rex, .unconfirmed: nil
         }
     }
@@ -105,7 +105,7 @@ struct HostMachine: Identifiable, Hashable, Sendable {
     var spareRecord: Host? { members.first { !$0.serverKind.isConfirmed } }
 
     /// Whether the Servers that are on list Terminals only, as a Rex Server
-    /// does (ADR 0048). False while none is on.
+    /// does (ADR 0049). False while none is on.
     var listsTerminalsOnly: Bool {
         let servers = servers
         return !servers.isEmpty && servers.allSatisfy { !$0.serverKind.reportsAgents }

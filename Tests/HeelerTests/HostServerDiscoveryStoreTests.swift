@@ -215,7 +215,7 @@ struct HostServerDiscoveryStoreTests {
     }
 
     /// The shared memory holds no Rex Server, so a build before Rex still reads
-    /// what it found on every Host (ADR 0048), and this build gets each Rex
+    /// what it found on every Host (ADR 0049), and this build gets each Rex
     /// Server back on its Host, last as a look lists it.
     @Test func aRexServerIsKeptWhereABuildBeforeRexDoesNotRead() async throws {
         let suiteName = "HostServerDiscoveryStoreTests.\(UUID().uuidString)"

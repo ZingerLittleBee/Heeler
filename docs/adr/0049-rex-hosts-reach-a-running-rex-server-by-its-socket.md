@@ -139,10 +139,10 @@ detail.
 
 ## Consequences
 
-- The Console connects a Rex Host and lists its Terminals as ADR 0049 says;
+- The Console connects a Rex Host and lists its Terminals as ADR 0050 says;
   opening one is a later change. (Later decisions made it: a terminal opens
-  from the server's redraw (ADR 0050), takes input one request at a time
-  (ADR 0051), and has its size taken only at the user's tap (ADR 0052).) The
+  from the server's redraw (ADR 0051), takes input one request at a time
+  (ADR 0052), and has its size taken only at the user's tap (ADR 0053).) The
   Host's checks connect on their own.
 - Each Console projection now says what a detail keeps to when the Host's
   inventory moves on, instead of the store asking for herdr-core or tmux by

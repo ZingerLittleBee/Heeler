@@ -331,7 +331,7 @@ struct HostMachineDetailView: View {
     private func missingRow(_ missing: HostServerScan.Missing) -> some View {
         if missing.kind == .rex {
             // The Setup Guide sets up herdr. A Rex named missing runs already,
-            // under an account this one cannot use (ADR 0048).
+            // under an account this one cannot use (ADR 0049).
             missingLabel(title: missing.kind.displayName, note: missing.note)
                 .accessibilityElement(children: .combine)
         } else {
@@ -475,7 +475,7 @@ private struct HostMachineDetailSheets: ViewModifier {
 /// Turns on a Server a look cannot find: a session or socket by a name the
 /// user knows, running or not. Rex is not among the kinds: a Host's one Rex
 /// Server has no name to type, and a look lists it wherever Rex is installed
-/// (ADR 0048).
+/// (ADR 0049).
 private struct HostServerNameSheet: View {
     let machine: HostMachine
     let isNativeWindows: Bool

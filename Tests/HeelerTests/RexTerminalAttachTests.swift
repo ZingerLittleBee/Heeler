@@ -5,7 +5,7 @@ import Testing
 
 @testable import Heeler
 
-/// A Rex terminal opened for viewing (ADR 0050), from the Console's runner to
+/// A Rex terminal opened for viewing (ADR 0051), from the Console's runner to
 /// a fake server's block and data endpoint, through the store the view uses:
 /// the first paint, live output and repaints, the size asked for and never
 /// owned, and every way it ends or survives a drop. `RexTerminalInputTests`

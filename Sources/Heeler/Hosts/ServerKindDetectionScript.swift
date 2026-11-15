@@ -6,7 +6,7 @@ import Foundation
 ///
 /// `herdrRead` runs first, in a subshell of its own, so its PATH never reaches
 /// the locator. The tmux probe follows, in another, through the login shell
-/// (ADR 0044), and the Rex probe in a third, which only tests files (ADR 0048).
+/// (ADR 0044), and the Rex probe in a third, which only tests files (ADR 0049).
 /// No part starts a server.
 enum ServerKindDetectionScript {
     /// What one run printed, before anyone decides what it means.

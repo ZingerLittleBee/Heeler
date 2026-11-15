@@ -1,6 +1,6 @@
 import Foundation
 
-/// Follows a Rex server's inventory on one control link (ADR 0049): attaches
+/// Follows a Rex server's inventory on one control link (ADR 0050): attaches
 /// to every session, reads what `RexInventoryBook` asks for with a few reads
 /// in flight at most, applies the link's events, and publishes the inventory
 /// once every session's structure has settled, and again as it changes. A

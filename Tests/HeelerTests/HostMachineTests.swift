@@ -84,7 +84,7 @@ struct HostMachineTests {
     }
 
     /// Host detail says what the Servers that are on show: Terminals where Rex
-    /// is on alone (ADR 0048), Agents with any other kind on or none at all.
+    /// is on alone (ADR 0049), Agents with any other kind on or none at all.
     @Test func aHostWithRexOnAloneListsTerminalsOnly() {
         let rex = record(kind: .rex)
         let tmux = record(kind: .tmux)

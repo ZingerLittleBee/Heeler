@@ -84,7 +84,7 @@ struct HostDraft: Equatable, Sendable {
     /// A tmux Host's resolved paths, carried through Edit unchanged. They stop
     /// counting once the socket name names another socket (ADR 0044).
     private(set) var tmuxPaths: TmuxPaths?
-    /// A Rex Host's socket, carried through Edit unchanged (ADR 0048).
+    /// A Rex Host's socket, carried through Edit unchanged (ADR 0049).
     private(set) var rexSocket: RexSocket?
     /// The Host's routes in order. A new Host starts with none and cannot
     /// be saved until Add Route gives it one; the forwarding properties

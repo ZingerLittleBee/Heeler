@@ -72,7 +72,7 @@ tmux sockets on one machine, that is the common case, not the odd one.
 This supersedes ADR 0031's "an SSH target that runs both is added once per
 kind, as two Hosts" and its confirmation in Host detail, and ADR 0044's
 "confirmed once in Host detail" for tmux. Everything else in both stands.
-A Rex server ([ADR 0048](0048-rex-hosts-reach-a-running-rex-server-by-its-socket.md),
+A Rex server ([ADR 0049](0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md),
 whose update of 2026-11-16 says how) is a Server of its Host in the same way.
 
 ## Why

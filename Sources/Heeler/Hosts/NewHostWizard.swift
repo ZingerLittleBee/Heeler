@@ -89,7 +89,7 @@ final class NewHostWizard {
     }
 
     /// Whether the Servers in question list Terminals only, as a Rex Server
-    /// does (ADR 0048): those checked, or every one found while none is.
+    /// does (ADR 0049): those checked, or every one found while none is.
     var bringsTerminalsOnly: Bool {
         guard let servers = scan?.servers, !servers.isEmpty else { return false }
         let checkedServers = servers.filter { checked.contains($0.key) }

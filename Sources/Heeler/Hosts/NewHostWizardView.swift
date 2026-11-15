@@ -271,7 +271,7 @@ struct NewHostWizardView: View {
                             if missing.kind == .rex {
                                 // The Setup Guide sets up herdr. A Rex named
                                 // missing runs already, under an account this
-                                // one cannot use (ADR 0048).
+                                // one cannot use (ADR 0049).
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(missing.kind.displayName)
                                     if let note = missing.note {

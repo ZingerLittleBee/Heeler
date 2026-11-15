@@ -3,7 +3,7 @@ import Testing
 
 @testable import Heeler
 
-/// Rex in Server Kind detection (ADR 0048): looked for on every macOS and Linux
+/// Rex in Server Kind detection (ADR 0049): looked for on every macOS and Linux
 /// Host by its socket alone, from the one exec a look at a Host runs.
 @Suite("Rex Server Kind detection")
 struct RexServerKindDetectionTests {
@@ -263,7 +263,7 @@ struct RexServerKindDetectionTests {
     }
 }
 
-/// A Rex Host's checks in Host onboarding (ADR 0048): they reach the
+/// A Rex Host's checks in Host onboarding (ADR 0049): they reach the
 /// server's socket, say hello, and close with a close frame.
 @MainActor
 @Suite("Rex Host onboarding", .timeLimit(.minutes(1)))

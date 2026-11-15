@@ -119,7 +119,7 @@ enum RexControlUpdate: Sendable, Equatable {
     case sequenceBroken(expected: UInt64, received: UInt64?)
 }
 
-/// A Rex control connection (ADR 0048): a WebSocket for `rex.control.v1` at
+/// A Rex control connection (ADR 0049): a WebSocket for `rex.control.v1` at
 /// `/api/control` over one channel to the server's socket.
 ///
 /// Opening sends the hello at once, since Rex drops a client that stays

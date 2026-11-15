@@ -141,7 +141,7 @@ actor SSHChannelAdmission {
     }
 
     /// One Attach's forwarded channel under an attach slot, as a Rex Host's
-    /// data link is beside its control link in the events slot (ADR 0048).
+    /// data link is beside its control link in the events slot (ADR 0049).
     /// The slot stays taken until the channel closes.
     func admitAttachLink(
         open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel

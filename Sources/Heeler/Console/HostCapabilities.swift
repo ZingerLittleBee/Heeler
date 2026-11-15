@@ -100,11 +100,11 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A Rex Host offers nothing yet (ADR 0048): it starts and closes no
+        // A Rex Host offers nothing yet (ADR 0049): it starts and closes no
         // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
         // Composer, Chat, Host scripts or layout, and is never taken over. So it
         // stays out of New Agent and New Terminal. Its Terminals open and take
-        // input (ADRs 0050 and 0051).
+        // input (ADRs 0051 and 0052).
         guard serverKind != .rex else {
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,

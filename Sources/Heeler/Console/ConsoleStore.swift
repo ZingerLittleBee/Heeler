@@ -334,7 +334,7 @@ final class ConsoleStore {
         catalog = hosts
         // A tmux Host's stored paths are what a connection last resolved (ADR
         // 0044), and a Rex Host's first stored socket what one looked up (ADR
-        // 0048): they move without making it another Host.
+        // 0049): they move without making it another Host.
         for (id, projection) in projections {
             guard let host = incoming[id] else { continue }
             if let tmux = projection as? TmuxConsoleProjection {

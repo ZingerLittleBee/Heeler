@@ -155,7 +155,7 @@ final class HeelerAppModel {
                 switch hostStore?.hosts.first(where: { $0.id == id })?.serverKind {
                 case .herdrCore, .tmux:
                     return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
-                // A Rex Host registers nothing (ADR 0048).
+                // A Rex Host registers nothing (ADR 0049).
                 case .rex:
                     return .closed
                 case .herdrTUI, .unconfirmed, nil:

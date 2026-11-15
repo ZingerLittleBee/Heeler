@@ -164,7 +164,7 @@ struct HostServerSwitchTests {
     }
 
     /// The record dials the socket the look found, in Rex's own catalog, and
-    /// keeps the Host's name, account and Routes (ADR 0048).
+    /// keeps the Host's name, account and Routes (ADR 0049).
     @Test func aRexServerStoresTheSocketTheLookFound() async throws {
         let socket = "/Users/dev/Library/Application Support/rex/server.sock"
         let tui = record()

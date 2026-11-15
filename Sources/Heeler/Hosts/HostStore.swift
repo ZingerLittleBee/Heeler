@@ -25,7 +25,7 @@ enum HostStoreError: Error, Equatable {
 /// in a second one, tmux Hosts in a third and Rex Hosts in a fourth, each with
 /// the merged Host order, that builds before its kind never read, so such a
 /// build can neither show one nor re-save it as another kind (ADRs 0031, 0044
-/// and 0048).
+/// and 0049).
 @MainActor
 @Observable
 final class HostStore {
@@ -336,7 +336,7 @@ final class HostStore {
     /// `sessionName` replaces the typed one, for a kind whose detection offered
     /// the name, as a tmux Host's socket is. `tmuxPaths` is what that detection
     /// resolved, kept only by a tmux Host (ADR 0044), and `rexSocket` the socket
-    /// it found, kept only by a Rex Host (ADR 0048).
+    /// it found, kept only by a Rex Host (ADR 0049).
     @discardableResult
     func confirmServerKind(
         _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil,
@@ -397,7 +397,7 @@ final class HostStore {
     }
 
     /// Stores the socket a lookup found for a Rex Host that stored none, as
-    /// when its stored path did not read (ADR 0048). A Host that already holds
+    /// when its stored path did not read (ADR 0049). A Host that already holds
     /// a socket keeps it.
     func noteRexSocket(_ socket: RexSocket, for id: Host.ID) throws {
         try ensureCatalogIsWritable()
@@ -523,7 +523,7 @@ final class HostStore {
     }
 
     /// Whether Rex Servers are all that is on: Hosts lists them, and Usage and
-    /// Settings' per-Host pages have no Host to read (ADR 0048).
+    /// Settings' per-Host pages have no Host to read (ADR 0049).
     var hasOnlyRexServersOn: Bool {
         integratedHosts.isEmpty && hosts.contains { $0.serverKind == .rex }
     }

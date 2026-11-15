@@ -83,7 +83,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     /// A tmux server the user runs, named by its socket (ADR 0044).
     case tmux
     /// A Rex server already running on a macOS or Linux Host, found by its
-    /// socket (ADR 0048).
+    /// socket (ADR 0049).
     case rex
     /// Added by hand and waiting for the user to confirm one of the others. It
     /// stays in the shared catalog, and only its Host detail ever dials it.
@@ -92,7 +92,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     var isConfirmed: Bool { self != .unconfirmed }
 
     /// Whether this kind's Hosts report Agents. A Rex Host lists Terminals
-    /// only (ADR 0048).
+    /// only (ADR 0049).
     var reportsAgents: Bool {
         switch self {
         case .herdrTUI, .herdrCore, .tmux: true
@@ -186,7 +186,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// (ADR 0044). Nil until then, and on every other kind. Read them through
     /// `storedTmuxPaths`, which knows the socket name they were resolved for.
     var tmuxPaths: TmuxPaths?
-    /// A Rex Host's server socket, as detection found it (ADR 0048). Nil on
+    /// A Rex Host's server socket, as detection found it (ADR 0049). Nil on
     /// every other kind, and when a stored one did not read: the next
     /// connection looks it up again.
     var rexSocket: RexSocket?
@@ -311,7 +311,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         tmuxPaths =
             serverKind == .tmux
             ? (try? container.decodeIfPresent(TmuxPaths.self, forKey: .tmuxPaths)) ?? nil : nil
-        // So is a Rex socket that does not read (ADR 0048).
+        // So is a Rex socket that does not read (ADR 0049).
         rexSocket =
             serverKind == .rex
             ? (try? container.decodeIfPresent(RexSocket.self, forKey: .rexSocket)) ?? nil : nil

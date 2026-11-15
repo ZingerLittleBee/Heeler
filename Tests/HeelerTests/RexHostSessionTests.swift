@@ -7,7 +7,7 @@ import Testing
 /// A Rex Host's session over scripted SSH connections and fake servers: what
 /// it attaches to, how it follows the inventory, how it survives a dropped
 /// link or a server that let go of its client, another server instance, and
-/// failures that read as status (ADR 0049). Ids, labels and tokens are invented.
+/// failures that read as status (ADR 0050). Ids, labels and tokens are invented.
 @Suite("Rex Host session", .timeLimit(.minutes(1)))
 struct RexHostSessionTests {
     static let path = "/run/user/1000/rex/server.sock"

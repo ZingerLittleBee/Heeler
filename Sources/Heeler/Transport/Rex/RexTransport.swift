@@ -1,7 +1,7 @@
 import Foundation
 import HeelerSSH
 
-/// A connected Rex Host (ADR 0048): one SSH connection, and on it a control
+/// A connected Rex Host (ADR 0049): one SSH connection, and on it a control
 /// link to the Rex server's socket. Everything Heeler asks of the server goes
 /// over the control link, except terminal data, which takes a data link on a
 /// channel of its own to the same socket.

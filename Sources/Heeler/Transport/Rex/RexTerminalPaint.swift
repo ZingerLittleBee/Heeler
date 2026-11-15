@@ -74,7 +74,7 @@ enum RexTerminalAnswer: Sendable, Equatable {
 }
 
 /// The first paint of a Rex terminal, and every repaint after it, as a pure
-/// state machine (ADR 0050). It reads the stream's items in order, asks for
+/// state machine (ADR 0051). It reads the stream's items in order, asks for
 /// reads and waits as effects, and hears back their outcomes; it never reads
 /// a clock. What it emits is the ordered instructions for one terminal view.
 ///

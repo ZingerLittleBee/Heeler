@@ -1,7 +1,7 @@
 import Foundation
 
 /// What one control link knows of a Rex server's sessions, and what it still
-/// has to read (ADR 0049). Pure: `RexInventoryFollower` sends the reads it
+/// has to read (ADR 0050). Pure: `RexInventoryFollower` sends the reads it
 /// asks for and hands back their answers and the link's events.
 ///
 /// An answer's seq says how far the connection's event stream had got when

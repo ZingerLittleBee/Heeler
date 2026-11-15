@@ -48,7 +48,7 @@ struct ServerKindDetection: Equatable, Sendable {
         case running(version: String, sockets: [String])
     }
 
-    /// What the Rex probe says, from files alone (ADR 0048). A socket file is
+    /// What the Rex probe says, from files alone (ADR 0049). A socket file is
     /// all it can report of a running server.
     enum RexFinding: Equatable, Sendable {
         /// Not macOS or Linux, where Heeler finds no Rex server.

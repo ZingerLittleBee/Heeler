@@ -96,7 +96,7 @@ struct HostServerScan: Equatable, Sendable {
         }
 
         // A Host has one Rex Server at most: the server on the socket the look
-        // prefers (ADR 0048). Installed and not running, it is found as a
+        // prefers (ADR 0049). Installed and not running, it is found as a
         // stopped tmux is, since turned on it connects once the user starts
         // Rex. Rex is named missing only where a socket shows a server this
         // account cannot use: a machine without Rex shows nothing of it.
@@ -127,7 +127,7 @@ struct HostServerScan: Equatable, Sendable {
 
     /// What a Rex Server turned on from this look stores: the socket the look
     /// found a server on. Nil while Rex is not running, which leaves the
-    /// record's connections to look it up (ADR 0048).
+    /// record's connections to look it up (ADR 0049).
     func rexSocket(for server: HostServerKey) -> RexSocket? {
         guard server.kind == .rex else { return nil }
         return detection.rexSocket
@@ -149,7 +149,7 @@ final class HostServerDiscoveryStore {
     }
 
     /// An entry's Rex Server, kept under a key of its own as Rex Hosts keep a
-    /// catalog of their own (ADR 0048): a build before Rex reads the shared
+    /// catalog of their own (ADR 0049): a build before Rex reads the shared
     /// key whole, and one Rex Server in it would lose that build everything
     /// it remembers.
     private struct RexShare: Codable {

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The read that finds a Rex server on a macOS or Linux Host by its socket
-/// (ADR 0048). Pure: it builds a script for one bounded exec and reads what
+/// (ADR 0049). Pure: it builds a script for one bounded exec and reads what
 /// the script prints.
 ///
 /// It never runs `rex`: the command-line tool is often missing from the PATH

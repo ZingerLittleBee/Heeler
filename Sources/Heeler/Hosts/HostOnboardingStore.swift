@@ -444,7 +444,7 @@ final class HostOnboardingStore {
     }
 
     /// A Rex Host's checks reach its server's socket and say hello, then close
-    /// with a close frame, which changes nothing on the server (ADR 0048). A
+    /// with a close frame, which changes nothing on the server (ADR 0049). A
     /// Host that stores no socket has it looked up again, and the catalog keeps
     /// what was found. They never run `rex` or start a server.
     private func performRexChecks(settings: SSHTransportSettings) async {

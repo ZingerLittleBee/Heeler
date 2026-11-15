@@ -521,7 +521,7 @@ enum TerminalAttachInputError: Error, Equatable {
 }
 
 /// Pastes for a Server Kind whose server sends a paste to the program itself,
-/// framed as the terminal's modes say (Rex, ADR 0051). The view then never
+/// framed as the terminal's modes say (Rex, ADR 0052). The view then never
 /// frames a paste with bracket markers of its own.
 struct TerminalAttachPaster: Sendable {
     /// Why `text` cannot go as one paste, in words for the user; nil when it can.
@@ -908,9 +908,9 @@ final class TerminalAttachInputQueue: Sendable {
 }
 
 /// How a terminal's size stands between one view and a server whose terminals
-/// keep their own size, as a Rex block does (ADR 0050). The view asks for its
+/// keep their own size, as a Rex block does (ADR 0051). The view asks for its
 /// grid; the server applies it only while no other client owns the block, or
-/// once the user took the size for this view (ADR 0052).
+/// once the user took the size for this view (ADR 0053).
 struct TerminalSizeReport: Sendable, Equatable {
     struct Grid: Sendable, Equatable {
         let columns: Int
@@ -933,14 +933,14 @@ struct TerminalSizeReport: Sendable, Equatable {
     }
 
     /// Another client sets the size, and it is not the one this view asked
-    /// for: only taking the size would change it (ADR 0052).
+    /// for: only taking the size would change it (ADR 0053).
     var isSetElsewhere: Bool {
         guard let owner, owner != client else { return false }
         return isMismatched
     }
 }
 
-/// How a request to take a terminal's size for this view ended (ADR 0052).
+/// How a request to take a terminal's size for this view ended (ADR 0053).
 enum TerminalSizeTake: Sendable, Equatable {
     /// This view's client sets the size now, and asked for the view's grid.
     case taken
@@ -953,7 +953,7 @@ enum TerminalSizeTake: Sendable, Equatable {
 }
 
 /// Taking a terminal's size for one view, on a Server Kind whose terminals
-/// keep their own size and follow one client at a time (ADR 0052). Nothing
+/// keep their own size and follow one client at a time (ADR 0053). Nothing
 /// here acts unless the user asked: the size is taken only by `take`, and
 /// only what the user took is given back.
 struct TerminalSizeOwnership: Sendable {
@@ -996,7 +996,7 @@ final class TerminalAttachSession: Sendable {
     let tmuxSend: TmuxAttachSend?
     /// The view takes input only once the first output is in, rather than as
     /// soon as the session opens. A Rex terminal's first output is its first
-    /// paint, before which nothing typed may leave (ADR 0051).
+    /// paint, before which nothing typed may leave (ADR 0052).
     let inputBeginsWithOutput: Bool
     /// Pastes go as the server's own paste rather than as bytes; nil for a
     /// Server Kind whose pastes are bytes the view frames.
