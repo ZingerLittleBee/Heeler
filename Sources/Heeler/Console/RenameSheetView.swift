@@ -8,6 +8,7 @@ import SwiftUI
 struct RenameSheetView: View {
     let title: String
     @State private var store: RenameStore
+    @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     init(title: String, store: RenameStore) {
@@ -19,9 +20,32 @@ struct RenameSheetView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(fieldPrompt, text: $store.input)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                    HStack(spacing: 8) {
+                        TextField(fieldPrompt, text: $store.input)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .focused($isInputFocused)
+                            .disabled(store.state == .renaming)
+                        if !store.input.isEmpty, store.state != .renaming {
+                            Button {
+                                store.input = ""
+                                isInputFocused = true
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .symbolRenderingMode(.monochrome)
+                                    .foregroundStyle(Color(uiColor: .systemGray))
+                            }
+                            // Borderless, or the whole row would be the button.
+                            .buttonStyle(.borderless)
+                            .tint(Color(uiColor: .systemGray))
+                            .contentShape(Rectangle().inset(by: -6))
+                            .accessibilityLabel(
+                                Text(
+                                    "Clear text",
+                                    comment: "Accessibility label for the button that clears the rename text field."
+                                ))
+                        }
+                    }
                 } footer: {
                     if let message = store.validationMessage {
                         Text(message)

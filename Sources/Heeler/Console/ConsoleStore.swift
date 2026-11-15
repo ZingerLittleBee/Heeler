@@ -242,6 +242,13 @@ final class ConsoleStore {
     ) { [weak self] in
         self?.rebuild()
     }
+    @ObservationIgnored private let pendingTitleRenames: PendingAgentTitleRenameStore
+    @ObservationIgnored private var pendingTitleRenameTasks:
+        [ConsoleAgent.ID: (token: UUID, task: Task<Void, Never>)] = [:]
+    @ObservationIgnored private var pendingTitleRenameCleanupTasks:
+        [ConsoleAgent.ID: (token: UUID, task: Task<Void, Never>)] = [:]
+    @ObservationIgnored private var pendingTitleRenameDeclinedKeys: [ConsoleAgent.ID: String] = [:]
+    @ObservationIgnored private let pendingTitleRenameSleep: @Sendable (Duration) async throws -> Void
 
     init(
         snapshotRetryDelay: Duration = .seconds(2),
@@ -268,6 +275,10 @@ final class ConsoleStore {
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         harnessEdits: HarnessConfigEditStore = HarnessConfigEditStore(),
+        pendingTitleRenames: PendingAgentTitleRenameStore = PendingAgentTitleRenameStore(),
+        pendingTitleRenameSleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        },
         hostHelperBundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         herdrAppRename: Bool = HerdrAppControl.isRenameOn,
         coreSendClock: BlockedCardClock = .live,
@@ -290,6 +301,8 @@ final class ConsoleStore {
         self.herdrAppRename = herdrAppRename
         self.coreHostMemory = coreHostMemory
         self.harnessEdits = harnessEdits
+        self.pendingTitleRenames = pendingTitleRenames
+        self.pendingTitleRenameSleep = pendingTitleRenameSleep
         self.hostHelperBundle = hostHelperBundle
         self.chatCache = chatCache
         cachedChats = ConsoleChatCache(cache: chatCache)
@@ -340,6 +353,7 @@ final class ConsoleStore {
             // A tmux Host's server instance is kept where a core Host's core id is.
             coreHostMemory.retainHosts(retained.union(hosts.lazy.filter { $0.serverKind == .tmux }.map(\.id)))
             harnessEdits.retainHosts(retained)
+            pendingTitleRenames.retainHosts(hostsOutOfSight.union(incoming.keys))
         }
         cachedChats.setHosts(hosts)
         for id in projections.keys where incoming[id] != projections[id]?.host {
@@ -372,6 +386,7 @@ final class ConsoleStore {
             sidebarSnapshots.invalidate(id)
             pluginStatuses.invalidate(id)
             agyTitles.invalidateHost(id)
+            cancelPendingTitleRenameWork(on: id)
             agentUsageStores.removeValue(forKey: id)?.invalidate()
             widgetUsageRefreshes.removeValue(forKey: id)?.task.cancel()
             terminalSnapshotRevisions[id] = nil
@@ -420,6 +435,7 @@ final class ConsoleStore {
             }
             agyTitles.bumpRefreshEpoch()
             reconcileAgyAnnotationTitles()
+            reconcilePendingTitleRenames()
             guard revalidating else {
                 // A core Host with no connection never reports coming up.
                 refreshStaleWidgetUsage()
@@ -452,6 +468,7 @@ final class ConsoleStore {
             isActive = false
             for refresh in widgetUsageRefreshes.values { refresh.task.cancel() }
             widgetUsageRefreshes.removeAll()
+            cancelAllPendingTitleRenameWork()
             for store in chatStores.values { store.suspend() }
             // Before the terminals go: an upload ends interrupted, with
             // Retry, rather than cancelled by the teardown.
@@ -1551,10 +1568,10 @@ final class ConsoleStore {
         Set(agentViewers.values.lazy.filter { $0.agent.hostID == hostID }.map(\.agent.paneID))
     }
 
-    private var titleRenamesInFlight: Set<ConsoleAgent.ID> = []
+    private var titleRenamesInFlight: [ConsoleAgent.ID: UUID] = [:]
 
     private func requireNoTitleRename(_ id: ConsoleAgent.ID) throws {
-        guard !titleRenamesInFlight.contains(id) else {
+        guard titleRenamesInFlight[id] == nil else {
             throw AgentTitleRenameError(message: String(localized: "Wait for the title rename to finish before sending input."))
         }
     }
@@ -1576,10 +1593,11 @@ final class ConsoleStore {
             }
             return current
         }
-        var seeded = agyTitles.applying(to: agent).agent
-        if agyTitles.isKnownUntitled(for: agent) {
+        var seeded = applyingClientTitles(to: agent).agent
+        if !pendingTitleRenames.hasUndispatched(for: agent), agyTitles.isKnownUntitled(for: agent) {
             seeded = seeded.clearingUntrackedConversationTitle()
         }
+        let lockID = UUID()
         return AgentTitleRenameStore(
             agent: seeded, program: program,
             io: AgentTitleRenameIO(
@@ -1613,8 +1631,308 @@ final class ConsoleStore {
                         hostID: agent.hostID, generation: generation)
                     return AgentTitleNaming.title(of: updated, program: .agy)
                 } : nil,
-                acquire: { self.titleRenamesInFlight.insert(agent.id).inserted },
-                release: { self.titleRenamesInFlight.remove(agent.id) }))
+                isBusyInConsole: { [weak self] in
+                    self?.isAgentBusyInConsole(agent.id) == true
+                },
+                queueWhenIdle: { [weak self] liveAgent, title in
+                    self?.enqueuePendingTitleRename(
+                        for: agent.id, liveAgent: liveAgent, program: program, title: title)
+                },
+                clearQueued: { [weak self] in
+                    self?.clearPendingTitleRename(for: agent.id)
+                },
+                hasQueuedRename: { [weak self] in
+                    guard let self else { return false }
+                    let current = self.projections[agent.hostID]?.agentsByPane[agent.agent.paneID] ?? agent
+                    return self.pendingTitleRenames.hasUndispatched(for: current)
+                },
+                shouldSuppressBusyNotice: { [weak self] in
+                    self?.pendingTitleRenames.suppressBusyNotice == true
+                },
+                setSuppressBusyNotice: { [weak self] suppress in
+                    self?.pendingTitleRenames.suppressBusyNotice = suppress
+                },
+                acquire: { [weak self] in
+                    guard let self else { return false }
+                    if self.pendingTitleRenameTasks[agent.id] != nil,
+                        !self.pendingTitleRenames.isDispatched(agent.id)
+                    {
+                        self.pendingTitleRenameTasks.removeValue(forKey: agent.id)?.task.cancel()
+                        self.titleRenamesInFlight[agent.id] = nil
+                    }
+                    guard self.titleRenamesInFlight[agent.id] == nil else { return false }
+                    self.titleRenamesInFlight[agent.id] = lockID
+                    return true
+                },
+                release: { [weak self] in
+                    guard let self else { return }
+                    if self.titleRenamesInFlight[agent.id] == lockID {
+                        self.titleRenamesInFlight[agent.id] = nil
+                    }
+                    if !self.isRebuilding {
+                        self.reconcilePendingTitleRenames()
+                    }
+                },
+                sleep: pendingTitleRenameSleep))
+    }
+
+    private func applyingClientTitles(to row: ConsoleAgent) -> ConsoleAgent {
+        pendingTitleRenames.applying(to: agyTitles.applying(to: row))
+    }
+
+    private func isAgentBusyInConsole(_ id: ConsoleAgent.ID) -> Bool {
+        guard let row = projections[id.hostID]?.agentsByPane[id.paneID] else { return false }
+        let status = applyingAgyBackgroundWork(to: row).agent.status
+        return status == .working || status == .blocked
+    }
+
+    private func enqueuePendingTitleRename(
+        for id: ConsoleAgent.ID, liveAgent: Agent, program: ChatProgram, title: String
+    ) {
+        cancelPendingTitleRenameWork(for: id)
+        pendingTitleRenames.enqueue(
+            PendingAgentTitleRename(
+                hostID: id.hostID,
+                paneID: liveAgent.paneID,
+                terminalID: liveAgent.terminalID,
+                workspaceID: liveAgent.workspaceID,
+                tabID: liveAgent.tabID,
+                program: program,
+                session: liveAgent.agentSession,
+                title: title))
+        if !isRebuilding {
+            rebuild()
+        }
+    }
+
+    private func clearPendingTitleRename(for id: ConsoleAgent.ID) {
+        cancelPendingTitleRenameWork(for: id)
+        if pendingTitleRenames.remove(id), !isRebuilding {
+            rebuild()
+        }
+    }
+
+    private func cancelPendingTitleRenameWork(for id: ConsoleAgent.ID) {
+        pendingTitleRenameTasks.removeValue(forKey: id)?.task.cancel()
+        pendingTitleRenameCleanupTasks.removeValue(forKey: id)?.task.cancel()
+        pendingTitleRenameDeclinedKeys[id] = nil
+    }
+
+    private func cancelPendingTitleRenameWork(on hostID: Host.ID) {
+        for id in Array(pendingTitleRenameTasks.keys) where id.hostID == hostID {
+            pendingTitleRenameTasks.removeValue(forKey: id)?.task.cancel()
+        }
+        for id in Array(pendingTitleRenameCleanupTasks.keys) where id.hostID == hostID {
+            pendingTitleRenameCleanupTasks.removeValue(forKey: id)?.task.cancel()
+        }
+        pendingTitleRenameDeclinedKeys = pendingTitleRenameDeclinedKeys.filter { $0.key.hostID != hostID }
+    }
+
+    private func cancelAllPendingTitleRenameWork() {
+        for entry in pendingTitleRenameTasks.values { entry.task.cancel() }
+        pendingTitleRenameTasks.removeAll()
+        for entry in pendingTitleRenameCleanupTasks.values { entry.task.cancel() }
+        pendingTitleRenameCleanupTasks.removeAll()
+        pendingTitleRenameDeclinedKeys.removeAll()
+    }
+
+    private func pruneStalePendingTitleRenames() {
+        guard !pendingTitleRenames.entries.isEmpty else { return }
+        for (id, pending) in Array(pendingTitleRenames.entries) {
+            guard let projection = projections[id.hostID],
+                projection.status == .connected,
+                !projection.isAwaitingSnapshot
+            else { continue }
+            guard let liveRow = projection.agentsByPane[id.paneID],
+                pending.matchesIdentity(of: liveRow.agent)
+            else {
+                cancelPendingTitleRenameWork(for: id)
+                pendingTitleRenames.remove(id)
+                continue
+            }
+            if pending.session == nil, let observed = liveRow.agent.agentSession {
+                pendingTitleRenames.noteObservedSession(observed, for: id)
+            }
+            if pendingTitleRenameTasks[id] == nil {
+                let hostTitled = agyTitles.applying(to: liveRow).agent
+                if AgentTitleNaming.matches(hostTitled, program: pending.program, title: pending.title) {
+                    cancelPendingTitleRenameWork(for: id)
+                    pendingTitleRenames.remove(id)
+                }
+            }
+        }
+    }
+
+    private func reconcilePendingTitleRenames() {
+        guard isActive, !pendingTitleRenames.entries.isEmpty else { return }
+        for (id, pending) in Array(pendingTitleRenames.entries) {
+            guard !pendingTitleRenames.isDispatched(id),
+                pendingTitleRenameTasks[id] == nil,
+                titleRenamesInFlight[id] == nil,
+                isHostReadyForInput(id.hostID),
+                let origin = projections[id.hostID],
+                !origin.isAwaitingSnapshot,
+                let liveRow = origin.agentsByPane[id.paneID],
+                pending.matchesIdentity(of: liveRow.agent),
+                offersTitleRename(for: liveRow)
+            else { continue }
+            let effectiveStatus = applyingAgyBackgroundWork(to: liveRow).agent.status
+            guard effectiveStatus == .idle || effectiveStatus == .done else {
+                pendingTitleRenameDeclinedKeys[id] = nil
+                continue
+            }
+            let attemptKey =
+                "\(origin.transportGeneration):\(liveRow.agent.terminalID):\(effectiveStatus):\(liveRow.agent.agentSession?.value ?? ""):\(pending.title)"
+            guard pendingTitleRenameDeclinedKeys[id] != attemptKey else { continue }
+            startPendingTitleRenameFlush(
+                id: id, pending: pending, liveRow: liveRow, origin: origin, attemptKey: attemptKey)
+        }
+    }
+
+    private func startPendingTitleRenameFlush(
+        id: ConsoleAgent.ID,
+        pending: PendingAgentTitleRename,
+        liveRow: ConsoleAgent,
+        origin: any ConsoleHostProjection,
+        attemptKey: String
+    ) {
+        let generation = origin.transportGeneration
+        func connection() throws -> any ConsoleHostProjection {
+            try requireReadyForInput(id.hostID)
+            let current = try projection(for: id.hostID)
+            guard current === origin, current.transportGeneration == generation else {
+                throw AgentTitleRenameError(message: String(localized: "The Host connection changed. Reopen Rename."))
+            }
+            return current
+        }
+        var expectedAgent = liveRow.agent
+        if let pinnedSession = pending.session {
+            expectedAgent = Agent(
+                terminalID: expectedAgent.terminalID,
+                kind: expectedAgent.kind,
+                title: expectedAgent.title,
+                status: expectedAgent.status,
+                workspaceID: expectedAgent.workspaceID,
+                tabID: expectedAgent.tabID,
+                paneID: expectedAgent.paneID,
+                cwd: expectedAgent.cwd,
+                revision: expectedAgent.revision,
+                name: expectedAgent.name,
+                terminalTitle: expectedAgent.terminalTitle,
+                terminalTitleStripped: expectedAgent.terminalTitleStripped,
+                paneTitle: expectedAgent.paneTitle,
+                agentSession: pinnedSession,
+                tokens: expectedAgent.tokens,
+                stateLabels: expectedAgent.stateLabels,
+                stateChangeSeq: expectedAgent.stateChangeSeq,
+                foregroundCwd: expectedAgent.foregroundCwd)
+        }
+        let lockID = UUID()
+        let flusher = AgentTitleRenameStore(
+            agent: expectedAgent,
+            program: pending.program,
+            io: AgentTitleRenameIO(
+                agent: { [weak self] in
+                    guard let self else { throw TransportError.cancelled }
+                    let current = try connection()
+                    let fresh = try await current.agentInfo(paneID: id.paneID)
+                    return await self.readAgyTitleForRename(
+                        fresh: fresh, paneID: id.paneID,
+                        hostID: id.hostID, generation: generation)
+                },
+                screen: { try await connection().readAgentScreen(id.paneID) },
+                prompt: { text in
+                    _ = try await connection().promptAgent(
+                        AgentPromptParams(target: id.paneID, text: text))
+                },
+                keys: { try await connection().sendAgentKeys($0, to: id.paneID) },
+                paste: { try await connection().pasteIntoAgent($0, paneID: id.paneID) },
+                refresh: { [weak self] in
+                    self?.agyTitles.bumpRefreshEpoch(for: id.hostID)
+                    self?.reconcileAgyAnnotationTitles()
+                    await origin.refreshSidebarMetadata()
+                },
+                isBusyInConsole: { [weak self] in
+                    self?.isAgentBusyInConsole(id) == true
+                },
+                onWillDispatch: { [weak self] in
+                    self?.pendingTitleRenames.markDispatched(id)
+                },
+                waitForSendableScreen: true,
+                acquire: { [weak self] in
+                    guard let self, self.titleRenamesInFlight[id] == nil else { return false }
+                    self.titleRenamesInFlight[id] = lockID
+                    return true
+                },
+                release: { [weak self] in
+                    guard let self else { return }
+                    if self.titleRenamesInFlight[id] == lockID {
+                        self.titleRenamesInFlight[id] = nil
+                    }
+                },
+                sleep: pendingTitleRenameSleep))
+        flusher.input = pending.title
+        let taskToken = UUID()
+        let task = Task { @MainActor [weak self] in
+            await flusher.save()
+            guard let self, self.pendingTitleRenameTasks[id]?.token == taskToken else { return }
+            self.pendingTitleRenameTasks[id] = nil
+            if flusher.state == .renamed {
+                self.pendingTitleRenameDeclinedKeys[id] = nil
+                if let currentRow = self.projections[id.hostID]?.agentsByPane[id.paneID],
+                    AgentTitleNaming.matches(
+                        self.agyTitles.applying(to: currentRow).agent,
+                        program: pending.program,
+                        title: pending.title)
+                {
+                    self.pendingTitleRenames.remove(id)
+                } else {
+                    self.pendingTitleRenames.markCompleted(id)
+                    self.scheduleCompletedPendingTitleRenameCleanup(for: id)
+                }
+                if !self.isRebuilding { self.rebuild() }
+                return
+            }
+            if self.pendingTitleRenames.isDispatched(id) {
+                self.pendingTitleRenameDeclinedKeys[id] = nil
+                self.pendingTitleRenames.remove(id)
+                if !self.isRebuilding { self.rebuild() }
+                return
+            }
+            guard !Task.isCancelled else { return }
+            if let projection = self.projections[id.hostID],
+                projection.status == .connected,
+                !projection.isAwaitingSnapshot
+            {
+                if let currentRow = projection.agentsByPane[id.paneID],
+                    pending.matchesIdentity(of: currentRow.agent)
+                {
+                    let status = self.applyingAgyBackgroundWork(to: currentRow).agent.status
+                    if status == .idle || status == .done {
+                        self.pendingTitleRenameDeclinedKeys[id] = attemptKey
+                    }
+                } else {
+                    self.pendingTitleRenames.remove(id)
+                    if !self.isRebuilding { self.rebuild() }
+                }
+            }
+        }
+        pendingTitleRenameTasks[id] = (taskToken, task)
+    }
+
+    private func scheduleCompletedPendingTitleRenameCleanup(for id: ConsoleAgent.ID) {
+        pendingTitleRenameCleanupTasks.removeValue(forKey: id)?.task.cancel()
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await self.pendingTitleRenameSleep(.seconds(5))
+            guard !Task.isCancelled, self.pendingTitleRenameCleanupTasks[id]?.token == token else { return }
+            self.pendingTitleRenameCleanupTasks[id] = nil
+            if self.pendingTitleRenames.isCompleted(id), self.pendingTitleRenames.remove(id), !self.isRebuilding {
+                self.rebuild()
+            }
+        }
+        pendingTitleRenameCleanupTasks[id] = (token, task)
     }
 
     func renameAgent(
@@ -1844,9 +2162,10 @@ final class ConsoleStore {
             return lhs.paneID < rhs.paneID
         }
         if terminals != nextTerminals { terminals = nextTerminals }
+        pruneStalePendingTitleRenames()
         // Ahead of the Agents: a detail must never find its Agent in neither.
         let nextDeparted = current.flatMap { $0.departedAgentsByPane.values }
-            .map { agyTitles.applying(to: $0) }
+            .map { applyingClientTitles(to: $0) }
             .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
         if departedAgents != nextDeparted { departedAgents = nextDeparted }
         publishChatAgents()
@@ -1854,6 +2173,7 @@ final class ConsoleStore {
         publishAgentStatuses()
         reconcileChatCache()
         reconcileAgyAnnotationTitles()
+        reconcilePendingTitleRenames()
         // A reconnecting Host's empty projection is not proof its Agents
         // exited, so their row totals stay until its snapshot says so.
         let liveAgents = Set(agents.map(\.id))
@@ -2224,7 +2544,7 @@ final class ConsoleStore {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-            .map { applyingAgyBackgroundWork(to: agyTitles.applying(to: $0)) }
+            .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
         let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
@@ -2355,7 +2675,7 @@ final class ConsoleStore {
                 isRecovering = false
             }
             if isRecovering, let previous = projection.lastKnownAgentsByPane[id.paneID] {
-                return agyTitles.applying(to: previous)
+                return applyingClientTitles(to: previous)
             }
         }
         return chatDisplayAgents.first { $0.id == id } ?? departedAgents.first { $0.id == id }

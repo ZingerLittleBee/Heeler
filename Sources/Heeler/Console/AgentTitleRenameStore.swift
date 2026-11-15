@@ -67,6 +67,158 @@ enum AgentTitleNaming {
     }
 }
 
+/// A manual conversation title saved on this device while the Agent is running,
+/// to be sent through the native rename path once the same Agent and session stop.
+struct PendingAgentTitleRename: Codable, Equatable, Sendable {
+    let hostID: Host.ID
+    let paneID: String
+    let terminalID: String
+    let workspaceID: String
+    let tabID: String
+    let program: ChatProgram
+    var session: AgentSessionInfo?
+    let title: String
+
+    var agentID: ConsoleAgent.ID {
+        ConsoleAgent.ID(hostID: hostID, paneID: paneID)
+    }
+
+    func matchesIdentity(of agent: Agent) -> Bool {
+        agent.terminalID == terminalID
+            && agent.paneID == paneID
+            && agent.workspaceID == workspaceID
+            && agent.tabID == tabID
+            && agent.kind == program.rawValue
+            && (session == nil || agent.agentSession == session)
+    }
+}
+
+@MainActor
+final class PendingAgentTitleRenameStore {
+    static let storageKey = "heeler.console.pendingTitleRenames.v1"
+    static let suppressBusyNoticeKey = "heeler.console.suppressBusyTitleRenameNotice.v1"
+
+    private let defaults: UserDefaults?
+    private var inMemorySuppressBusyNotice = false
+    private(set) var entries: [ConsoleAgent.ID: PendingAgentTitleRename]
+    /// Entries whose native rename command has begun dispatching; removed from
+    /// persistent storage immediately so an unconfirmed write never replays.
+    private var dispatchedIDs: Set<ConsoleAgent.ID> = []
+    /// Entries whose dispatch succeeded and stay in memory only until the Host
+    /// projection catches up with the confirmed title.
+    private var completedIDs: Set<ConsoleAgent.ID> = []
+
+    /// With no `defaults`, entries last only for the lifetime of the store so
+    /// demo mode and tests never sweep the real app container.
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults
+        entries = defaults.map(Self.load(from:)) ?? [:]
+    }
+
+    var suppressBusyNotice: Bool {
+        get { defaults?.bool(forKey: Self.suppressBusyNoticeKey) ?? inMemorySuppressBusyNotice }
+        set {
+            inMemorySuppressBusyNotice = newValue
+            defaults?.set(newValue, forKey: Self.suppressBusyNoticeKey)
+        }
+    }
+
+    func enqueue(_ item: PendingAgentTitleRename) {
+        dispatchedIDs.remove(item.agentID)
+        completedIDs.remove(item.agentID)
+        entries[item.agentID] = item
+        persist()
+    }
+
+    @discardableResult
+    func remove(_ id: ConsoleAgent.ID) -> Bool {
+        let hadDispatched = dispatchedIDs.remove(id) != nil
+        completedIDs.remove(id)
+        let removed = entries.removeValue(forKey: id) != nil
+        if removed, !hadDispatched { persist() }
+        return removed
+    }
+
+    func markDispatched(_ id: ConsoleAgent.ID) {
+        guard entries[id] != nil else { return }
+        if dispatchedIDs.insert(id).inserted {
+            persist()
+        }
+    }
+
+    func markCompleted(_ id: ConsoleAgent.ID) {
+        guard entries[id] != nil else { return }
+        let newlyDispatched = dispatchedIDs.insert(id).inserted
+        completedIDs.insert(id)
+        if newlyDispatched {
+            persist()
+        }
+    }
+
+    func isDispatched(_ id: ConsoleAgent.ID) -> Bool {
+        dispatchedIDs.contains(id)
+    }
+
+    func isCompleted(_ id: ConsoleAgent.ID) -> Bool {
+        completedIDs.contains(id)
+    }
+
+    func hasUndispatched(for row: ConsoleAgent) -> Bool {
+        guard let item = entries[row.id], !dispatchedIDs.contains(row.id) else { return false }
+        return item.matchesIdentity(of: row.agent)
+    }
+
+    func noteObservedSession(_ session: AgentSessionInfo, for id: ConsoleAgent.ID) {
+        guard var item = entries[id], item.session == nil else { return }
+        item.session = session
+        entries[id] = item
+        if !dispatchedIDs.contains(id) {
+            persist()
+        }
+    }
+
+    func retainHosts(_ hostIDs: Set<Host.ID>) {
+        let before = entries.count
+        entries = entries.filter { hostIDs.contains($0.key.hostID) }
+        dispatchedIDs = dispatchedIDs.filter { hostIDs.contains($0.hostID) }
+        completedIDs = completedIDs.filter { hostIDs.contains($0.hostID) }
+        if entries.count != before {
+            persist()
+        }
+    }
+
+    func applying(to row: ConsoleAgent) -> ConsoleAgent {
+        guard let item = entries[row.id], item.matchesIdentity(of: row.agent) else { return row }
+        var copy = row
+        copy.agent = copy.agent.applyingConversationTitle(item.title)
+        return copy
+    }
+
+    private func persist() {
+        guard let defaults else { return }
+        let persisted = entries.values
+            .filter { !dispatchedIDs.contains($0.agentID) }
+            .sorted { ($0.hostID.uuidString, $0.paneID) < ($1.hostID.uuidString, $1.paneID) }
+        if persisted.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(persisted) else { return }
+        defaults.set(data, forKey: Self.storageKey)
+    }
+
+    private static func load(from defaults: UserDefaults) -> [ConsoleAgent.ID: PendingAgentTitleRename] {
+        guard let data = defaults.data(forKey: storageKey),
+            let decoded = try? JSONDecoder().decode([PendingAgentTitleRename].self, from: data)
+        else { return [:] }
+        var result: [ConsoleAgent.ID: PendingAgentTitleRename] = [:]
+        for item in decoded where AgentTitleNaming.validation(item.title) == nil {
+            result[item.agentID] = item
+        }
+        return result
+    }
+}
+
 /// One-shot native input with explicit read-back. No operation retries a mutation.
 @MainActor
 struct AgentTitleRenameIO {
@@ -77,6 +229,14 @@ struct AgentTitleRenameIO {
     var paste: (String) async throws -> Void
     var refresh: () async -> Void
     var initialTitle: (() async -> String?)? = nil
+    var isBusyInConsole: () -> Bool = { false }
+    var queueWhenIdle: ((Agent, String) -> Void)? = nil
+    var clearQueued: (() -> Void)? = nil
+    var hasQueuedRename: () -> Bool = { false }
+    var shouldSuppressBusyNotice: () -> Bool = { false }
+    var setSuppressBusyNotice: (Bool) -> Void = { _ in }
+    var onWillDispatch: () -> Void = {}
+    var waitForSendableScreen: Bool = false
     var acquire: () -> Bool = { true }
     var release: () -> Void = {}
     var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
@@ -97,9 +257,15 @@ final class AgentTitleRenameStore: Identifiable {
         case failed(String)
     }
 
+    struct DeferredSaveConfirmation: Equatable {
+        let agent: Agent
+        let title: String
+    }
+
     let program: ChatProgram
     var input: String
     private(set) var state: State = .editing
+    private(set) var deferredSaveConfirmation: DeferredSaveConfirmation?
 
     private let expected: Agent
     private let io: AgentTitleRenameIO
@@ -118,19 +284,27 @@ final class AgentTitleRenameStore: Identifiable {
     }
 
     var isBusy: Bool { state == .saving || state == .generating }
-    var canSave: Bool { !isBusy && !outcomeUncertain && AgentTitleNaming.validation(input) == nil }
-    var canGenerate: Bool { !isBusy && !outcomeUncertain && AgentTitleNaming.supportsGeneration(program) }
+    var hasQueuedRename: Bool { io.hasQueuedRename() }
+    var canSave: Bool {
+        !isBusy && deferredSaveConfirmation == nil && !outcomeUncertain
+            && AgentTitleNaming.validation(input) == nil
+    }
+    var canGenerate: Bool {
+        !isBusy && deferredSaveConfirmation == nil && !outcomeUncertain
+            && AgentTitleNaming.supportsGeneration(program)
+    }
     var generationUnavailable: String? {
         AgentTitleNaming.supportsGeneration(program) ? nil
             : String(localized: "Automatic title generation isn't available for \(program.chatName) here.")
     }
 
-    /// Refreshes the seeded title when the sheet opens unless the user already edited or started saving.
+    /// Refreshes the seeded title when the sheet opens unless the user already edited,
+    /// started saving, or already has a pending title queued on this device.
     func refreshInitialTitle() async {
-        guard state == .editing, !dispatched, input == initialInput,
+        guard state == .editing, !dispatched, !io.hasQueuedRename(), input == initialInput,
             let refreshed = await io.initialTitle?()
         else { return }
-        guard state == .editing, !dispatched, input == initialInput else { return }
+        guard state == .editing, !dispatched, !io.hasQueuedRename(), input == initialInput else { return }
         input = refreshed
         initialInput = refreshed
     }
@@ -145,6 +319,22 @@ final class AgentTitleRenameStore: Identifiable {
         await perform(generating: true)
     }
 
+    func confirmDeferredSave(
+        _ confirmation: DeferredSaveConfirmation? = nil, suppressNextTime: Bool
+    ) {
+        guard let pending = confirmation ?? deferredSaveConfirmation else { return }
+        if suppressNextTime {
+            io.setSuppressBusyNotice(true)
+        }
+        deferredSaveConfirmation = nil
+        io.queueWhenIdle?(pending.agent, pending.title)
+        state = .renamed
+    }
+
+    func cancelDeferredSave() {
+        deferredSaveConfirmation = nil
+    }
+
     private func perform(generating: Bool) async {
         guard io.acquire() else {
             state = .failed(String(localized: "A rename is already in progress for this Agent."))
@@ -155,22 +345,32 @@ final class AgentTitleRenameStore: Identifiable {
         defer { io.release() }
         do {
             let initial = try await checkedAgent()
-            guard initial.status == .idle || initial.status == .done else {
+            let target = input.trimmingCharacters(in: .whitespacesAndNewlines)
+            var resultTarget: String? = generating ? nil : target
+            if !generating, AgentTitleNaming.matches(initial, program: program, title: target) {
+                io.clearQueued?()
+                state = .renamed
+                return
+            }
+            let agentIsRunning =
+                initial.status == .working || initial.status == .blocked || io.isBusyInConsole()
+            if !generating, agentIsRunning, let queueWhenIdle = io.queueWhenIdle {
+                if io.shouldSuppressBusyNotice() {
+                    queueWhenIdle(initial, target)
+                    state = .renamed
+                } else {
+                    deferredSaveConfirmation = DeferredSaveConfirmation(agent: initial, title: target)
+                    state = .editing
+                }
+                return
+            }
+            guard (initial.status == .idle || initial.status == .done) && !io.isBusyInConsole() else {
                 throw failure(String(localized: "Wait until the Agent is idle before renaming."))
             }
             guard initial.agentSession != nil else {
                 throw failure(String(localized: "The Agent hasn't reported its conversation. Open Chat and check its session before renaming."))
             }
-            let screen = try await io.screen()
-            guard InputBoxStateDetector.detect(screen, program: program).isSendable else {
-                throw failure(String(localized: "The Agent's input is not empty or ready. Finish the draft or dialog in Terminal first."))
-            }
-            let target = input.trimmingCharacters(in: .whitespacesAndNewlines)
-            var resultTarget: String? = generating ? nil : target
-            if !generating, AgentTitleNaming.matches(initial, program: program, title: target) {
-                state = .renamed
-                return
-            }
+            let screen = try await readyScreen(session: initial.agentSession)
             if program == .opencode {
                 try await renameOpenCode(target, initial: initial)
             } else {
@@ -179,6 +379,8 @@ final class AgentTitleRenameStore: Identifiable {
                 guard InputBoxStateDetector.detect(try await io.screen(), program: program).isSendable else {
                     throw failure(String(localized: "The Agent's input changed. Nothing was sent."))
                 }
+                io.onWillDispatch()
+                io.clearQueued?()
                 dispatched = true
                 try await io.prompt(generating ? command : command + " " + target)
             }
@@ -199,6 +401,24 @@ final class AgentTitleRenameStore: Identifiable {
         }
     }
 
+    private func readyScreen(session: AgentSessionInfo?) async throws -> ANSIScreen {
+        var screen = try await io.screen()
+        if InputBoxStateDetector.detect(screen, program: program).isSendable {
+            return screen
+        }
+        if io.waitForSendableScreen {
+            for _ in 0..<6 {
+                try await io.sleep(.milliseconds(250))
+                _ = try await checkedAgent(session: session, idle: true)
+                screen = try await io.screen()
+                if InputBoxStateDetector.detect(screen, program: program).isSendable {
+                    return screen
+                }
+            }
+        }
+        throw failure(String(localized: "The Agent's input is not empty or ready. Finish the draft or dialog in Terminal first."))
+    }
+
     private func checkedAgent(session: AgentSessionInfo? = nil, idle: Bool = false) async throws -> Agent {
         try Task.checkCancellation()
         let fresh = try await io.agent()
@@ -209,7 +429,7 @@ final class AgentTitleRenameStore: Identifiable {
             session == nil || fresh.agentSession == session else {
             throw failure(String(localized: "The Agent or conversation changed. Reopen Rename for the current conversation."))
         }
-        if idle, fresh.status != .idle && fresh.status != .done {
+        if idle, (fresh.status != .idle && fresh.status != .done) || io.isBusyInConsole() {
             throw failure(String(localized: "The Agent is no longer idle."))
         }
         return fresh
@@ -217,6 +437,8 @@ final class AgentTitleRenameStore: Identifiable {
 
     private func renameOpenCode(_ title: String, initial: Agent) async throws {
         _ = try await checkedAgent(session: initial.agentSession, idle: true)
+        io.onWillDispatch()
+        io.clearQueued?()
         dispatched = true
         try await io.keys(["ctrl+r"])
         var dialog: ANSIScreen?
