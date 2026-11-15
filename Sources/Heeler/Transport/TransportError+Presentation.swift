@@ -378,9 +378,6 @@ extension TransportError {
             ? String(localized: "The herdr-core link closed.") : detail
     }
 
-    /// herdr's own sentence, or a localized detail, may already end in a
-    /// full stop of its script; `explanation` supplies the closing one. A
-    /// question or exclamation mark stays, since it says something.
     /// Names the revision this build works with, and which side to update when
     /// the server named its own.
     private static func rexRevisionPresentation(offered: Int?) -> TransportErrorPresentation {
@@ -401,6 +398,9 @@ extension TransportError {
                 : String(localized: "Update Heeler once a version for this Rex is available."))
     }
 
+    /// herdr's own sentence, or a localized detail, may already end in a
+    /// full stop of its script; `explanation` supplies the closing one. A
+    /// question or exclamation mark stays, since it says something.
     private static func droppingTrailingPeriods(_ text: String) -> String {
         var text = Substring(text)
         while let last = text.unicodeScalars.last, isFullStop(last) { text = text.dropLast() }
