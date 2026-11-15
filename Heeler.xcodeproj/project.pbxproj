@@ -14,6 +14,7 @@
 		00FB65666F7C2E065D94DF2C /* StartAgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B24EF5EA39899292A1907226 /* StartAgentStore.swift */; };
 		0172061BA6A15EF4617333BC /* ScriptedTmuxHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCD4EF70CAC1312A0C87EFF /* ScriptedTmuxHost.swift */; };
 		01E46F4109A7EB36E0CAA49B /* GitProbe+Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = D248614D9139FE512F3A6B4B /* GitProbe+Command.swift */; };
+		01EF4718F8C1D78E6CCAD2EC /* RexHostUpdatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8447BDA9562A3E257F7D166F /* RexHostUpdatesTests.swift */; };
 		021249A2E11F409A23534668 /* ChatMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = D020CA26F533FB4848A99F9B /* ChatMarkdown.swift */; };
 		0272B09CE3B0F295EAD8FC32 /* DemoChatSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C3F322BF44ADFEF60742B4 /* DemoChatSample.swift */; };
 		028382018C6BEC8780CD3597 /* ClaudeCodeHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC9F2432433142FC0AC6463 /* ClaudeCodeHooks.swift */; };
@@ -1966,6 +1967,7 @@
 		83445AAEA6753854D5B6B221 /* NewHostWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewHostWizardView.swift; sourceTree = "<group>"; };
 		8351C76E39718F8E22210B8F /* AgentSessionUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionUsageStore.swift; sourceTree = "<group>"; };
 		83B421AF1D58CF1B60168BC8 /* CodexRolloutRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutRecord.swift; sourceTree = "<group>"; };
+		8447BDA9562A3E257F7D166F /* RexHostUpdatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexHostUpdatesTests.swift; sourceTree = "<group>"; };
 		847A1406F4AAEBF2F1EDFA1F /* TerminalScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreenView.swift; sourceTree = "<group>"; };
 		84B25AFAD3E646ABF634F732 /* HerdrCoreHostSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreHostSessionTests.swift; sourceTree = "<group>"; };
 		84B301A7BB79196E5CF0DFEC /* HerdrCoreAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreAttach.swift; sourceTree = "<group>"; };
@@ -3010,6 +3012,7 @@
 				B6976C74B64DCC84D5E4441A /* RexDataLinkTests.swift */,
 				909CC5C1882B9EF51B4E7474 /* RexHostCatalogTests.swift */,
 				D5EE143261333946161B82EB /* RexHostSessionTests.swift */,
+				8447BDA9562A3E257F7D166F /* RexHostUpdatesTests.swift */,
 				AA80DBA659DB2302431E8058 /* RexInventoryBookTests.swift */,
 				B3E17194D0C97AABDB6FCF13 /* RexServerKindDetectionTests.swift */,
 				1F3DE32C79322C3A6BA8E757 /* RexStreamScannerTests.swift */,
@@ -5681,6 +5684,7 @@
 				BB992AD67B3EFA0370A9C824 /* RexDataLinkTests.swift in Sources */,
 				4DA3A68B47737E76FFA2465A /* RexHostCatalogTests.swift in Sources */,
 				5630D846E337F799F65AF9C6 /* RexHostSessionTests.swift in Sources */,
+				01EF4718F8C1D78E6CCAD2EC /* RexHostUpdatesTests.swift in Sources */,
 				493B2F926021BAA8E276FDD7 /* RexInventoryBookTests.swift in Sources */,
 				00BE6B0496AD04456FCCD5FE /* RexServerKindDetectionTests.swift in Sources */,
 				AC52B1B1BB346B6FDA18900B /* RexStreamScannerTests.swift in Sources */,
