@@ -31,7 +31,9 @@ switch that is off by default; with it off, stored Rex Hosts stay saved and
 unlisted (ADR 0047). One control connection follows the whole server: every
 session's terminals, kept current by Rex's events and read again after any
 new connection. Another server instance on the socket is another server, as
-with tmux (ADR 0048).
+with tmux (ADR 0048). A Rex Host's Terminals open for viewing only: the
+server's own redraw paints them, their size is asked for and never taken, and
+nothing typed reaches them yet (ADR 0049).
 _Avoid_: Rex session (for the Host), Rex app (for the server)
 
 **Detached Terminal**:
