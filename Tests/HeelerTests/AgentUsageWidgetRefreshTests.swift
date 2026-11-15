@@ -139,6 +139,36 @@ struct AgentUsageWidgetRefreshTests {
         #expect(kept.limits.map(\.program).first == "claude", "Claude Code keeps its place")
     }
 
+    @Test func removingAnAccountDropsNewerFiguresTheWidgetKeeps() throws {
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let host = Self.host("Studio Mac")
+        let removedID = "7f3c9a2e"
+        let complete = try AgentUsageReport.decode(AgentUsageFixture.data())
+        // The next refreshing report serves the last run's figures without the Account.
+        var object = try #require(JSONSerialization.jsonObject(with: AgentUsageFixture.data()) as? [String: Any])
+        object["refreshing"] = true
+        var programs = try #require(object["programs"] as? [[String: Any]])
+        var accounts = try #require(programs[0]["accounts"] as? [[String: Any]])
+        accounts.removeAll { $0["id"] as? String == removedID }
+        programs[0]["accounts"] = accounts
+        object["programs"] = programs
+        let removed = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        let later = Self.now.addingTimeInterval(60)
+        let fresh = UsageWidgetSnapshot.Host(
+            id: host.id, name: host.displayName, report: removed, readAt: removed.figuresDate(readAt: later))
+        let shown = UsageWidgetSnapshot.Host(id: host.id, name: host.displayName, report: complete, readAt: Self.now)
+        #expect(shown.limits.contains { $0.accountID == removedID })
+        #expect(try #require(fresh.readAt) < Self.now, "the report's figures are older than the widget's")
+
+        publisher.publish([Self.reading(host, .available(complete), readAt: Self.now)], now: Self.now)
+        publisher.publish([Self.reading(host, .available(removed), readAt: later)], now: later)
+
+        let published = try #require(Self.snapshot(directory)?.host(host.id))
+        #expect(!published.limits.contains { $0.accountID == removedID })
+        #expect(published == fresh)
+    }
+
     @Test func aStoreShowingARefreshingReportDatesItsFiguresByTheScan() async throws {
         let cached = try AgentUsageFixture.tokenReport(refreshing: true)
         let scannedAt = try #require(AgentUsageLimitsView.date(cached.scan?.coveredThrough))
