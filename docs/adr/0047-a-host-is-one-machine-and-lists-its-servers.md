@@ -62,6 +62,12 @@ tmux sockets on one machine, that is the common case, not the odd one.
   label beside the Host's name (`studio · tmux`) wherever one record is named,
   such as the Agents and Terminals lists and the Host filter. The label is
   derived, not stored.
+- Usage counts a Host once. A Host's Servers read the same Transcripts under
+  the same account, so the Usage tab, its widgets and Accounts in Settings
+  list the Host, not its records, under the id of its first record that can
+  read Usage. Each of those Servers is still read, and the Host's figures are
+  those of the first that reports, so a Server without the plugin or the Host
+  Helper does not hide what another can read.
 
 This supersedes ADR 0031's "an SSH target that runs both is added once per
 kind, as two Hosts" and its confirmation in Host detail, and ADR 0044's
@@ -104,3 +110,6 @@ kind, as two Hosts" and its confirmation in Host detail, and ADR 0044's
   that is on.
 - A Host added by Pairing Code is a Herdr TUI Server on the Host its
   connection matches, or on a Host of its own.
+- A Usage widget set to a Host names it by that first record. Turning that
+  Server off, or a widget set before this change to another record of the
+  Host, leaves the widget without its Host until it is set again.
