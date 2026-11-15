@@ -27,10 +27,12 @@ enum RexTerminalInputPiece: Sendable, Equatable {
 ///   is dropped too, as `TmuxKeyReader` drops it.
 /// - Focus reports (`CSI I`, `CSI O`) become focus events, and a bracketed
 ///   paste in the bytes becomes a paste, unframed.
-/// - A legacy mouse report (`CSI M` and three bytes) whose bytes are not all
-///   ASCII, as past column or row 95, is not valid text: it becomes the mouse
-///   or wheel event it reports. Every other mouse report is text and goes as
-///   written, so the program gets the encoding it asked for.
+/// - A legacy X10 mouse report (`CSI M` and three bytes) whose bytes are not
+///   all ASCII, as past column or row 95, is not valid text: it becomes the
+///   mouse or wheel event it reports. Every other mouse report is text and goes
+///   as written, so the program gets the encoding it asked for: one in the
+///   UTF-8 encoding (DECSET 1005), whose values past 95 take two bytes each,
+///   is valid text whole.
 /// - A byte that is not part of valid UTF-8 is an 8-bit Meta key: it goes as
 ///   ESC and the byte without its high bit, the form programs read as Alt.
 ///   Text is never sent with invalid UTF-8, which closes the control
@@ -96,6 +98,11 @@ struct RexTerminalKeyReader {
                 run.add(.event(type: "focus", payload: .object(["action": .string(focus)])))
                 return sequence.end
             }
+            if sequence.isLegacyMouse, let end = Self.utf8MouseReportEnd(in: bytes, from: sequence.end) {
+                // Valid text as it stands: the program reads the encoding it asked for.
+                run.add(bytes[start..<end])
+                return end
+            }
             if sequence.isLegacyMouse, sequence.end + 3 <= bytes.count {
                 let report = bytes[sequence.end..<(sequence.end + 3)]
                 if report.allSatisfy({ $0 < 0x80 }) {
@@ -129,6 +136,29 @@ struct RexTerminalKeyReader {
     }
 
     // MARK: Mouse
+
+    /// Just past a legacy mouse report in the UTF-8 encoding (DECSET 1005)
+    /// that starts at `start`, or nil when there is none. There each value is
+    /// one character, two bytes from 95 up, so the report runs four to six
+    /// bytes. One whose values are all one byte reads the same as an X10
+    /// report, which is exactly three bytes and ends its write, so it is left
+    /// to that reading.
+    private static func utf8MouseReportEnd(in bytes: [UInt8], from start: Int) -> Int? {
+        var at = start
+        var wide = false
+        for _ in 0..<3 {
+            guard at < bytes.count else { return nil }
+            if bytes[at] < 0x80 {
+                at += 1
+            } else if scalarLength(in: bytes, at: at) == 2 {
+                at += 2
+                wide = true
+            } else {
+                return nil
+            }
+        }
+        return wide ? at : nil
+    }
 
     /// The event a legacy mouse report stands for: button and modifiers, then
     /// column and row, each offset by 32 and counted from 1. Extra buttons

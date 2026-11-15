@@ -218,6 +218,21 @@ struct RexTerminalKeyReaderTests {
         #expect(right == [.event(type: "wheel", payload: ["delta_x": 1, "delta_mode": "line", "x": 167, "y": 0])])
     }
 
+    /// A mouse report in the UTF-8 encoding (DECSET 1005) is valid text,
+    /// whose values past 95 take two bytes each: it goes whole, as written,
+    /// and no byte of it is left over to read as a key.
+    @Test func aUTF8MouseReportGoesWholeAsText() {
+        // Column 100, row 5: the column is U+0085.
+        #expect(read([0x1B, 0x5B, 0x4D, 0x20, 0xC2, 0x85, 0x26]) == [.text("\u{1B}[M \u{85}&")])
+        #expect(read([0x1B, 0x5B, 0x4D, 0x23, 0xC2, 0x85, 0x26]) == [.text("\u{1B}[M#\u{85}&")])
+        // Column 33, row 96: the row is U+0080.
+        #expect(read([0x1B, 0x5B, 0x4D, 0x20, 0x41, 0xC2, 0x80]) == [.text("\u{1B}[M A\u{80}")])
+        #expect(read([0x1B, 0x5B, 0x4D, 0x20, 0xC2, 0x85, 0xC2, 0x85]) == [.text("\u{1B}[M \u{85}\u{85}")])
+        // A wheel report and an extra button, whose button byte is past 95 too.
+        #expect(read([0x1B, 0x5B, 0x4D, 0x60, 0xC3, 0x88, 0x21]) == [.text("\u{1B}[M`\u{C8}!")])
+        #expect(read([0x1B, 0x5B, 0x4D, 0xC2, 0xA0, 0x21, 0x21]) == [.text("\u{1B}[M\u{A0}!!")])
+    }
+
     /// Whatever the bytes, each text piece stays within the budget, and
     /// bytes with no ESC among them all leave, each high byte that is not
     /// part of a character as Meta.

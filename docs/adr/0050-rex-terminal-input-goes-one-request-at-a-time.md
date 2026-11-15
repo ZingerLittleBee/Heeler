@@ -29,8 +29,9 @@ the whole control connection.
 - **Answers to queries are dropped** on the way out, as ADR 0049 set out: Rex
   answers a program's queries itself.
 - **Never invalid text.** The bytes the view writes are not always UTF-8. A
-  legacy mouse report past column or row 95 goes as the mouse or wheel event
-  it reports. Any other byte that is not part of a character is an 8-bit Meta
+  legacy X10 mouse report past column or row 95 goes as the mouse or wheel
+  event it reports. A report in the UTF-8 mouse encoding (DECSET 1005) is
+  valid text and goes as written. Any other byte that is not part of a character is an 8-bit Meta
   key and goes as ESC and the byte without its high bit, the form programs
   read as Alt.
 - **Pastes go as the server's paste event**, never as bytes: single lines,
