@@ -11,6 +11,9 @@ shares no Agents with them, has no Heeler plugin or Host Helper, and reports no
 Program Status Heeler reads. Heeler adds Rex as a fourth Server Kind, first as
 an experiment that ships switched off.
 
+Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
+is gone, and every build offers Rex.
+
 ## Decision
 
 - Rex is an experimental Server Kind under ADR 0031's rules: a Host added by
@@ -40,7 +43,8 @@ an experiment that ships switched off.
 - Detection offers Rex only where it found a socket the account may use. It
   says plainly when Rex is installed and no server runs, and when a socket is
   there that this account cannot use. Confirming stores the socket found.
-- One switch, `RexHostsExperiment`, decides whether this build offers Rex. It
+- (Removed 2026-11-16, see the update below.) One switch,
+  `RexHostsExperiment`, decides whether this build offers Rex. It
   is off by default and cannot be turned on in a Release build; a Debug build
   turns it on with the `--rex-hosts` launch argument or the
   `experimental.rexHosts` default. With it off, the app behaves as a build
@@ -84,7 +88,8 @@ an experiment that ships switched off.
   connect, and from dropping Hosts they cannot read, as with herdr-core and
   tmux.
 - Shipping behind a switch lets the work land in steps while every build users
-  receive behaves exactly as before.
+  receive behaves exactly as before. (This held until 2026-11-16, see the
+  update below.)
 
 ## Evidence
 
@@ -127,3 +132,37 @@ an experiment that ships switched off.
   name, so a fourth kind adds its own answers.
 - Every switch over the Server Kind names Rex, and every integration that picks
   its Hosts by kind leaves Rex Hosts out.
+
+## Update 2026-11-16
+
+By the maintainer's decision, the `RexHostsExperiment` switch is removed, with
+its `--rex-hosts` launch argument and its `experimental.rexHosts` default. Rex
+is a Server Kind in every build, Release included, as tmux is. That the
+support is still experimental is said in the user guide and the changelog, not
+in the app.
+
+The switch had let the work land in steps on the main branch while every build
+users received behaved as one without Rex: detection did not look for Rex, no
+Host could be confirmed as one, and stored Rex Hosts stayed saved, unlisted
+and undialed. Debug builds turned it on for development and acceptance.
+
+What every build now does, and what it means for people without Rex:
+
+- Detection looks for Rex on every macOS and Linux Host. The Rex part stays a
+  part of the one detection exec, so it adds no exec and no round trip; it
+  only tests files, starts nothing, and reports between markers of its own, so
+  a part that does not read leaves the other findings as they are. A native
+  Windows Host is still never asked. Through a user-level OpenSSH 10.3p1 sshd
+  on loopback on macOS 27.0, with Rex running, the whole exec took a median of
+  about 330 ms with or without the Rex part; the Rex part added a median of 12
+  to 23 ms over 20 to 40 paired runs, and alone took 12 ms more than an empty
+  exec.
+- A Host without a Rex socket this account may use is offered what it was
+  offered before. Detection lists Rex beside the other kinds, and an installed
+  Rex with no server says to start it.
+- The `rexHosts` catalog stays separate and now always loads, so builds before
+  Rex Hosts still read their own Hosts untouched. No other stored data changed
+  shape.
+- Agents, Chat, Composer, New Agent and New Terminal, notifications, Live
+  Activities, widgets, Usage and background refresh still leave Rex Hosts out
+  by Server Kind, as before.
