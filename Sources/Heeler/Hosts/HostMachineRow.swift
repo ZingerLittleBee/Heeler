@@ -2,7 +2,7 @@ import SwiftUI
 
 /// One Hosts list row (ADR 0047): a Host, read from the Servers that are on.
 /// The one that most needs the user decides where the row is filed and what
-/// it says; each keeps its own mark on its chip.
+/// it says; each keeps its own state color on its badge.
 struct HostMachineRowPresentation: Equatable {
     /// A Server that is on.
     struct Server: Equatable, Identifiable {
@@ -13,6 +13,17 @@ struct HostMachineRowPresentation: Equatable {
         let offersRetry: Bool
         /// The user's own retry is dialing.
         let isDialing: Bool
+
+        /// Lower ranks stay visible first when a Host has more Servers than a
+        /// compact list row renders inline.
+        fileprivate var attentionRank: Int {
+            switch tone {
+            case .unavailable: 0
+            case .warning, .reconnecting: 1
+            case .pending: 2
+            case .connected, .paused: 3
+            }
+        }
     }
 
     let name: String
@@ -30,6 +41,9 @@ struct HostMachineRowPresentation: Equatable {
 
     /// The records a Retry dials: every Server that stopped.
     var retryIDs: [Host.ID] { servers.filter(\.offersRetry).map(\.id) }
+
+    /// `detail`, omitted when it would only repeat an unnamed Host's `name`.
+    var subtitle: String? { detail == name ? nil : detail }
 
     init(
         machine: HostMachine,
@@ -50,7 +64,7 @@ struct HostMachineRowPresentation: Equatable {
         }
         servers = rows.map { record, row in
             Server(
-                id: record.id, label: record.serverKey?.label ?? record.serverKind.displayName,
+                id: record.id, label: record.serverKey?.badgeLabel ?? record.serverKind.badgeName,
                 tone: row.tone, offersRetry: row.offersRetry, isDialing: row.isDialing)
         }
         // The first of the Servers in the group that comes first, one out of
@@ -83,45 +97,102 @@ struct HostMachineRowPresentation: Equatable {
     }
 }
 
-/// The first line of a Hosts list row: the Host's state, name, and what is
-/// under it.
-struct HostMachineRowHeadline: View {
+/// The content column of a Hosts list row beside its leading `HostStatusGlyph`
+/// and any trailing action: Host name, optional route/status subtitle, and
+/// Server badges stacked on the left, with latency always vertically centered
+/// on the right.
+struct HostMachineRowContent: View {
     let presentation: HostMachineRowPresentation
+    var unseen: [String] = []
+    var showsTrailing = true
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            HostStatusGlyph(tone: presentation.tone)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(presentation.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(presentation.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)
-                    .lineLimit(1)
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 1.5) {
+                    titleText
+                    if let subtitle = presentation.subtitle {
+                        subtitleText(subtitle)
+                    }
+                }
+                HostServerChips(servers: presentation.servers, unseen: unseen)
             }
-            Spacer(minLength: 0)
-            if let trailing = presentation.trailing {
-                Text(trailing)
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            if showsTrailing, let trailing = presentation.trailing {
+                trailingText(trailing)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
         }
         .accessibilityElement(children: .combine)
     }
+
+    private var titleText: some View {
+        Text(presentation.name)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.primary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            .truncationMode(.middle)
+    }
+
+    private func trailingText(_ trailing: String) -> some View {
+        let compact = trailing.replacingOccurrences(of: " ms", with: "\u{200A}ms")
+        return Text(compact)
+            .font(.caption2)
+            .tracking(-0.3)
+            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            .lineLimit(1)
+            .accessibilityLabel(trailing)
+    }
+
+    private func subtitleText(_ subtitle: String) -> some View {
+        let maxLines =
+            if presentation.isProblem {
+                dynamicTypeSize.isAccessibilitySize ? 3 : 2
+            } else {
+                dynamicTypeSize.isAccessibilitySize ? 2 : 1
+            }
+        return Text(subtitle)
+            .font(.footnote)
+            .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)
+            .lineLimit(maxLines)
+            .truncationMode(presentation.isProblem ? .tail : .middle)
+            .fixedSize(horizontal: false, vertical: presentation.isProblem)
+    }
 }
 
-/// The second line of a Hosts list row: a chip for each Server that is on,
-/// then a dashed one for each Server found since and not shown yet.
+/// Compact strip of Server badges on every Host row: a badge for each Server
+/// that is on (including a single `Herdr TUI`, `herdr-core`, or `tmux` Server),
+/// a muted badge when none is on, and dashed tint badges for newly discovered
+/// Servers that are still off.
 struct HostServerChips: View {
     let servers: [HostMachineRowPresentation.Server]
     /// Labels of the Servers found on the Host that the user has not seen.
     let unseen: [String]
 
+    /// Maximum active Server badges rendered inline before summarizing the rest
+    /// so a Host with many named sessions or sockets stays compact.
+    private static let serverLimit = 4
     /// How many found Servers the row names before it counts the rest: the
     /// row points at news, and Host detail lists it.
     private static let unseenLimit = 2
+
+    private var visibleServers: [HostMachineRowPresentation.Server] {
+        guard servers.count > Self.serverLimit else { return servers }
+        let indexed = Array(servers.enumerated())
+        let prioritized = indexed.sorted { lhs, rhs in
+            (lhs.element.attentionRank, lhs.offset) < (rhs.element.attentionRank, rhs.offset)
+        }
+        let kept = Set(prioritized.prefix(Self.serverLimit).map(\.offset))
+        return indexed.filter { kept.contains($0.offset) }.map(\.element)
+    }
+
+    private var overflowServerCount: Int {
+        max(0, servers.count - Self.serverLimit)
+    }
 
     /// The chips in words. A Hosts list row is one VoiceOver stop, so it reads
     /// them as its value: where only a colored mark shows a state, a word does.
@@ -136,12 +207,15 @@ struct HostServerChips: View {
     }
 
     var body: some View {
-        ChipWrap(spacing: 5) {
+        ChipWrap(spacing: 4, lineSpacing: 4) {
             if servers.isEmpty {
-                HostServerChip(label: String(localized: "No servers on"), isDimmed: true)
+                HostServerChip(label: String(localized: "No servers on"), tone: nil)
             }
-            ForEach(servers) { @Sendable server in
-                HostServerChip(label: server.label, tone: server.tone, isDimmed: server.tone != .connected)
+            ForEach(visibleServers) { @Sendable server in
+                HostServerChip(label: server.label, tone: server.tone)
+            }
+            if overflowServerCount > 0 {
+                HostServerChip(label: String(localized: "+\(overflowServerCount) more"), tone: nil)
             }
             ForEach(unseen.prefix(Self.unseenLimit), id: \.self) { @Sendable label in
                 HostFoundServerChip(label: label)
@@ -156,24 +230,75 @@ struct HostServerChips: View {
 
 private struct HostServerChip: View {
     let label: String
-    var tone: HostConnectionTone?
-    let isDimmed: Bool
+    let tone: HostConnectionTone?
+
+    private var needsAttention: Bool {
+        switch tone {
+        case .unavailable, .warning, .reconnecting: true
+        case .connected, .pending, .paused, nil: false
+        }
+    }
+
+    private var labelColor: Color {
+        switch tone {
+        case .connected: Self.connectedLabel
+        case .warning, .reconnecting: Self.warningLabel
+        case .unavailable: Self.unavailableLabel
+        case .pending: Color.secondary
+        case .paused, nil: Color(uiColor: .tertiaryLabel)
+        }
+    }
+
+    private var fillStyle: Color {
+        switch tone {
+        case .connected: Self.connectedFill
+        case .warning, .reconnecting: Self.warningFill
+        case .unavailable: Self.unavailableFill
+        case .pending: Color(uiColor: .tertiarySystemFill)
+        case .paused, nil: Color(uiColor: .quaternarySystemFill)
+        }
+    }
 
     var body: some View {
-        HStack(spacing: 5) {
-            if let tone {
-                HostToneBadge(tone: tone)
-                    .frame(width: 7, height: 7)
-            }
-            Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(isDimmed ? .secondary : .primary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .frame(minHeight: 22)
-        .background(Color(.tertiarySystemFill).opacity(isDimmed ? 0.6 : 1), in: Capsule())
+        Text(label)
+            .font(.caption2.weight(needsAttention ? .semibold : .medium))
+            .foregroundStyle(labelColor)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(fillStyle, in: Capsule())
     }
+
+    private static let connectedLabel = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemGreen.withAlphaComponent(0.9)
+            : UIColor(red: 0.09, green: 0.50, blue: 0.21, alpha: 1)
+    })
+
+    private static let connectedFill = Color(uiColor: UIColor { traits in
+        UIColor.systemGreen.withAlphaComponent(traits.userInterfaceStyle == .dark ? 0.14 : 0.12)
+    })
+
+    private static let warningLabel = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemOrange.withAlphaComponent(0.95)
+            : UIColor(red: 0.76, green: 0.38, blue: 0.0, alpha: 1)
+    })
+
+    private static let warningFill = Color(uiColor: UIColor { traits in
+        UIColor.systemOrange.withAlphaComponent(traits.userInterfaceStyle == .dark ? 0.16 : 0.13)
+    })
+
+    private static let unavailableLabel = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemRed.withAlphaComponent(0.95)
+            : UIColor(red: 0.82, green: 0.12, blue: 0.14, alpha: 1)
+    })
+
+    private static let unavailableFill = Color(uiColor: UIColor { traits in
+        UIColor.systemRed.withAlphaComponent(traits.userInterfaceStyle == .dark ? 0.16 : 0.11)
+    })
 }
 
 /// A Server found on the Host and off: dashed, to say it is not in yet.
@@ -181,19 +306,45 @@ private struct HostFoundServerChip: View {
     let label: String
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Image(systemName: "plus")
-                .font(.caption2.weight(.semibold))
+                .font(.system(size: 9, weight: .bold))
+                .fixedSize()
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(.caption2.weight(.semibold))
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .foregroundStyle(.tint)
-        .padding(.horizontal, 8)
-        .frame(minHeight: 22)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
+        .background(Color.accentColor.opacity(0.08), in: Capsule())
         .overlay {
-            Capsule().strokeBorder(.tint.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            Capsule().strokeBorder(.tint.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
         }
+    }
+}
+
+extension ServerKind {
+    /// How a Server Kind reads on a Hosts list badge.
+    var badgeName: String {
+        switch self {
+        case .herdrTUI: String(localized: "Herdr TUI")
+        case .herdrCore: "Herdr Core"
+        case .tmux: "Tmux"
+        case .unconfirmed: String(localized: "Not confirmed")
+        }
+    }
+}
+
+extension HostServerKey {
+    /// Compact badge label on the Hosts list: a named Herdr TUI session shows
+    /// its session name directly without the `Herdr TUI` prefix, while
+    /// `herdr-core` and `tmux` read as `Herdr Core` and `Tmux`.
+    var badgeLabel: String {
+        guard let distinguishingName else { return kind.badgeName }
+        if kind == .herdrTUI { return distinguishingName }
+        return "\(kind.badgeName) · \(distinguishingName)"
     }
 }
 

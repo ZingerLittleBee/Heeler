@@ -306,8 +306,7 @@ struct HostMachineDetailView: View {
         guard let state else { return row.found?.stateLine ?? String(localized: "Off") }
         guard state.group == .connected else { return state.detail }
         if state.tone == .warning { return state.detail }
-        let connected = String(localized: "Connected")
-        return state.trailing.map { "\(connected) · \($0)" } ?? connected
+        return String(localized: "Connected")
     }
 
     private func isOn(_ row: ServerRow) -> Binding<Bool> {

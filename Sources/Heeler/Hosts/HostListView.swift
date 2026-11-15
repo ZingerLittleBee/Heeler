@@ -391,9 +391,15 @@ struct HostListView: View {
                     List {
                         if store.coreCatalogLoadError != nil {
                             Section {
-                                Label(
-                                    String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added."),
-                                    systemImage: "externaldrive.badge.exclamationmark")
+                                Label {
+                                    Text(
+                                        String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added.")
+                                    )
+                                    .font(.footnote)
+                                } icon: {
+                                    Image(systemName: "externaldrive.badge.exclamationmark")
+                                        .foregroundStyle(.orange)
+                                }
                             }
                         }
                         ForEach(HostListEntry.grouped(entries)) { @Sendable section in
@@ -410,10 +416,15 @@ struct HostListView: View {
                                         group: section.group, count: section.entries.count,
                                         isCollapsed: isCollapsed
                                     ) { toggle(section.group) }
+                                    .listRowInsets(
+                                        EdgeInsets(top: 6, leading: 0, bottom: 4, trailing: 0))
                                 }
                             }
                         }
                     }
+                    .listStyle(.insetGrouped)
+                    .listSectionSpacing(.compact)
+                    .contentMargins(.top, 4, for: .scrollContent)
                     .readableColumnPage()
                 }
             }
@@ -577,7 +588,7 @@ struct HostListView: View {
                     latencies: latencies,
                     syncIssues: syncIssues,
                     canRetry: retryConnection != nil),
-                unseen: discoveries.unseen(on: machine).map(\.key.label))
+                unseen: discoveries.unseen(on: machine).map(\.key.badgeLabel))
         }
     }
 
@@ -655,22 +666,24 @@ struct HostListView: View {
         // and pointer hover; a borderless Retry keeps its own target in it,
         // and VoiceOver offers it as one of the row's actions.
         NavigationLink(value: HostDetailDestination.host(machine.representative.id)) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 12) {
-                    HostMachineRowHeadline(presentation: entry.presentation)
-                    if isRemoving {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityHidden(true)
-                    } else if !stopped.isEmpty {
-                        HostRetryButton(isBusy: isRetrying) { retry(stopped.map(\.id)) }
-                    }
+            HStack(alignment: .center, spacing: 12) {
+                HostStatusGlyph(tone: entry.presentation.tone)
+                    .fixedSize()
+                HostMachineRowContent(
+                    presentation: entry.presentation, unseen: entry.unseen,
+                    showsTrailing: !isRemoving)
+                if isRemoving {
+                    ProgressView()
+                        .controlSize(.small)
+                        .fixedSize()
+                        .accessibilityHidden(true)
+                } else if !stopped.isEmpty {
+                    HostRetryButton(isBusy: isRetrying) { retry(stopped.map(\.id)) }
+                        .fixedSize()
                 }
-                // Under the name, clear of the glyph.
-                chips.padding(.leading, 32)
             }
-            .padding(.vertical, 2)
         }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 14))
         .disabled(isRemoving)
         .accessibilityValue(
             isRemoving ? Text("Removing") : isRetrying ? Text("Connecting") : Text(chips.spokenSummary))
@@ -912,18 +925,29 @@ private struct HostGroupHeader: View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
                 Text(group.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.secondary)
+                    .truncationMode(.tail)
                 Text(count, format: .number)
-                    .foregroundStyle(.tertiary)
+                    .font(.footnote.weight(.medium).monospacedDigit())
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 12)
+                    .fixedSize()
             }
+            .lineLimit(1)
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .textCase(nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             count == 1
@@ -1027,7 +1051,7 @@ private struct HostRetryButton: View {
     let action: () -> Void
 
     /// The disc grows with the glyph, which follows Dynamic Type.
-    @ScaledMetric(relativeTo: .subheadline) private var discSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .footnote) private var discSize: CGFloat = 28
 
     var body: some View {
         // Inert while busy but still hit: a tap on the spinner must not fall
@@ -1037,7 +1061,7 @@ private struct HostRetryButton: View {
             // Small and light: a stopped Host's reason is the row's point,
             // and three prominent buttons in a row shout over it.
             Image(systemName: "arrow.clockwise")
-                .font(.subheadline.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(Self.glyph)
                 .opacity(isBusy ? 0 : 1)
                 .overlay {
@@ -1047,9 +1071,11 @@ private struct HostRetryButton: View {
                 // Gray on gray: the stopped Host's red reason stays the one
                 // color in the row.
                 .background(Self.disc, in: Circle())
-                // The full 44-point target around the smaller circle.
-                .frame(width: max(44, discSize), height: max(44, discSize))
+                // Generous hit target without inflating compact row height.
+                .frame(width: max(36, discSize), height: max(36, discSize))
                 .contentShape(Rectangle())
+                .padding(.vertical, -4)
+                .padding(.horizontal, -2)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("Retry")
