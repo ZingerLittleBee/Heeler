@@ -249,7 +249,7 @@ extension TransportError {
             self = .rexAccountRefused(socketPath: nil)
         case .upgradeRefused(let status):
             self = .channelFailed(detail: String(localized: "Rex refused the connection with HTTP status \(status)."))
-        case .upgradeFailed, .welcomeUnreadable:
+        case .upgradeFailed:
             self = .channelFailed(detail: String(localized: "Rex did not finish opening the connection."))
         case .welcomeTimedOut, .deadlineExceeded:
             self = .timedOut

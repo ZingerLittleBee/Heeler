@@ -469,6 +469,27 @@ struct RexControlLinkTests {
         await link.close()
     }
 
+    /// A welcome may leave the client out, as a server that cannot resume
+    /// clients does: the link opens, and the next one starts a new client.
+    @Test func aWelcomeWithoutAClientOpensAndCannotBeResumed() async throws {
+        var welcome = FakeRexServer.Welcome()
+        welcome.clientID = nil
+        let (_, old) = try await FakeRexServer.open(welcome: welcome)
+        #expect(old.clientID == nil)
+        #expect(!old.resumed)
+        #expect(await old.isOpen)
+
+        let server = FakeRexServer()
+        async let opened = RexControlLink.open(
+            over: server.channel, resuming: old, options: .testing, sleep: ManualClock().parkedSleep(for:))
+        let hello = await server.handshake()
+        let link = try await opened
+
+        #expect(hello["reconnect_token"] == nil)
+        #expect(!link.resumed)
+        await link.close()
+    }
+
     @Test func noDescriptionOfALinkShowsItsToken() async throws {
         var welcome = FakeRexServer.Welcome()
         welcome.reconnectToken = "fake-token-secret-91"

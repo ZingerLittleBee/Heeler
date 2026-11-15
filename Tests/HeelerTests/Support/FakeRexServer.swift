@@ -11,7 +11,8 @@ import HeelerSSH
 /// its own. Ids, labels and tokens here are invented.
 actor FakeRexServer {
     struct Welcome: Sendable {
-        var clientID = "client:00000000-0000-7000-8000-000000000001"
+        /// Nil leaves `client` out of the welcome, token and all.
+        var clientID: String? = "client:00000000-0000-7000-8000-000000000001"
         var reconnectToken: String? = "fake-reconnect-token-0001"
         /// Nil leaves `resumed` out, as Rex does for a new client.
         var resumed: Bool?
@@ -87,18 +88,22 @@ actor FakeRexServer {
     }
 
     func sendWelcome(_ welcome: Welcome = Welcome()) async {
-        var client: [String: JSONValue] = ["id": .string(welcome.clientID)]
-        if let token = welcome.reconnectToken { client["reconnect_token"] = .string(token) }
-        if let resumed = welcome.resumed { client["resumed"] = .bool(resumed) }
         var limits: [String: JSONValue] = [:]
         if let maxMessageBytes = welcome.maxMessageBytes { limits["max_message_bytes"] = .number(Double(maxMessageBytes)) }
-        await send([
+        var message: [String: JSONValue] = [
             "type": .string("welcome"), "protocol": .string(welcome.protocolName), "limits": .object(limits),
-            "client": .object(client), "carriers": .array([]), "features": .object([:]),
+            "carriers": .array([]), "features": .object([:]),
             "api_revision": .number(Double(welcome.apiRevision)),
             "api_server_revision": .number(Double(welcome.serverRevision)),
             "api_min_revision": .number(Double(welcome.minimumRevision)),
-        ])
+        ]
+        if let clientID = welcome.clientID {
+            var client: [String: JSONValue] = ["id": .string(clientID)]
+            if let token = welcome.reconnectToken { client["reconnect_token"] = .string(token) }
+            if let resumed = welcome.resumed { client["resumed"] = .bool(resumed) }
+            message["client"] = .object(client)
+        }
+        await send(message)
     }
 
     /// Accepts the upgrade, waits for the hello and welcomes the client.

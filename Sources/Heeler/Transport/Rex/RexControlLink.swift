@@ -52,8 +52,6 @@ enum RexControlError: Error, Sendable {
     case upgradeFailed
     /// No welcome arrived in time after the hello.
     case welcomeTimedOut
-    /// The welcome named no client id.
-    case welcomeUnreadable
     /// The server does not speak this build's protocol and API revision.
     case unsupportedVersion(RexServerOffer)
     /// The server answered the request with an error.
@@ -126,8 +124,10 @@ actor RexControlLink {
         var deadline: Task<Void, Never>?
     }
 
-    /// The server's id for this client, the same after a resume.
-    nonisolated let clientID: String
+    /// The server's id for this client, the same after a resume. Nil when the
+    /// server named none, as one that cannot resume clients may: it then issues
+    /// no token either, and the next link starts a new client.
+    nonisolated let clientID: String?
     /// The largest request the server accepts, in bytes.
     nonisolated let maxMessageBytes: Int
     /// This link took back the client an earlier link's token named.
@@ -151,9 +151,9 @@ actor RexControlLink {
     private var ending: RexControlEnding?
     private var readerTask: Task<Void, Never>?
 
-    private init(webSocket: WebSocketLink, welcome: RexWelcome, clientID: String, options: Options, sleep: @escaping Sleep) {
+    private init(webSocket: WebSocketLink, welcome: RexWelcome, options: Options, sleep: @escaping Sleep) {
         self.webSocket = webSocket
-        self.clientID = clientID
+        clientID = welcome.clientID
         maxMessageBytes = max(welcome.maxMessageBytes ?? 0, RexControlProtocol.minimumMessageLimit)
         resumed = welcome.resumed
         apiRevision = welcome.apiRevision ?? RexControlProtocol.apiRevision
@@ -213,11 +213,7 @@ actor RexControlLink {
             await webSocket.close(.normalClosure)
             throw RexControlError.unsupportedVersion(welcome.offer)
         }
-        guard let clientID = welcome.clientID else {
-            await webSocket.close(.normalClosure)
-            throw RexControlError.welcomeUnreadable
-        }
-        let link = RexControlLink(webSocket: webSocket, welcome: welcome, clientID: clientID, options: options, sleep: sleep)
+        let link = RexControlLink(webSocket: webSocket, welcome: welcome, options: options, sleep: sleep)
         await link.startReading()
         return link
     }
