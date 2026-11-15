@@ -31,7 +31,11 @@ struct HostMachineDetailView: View {
     @State private var isAddingByName = false
     @State private var isShowingSetupGuide = false
     @State private var isConfirmingHostKeyReplacement = false
+    /// Updates, opened on the item whose failed row asked why.
+    @State private var updatesRequest: HostUpdatesRequest?
     @Environment(\.hostRemovalDependencies) private var removalDependencies
+    /// What Heeler installed on the Host; nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var updates: HostUpdatesStore?
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -86,6 +90,11 @@ struct HostMachineDetailView: View {
     private func page(_ machine: HostMachine) -> some View {
         List {
             serversSection(machine)
+            if let updates {
+                HostUpdatesSection(store: updates, machine: machine) { item in
+                    updatesRequest = HostUpdatesRequest(item: item)
+                }
+            }
             if let replacement = scanner.pendingHostKeyReplacement {
                 HostKeyReplacementSection(replacement: replacement) {
                     isConfirmingHostKeyReplacement = true
@@ -113,6 +122,7 @@ struct HostMachineDetailView: View {
                 catalog: catalog, machine: machine, scan: scan, isEditing: $isEditing,
                 isAddingByName: $isAddingByName, isShowingSetupGuide: $isShowingSetupGuide,
                 turnOn: { turnOn($0) }))
+        .modifier(HostUpdatesSheet(store: updates, request: $updatesRequest))
         .alert("Trust this Host?", isPresented: fingerprintAlertPresented, presenting: scanner.pendingFingerprint) { _ in
             Button("Trust") { scanner.confirmFingerprint(trusted: true) }
             Button("Don't Trust", role: .cancel) { scanner.confirmFingerprint(trusted: false) }

@@ -293,6 +293,9 @@ struct HostListView: View {
     private let discoveries: HostServerDiscoveryStore
     @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
     @Environment(\.hostRemovalDependencies) private var removalDependencies
+    /// Which Hosts hold an older Plugin or Helper; nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var updates: HostUpdatesStore?
+    @State private var updatesRequest: HostUpdatesRequest?
     @State private var isAddingHost = false
     @State private var editingHost: Host?
     /// A record of the Host the wizard just added, while its row is lit.
@@ -402,6 +405,7 @@ struct HostListView: View {
                                 }
                             }
                         }
+                        updatesCard
                         ForEach(HostListEntry.grouped(entries)) { @Sendable section in
                             MainActorContent {
                                 let isCollapsed = isCollapsed(section.group)
@@ -522,6 +526,7 @@ struct HostListView: View {
         }
         // Over whichever page is up: Host detail and a Server's page ask too.
         .modifier(HostRemovalAlerts(removal: removal))
+        .modifier(HostUpdatesSheet(store: updates, request: $updatesRequest))
         // Covers Host detail too.
         .readableColumn()
     }
@@ -578,7 +583,8 @@ struct HostListView: View {
     }
 
     private var entries: [HostListEntry] {
-        store.machines.map { machine in
+        let updates = updates?.snapshot
+        return store.machines.map { machine in
             HostListEntry(
                 machine: machine,
                 presentation: HostMachineRowPresentation(
@@ -588,7 +594,21 @@ struct HostListView: View {
                     latencies: latencies,
                     syncIssues: syncIssues,
                     canRetry: retryConnection != nil),
-                unseen: discoveries.unseen(on: machine).map(\.key.badgeLabel))
+                unseen: discoveries.unseen(on: machine).map(\.key.badgeLabel),
+                updateTag: updates?.tag(for: machine.id))
+        }
+    }
+
+    /// Over the groups: the updates the Hosts wait on, and one button for all
+    /// of them (ADR 0048). Gone once every Host is up to date.
+    @ViewBuilder
+    private var updatesCard: some View {
+        if let updates, let card = updates.snapshot.card {
+            Section {
+                HostUpdatesCard(card: card, updateAll: { updates.updateAll() }, open: { updatesRequest = HostUpdatesRequest() })
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 14))
+                    .listRowBackground(ListCard.fill)
+            }
         }
     }
 
@@ -671,7 +691,7 @@ struct HostListView: View {
                     .fixedSize()
                 HostMachineRowContent(
                     presentation: entry.presentation, unseen: entry.unseen,
-                    showsTrailing: !isRemoving)
+                    updateTag: entry.updateTag, showsTrailing: !isRemoving)
                 if isRemoving {
                     ProgressView()
                         .controlSize(.small)
@@ -895,6 +915,8 @@ struct HostListEntry: Identifiable, Equatable {
     /// Labels of the Servers found on the Host that the user has not been
     /// shown yet.
     var unseen: [String] = []
+    /// What the Host's Plugin and Helper updates are up to, nil with none.
+    var updateTag: HostUpdatesSnapshot.Tag?
 
     var id: HostMachine.ID { machine.id }
 

@@ -58,6 +58,8 @@ struct ContentView: View {
         .environment(\.hostRemovalDependencies, app.hostRemoval)
         // Host detail's Helper actions reach what follows the Helper.
         .environment(\.hostOnboardingDependencies, app.hostOnboarding)
+        // The Hosts tab's badge, card and Updates page.
+        .environment(app.hostUpdates)
         .environment(\.sceneWindow, window)
         .environment(
             \.agentSceneRouting,

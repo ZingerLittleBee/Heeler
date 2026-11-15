@@ -104,6 +104,8 @@ struct HostMachineRowPresentation: Equatable {
 struct HostMachineRowContent: View {
     let presentation: HostMachineRowPresentation
     var unseen: [String] = []
+    /// After the name: Plugin or Helper updates wait on this Host.
+    var updateTag: HostUpdatesSnapshot.Tag?
     var showsTrailing = true
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -112,7 +114,10 @@ struct HostMachineRowContent: View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 1.5) {
-                    titleText
+                    HStack(spacing: 6) {
+                        titleText
+                        if let updateTag { HostUpdateTag(tag: updateTag) }
+                    }
                     if let subtitle = presentation.subtitle {
                         subtitleText(subtitle)
                     }
