@@ -51,6 +51,7 @@ actor FakeWebSocketServer: HeelerSSHAPIChannel {
     /// write lets the first half through, as a partial write would.
     func write(_ data: Data, timeout: Duration) async throws {
         writeCount += 1
+        signalChange()
         while writesHeld, !isClosed { await waitForChange() }
         guard !isClosed else { throw SSHError.cancelled }
         let middle = data.startIndex + data.count / 2

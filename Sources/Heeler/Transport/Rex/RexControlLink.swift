@@ -311,10 +311,16 @@ actor RexControlLink {
     /// Sends `method` with `payload` as `call` does, and says whether it was
     /// answered, refused, never sent, or may have reached the server with no
     /// answer. A request that left is never sent again here.
+    ///
+    /// The deadline counts from when the request is written, and passes only
+    /// after that long with nothing at all arriving on the link: an answer
+    /// queued behind a long message, such as a page of a terminal's redraw,
+    /// is still on its way while that message is. Writing it is bounded by
+    /// the link's own write timeout, which ends the link.
     func deliver<Payload: Encodable & Sendable>(_ method: String, payload: Payload?, deadline: Duration? = nil)
         async -> RexDelivery
     {
-        let exchange = await exchange(method, payload: payload, deadline: deadline)
+        let exchange = await exchange(method, payload: payload, deadline: deadline, countsSilence: true)
         switch exchange.outcome {
         case .success(let response): return .answered(response)
         case .failure(RexControlError.server(let failure)): return .refused(failure)
@@ -323,10 +329,12 @@ actor RexControlLink {
     }
 
     /// One request and its outcome. `left` is true once the request was
-    /// written, or was being written when the link ended.
-    private func exchange<Payload: Encodable & Sendable>(_ method: String, payload: Payload?, deadline: Duration?)
-        async -> (left: Bool, outcome: Result<RexResponse, any Error>)
-    {
+    /// written, or was being written when the link ended. With
+    /// `countsSilence`, the deadline is `deliver`'s; otherwise it runs from
+    /// now whatever arrives.
+    private func exchange<Payload: Encodable & Sendable>(
+        _ method: String, payload: Payload?, deadline: Duration?, countsSilence: Bool = false
+    ) async -> (left: Bool, outcome: Result<RexResponse, any Error>) {
         if let ending { return (false, .failure(RexControlError.linkEnded(ending))) }
         if Task.isCancelled { return (false, .failure(CancellationError())) }
         nextRequest += 1
@@ -339,16 +347,21 @@ actor RexControlLink {
             return (false, .failure(RexControlError.requestTooLarge(bytes: bytes, limit: maxMessageBytes)))
         }
         let wait = deadline ?? options.requestDeadline
+        // An answer can arrive while the request is still being written, so
+        // it is pending from now; a silence deadline is armed once it is out.
         pending[id] = Pending(
             method: method,
-            deadline: Task { [sleep] in
-                do { try await sleep(wait) } catch { return }
-                await self.settle(id, .failure(RexControlError.deadlineExceeded(method: method)))
-            })
+            deadline: countsSilence
+                ? nil
+                : Task { [sleep] in
+                    do { try await sleep(wait) } catch { return }
+                    await self.settle(id, .failure(RexControlError.deadlineExceeded(method: method)))
+                })
         var left = false
         do {
             try await webSocket.send(text: text)
             left = true
+            if countsSilence { armSilenceDeadline(id, method: method, wait: wait) }
         } catch let error as WebSocketError {
             if case .sendInterrupted = error { left = true }
             settle(id, .failure(RexControlError.linkEnded(ending ?? RexControlEnding(error))))
@@ -360,6 +373,23 @@ actor RexControlLink {
         } catch {
             return (left, .failure(error))
         }
+    }
+
+    /// Fails the request once `wait` passes with nothing arriving on the link,
+    /// unless it was settled already.
+    private func armSilenceDeadline(_ id: String, method: String, wait: Duration) {
+        guard var entry = pending[id], entry.outcome == nil else { return }
+        entry.deadline = Task { [sleep, webSocket] in
+            var heard = await webSocket.receivedByteCount
+            while true {
+                do { try await sleep(wait) } catch { return }
+                let now = await webSocket.receivedByteCount
+                if now == heard { break }
+                heard = now
+            }
+            await self.settle(id, .failure(RexControlError.deadlineExceeded(method: method)))
+        }
+        pending[id] = entry
     }
 
     private func answer(to id: String) async throws -> RexResponse {

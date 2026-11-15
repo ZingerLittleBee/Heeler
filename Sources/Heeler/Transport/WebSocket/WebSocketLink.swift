@@ -147,6 +147,9 @@ actor WebSocketLink {
     /// This side started the closing handshake and waits for the peer's close frame.
     private var awaitsPeerClose = false
     private var heardSincePing = false
+    /// Bytes read from the channel so far, frames and all: it grows while
+    /// anything arrives, however long one message takes to.
+    private(set) var receivedByteCount: UInt64 = 0
 
     private var readerTask: Task<Void, Never>?
     private var writerTask: Task<Void, Never>?
@@ -385,6 +388,7 @@ actor WebSocketLink {
     private func ingest(_ chunk: Data) {
         guard closeTask == nil, !inputBroken else { return }
         heardSincePing = true
+        receivedByteCount &+= UInt64(chunk.count)
         var frames = chunk
         if var buffer = handshakeBuffer {
             buffer.append(chunk)

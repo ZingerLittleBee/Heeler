@@ -177,8 +177,9 @@ actor RexTerminalAttach {
         /// the attach ends anyway. Rex closes the link itself once the block's
         /// last output is out, so the view keeps that output.
         var closeGrace: Duration = .seconds(1)
-        /// How long one request of input may wait for its answer before its
-        /// outcome counts as unknown.
+        /// How long the control link may stay silent, once a request of input
+        /// is written, before its outcome counts as unknown. Its answer may
+        /// wait behind other messages as long as they keep arriving.
         var inputDeadline: Duration = .seconds(10)
 
         init() {}

@@ -60,8 +60,8 @@ the whole control connection.
   gate, or no link that is the terminal's, is dropped with what queued behind
   it, never kept for later.
 - **An unknown outcome is never sent again.** A request that left with no
-  answer, because the link ended, its 10-second deadline passed or its sender
-  was cancelled, may have reached the program. So may one the server
+  answer, because the link ended, the link stayed silent for 10 seconds after
+  it was written or its sender was cancelled, may have reached the program. So may one the server
   refused. Neither is sent again: what queued behind it is dropped, the queue
   takes nothing more, and the attach ends with `RexTerminalEnding.inputFailed`,
   which the view shows as the other Server Kinds show a failed input write
@@ -87,6 +87,11 @@ the whole control connection.
   and sending what typed after it alone could change what the program reads.
   Ending the attach is what the other Server Kinds do when an input write
   fails, so the user sees the same thing.
+- The deadline counts silence, not time since the input queued. An answer
+  comes in order with everything else the server sends, so it can wait behind
+  a burst of events; and a request can wait behind a slow write of its own. A
+  link that keeps delivering is alive, so only a link that says nothing for
+  the whole deadline makes the outcome unknown.
 - The other Server Kinds reject input while their terminal reconnects rather
   than hold it, since a key typed at a screen the program has left would
   answer whatever it moved on to. Rex keeps that rule.

@@ -231,6 +231,68 @@ struct RexControlLinkTests {
         await link.close()
     }
 
+    /// A delivery's deadline passes only after that long with nothing at all
+    /// arriving: its answer may queue behind long messages while they stream in.
+    @Test func aDeliveryWaitsWhileTheLinkKeepsReceiving() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        var events = link.events.makeAsyncIterator()
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        let request = await server.nextRequest()
+        for number in 1...3 {
+            #expect(await clock.parks(for: .seconds(10)))
+            // Something arrives in each wait, then the wait runs out.
+            await server.push("session_destroyed", ["session_id": .string("session:\(number)")])
+            _ = try await events.next()
+            clock.advance(.seconds(10))
+        }
+        #expect(await clock.parks(for: .seconds(10)))
+        await server.respond(to: request)
+        guard case .answered = await delivery.value else {
+            Issue.record("Expected an answer")
+            return
+        }
+        await link.close()
+    }
+
+    /// A delivery written into a silent link has an unknown outcome once the
+    /// deadline passes with nothing arriving.
+    @Test func aDeliveryMetBySilenceHasAnUnknownOutcome() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        _ = await server.nextRequest()
+        #expect(await clock.pass(.seconds(10)))
+        guard case .unknown = await delivery.value else {
+            Issue.record("Expected an unknown outcome")
+            return
+        }
+        #expect(await link.isOpen)
+        await link.close()
+    }
+
+    /// Time a delivery spends waiting to be written counts toward nothing.
+    @Test func aDeliveryWaitsFromWhenItIsWritten() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        let writes = await server.channel.writeCount
+        await server.channel.holdWrites()
+        let delivery = Task { await link.deliver("block.event", payload: JSONValue.object([:]), deadline: .seconds(10)) }
+        await server.channel.waitForWrites(writes + 1)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!clock.isParked(for: .seconds(10)))
+
+        await server.channel.releaseWrites()
+        let request = await server.nextRequest()
+        #expect(await clock.parks(for: .seconds(10)))
+        await server.respond(to: request)
+        guard case .answered = await delivery.value else {
+            Issue.record("Expected an answer")
+            return
+        }
+        await link.close()
+    }
+
     @Test func aCancelledCallLeavesTheLinkUsable() async throws {
         let (server, link) = try await FakeRexServer.open()
         let task = Task { try await link.call("session.view") }
