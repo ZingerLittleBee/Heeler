@@ -67,9 +67,7 @@ struct ServerKindDetection: Equatable, Sendable {
     let herdrTUI: HerdrTUIFinding
     let herdrCore: CoreFinding
     let tmux: TmuxFinding
-    /// Nil when this detection did not look for Rex, as with the experimental
-    /// switch off, which leaves it as a build without Rex detects.
-    let rex: RexFinding?
+    let rex: RexFinding
     /// What the probe read, for the paths a confirmed tmux Host stores.
     private let tmuxReport: TmuxProbe.Report?
     /// The one fact a refused session name still leaves: which exec this Host took.
@@ -80,23 +78,23 @@ struct ServerKindDetection: Equatable, Sendable {
     private static let herdrRead =
         "\(HerdrHostPath.pathExport); exec \(SSHTransportSettings.defaultSessionListCommand)"
 
-    static func script(session: String, nonce: String, findsRex: Bool = false) -> Data {
-        ServerKindDetectionScript.script(session: session, nonce: nonce, herdrRead: herdrRead, findsRex: findsRex)
+    static func script(session: String, nonce: String) -> Data {
+        ServerKindDetectionScript.script(session: session, nonce: nonce, herdrRead: herdrRead)
     }
 
     /// The one exec. It throws when the exec failed or its output was cut short,
-    /// which says nothing about what the Host runs. `findsRex` is
-    /// `RexHostsExperiment`'s switch; a native Windows Host is never asked.
+    /// which says nothing about what the Host runs. A native Windows Host is
+    /// never asked about tmux or Rex.
     static func run(
         over connection: any ServerKindDetectionConnection, session: String,
-        nonce: String = UUID().uuidString, findsRex: Bool = false
+        nonce: String = UUID().uuidString
     ) async throws -> ServerKindDetection {
         let platform = try await connection.corePlatform()
         let result =
             platform == .nativeWindows
             ? try await connection.runWindowsCommand(
                 ServerKindDetectionScript.windowsCommand(session: session, nonce: nonce), for: .serverKindDetection)
-            : try await connection.runServerKindDetection(script(session: session, nonce: nonce, findsRex: findsRex))
+            : try await connection.runServerKindDetection(script(session: session, nonce: nonce))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
                 String(localized: "Server Kind detection exited with status \(result.exitStatus)."))
@@ -105,22 +103,19 @@ struct ServerKindDetection: Equatable, Sendable {
             return ServerKindDetection(
                 try ServerKindDetectionScript.parse(
                     stdout: result.stdout, session: session, nonce: nonce, platform: platform),
-                session: session, isNativeWindows: platform == .nativeWindows, findsRex: findsRex)
+                session: session, isNativeWindows: platform == .nativeWindows)
         } catch {
             throw TransportError.malformedResponse(String(localized: "Server Kind detection's output is unreadable."))
         }
     }
 
-    init(
-        _ output: ServerKindDetectionScript.Output, session: String, isNativeWindows: Bool = false,
-        findsRex: Bool = false
-    ) {
+    init(_ output: ServerKindDetectionScript.Output, session: String, isNativeWindows: Bool = false) {
         self.isNativeWindows = isNativeWindows
         herdrTUI = Self.herdrTUI(status: output.herdrStatus, output: output.herdrOutput)
         herdrCore = Self.herdrCore(output.location, session: session)
         tmuxReport = output.tmux
         tmux = Self.tmux(output.tmux, isNativeWindows: isNativeWindows)
-        rex = findsRex ? Self.rex(output.rex, isNativeWindows: isNativeWindows) : nil
+        rex = Self.rex(output.rex, isNativeWindows: isNativeWindows)
     }
 
     private struct SessionList: Decodable {

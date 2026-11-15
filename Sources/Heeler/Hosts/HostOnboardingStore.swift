@@ -48,8 +48,6 @@ struct HostOnboardingDependencies: Sendable {
     var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
     /// A Rex Host's checks looked its socket up, for the catalog to keep.
     var noteRexSocket: @MainActor @Sendable (Host.ID, RexSocket) -> Void = { _, _ in }
-    /// Whether detection looks for Rex and may offer it (ADR 0047).
-    var offersRexHosts = RexHostsExperiment.isEnabled
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -137,9 +135,6 @@ final class HostOnboardingStore {
     @ObservationIgnored private let noteWindowsCore: @MainActor (Host.ID) -> Void
     @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
     @ObservationIgnored private let noteRexSocket: @MainActor (Host.ID, RexSocket) -> Void
-    /// `RexHostsExperiment`'s switch: off, detection neither looks for Rex nor
-    /// offers it.
-    @ObservationIgnored private let offersRexHosts: Bool
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -162,10 +157,8 @@ final class HostOnboardingStore {
         harnessEdits: HarnessConfigEditStore? = nil,
         noteWindowsCore: @escaping @MainActor (Host.ID) -> Void = { _ in },
         noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in },
-        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in },
-        offersRexHosts: Bool = RexHostsExperiment.isEnabled
+        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
     ) {
-        self.offersRexHosts = offersRexHosts
         self.noteWindowsCore = noteWindowsCore
         self.noteTmuxPaths = noteTmuxPaths
         self.noteRexSocket = noteRexSocket
@@ -539,8 +532,7 @@ final class HostOnboardingStore {
                 return
             }
             do {
-                let found = try await ServerKindDetection.run(
-                    over: connection, session: host.sessionName, findsRex: offersRexHosts)
+                let found = try await ServerKindDetection.run(over: connection, session: host.sessionName)
                 if !Task.isCancelled {
                     detection = found
                     tmuxSocket = found.preselectedTmuxSocket(typed: host.sessionName)

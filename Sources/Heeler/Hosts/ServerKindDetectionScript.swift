@@ -6,8 +6,8 @@ import Foundation
 ///
 /// `herdrRead` runs first, in a subshell of its own, so its PATH never reaches
 /// the locator. The tmux probe follows, in another, through the login shell
-/// (ADR 0044). With `findsRex`, the Rex probe follows in a third, which only
-/// tests files (ADR 0047). No part starts a server.
+/// (ADR 0044), and the Rex probe in a third, which only tests files (ADR 0047).
+/// No part starts a server.
 enum ServerKindDetectionScript {
     /// What one run printed, before anyone decides what it means.
     struct Output: Equatable, Sendable {
@@ -18,12 +18,12 @@ enum ServerKindDetectionScript {
         /// Nil on native Windows, where no probe runs, and when the probe's part
         /// did not read, which says nothing of the other two.
         var tmux: TmuxProbe.Report?
-        /// Nil on native Windows, when the script did not look for Rex, and
-        /// when the Rex part did not read.
+        /// Nil on native Windows, where no probe runs, and when the Rex part
+        /// did not read.
         var rex: RexProbe.Report?
     }
 
-    static func script(session: String, nonce: String, herdrRead: String, findsRex: Bool = false) -> Data {
+    static func script(session: String, nonce: String, herdrRead: String) -> Data {
         var script = Data(
             """
             printf '\\n%s herdr-tui begin\\n' '\(nonce)'
@@ -36,9 +36,7 @@ enum ServerKindDetectionScript {
             )
 
             """.utf8)
-        if findsRex {
-            script.append(Data(RexProbe.script(nonce: nonce).utf8))
-        }
+        script.append(Data(RexProbe.script(nonce: nonce).utf8))
         if let locator = try? HerdrCoreLocator.script(session: session, nonce: nonce) {
             script.append(locator)
         } else {

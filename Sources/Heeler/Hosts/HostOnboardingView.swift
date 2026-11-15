@@ -97,8 +97,7 @@ struct HostOnboardingView: View {
             harnessEdits: dependencies.harnessEdits,
             noteWindowsCore: dependencies.noteWindowsCore,
             noteTmuxPaths: dependencies.noteTmuxPaths,
-            noteRexSocket: dependencies.noteRexSocket,
-            offersRexHosts: dependencies.offersRexHosts)
+            noteRexSocket: dependencies.noteRexSocket)
     }
 
     /// The page with its Edit sheet, outside `page`'s modifier chain, which
@@ -333,9 +332,9 @@ struct HostOnboardingView: View {
                     LabeledContent(ServerKind.tmux.displayName, value: detection.tmux.summary)
                         .accessibilityIdentifier("hosts.detail.detection.tmux")
                 }
-                // Only while the Rex experiment is on, and only where Rex runs.
-                if let rex = detection.rex, rex != .unsupported {
-                    LabeledContent(ServerKind.rex.displayName, value: rex.summary)
+                // Only where Heeler finds Rex: macOS and Linux.
+                if detection.rex != .unsupported {
+                    LabeledContent(ServerKind.rex.displayName, value: detection.rex.summary)
                         .accessibilityIdentifier("hosts.detail.detection.rex")
                 }
             }

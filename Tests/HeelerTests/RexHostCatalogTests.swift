@@ -112,8 +112,8 @@ struct RexHostCatalogTests {
         }
     }
 
-    private func makeStore(_ defaults: UserDefaults, secrets: InMemorySecretStore, rex: Bool = true) -> HostStore {
-        HostStore(defaults: defaults, secrets: secrets, offersRexHosts: rex)
+    private func makeStore(_ defaults: UserDefaults, secrets: InMemorySecretStore) -> HostStore {
+        HostStore(defaults: defaults, secrets: secrets)
     }
 
     private func unconfirmedHost(name: String = "New", session: String = "") -> Host {
@@ -269,42 +269,40 @@ struct RexHostCatalogTests {
         #expect(defaults.data(forKey: Self.rexKey) == rexCatalog)
     }
 
-    /// With the switch off this build is a build that does not know Rex: its
-    /// Hosts stay stored, unlisted, kept by every write, and out of sight
-    /// rather than gone, so nothing this device remembers of them is swept.
-    @Test func withTheSwitchOffRexHostsAreKeptButNotListed() throws {
+    /// What a build before Rex Hosts saved loads as it was: every Host listed,
+    /// nothing out of sight, and no Rex catalog written until a Rex Host is.
+    @Test func aCatalogSavedBeforeRexHostsLoadsAsItWas() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let secrets = InMemorySecretStore()
-        let on = makeStore(defaults, secrets: secrets)
         let tui = Host.fixture(name: "TUI")
-        let rex = rexHost()
         let core = coreHost()
-        for host in [tui, rex, core] { try on.add(host) }
-        let rexCatalog = defaults.data(forKey: Self.rexKey)
-
-        let off = makeStore(defaults, secrets: secrets, rex: false)
-
-        #expect(off.hosts == [tui, core])
-        #expect(off.consoleHosts == [tui, core])
-        #expect(off.rexCatalogLoadError == nil)
-        #expect(off.hostsOutOfSight == [rex.id])
-        // Nothing reaches its catalog while it is not listed.
-        #expect(throws: HostStoreError.catalogUnreadable) { try off.add(rexHost(name: "Another")) }
+        let tmux = tmuxHost()
         let waiting = unconfirmedHost()
-        try off.add(waiting)
-        #expect(throws: HostStoreError.catalogUnreadable) {
-            try off.confirmServerKind(.rex, for: waiting.id, rexSocket: socket)
+        let order = [tui.id, core.id, tmux.id, waiting.id].map { "\"\($0.uuidString)\"" }.joined(separator: ",")
+        let encoded = { (hosts: [Host]) in
+            try hosts.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }.joined(separator: ",")
         }
-        #expect(throws: HostStoreError.unknownHost) { try off.update(rex) }
-        #expect(throws: HostStoreError.unknownHost) { try off.remove(rex.id) }
-        try off.remove(core.id)
-        #expect(defaults.data(forKey: Self.rexKey) == rexCatalog)
+        let saved: [String: Data] = [
+            "hosts": Data(#"{"version":1,"hosts":[\#(try encoded([tui, waiting]))]}"#.utf8),
+            Self.coreKey: Data(#"{"version":1,"hosts":[\#(try encoded([core]))],"order":[\#(order)]}"#.utf8),
+            Self.tmuxKey: Data(#"{"version":1,"hosts":[\#(try encoded([tmux]))],"order":[\#(order)]}"#.utf8),
+        ]
+        for (key, data) in saved { defaults.set(data, forKey: key) }
 
-        // Turned back on, the Host is where it was.
-        let again = makeStore(defaults, secrets: secrets)
-        #expect(again.hosts == [tui, rex, waiting])
-        #expect(again.hostsOutOfSight == [])
+        let store = makeStore(defaults, secrets: secrets)
+
+        #expect(store.catalogLoadError == nil)
+        #expect(store.rexCatalogLoadError == nil)
+        #expect(store.hosts == [tui, core, tmux, waiting])
+        #expect(store.hostsOutOfSight == [])
+        #expect(defaults.data(forKey: Self.rexKey) == nil)
+        for (key, data) in saved { #expect(defaults.data(forKey: key) == data, "\(key)") }
+
+        try store.confirmServerKind(.rex, for: waiting.id, rexSocket: socket)
+        #expect(try persistedHostIDs(in: defaults, key: Self.rexKey) == [waiting.id])
+        #expect(defaults.data(forKey: Self.coreKey) == saved[Self.coreKey])
+        #expect(defaults.data(forKey: Self.tmuxKey) == saved[Self.tmuxKey])
     }
 
     @Test func aHostInTheSharedAndTheRexCatalogLoadsAsRex() throws {

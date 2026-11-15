@@ -25,8 +25,7 @@ enum HostStoreError: Error, Equatable {
 /// in a second one, tmux Hosts in a third and Rex Hosts in a fourth, each with
 /// the merged Host order, that builds before its kind never read, so such a
 /// build can neither show one nor re-save it as another kind (ADRs 0031, 0044
-/// and 0047). While `RexHostsExperiment` is off, this build reads Rex Hosts as
-/// such a build would not see them: kept as they are, listed nowhere.
+/// and 0047).
 @MainActor
 @Observable
 final class HostStore {
@@ -173,21 +172,13 @@ final class HostStore {
     @ObservationIgnored private let secrets: any SecretStore
     @ObservationIgnored private var catalogEntries: [PersistedHosts.Entry]
     @ObservationIgnored private var kindCatalogEntries: [KindCatalog: [PersistedHosts.Entry]] = [:]
-    /// Kind catalogs read and kept, whose Hosts this build does not list: Rex's
-    /// while its switch is off. Nothing is written to them.
-    @ObservationIgnored private let hiddenCatalogs: Set<KindCatalog>
 
-    /// `offersRexHosts` is `RexHostsExperiment`'s switch, off in every build
-    /// that has not turned it on.
     init(
         defaults: UserDefaults = .standard,
-        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh"),
-        offersRexHosts: Bool = RexHostsExperiment.isEnabled
+        secrets: any SecretStore = KeychainSecretStore(service: "dev.bybee.heeler.ssh")
     ) {
         self.defaults = defaults
         self.secrets = secrets
-        let hiddenCatalogs: Set<KindCatalog> = offersRexHosts ? [] : [.rex]
-        self.hiddenCatalogs = hiddenCatalogs
         do {
             var shared = try Self.loadSharedEntries(from: defaults)
             var kinds: [KindCatalog: PersistedCatalog] = [:]
@@ -211,7 +202,7 @@ final class HostStore {
             let entries = kinds.mapValues(\.hosts.entries)
             hosts = Self.mergedHosts(
                 shared: shared,
-                kinds: KindCatalog.allCases.filter { !hiddenCatalogs.contains($0) }.flatMap { entries[$0] ?? [] },
+                kinds: KindCatalog.allCases.flatMap { entries[$0] ?? [] },
                 orders: KindCatalog.allCases.reversed().compactMap { kinds[$0]?.order })
             catalogEntries = shared
             kindCatalogEntries = entries
@@ -277,7 +268,6 @@ final class HostStore {
     init(volatileHosts: [Host]) {
         defaults = nil
         secrets = VolatileSecretStore()
-        hiddenCatalogs = []
         hosts = volatileHosts
         catalogEntries = volatileHosts.filter { KindCatalog($0.serverKind) == nil }
             .map(PersistedHosts.Entry.known)
@@ -424,9 +414,7 @@ final class HostStore {
     /// the Host is known to be gone.
     var hostsOutOfSight: Set<Host.ID>? {
         guard catalogLoadError == nil, kindCatalogLoadErrors.isEmpty else { return nil }
-        let unread = (catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID)
-        let hidden = hiddenCatalogs.flatMap { kindCatalogEntries[$0] ?? [] }.compactMap(\.knownHostID)
-        return Set(unread + hidden)
+        return Set((catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID))
     }
 
     /// The confirmed Hosts: those the Console lists Terminals for, and those
@@ -510,10 +498,8 @@ final class HostStore {
         }
     }
 
-    /// A hidden catalog is never written either: its Hosts are not this build's
-    /// to change while it does not list them.
     private func ensureIsWritable(_ catalog: KindCatalog) throws {
-        if kindCatalogLoadErrors[catalog] != nil || hiddenCatalogs.contains(catalog) {
+        if kindCatalogLoadErrors[catalog] != nil {
             throw HostStoreError.catalogUnreadable
         }
     }

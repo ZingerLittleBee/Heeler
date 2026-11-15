@@ -83,8 +83,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     /// A tmux server the user runs, named by its socket (ADR 0044).
     case tmux
     /// A Rex server already running on a macOS or Linux Host, found by its
-    /// socket (ADR 0047). Experimental: only offered while
-    /// `RexHostsExperiment` is on.
+    /// socket (ADR 0047).
     case rex
     /// Added by hand and waiting for the user to confirm one of the others. It
     /// stays in the shared catalog, and only its Host detail ever dials it.

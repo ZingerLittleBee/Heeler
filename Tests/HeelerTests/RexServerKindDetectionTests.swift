@@ -3,42 +3,44 @@ import Testing
 
 @testable import Heeler
 
-/// Rex in Server Kind detection (ADR 0047): found by its socket alone, offered
-/// only with the experimental switch on and a socket this account may use.
+/// Rex in Server Kind detection (ADR 0047): looked for on every macOS and Linux
+/// Host by its socket alone, and offered only for a socket this account may use.
 @Suite("Rex Server Kind detection")
 struct RexServerKindDetectionTests {
     private static let macSocket = "/Users/dev/Library/Application Support/rex/server.sock"
     private static let linuxOwnSocket = "/run/user/1000/rex/server.sock"
     private static let linuxSharedSocket = "/run/rex/server.sock"
 
-    private func script(findsRex: Bool) -> String {
-        String(decoding: ServerKindDetection.script(session: "work", nonce: "n0nce", findsRex: findsRex), as: UTF8.self)
+    private func script() -> String {
+        String(decoding: ServerKindDetection.script(session: "work", nonce: "n0nce"), as: UTF8.self)
     }
 
     private func detect(
         rex: [String]?, herdr: ScriptedCoreHost.HerdrRead = .notInstalled,
         locator: [String] = ScriptedCoreHost.locatorLines(executable: nil),
-        session: String = "work", findsRex: Bool = true
+        tmux: [String] = ScriptedCoreHost.tmuxLines(kernel: "Darwin"), session: String = "work"
     ) async throws -> (ServerKindDetection, ScriptedCoreHost) {
         let host = ScriptedCoreHost(
-            locator: locator, herdrRead: herdr, tmuxProbe: ScriptedCoreHost.tmuxLines(kernel: "Darwin"),
-            rexProbe: rex, channel: .refused)
-        return (try await ServerKindDetection.run(over: host, session: session, findsRex: findsRex), host)
+            locator: locator, herdrRead: herdr, tmuxProbe: tmux, rexProbe: rex, channel: .refused)
+        return (try await ServerKindDetection.run(over: host, session: session), host)
     }
 
     // MARK: The script
 
-    @Test func withTheSwitchOffTheScriptIsTheOneABuildWithoutRexRuns() {
-        let body = script(findsRex: false)
-        #expect(!body.contains("rex begin"))
-        #expect(!body.contains("rex/server.sock"))
-        #expect(!body.contains("rex"))
+    /// The Rex part is all that looking for Rex adds: without it, the script
+    /// is the one a build before Rex Hosts runs, naming Rex nowhere.
+    @Test func theRexPartIsTheOnlyPartThatNamesRex() {
+        let body = script()
+        #expect(body.components(separatedBy: RexProbe.script(nonce: "n0nce")).count == 2)
+        let others = body.replacingOccurrences(of: RexProbe.script(nonce: "n0nce"), with: "")
+        #expect(!others.contains("rex"))
+        #expect(!others.contains("Rex"))
     }
 
     /// One exec still: the Rex part follows tmux's, in a subshell with nothing
     /// on standard input, and the locator ends the script.
     @Test func theRexPartFollowsTmuxAndPrecedesTheLocator() throws {
-        let body = script(findsRex: true)
+        let body = script()
         let tmux = try #require(body.range(of: "__heeler_tmux_probe="))
         let rex = try #require(body.range(of: "n0nce rex begin"))
         let rexEnd = try #require(body.range(of: ") </dev/null 2>/dev/null", range: rex.upperBound..<body.endIndex))
@@ -71,7 +73,7 @@ struct RexServerKindDetectionTests {
 
         #expect(await host.log == ["detection"])
         #expect(detection.rex == .socketFound(socketPath: Self.macSocket))
-        #expect(detection.rex?.summary == "Socket found")
+        #expect(detection.rex.summary == "Socket found")
         #expect(detection.rexSocket?.path == Self.macSocket)
         #expect(detection.foundKinds == [.rex])
         #expect(detection.offeredKinds == [.rex])
@@ -105,7 +107,7 @@ struct RexServerKindDetectionTests {
         let (detection, _) = try await detect(rex: ScriptedCoreHost.rexLines(installed: true))
 
         #expect(detection.rex == .notRunning)
-        #expect(detection.rex?.summary == "Installed, not running")
+        #expect(detection.rex.summary == "Installed, not running")
         #expect(detection.foundKinds.isEmpty)
         #expect(detection.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
         #expect(detection.rexSocket == nil)
@@ -115,7 +117,7 @@ struct RexServerKindDetectionTests {
         let (detection, _) = try await detect(rex: ScriptedCoreHost.rexLines(installed: false))
 
         #expect(detection.rex == .notInstalled)
-        #expect(detection.rex?.summary == "Not found")
+        #expect(detection.rex.summary == "Not found")
         #expect(!detection.offeredKinds.contains(.rex))
     }
 
@@ -125,7 +127,7 @@ struct RexServerKindDetectionTests {
         let (theirs, _) = try await detect(
             rex: ScriptedCoreHost.rexLines(kernel: "Linux", sockets: [(Self.linuxSharedSocket, false, false)]))
         #expect(theirs.rex == .notUsable(socketPath: Self.linuxSharedSocket))
-        #expect(theirs.rex?.summary == "Socket found, but this account cannot use it")
+        #expect(theirs.rex.summary == "Socket found, but this account cannot use it")
         #expect(!theirs.offeredKinds.contains(.rex))
 
         let quoted = "/Users/it's me/Library/Application Support/rex/server.sock"
@@ -158,15 +160,41 @@ struct RexServerKindDetectionTests {
         #expect(detection.offeredKinds == [.herdrTUI, .herdrCore, .tmux, .rex])
     }
 
-    /// With the switch off, what the Host prints of Rex counts for nothing.
-    @Test func withTheSwitchOffRexIsNeitherFoundNorOffered() async throws {
-        let (detection, host) = try await detect(
-            rex: ScriptedCoreHost.rexLines(sockets: [(Self.macSocket, true, true)]), findsRex: false)
+    /// A Host without a Rex socket this account may use is detected as before
+    /// Rex was looked for: whatever the Rex part says, the other findings and
+    /// what is found and offered stay as they are, from the same one exec.
+    @Test func withoutAUsableRexSocketTheOtherKindsAreDetectedAsBefore() async throws {
+        let sessions = #"{"sessions":[{"name":"default","default":true,"running":true}]}"#
+        let tmuxRunning = ScriptedCoreHost.tmuxLines(
+            executable: "/usr/bin/tmux", kernel: "Darwin", sockets: ["default"])
+        let tmuxIdle = ScriptedCoreHost.tmuxLines(executable: "/usr/bin/tmux", kernel: "Darwin")
+        let hosts: [(ScriptedCoreHost.HerdrRead, [String], [ServerKind], [ServerKind])] = [
+            (.answers(sessions), tmuxRunning, [.herdrTUI, .tmux], [.herdrTUI, .tmux]),
+            (.answers(sessions), tmuxIdle, [.herdrTUI], [.herdrTUI, .tmux]),
+            (.notInstalled, ScriptedCoreHost.tmuxLines(kernel: "Darwin"), [], [.herdrTUI, .herdrCore, .tmux]),
+        ]
+        let withoutRex: [[String]?] = [
+            nil,
+            ScriptedCoreHost.rexLines(installed: false),
+            ScriptedCoreHost.rexLines(installed: true),
+            ScriptedCoreHost.rexLines(kernel: "Linux", sockets: [(Self.linuxSharedSocket, false, false)]),
+            ScriptedCoreHost.rexLines(kernel: "FreeBSD", sockets: [(Self.linuxSharedSocket, true, true)]),
+        ]
+        for (herdr, tmux, found, offered) in hosts {
+            let (unread, _) = try await detect(rex: nil, herdr: herdr, tmux: tmux)
+            for rex in withoutRex {
+                let (detection, host) = try await detect(rex: rex, herdr: herdr, tmux: tmux)
 
-        #expect(detection.rex == nil)
-        #expect(detection.rexSocket == nil)
-        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(await host.scripts.allSatisfy { !$0.contains("rex begin") })
+                #expect(await host.log == ["detection"])
+                #expect(detection.foundKinds == found, "\(rex ?? [])")
+                #expect(detection.offeredKinds == offered, "\(rex ?? [])")
+                #expect(detection.herdrTUI == unread.herdrTUI)
+                #expect(detection.herdrCore == unread.herdrCore)
+                #expect(detection.tmux == unread.tmux)
+                #expect(detection.tmuxSockets == unread.tmuxSockets)
+                #expect(detection.rexSocket == nil)
+            }
+        }
     }
 
     @Test func aNativeWindowsHostIsNeverAskedAboutRex() async throws {
@@ -174,7 +202,7 @@ struct RexServerKindDetectionTests {
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
             rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.macSocket, true, true)]), channel: .refused)
 
-        let detection = try await ServerKindDetection.run(over: host, session: "work", findsRex: true)
+        let detection = try await ServerKindDetection.run(over: host, session: "work")
 
         #expect(await host.log == ["windows-detection"])
         #expect(detection.rex == .unsupported)
@@ -237,7 +265,7 @@ struct RexHostOnboardingTests {
 
     private func makeStore(
         _ host: Host, scripted: ScriptedCoreHost = ScriptedCoreHost(channel: .refused), rex: ScriptedRexHost = ScriptedRexHost(),
-        offersRex: Bool = true, noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
+        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
     ) -> HostOnboardingStore {
         HostOnboardingStore(
             host: host,
@@ -248,8 +276,7 @@ struct RexHostOnboardingTests {
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
                 secrets: InMemorySecretStore()),
-            noteRexSocket: noteRexSocket,
-            offersRexHosts: offersRex)
+            noteRexSocket: noteRexSocket)
     }
 
     private func failedCheck(_ store: HostOnboardingStore) -> (PreflightCheck, String)? {
@@ -298,17 +325,21 @@ struct RexHostOnboardingTests {
         #expect(store.hostHelper == nil)
     }
 
-    @Test func withTheSwitchOffDetectionNeitherLooksForRexNorOffersIt() async throws {
+    /// A Host without Rex is offered what it was before Rex was looked for,
+    /// and the confirmation says nothing more of Rex than its finding.
+    @Test func aHostWithoutRexIsOfferedWhatItWasBefore() async throws {
         let scripted = ScriptedCoreHost(
-            rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.socket, true, true)]), channel: .refused)
-        let host = Host(address: "mac.example", username: "dev", serverKind: .unconfirmed)
-        let store = makeStore(host, scripted: scripted, offersRex: false)
+            locator: ScriptedCoreHost.locatorLines(executable: nil),
+            rexProbe: ScriptedCoreHost.rexLines(installed: false), channel: .refused)
+        let host = Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        let store = makeStore(host, scripted: scripted)
 
         await store.runChecks()
 
-        #expect(store.detection?.rex == nil)
-        #expect(!store.offeredKinds.contains(.rex))
-        #expect(await scripted.scripts.allSatisfy { !$0.contains("rex begin") })
+        #expect(store.detection?.rex == .notInstalled)
+        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(store.confirmationNote?.hasPrefix("None of them was found") == true)
+        #expect(await scripted.log == ["detection", "close"])
     }
 
     /// A Host whose socket did not read has it looked up again, and the

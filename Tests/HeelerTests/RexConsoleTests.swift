@@ -75,7 +75,7 @@ struct RexConsoleTests {
     /// A Console store whose Rex Hosts dial one SSH connection per server in
     /// `servers`, or `rexConnect` when given, and which records each Rex dial.
     private func store(
-        offersRexHosts: Bool = true, servers: [FakeRexServer] = [], dials: Dials = Dials(),
+        servers: [FakeRexServer] = [], dials: Dials = Dials(),
         rexConnect: (@Sendable (RexSocket?, RexControlLink?) async throws -> any RexTransport)? = nil
     ) -> ConsoleStore {
         let hosts = Mutex(servers.map { ScriptedRexHost(control: [.server($0)]) })
@@ -108,8 +108,7 @@ struct RexConsoleTests {
                     storedSocket: host.rexSocket, connect: rexConnect ?? scripted,
                     reconnectPolicy: ReconnectPolicy(
                         initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)))
-            },
-            offersRexHosts: offersRexHosts)
+            })
     }
 
     private func waitUntil(
@@ -130,25 +129,6 @@ struct RexConsoleTests {
             servers.append(server)
         }
         return servers
-    }
-
-    /// With the switch off a Rex Host is not the Console's: nothing dials it,
-    /// however the Console is woken.
-    @Test func withTheSwitchOffNothingDialsARexHost() async {
-        let dials = Dials()
-        let store = store(offersRexHosts: false, dials: dials)
-        defer { store.setHosts([]) }
-        let rex = rex
-
-        store.setHosts([rex])
-        await store.resume()
-        await store.retryHost(rex.id)
-        await store.retryFailedHosts()
-        await store.reactivate()
-
-        #expect(dials.all == [])
-        #expect(store.hostStatuses[rex.id] == nil)
-        #expect(store.terminals.isEmpty)
     }
 
     /// Only a Rex Host gets a Rex session; the other kinds keep their own.
