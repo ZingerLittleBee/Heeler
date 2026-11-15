@@ -6,7 +6,8 @@ import HeelerSSH
 enum RexControlEnding: Sendable, Equatable {
     /// This side ended it, by `close` or `disconnect`.
     case closedHere
-    /// The server closed it normally, or is going away, with this code.
+    /// The server closed it normally, or is going away, with this code. With
+    /// 1001 the server may still keep the client, so resuming may work.
     case serverWentAway(code: UInt16)
     /// The server dropped this client by policy, as it does when the events
     /// waiting for it pile up too far: events were lost.
@@ -20,7 +21,17 @@ enum RexControlEnding: Sendable, Equatable {
     case linkLost
 
     /// Whether a new link may resume this client instead of starting a new one.
-    var mayResume: Bool { self == .linkLost }
+    /// Rex (0.1.0-preview.14, API revision 12) closes a client that stopped
+    /// answering its pings with 1001 and keeps it as it keeps a dropped one. A
+    /// token the server no longer knows only gets a new client, so trying
+    /// costs nothing.
+    var mayResume: Bool {
+        switch self {
+        case .linkLost: true
+        case .serverWentAway(let code): code == WebSocketCloseCode.goingAway.rawValue
+        default: false
+        }
+    }
 
     init(_ error: WebSocketError) {
         switch error {

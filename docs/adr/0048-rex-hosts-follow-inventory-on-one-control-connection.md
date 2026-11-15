@@ -42,7 +42,9 @@ restarted servers without showing a stale or half-read list.
   are lost even when the server takes the client back, so every new connection
   reads the whole inventory again. A connection the server closed, as it does
   when too many events queue up for a client, is followed by a plain hello and
-  a fresh read. The first new connection after a healthy one, which read the
+  a fresh read. The exception is a close with 1001, which Rex sends a client
+  that stopped answering its pings and then keeps as it keeps a dropped one:
+  that connection is resumed as a dropped one is. The first new connection after a healthy one, which read the
   inventory and lasted, is tried at once; later ones back off as other Server
   Kinds do, so a server that closes every connection right after the reads is
   not dialed in a tight loop.

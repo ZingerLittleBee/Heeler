@@ -368,7 +368,8 @@ struct RexControlLinkTests {
             return
         }
         #expect(reason == ending)
-        #expect(!reason.mayResume)
+        // A server that is going away may still keep the client.
+        #expect(reason.mayResume == (code == 1001))
         #expect(await link.endingReason == ending)
         await #expect(throws: RexControlError.self) {
             for try await _ in link.events {}

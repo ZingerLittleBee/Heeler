@@ -31,7 +31,9 @@ struct RexConnection: Sendable {
 /// server for a while: the next link says hello with its reconnect token, on
 /// the same SSH connection when that is still up and over a new one when it is
 /// not. Either way events sent in between are lost, so every new link reads
-/// the inventory again. A link the server closed is followed by a plain hello.
+/// the inventory again. A link the server closed is followed by a plain hello,
+/// unless it closed with 1001, as Rex does for a client that stopped answering
+/// its pings and still keeps: that one is resumed as a dropped one is.
 ///
 /// Suspending drops the link without a close frame, so a quick return may
 /// take the client back; ending closes it with one, so the server forgets

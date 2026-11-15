@@ -241,6 +241,30 @@ struct RexHostSessionTests {
         await session.end()
     }
 
+    /// A server that closed the link for unanswered pings keeps the client,
+    /// so the next hello on the same SSH connection carries its token.
+    @Test func aClientClosedForMissedPingsIsResumed() async throws {
+        let world = world()
+        let first = await server(world)
+        let second = await server(world)
+        let dialer = Dialer([ScriptedRexHost(control: [.server(first), .server(second)])])
+        let session = session(dialer)
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+
+        let before = log.inventories.count
+        await first.close(.goingAway, reason: "keepalive timeout")
+        try await log.waitUntil("the second link's inventory") {
+            $0.inventories.count > before && $0.statuses.last == .connected
+        }
+
+        #expect(await second.nextHello()["reconnect_token"] == "fake-reconnect-token-0001")
+        #expect(await second.requests.contains { $0.method == "session.attach_all" })
+        #expect(dialer.dialsResuming == [false])
+        await session.end()
+    }
+
     /// Suspending drops the link without a close frame, and the next
     /// connection takes the client back over a new SSH connection.
     @Test func aSuspendedSessionResumesItsClientOverANewConnection() async throws {
