@@ -11,7 +11,7 @@ _Avoid_: server, machine, connection
 **Server Kind**:
 Which server a Host's Agents live in: Herdr TUI (the original herdr server),
 herdr-core (the vendor's headless terminal runtime, `hc`), or a tmux server.
-Rex is a fourth, experimental kind that only builds with its switch on offer
+Rex is a fourth kind, offered in every build and still experimental for users
 (ADR 0047). They share no Agents. A herdr-core Host whose core also serves the
 Herdr desktop app is still herdr-core; the app's organization is data the Host
 carries, not another kind. Adding a Host by hand saves it unconfirmed, a stored
@@ -26,9 +26,9 @@ A Host whose Server Kind is Rex: one Rex server on macOS or Linux that is
 already running, found by the Unix socket it listens on and stored with that
 socket's path. Heeler never starts the server and never runs the `rex`
 command-line tool to find it. It lists Terminals only: no Agent status, Chat,
-Composer, notifications, Live Activities or Usage. Experimental, behind a
-switch that is off by default; with it off, stored Rex Hosts stay saved and
-unlisted (ADR 0047). One control connection follows the whole server: every
+Composer, notifications, Live Activities or Usage. Every build offers it; the
+user guide and the changelog call it experimental (ADR 0047). One control
+connection follows the whole server: every
 session's terminals, kept current by Rex's events and read again after any
 new connection. Another server instance on the socket is another server, as
 with tmux (ADR 0048). A Rex Host's Terminals open from the server's own

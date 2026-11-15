@@ -9,7 +9,8 @@ observed yet.
 
 ## Current routing
 
-- Rex Hosts are an experimental fourth Server Kind behind `RexHostsExperiment`
+- Rex Hosts are a fourth Server Kind, offered in every build and still
+  experimental for users
   ([ADR 0047](../adr/0047-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
   Heeler reaches a running server's Unix socket over a direct-streamlocal SSH
   channel and never runs `rex` or starts a server.
