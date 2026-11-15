@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Step backward or forward through your prompts and command bubbles in Chat with the bottom-right Liquid Glass jump capsule: tap `↑` or `↓` to move one message earlier or newer (returning to live output after the last prompt), or long-press `↑` or `↓` to jump straight to the top or bottom of the conversation. (PR #735)
 - Show and switch a Codex conversation's model and reasoning effort from Chat's header title pill (`<Model> · <effort>`), matching Claude Code's header menu. Choices load from the Host's `$CODEX_HOME/models_cache.json` with built-in presets as a fallback, and selecting a model or effort sends `/model <slug>` or `/model --reasoning=<level>` for the current session once the terminal confirms the change. (PR #734)
 - See and switch an Antigravity CLI conversation's model and effort from Chat's header title pill, as Claude Code's Chat already offers. The pill reads the active model and effort from the live footer, the startup banner, and the transcript's setting changes and planner replies, groups models offered on the Host (`agy models`, with a built-in fallback catalog) by family and effort, and sends `/model` or `/effort` into an idle empty input box while confirming the screen reply. (PR #733)
 - Upload images and files over SFTP from the Composer, Direct Input, and Chat on macOS and Linux tmux Hosts, inspect uncommitted Git changes in Changes, and browse or insert Host skills from Skills and the `/` menu. (PR #731)
@@ -69,6 +70,7 @@ Entries reference the pull request that made the change.
 ### Fixed
 
 - Date the Usage widgets by when the Host last read its figures, not by when Heeler asked. The first answer after a quiet spell is the Host's cached report while it refreshes, which can be hours old, so a widget could show an earlier 5-hour window as current and skip the next re-read. The background refresh also waits up to 18 seconds for that refresh instead of 9. (PR #736)
+- Keep the Workspace drawer handle clear of the message-jump buttons on an Agent terminal's trailing edge. With the keyboard open, the terminal was short enough for the two to overlap. The handle now steps above the buttons, or below them when they sit at the top, without landing on the Attach Links button, and goes back to where you left it once there is room. (PR #738)
 - End Check Again's spinner in Chat on iPhone once Heeler has checked for the conversation, instead of leaving it spinning after SwiftUI's spurious disappear stops the view's task. (PR #728)
 - Align Chat's notice rows, such as finished background commands, with its reasoning and tool rows: their icons and titles now share the same column and text size, their details indent under the title, and every inline row icon fits a uniform square so wide symbols match narrower ones. (PR #729)
 - Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)

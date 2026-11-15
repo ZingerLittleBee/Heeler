@@ -29899,6 +29899,28 @@
         }
       }
     },
+    "Jump to Top" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先頭へ移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳至顶部"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳到頂部"
+          }
+        }
+      }
+    },
     "Keep the phrases you send an Agent over and over, one tap away." : {
       "localizations" : {
         "ja" : {
