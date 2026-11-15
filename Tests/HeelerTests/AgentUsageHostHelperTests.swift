@@ -39,7 +39,7 @@ struct AgentUsageHostHelperTests {
 
     private func queries(_ helper: ScriptedHelperHost) async -> [(limits: Bool, session: String)] {
         await helper.steps.compactMap { step in
-            guard case .usageQuery(_, let limits, let session) = step else { return nil }
+            guard case .usageQuery(_, let limits, _, let session) = step else { return nil }
             return (limits, session)
         }
     }
@@ -266,7 +266,7 @@ struct AgentUsageHostHelperTests {
 
         #expect(store.state == .available(try AgentUsageFixture.report()))
         let sockets = await tmux.helper.steps.compactMap { step -> String? in
-            guard case .tmuxUsageQuery(_, _, let socket, _) = step else { return nil }
+            guard case .tmuxUsageQuery(_, _, _, let socket, _) = step else { return nil }
             return socket
         }
         #expect(sockets == ["work", "work"])

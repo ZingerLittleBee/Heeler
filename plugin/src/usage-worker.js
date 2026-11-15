@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readClaudeLimitsInServer } from "./usage/claude-limits-server.js";
+import { readAgyLimitsInServer } from "./usage/agy-limits-server.js";
 import { runUsageWorker } from "./usage/worker.js";
 
 try {
@@ -7,6 +8,10 @@ try {
     // On macOS, herdr's server can use the login keychain, and this session cannot.
     readClaudeLimitsElsewhere: process.platform === "darwin"
       ? (runtime, directory, version, options) => readClaudeLimitsInServer(runtime, directory, version, {
+        ...options, socketPath: process.env.HERDR_SOCKET_PATH })
+      : null,
+    readAgyLimitsElsewhere: process.platform === "darwin"
+      ? (runtime, directory, version, options) => readAgyLimitsInServer(runtime, directory, version, {
         ...options, socketPath: process.env.HERDR_SOCKET_PATH })
       : null,
   });

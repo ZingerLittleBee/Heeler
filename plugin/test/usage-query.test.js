@@ -132,6 +132,7 @@ test("query returns the empty cache without exposing runtime paths", async (t) =
   report.scan.coveredThrough = "2026-10-23T12:34:56.000Z";
   assert.ok(Number.isFinite(Date.parse(report.generatedAt)));
   report.generatedAt = "2026-10-23T12:34:56.000Z";
+  const agyDirectory = join(f.env.HOME, ".gemini", "antigravity-cli");
   const expected = {
     version: 1,
     pricingVersion: JSON.parse(readFileSync(new URL("../src/usage/pricing.json", import.meta.url))).pricingVersion,
@@ -149,12 +150,16 @@ test("query returns the empty cache without exposing runtime paths", async (t) =
         accounts: [{ id: "default", isDefault: true, name: null, directory: f.env.CODEX_HOME, state: "ok",
           tokenUsage: { state: "noData" }, usageLimits: { state: "error", reason: "requestFailed" } }],
         accountSuggestions: [] },
+      { program: "agy", tokenUsage: { state: "noData" }, usageLimits: { state: "unavailable", reason: "programMissing" },
+        accounts: [{ id: "default", isDefault: true, name: null, directory: agyDirectory, state: "ok",
+          tokenUsage: { state: "noData" }, usageLimits: { state: "unavailable", reason: "programMissing" } }],
+        accountSuggestions: [] },
     ],
   };
   assert.deepEqual(report, expected);
   // Only the Default Accounts' directories name a Host path.
   assert.equal(result.stdout.replace(JSON.stringify(f.env.CLAUDE_CONFIG_DIR), "").replace(JSON.stringify(f.env.CODEX_HOME), "")
-    .includes(f.root), false);
+    .replace(JSON.stringify(agyDirectory), "").includes(f.root), false);
 
 });
 
@@ -193,6 +198,7 @@ test("missing programs and optional environment variables are recorded as null",
   const runtime = JSON.parse(readFileSync(join(f.configDir, "runtime.json"), "utf8"));
   assert.equal(runtime.codex, null);
   assert.equal(runtime.claude, null);
+  assert.equal(runtime.agy, null);
   assert.equal(runtime.env.USER, null);
   assert.equal(runtime.env.CLAUDE_CONFIG_DIR, null);
   assert.equal(runtime.env.CODEX_HOME, null);
@@ -209,6 +215,7 @@ test("an absent PATH does not discover programs in the hook working directory", 
   assert.equal(runtime.env.PATH, null);
   assert.equal(runtime.codex, null);
   assert.equal(runtime.claude, null);
+  assert.equal(runtime.agy, null);
 });
 
 test("a cached 30-day report with 60480 buckets completes within the SSH deadline", (t) => {
@@ -223,8 +230,8 @@ test("a cached 30-day report with 60480 buckets completes within the SSH deadlin
   const buckets = [];
   for (let hour = 0; hour < 30 * 24; hour++) {
     const timestamp = new Date(start + hour * 3_600_000).toISOString();
-    for (const [program, input] of [["claude", 1], ["codex", 2]]) {
-      for (let index = 0; index < 21; index++) {
+    for (const [program, input] of [["claude", 1], ["codex", 2], ["agy", 3]]) {
+      for (let index = 0; index < 14; index++) {
         for (const dimension of [{ model: `model-${index}` }, { directory: `/project-${index}` }]) {
           buckets.push({ timestamp, program, ...dimension,
             tokens: { input, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, total: input },
@@ -237,8 +244,8 @@ test("a cached 30-day report with 60480 buckets completes within the SSH deadlin
   writeFileSync(join(directory, "buckets.json"), JSON.stringify({
     complete: true, generatedAt: new Date(now).toISOString(), coveredThrough: new Date(now).toISOString(),
     coveredSince: start, checkpoint: { version: CHECKPOINT_VERSION, scannerVersion: SCANNER_VERSION, pricingFingerprint }, breakdownsVersion: 1, limitsVersion: 1,
-    countedAccounts: ["default"],
-    nextLimitsAt: now + 60_000, buckets,
+    countedAccounts: ["default"], countedAgyAccounts: ["default"],
+    nextLimitsAt: now + 60_000, nextAgyLimitsAt: now + 60_000, buckets,
   }));
   // Exercise the real query process, including JSON decoding and encoding, under
   // the same eight-second budget as the app's remote watchdog.
@@ -253,7 +260,7 @@ test("a cached 30-day report with 60480 buckets completes within the SSH deadlin
   assert.equal(report.refreshing, false);
   assert.equal(report.scan.coveredFrom, new Date(start).toISOString().slice(0, 10));
   for (const [index, { tokenUsage }] of report.programs.entries()) {
-    const hourly = 21 * (index + 1);
+    const hourly = 14 * (index + 1);
     assert.equal(tokenUsage.state, "ok");
     assert.equal(tokenUsage.totals.today.tokens.total, hourly * 24);
     assert.equal(tokenUsage.totals.last7Days.tokens.total, hourly * 24 * 7);
@@ -261,7 +268,7 @@ test("a cached 30-day report with 60480 buckets completes within the SSH deadlin
     assert.equal(tokenUsage.totals.last30Days.estimatedCostUSD, hourly * 24 * 30 * 0.25);
     assert.equal(tokenUsage.daily.length, 30);
     assert.ok(tokenUsage.daily.every(day => day.tokens.total === hourly * 24));
-    assert.equal(tokenUsage.models.length, 21);
+    assert.equal(tokenUsage.models.length, 14);
     assert.ok(tokenUsage.models.every(model => model.tokens.total === (index + 1) * 24 * 30));
     assert.equal(tokenUsage.directories.length, 10);
     assert.ok(tokenUsage.directories.every(entry => entry.tokens.total === (index + 1) * 24 * 30));

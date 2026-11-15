@@ -70,7 +70,7 @@ struct AgentUsageLimitChip: Identifiable, Equatable {
         case .unread(_, let program, let account, let reason):
             return Self(hostID: hostID, hostName: hostName, program: program, account: account, percent: nil,
                 title: reason, cardID: card.id)
-        case .claudeToggle:
+        case .claudeToggle, .agyToggle:
             return nil
         case .limits(_, let program, let account, let limits):
             let live = (limits.windows ?? []).filter { window in
@@ -528,6 +528,8 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     case unread(accountID: String, program: String, account: String, reason: String)
     /// The Claude Code limits toggle.
     case claudeToggle
+    /// The Antigravity limits toggle.
+    case agyToggle
 
     /// The program, or the program and the Account's report id, which
     /// stays unique on a Host when names do not.
@@ -536,6 +538,7 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         case .limits(let accountID, let program, _, _): accountID.map { "\(program).\($0)" } ?? program
         case .unread(let accountID, let program, _, _): "\(program).\(accountID)"
         case .claudeToggle: "claude.toggle"
+        case .agyToggle: "agy.toggle"
         }
     }
 
@@ -543,15 +546,16 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
         switch self {
         case .limits(_, let program, _, _), .unread(_, let program, _, _): program
         case .claudeToggle: "claude"
+        case .agyToggle: "agy"
         }
     }
 
-    /// The Claude Code Account a card is for, when its Host has several.
+    /// The Account a card is for, when its Host has several.
     var account: String? {
         switch self {
         case .limits(_, _, let account, _): account
         case .unread(_, _, let account, _): account
-        case .claudeToggle: nil
+        case .claudeToggle, .agyToggle: nil
         }
     }
 
@@ -561,7 +565,15 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     var carriesToggle: Bool {
         switch self {
         case .limits(nil, "claude", _, _), .claudeToggle: true
-        case .limits, .unread: false
+        case .limits, .unread, .agyToggle: false
+        }
+    }
+
+    /// Whether the card ends with the Antigravity limits toggle and note.
+    var carriesAgyToggle: Bool {
+        switch self {
+        case .limits(nil, "agy", _, _), .agyToggle: true
+        case .limits, .unread, .claudeToggle: false
         }
     }
 
@@ -569,24 +581,39 @@ enum AgentUsageLimitsCard: Identifiable, Equatable {
     /// the toggle keeps one whether it is a lone Account's windows or a
     /// card of its own, so the link to the Accounts keeps its place, and
     /// the screen it pushed, while the Account count changes.
-    var sectionID: String { carriesToggle ? Self.claudeToggle.id : id }
+    var sectionID: String {
+        if carriesToggle { return Self.claudeToggle.id }
+        if carriesAgyToggle { return Self.agyToggle.id }
+        return id
+    }
 
     static func cards(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
-            guard program.program == "claude" else { return accountCards(program) }
-            let cards = program.usageLimits.state == "disabled" ? [] : accountCards(program)
-            return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
+            switch program.program {
+            case "claude":
+                let cards = program.usageLimits.state == "disabled" ? [] : accountCards(program)
+                return cards.contains(where: \.carriesToggle) ? cards : cards + [.claudeToggle]
+            case "agy":
+                let cards = program.usageLimits.state == "disabled" ? [] : accountCards(program)
+                return cards.contains(where: \.carriesAgyToggle) ? cards : cards + [.agyToggle]
+            default:
+                return accountCards(program)
+            }
         }
     }
 
     /// The cards that carry a reading, in the same order, for the chips,
-    /// Host detail and an iPad's strip: no toggle, and Claude Code as one
-    /// card saying its limits are off while they are.
+    /// Host detail and an iPad's strip: no toggle, and a program whose
+    /// limits are turned off as one card saying so.
     static func readings(for report: AgentUsageReport) -> [Self] {
         (report.programs ?? []).flatMap { program -> [Self] in
             let whole = Self.limits(
                 accountID: nil, program: program.program, account: nil, limits: program.usageLimits)
-            guard program.program != "claude" || program.usageLimits.state != "disabled" else { return [whole] }
+            if (program.program == "claude" || program.program == "agy"),
+                program.usageLimits.state == "disabled"
+            {
+                return [whole]
+            }
             return accountCards(program)
         }
     }
@@ -658,17 +685,21 @@ struct AgentUsageHostLimits: View {
             case .unread(_, let program, let account, let reason):
                 AgentUsageUncountedAccount(program: program, account: account, reason: reason)
                     .padding(.vertical, 4)
-            case .claudeToggle:
+            case .claudeToggle, .agyToggle:
                 EmptyView()
             }
             if card.carriesToggle {
                 ClaudeUsageLimitsToggle(store: entry.store)
                 ClaudeAccountsRequirementNote(store: entry.store)
             }
+            if card.carriesAgyToggle {
+                AgyUsageLimitsToggle(store: entry.store)
+            }
         } header: {
             if isFirst { header }
         } footer: {
             if card.carriesToggle { ClaudeUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
+            if card.carriesAgyToggle { AgyUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
         }
     }
 }

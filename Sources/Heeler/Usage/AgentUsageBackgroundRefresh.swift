@@ -15,11 +15,33 @@ struct AgentUsageBackgroundRefresh {
     /// 13 seconds to refresh; six re-reads wait up to 18.
     nonisolated static let refreshingRereads = 6
 
-    /// One Host's reading, with or without Claude Code limits; nil when the
-    /// Host cannot be read in the background.
-    let read: @Sendable (Host, _ claudeLimits: Bool) async -> AgentUsageStore.State?
-    /// Holds each Host's Claude Code limits consent.
+    private let readHost: @Sendable (Host, _ claudeLimits: Bool, _ agyLimits: Bool) async -> AgentUsageStore.State?
+    /// Holds each Host's Usage Limits preferences.
     var defaults: UserDefaults = .standard
+
+    init(
+        read: @escaping @Sendable (Host, _ claudeLimits: Bool) async -> AgentUsageStore.State?,
+        defaults: UserDefaults = .standard
+    ) {
+        readHost = { host, claudeLimits, _ in await read(host, claudeLimits) }
+        self.defaults = defaults
+    }
+
+    init(
+        readWithAgy: @escaping @Sendable (Host, _ claudeLimits: Bool, _ agyLimits: Bool) async -> AgentUsageStore.State?,
+        defaults: UserDefaults = .standard
+    ) {
+        readHost = readWithAgy
+        self.defaults = defaults
+    }
+
+    /// One Host's reading, with its Claude Code and Antigravity limits choices;
+    /// nil when the Host cannot be read in the background.
+    nonisolated func read(
+        _ host: Host, _ claudeLimits: Bool, _ agyLimits: Bool = true
+    ) async -> AgentUsageStore.State? {
+        await readHost(host, claudeLimits, agyLimits)
+    }
 
     /// Asks iOS for the next run. It fails where background refresh is
     /// unavailable, such as the Simulator or with Background App Refresh off,
@@ -42,7 +64,7 @@ struct AgentUsageBackgroundRefresh {
         hosts records: [Host], publisher: AgentUsageWidgetPublisher, isUsageEnabled: @MainActor () -> Bool
     ) async {
         let stale = AgentUsageHost.grouped(records).filter { publisher.isStale($0.id, readAt: nil) }
-        let read = self.read
+        let read = self.readHost
         var answered: [Host.ID: Int] = [:]
         var landed: [Host.ID: [Int: Answer]] = [:]
         var readings: [Host.ID: AgentUsageWidgetReading] = [:]
@@ -51,8 +73,9 @@ struct AgentUsageBackgroundRefresh {
                 for (index, record) in host.records.enumerated() {
                     let claudeLimits = defaults.bool(
                         forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: record.id))
+                    let agyLimits = AgentUsageStore.isAgyLimitsEnabled(in: defaults, for: record.id)
                     group.addTask {
-                        let answer = await read(record, claudeLimits).map { state in
+                        let answer = await read(record, claudeLimits, agyLimits).map { state in
                             Answer(
                                 state: state,
                                 isConnected: (record.serverKind != .herdrCore && record.serverKind != .tmux)
@@ -118,7 +141,7 @@ extension AgentUsageBackgroundRefresh {
         defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
-        Self(read: { host, claudeLimits in
+        Self(readWithAgy: { host, claudeLimits, agyLimits in
             // Nothing says what a Host of an unconfirmed Server Kind runs.
             guard host.serverKind.hasHostIntegrations else { return nil }
             var host = host
@@ -135,7 +158,7 @@ extension AgentUsageBackgroundRefresh {
                     let state = await readWithRereads(sleep: sleep) {
                         try await AgentUsageStore.reading(
                             overHelper: helper, session: host.sessionName,
-                            timeZone: timeZone, claudeLimits: claudeLimits
+                            timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits
                         ).state
                     }
                     try? await transport.close()
@@ -147,7 +170,8 @@ extension AgentUsageBackgroundRefresh {
                     let state = await readWithRereads(sleep: sleep) {
                         try await AgentUsageStore.reading(
                             overHelper: helper, tmuxSocket: host.tmuxSocketName,
-                            tmuxPaths: host.storedTmuxPaths, timeZone: timeZone, claudeLimits: claudeLimits
+                            tmuxPaths: host.storedTmuxPaths, timeZone: timeZone,
+                            claudeLimits: claudeLimits, agyLimits: agyLimits
                         ).state
                     }
                     try? await transport.close()
@@ -155,7 +179,9 @@ extension AgentUsageBackgroundRefresh {
                 }
                 let transport = try await connector.connect(settings: settings)
                 let state = await readWithRereads(sleep: sleep) {
-                    try await AgentUsageStore.read(over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
+                    try await AgentUsageStore.read(
+                        over: transport, timeZone: timeZone,
+                        claudeLimits: claudeLimits, agyLimits: agyLimits)
                 }
                 try? await transport.close()
                 return state

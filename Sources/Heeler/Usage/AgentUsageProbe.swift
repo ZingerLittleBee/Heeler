@@ -4,7 +4,7 @@ import Foundation
 /// Transcript paths and credentials never enter this protocol.
 enum AgentUsageProbe {
     static func script(
-        pluginRoot: String, timeZone: String, claudeLimits: Bool,
+        pluginRoot: String, timeZone: String, claudeLimits: Bool, agyLimits: Bool = true,
         nonce: String, launcher: HerdrLauncher?
     ) throws -> Data {
         guard isQueryableTimeZone(timeZone),
@@ -29,7 +29,7 @@ enum AgentUsageProbe {
             configCommand = "herdr plugin config-dir heeler"
         }
         let query = GitProbe.singleQuoted(pluginRoot + "/src/usage-query.js")
-        let flags = claudeLimits ? " --claude-limits" : ""
+        let flags = (claudeLimits ? " --claude-limits" : "") + (agyLimits ? "" : " --no-agy-limits")
         // Cap the entire framed response. Truncation removes the end marker,
         // so a plausible JSON prefix can never become a successful read.
         let script = """

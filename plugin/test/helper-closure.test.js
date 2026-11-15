@@ -112,8 +112,8 @@ suite("Host Helper closure", () => {
   });
 
   test("the Usage query and worker start only recorded programs, so never a core", () => {
-    // `executable` is a Usage Limits request's recorded program, or the zstd on the
-    // recorded PATH. Naming a new program here is a decision, not a test to update.
+    // `executable` is a Usage Limits request's recorded program, or zstd/sqlite3
+    // resolved on the recorded PATH. Naming a new program here is a decision, not a test to update.
     const started = new Set(helperModules().flatMap((path) => programsStarted(readFileSync(path, "utf8"))));
     // `powerShell` is the session extension's on native Windows, and
     // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0046);

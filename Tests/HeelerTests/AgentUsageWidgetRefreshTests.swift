@@ -349,7 +349,7 @@ struct AgentUsageWidgetRefreshTests {
 
         #expect(state == .available(try AgentUsageFixture.report()))
         let limits = await helper.steps.compactMap { step -> Bool? in
-            guard case .usageQuery(_, let limits, _) = step else { return nil }
+            guard case .usageQuery(_, let limits, _, _) = step else { return nil }
             return limits
         }
         #expect(limits == [true])

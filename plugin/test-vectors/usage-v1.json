@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "pricingVersion": "2026-10-30",
+  "pricingVersion": "2026-11-15",
   "generatedAt": "2026-10-23T12:34:56.000Z",
   "timeZone": "Asia/Shanghai",
   "runtime": "recorded",
@@ -2094,6 +2094,1013 @@
         {
           "directory": "/Users/u/.codex-personal",
           "name": "codex-personal",
+          "source": "home"
+        }
+      ]
+    },
+    {
+      "program": "agy",
+      "tokenUsage": {
+        "state": "ok",
+        "totals": {
+          "today": {
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0
+          },
+          "last7Days": {
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0
+          },
+          "last30Days": {
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0
+          }
+        },
+        "daily": [
+          {
+            "date": "2026-09-24",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-25",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-26",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-27",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-28",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-29",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-09-30",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-01",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-02",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-03",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-04",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-05",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-06",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-07",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-08",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-09",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-10",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-11",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-12",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-13",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-14",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-15",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-16",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-17",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-18",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-19",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-20",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-21",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-22",
+            "tokens": {
+              "input": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0
+            },
+            "estimatedCostUSD": 0,
+            "unpricedTokens": 0
+          },
+          {
+            "date": "2026-10-23",
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0
+          }
+        ],
+        "models": [
+          {
+            "model": "gemini-3.8-flash-high",
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0,
+            "priced": true
+          }
+        ],
+        "directories": [
+          {
+            "path": "/work/agy",
+            "tokens": {
+              "input": 1000,
+              "cacheRead": 4000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 0,
+              "total": 5500
+            },
+            "estimatedCostUSD": 0.002925,
+            "unpricedTokens": 0
+          }
+        ]
+      },
+      "usageLimits": {
+        "state": "ok",
+        "source": "service",
+        "observedAt": "2026-10-23T12:34:50.000Z",
+        "windows": [
+          {
+            "id": "agy:gemini_5h",
+            "durationMinutes": 300,
+            "usedPercent": 14,
+            "resetsAt": "2026-10-23T13:34:56.000Z",
+            "expired": false,
+            "label": "Gemini · 5-hour"
+          },
+          {
+            "id": "agy:claude_weekly",
+            "durationMinutes": 10080,
+            "usedPercent": 29,
+            "resetsAt": null,
+            "expired": false,
+            "label": "Claude & GPT · Weekly"
+          }
+        ]
+      },
+      "accounts": [
+        {
+          "id": "default",
+          "isDefault": true,
+          "name": null,
+          "directory": "/Users/u/.gemini/antigravity-cli",
+          "state": "ok",
+          "tokenUsage": {
+            "state": "ok",
+            "totals": {
+              "today": {
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0
+              },
+              "last7Days": {
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0
+              },
+              "last30Days": {
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0
+              }
+            },
+            "daily": [
+              {
+                "date": "2026-09-24",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-25",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-26",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-27",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-28",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-29",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-09-30",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-01",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-02",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-03",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-04",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-05",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-06",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-07",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-08",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-09",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-10",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-11",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-12",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-13",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-14",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-15",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-16",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-17",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-18",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-19",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-20",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-21",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-22",
+                "tokens": {
+                  "input": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "output": 0,
+                  "reasoning": 0,
+                  "total": 0
+                },
+                "estimatedCostUSD": 0,
+                "unpricedTokens": 0
+              },
+              {
+                "date": "2026-10-23",
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0
+              }
+            ],
+            "models": [
+              {
+                "model": "gemini-3.8-flash-high",
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0,
+                "priced": true
+              }
+            ],
+            "directories": [
+              {
+                "path": "/work/agy",
+                "tokens": {
+                  "input": 1000,
+                  "cacheRead": 4000,
+                  "cacheWrite": 0,
+                  "output": 500,
+                  "reasoning": 0,
+                  "total": 5500
+                },
+                "estimatedCostUSD": 0.002925,
+                "unpricedTokens": 0
+              }
+            ]
+          },
+          "usageLimits": {
+            "state": "ok",
+            "source": "service",
+            "observedAt": "2026-10-23T12:34:50.000Z",
+            "windows": [
+              {
+                "id": "agy:gemini_5h",
+                "durationMinutes": 300,
+                "usedPercent": 14,
+                "resetsAt": "2026-10-23T13:34:56.000Z",
+                "expired": false,
+                "label": "Gemini · 5-hour"
+              },
+              {
+                "id": "agy:claude_weekly",
+                "durationMinutes": 10080,
+                "usedPercent": 29,
+                "resetsAt": null,
+                "expired": false,
+                "label": "Claude & GPT · Weekly"
+              }
+            ]
+          }
+        },
+        {
+          "id": "b2c3d4e5",
+          "isDefault": false,
+          "name": "agy-work",
+          "directory": "/Users/u/.gemini/antigravity-cli-work",
+          "state": "ok",
+          "tokenUsage": {
+            "state": "noData"
+          },
+          "usageLimits": {
+            "state": "unavailable",
+            "reason": "singleSignIn"
+          }
+        }
+      ],
+      "accountSuggestions": [
+        {
+          "directory": "/Users/u/.gemini/antigravity-cli-personal",
+          "name": "antigravity-cli-personal",
           "source": "home"
         }
       ]

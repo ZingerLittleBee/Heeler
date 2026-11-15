@@ -34,7 +34,7 @@ struct HostHelperFiles: HostNotificationFiles {
 
     /// The Helper's report for this target. Throws `AgentUsageHostHelperNeed`
     /// when no Helper here can answer.
-    func readUsage(timeZone: String, claudeLimits: Bool) async throws -> AgentUsageReport {
+    func readUsage(timeZone: String, claudeLimits: Bool, agyLimits: Bool = true) async throws -> AgentUsageReport {
         guard AgentUsageProbe.isQueryableTimeZone(timeZone) else {
             throw TransportError.malformedResponse(String(localized: "The Usage query arguments are invalid."))
         }
@@ -42,7 +42,7 @@ struct HostHelperFiles: HostNotificationFiles {
         switch target {
         case .coreSession(let session):
             step = .usageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits,
+                timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits,
                 session: HerdrCoreSessionName.normalized(session))
         case .tmuxSocket(let socket, let paths):
             let normalized = TmuxSocketName.normalized(socket)
@@ -52,7 +52,7 @@ struct HostHelperFiles: HostNotificationFiles {
                     : nil
             }
             step = .tmuxUsageQuery(
-                timeZone: timeZone, claudeLimits: claudeLimits,
+                timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits,
                 socket: normalized, storedPaths: storedPaths)
         }
         let script = HostHelperScript(step, nonce: nonce())
@@ -62,9 +62,9 @@ struct HostHelperFiles: HostNotificationFiles {
 
     /// The query is the Helper's own, wherever a plugin would sit.
     func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
+        timeZone: String, claudeLimits: Bool, agyLimits: Bool = true, pluginRoot: String
     ) async throws -> AgentUsageReport {
-        try await readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        try await readUsage(timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits)
     }
 
     func readNotificationRegistration() async throws -> Data? {

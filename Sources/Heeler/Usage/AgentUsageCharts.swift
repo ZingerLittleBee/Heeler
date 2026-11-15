@@ -63,19 +63,33 @@ struct AgentUsageDailyChart: View {
     }
 
     private var legend: some View {
-        HStack(spacing: 14) {
-            ForEach(scope.programs) { program in
-                HStack(spacing: 6) {
-                    Circle().fill(AgentUsageStyle.color(for: program.program)).frame(width: 8, height: 8)
-                    Text(program.displayName)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                legendPrograms
+                Spacer(minLength: 8)
+                legendHint
             }
-            Spacer(minLength: 8)
-            Text("Hold to read a day").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 14) { legendPrograms }
+                legendHint
+            }
         }
         .font(.footnote)
         .lineLimit(1)
         .accessibilityHidden(true)
+    }
+
+    private var legendPrograms: some View {
+        ForEach(scope.programs) { program in
+            HStack(spacing: 6) {
+                Circle().fill(AgentUsageStyle.color(for: program.program)).frame(width: 8, height: 8)
+                Text(program.displayName)
+            }
+        }
+    }
+
+    private var legendHint: some View {
+        Text("Hold to read a day").foregroundStyle(.secondary)
     }
 
     private var chart: some View {

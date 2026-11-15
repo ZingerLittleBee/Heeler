@@ -108,6 +108,7 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
             switch program {
             case "claude": String(localized: "Claude Code")
             case "codex": String(localized: "Codex")
+            case "agy": String(localized: "Antigravity")
             default: program
             }
         }
@@ -230,6 +231,9 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     /// Claude Code's entry, when the report has one.
     var claudeProgram: Program? { programs?.first { $0.program == "claude" } }
 
+    /// Antigravity's entry, when the report has one.
+    var agyProgram: Program? { programs?.first { $0.program == "agy" } }
+
     /// When the oldest figures in the report were read on the Host, for a
     /// report the app read at `readAt`. A refreshing report is the last
     /// run's until the running one commits its scan, and keeps the last
@@ -251,19 +255,39 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
 
     /// A device that opted out must never show a reading cached by another query.
     func hidingClaudeLimits() -> Self {
-        replacingClaudeLimits(state: "disabled", reason: nil)
+        replacingLimits(forProgram: "claude", state: "disabled", reason: nil)
     }
 
     /// Right after the toggle turns on, this report's query did not ask for
     /// Claude Code limits; they read as not read yet, not as off.
     func readingClaudeLimits() -> Self {
-        replacingClaudeLimits(state: "unavailable", reason: "notReadYet")
+        replacingLimits(forProgram: "claude", state: "unavailable", reason: "notReadYet")
     }
 
     /// The query that would have read Claude Code limits after the toggle
     /// turned on failed; they read as failed, not as still being read.
     func failedClaudeLimits() -> Self {
-        replacingClaudeLimits(state: "error", reason: "requestFailed")
+        replacingLimits(forProgram: "claude", state: "error", reason: "requestFailed")
+    }
+
+    /// A device that turned off Antigravity limits hides any cached reading.
+    func hidingAgyLimits() -> Self {
+        replacingLimits(forProgram: "agy", state: "disabled", reason: nil)
+    }
+
+    /// Right after Antigravity limits turn back on, the Default Account reads
+    /// as not read yet while added Accounts keep `singleSignIn`.
+    func readingAgyLimits() -> Self {
+        replacingLimits(
+            forProgram: "agy", state: "unavailable", reason: "notReadYet",
+            addedAccountState: "unavailable", addedAccountReason: "singleSignIn")
+    }
+
+    /// The re-query after turning Antigravity limits back on failed.
+    func failedAgyLimits() -> Self {
+        replacingLimits(
+            forProgram: "agy", state: "error", reason: "requestFailed",
+            addedAccountState: "unavailable", addedAccountReason: "singleSignIn")
     }
 
     /// The Helper's reading of a Mac's login keychain says the same as the
@@ -292,18 +316,25 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
 
     /// Every Account's limits follow the program's: the toggle covers them
     /// all. An Account without limits (not `ok`) keeps none.
-    private func replacingClaudeLimits(state: String, reason: String?) -> Self {
+    private func replacingLimits(
+        forProgram target: String, state: String, reason: String?,
+        addedAccountState: String? = nil, addedAccountReason: String? = nil
+    ) -> Self {
         let limits = Program.UsageLimits(state: state, reason: reason, source: nil,
             observedAt: nil, retryAt: nil, plan: nil, windows: nil)
+        let addedLimits = addedAccountState.map {
+            Program.UsageLimits(state: $0, reason: addedAccountReason, source: nil,
+                observedAt: nil, retryAt: nil, plan: nil, windows: nil)
+        } ?? limits
         var report = self
         report.programs = programs?.map { program in
-            guard program.program == "claude" else { return program }
+            guard program.program == target else { return program }
             var replaced = program
             replaced.usageLimits = limits
             replaced.accounts = program.accounts?.map { account in
                 guard account.isReadable || account.usageLimits != nil else { return account }
                 var replaced = account
-                replaced.usageLimits = limits
+                replaced.usageLimits = account.isDefault ? limits : addedLimits
                 return replaced
             }
             return replaced

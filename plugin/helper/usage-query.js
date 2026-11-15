@@ -17,6 +17,7 @@ try {
       session: { type: "string" },
       tmux: { type: "string" },
       "claude-limits": { type: "boolean", default: false },
+      "no-agy-limits": { type: "boolean", default: false },
     },
     allowPositionals: false,
   });
@@ -36,6 +37,7 @@ try {
   console.log(JSON.stringify(usageReport({
     timeZone: values.tz,
     claudeLimits: values["claude-limits"],
+    agyLimits: !values["no-agy-limits"],
     runtimeDirectory,
     accountDirectory: directory,
     worker: {

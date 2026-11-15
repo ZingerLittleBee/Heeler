@@ -1980,25 +1980,26 @@ final class ConsoleStore {
 
     func agentUsageStore(for hostID: Host.ID) -> AgentUsageStore {
         if let store = agentUsageStores[hostID] { return store }
-        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits in
+        let store = AgentUsageStore(hostID: hostID, reader: .init { [weak self] timeZone, claudeLimits, agyLimits in
             guard let self else { throw TransportError.cancelled }
             if let host = self.coreHost(hostID) {
                 return try await self.withCoreConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, session: host.sessionName,
-                        timeZone: timeZone, claudeLimits: claudeLimits)
+                        timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits)
                 }
             }
             if let host = self.tmuxHost(hostID) {
                 return try await self.withTmuxConnection(host) { transport in
                     try await AgentUsageStore.reading(
                         overHelper: transport.hostHelperHost, tmuxSocket: host.tmuxSocketName,
-                        tmuxPaths: host.storedTmuxPaths, timeZone: timeZone, claudeLimits: claudeLimits)
+                        tmuxPaths: host.storedTmuxPaths, timeZone: timeZone,
+                        claudeLimits: claudeLimits, agyLimits: agyLimits)
                 }
             }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
-                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
+                    over: transport, timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits)
             }
         })
         store.didChange = { [weak self] in self?.publishUsageWidgets() }

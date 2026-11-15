@@ -33,7 +33,7 @@ struct UsageLimitsWidget: Widget {
                 .usageWidgetBackground()
         }
         .configurationDisplayName("Usage Limits")
-        .description("A Host’s Claude Code or Codex Usage Limits and when they reset.")
+        .description("A Host’s Claude Code, Codex, or Antigravity Usage Limits and when they reset.")
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,
             .accessoryCircular, .accessoryRectangular, .accessoryInline,
@@ -164,7 +164,7 @@ struct UsageWidgetIntent: WidgetConfigurationIntent {
 
 struct UsageLimitsWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Usage Limits"
-    static let description = IntentDescription("A Host’s Claude Code or Codex Usage Limits and when they reset.")
+    static let description = IntentDescription("A Host’s Claude Code, Codex, or Antigravity Usage Limits and when they reset.")
 
     @Parameter(title: "Host")
     var host: UsageLimitsHostEntity?
@@ -256,12 +256,14 @@ enum UsageLimitsProgram: String, AppEnum {
     case automatic
     case claude
     case codex
+    case agy
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Program"
     static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
         .automatic: "Automatic",
         .claude: "Claude Code",
         .codex: "Codex",
+        .agy: "Antigravity",
     ]
 }
 

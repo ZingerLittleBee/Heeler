@@ -253,6 +253,8 @@ struct AgentUsageLimitsView: View {
         case "programTooOld": return String(localized: "Update \(programName) on this Host to read Usage Limits.")
         case "notSignedIn": return String(localized: "Sign in to \(programName) on this Host to read Usage Limits.")
         case "noPlanLimits": return String(localized: "This sign-in has no plan Usage Limits.")
+        case "singleSignIn":
+            return String(localized: "\(programName) signs in once per Host; Usage Limits are shown on the Default Account.")
         case "keychainUnavailable":
             return String(localized: "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh.")
         case AgentUsageReport.Program.UsageLimits.keychainNeedsUserLogin:
