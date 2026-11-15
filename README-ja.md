@@ -75,7 +75,7 @@ herdr-core の Host（Herdr デスクトップアプリを実行しているマ�
 
 tmux の Host（macOS と Linux の tmux >= 3.3）も手動で追加し、Server Kind とソケット名を確認します。接続しただけで tmux サーバーが起動することはありませんが、Linux では必要に応じて New Workspace から起動できます。ライブターミナルは tmux の制御モードでデスクトップクライアントと共存してペインごとに接続し、画面に合わせてサイズ調整しつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Claude Code のフックで Blocked、Done、会話 ID を報告でき、オプションの Host Helper を入れるとステータスの読み取り、Pi と Oh My Pi の拡張機能、通知、ライブアクティビティ、Usage を利用できます（[tmux に接続する](https://docs.heeler.bybee.dev/tmux)）。
 
-Tailscale、ZeroTier、EasyTier でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
+Tailscale、ZeroTier、EasyTier、tailcat でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
 
 Tailscale、ZeroTier、および EasyTier の 2 つのモードについて、[Heeler のセットアップのスクリーンショットを見る](docs/guides/overlay-networks.md#heeler-setup-screenshots)ことができます。
 

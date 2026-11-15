@@ -102,7 +102,7 @@ herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并�
 
 tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式与桌面客户端并存接入，调整为适合屏幕的尺寸并保持在同一窗口已打开的桌面终端范围内。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
 
-如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
+如需通过 Tailscale、ZeroTier、EasyTier 或 tailcat 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 
 [查看 Heeler 配置截图](docs/guides/zh/overlay-networks.md#heeler-配置界面截图)，包括 Tailscale、ZeroTier 以及 EasyTier 两种模式（Network 与 Config Server）的设置界面。
 
