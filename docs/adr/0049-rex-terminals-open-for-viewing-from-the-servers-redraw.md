@@ -10,7 +10,7 @@ sees, and ending cleanly when the block goes. Rex's terminal data stream
 starts with a snapshot in Rex's own format, not with bytes a terminal can
 show, and Rex answers a program's terminal queries itself. Rex also gives
 each block one owner client whose size it uses. This slice opens a Rex
-terminal for viewing only; input is the next slice.
+terminal for viewing; ADR 0050 adds its input.
 
 ## Decision
 
@@ -43,12 +43,12 @@ terminal for viewing only; input is the next slice.
 - **Query answers are dropped.** Rex answers a program's queries (device
   attributes, cursor and status reports, mode reports, colors) itself, so the
   answers Heeler's own Ghostty writes back must never reach the program.
-  `RexTerminalAnswerFilter` drops them from what the view sends: control
-  sequences ending a report, focus reports, and every OSC, DCS, APC, PM and
-  SOS string terminated in the same write, while keys, text, mouse reports
-  and pastes pass. Ghostty writes an answer in one piece, so a string opener
-  with no terminator is an Alt key (`ESC ]`, `ESC P`) and passes. In this build
-  input is shut altogether (below), so nothing leaves during a paint or after.
+  `RexTerminalKeyReader` drops them from what the view sends: control
+  sequences ending a report, and every OSC, DCS, APC, PM and SOS string
+  terminated in the same write, while keys, text, mouse reports and pastes
+  pass. Ghostty writes an answer in one piece, so a string opener with no
+  terminator is an Alt key (`ESC ]`, `ESC P`) and passes. Focus reports are
+  real input, and go as focus events (ADR 0050).
 - **Size is a request, never ownership.** The view's grid is asked for with
   the terminal's `resize` method on arrival and once a change has held for
   150 ms, never twice the same, and again when the block's owner lets go,
@@ -87,10 +87,8 @@ terminal for viewing only; input is the next slice.
 - **Events.** The inventory follower passes each event on to the open
   terminals before the inventory applies it: a block's close, its owner, and
   its own events. The inventory is unchanged by them.
-- **Input stays shut** behind `RexTerminalInput.isOpen`. A Rex attach gives
-  the view no writer, so keys, pastes, scrolling, focus, the Keys panel and
-  Stop send nothing and report nothing as sent; the view scrolls its own
-  history.
+- **Input** begins with the first paint and goes out one request at a time
+  (ADR 0050).
 
 ## Why
 
@@ -145,7 +143,7 @@ captures, live tests and fakes, recorded with their sources in
 - `RexTerminalAttach` turns one stream into one view's bytes, size requests
   and endings; `RexHostSession.withTerminal` holds the block, waits for the
   connection and hands out a `RexTerminalConnection` with the block's signals.
-- The next slice opens `RexTerminalInput`, sends what
-  `RexTerminalAnswerFilter` keeps, and shows `TerminalSizeReport`'s mismatch.
+- ADR 0050 sends the view's input; the slice after it shows
+  `TerminalSizeReport`'s mismatch.
 - A first paint costs the snapshot and the redraw, each about the size of the
   scrollback; on a slow link a long history takes seconds to appear.
