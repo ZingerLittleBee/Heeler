@@ -15,7 +15,7 @@ struct AgentUsageBackgroundRefresh {
     /// 13 seconds to refresh; six re-reads wait up to 18.
     nonisolated static let refreshingRereads = 6
 
-    private let readHost: @Sendable (Host, _ claudeLimits: Bool, _ agyLimits: Bool) async -> AgentUsageStore.State?
+    private let readHost: @Sendable (Host, _ claudeLimits: Bool, _ codexLimits: Bool, _ agyLimits: Bool) async -> AgentUsageStore.State?
     /// Holds each Host's Usage Limits preferences.
     var defaults: UserDefaults = .standard
 
@@ -23,7 +23,7 @@ struct AgentUsageBackgroundRefresh {
         read: @escaping @Sendable (Host, _ claudeLimits: Bool) async -> AgentUsageStore.State?,
         defaults: UserDefaults = .standard
     ) {
-        readHost = { host, claudeLimits, _ in await read(host, claudeLimits) }
+        readHost = { host, claudeLimits, _, _ in await read(host, claudeLimits) }
         self.defaults = defaults
     }
 
@@ -31,16 +31,26 @@ struct AgentUsageBackgroundRefresh {
         readWithAgy: @escaping @Sendable (Host, _ claudeLimits: Bool, _ agyLimits: Bool) async -> AgentUsageStore.State?,
         defaults: UserDefaults = .standard
     ) {
-        readHost = readWithAgy
+        readHost = { host, claudeLimits, _, agyLimits in await readWithAgy(host, claudeLimits, agyLimits) }
         self.defaults = defaults
     }
 
-    /// One Host's reading, with its Claude Code and Antigravity limits choices;
+    init(
+        readWithLimits: @escaping @Sendable (
+            Host, _ claudeLimits: Bool, _ codexLimits: Bool, _ agyLimits: Bool
+        ) async -> AgentUsageStore.State?,
+        defaults: UserDefaults = .standard
+    ) {
+        readHost = readWithLimits
+        self.defaults = defaults
+    }
+
+    /// One Host's reading, with its Usage Limits choices;
     /// nil when the Host cannot be read in the background.
     nonisolated func read(
-        _ host: Host, _ claudeLimits: Bool, _ agyLimits: Bool = true
+        _ host: Host, _ claudeLimits: Bool, _ codexLimits: Bool = true, _ agyLimits: Bool = true
     ) async -> AgentUsageStore.State? {
-        await readHost(host, claudeLimits, agyLimits)
+        await readHost(host, claudeLimits, codexLimits, agyLimits)
     }
 
     /// Asks iOS for the next run. It fails where background refresh is
@@ -73,13 +83,25 @@ struct AgentUsageBackgroundRefresh {
                 for (index, record) in host.records.enumerated() {
                     let claudeLimits = defaults.bool(
                         forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: record.id))
+                    let codexLimits = AgentUsageStore.isCodexLimitsEnabled(in: defaults, for: record.id)
                     let agyLimits = AgentUsageStore.isAgyLimitsEnabled(in: defaults, for: record.id)
                     group.addTask {
-                        let answer = await read(record, claudeLimits, agyLimits).map { state in
-                            Answer(
-                                state: state,
+                        let answer = await read(record, claudeLimits, codexLimits, agyLimits).map { state in
+                            let filtered: AgentUsageStore.State =
+                                if case .available(var report) = state {
+                                    {
+                                        if !claudeLimits { report = report.hidingClaudeLimits() }
+                                        if !codexLimits { report = report.hidingCodexLimits() }
+                                        if !agyLimits { report = report.hidingAgyLimits() }
+                                        return .available(report)
+                                    }()
+                                } else {
+                                    state
+                                }
+                            return Answer(
+                                state: filtered,
                                 isConnected: (record.serverKind != .herdrCore && record.serverKind != .tmux)
-                                    || !state.couldNotReachHost,
+                                    || !filtered.couldNotReachHost,
                                 readAt: .now)
                         }
                         return (host.id, index, answer)
@@ -141,7 +163,7 @@ extension AgentUsageBackgroundRefresh {
         defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) -> Self {
-        Self(readWithAgy: { host, claudeLimits, agyLimits in
+        Self(readWithLimits: { host, claudeLimits, codexLimits, agyLimits in
             // Nothing says what a Host of an unconfirmed Server Kind runs.
             guard host.serverKind.hasHostIntegrations else { return nil }
             var host = host
@@ -158,7 +180,8 @@ extension AgentUsageBackgroundRefresh {
                     let state = await readWithRereads(sleep: sleep) {
                         try await AgentUsageStore.reading(
                             overHelper: helper, session: host.sessionName,
-                            timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits
+                            timeZone: timeZone, claudeLimits: claudeLimits,
+                            codexLimits: codexLimits, agyLimits: agyLimits
                         ).state
                     }
                     try? await transport.close()
@@ -171,7 +194,7 @@ extension AgentUsageBackgroundRefresh {
                         try await AgentUsageStore.reading(
                             overHelper: helper, tmuxSocket: host.tmuxSocketName,
                             tmuxPaths: host.storedTmuxPaths, timeZone: timeZone,
-                            claudeLimits: claudeLimits, agyLimits: agyLimits
+                            claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits
                         ).state
                     }
                     try? await transport.close()
@@ -181,7 +204,7 @@ extension AgentUsageBackgroundRefresh {
                 let state = await readWithRereads(sleep: sleep) {
                     try await AgentUsageStore.read(
                         over: transport, timeZone: timeZone,
-                        claudeLimits: claudeLimits, agyLimits: agyLimits)
+                        claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits)
                 }
                 try? await transport.close()
                 return state

@@ -505,6 +505,7 @@ final class HostStore {
         }
         try secrets.removeSecret(account: Self.passwordAccount(for: id))
         defaults?.removeObject(forKey: AgentUsageStore.claudeLimitsPreferenceKey(for: id))
+        defaults?.removeObject(forKey: AgentUsageStore.codexLimitsPreferenceKey(for: id))
         defaults?.removeObject(forKey: AgentUsageStore.agyLimitsPreferenceKey(for: id))
         hosts.remove(at: index)
         labelServers()

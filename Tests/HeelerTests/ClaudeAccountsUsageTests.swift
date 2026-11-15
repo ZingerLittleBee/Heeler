@@ -118,11 +118,15 @@ struct ClaudeAccountsUsageTests {
         #expect(chips.map { $0.lines(showsHost: false).bottom } == chips.map(\.title))
     }
 
-    @Test func limitsOffKeepOneClaudeCodeChip() throws {
-        let chips = AgentUsageLimitChip.chips(in: scope(("studio", try Fixture.report(claudeLimits: false))))
-        #expect(chips.map(\.programTitle) == ["Codex", "Claude Code"])
-        #expect(chips.map(\.title) == ["5-hour", "Limits off"])
+    @Test func limitsOffOmitDisabledChips() throws {
+        let report = try Fixture.report(claudeLimits: false)
+        let chips = AgentUsageLimitChip.chips(in: scope(("studio", report)))
+        #expect(chips.map(\.programTitle) == ["Codex"])
+        #expect(chips.map(\.title) == ["5-hour"])
         #expect(chips.allSatisfy { $0.account == nil })
+        let allOff = report.hidingCodexLimits()
+        #expect(AgentUsageLimitChip.chips(in: scope(("studio", allOff))).isEmpty)
+        #expect(AgentUsageLimitChip.closest(in: scope(("studio", allOff))) == nil)
     }
 
     /// One Account reads as the program did before Accounts: the same ids,

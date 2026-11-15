@@ -117,6 +117,12 @@ test("Codex reports each Account's Token Usage and Usage Limits, its total the c
   const added = reportFromSnapshot({ ...snapshot, countedCodexAccounts: ["default"], usageLimits: { codex: reading(20) } }, "UTC", true, now, false,
     { ...claude, programs: { codex } }).programs[1].accounts[1];
   assert.deepEqual([added.tokenUsage.state, added.usageLimits], ["ok", { state: "unavailable", reason: "notReadYet" }]);
+
+  // Turning off Codex limits reports disabled for Default and readable added Accounts while preserving Token Usage.
+  const disabled = reportFromSnapshot(snapshot, "UTC", false, now, false, { ...claude, codexLimits: false, programs: { codex } }).programs[1];
+  assert.equal(disabled.tokenUsage.totals.today.tokens.total, 15);
+  assert.deepEqual(disabled.usageLimits, { state: "disabled" });
+  assert.deepEqual(disabled.accounts.map(account => account.usageLimits), [{ state: "disabled" }, { state: "disabled" }, undefined]);
 });
 
 test("without Codex Accounts, the Codex entry lists only its Default Account beside what it reported before", () => {

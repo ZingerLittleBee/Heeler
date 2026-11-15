@@ -712,6 +712,12 @@ herdr's session. Start herdr from a terminal on the Mac, not over SSH.
 Current terms remain a pre-release check in the
 [design's open questions](../docs/design/agent-usage.md#open-questions).
 
+**Codex limits** is on by default per Host on the device, with a toggle in
+Usage Limits to turn it off (`--no-codex-limits`, Host Helper 0.5.9). Turning
+it off hides Codex plan windows across Usage and widgets, skips spawning
+`codex app-server` on updated Helpers and plugins, and keeps Codex Token Usage
+counted.
+
 **Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
 Host runs several, each from its own config directory (for example an Agent
 started with `CLAUDE_CONFIG_DIR=~/.claude-2`). The Default Account is the
