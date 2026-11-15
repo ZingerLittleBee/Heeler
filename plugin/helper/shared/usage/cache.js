@@ -17,12 +17,13 @@ export function usageRoots(runtime) {
   return {
     claude: [...new Set([env.CLAUDE_CONFIG_DIR || join(home, ".claude"), join(env.XDG_CONFIG_HOME || join(home, ".config"), "claude")].map(absolute))],
     codex: [absolute(env.CODEX_HOME || join(home, ".codex"))],
+    agy: [absolute(join(home, ".gemini", "antigravity-cli"))],
   };
 }
 export function cacheDirectory(runtime) {
   const roots = usageRoots(runtime);
   // Sorted as 0.7.x hashed them, so a Host whose roots are unchanged keeps its cache.
-  const key = createHash("sha256").update(JSON.stringify({ ...roots, claude: [...roots.claude].sort() })).digest("hex").slice(0, 20);
+  const key = createHash("sha256").update(JSON.stringify({ claude: [...roots.claude].sort(), codex: roots.codex })).digest("hex").slice(0, 20);
   return join(runtime.stateDir, "usage", key);
 }
 export function readJSON(path) {

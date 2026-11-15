@@ -269,6 +269,9 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.program(both, preferring: nil, now: Self.now)?.program == "codex")
         #expect(UsageLimitsPick.program(off, preferring: "claude", now: Self.now)?.program == "claude")
         #expect(UsageLimitsPick.program([limits("claude", nil)], preferring: nil, now: Self.now)?.program == "claude")
+        let withAgy = [limits("claude", 12), limits("codex", 40), limits("agy", 65)]
+        #expect(UsageLimitsPick.program(withAgy, preferring: nil, now: Self.now)?.program == "agy")
+        #expect(UsageLimitsPick.program(withAgy, preferring: "agy", now: Self.now)?.program == "agy")
     }
 
     // MARK: Claude Code Accounts

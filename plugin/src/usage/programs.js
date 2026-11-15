@@ -33,6 +33,15 @@ export const USAGE_PROGRAMS = {
     // A Codex home holds its sign-in or its sessions.
     looksLikeHome: path => isFile(join(path, "auth.json")) || isDirectory(join(path, "sessions")),
   },
+  agy: {
+    program: "agy",
+    executable: "agy",
+    variable: null,
+    defaultRoots: runtime => usageRoots(runtime).agy,
+    homeListings: env => [[join(env.HOME, ".gemini"), "antigravity-cli"], [env.HOME, ".antigravity-cli"]],
+    // Antigravity CLI keeps each conversation's logs under `brain/`.
+    looksLikeHome: path => isDirectory(join(path, "brain")),
+  },
 };
 
 /** The programs Usage reads Accounts for, in report order. */

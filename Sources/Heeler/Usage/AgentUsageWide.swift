@@ -209,7 +209,7 @@ struct AgentUsageLimitsStrip: View {
                 Text(reason).foregroundStyle(.secondary)
             }
             .font(.subheadline)
-        case .claudeToggle:
+        case .claudeToggle, .agyToggle:
             EmptyView()
         }
     }
@@ -257,19 +257,24 @@ struct AgentUsageLimitsPage: View {
     private func hostLimits(_ entry: AgentUsageHostEntry) -> some View {
         if case .available(let report) = entry.store.state {
             let cards = AgentUsageLimitsCard.cards(for: report)
-            // While Claude Code limits are off, the toggle card stands for
-            // all of Claude Code and carries its title.
+            // While a program's limits are off, its toggle card stands for
+            // the whole program and carries its title.
             let titlesToggle = cards.filter { $0.program == "claude" } == [.claudeToggle]
+            let titlesAgyToggle = cards.filter { $0.program == "agy" } == [.agyToggle]
             HStack(alignment: .top, spacing: 30) {
                 VStack(alignment: .leading, spacing: 16) {
                     ForEach(cards.indices.filter { $0.isMultiple(of: 2) }, id: \.self) { index in
-                        card(cards[index], entry: entry, titlesToggle: titlesToggle)
+                        card(
+                            cards[index], entry: entry,
+                            titlesToggle: titlesToggle, titlesAgyToggle: titlesAgyToggle)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 VStack(alignment: .leading, spacing: 16) {
                     ForEach(cards.indices.filter { !$0.isMultiple(of: 2) }, id: \.self) { index in
-                        card(cards[index], entry: entry, titlesToggle: titlesToggle)
+                        card(
+                            cards[index], entry: entry,
+                            titlesToggle: titlesToggle, titlesAgyToggle: titlesAgyToggle)
                     }
                     if entry.id == entries.first?.id { perHostCard }
                 }
@@ -285,7 +290,10 @@ struct AgentUsageLimitsPage: View {
         }
     }
 
-    private func card(_ card: AgentUsageLimitsCard, entry: AgentUsageHostEntry, titlesToggle: Bool) -> some View {
+    private func card(
+        _ card: AgentUsageLimitsCard, entry: AgentUsageHostEntry,
+        titlesToggle: Bool, titlesAgyToggle: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 12) {
                 switch card {
@@ -296,6 +304,8 @@ struct AgentUsageLimitsPage: View {
                     AgentUsageUncountedAccount(program: program, account: account, reason: reason)
                 case .claudeToggle:
                     if titlesToggle { AgentUsageProgramTitle(program: "claude", plan: nil) }
+                case .agyToggle:
+                    if titlesAgyToggle { AgentUsageProgramTitle(program: "agy", plan: nil) }
                 }
                 if card.carriesToggle {
                     if card != .claudeToggle { Divider() }
@@ -305,12 +315,17 @@ struct AgentUsageLimitsPage: View {
                         ClaudeAccountsRequirementNote(store: entry.store)
                     }
                 }
+                if card.carriesAgyToggle {
+                    if card != .agyToggle { Divider() }
+                    AgyUsageLimitsToggle(store: entry.store)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background(cardBackground)
             Group {
                 if card.carriesToggle { ClaudeUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
+                if card.carriesAgyToggle { AgyUsageLimitsNote(readsOverHostHelper: entry.readsOverHostHelper) }
                 if case .limits(_, "codex", _, _) = card { CodexUsageLimitsNote() }
             }
             .padding(.horizontal, 18)

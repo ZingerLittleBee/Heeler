@@ -42,7 +42,7 @@ enum HeelerPluginCompatibility {
     /// shared `plugin/test-vectors/plugin-version-v1.json` pins both sides,
     /// so a plugin release must update this constant too. A Host with a newer
     /// plugin (the plugin branch moved ahead of this build) counts as current.
-    static let bundled = PluginVersion(0, 9, 0)
+    static let bundled = PluginVersion(0, 10, 0)
 }
 
 /// An app feature that only works with a recent enough Heeler plugin.
@@ -66,6 +66,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     case claudeAccounts
     /// Usage per Codex Account, from the Account file's `programs` (#621).
     case codexAccounts
+    /// Antigravity Token Usage, Usage Limits, and Accounts.
+    case antigravityUsage
 
     var minimumVersion: PluginVersion {
         switch self {
@@ -75,6 +77,7 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         case .usage: PluginVersion(0, 7, 0)
         case .claudeAccounts: PluginVersion(0, 8, 0)
         case .codexAccounts: PluginVersion(0, 9, 0)
+        case .antigravityUsage: PluginVersion(0, 10, 0)
         }
     }
 
@@ -91,6 +94,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
             String(localized: "Claude Code Accounts need plugin \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
         case .codexAccounts:
             String(localized: "Usage counts Codex Accounts from plugin \(String(describing: minimumVersion)); this Host has \(String(describing: installed)).")
+        case .antigravityUsage:
+            String(localized: "Usage counts Antigravity from plugin \(String(describing: minimumVersion)); this Host has \(String(describing: installed)).")
         case .sidebarFields:
             String(localized: "Sync from plugin and herdr's sidebar fields need plugin \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
         case .liveActivityUpdates:

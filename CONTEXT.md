@@ -441,8 +441,8 @@ Antigravity CLI, herdr names the conversation id, whose folder Chat finds
 under `~/.gemini/antigravity-cli/brain`. The session
 herdr reports names it; on herdr-core, the session Chat bound (ADR 0034). Heeler only reads it: the app over SFTP, or for
 OpenCode by that query, keeping decoded entries, never tool output, in an
-on-device cache; and the Heeler plugin on the Host itself, or on herdr-core the
-Host Helper, to total Claude Code and Codex Token Usage (ADR 0028).
+on-device cache; and the Heeler plugin on the Host itself, or on herdr-core and
+tmux the Host Helper, to total Claude Code, Codex, and Antigravity CLI Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
 
 **Account**:
@@ -452,7 +452,7 @@ Account** per harness: the directory the harness uses in herdr's own
 environment, or on herdr-core in the core's. The user may add more Accounts for any harness by choosing their
 directories in Settings › Agents & Accounts, the one place Accounts are kept;
 Heeler may suggest directories that look like one, but counts none until the
-user adds it. Usage reads the Accounts of Claude Code and Codex, Chat searches
+user adds it. Usage reads the Accounts of Claude Code, Codex, and Antigravity CLI, Chat searches
 every harness's Accounts for a Transcript, and Launch Presets start an Agent
 in one. A harness's **Folder Variable** (such as `CLAUDE_CONFIG_DIR` or
 `CODEX_HOME`) is what points it at an Account; Heeler knows some and the user
@@ -471,16 +471,16 @@ every Host that has that folder and is untouched when an Account is removed
 _Avoid_: alias, profile, template
 
 **Usage Limits**:
-The windows a Claude Code or Codex Account may use before the service slows
+The windows a Claude Code, Codex, or Antigravity CLI Account may use before the service slows
 or stops it, such as five hours or a week, each with the share used and when
 it resets, as the service reports them for each Account on a Host. They
 describe the Account, not the Host or an Agent, and are never merged across
 Accounts. Claude Code's are read only when the user turns them on for that
-Host (ADR 0028).
+Host; Antigravity CLI's are on by default per Host and can be turned off (ADR 0028).
 _Avoid_: quota, rate limit (in copy), plan usage, billing
 
 **Token Usage**:
-The tokens a Host's Claude Code and Codex Transcripts record over at most the
+The tokens a Host's Claude Code, Codex, and Antigravity CLI Transcripts record over at most the
 last 30 days, by program, Account, day, model and working directory, with the
 estimated cost of those tokens at API list prices. It counts only what the
 Transcripts of the Host's Accounts still hold, and is never an Account's Usage

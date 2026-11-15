@@ -33,8 +33,22 @@ readline.createInterface({input: process.stdin}).on('line', line => {
   process.stdout.write(JSON.stringify({type:'control_response', response:{request_id:request.request_id, subtype:'success', response}})+'\\n');
 });
 `, {mode: 0o755});
+    const agyStub = join(root, "agy-stub");
+    writeFileSync(agyStub, `#!${process.execPath}
+if (process.argv[2] === '--version') { process.stdout.write('agy 1.1.12\\n'); process.exit(0); }
+const soon = new Date(Date.now() + 3600_000).toISOString();
+process.stdout.write(JSON.stringify({
+  status: 'SUCCESS',
+  command: { name: 'usage', data: { groups: [
+    { name: 'Gemini Models', buckets: [{ id: 'gemini_5h', name: '5h Limit Remaining', window: '5h', remaining_fraction: 0.86, reset_time: soon }] },
+    { name: 'Claude and GPT Models', buckets: [{ id: 'claude_weekly', name: 'Weekly Limit Remaining', window: 'weekly', remaining_fraction: 0.71, reset_time: null }] },
+  ] } }
+}) + '\\n');
+`, {mode: 0o755});
     const path = join(env.HERDR_PLUGIN_CONFIG_DIR, "runtime.json");
-    const runtime = JSON.parse(readFileSync(path)); runtime.claude = executable;
+    const runtime = JSON.parse(readFileSync(path));
+    runtime.claude = executable;
+    runtime.agy = agyStub;
     writeFileSync(path, JSON.stringify(runtime));
   }
   const query = (tz = "UTC") => {
@@ -220,13 +234,18 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   const f = fixture(t, true);
   // An added Account without Transcripts and one whose directory is gone.
   mkdirSync(join(f.root, "claude-2"));
+  mkdirSync(join(f.root, "agy-work", "brain"), { recursive: true });
   writeFileSync(join(f.env.HERDR_PLUGIN_CONFIG_DIR, "usage-accounts.json"), JSON.stringify({ version: 1, claude: { defaultName: null, accounts: [
     { id: "7f3c9a2e", directory: join(f.root, "claude-2"), name: "claude-2" }, { id: "c41d07b9", directory: join(f.root, "gone"), name: "work" }] },
-    // An added Codex Account without sessions, and a Codex home only the listing finds.
-    programs: { codex: { defaultName: null, accounts: [{ id: "a1b2c3d4", directory: join(f.root, "codex-work"), name: "codex-work" }] } } }));
+    // Added Codex and Antigravity Accounts without sessions, and homes only the listing finds.
+    programs: {
+      codex: { defaultName: null, accounts: [{ id: "a1b2c3d4", directory: join(f.root, "codex-work"), name: "codex-work" }] },
+      agy: { defaultName: null, accounts: [{ id: "b2c3d4e5", directory: join(f.root, "agy-work"), name: "agy-work" }] },
+    } }));
   mkdirSync(join(f.root, "codex-work", "sessions"), { recursive: true });
   mkdirSync(join(f.env.HOME, ".codex-personal"), { recursive: true });
   writeFileSync(join(f.env.HOME, ".codex-personal", "auth.json"), "{}");
+  mkdirSync(join(f.env.HOME, ".gemini", "antigravity-cli-personal", "brain"), { recursive: true });
   // A running Agent's directory, also in the home listing, and one only the listing finds.
   mkdirSync(join(f.env.HOME, ".claude-work", "projects"), { recursive: true });
   mkdirSync(join(f.env.HOME, ".claude-personal"));
@@ -247,6 +266,16 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
       primary: { used_percent: 18, window_minutes: 10080, resets_at: Math.floor(Date.now() / 1000) + 3600 },
       secondary: { used_percent: 60, window_minutes: 300, resets_at: Math.floor(Date.now() / 1000) - 3600 },
     } } },
+  ].map(line => JSON.stringify(line)).join("\n") + "\n");
+  const agyHome = join(f.env.HOME, ".gemini", "antigravity-cli");
+  const agyLogs = join(agyHome, "brain", "vector-agy", ".system_generated", "logs");
+  mkdirSync(agyLogs, { recursive: true });
+  writeFileSync(join(agyHome, "history.jsonl"), JSON.stringify({ conversationId: "vector-agy", workspace: "/work/agy", timestamp: Date.now() }) + "\n");
+  writeFileSync(join(agyLogs, "transcript_full.jsonl"), [
+    { step_index: 1, type: "USER_INPUT", created_at: timestamp,
+      content: "<USER_REQUEST>\nhi\n</USER_REQUEST>\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on the setting change.\n</USER_SETTINGS_CHANGE>" },
+    { step_index: 2, type: "PLANNER_RESPONSE", created_at: timestamp,
+      input_tokens: 1000, cache_read_tokens: 4000, output_tokens: 500 },
   ].map(line => JSON.stringify(line)).join("\n") + "\n");
   const report = await f.finish("Asia/Shanghai");
   const expected = { input: 1200, cacheRead: 830000, cacheWrite: 41000, output: 9800, reasoning: 0, total: 882000 };
@@ -300,9 +329,35 @@ test("the shared v1 vector comes from the worker's Claude and Codex aggregation"
   const codexSuggestions = report.programs[1].accountSuggestions;
   assert.deepEqual(codexSuggestions, [{ directory: join(f.env.HOME, ".codex-personal"), name: "codex-personal", source: "home" }]);
   codexSuggestions[0].directory = "/Users/u/.codex-personal";
+  // Antigravity's Default Account holds the vector conversation and `/usage` reading; added Accounts report singleSignIn.
+  const agyProgram = report.programs[2];
+  const agyAccounts = agyProgram.accounts;
+  assert.equal(agyProgram.program, "agy");
+  assert.deepEqual(agyAccounts.map(account => [account.id, account.state, account.tokenUsage.state]),
+    [["default", "ok", "ok"], ["b2c3d4e5", "ok", "noData"]]);
+  assert.deepEqual(agyAccounts[0].tokenUsage, agyProgram.tokenUsage);
+  assert.deepEqual(agyProgram.tokenUsage.totals.today.tokens,
+    { input: 1000, cacheRead: 4000, cacheWrite: 0, output: 500, reasoning: 0, total: 5500 });
+  assert.deepEqual(agyProgram.tokenUsage.models.map(model => [model.model, model.priced, model.tokens.total]),
+    [["gemini-3.8-flash-high", true, 5500]]);
+  assert.deepEqual(agyProgram.tokenUsage.directories.map(directory => [directory.path, directory.tokens.total]),
+    [["/work/agy", 5500]]);
+  assert.equal(agyProgram.usageLimits.state, "ok");
+  assert.deepEqual(agyProgram.usageLimits.windows.map(window => [window.id, window.label, window.durationMinutes, window.usedPercent]),
+    [["agy:gemini_5h", "Gemini · 5-hour", 300, 14], ["agy:claude_weekly", "Claude & GPT · Weekly", 10080, 29]]);
+  assert.deepEqual(agyAccounts[1].usageLimits, { state: "unavailable", reason: "singleSignIn" });
+  agyProgram.usageLimits.observedAt = "2026-10-23T12:34:50.000Z";
+  agyProgram.usageLimits.windows[0].resetsAt = "2026-10-23T13:34:56.000Z";
+  agyAccounts[0].usageLimits = structuredClone(agyProgram.usageLimits);
+  for (const [index, directory] of ["/Users/u/.gemini/antigravity-cli", "/Users/u/.gemini/antigravity-cli-work"].entries()) {
+    agyAccounts[index].directory = directory;
+  }
+  const agySuggestions = agyProgram.accountSuggestions;
+  assert.deepEqual(agySuggestions, [{ directory: join(f.env.HOME, ".gemini", "antigravity-cli-personal"), name: "antigravity-cli-personal", source: "home" }]);
+  agySuggestions[0].directory = "/Users/u/.gemini/antigravity-cli-personal";
   report.generatedAt = report.scan.coveredThrough = "2026-10-23T12:34:56.000Z";
   report.scan.coveredFrom = "2026-10-23";
-  for (const { tokenUsage } of [...report.programs, ...accounts, ...codexAccounts]) {
+  for (const { tokenUsage } of [...report.programs, ...accounts, ...codexAccounts, ...agyAccounts]) {
     for (const [index, day] of (tokenUsage?.daily || []).entries()) day.date = new Date(Date.parse("2026-10-23T12:00:00Z") - (29 - index) * 86_400_000).toISOString().slice(0, 10);
   }
   const path = join(plugin, "test-vectors", "usage-v1.json");

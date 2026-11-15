@@ -1,6 +1,6 @@
 id = "heeler"
 name = "heeler"
-version = "0.9.0"
+version = "0.10.0"
 min_herdr_version = "0.7.5"
 description = "Pair a Heeler device by scanning a QR Pairing Code"
 platforms = ["linux", "macos"]
@@ -25,6 +25,14 @@ description = "Used by Heeler: reads Claude Code's plan limits in herdr's sessio
 contexts = ["global"]
 platforms = ["macos"]
 command = ["node", "src/usage-claude-action.js"]
+
+[[actions]]
+id = "usage-agy-limits"
+title = "Read Antigravity Usage Limits"
+description = "Used by Heeler: reads Antigravity CLI's plan limits in herdr's session"
+contexts = ["global"]
+platforms = ["macos"]
+command = ["node", "src/usage-agy-action.js"]
 
 [[panes]]
 id = "pair"

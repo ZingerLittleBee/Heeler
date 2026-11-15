@@ -362,6 +362,44 @@ struct AgentUsageLimitsTests {
         }
     }
 
+    @Test func antigravityLimitsAndSingleSignInMessageRender() async throws {
+        let report = try AgentUsageFixture.antigravityReport()
+        let agy = try #require(report.agyProgram)
+        #expect(agy.displayName == "Antigravity")
+        let addedLimits = try #require(agy.accounts?.last?.usageLimits)
+        #expect(
+            AgentUsageLimitsView.unavailableMessage(addedLimits, program: "agy")
+                == "Antigravity signs in once per Host; Usage Limits are shown on the Default Account.")
+        let name = "agy-render-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = AgentUsageStore(hostID: UUID(), defaults: defaults) { _, _ in .available(report) }
+        await store.refresh()
+        let controller = UIHostingController(rootView:
+            VStack(alignment: .leading, spacing: 16) {
+                AgyUsageLimitsToggle(store: store)
+                AgyUsageLimitsNote()
+                AgyUsageLimitsNote(readsOverHostHelper: true)
+                AgentUsageLimitsView(program: "agy", limits: agy.usageLimits)
+            }
+            .padding(20).frame(width: 390, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.locale, Locale(identifier: "en_US")))
+        let size = controller.sizeThatFits(in: CGSize(width: 390, height: 5_000))
+        let bounds = CGRect(origin: .zero, size: size)
+        controller.view.frame = bounds
+        try await withTestWindow(frame: bounds, rootViewController: controller) { _ in
+            controller.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Antigravity limits"))
+            #expect(labels.contains("The plugin asks Antigravity on this computer for your plan limits."))
+            #expect(labels.contains("The Host Helper asks Antigravity on this computer for your plan limits."))
+            #expect(labels.contains("Gemini · 5-hour"))
+            #expect(labels.contains("Claude & GPT · Weekly"))
+        }
+    }
+
     /// `controller`'s labels, one per line, once they include `text`, or
     /// after five seconds without it. A List fills its cells after its
     /// window appears.
