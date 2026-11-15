@@ -64,6 +64,15 @@ Tap a terminal in **Terminals** to open it. The Rex app and other devices keep s
 - **Typing and pasting:** Type in Text or Keys mode, tap **Paste**, or send a Snippet. You can type whichever device set the terminal's size. What you type reaches the terminal in order, and Heeler never sends it twice: when the connection drops before Rex answers, the terminal shows **Connection dropped** with **Reattach**, and nothing typed after that point was sent. Keys typed while Heeler reconnects are not sent either; the terminal reconnects and paints again. A paste too large to send in one piece is blocked rather than split; paste less at a time.
 - **Ending:** When a terminal closes in Rex or its program exits, its view ends.
 
+When a terminal stops, it says why:
+
+| Terminal reads | What to do |
+| --- | --- |
+| **Connection dropped** | Something you typed may not have arrived. Tap **Reattach** and check the screen before typing again. |
+| **This terminal's history is too long to show** | Clear the terminal's scrollback in Rex, then tap **Reattach**. |
+| **Rex stopped sending this terminal's output** | Tap **Reattach**. |
+| **This Terminal belongs to a Rex server that is gone** | Rex restarted. Open the terminal again from **Terminals**. |
+
 ### Sized for another device
 
 A Rex terminal has one size, set by one device at a time. When no device has set it, the terminal fits your screen. When another device has, such as the Rex app on your Mac, Heeler shows the terminal at that size, cut off where it does not fit your screen, and after a second **Sized for another device** appears over its top rows:
@@ -72,13 +81,6 @@ A Rex terminal has one size, set by one device at a time. When no device has set
 - Heeler gives the size back when you leave the terminal, when Heeler goes to the background, or when the terminal ends, and the device that had it gets it back. Coming back never takes it again on its own; tap **Fit to Screen** again.
 - The **×** button dismisses the notice and keeps the other device's size. The notice returns when yet another device sets the size.
 - If fitting does not go through, the notice says why, and **Try Again** asks once more.
-
-| Terminal reads | What to do |
-| --- | --- |
-| **Connection dropped** | Something you typed may not have arrived. Tap **Reattach** and check the screen before typing again. |
-| **This terminal's history is too long to show** | Clear the terminal's scrollback in Rex, then tap **Reattach**. |
-| **Rex stopped sending this terminal's output** | Tap **Reattach**. |
-| **This Terminal belongs to a Rex server that is gone** | Rex restarted. Open the terminal again from **Terminals**. |
 
 ## What Heeler does not do yet
 
