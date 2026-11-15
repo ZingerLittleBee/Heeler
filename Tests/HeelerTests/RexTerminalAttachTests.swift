@@ -45,8 +45,11 @@ struct RexTerminalAttachTests {
 
         /// One SSH connection whose control channels open to `controls`, in
         /// order, and whose data channels all open to the endpoint.
-        func host(_ controls: [ScriptedRexHost.Channel]) async -> ScriptedRexHost {
-            let host = ScriptedRexHost(control: controls, admission: admission)
+        func host(
+            _ controls: [ScriptedRexHost.Channel], closingClosesChannels: Bool = false
+        ) async -> ScriptedRexHost {
+            let host = ScriptedRexHost(
+                control: controls, admission: admission, closingClosesChannels: closingClosesChannels)
             await host.serveData(from: endpoint)
             return host
         }
@@ -75,11 +78,15 @@ struct RexTerminalAttachTests {
         var text: String { String(decoding: all.reduce(Data(), +), as: UTF8.self) }
     }
 
-    private func hostSession(_ hosts: [ScriptedRexHost]) -> RexHostSession {
-        hostSession(RexHostSessionTests.Dialer(hosts))
+    private func hostSession(
+        _ hosts: [ScriptedRexHost], terminalEndingGrace: Duration = .seconds(3)
+    ) -> RexHostSession {
+        hostSession(RexHostSessionTests.Dialer(hosts), terminalEndingGrace: terminalEndingGrace)
     }
 
-    private func hostSession(_ dialer: RexHostSessionTests.Dialer) -> RexHostSession {
+    private func hostSession(
+        _ dialer: RexHostSessionTests.Dialer, terminalEndingGrace: Duration = .seconds(3)
+    ) -> RexHostSession {
         var options = RexTerminalAttach.Options()
         options.stream.link = .testing
         options.stream.startOverDelay = .milliseconds(20)
@@ -89,7 +96,7 @@ struct RexTerminalAttachTests {
         return RexHostSession(
             storedSocket: RexSocket(path: Self.socket), connect: { try await dialer.dial($0, $1) },
             reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
-            terminalOptions: options)
+            terminalOptions: options, terminalEndingGrace: terminalEndingGrace)
     }
 
     private var rexHost: Host {
@@ -556,19 +563,81 @@ struct RexTerminalAttachTests {
         await store.stop()
     }
 
-    /// The Host stopping ends the terminal, and its data link closes.
+    /// The Host stopping ends the terminal: its data link closes with a close
+    /// frame while the SSH connection is still up, and only then does the
+    /// control link close with one and the connection go.
     @Test func theHostStoppingEndsTheTerminal() async throws {
         let rig = Rig()
-        let session = hostSession([await rig.host([.server(await rig.server())])])
+        let control = await rig.server()
+        let host = await rig.host([.server(control)], closingClosesChannels: true)
+        let session = hostSession([host])
         await session.resume()
         let store = try await openPainted(rig, session: session)
+        let data = try #require(await rig.endpoint.channels.first)
+        await data.holdWrites()
+        let writes = await data.writeCount
 
-        await session.end()
+        let ending = Task { await session.end() }
+        await data.waitForWrites(writes + 1)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(await !host.log.contains("close"))
+        #expect(await control.clientClose == nil)
+        await data.releaseWrites()
+        await ending.value
+
         try await waitUntil("the end") {
             if case .ended = store.status { true } else { false }
         }
         #expect(await rig.endpoint.clientCloses == [WebSocketClose(code: .normalClosure)])
+        #expect(await control.clientClose?.code == .normalClosure)
+        #expect(await host.log.last == "close")
         #expect(await session.openTerminalCount == 0)
+    }
+
+    /// A data link that cannot finish its close frame, as on a dead SSH
+    /// connection, holds the Host's ending no longer than its grace.
+    @Test func aTerminalThatCannotCloseHoldsTheEndingOnlyBriefly() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let host = await rig.host([.server(control)], closingClosesChannels: true)
+        let session = hostSession([host], terminalEndingGrace: .milliseconds(300))
+        await session.resume()
+        let store = try await openPainted(rig, session: session)
+        let data = try #require(await rig.endpoint.channels.first)
+        await data.holdWrites()
+
+        let started = ContinuousClock.now
+        await session.end()
+        let waited = started.duration(to: .now)
+        #expect(waited >= .milliseconds(300))
+        // Short of the data link's own two-second wait for the server's answer.
+        #expect(waited < .milliseconds(1500))
+        #expect(await control.clientClose?.code == .normalClosure)
+        #expect(await host.log.last == "close")
+        try await waitUntil("the end") {
+            if case .ended = store.status { true } else { false }
+        }
+        #expect(await rig.endpoint.clientCloses.isEmpty)
+    }
+
+    /// Suspending once the grace period ran out leaves as ending does: the
+    /// data link, then the control link, close with a close frame before the
+    /// SSH connection goes.
+    @Test func suspendingClosesTheTerminalsLinksFirst() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let host = await rig.host([.server(control)], closingClosesChannels: true)
+        let session = hostSession([host])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let store = try await openPainted(rig, session: session)
+
+        await session.suspend()
+        #expect(await rig.endpoint.clientCloses == [WebSocketClose(code: .normalClosure)])
+        #expect(await control.clientClose?.code == .normalClosure)
+        #expect(await host.log.last == "close")
+        #expect(await session.openTerminalCount == 0)
+        await store.stop()
     }
 
     // MARK: One stream per block

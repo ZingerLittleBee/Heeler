@@ -84,27 +84,62 @@ final class RexTerminalHub: Sendable {
         let continuation: AsyncStream<RexTerminalSignal>.Continuation
     }
 
-    private let subscribers = Mutex<[UUID: Subscriber]>([:])
+    private struct State {
+        var subscribers: [UUID: Subscriber] = [:]
+        /// Those waiting for the last open terminal to end.
+        var idleWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    }
+
+    private let state = Mutex(State())
 
     func subscribe(
         _ address: RexPaneAddress, server: RexServerStatus
     ) -> (id: UUID, signals: AsyncStream<RexTerminalSignal>) {
         let (signals, continuation) = AsyncStream.makeStream(of: RexTerminalSignal.self)
         let id = UUID()
-        subscribers.withLock { $0[id] = Subscriber(address: address, server: server, continuation: continuation) }
+        state.withLock {
+            $0.subscribers[id] = Subscriber(address: address, server: server, continuation: continuation)
+        }
         return (id, signals)
     }
 
     func unsubscribe(_ id: UUID) {
-        subscribers.withLock { $0.removeValue(forKey: id) }?.continuation.finish()
+        let (removed, idle) = state.withLock { state in
+            let removed = state.subscribers.removeValue(forKey: id)
+            guard state.subscribers.isEmpty else { return (removed, [CheckedContinuation<Void, Never>]()) }
+            let idle = Array(state.idleWaiters.values)
+            state.idleWaiters = [:]
+            return (removed, idle)
+        }
+        removed?.continuation.finish()
+        for waiter in idle { waiter.resume() }
     }
 
     /// The sessions open terminals on `server` belong to.
     func openSessions(on server: RexServerStatus) -> Set<String> {
-        subscribers.withLock { Set($0.values.filter { $0.server == server }.map(\.address.sessionID)) }
+        state.withLock { Set($0.subscribers.values.filter { $0.server == server }.map(\.address.sessionID)) }
     }
 
-    var openTerminalCount: Int { subscribers.withLock { $0.count } }
+    var openTerminalCount: Int { state.withLock { $0.subscribers.count } }
+
+    /// Returns once no terminal is open, or once the caller is cancelled.
+    func untilNoneOpen() async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let waits = state.withLock { state in
+                    // Checked under the lock the cancellation handler takes,
+                    // so a cancellation never misses the waiter.
+                    guard !state.subscribers.isEmpty, !Task.isCancelled else { return false }
+                    state.idleWaiters[id] = continuation
+                    return true
+                }
+                if !waits { continuation.resume() }
+            }
+        } onCancel: {
+            state.withLock { $0.idleWaiters.removeValue(forKey: id) }?.resume()
+        }
+    }
 
     /// One update from the control link, as the inventory follower read it.
     func observe(_ update: RexControlUpdate) {
@@ -128,8 +163,10 @@ final class RexTerminalHub: Sendable {
     }
 
     private func signal(_ choose: (Subscriber) -> RexTerminalSignal?) {
-        let chosen = subscribers.withLock { subscribers in
-            subscribers.values.compactMap { subscriber in choose(subscriber).map { (subscriber.continuation, $0) } }
+        let chosen = state.withLock { state in
+            state.subscribers.values.compactMap { subscriber in
+                choose(subscriber).map { (subscriber.continuation, $0) }
+            }
         }
         for (continuation, signal) in chosen { continuation.yield(signal) }
     }

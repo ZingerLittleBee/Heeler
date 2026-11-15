@@ -37,9 +37,12 @@ struct RexConnection: Sendable {
 /// closed with 1001, as Rex does for a client that stopped answering its pings
 /// and still keeps: that one is resumed as a dropped one is.
 ///
-/// Suspending drops the link without a close frame, so a quick return may
-/// take the client back; ending closes it with one, so the server forgets
-/// this client at once. Connecting never starts a server.
+/// Suspending, once the app's grace period ran out, and ending leave on
+/// purpose: open terminals end their data links with a close frame, then the
+/// control link closes with one, so the server forgets this client at once,
+/// and only then does the SSH connection go. A link meant to be taken back,
+/// one that dropped or one a restart replaces, goes without a close frame.
+/// Connecting never starts a server.
 actor RexHostSession {
     typealias Sleep = @Sendable (Duration) async throws -> Void
     /// Dials the Host: the socket to try first, and a link whose client the
@@ -112,6 +115,9 @@ actor RexHostSession {
     private nonisolated let terminals = RexTerminalHub()
     private let terminalOptions: RexTerminalAttach.Options
     private let terminalSleep: RexTerminalStream.Sleep
+    /// How long leaving on purpose waits for open terminals to close their
+    /// data links before the SSH connection goes anyway.
+    private let terminalEndingGrace: Duration
     private struct ConnectionWaiter {
         let id: UUID
         /// The activation it was asked in; nil when asked while suspended,
@@ -150,6 +156,7 @@ actor RexHostSession {
         maxReadsInFlight: Int = 4,
         terminalOptions: RexTerminalAttach.Options = RexTerminalAttach.Options(),
         terminalSleep: @escaping RexTerminalStream.Sleep = { try await Task.sleep(for: $0) },
+        terminalEndingGrace: Duration = .seconds(3),
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
     ) {
         socket = storedSocket
@@ -160,6 +167,7 @@ actor RexHostSession {
         self.maxReadsInFlight = maxReadsInFlight
         self.terminalOptions = terminalOptions
         self.terminalSleep = terminalSleep
+        self.terminalEndingGrace = terminalEndingGrace
         self.sleep = sleep
         (updates, updatesContinuation) = AsyncStream.makeStream(of: RexHostSessionUpdate.self)
         (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
@@ -235,7 +243,7 @@ actor RexHostSession {
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldStatus(.connecting)
-        await windDown(forGood: false)
+        await windDown(leaving: false)
         guard phase == .active, activationGeneration == generation else { return }
         runTask = Task { await self.run(generation: generation) }
     }
@@ -247,11 +255,14 @@ actor RexHostSession {
         runTask = Task { await self.run(generation: generation) }
     }
 
+    /// Suspending comes once the app's grace period ran out, and every
+    /// terminal on the Host ends with it: nothing is left for the server to
+    /// keep, so the client leaves as on ending, and a resume says hello afresh.
     private func deactivate() async {
         guard phase == .active else { return }
         phase = .suspended
         failPinnedConnectionWaiters(.cancelled)
-        await windDown(forGood: false)
+        await windDown(leaving: true)
         yieldStatus(.suspended)
     }
 
@@ -264,7 +275,7 @@ actor RexHostSession {
         guard phase != .ended else { return }
         phase = .ended
         failConnectionWaiters(.cancelled)
-        await windDown(forGood: true)
+        await windDown(leaving: true)
         yieldStatus(.ended)
         updatesContinuation.finish()
         latencyContinuation.finish()
@@ -477,12 +488,15 @@ actor RexHostSession {
         phase == .active && activationGeneration == generation && !Task.isCancelled
     }
 
-    /// Ends the activation and closes the connection. For good, the link
-    /// closes with a close frame so the server forgets this client; otherwise
-    /// it drops without one, to be resumed. The run task is cancelled but not
-    /// awaited, since a stalled SSH operation may ignore cancellation;
-    /// generation checks make any late result harmless.
-    private func windDown(forGood: Bool) async {
+    /// Ends the activation and closes the connection. Leaving on purpose,
+    /// open terminals end their data links with a close frame while the SSH
+    /// connection under them is still up, waiting for them no longer than
+    /// `terminalEndingGrace`, and the control link closes with one, so the
+    /// server forgets this client. Otherwise the link drops without one, to
+    /// be resumed. The run task is cancelled but not awaited, since a stalled
+    /// SSH operation may ignore cancellation; generation checks make any late
+    /// result harmless.
+    private func windDown(leaving: Bool) async {
         waitSleep?.cancel()
         waitSleep = nil
         let task = runTask
@@ -495,18 +509,35 @@ actor RexHostSession {
         if let transport {
             self.transport = nil
             let control = await transport.control
-            if forGood {
+            if leaving {
                 resumable = nil
+                await letOpenTerminalsEnd()
             } else {
                 if await control.isOpen { await control.disconnect() }
                 resumable = control
             }
             await transport.close()
-        } else if forGood {
+        } else if leaving {
             resumable = nil
         }
         link = nil
         transportSuspect = false
+    }
+
+    /// Waits for the open terminals, which heard their connection is going,
+    /// to close their data links, for up to `terminalEndingGrace`: one whose
+    /// SSH connection is dead may never finish its close frame.
+    private func letOpenTerminalsEnd() async {
+        guard terminals.openTerminalCount > 0 else { return }
+        let terminals = terminals
+        let grace = terminalEndingGrace
+        let sleep = sleep
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await terminals.untilNoneOpen() }
+            group.addTask { try? await sleep(grace) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     // MARK: Terminals

@@ -299,20 +299,23 @@ struct RexHostSessionTests {
         await session.end()
     }
 
-    /// Suspending drops the link without a close frame, and the next
-    /// connection takes the client back over a new SSH connection.
-    @Test func aSuspendedSessionResumesItsClientOverANewConnection() async throws {
+    /// Suspending comes once the app's grace period ran out: the link closes
+    /// with a close frame, so the server forgets the client at once, and the
+    /// next connection says hello afresh.
+    @Test func aSuspendedSessionLeavesAndSaysHelloAfresh() async throws {
         let world = world()
         let first = await server(world)
         let second = await server(world)
-        let dialer = Dialer([ScriptedRexHost(control: [.server(first)]), ScriptedRexHost(control: [.server(second)])])
+        let firstHost = ScriptedRexHost(control: [.server(first)])
+        let dialer = Dialer([firstHost, ScriptedRexHost(control: [.server(second)])])
         let session = session(dialer)
         let log = UpdateLog(session)
         await session.resume()
         try await waitForSettledInventory(log)
 
         await session.suspend()
-        #expect(!(await first.clientSentCloseFrame))
+        #expect(await first.clientClose?.code == .normalClosure)
+        #expect(await firstHost.log.last == "close")
         try await log.waitUntil("the suspension") { $0.statuses.last == .suspended }
         let before = log.inventories.count
         await session.resume()
@@ -320,8 +323,8 @@ struct RexHostSessionTests {
             $0.statuses.last == .connected && $0.inventories.count > before
         }
 
-        #expect(dialer.dialsResuming == [false, true])
-        #expect(await second.nextHello()["reconnect_token"] == "fake-reconnect-token-0001")
+        #expect(dialer.dialsResuming == [false, false])
+        #expect(await second.nextHello()["reconnect_token"] == nil)
         await session.end()
     }
 

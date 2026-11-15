@@ -33,10 +33,14 @@ final actor ScriptedRexHost: RexHostConnection {
     private(set) var log: [String] = []
     /// Every server a channel opened to, in order.
     private(set) var servers: [FakeRexServer] = []
+    /// Closing closes every channel opened on the connection, as SSH does,
+    /// so nothing written on one afterwards reaches its server.
+    private let closingClosesChannels: Bool
+    private var opened: [any HeelerSSHAPIChannel] = []
 
     init(
         probe: [String]? = nil, socketCheck: String? = nil, control: [Channel] = [], data: [Channel] = [],
-        admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix
+        admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix, closingClosesChannels: Bool = false
     ) {
         self.probe = probe
         self.socketCheck = socketCheck
@@ -44,6 +48,7 @@ final actor ScriptedRexHost: RexHostConnection {
         dataChannels = data
         self.admission = admission
         self.platform = platform
+        self.closingClosesChannels = closingClosesChannels
     }
 
     /// Serves `endpoint` for every data channel from now on.
@@ -100,6 +105,8 @@ final actor ScriptedRexHost: RexHostConnection {
     func close() async throws {
         log.append("close")
         isConnected = false
+        guard closingClosesChannels else { return }
+        for channel in opened { try? await channel.close(timeout: .zero) }
     }
 
     private func next(from queue: inout [Channel]) throws -> Channel {
@@ -112,9 +119,12 @@ final actor ScriptedRexHost: RexHostConnection {
         case .server(let server, let welcome):
             servers.append(server)
             if let welcome { Task { await server.handshake(welcome) } }
+            opened.append(server.channel)
             return server.channel
         case .endpoint(let endpoint):
-            return await endpoint.connect()
+            let channel = await endpoint.connect()
+            opened.append(channel)
+            return channel
         case .refused:
             throw TransportError.streamLocalOpenFailed(path: socketPath)
         case .fails(let error):

@@ -85,9 +85,10 @@ terminal for viewing; ADR 0050 adds its input.
     the terminal. The data link closes on its own after the block's last
     output; if it has not a moment after the block's close event, the attach
     ends anyway. Nothing reattaches.
-  - Suspending with the app, past the grace period, closes the SSH
-    connection and so every data link; the view reattaches and paints afresh
-    when the Host is back. The Host stopping ends the terminal.
+  - Suspending with the app, past the grace period, ends every data link
+    with a close frame before the SSH connection closes; the view reattaches
+    and paints afresh when the Host is back. The Host stopping ends the
+    terminal the same way.
 - **One data stream per block per client.** An attach holds its block in
   `RexHostSession` until its stream has closed, so two views, a retained
   attachment beside a new open, or a quick close and reopen never ask for a

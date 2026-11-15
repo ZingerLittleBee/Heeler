@@ -54,10 +54,13 @@ restarted servers without showing a stale or half-read list.
 - `server.status` names the server instance. Another instance is another
   server: every detail open on the last one's terminals has left the inventory,
   as with another tmux server (ADR 0045).
-- Suspending with the app drops the connection without a close frame, so a
-  quick return takes the client back. Leaving for good, when the Host is
-  removed or replaced or the Console ends, closes it with a close frame, so the
-  server forgets the client at once.
+- Leaving on purpose closes the connection with a close frame, so the server
+  forgets the client at once: suspending with the app once its grace period
+  ran out, and the Host removed or replaced or the Console ending. Open
+  terminals close their data links first, each with a close frame, waiting no
+  longer than three seconds, and only then does the SSH connection go. A
+  short trip to the background keeps the connection as it is, and a
+  connection that dropped is taken back by the next one.
 - Only API revision 12 is accepted (ADR 0047).
 - A Rex session is a Workspace, a window a Tab and a terminal block a Pane,
   named and ordered as Rex shows them. A window lists its terminals in reading
