@@ -230,12 +230,23 @@ struct AgentUsageReport: Decodable, Equatable, Sendable {
     /// Claude Code's entry, when the report has one.
     var claudeProgram: Program? { programs?.first { $0.program == "claude" } }
 
-    /// When the figures were read on the Host, for a report the app read at
-    /// `readAt`. A refreshing report serves what the last run left, which
-    /// can be hours old when nothing read the Host in between.
+    /// When the oldest figures in the report were read on the Host, for a
+    /// report the app read at `readAt`. A refreshing report is the last
+    /// run's until the running one commits its scan, and keeps the last
+    /// run's limits until that one has read them, which can be hours old
+    /// when nothing read the Host in between.
     func figuresDate(readAt: Date) -> Date {
-        guard refreshing == true, let scanned = AgentUsageLimitsView.date(scan?.coveredThrough) else { return readAt }
-        return min(scanned, readAt)
+        guard refreshing == true else { return readAt }
+        var read = [AgentUsageLimitsView.date(scan?.coveredThrough)]
+        for program in programs ?? [] {
+            let limits = [program.usageLimits] + (program.accounts ?? []).compactMap(\.usageLimits)
+            // A reading from a past session, or kept through a failed read,
+            // is no older for the wait.
+            for reading in limits where reading.state == "ok" && reading.source == "service" {
+                read.append(AgentUsageLimitsView.date(reading.observedAt))
+            }
+        }
+        return read.compactMap(\.self).min().map { min($0, readAt) } ?? readAt
     }
 
     /// A device that opted out must never show a reading cached by another query.

@@ -108,22 +108,19 @@ extension UsageWidgetSnapshot.Host {
         let kept = previous?.host(reading.id).flatMap { $0.reports ? $0 : nil }
         switch reading.state {
         case .available(let report):
-            let readAt = report.figuresDate(readAt: reading.readAt ?? now)
-            let fresh = Self(id: reading.id, name: reading.name, report: report, readAt: readAt)
+            let readAt = reading.readAt ?? now
             // A reading made while the app was away is newer than the
-            // report the app still holds from before. It stays while the
-            // report counts the same Accounts, under this device's opt-out.
+            // report the app still holds from before. Any later read is the
+            // Host's latest answer: its Accounts and this device's opt-out
+            // are current even while its figures are the last run's, so it
+            // replaces what the snapshot holds and is dated by its figures.
             if var kept, let keptAt = kept.readAt, keptAt > readAt {
                 kept.name = reading.name
-                if report.claudeProgram?.usageLimits.state == "disabled" {
-                    kept.limits = Self.limits(kept.limits, claudeFrom: fresh)
-                }
-                if kept.countsSameAccounts(as: fresh) {
-                    self = kept
-                    return
-                }
+                self = kept
+            } else {
+                self.init(
+                    id: reading.id, name: reading.name, report: report, readAt: report.figuresDate(readAt: readAt))
             }
-            self = fresh
         case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.exclusion(for: reading.state))
         case .idle, .loading, .failed:
@@ -148,20 +145,6 @@ extension UsageWidgetSnapshot.Host {
             }
             self.init(id: reading.id, name: reading.name, excludedReason: reason)
         }
-    }
-
-    /// Whether `other` lists limits for the same programs' Accounts: an
-    /// Account added or removed since changes what the figures count.
-    private func countsSameAccounts(as other: Self) -> Bool {
-        Set(limits.map { [$0.program, $0.accountID ?? ""] }) == Set(other.limits.map { [$0.program, $0.accountID ?? ""] })
-    }
-
-    /// `limits` with Claude Code's entries swapped for `other`'s, in their place.
-    private static func limits(_ limits: [UsageWidgetSnapshot.Limits], claudeFrom other: Self) -> [UsageWidgetSnapshot.Limits] {
-        guard let place = limits.firstIndex(where: { $0.program == "claude" }) else { return limits }
-        var swapped = limits.filter { $0.program != "claude" }
-        swapped.insert(contentsOf: other.limits.filter { $0.program == "claude" }, at: place)
-        return swapped
     }
 
     init(id: UUID, name: String, excludedReason: AgentUsageExclusion) {
