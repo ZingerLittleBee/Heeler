@@ -1,10 +1,10 @@
 # Connect Heeler through an Overlay Network
 
-Use Tailscale, ZeroTier, or EasyTier to reach the Mac running herdr when you can't connect to it directly, for example from cellular. These guides cover a Mac and Heeler on iPhone or iPad.
+Use Tailscale, ZeroTier, EasyTier, or tailcat to reach the Mac running herdr when you can't connect to it directly, for example from cellular. These guides cover a Mac and Heeler on iPhone or iPad.
 
 You need a Heeler version with **Settings > Overlay Networks**.
 
-Heeler joins the network by itself, so the phone needs no Tailscale, ZeroTier, or EasyTier app and no VPN setting. The Mac needs the provider's software, Remote Login (SSH), and herdr. You still log in to the Mac over SSH as usual.
+Heeler joins the network by itself, so the phone needs no Tailscale, ZeroTier, EasyTier, or tailcat app and no VPN setting. The Mac needs the provider's software, Remote Login (SSH), and herdr. You still log in to the Mac over SSH as usual.
 
 ## Choose a setup
 
@@ -16,6 +16,7 @@ Prepare the Host below, then follow one provider guide. It sends you to [Connect
 | [Tailscale without a VPN on the Mac (advanced)](tailscale.md#run-tailscale-without-a-vpn-on-the-mac-advanced) | A Tailscale account and Homebrew | Works |
 | [ZeroTier](zerotier.md) | A ZeroTier Central account and ZeroTier One on the Mac | Works |
 | [EasyTier](easytier.md) | No account; EasyTier on the Mac from Terminal | Needs a relay you run, such as a small VPS, or a Mac reachable from the internet ([how](easytier.md#reaching-a-mac-outside-the-lan)) |
+| [tailcat](tailcat.md) | No account; `tailcat serve` on the Mac from Terminal. Reaches that one Mac | Works |
 
 If you're new to this, start with Tailscale. For a Linux or Windows machine, install the provider's client from its own documentation, then follow the same Heeler steps. Windows also needs the [Windows SSH and herdr setup](windows-setup.md).
 
@@ -34,6 +35,11 @@ Go to **Settings > Overlay Networks > Add Network**. Each provider has its own f
 | --- | --- |
 | <a href="images/overlay-networks/easytier-manual-form.png"><img src="images/overlay-networks/easytier-manual-form.png" width="260" alt="EasyTier Network form with network name, secret, and peers"></a> | <a href="images/overlay-networks/easytier-config-server-form.png"><img src="images/overlay-networks/easytier-config-server-form.png" width="260" alt="EasyTier Config Server form with a server URL and this device's Machine ID"></a> |
 | Enter the Mac's network name and secret, and add its peer address. [Network setup](easytier.md#3-add-the-network-in-heeler) | Enter the server URL, then assign a network to the Machine ID. [Config Server setup](easytier.md#2-register-heelers-device) |
+
+| tailcat |
+| --- |
+| <a href="images/overlay-networks/tailcat-form.png"><img src="images/overlay-networks/tailcat-form.png" width="260" alt="tailcat form with Name and an empty Address field"></a> |
+| Paste the address `tailcat serve` prints and tap **Add and Connect**. [tailcat setup](tailcat.md#3-heeler-add-the-tunnel) |
 
 The values shown are examples.
 
@@ -65,7 +71,7 @@ Do these steps on the Mac that runs herdr, signed in as the account Heeler will 
 
 Come here from your provider guide once the Mac and Heeler are on the same network.
 
-1. Open **Hosts** and tap **+**. Tap **More Options**, set **Network** to your saved network, fill in **Address** and **Port**, and go back. For Tailscale and EasyTier, you can instead open the network in Settings and tap **Add** next to the Mac; this pre-fills the address and network. (**Direct** means Heeler does not use the overlay network.)
+1. Open **Hosts** and tap **+**. Tap **More Options**, set **Network** to your saved network, fill in **Address** and **Port**, and go back. For Tailscale, EasyTier, and tailcat, you can instead open the network in Settings and tap **Add** next to the Mac; this pre-fills the address and network. (**Direct** means Heeler does not use the overlay network.)
 2. Fill in **User** and the sign-in method from the table below, and tap **Connect**.
 3. Tap **Trust and Continue** only if the fingerprint matches the one from the Mac.
 4. Leave the Servers you want checked, name the Host if you like, and add it. If nothing connects afterwards, open the Host, tap the Server, fix what its checks name, and tap **Run Checks Again**.
@@ -84,7 +90,7 @@ Come here from your provider guide once the Mac and Heeler are on the same netwo
 | Authentication | The sign-in method you picked |
 | Name (last step) | Any label for this Mac |
 
-To fill in the address under **More Options**, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central.
+To fill in the address under **More Options**, Tailscale offers **Choose from Tailnet…** (keep **IP Address** selected) and EasyTier offers **Choose from Network…**. For ZeroTier, copy the Mac's IP address from ZeroTier Central. For a tailcat tunnel, Heeler fills in the address when you choose the tunnel; it is a name ending in `.tailcat`, not an IP address.
 
 ## Verify the connection
 
