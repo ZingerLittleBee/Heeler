@@ -54,8 +54,8 @@ extension Host {
 struct HostMachine: Identifiable, Hashable, Sendable {
     /// What makes two catalog records one Host: the account, how it
     /// authenticates, and the Routes in order.
-    struct Connection: Hashable, Sendable {
-        struct Route: Hashable, Sendable {
+    struct Connection: Hashable, Codable, Sendable {
+        struct Route: Hashable, Codable, Sendable {
             let address: String
             let port: Int
             let jumpAddress: String
@@ -130,6 +130,12 @@ struct HostMachine: Identifiable, Hashable, Sendable {
     /// The record of `server`, when it is on.
     func record(of server: HostServerKey) -> Host? {
         members.first { $0.serverKey == server }
+    }
+
+    /// Whether turning `server` on adds a record to the catalog: it is off, and
+    /// no record is waiting for a Server.
+    func needsRecord(for server: HostServerKey) -> Bool {
+        record(of: server) == nil && spareRecord == nil
     }
 
     /// `hosts` as the Hosts they reach, each where its first record stands.

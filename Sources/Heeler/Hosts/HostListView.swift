@@ -2,36 +2,55 @@ import Observation
 import SwiftUI
 
 struct HostRemovalRequest: Equatable {
+    /// The catalog records to go: every record of each Host removed, or the
+    /// one record of a Server turned off (ADR 0047).
     let hosts: [Host]
     /// Whether this device holds a Notification Key for any of the Hosts.
     var deletesNotificationKey = false
     /// Whether a Host with a Notification Key is not connected, so its
     /// registration of this device cannot be revoked (#414).
     var leavesNotificationsBehind = false
+    /// The Server's label when this turns one Server off and its Host stays.
+    var turnsOffServer: String?
+
+    /// The Hosts the records reach, each counted once.
+    private var machines: [HostMachine] { HostMachine.grouped(hosts) }
 
     var title: String {
-        if hosts.count == 1, let host = hosts.first {
-            return String(localized: "Remove \(host.displayName)?")
+        if let turnsOffServer, let record = hosts.first {
+            return String(localized: "Turn off \(turnsOffServer) on \(record.machineName)?")
         }
-        return String(localized: "Remove \(hosts.count) Hosts?")
+        let machines = machines
+        if machines.count == 1, let machine = machines.first {
+            return String(localized: "Remove \(machine.name)?")
+        }
+        return String(localized: "Remove \(machines.count) Hosts?")
     }
 
     var actionTitle: String {
-        hosts.count == 1 ? String(localized: "Remove Host") : String(localized: "Remove Hosts")
+        if turnsOffServer != nil { return String(localized: "Turn Off") }
+        return machines.count == 1 ? String(localized: "Remove Host") : String(localized: "Remove Hosts")
     }
 
     var message: String {
+        let reachesOneHost = machines.count == 1
+        let unreachable =
+            reachesOneHost
+            ? String(localized: "Heeler can't reach this Host, so it may keep sending notifications to this device. Connect to it first to stop them.")
+            : String(localized: "Heeler can't reach some of these Hosts, so they may keep sending notifications to this device. Connect to them first to stop those notifications.")
+        if turnsOffServer != nil {
+            var sentences = [
+                String(localized: "Its Agents, Terminals and notifications leave this device, and its Notification Key is deleted from the Keychain.")
+            ]
+            if leavesNotificationsBehind { sentences.append(unreachable) }
+            return sentences.joined(separator: " ")
+        }
         var sentences = [
             deletesNotificationKey
                 ? String(localized: "This permanently deletes the Host configuration, its trusted host key, any saved password, and the Notification Key from the Keychain.")
                 : String(localized: "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain.")
         ]
-        if leavesNotificationsBehind {
-            sentences.append(
-                hosts.count == 1
-                    ? String(localized: "Heeler can't reach this Host, so it may keep sending notifications to this device. Connect to it first to stop them.")
-                    : String(localized: "Heeler can't reach some of these Hosts, so they may keep sending notifications to this device. Connect to them first to stop those notifications."))
-        }
+        if leavesNotificationsBehind { sentences.append(unreachable) }
         sentences.append(String(localized: "This cannot be undone."))
         return sentences.joined(separator: " ")
     }
@@ -63,6 +82,9 @@ struct HostRemovalDependencies: Sendable {
     /// trusted host key and the Workspace New Agent last picked there. Runs
     /// after `didRemoveHost`.
     var forgetHostRecords: @MainActor @Sendable (Host.ID) async -> Void = { _ in }
+    /// Gives the second record the host keys trusted for the first: the record
+    /// that holds a Host once its last Server is turned off (ADR 0047).
+    var copyHostKeyTrust: @MainActor @Sendable (_ from: Host.ID, _ to: Host.ID) async -> Void = { _, _ in }
 }
 
 extension HostRemovalDependencies {
@@ -99,6 +121,9 @@ extension HostRemovalDependencies {
             forgetHostRecords: { id in
                 await knownHosts.forgetHost(id)
                 recentLaunches.forgetWorkspace(for: id)
+            },
+            copyHostKeyTrust: { source, record in
+                await knownHosts.copyTrust(from: source, to: record)
             })
     }
 }
@@ -127,13 +152,6 @@ final class HostRemovalsInFlight {
 extension EnvironmentValues {
     /// What removing a Host cleans up; see `HostRemovalDependencies`.
     @Entry var hostRemovalDependencies = HostRemovalDependencies()
-}
-
-/// One Duplicate form presentation, identified per request so duplicating
-/// the same Host again presents a fresh, renumbered draft.
-private struct HostDuplicateRequest: Identifiable {
-    let id = UUID()
-    let draft: HostDraft
 }
 
 @MainActor
@@ -165,6 +183,28 @@ final class HostRemovalStore {
             leavesNotificationsBehind: keyed.contains { !dependencies.isConnected($0.id) })
     }
 
+    /// Turns one Server off (ADR 0047): its record goes as a removed Host's
+    /// does, and its Host stays. It asks first only where a Notification Key
+    /// goes with it; a switch otherwise takes effect as it is thrown.
+    func turnOff(
+        _ id: Host.ID,
+        dependencies: HostRemovalDependencies = HostRemovalDependencies()
+    ) async {
+        guard let record = store.hosts.first(where: { $0.id == id }), !dependencies.inFlight.contains(id)
+        else { return }
+        let hasKey = dependencies.hasNotificationKey(id)
+        let request = HostRemovalRequest(
+            hosts: [record],
+            deletesNotificationKey: hasKey,
+            leavesNotificationsBehind: hasKey && !dependencies.isConnected(id),
+            turnsOffServer: record.serverKey?.label ?? record.serverKind.displayName)
+        if hasKey {
+            pendingRequest = request
+        } else {
+            await confirmRemoval(request, dependencies: dependencies)
+        }
+    }
+
     func cancelRemoval() {
         pendingRequest = nil
     }
@@ -182,6 +222,18 @@ final class HostRemovalStore {
         let hosts = request.hosts.filter { !inFlight.contains($0.id) }
         inFlight.begin(hosts.map(\.id))
         defer { inFlight.end(hosts.map(\.id)) }
+        if request.turnsOffServer != nil, let server = hosts.first {
+            // The Host outlives its last Server: a record with none holds it
+            // from here on, trusting the keys this one did.
+            do {
+                if let held = try store.holdHost(beyond: server.id) {
+                    await dependencies.copyHostKeyTrust(server.id, held.id)
+                }
+            } catch {
+                errorMessage = String(localized: "The Server could not be turned off.")
+                return
+            }
+        }
         for host in hosts {
             await dependencies.revokeNotifications(host)
             do {
@@ -203,9 +255,9 @@ final class HostRemovalStore {
     }
 }
 
-/// Host management (#14): the catalog of Hosts with add/edit/remove, grouped
-/// by what each needs from the user (#316), every row leading into that
-/// Host's onboarding checklist.
+/// Host management (#14): the Hosts with add/edit/remove, grouped by what
+/// each needs from the user (#316). A row is a Host with the Servers that are
+/// on (ADR 0047) and leads to Host detail, where they are switched.
 struct HostListView: View {
     let store: HostStore
     private let initialHostID: Host.ID?
@@ -237,11 +289,14 @@ struct HostListView: View {
     /// where it is a tab.
     private let onDone: (@MainActor () -> Void)?
     @State private var removal: HostRemovalStore
+    /// What each Host was last found to run.
+    private let discoveries: HostServerDiscoveryStore
     @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
     @Environment(\.hostRemovalDependencies) private var removalDependencies
     @State private var isAddingHost = false
     @State private var editingHost: Host?
-    @State private var duplicateRequest: HostDuplicateRequest?
+    /// A record of the Host the wizard just added, while its row is lit.
+    @State private var newlyAddedHost: Host.ID?
     /// State, not `@AppStorage`: a defaults write lands outside the toggle's
     /// animation, so the group would snap shut.
     @State private var collapsedGroups: Set<HostHealthGroup>
@@ -276,9 +331,11 @@ struct HostListView: View {
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil,
+        discoveries: HostServerDiscoveryStore = .shared,
         onDone: (@MainActor () -> Void)? = nil
     ) {
         self.store = store
+        self.discoveries = discoveries
         self.initialHostID = initialHostID
         self.opensHostHelper = opensHostHelper
         self.usageStore = usageStore
@@ -379,39 +436,15 @@ struct HostListView: View {
                 }
             }
             .navigationDestination(for: HostDetailDestination.self) { route in
-                let id = route.hostID
-                if let host = store.hosts.first(where: { $0.id == id }) {
-                    // Keyed by the Host's id: onboarding restarts itself for
-                    // an edited Host once the Edit sheet is gone.
-                    HostOnboardingView(
-                        host: host,
-                        catalog: store,
-                        usage: usageStore?(id),
-                        openUsage: openUsage.map { open in { open(id) } },
-                        connectionStatus: connectionStatuses[id],
-                        connectedRouteID: routeIDs[id],
-                        syncIssue: syncIssues[id],
-                        coreEnvironmentNotice: coreEnvironmentNotices[id],
-                        harnessEdits: harnessEdits,
-                        isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
-                        retryConnection: retryAction(for: id),
-                        stopConnecting: stopAction(for: id),
-                        opensHostHelper: route.opensHostHelper,
-                        dependencies: onboardingDependencies)
-                        .id(id)
-                        .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
-                } else {
-                    ContentUnavailableView("Host removed", systemImage: "server.rack")
-                }
+                destination(for: route)
             }
-            .sheet(
-                isPresented: $isAddingHost,
-                onDismiss: {
-                    navigateToPendingOnboardingHostIfNeeded()
-                }
-            ) {
-                HostFormView(store: store) { saved in
-                    pendingOnboardingHostID = saved.id
+            // The wizard leaves a Host that is already reached and trusted, so
+            // it comes back here, to the new row, and not to a checklist.
+            .sheet(isPresented: $isAddingHost) {
+                NewHostWizardView(
+                    catalog: store, discoveries: discoveries, dependencies: onboardingDependencies
+                ) { member in
+                    pointOut(member)
                 }
             }
             .sheet(
@@ -428,8 +461,9 @@ struct HostListView: View {
                     navigateToPendingOnboardingHostIfNeeded()
                 }
             ) {
-                // A successful Pairing lands in the same onboarding preflight
-                // a manually added Host enters (session discovery included).
+                // A successful Pairing lands on its Server's page, whose
+                // preflight is the only place its first connection can be
+                // trusted (session discovery included).
                 PairingScanView(catalog: store) { paired in
                     pendingOnboardingHostID = paired.id
                 } onAddManually: {
@@ -459,50 +493,6 @@ struct HostListView: View {
             .sheet(item: $editingHost) { host in
                 HostFormView(store: store, editing: host)
             }
-            // A copy is a new Host: like Add, it lands in onboarding, the only
-            // place a first connection to a new endpoint can be trusted.
-            .sheet(
-                item: $duplicateRequest,
-                onDismiss: {
-                    navigateToPendingOnboardingHostIfNeeded()
-                }
-            ) { request in
-                HostFormView(store: store, prefill: request.draft) { saved in
-                    pendingOnboardingHostID = saved.id
-                }
-            }
-            .alert(
-                removal.pendingRequest?.title ?? String(localized: "Remove Host?"),
-                isPresented: removalConfirmationPresented,
-                presenting: removal.pendingRequest
-            ) { request in
-                Button(request.actionTitle, role: .destructive) {
-                    let dependencies = removalDependencies
-                    Task { await removal.confirmRemoval(request, dependencies: dependencies) }
-                }
-                Button("Cancel", role: .cancel) {
-                    removal.cancelRemoval()
-                }
-            } message: { request in
-                Text(request.message)
-            }
-            .alert(
-                "Could Not Remove Host",
-                isPresented: Binding(
-                    get: { removal.errorMessage != nil },
-                    set: { isPresented in
-                        if !isPresented {
-                            removal.dismissError()
-                        }
-                    }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    removal.dismissError()
-                }
-            } message: {
-                Text(removal.errorMessage ?? "")
-            }
             // A caller that keeps this view's identity across requests
             // still lands on the new one.
             .onChange(of: initialHostID) { _, id in
@@ -510,35 +500,131 @@ struct HostListView: View {
                     path = [route]
                 }
             }
+            .onChange(of: store.hosts.map(\.id)) { _, records in
+                // A Server turned off from its own page has no page left.
+                path.removeAll { route in
+                    if case .server(let id, _, _) = route { !records.contains(id) } else { false }
+                }
+                discoveries.retain(store.machines.map(\.id))
+            }
+            .task(id: reachedHosts) { await lookForServers() }
         }
+        // Over whichever page is up: Host detail and a Server's page ask too.
+        .modifier(HostRemovalAlerts(removal: removal))
         // Covers Host detail too.
         .readableColumn()
     }
 
+    @ViewBuilder
+    private func destination(for route: HostDetailDestination) -> some View {
+        switch route {
+        case .host(let member, let isRequested):
+            HostMachineDetailView(
+                catalog: store, member: member, discoveries: discoveries, removal: removal,
+                dependencies: onboardingDependencies, serverState: { serverPresentation($0) })
+                .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
+        case .server(let id, let isRequested, let opensHostHelper):
+            if let host = store.hosts.first(where: { $0.id == id }) {
+                // Keyed by the record's id: onboarding restarts itself for a
+                // Host edited underneath.
+                HostOnboardingView(
+                    host: host,
+                    catalog: store,
+                    usage: usageStore?(id),
+                    openUsage: openUsage.map { open in { open(id) } },
+                    connectionStatus: connectionStatuses[id],
+                    connectedRouteID: routeIDs[id],
+                    syncIssue: syncIssues[id],
+                    coreEnvironmentNotice: coreEnvironmentNotices[id],
+                    harnessEdits: harnessEdits,
+                    isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
+                    retryConnection: retryAction(for: id),
+                    stopConnecting: stopAction(for: id),
+                    turnOff: {
+                        let dependencies = removalDependencies
+                        Task { await removal.turnOff(id, dependencies: dependencies) }
+                    },
+                    // Opened from elsewhere, it has no Host detail behind it.
+                    openHost: isRequested ? { path.append(.host(id)) } : nil,
+                    opensHostHelper: opensHostHelper,
+                    dependencies: onboardingDependencies)
+                    .id(id)
+                    .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
+            } else {
+                ContentUnavailableView("Host removed", systemImage: "server.rack")
+            }
+        }
+    }
+
+    /// Where a request for one catalog record lands: a Server's own page, or
+    /// Host detail for the record of a Host with no Server on.
     private static func requestedRoute(
         _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore
     ) -> HostDetailDestination? {
-        guard let id, store.hosts.contains(where: { $0.id == id }) else { return nil }
-        return HostDetailDestination(hostID: id, isRequested: true, opensHostHelper: opensHostHelper)
-    }
-
-    private var removalConfirmationPresented: Binding<Bool> {
-        Binding(
-            get: { removal.pendingRequest != nil },
-            set: { if !$0 { removal.cancelRemoval() } })
+        guard let id, let record = store.hosts.first(where: { $0.id == id }) else { return nil }
+        guard record.serverKind.isConfirmed else { return .host(id, isRequested: true) }
+        return .server(id, isRequested: true, opensHostHelper: opensHostHelper)
     }
 
     private var entries: [HostListEntry] {
-        store.hosts.map { host in
+        store.machines.map { machine in
             HostListEntry(
-                host: host,
-                presentation: HostRowPresentation(
-                    host: host,
-                    status: connectionStatuses[host.id],
-                    standingFailure: standingFailures[host.id],
-                    latency: latencies[host.id],
-                    syncIssue: syncIssues[host.id],
-                    canRetry: retryConnection != nil))
+                machine: machine,
+                presentation: HostMachineRowPresentation(
+                    machine: machine,
+                    statuses: connectionStatuses,
+                    standingFailures: standingFailures,
+                    latencies: latencies,
+                    syncIssues: syncIssues,
+                    canRetry: retryConnection != nil),
+                unseen: discoveries.unseen(on: machine).map(\.key.label))
+        }
+    }
+
+    private func serverPresentation(_ record: Host) -> HostRowPresentation {
+        HostRowPresentation(
+            host: record,
+            status: connectionStatuses[record.id],
+            standingFailure: standingFailures[record.id],
+            latency: latencies[record.id],
+            syncIssue: syncIssues[record.id],
+            canRetry: retryConnection != nil)
+    }
+
+    /// The Hosts the Console has a connection to. A look for new Servers goes
+    /// only to these: it never waits on a machine that is away.
+    private var reachedHosts: Set<HostMachine.ID> {
+        Set(
+            store.machines.filter { machine in
+                machine.servers.contains { connectionStatuses[$0.id] == .connected }
+            }.map(\.id))
+    }
+
+    /// Looks at each reached Host that is due, one at a time, for Servers that
+    /// turned up since. It never asks about a key: a Host that would need that
+    /// waits for the user to open it.
+    private func lookForServers() async {
+        let scanner = HostServerScanner(dependencies: onboardingDependencies)
+        let reached = reachedHosts
+        for machine in store.machines where reached.contains(machine.id) && discoveries.isDue(machine.id) {
+            guard !Task.isCancelled else { return }
+            discoveries.noteAttempt(at: machine.id)
+            if let scan = await scanner.look(at: machine.representative, asksToTrust: false) {
+                discoveries.note(scan, on: machine.id)
+            }
+        }
+    }
+
+    /// Lights the row of the Host the wizard just added, unfolding its group.
+    private func pointOut(_ member: Host.ID) {
+        if let entry = entries.first(where: { $0.machine.contains(member) }) {
+            collapsedGroups.remove(entry.presentation.group)
+        }
+        newlyAddedHost = member
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            guard newlyAddedHost == member else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.6)) { newlyAddedHost = nil }
         }
     }
 
@@ -555,39 +641,47 @@ struct HostListView: View {
 
     @ViewBuilder
     private func row(for entry: HostListEntry) -> some View {
-        let host = entry.host
+        let machine = entry.machine
+        let records = machine.members.map(\.id)
+        let stopped = entry.presentation.servers.filter(\.offersRetry)
         let isRetrying =
-            entry.presentation.offersRetry
-            && (entry.presentation.isDialing || manualReconnectInFlightHostIDs.contains(host.id))
+            !stopped.isEmpty
+            && stopped.allSatisfy { $0.isDialing || manualReconnectInFlightHostIDs.contains($0.id) }
         // Removal can wait on the Host for a few seconds; the row stays put
         // but inert meanwhile.
-        let isRemoving = removalDependencies.inFlight.contains(host.id)
+        let isRemoving = records.allSatisfy { removalDependencies.inFlight.contains($0) }
+        let chips = HostServerChips(servers: entry.presentation.servers, unseen: entry.unseen)
         // Every row is a link, so each one gets the chevron, press highlight
         // and pointer hover; a borderless Retry keeps its own target in it,
         // and VoiceOver offers it as one of the row's actions.
-        NavigationLink(value: HostDetailDestination(hostID: host.id)) {
-            HStack(spacing: 12) {
-                HostRowLabel(host: host, presentation: entry.presentation)
-                if isRemoving {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else if entry.presentation.offersRetry {
-                    HostRetryButton(isBusy: isRetrying) {
-                        if let retry = retryAction(for: host.id) { Task { await retry() } }
+        NavigationLink(value: HostDetailDestination.host(machine.representative.id)) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 12) {
+                    HostMachineRowHeadline(presentation: entry.presentation)
+                    if isRemoving {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                    } else if !stopped.isEmpty {
+                        HostRetryButton(isBusy: isRetrying) { retry(stopped.map(\.id)) }
                     }
                 }
+                // Under the name, clear of the glyph.
+                chips.padding(.leading, 32)
             }
+            .padding(.vertical, 2)
         }
         .disabled(isRemoving)
-        .accessibilityValue(isRemoving ? "Removing" : isRetrying ? "Connecting" : "")
-        .listRowBackground(ListCard.fill)
+        .accessibilityValue(
+            isRemoving ? Text("Removing") : isRetrying ? Text("Connecting") : Text(chips.spokenSummary))
+        .accessibilityIdentifier("hosts.list.row.\(entry.presentation.name)")
+        .listRowBackground(HostRowBackground(isLit: newlyAddedHost.map(machine.contains) == true))
         // Every removal asks first. No `.destructive` role: List would
         // animate the row out while the confirmation is still up.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if !isRemoving {
                 Button {
-                    removal.requestRemoval([host.id], dependencies: removalDependencies)
+                    removal.requestRemoval(records, dependencies: removalDependencies)
                 } label: {
                     Label("Remove", systemImage: "trash")
                 }
@@ -596,31 +690,33 @@ struct HostListView: View {
         }
         .contextMenu {
             Group {
-                Button("Edit", systemImage: "pencil") { editingHost = host }
-                Button("Duplicate", systemImage: "plus.square.on.square") { duplicate(host) }
+                Button("Edit", systemImage: "pencil") { editingHost = machine.formRecord }
                 Button("Remove Host", systemImage: "trash", role: .destructive) {
-                    removal.requestRemoval([host.id], dependencies: removalDependencies)
+                    removal.requestRemoval(records, dependencies: removalDependencies)
                 }
             }
             .disabled(isRemoving)
         }
     }
 
-    private func duplicate(_ host: Host) {
-        // An unreadable password only costs the prefill: the form then
-        // requires one before saving.
-        let password = host.authMethod == .password ? try? store.password(for: host) : nil
-        duplicateRequest = HostDuplicateRequest(
-            draft: HostDraft(
-                duplicating: host,
-                password: password,
-                existingNames: store.hosts.map(\.displayName)))
+    /// Dials every Server of a Host that stopped.
+    private func retry(_ records: [Host.ID]) {
+        guard let retryConnection else { return }
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for record in records {
+                    group.addTask { await retryConnection(record) }
+                }
+            }
+        }
     }
 
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
-        path.append(HostDetailDestination(hostID: id))
+        if let route = Self.requestedRoute(id, opensHostHelper: false, in: store) {
+            path.append(route.fromTheList)
+        }
     }
 
     private func retryAction(
@@ -638,14 +734,74 @@ struct HostListView: View {
     }
 }
 
-/// One pushed Host detail. The one opened on request is marked in the route
-/// itself, not inferred from where it sits on the stack, so its detail knows
-/// where Back goes from its first render.
-private struct HostDetailDestination: Hashable {
-    let hostID: Host.ID
-    var isRequested = false
-    /// Opens the Host Helper sheet over the detail on arrival.
-    var opensHostHelper = false
+/// One page pushed from the Hosts list (ADR 0047).
+enum HostDetailDestination: Hashable {
+    /// Host detail, by one of the Host's catalog records. The page opened on
+    /// request is marked in the route itself, not inferred from where it sits
+    /// on the stack, so it knows where Back goes from its first render.
+    case host(Host.ID, isRequested: Bool = false)
+    /// One Server's page, by its record. `opensHostHelper` opens the Host
+    /// Helper sheet over it on arrival.
+    case server(Host.ID, isRequested: Bool = false, opensHostHelper: Bool = false)
+
+    /// The same page as the list itself opens it: Back returns to the list.
+    var fromTheList: Self {
+        switch self {
+        case .host(let id, _): .host(id)
+        case .server(let id, _, let opensHostHelper): .server(id, opensHostHelper: opensHostHelper)
+        }
+    }
+}
+
+/// The confirmation before a Host goes or a Server is turned off, and the
+/// failure of either. A modifier of its own: joined to the list's chain, the
+/// chain exceeds Xcode 26.6's type-checking limit.
+private struct HostRemovalAlerts: ViewModifier {
+    let removal: HostRemovalStore
+    @Environment(\.hostRemovalDependencies) private var dependencies
+
+    func body(content: Content) -> some View {
+        content
+            .alert(
+                removal.pendingRequest?.title ?? String(localized: "Remove Host?"),
+                isPresented: Binding(
+                    get: { removal.pendingRequest != nil },
+                    set: { if !$0 { removal.cancelRemoval() } }),
+                presenting: removal.pendingRequest
+            ) { request in
+                Button(request.actionTitle, role: .destructive) {
+                    let dependencies = dependencies
+                    Task { await removal.confirmRemoval(request, dependencies: dependencies) }
+                }
+                Button("Cancel", role: .cancel) {
+                    removal.cancelRemoval()
+                }
+            } message: { request in
+                Text(request.message)
+            }
+            .alert(
+                "Could Not Remove Host",
+                isPresented: Binding(
+                    get: { removal.errorMessage != nil },
+                    set: { if !$0 { removal.dismissError() } })
+            ) {
+                Button("OK", role: .cancel) {
+                    removal.dismissError()
+                }
+            } message: {
+                Text(removal.errorMessage ?? "")
+            }
+    }
+}
+
+/// A Hosts list row's card, lit for a moment under a Host just added.
+private struct HostRowBackground: View {
+    let isLit: Bool
+
+    var body: some View {
+        ListCard.fill
+            .overlay(Color.accentColor.opacity(isLit ? 0.22 : 0))
+    }
 }
 
 /// The screen that opened a Host's detail from outside the Hosts list.
@@ -721,10 +877,13 @@ enum HostHealthGroup: Int, CaseIterable, Comparable {
 
 /// One Host on the Hosts list, with how its row reads.
 struct HostListEntry: Identifiable, Equatable {
-    let host: Host
-    let presentation: HostRowPresentation
+    let machine: HostMachine
+    let presentation: HostMachineRowPresentation
+    /// Labels of the Servers found on the Host that the user has not been
+    /// shown yet.
+    var unseen: [String] = []
 
-    var id: Host.ID { host.id }
+    var id: HostMachine.ID { machine.id }
 
     struct Section: Identifiable, Equatable {
         let group: HostHealthGroup
@@ -776,11 +935,11 @@ private struct HostGroupHeader: View {
     }
 }
 
-/// One Hosts list row. A problem is named by its Summary alone; Host
-/// detail, a tap away, shows the whole Transport Error Presentation.
+/// How one Server that is on reads: its chip on the Hosts list, its row in
+/// Host detail, and through `HostMachineRowPresentation` its Host's row. A
+/// problem is named by its Summary alone; the Server's page, a tap away,
+/// shows the whole Transport Error Presentation.
 struct HostRowPresentation: Equatable {
-    /// Beside the name: which server the Host is for.
-    let serverKind: String
     let group: HostHealthGroup
     let tone: HostConnectionTone
     /// Under the name: the address while connected and in sync, otherwise
@@ -803,17 +962,6 @@ struct HostRowPresentation: Equatable {
         syncIssue: String? = nil,
         canRetry: Bool = true
     ) {
-        serverKind = host.serverKind.displayName
-        guard host.serverKind.isConfirmed else {
-            group = .notConnected
-            tone = .paused
-            detail = String(localized: "Confirm its Server Kind")
-            isProblem = false
-            trailing = nil
-            offersRetry = false
-            isDialing = false
-            return
-        }
         let problem = HostConnectionDetailPresentation(
             host: host, status: status, standingFailure: standingFailure)
         let chip = HostConnectionPresentation(
@@ -869,42 +1017,6 @@ struct HostRowPresentation: Equatable {
             isProblem = false
             offersRetry = false
         }
-    }
-}
-
-private struct HostRowLabel: View {
-    let host: Host
-    let presentation: HostRowPresentation
-
-    var body: some View {
-        HStack(spacing: 12) {
-            HostStatusGlyph(tone: presentation.tone)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(host.displayName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(presentation.serverKind)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                }
-                Text(presentation.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if let trailing = presentation.trailing {
-                Text(trailing)
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
     }
 }
 

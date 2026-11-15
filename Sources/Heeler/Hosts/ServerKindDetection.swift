@@ -13,8 +13,8 @@ protocol ServerKindDetectionConnection: Sendable {
     func close() async throws
 }
 
-/// Which servers an SSH target runs, for the user to confirm one (ADRs 0031
-/// and 0044).
+/// Which servers an SSH target runs, read by one exec (ADRs 0031 and 0044).
+/// `HostServerScan` turns it into the Servers a Host lists (ADR 0047).
 struct ServerKindDetection: Equatable, Sendable {
     enum HerdrTUIFinding: Equatable, Sendable {
         case found(sessions: [HerdrSession])
@@ -144,70 +144,13 @@ struct ServerKindDetection: Equatable, Sendable {
 
     private static let tmuxKernels = [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel]
 
-    /// The sockets a tmux server answers on, for the user to pick one.
-    var tmuxSockets: [String] {
-        if case .running(_, let sockets) = tmux { sockets } else { [] }
-    }
-
-    /// The socket a confirmation starts on: the typed name when its server
-    /// answers, else `default`, else the first that does. With no server
-    /// answering, the typed name stands, and `default` for a blank one.
-    func preselectedTmuxSocket(typed: String) -> String {
-        let name = TmuxSocketName.normalized(typed)
-        let sockets = tmuxSockets
-        if sockets.contains(name) { return name }
-        return sockets.first ?? name
-    }
-
-    /// What a tmux Host confirmed on this socket stores, from this same read:
+    /// What a tmux Server turned on on this socket stores, from this same read:
     /// its login shell just resolved both. Nil when tmux is not there to store.
     func tmuxPaths(socketName: String) -> TmuxPaths? {
         guard let tmuxReport, case .usable(let executable, _) = tmuxReport.installation,
             let socket = tmuxReport.socketPath(named: socketName)
         else { return nil }
         return TmuxPaths(executable: executable, socket: socket)
-    }
-
-    /// The kinds this target runs, in the order the confirmation lists them.
-    var foundKinds: [ServerKind] {
-        var kinds: [ServerKind] = []
-        if case .found = herdrTUI { kinds.append(.herdrTUI) }
-        switch herdrCore {
-        case .notInstalled, .sessionRefused: break
-        case .notRunning, .socketFilePresent, .socketPathTooLong: kinds.append(.herdrCore)
-        }
-        if case .running = tmux { kinds.append(.tmux) }
-        return kinds
-    }
-
-    /// Every kind this target could be: all but tmux where Heeler drives none.
-    var supportedKinds: [ServerKind] {
-        Self.offeredWithoutFindings.filter { $0 != .tmux || tmux != .unsupported }
-    }
-
-    /// What the user may confirm. A target running nothing yet offers every kind:
-    /// the user may be about to install one, and its preflight says how. A refused
-    /// session name keeps herdr-core on offer, since only the name stands in its way
-    /// and confirming says why. A tmux with no server running stays on offer beside
-    /// whatever was found: its Host connects once the user starts one (ADR 0044).
-    var offeredKinds: [ServerKind] {
-        if case .sessionRefused = herdrCore { return supportedKinds }
-        let found = foundKinds
-        guard !found.isEmpty else { return supportedKinds }
-        if case .notRunning = tmux { return found + [.tmux] }
-        return found
-    }
-
-    /// What is on offer when a reached Host could not be read because the exec failed.
-    static let offeredWithoutFindings: [ServerKind] = [.herdrTUI, .herdrCore, .tmux]
-}
-
-extension ServerKindDetection.HerdrTUIFinding {
-    var summary: String {
-        switch self {
-        case .found: String(localized: "Found")
-        case .notFound: String(localized: "Not found")
-        }
     }
 }
 

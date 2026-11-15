@@ -16,33 +16,21 @@ struct HostDraftTests {
         #expect(rebuilt == host)
     }
 
-    @Test func coreKindSurvivesEditingAndDuplication() throws {
+    @Test func coreKindSurvivesEditing() throws {
         let host = Host(
             name: "Desktop", address: "box.example", username: "dev",
             serverKind: .herdrCore, sessionName: "work")
         let draft = HostDraft(host: host)
         #expect(draft.serverKind == .herdrCore)
         #expect(try #require(draft.makeHost(id: host.id)) == host)
-
-        let duplicate = HostDraft(duplicating: host, password: nil, existingNames: ["Desktop"])
-        let copied = try #require(duplicate.makeHost())
-        #expect(copied.serverKind == .herdrCore)
-        #expect(copied.sessionName == "work")
-        #expect(copied.name == "Desktop copy")
     }
 
-    @Test func aNewDraftIsUnconfirmedAndACopyKeepsItsHostsKind() throws {
+    @Test func aNewDraftIsUnconfirmed() throws {
         var draft = HostDraft()
         draft.address = "box.example"
         draft.username = "dev"
         let host = try #require(draft.makeHost())
         #expect(host.serverKind == .unconfirmed)
-        let copy = HostDraft(duplicating: host, password: nil, existingNames: [])
-        #expect(try #require(copy.makeHost()).serverKind == .unconfirmed)
-
-        let tui = Host(address: "box.example", username: "dev", serverKind: .herdrTUI)
-        let tuiCopy = HostDraft(duplicating: tui, password: nil, existingNames: [])
-        #expect(try #require(tuiCopy.makeHost()).serverKind == .herdrTUI)
     }
 
     /// Which rule a name answers to depends on the kind the user confirms, and
@@ -294,80 +282,6 @@ struct HostDraftTests {
         #expect(!draft.canSave(editing: keyHost))
     }
 
-    @Test func duplicateCopiesEveryFieldUnderACopyNameAsANewHost() throws {
-        let original = Host(
-            id: UUID(), name: "laya-train", address: "100.64.0.7", port: 2201,
-            username: "dev", authMethod: .rsaKey, sessionName: "work",
-            jumpAddress: "jump.example", jumpPort: 2022, jumpUsername: "tunnel")
-
-        let draft = HostDraft(
-            duplicating: original, password: nil, existingNames: ["laya-train"])
-        let copy = try #require(draft.makeHost())
-
-        #expect(copy.id != original.id)
-        #expect(copy.primaryRoute.id != original.primaryRoute.id)
-        #expect(copy == Host(
-            id: copy.id, name: "laya-train copy", username: "dev", authMethod: .rsaKey,
-            sessionName: "work",
-            routes: [
-                HostRoute(
-                    id: copy.primaryRoute.id, address: "100.64.0.7", port: 2201,
-                    jumpAddress: "jump.example", jumpPort: 2022, jumpUsername: "tunnel")
-            ]))
-        #expect(draft.canSave(editing: nil))
-    }
-
-    @Test func duplicateCarriesThePasswordOnlyForPasswordHosts() {
-        let passwordHost = Host.fixture(authMethod: .password)
-        let copied = HostDraft(
-            duplicating: passwordHost, password: "hunter2", existingNames: [])
-        #expect(copied.password == "hunter2")
-        #expect(copied.passwordUpdate == "hunter2")
-        #expect(copied.canSave(editing: nil))
-
-        // An unreadable stored password leaves the copy unsavable until
-        // one is entered, as for any new password Host.
-        let unread = HostDraft(duplicating: passwordHost, password: nil, existingNames: [])
-        #expect(unread.password.isEmpty)
-        #expect(!unread.canSave(editing: nil))
-
-        let keyHost = Host.fixture(authMethod: .deviceKey)
-        let keyCopy = HostDraft(duplicating: keyHost, password: "stale", existingNames: [])
-        #expect(keyCopy.password.isEmpty)
-    }
-
-    @Test func duplicateNameFollowsFinder() {
-        #expect(HostDraft.duplicateName(of: "box", existingNames: ["box"]) == "box copy")
-        #expect(
-            HostDraft.duplicateName(of: "box", existingNames: ["box", "box copy"])
-                == "box copy 2")
-        #expect(
-            HostDraft.duplicateName(
-                of: "box", existingNames: ["box", "box copy", "box copy 2", "box copy 4"])
-                == "box copy 3")
-        // Duplicating a copy continues its series.
-        #expect(
-            HostDraft.duplicateName(of: "box copy", existingNames: ["box", "box copy"])
-                == "box copy 2")
-        #expect(
-            HostDraft.duplicateName(
-                of: "box copy 2", existingNames: ["box", "box copy", "box copy 2"])
-                == "box copy 3")
-        // A number without the copy marker belongs to the name.
-        #expect(HostDraft.duplicateName(of: "ubuntu 22", existingNames: []) == "ubuntu 22 copy")
-        #expect(HostDraft.duplicateName(of: "copy", existingNames: []) == "copy copy")
-    }
-
-    @Test func duplicateOfAnUnnamedHostCopiesItsDisplayName() throws {
-        let original = Host.fixture(name: "", address: "box.example", username: "dev")
-
-        let draft = HostDraft(
-            duplicating: original, password: nil,
-            existingNames: [original.displayName])
-
-        #expect(try #require(draft.makeHost()).displayName == "dev@box.example copy")
-    }
-
     /// The form cannot edit an endpoint, so saving an edit must not drop it:
     /// the Host would silently switch to the user's own herdr.
     @Test func editingAnEndpointHostKeepsItsEndpoint() throws {
@@ -384,20 +298,6 @@ struct HostDraftTests {
         #expect(rebuilt.herdrEndpoint == endpoint)
         #expect(rebuilt.socketLocation == .absolutePath(endpoint.socketPath))
         #expect(rebuilt.name == "Renamed")
-    }
-
-    @Test func duplicatingAnEndpointHostKeepsItsEndpoint() throws {
-        let endpoint = try Self.endpoint()
-        let original = Host(
-            name: "Studio app", address: "studio.local", username: "dev", herdrEndpoint: endpoint)
-
-        let draft = HostDraft(
-            duplicating: original, password: nil, existingNames: ["Studio app"])
-        let copy = try #require(draft.makeHost())
-
-        #expect(copy.id != original.id)
-        #expect(copy.name == "Studio app copy")
-        #expect(copy.herdrEndpoint == endpoint)
     }
 
     @Test func draftsWithoutAnEndpointMakeHostsWithoutOne() throws {

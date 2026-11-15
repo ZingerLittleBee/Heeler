@@ -1,54 +1,28 @@
 import SwiftUI
 
-/// Add/edit form for a Host. Device-key auth shows the copyable
-/// `authorized_keys` line (generated on device, never exported beyond its
-/// public half); the password goes straight to the Keychain via `HostStore`.
+/// Edit Host: its name, account, Routes and authentication. A save reaches
+/// every record of the Host, one for each Server that is on (ADR 0047); its
+/// Servers are turned on and off in Host detail, never here, and a Host is
+/// added by `NewHostWizardView`. The password goes straight to the Keychain
+/// via `HostStore`.
 struct HostFormView: View {
     let store: HostStore
-    var editing: Host?
-    var onSaved: ((Host) -> Void)?
-    /// Starts in User, for a prefill that already says where the Host is.
-    var focusesUsername = false
+    /// One of the Host's records, under the name the Host goes by
+    /// (`HostMachine.formRecord`).
+    let editing: Host
 
     @State private var draft: HostDraft
-    @State private var authorizedKeysLine: String?
-    @State private var rsaPublicKeyLine: String?
-    @State private var didCopyKeyLine = false
     @State private var saveFailed = false
-    @State private var deviceKeyIsCorrupt = false
-    @State private var rsaKeyIsCorrupt = false
-    @State private var isConfirmingDeviceKeyReplacement = false
-    @State private var isConfirmingRSAKeyReplacement = false
-    @State private var deviceKeyReplacementError: String?
-    @State private var rsaKeyReplacementError: String?
     /// The route page on screen: Add Route's, or a listed route's.
     @State private var routePath: [HostRoutePage] = []
     /// Reorder and delete controls for the Routes list, from its header.
     @State private var isEditingRoutes = false
-    @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
 
-    private let credentials = HostCredentialsProvider()
-
-    init(store: HostStore, editing: Host? = nil, onSaved: ((Host) -> Void)? = nil) {
+    init(store: HostStore, editing: Host) {
         self.store = store
         self.editing = editing
-        self.onSaved = onSaved
-        _draft = State(initialValue: editing.map(HostDraft.init) ?? HostDraft())
-    }
-
-    /// Adds a new Host starting from `prefill`, as Duplicate does: saving
-    /// never touches the Host the draft was copied from.
-    init(
-        store: HostStore, prefill: HostDraft, focusesUsername: Bool = false,
-        onSaved: ((Host) -> Void)? = nil
-    ) {
-        self.store = store
-        self.editing = nil
-        self.onSaved = onSaved
-        self.focusesUsername = focusesUsername
-        _draft = State(initialValue: prefill)
+        _draft = State(initialValue: HostDraft(host: editing))
     }
 
     var body: some View {
@@ -68,7 +42,7 @@ struct HostFormView: View {
                     NewHostRouteView(draft: $draft, otherHosts: otherHosts)
                 }
             }
-            .navigationTitle(editing == nil ? String(localized: "Add Host") : String(localized: "Edit Host"))
+            .navigationTitle("Edit Host")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -76,60 +50,11 @@ struct HostFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(!draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore))
+                        .disabled(!draft.canSave(editing: editing))
                 }
             }
             .alert("Could not save the Host", isPresented: $saveFailed) {
                 Button("OK", role: .cancel) {}
-            }
-            .alert(
-                "Could not replace the Device Key",
-                isPresented: Binding(
-                    get: { deviceKeyReplacementError != nil },
-                    set: { if !$0 { deviceKeyReplacementError = nil } })
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(deviceKeyReplacementError ?? "")
-            }
-            .alert(
-                "Could not replace the RSA Key",
-                isPresented: Binding(
-                    get: { rsaKeyReplacementError != nil },
-                    set: { if !$0 { rsaKeyReplacementError = nil } })
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(rsaKeyReplacementError ?? "")
-            }
-            .confirmationDialog(
-                String(localized: "Replace the Device Key?"),
-                isPresented: $isConfirmingDeviceKeyReplacement,
-                titleVisibility: .visible
-            ) {
-                Button("Replace Device Key", role: .destructive) { replaceDeviceKey() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(
-                    String(localized: "Every Host using Device Key authentication will reject the replacement until you add its new public key to ~/.ssh/authorized_keys, or for an administrator account on Windows to C:\\ProgramData\\ssh\\administrators_authorized_keys."))
-            }
-            .confirmationDialog(
-                String(localized: "Replace the RSA Key?"),
-                isPresented: $isConfirmingRSAKeyReplacement,
-                titleVisibility: .visible
-            ) {
-                Button("Replace RSA Key", role: .destructive) { replaceRSAKey() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(
-                    String(localized: "Every Host using RSA Key authentication will reject the replacement until you register its new public key on that Host."))
-            }
-            .task {
-                if focusesUsername { isUsernameFocused = true }
-                loadDeviceKey()
-                if draft.authMethod == .rsaKey {
-                    loadRSAKey()
-                }
             }
         }
     }
@@ -144,84 +69,13 @@ struct HostFormView: View {
                 .textContentType(.username)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .focused($isUsernameFocused)
         }
 
         routesSection
 
-        authenticationSection
-
-        herdrSection
-    }
-
-    /// The session name, or for a Pairing Code v2 Host its endpoint, which
-    /// replaces the session name and is not editable here.
-    @ViewBuilder
-    private var herdrSection: some View {
-        if let herdrEndpoint = draft.herdrEndpoint {
-            Section {
-                serverKindRow
-                LabeledContent("Socket", value: herdrEndpoint.socketPath)
-                LabeledContent("Launcher", value: herdrEndpoint.executablePath)
-            } header: {
-                Text("herdr Endpoint")
-            } footer: {
-                Text("Set by this Host's Pairing Code.")
-            }
-        } else {
-            Section {
-                serverKindRow
-                TextField(
-                    draft.serverKind == .tmux ? String(localized: "Socket name") : String(localized: "Session name"),
-                    text: $draft.sessionName
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-            } header: {
-                Text(sessionSectionTitle)
-            } footer: {
-                if let refusal = draft.sessionNameRefusal(onNativeWindows: isNativeWindowsCore) {
-                    Text(refusal)
-                        .foregroundStyle(.red)
-                } else {
-                    Text(sessionSectionHint)
-                }
-            }
-        }
-    }
-
-    private var sessionSectionTitle: String {
-        switch draft.serverKind {
-        case .herdrTUI: String(localized: "herdr Session")
-        case .herdrCore: String(localized: "herdr-core Session")
-        case .tmux: String(localized: "tmux Socket")
-        case .unconfirmed: String(localized: "Session")
-        }
-    }
-
-    private var sessionSectionHint: String {
-        switch draft.serverKind {
-        case .herdrTUI: String(localized: "Leave blank for the default herdr session.")
-        case .tmux: String(localized: "Leave blank for the default socket, which a tmux started without -L uses.")
-        case .herdrCore, .unconfirmed: String(localized: "Leave blank for the default session.")
-        }
-    }
-
-    /// A herdr-core Host already found on native Windows, whose `connect` line
-    /// takes fewer session names than the core.
-    private var isNativeWindowsCore: Bool {
-        guard let editing, draft.serverKind == .herdrCore else { return false }
-        return onboardingDependencies.coreKernel(editing.id) == HerdrCoreLocator.windowsKernel
-    }
-
-    /// A Host keeps its Server Kind (ADR 0031), so Edit only names it. A new
-    /// Host confirms its kind in Host detail, and a copy of a Herdr TUI Host is
-    /// one too, with nothing to say yet.
-    @ViewBuilder
-    private var serverKindRow: some View {
-        if editing != nil || draft.serverKind == .herdrCore {
-            LabeledContent("Server Kind", value: draft.serverKind.displayName)
-        }
+        HostAuthenticationSection(
+            authMethod: $draft.authMethod, password: $draft.password,
+            passwordPrompt: String(localized: "Password (blank keeps current)"))
     }
 
     /// Every route, one row each opening its own page, then Add Route.
@@ -273,187 +127,21 @@ struct HostFormView: View {
         }
     }
 
-    /// The Host being edited is not another Host for the peer picker to tag.
+    /// The Host being edited, in each of its records, is not another Host for
+    /// the peer picker to tag.
     private var otherHosts: [Host] {
-        store.hosts.filter { $0.id != editing?.id }
-    }
-
-    private var authenticationSection: some View {
-        Section {
-            Picker("Method", selection: $draft.authMethod) {
-                Text("Device Key").tag(Host.AuthMethod.deviceKey)
-                Text("RSA Key").tag(Host.AuthMethod.rsaKey)
-                Text("Password").tag(Host.AuthMethod.password)
-            }
-            .onChange(of: draft.authMethod) {
-                didCopyKeyLine = false
-                if draft.authMethod == .rsaKey,
-                   rsaPublicKeyLine == nil,
-                   !rsaKeyIsCorrupt
-                {
-                    loadRSAKey()
-                }
-            }
-            switch draft.authMethod {
-            case .deviceKey:
-                deviceKeySection
-            case .rsaKey:
-                rsaKeySection
-            case .password:
-                SecureField(
-                    editing == nil ? "Password" : "Password (blank keeps current)",
-                    text: $draft.password)
-            }
-        } header: {
-            Text("Authentication")
-        } footer: {
-            switch draft.authMethod {
-            case .deviceKey:
-                Text(
-                    String(localized: "Add this line to ~/.ssh/authorized_keys on the Host. For an administrator account on Windows, add it to C:\\ProgramData\\ssh\\administrators_authorized_keys instead, which only Administrators and SYSTEM may access. The private key never leaves this device."))
-            case .rsaKey:
-                Text(
-                    String(localized: "Register this public key wherever the Host accepts SSH identities. The private key never leaves this device."))
-            case .password:
-                EmptyView()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var deviceKeySection: some View {
-        if let authorizedKeysLine {
-            Text(authorizedKeysLine)
-                .font(.caption.monospaced())
-                .lineLimit(3)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-            Button {
-                UIPasteboard.general.string = authorizedKeysLine
-                didCopyKeyLine = true
-            } label: {
-                Label {
-                    Text(didCopyKeyLine ? "Copied" : "Copy authorized_keys Line")
-                } icon: {
-                    // The tall two-page glyph otherwise outgrows the text.
-                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
-                        .font(.footnote)
-                }
-            }
-        } else {
-            Label(
-                deviceKeyIsCorrupt ? "Device key is corrupted" : "Device key unavailable",
-                systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
-            if deviceKeyIsCorrupt {
-                Button("Replace Device Key", role: .destructive) {
-                    isConfirmingDeviceKeyReplacement = true
-                }
-            } else {
-                Button("Try Again") { loadDeviceKey() }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var rsaKeySection: some View {
-        if let rsaPublicKeyLine {
-            Text(rsaPublicKeyLine)
-                .font(.caption.monospaced())
-                .lineLimit(3)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-            Button {
-                UIPasteboard.general.string = rsaPublicKeyLine
-                didCopyKeyLine = true
-            } label: {
-                Label {
-                    Text(didCopyKeyLine ? "Copied" : "Copy RSA Public Key")
-                } icon: {
-                    // The tall two-page glyph otherwise outgrows the text.
-                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
-                        .font(.footnote)
-                }
-            }
-        } else {
-            Label(
-                rsaKeyIsCorrupt ? "RSA Key is corrupted" : "RSA Key unavailable",
-                systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
-            if !rsaKeyIsCorrupt {
-                Button("Try Again") { loadRSAKey() }
-            } else {
-                Button("Replace RSA Key", role: .destructive) {
-                    isConfirmingRSAKeyReplacement = true
-                }
-            }
-        }
-    }
-
-    private func loadDeviceKey() {
-        do {
-            let key = try credentials.deviceKey()
-            authorizedKeysLine = key.authorizedKeysLine(comment: "heeler")
-            deviceKeyIsCorrupt = false
-        } catch DeviceKeyStoreError.storedKeyCorrupt {
-            authorizedKeysLine = nil
-            deviceKeyIsCorrupt = true
-        } catch {
-            authorizedKeysLine = nil
-            deviceKeyIsCorrupt = false
-        }
-    }
-
-    private func loadRSAKey() {
-        do {
-            let key = try credentials.rsaKey()
-            rsaPublicKeyLine = key.authorizedKeysLine(comment: "heeler rsa")
-            rsaKeyIsCorrupt = false
-        } catch RSAKeyStoreError.storedKeyCorrupt {
-            rsaPublicKeyLine = nil
-            rsaKeyIsCorrupt = true
-        } catch {
-            rsaPublicKeyLine = nil
-            rsaKeyIsCorrupt = false
-        }
-    }
-
-    private func replaceDeviceKey() {
-        do {
-            let key = try credentials.replaceDeviceKey()
-            authorizedKeysLine = key.authorizedKeysLine(comment: "heeler")
-            deviceKeyIsCorrupt = false
-            didCopyKeyLine = false
-        } catch {
-            deviceKeyReplacementError = String(localized: "The replacement could not be saved to the Keychain.")
-        }
-    }
-
-    private func replaceRSAKey() {
-        do {
-            let key = try credentials.replaceRSAKey()
-            rsaPublicKeyLine = key.authorizedKeysLine(comment: "heeler rsa")
-            rsaKeyIsCorrupt = false
-            didCopyKeyLine = false
-        } catch {
-            rsaKeyReplacementError = String(localized: "The replacement could not be saved to the Keychain.")
-        }
+        guard let machine = store.machine(containing: editing.id) else { return store.hosts }
+        return store.hosts.filter { !machine.contains($0.id) }
     }
 
     private func save() {
-        guard draft.canSave(editing: editing, onNativeWindows: isNativeWindowsCore) else { return }
-        guard let host = draft.makeHost(id: editing?.id ?? UUID()) else { return }
+        guard draft.canSave(editing: editing), let host = draft.makeHost(id: editing.id) else { return }
         do {
-            if editing == nil {
-                try store.add(host, password: draft.passwordUpdate)
-            } else {
-                try store.update(host, password: draft.passwordUpdate)
-            }
+            try store.updateHost(with: host, password: draft.passwordUpdate)
         } catch {
             saveFailed = true
             return
         }
         dismiss()
-        onSaved?(host)
     }
 }

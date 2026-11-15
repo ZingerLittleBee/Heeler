@@ -396,27 +396,30 @@ final class HostStore {
     }
 
     /// Turns `server` on for the Host that `member` is a record of. A record with
-    /// no Server yet becomes it; otherwise the Host gains a record, with the same
-    /// connection and password. `copiedFrom` then names the record whose host key
-    /// trust the caller carries over, which lives outside the catalog.
+    /// no Server yet becomes it; otherwise the Host gains a record under
+    /// `newRecordID`, with the same connection and password. Host key trust lives
+    /// outside the catalog, so a caller that sees `HostMachine.needsRecord` puts it
+    /// in place under that id first: the record's first connection then finds it.
+    @discardableResult
     func turnOn(
-        _ server: HostServerKey, onHostOf member: Host.ID, tmuxPaths: TmuxPaths? = nil
-    ) throws -> (record: Host, copiedFrom: Host.ID?) {
+        _ server: HostServerKey, onHostOf member: Host.ID, tmuxPaths: TmuxPaths? = nil,
+        newRecordID: Host.ID = UUID()
+    ) throws -> Host {
         guard let machine = machine(containing: member) else { throw HostStoreError.unknownHost }
         guard server.kind.isConfirmed, server.endpointSocketPath == nil else {
             throw HostStoreError.serverKindChanged
         }
-        if let record = machine.record(of: server) { return (record, nil) }
+        if let record = machine.record(of: server) { return record }
         if let spare = machine.spareRecord {
-            let record = try confirmServerKind(
+            return try confirmServerKind(
                 server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths)
-            return (record, nil)
         }
         if let reason = server.kind.sessionNameRefusal(server.name) {
             throw HostStoreError.sessionNameRefused(reason: reason)
         }
         let source = machine.representative
         let record = Host(
+            id: newRecordID,
             name: machine.givenName,
             username: source.username,
             authMethod: source.authMethod,
@@ -425,7 +428,7 @@ final class HostStore {
             tmuxPaths: tmuxPaths,
             routes: source.routes)
         try add(record, password: source.authMethod == .password ? try password(for: source) : nil)
-        return (hosts.first { $0.id == record.id } ?? record, source.id)
+        return hosts.first { $0.id == record.id } ?? record
     }
 
     /// Keeps a Host in the catalog once `server`, its last Server on, is removed:
