@@ -270,6 +270,7 @@
 		38CBB0CA232C64F55B4D57F8 /* AgentUsageStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E10757F567B36B5BF3D4553 /* AgentUsageStyle.swift */; };
 		39005BD5A7E74CCF2293DE7B /* CodexLegacyReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDDCAF5C8BE2B552065BA67E /* CodexLegacyReducer.swift */; };
 		3906DC024105C73C417CF1C5 /* HostRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A581B6727F3022144FB848 /* HostRouteTests.swift */; };
+		390D83535270A502EC558F86 /* RexTerminalLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7E98BBFFE1277FE0D33B11 /* RexTerminalLiveTests.swift */; };
 		390E9313FFE9AA540C6B6113 /* AgentInputModeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F641C391CC59D30055B5F85F /* AgentInputModeSettings.swift */; };
 		39B3475CECC25A78769EBE5A /* ClaudeTextClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07CDDDBB1D1B2089F40BB669 /* ClaudeTextClassifier.swift */; };
 		39D86EB50A0D722F009D23D6 /* OpenCodeQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7657F6D22D8E8574D9C203 /* OpenCodeQuery.swift */; };
@@ -606,6 +607,7 @@
 		8034B5827C6A0E0808972749 /* AgentsAndAccountsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E658C0CDAA863E0EA49AE /* AgentsAndAccountsSettingsView.swift */; };
 		804369FD12BFA0552FF2060A /* OpenCodeRecordSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C684EB04A88DB074CEA765 /* OpenCodeRecordSource.swift */; };
 		804C5B2318FD3F57703BA226 /* AgentStatusPaletteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B853441AF972F5F05ADA67 /* AgentStatusPaletteTests.swift */; };
+		80DE70B307B892D09255DCDE /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = D9F2B7F7BF6FEA48B5033F5B /* GhosttyTerminal */; };
 		80E28FB88E27A5A8FA516BAA /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */; };
 		81129F8952AA54C9B1B205C1 /* GitProbe+Changes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4E53E3D3855055D7DF04AA /* GitProbe+Changes.swift */; };
 		815BA6026CCD7AD9B4DA496C /* ChatTimelineGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54B6A3DF0F7CCF7FD5A14805 /* ChatTimelineGeometry.swift */; };
@@ -1492,6 +1494,7 @@
 		2BBBF4D8064442FDAC30C097 /* PerfMainThreadSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfMainThreadSampler.swift; sourceTree = "<group>"; };
 		2C57421FC20967BE702DC100 /* AgentActivityLink+Hosts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentActivityLink+Hosts.swift"; sourceTree = "<group>"; };
 		2C6805573EEF14C24FAE65F2 /* OverlayNetworksSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayNetworksSettingsView.swift; sourceTree = "<group>"; };
+		2C7E98BBFFE1277FE0D33B11 /* RexTerminalLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexTerminalLiveTests.swift; sourceTree = "<group>"; };
 		2D1224971332DB2252081858 /* TmuxComposerStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxComposerStopTests.swift; sourceTree = "<group>"; };
 		2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchName.swift; sourceTree = "<group>"; };
 		2D6BF7D35D794A652042DED1 /* HerdrCoreAgentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreAgentsTests.swift; sourceTree = "<group>"; };
@@ -2523,6 +2526,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7A8A7E5229F7D8B6D8DD0DAA /* HeelerSSH in Frameworks */,
+				80DE70B307B892D09255DCDE /* GhosttyTerminal in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3082,6 +3086,7 @@
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
 				28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */,
 				307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */,
+				2C7E98BBFFE1277FE0D33B11 /* RexTerminalLiveTests.swift */,
 				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
 			path = HeelerLiveTests;
@@ -4264,6 +4269,7 @@
 			name = HeelerLiveTests;
 			packageProductDependencies = (
 				AA935DB3E0C8656A6B4C33B2 /* HeelerSSH */,
+				D9F2B7F7BF6FEA48B5033F5B /* GhosttyTerminal */,
 			);
 			productName = HeelerLiveTests;
 			productReference = C8FBCA93BDB6CF12041AAC9D /* HeelerLiveTests.xctest */;
@@ -4446,6 +4452,7 @@
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
 				E37D12C65C1143ADB642AE00 /* RexInventoryLiveTests.swift in Sources */,
 				E6687F153BE7D91DA036CA17 /* RexSSHLiveTests.swift in Sources */,
+				390D83535270A502EC558F86 /* RexTerminalLiveTests.swift in Sources */,
 				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -6130,6 +6137,11 @@
 			productName = HeelerSSH;
 		};
 		BE53F92F352D5CEE9A715FA9 /* GhosttyTerminal */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C24992F3A9C17BAA1883EEBB /* XCRemoteSwiftPackageReference "libghostty-spm" */;
+			productName = GhosttyTerminal;
+		};
+		D9F2B7F7BF6FEA48B5033F5B /* GhosttyTerminal */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C24992F3A9C17BAA1883EEBB /* XCRemoteSwiftPackageReference "libghostty-spm" */;
 			productName = GhosttyTerminal;
