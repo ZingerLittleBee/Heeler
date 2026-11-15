@@ -564,6 +564,12 @@ size:
 
 ### Codex
 
+Per-Host Codex limits are enabled by default on each device
+(`usage.codex-limits.<hostID>`), with a toggle in Usage Limits to turn them off.
+When turned off, Heeler hides cached Codex limits (`disabled`), keeps local
+Token Usage, and passes `--no-codex-limits` when supported so the worker skips
+spawning `codex app-server`.
+
 1. **Primary:** `codex -s read-only -a never app-server` over stdio JSON-RPC,
    using the `codex` and the environment recorded in `runtime.json` (`PATH`,
    `HOME`, `CODEX_HOME`, proxy and CA variables): `initialize` → `initialized` → `account/read` →

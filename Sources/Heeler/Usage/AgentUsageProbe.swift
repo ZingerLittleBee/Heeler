@@ -4,7 +4,8 @@ import Foundation
 /// Transcript paths and credentials never enter this protocol.
 enum AgentUsageProbe {
     static func script(
-        pluginRoot: String, timeZone: String, claudeLimits: Bool, agyLimits: Bool = true,
+        pluginRoot: String, timeZone: String, claudeLimits: Bool,
+        codexLimits: Bool = true, agyLimits: Bool = true,
         nonce: String, launcher: HerdrLauncher?
     ) throws -> Data {
         guard isQueryableTimeZone(timeZone),
@@ -30,6 +31,19 @@ enum AgentUsageProbe {
         }
         let query = GitProbe.singleQuoted(pluginRoot + "/src/usage-query.js")
         let flags = (claudeLimits ? " --claude-limits" : "") + (agyLimits ? "" : " --no-agy-limits")
+        let invoke: String =
+            if codexLimits {
+                "\"$node\" \(query) --tz '\(timeZone)'\(flags)"
+            } else {
+                // Plugins installed before `--no-codex-limits` reject unknown CLI options.
+                """
+                if grep -q 'no-codex-limits' \(query) 2>/dev/null; then
+                      "$node" \(query) --tz '\(timeZone)'\(flags) --no-codex-limits
+                    else
+                      "$node" \(query) --tz '\(timeZone)'\(flags)
+                    fi
+                """
+            }
         // Cap the entire framed response. Truncation removes the end marker,
         // so a plausible JSON prefix can never become a successful read.
         let script = """
@@ -49,7 +63,7 @@ enum AgentUsageProbe {
                   /*) ;;
                   *) printf '%s' '{"version":1,"runtime":"missing"}'; return 0 ;;
                 esac
-                "$node" \(query) --tz '\(timeZone)'\(flags)
+                \(invoke)
                 result=$?
                 case "$result" in
                   126|127) printf '%s' '{"version":1,"runtime":"missing"}'; return 0 ;;

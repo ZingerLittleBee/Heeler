@@ -53,9 +53,11 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null, readAgy
       accounts: { type: "string" },
       "lock-token": { type: "string" },
       "claude-limits": { type: "boolean", default: false },
+      "no-codex-limits": { type: "boolean", default: false },
       "no-agy-limits": { type: "boolean", default: false },
     },
   });
+  const codexLimitsEnabled = !values["no-codex-limits"];
   const agyLimitsEnabled = !values["no-agy-limits"];
   try { setPriority(10); } catch { /* Lower priority is best effort on the Host. */ }
   const runtime = readUsageRuntime(values.config);
@@ -387,14 +389,14 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null, readAgy
     snapshot(!pendingPrefix, true);
     // Reserve each program's cadence before starting it, so a worker that dies
     // mid-read still throttles the next one.
-    if (!limits.codex || !Number.isFinite(limits.codex.nextAllowedAt) || Date.now() >= limits.codex.nextAllowedAt) {
+    if (codexLimitsEnabled && (!limits.codex || !Number.isFinite(limits.codex.nextAllowedAt) || Date.now() >= limits.codex.nextAllowedAt)) {
       limits.codex = { ...limits.codex, nextAllowedAt: Date.now() + 60_000 };
       writeJSON(join(directory, "limits.json"), limits);
       limits.codex = { service: await readCodexLimits(runtime, directory), nextAllowedAt: Date.now() + 60_000 };
       heartbeat();
     }
     // An added Codex Account runs Codex with its own CODEX_HOME, on its own cadence.
-    for (const account of addedCodexAccounts) {
+    for (const account of codexLimitsEnabled ? addedCodexAccounts : []) {
       const entry = limits.codexAccounts[account.id];
       if (Number.isFinite(entry?.nextAllowedAt) && Date.now() < entry.nextAllowedAt) continue;
       limits.codexAccounts[account.id] = { ...entry, nextAllowedAt: Date.now() + 60_000 };
@@ -432,15 +434,17 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null, readAgy
       limits.agy = cacheAgyLimits(limits.agy, reading);
       heartbeat();
     }
-    // Each Account falls back to the latest limits its own sessions recorded.
-    const fallback = accountID => Object.values(fileStates).filter(file => file.program === "codex" && file.account === accountID)
-      .map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
-      .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
-    // A reservation whose read never finished has no reading of its own.
-    const report = (entry, accountID) => codexLimitsWithFallback(entry.service || entry.report
-      || { state: "error", reason: "requestFailed" }, fallback(accountID));
-    limits.codex.report = report(limits.codex, undefined);
-    for (const { id } of addedCodexAccounts) limits.codexAccounts[id].report = report(limits.codexAccounts[id], id);
+    if (codexLimitsEnabled) {
+      // Each Account falls back to the latest limits its own sessions recorded.
+      const fallback = accountID => Object.values(fileStates).filter(file => file.program === "codex" && file.account === accountID)
+        .map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
+        .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      // A reservation whose read never finished has no reading of its own.
+      const report = (entry, accountID) => codexLimitsWithFallback(entry.service || entry.report
+        || { state: "error", reason: "requestFailed" }, fallback(accountID));
+      limits.codex.report = report(limits.codex, undefined);
+      for (const { id } of addedCodexAccounts) limits.codexAccounts[id].report = report(limits.codexAccounts[id], id);
+    }
     writeJSON(join(directory, "limits.json"), limits);
     snapshot(!pendingPrefix, true);
     log.close();

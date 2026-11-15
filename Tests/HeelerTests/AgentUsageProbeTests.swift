@@ -32,6 +32,17 @@ struct AgentUsageProbeTests {
             claudeLimits: true, agyLimits: false, nonce: "test", launcher: nil)
         let text = String(decoding: disabled, as: UTF8.self)
         #expect(text.contains("--tz 'UTC' --claude-limits --no-agy-limits"))
+        #expect(!text.contains("--no-codex-limits"))
+    }
+
+    @Test("usage guards --no-codex-limits so older plugins keep answering Token Usage")
+    func codexLimitsFlagFollowsChoiceAndPluginSupport() throws {
+        let disabled = try AgentUsageProbe.script(
+            pluginRoot: "/plugins/heeler", timeZone: "UTC",
+            claudeLimits: false, codexLimits: false, nonce: "test", launcher: nil)
+        let text = String(decoding: disabled, as: UTF8.self)
+        #expect(text.contains("if grep -q 'no-codex-limits' '/plugins/heeler/src/usage-query.js'"))
+        #expect(text.contains("--tz 'UTC' --no-codex-limits"))
     }
 
     @Test("usage rejects identifiers Foundation cannot resolve or the plugin would refuse",

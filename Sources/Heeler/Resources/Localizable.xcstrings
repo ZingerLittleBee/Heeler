@@ -14734,6 +14734,28 @@
         }
       }
     },
+    "Codex limits" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex の制限"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 限额"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 用量上限"
+          }
+        }
+      }
+    },
     "Codex offers only an answer or a skip here." : {
       "localizations" : {
         "ja" : {
@@ -31373,28 +31395,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "限額"
-          }
-        }
-      }
-    },
-    "Limits off" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制限オフ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限额已关闭"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限額已關閉"
           }
         }
       }

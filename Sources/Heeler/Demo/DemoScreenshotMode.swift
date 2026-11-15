@@ -1423,8 +1423,8 @@
 
         /// `accounts` nil reports as a plugin before Accounts would.
         static func report(
-            timeZone identifier: String, claudeLimits: Bool, agyLimits: Bool = true,
-            includesAgy: Bool = true, hostID: Host.ID? = nil,
+            timeZone identifier: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, includesAgy: Bool = true, hostID: Host.ID? = nil,
             accounts: UsageAccountFile? = UsageAccountFile(), now: Date = Date()
         ) throws -> AgentUsageReport {
             let profile = hostID == DemoScreenshotFixture.buildHostID ? build : studio
@@ -1575,7 +1575,8 @@
                 ],
                 "programs": programs,
             ]
-            return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+            let decoded = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+            return codexLimits ? decoded : decoded.hidingCodexLimits()
         }
 
         private static func tokenUsage(
@@ -1666,7 +1667,8 @@
         }
 
         func readAgentUsage(
-            timeZone: String, claudeLimits: Bool, agyLimits: Bool = true, pluginRoot: String
+            timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, pluginRoot: String
         ) async throws -> AgentUsageReport {
             let version = try profile.plugin.get()?.parsedVersion
             var accounts: UsageAccountFile?
@@ -1676,8 +1678,8 @@
             }
             let includesAgy = version.map(HeelerPluginFeature.antigravityUsage.isSupported) ?? true
             return try DemoUsageSample.report(
-                timeZone: timeZone, claudeLimits: claudeLimits, agyLimits: agyLimits,
-                includesAgy: includesAgy, hostID: hostID, accounts: accounts)
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, includesAgy: includesAgy, hostID: hostID, accounts: accounts)
         }
 
         private func usageAccountFileData() async -> Data? {

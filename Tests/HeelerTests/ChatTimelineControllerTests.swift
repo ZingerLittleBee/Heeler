@@ -1975,6 +1975,89 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func holdingTopJumpPauses500msGivesFeedbackAndLoadsEarlierPagesUntilReleased() async throws {
+        var loadCalls = 0
+        var feedbackCalls = 0
+        let controller = ChatTimelineController(actions: ChatTimelineActions(
+            loadOlder: { loadCalls += 1 },
+            topJumpLoadFeedback: { feedbackCalls += 1 }))
+        let builder = ChatRowBuilder()
+        let initial = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(40..<80), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(initial))
+            await Self.settle(controller)
+            let view = controller.timeline
+
+            let holdStartedAt = ContinuousClock.now
+            controller.jumpToTop()
+            controller.setHoldingTopJump(true)
+            let firstLoadDeadline = ContinuousClock.now + .seconds(3)
+            while ContinuousClock.now < firstLoadDeadline, loadCalls == 0 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(loadCalls == 1)
+            #expect(feedbackCalls == 1)
+            #expect(ContinuousClock.now - holdStartedAt >= .milliseconds(450))
+            #expect(controller.olderPullPhase == .requested)
+            #expect(controller.canJumpToPreviousUserMessage)
+
+            let secondPage = await builder.rows(
+                for: ChatTimelineInput(entries: Self.entries(20..<80), older: .available))
+            let secondPageAppliedAt = ContinuousClock.now
+            controller.apply(Self.state(secondPage, revision: 2))
+            let secondLoadDeadline = ContinuousClock.now + .seconds(3)
+            while ContinuousClock.now < secondLoadDeadline, loadCalls < 2 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(loadCalls == 2)
+            #expect(feedbackCalls == 2)
+            #expect(ContinuousClock.now - secondPageAppliedAt >= .milliseconds(450))
+            #expect(abs(view.contentOffset.y - view.minOffsetY) <= 1)
+
+            controller.setHoldingTopJump(false)
+            let startReached = await builder.rows(
+                for: ChatTimelineInput(entries: Self.entries(0..<80), older: .reachedStart))
+            controller.apply(Self.state(startReached, revision: 3))
+            controller.jumpToTop()
+            let finalTopDeadline = ContinuousClock.now + .seconds(2)
+            while ContinuousClock.now < finalTopDeadline, abs(view.contentOffset.y - view.minOffsetY) > 1 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            await Self.settle(controller)
+            #expect(!controller.canJumpToPreviousUserMessage)
+            #expect(loadCalls == 2)
+            #expect(feedbackCalls == 2)
+        }
+    }
+
+    @Test func releasingTopJumpBeforePauseEndsCancelsLoadAndFeedback() async throws {
+        var loadCalls = 0
+        var feedbackCalls = 0
+        let controller = ChatTimelineController(actions: ChatTimelineActions(
+            loadOlder: { loadCalls += 1 },
+            topJumpLoadFeedback: { feedbackCalls += 1 }))
+        let rows = await ChatRowBuilder().rows(
+            for: ChatTimelineInput(entries: Self.entries(20..<60), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+
+            controller.jumpToTop()
+            controller.setHoldingTopJump(true)
+            try await Task.sleep(for: .milliseconds(50))
+            controller.setHoldingTopJump(false)
+            try await Task.sleep(for: .milliseconds(600))
+
+            #expect(loadCalls == 0)
+            #expect(feedbackCalls == 0)
+            #expect(controller.olderPullPhase == .idle)
+        }
+    }
+
     // MARK: Helpers
 
     private static func foldState(

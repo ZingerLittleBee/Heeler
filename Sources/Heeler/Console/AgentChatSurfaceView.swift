@@ -53,6 +53,7 @@ struct AgentChatSurfaceView: View {
     @State private var previousMessageRequest = 0
     @State private var nextMessageRequest = 0
     @State private var topJumpRequest = 0
+    @State private var isHoldingTopJump = false
     @State private var canJumpToPreviousMessage = false
     @State private var followRequest = 0
     @State private var collapseRequest = 0
@@ -366,6 +367,7 @@ struct AgentChatSurfaceView: View {
             // says whether Chat really left.
             stageExit?.cancel()
             stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
+                isHoldingTopJump = false
                 chat?.hide(viewerID)
                 composer.voice.composerDidLeaveScreen()
                 answerSwitch(false)
@@ -587,10 +589,12 @@ struct AgentChatSurfaceView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapseControlHeight = $0 }
             ChatMessageJumpControl(
-                showsPrevious: presentation == .timeline && timeline.state.isReady && canJumpToPreviousMessage,
+                showsPrevious: presentation == .timeline && timeline.state.isReady
+                    && (canJumpToPreviousMessage || isHoldingTopJump),
                 showsLatest: presentation == .timeline && timeline.state.isReady && !isFollowing,
                 jumpPrevious: { previousMessageRequest += 1 },
                 jumpTop: { topJumpRequest += 1 },
+                jumpTopHoldingChanged: { isHoldingTopJump = $0 },
                 jumpNext: { nextMessageRequest += 1 },
                 jumpLatest: { jumpRequest += 1 })
         }
@@ -626,6 +630,7 @@ struct AgentChatSurfaceView: View {
                 previousMessageRequest: previousMessageRequest,
                 nextMessageRequest: nextMessageRequest,
                 topJumpRequest: topJumpRequest,
+                isHoldingTopJump: isHoldingTopJump,
                 followRequest: followRequest,
                 collapseRequest: collapseRequest,
                 topObstruction: topInset + headerObstruction + bannerHeight,
@@ -960,6 +965,7 @@ struct AgentChatSurfaceView: View {
     private var timelineActions: ChatTimelineActions {
         ChatTimelineActions(
             loadOlder: { chat?.loadOlder() },
+            canLoadOlder: { chat?.canLoadOlder ?? false },
             loadOlderAutomatically: { chat?.loadOlder(automatic: true) },
             followingChanged: { isFollowing = $0 },
             firstPositionedLayout: { detailCrossfade?.contentDidAppear() },

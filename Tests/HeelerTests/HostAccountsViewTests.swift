@@ -155,14 +155,18 @@ struct HostAccountsViewTests {
         #expect(AgentUsageProgramTitle.title(program: "codex", account: nil) == "Codex")
     }
 
-    /// Codex Accounts (plugin 0.9.0) get a card each, like Claude Code's,
-    /// and the Accounts screen lists them with Codex's suggestions.
+    /// Codex Accounts (plugin 0.9.0) get a card each before Codex's toggle
+    /// card, like Claude Code's, and the Accounts screen lists them with
+    /// Codex's suggestions.
     @Test func eachCodexAccountGetsACard() async throws {
         let report = try AgentUsageFixture.codexAccountsReport()
         let cards = AgentUsageLimitsCard.cards(for: report)
-        #expect(cards.filter { $0.program == "codex" }.map(\.id) == ["codex.default", "codex.a1b2c3d4"])
-        guard case .limits("a1b2c3d4", "codex", "codex-work", let codexWork)? = cards.last else {
-            Issue.record("Expected codex-work's card, not \(String(describing: cards.last))")
+        let codexCards = cards.filter { $0.program == "codex" }
+        #expect(codexCards.map(\.id) == ["codex.default", "codex.a1b2c3d4", "codex.toggle"])
+        #expect(codexCards.map(\.carriesCodexToggle) == [false, false, true])
+        #expect(codexCards.map(\.sectionID) == codexCards.map(\.id))
+        guard case .limits("a1b2c3d4", "codex", "codex-work", let codexWork) = codexCards[1] else {
+            Issue.record("Expected codex-work's card, not \(codexCards[1])")
             return
         }
         #expect(codexWork.state == "unavailable")
@@ -178,10 +182,14 @@ struct HostAccountsViewTests {
         let cards = AgentUsageLimitsCard.cards(for: try report(limits: false))
         #expect(cards.map(\.id) == ["claude.toggle", "codex"])
         #expect(cards[0].carriesToggle)
+        #expect(cards[1].carriesCodexToggle)
+        let bothOff = AgentUsageLimitsCard.cards(for: try report(limits: false).hidingCodexLimits())
+        #expect(bothOff.map(\.id) == ["claude.toggle", "codex.toggle"])
+        #expect(bothOff[1].carriesCodexToggle)
     }
 
     /// With one Account the limits sheet looks as it did before Accounts:
-    /// Claude Code's card ends with its toggle.
+    /// each program's card ends with its toggle.
     @Test func aLoneDefaultAccountOrAnOlderPluginKeepsTheProgramsCard() throws {
         let lone = try report { claude in
             claude["accounts"] = (claude["accounts"] as? [Any]).map { Array($0.prefix(1)) }
@@ -193,13 +201,14 @@ struct HostAccountsViewTests {
         // The toggle's section is the same one the toggle card has with
         // several Accounts, so the Accounts screen its link pushed stays
         // when a second Account is added or removed.
-        let several = AgentUsageLimitsCard.cards(for: try report())
+        let several = AgentUsageLimitsCard.cards(for: try report()).filter { $0.program == "claude" }
         #expect(several.map(\.sectionID) == several.map(\.id))
         for report in [lone, older] {
             let cards = AgentUsageLimitsCard.cards(for: report)
             #expect(cards.map(\.id) == ["claude", "codex"])
             #expect(cards.map(\.carriesToggle) == [true, false])
-            #expect(cards.map(\.sectionID) == ["claude.toggle", "codex"])
+            #expect(cards.map(\.carriesCodexToggle) == [false, true])
+            #expect(cards.map(\.sectionID) == ["claude.toggle", "codex.toggle"])
             guard case .limits(_, _, let name, let limits) = cards[0] else {
                 Issue.record("Expected Claude Code's windows, not \(cards[0])")
                 continue
