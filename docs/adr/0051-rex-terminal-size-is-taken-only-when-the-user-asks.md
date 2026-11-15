@@ -6,8 +6,9 @@ status: proposed
 
 A Rex block has one size, its owner's (ADR 0049). Heeler asks for the view's
 grid and never owns the block on its own, so a terminal that another device
-owns shows at that device's size: lines wrap at its width, and rows run past
-or stop short of the screen. Owning the block would make the view's size the
+owns shows at that device's size: lines wrap at its width, a line wider than
+the view wraps again at the view's, and rows run past or stop short of the
+screen. Owning the block would make the view's size the
 block's, and every other device's view of it would follow. Against Rex
 0.1.0-preview.14 (API revision 12), `session.own_block` with mode `take`
 made the caller the owner at once and applied the size it had asked for, and

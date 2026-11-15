@@ -549,8 +549,8 @@ Take Over either: while a device shows a Pane, its window takes the device's
 size, no larger than a terminal of the user's showing the same window, and once
 the device stops showing it tmux sizes the window by its other terminals
 again. Rex has no Take Over: any viewer may type, and a terminal no device has
-sized follows the view. One another device sized keeps that size, cut to the
-view, under a notice whose Fit to Screen takes the size until the view stops
+sized follows the view. One another device sized keeps that size, its lines
+wider than the view wrapping at the view's width, under a notice whose Fit to Screen takes the size until the view stops
 showing the terminal (ADR 0051). libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the

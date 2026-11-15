@@ -75,7 +75,7 @@ When a terminal stops, it says why:
 
 ### Sized for another device
 
-A Rex terminal has one size, set by one device at a time. When no device has set it, the terminal fits your screen. When another device has, such as the Rex app on your Mac, Heeler shows the terminal at that size, cut off where it does not fit your screen, and after a second **Sized for another device** appears over its top rows:
+A Rex terminal has one size, set by one device at a time. When no device has set it, the terminal fits your screen. When another device has, such as the Rex app on your Mac, Heeler shows the terminal at that size without scaling it: lines wider than your screen wrap onto the next row, so a program drawn to the full width, such as a table or an editor, can look jumbled. After a second **Sized for another device** appears over its top rows:
 
 - **Fit to Screen** takes the size for your screen. Rex resizes the terminal itself, not only your view of it, so every device showing it, the Rex app included, gets your screen's size while you have it open here.
 - Heeler gives the size back when you leave the terminal, when Heeler goes to the background, or when the terminal ends, and the device that had it gets it back. Coming back never takes it again on its own; tap **Fit to Screen** again.
@@ -93,7 +93,7 @@ A Rex terminal has one size, set by one device at a time. When no device has set
 - **Rex API revision 12 only:** A Rex that does not offer revision 12 is refused. Heeler was built and tested against Rex 0.1.0-preview.14.
 - **Linux not yet tried:** Heeler looks where Rex keeps its socket on Linux, but no Linux Rex server has been tried yet.
 - **What the first paint leaves out:** Rex's redraw does not carry the cursor shape or the terminal's own default colors, so the cursor keeps Heeler's shape until the program sets it again, and the terminal wears your Heeler theme. While a full-screen program is open, the history behind it appears only after the program closes.
-- **A size set elsewhere is cut off:** Until you tap **Fit to Screen**, a terminal another device sized shows only the part that fits your screen. Heeler does not scale it down.
+- **A size set elsewhere does not fit:** Until you tap **Fit to Screen**, a terminal another device sized wider than your screen wraps its lines at your screen's width, so a full-width program can look jumbled. Heeler does not scale it down or cut it off.
 - **What has been tested so far:** Rex Hosts have been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. They have not been tried on a physical iPhone or iPad, or with the Rex app showing the same terminal.
 
 Last checked on 2026-11-15 against Rex 0.1.0-preview.14 (API revision 12) on macOS, in the iOS Simulator.

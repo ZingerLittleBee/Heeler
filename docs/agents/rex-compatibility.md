@@ -67,9 +67,13 @@ in users' words.
   program that never pauses for 250 ms keeps a best-effort first paint, and
   a redraw past 32 MiB ends the attach as too long to show
   ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
-- **Another client's size is clipped.** A block another client owns at
-  another grid shows at the server's grid, cut to the view, until the user
-  takes the size; there is no view scaled to the remote grid
+- **Another client's size is not fitted.** A block another client owns at
+  another grid shows at the server's grid until the user takes the size.
+  Lines wider than the view wrap at the view's width, in the first paint,
+  whose redraw rejoins soft-wrapped lines, and in output that runs past the
+  view's last column; a program that places its rows with cursor moves
+  mostly shows their left part. There is no view scaled to or cut at the
+  remote grid
   ([ADR 0051](../adr/0051-rex-terminal-size-is-taken-only-when-the-user-asks.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
