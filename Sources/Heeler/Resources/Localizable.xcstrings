@@ -62902,6 +62902,7 @@
         }
       }
     },
+    "This paste is too large to send to a Rex terminal in one piece. Paste less at a time." : {},
     "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain." : {
       "localizations" : {
         "ja" : {

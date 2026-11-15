@@ -79,6 +79,22 @@ enum RexControlError: Error, Sendable {
     case linkEnded(RexControlEnding)
 }
 
+/// What became of a request that must never apply twice, such as input to a
+/// terminal: whether it may have reached the server decides whether anything
+/// may follow it.
+enum RexDelivery: Sendable {
+    /// The server answered with a result.
+    case answered(RexResponse)
+    /// The server answered with an error.
+    case refused(RexServerError)
+    /// It never left this side: the link had ended, the request was too large
+    /// or could not be written, or it was cancelled before it was written.
+    case notSent
+    /// It left, or may have, and no answer came: the link ended, the deadline
+    /// passed, or the caller was cancelled first. The server may have applied it.
+    case unknown
+}
+
 /// What a control link's event sequence yields.
 enum RexControlUpdate: Sendable, Equatable {
     case event(RexControlEvent)
@@ -289,16 +305,38 @@ actor RexControlLink {
     func call<Payload: Encodable & Sendable>(_ method: String, payload: Payload?, deadline: Duration? = nil)
         async throws -> RexResponse
     {
-        if let ending { throw RexControlError.linkEnded(ending) }
-        try Task.checkCancellation()
+        try await exchange(method, payload: payload, deadline: deadline).outcome.get()
+    }
+
+    /// Sends `method` with `payload` as `call` does, and says whether it was
+    /// answered, refused, never sent, or may have reached the server with no
+    /// answer. A request that left is never sent again here.
+    func deliver<Payload: Encodable & Sendable>(_ method: String, payload: Payload?, deadline: Duration? = nil)
+        async -> RexDelivery
+    {
+        let exchange = await exchange(method, payload: payload, deadline: deadline)
+        switch exchange.outcome {
+        case .success(let response): return .answered(response)
+        case .failure(RexControlError.server(let failure)): return .refused(failure)
+        case .failure: return exchange.left ? .unknown : .notSent
+        }
+    }
+
+    /// One request and its outcome. `left` is true once the request was
+    /// written, or was being written when the link ended.
+    private func exchange<Payload: Encodable & Sendable>(_ method: String, payload: Payload?, deadline: Duration?)
+        async -> (left: Bool, outcome: Result<RexResponse, any Error>)
+    {
+        if let ending { return (false, .failure(RexControlError.linkEnded(ending))) }
+        if Task.isCancelled { return (false, .failure(CancellationError())) }
         nextRequest += 1
         let id = "h\(nextRequest)"
         guard let text = Self.request(id: id, method: method, payload: payload) else {
-            throw RexControlError.requestUnencodable(method: method)
+            return (false, .failure(RexControlError.requestUnencodable(method: method)))
         }
         let bytes = text.utf8.count
         guard bytes <= maxMessageBytes else {
-            throw RexControlError.requestTooLarge(bytes: bytes, limit: maxMessageBytes)
+            return (false, .failure(RexControlError.requestTooLarge(bytes: bytes, limit: maxMessageBytes)))
         }
         let wait = deadline ?? options.requestDeadline
         pending[id] = Pending(
@@ -307,14 +345,25 @@ actor RexControlLink {
                 do { try await sleep(wait) } catch { return }
                 await self.settle(id, .failure(RexControlError.deadlineExceeded(method: method)))
             })
+        var left = false
         do {
             try await webSocket.send(text: text)
+            left = true
         } catch let error as WebSocketError {
+            if case .sendInterrupted = error { left = true }
             settle(id, .failure(RexControlError.linkEnded(ending ?? RexControlEnding(error))))
         } catch {
             settle(id, .failure(error))
         }
-        return try await withTaskCancellationHandler {
+        do {
+            return (left, .success(try await answer(to: id)))
+        } catch {
+            return (left, .failure(error))
+        }
+    }
+
+    private func answer(to id: String) async throws -> RexResponse {
+        try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 guard var entry = pending[id] else {
                     continuation.resume(throwing: CancellationError())

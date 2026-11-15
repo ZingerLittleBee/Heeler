@@ -81,11 +81,11 @@ struct RexTerminalAttachLiveTests {
         #expect(first.starts(with: RexTerminalPaint.reset))
         #expect(String(decoding: first, as: UTF8.self).contains("heeler painted"))
 
-        // Output follows; nothing the view writes leaves.
+        // Output follows, and input opened with the first paint
+        // (`RexTerminalInputLiveTests` types into a lab terminal).
         try await lab.type("printf 'heeler %s\\n' followed\r", session: address.sessionID, block: address.blockID)
         try await waitUntil("the output", timeout: .seconds(10)) { chunks.text.contains("heeler followed") }
-        #expect(input.liveGeneration == nil)
-        #expect(!input.send(Data("echo leaked\r".utf8)))
+        #expect(input.liveGeneration != nil)
 
         // A size asked for, never owned.
         store.viewDidResize(cols: 100, rows: 30)
@@ -112,7 +112,6 @@ struct RexTerminalAttachLiveTests {
         try await Task.sleep(for: .seconds(1))
         #expect(store.status == .finished)
         #expect(await session.openTerminalCount == 0)
-        #expect(!chunks.text.contains("leaked"))
         print("Rex lab: \(chunks.all.count) chunks reached the view; it ended \(store.status)")
 
         await store.stop()

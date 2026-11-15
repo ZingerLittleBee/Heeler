@@ -514,6 +514,20 @@ enum TerminalAttachInput: Sendable, Equatable {
 enum TerminalAttachInputError: Error, Equatable {
     /// The session ended with these bytes still on this side.
     case sessionEnded
+    /// The session could not take these bytes now and never sent them, but
+    /// goes on: a writer throws it for input to skip, and the queue moves on
+    /// to what follows.
+    case notSent
+}
+
+/// Pastes for a Server Kind whose server sends a paste to the program itself,
+/// framed as the terminal's modes say (Rex, ADR 0050). The view then never
+/// frames a paste with bracket markers of its own.
+struct TerminalAttachPaster: Sendable {
+    /// Why `text` cannot go as one paste, in words for the user; nil when it can.
+    let refusal: @Sendable (_ text: String) -> String?
+    /// Queues `text` as one paste, in order with everything else the view sends.
+    let paste: @Sendable (_ text: String) -> Void
 }
 
 enum TmuxSendWriteOutcome: Equatable, Sendable {
@@ -644,6 +658,36 @@ final class TerminalAttachInputQueue: Sendable {
                 ReliableItem(payload: .action(action), acknowledgement: continuation),
                 discardingPendingScroll: true)
         }
+    }
+
+    /// Runs `action` in FIFO order with queued keystrokes and resizes, for a
+    /// caller that does not wait to hear of it. What it throws goes nowhere.
+    func perform(_ action: @escaping @Sendable () async throws -> Void) {
+        enqueueReliable(ReliableItem(payload: .action(action)), discardingPendingScroll: true)
+    }
+
+    /// Takes the keystrokes queued at the head, each write whole, up to the
+    /// first that someone waits on or anything that is not keystrokes, so a
+    /// writer can send them along with the write in hand.
+    func takeQueuedKeystrokes() -> [Data] {
+        state.withLock { state in
+            var taken: [Data] = []
+            while let item = state.reliable.first, item.acknowledgement == nil,
+                case .input(.keystrokes(let data)) = item.payload
+            {
+                taken.append(data)
+                state.reliable.removeFirst()
+            }
+            return taken
+        }
+    }
+
+    /// Drops everything queued and takes nothing more, for input whose fate
+    /// is in doubt, which nothing may follow. Whoever waits on queued bytes
+    /// hears they never left, and the pump stops once its current item is done.
+    func abandon() {
+        stopPumping()
+        finish()
     }
 
     func scroll(_ sequence: Data, rows: Int) {
@@ -812,7 +856,9 @@ final class TerminalAttachInputQueue: Sendable {
 
     /// Drains the queue onto a live PTY channel until the queue finishes or
     /// the task is cancelled. Scroll batches are paced so momentum cannot
-    /// monopolize the channel ahead of keystrokes.
+    /// monopolize the channel ahead of keystrokes. A write that throws
+    /// `TerminalAttachInputError.notSent` is skipped; any other error ends
+    /// the pump.
     func pump(
         write: (Data) async throws -> Void,
         resize: (Int, Int) async throws -> Void
@@ -825,12 +871,18 @@ final class TerminalAttachInputQueue: Sendable {
                 do {
                     try await write(data)
                     finishInFlight(.success(()))
+                } catch TerminalAttachInputError.notSent {
+                    finishInFlight(.failure(TerminalAttachInputError.notSent))
                 } catch {
                     finishInFlight(.failure(error))
                     throw error
                 }
             case .input(.scroll(let data)):
-                try await write(data)
+                do {
+                    try await write(data)
+                } catch TerminalAttachInputError.notSent {
+                    continue
+                }
                 try await Task.sleep(for: Self.scrollPacingInterval)
             case .input(.resize(let cols, let rows)):
                 try await resize(cols, rows)
@@ -909,10 +961,13 @@ final class TerminalAttachSession: Sendable {
     private let onConsumed: (@Sendable (Int) -> Void)?
     private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
     let tmuxSend: TmuxAttachSend?
-    /// Whether the view's input may reach the program at all. A Rex terminal's
-    /// stays shut until Rex input lands (ADR 0049): the view then gets no
-    /// writer, so nothing is sent and nothing reads as sent.
-    let acceptsInput: Bool
+    /// The view takes input only once the first output is in, rather than as
+    /// soon as the session opens. A Rex terminal's first output is its first
+    /// paint, before which nothing typed may leave (ADR 0050).
+    let inputBeginsWithOutput: Bool
+    /// Pastes go as the server's own paste rather than as bytes; nil for a
+    /// Server Kind whose pastes are bytes the view frames.
+    let paster: TerminalAttachPaster?
     /// How the terminal's size stands with its server, for a Server Kind whose
     /// terminals keep a size of their own. One reader; nil for the others.
     let sizeReports: AsyncStream<TerminalSizeReport>?
@@ -925,7 +980,8 @@ final class TerminalAttachSession: Sendable {
         onConsumed: (@Sendable (Int) -> Void)? = nil,
         onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
         tmuxSend: TmuxAttachSend? = nil,
-        acceptsInput: Bool = true,
+        inputBeginsWithOutput: Bool = false,
+        paster: TerminalAttachPaster? = nil,
         sizeReports: AsyncStream<TerminalSizeReport>? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
@@ -935,7 +991,8 @@ final class TerminalAttachSession: Sendable {
         self.onConsumed = onConsumed
         self.onPresence = onPresence
         self.tmuxSend = tmuxSend
-        self.acceptsInput = acceptsInput
+        self.inputBeginsWithOutput = inputBeginsWithOutput
+        self.paster = paster
         self.sizeReports = sizeReports
         self.ender = ender
     }

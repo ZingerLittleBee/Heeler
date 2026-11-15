@@ -524,6 +524,7 @@ actor RexHostSession {
             }
             let (id, signals) = terminals.subscribe(address, server: ready.server)
             defer { terminals.unsubscribe(id) }
+            let epoch = clientEpoch
             let connection = RexTerminalConnection(
                 address: address, server: ready.server, generation: ready.generation,
                 clientID: ready.control.clientID, signals: signals,
@@ -540,7 +541,13 @@ actor RexHostSession {
                     guard let self else { throw RexTerminalEnding.connectionReset }
                     let control = try await self.terminalControl(server: ready.server, generation: ready.generation)
                     _ = try await control.call(method, payload: payload)
-                })
+                },
+                deliver: { [weak self] method, payload in
+                    guard let self else { return .notSent }
+                    return await self.deliverTerminalInput(
+                        method, payload: payload, server: ready.server, generation: ready.generation, epoch: epoch)
+                },
+                maxMessageBytes: ready.control.maxMessageBytes)
             return try await operation(connection)
         }
     }
@@ -678,6 +685,20 @@ actor RexHostSession {
         let ready = try await awaitConnection()
         guard ready.server == server, ready.generation == generation else { throw RexTerminalEnding.connectionReset }
         return ready.control
+    }
+
+    /// Sends one request of a terminal's input on the live control link while
+    /// it is still the terminal's: the same server, SSH connection and control
+    /// client (`epoch`), which a link that resumed the client keeps. Never
+    /// waits for a link, so input typed while none is the terminal's is not
+    /// sent, and never sent later.
+    private func deliverTerminalInput(
+        _ method: String, payload: JSONValue, server: RexServerStatus, generation: UInt64, epoch: UInt64
+    ) async -> RexDelivery {
+        guard let ready = readyConnection, ready.server == server, ready.generation == generation,
+            clientEpoch == epoch
+        else { return .notSent }
+        return await ready.control.deliver(method, payload: payload, deadline: terminalOptions.inputDeadline)
     }
 
     private func terminalDataChannel(generation: UInt64) async throws -> any HeelerSSHAPIChannel {

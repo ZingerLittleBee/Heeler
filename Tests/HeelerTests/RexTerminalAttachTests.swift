@@ -8,8 +8,8 @@ import Testing
 /// A Rex terminal opened for viewing (ADR 0049), from the Console's runner to
 /// a fake server's block and data endpoint, through the store the view uses:
 /// the first paint, live output and repaints, the size asked for and never
-/// owned, input that never leaves, and every way it ends or survives a drop.
-/// Ids, nonces, tokens and the redraw are invented.
+/// owned, and every way it ends or survives a drop. `RexTerminalInputTests`
+/// covers its input. Ids, nonces, tokens and the redraw are invented.
 @MainActor
 @Suite("Rex terminal attach", .timeLimit(.minutes(1)))
 struct RexTerminalAttachTests {
@@ -193,44 +193,7 @@ struct RexTerminalAttachTests {
         #expect(await rig.attachSlotsTaken == 0)
     }
 
-    // MARK: Input and size
-
-    /// Nothing the view writes leaves: no writer while connecting, painting
-    /// or live, so its emulator's answers to a program's queries go nowhere.
-    @Test func nothingTheViewWritesLeaves() async throws {
-        let rig = Rig()
-        let control = await rig.server()
-        let session = hostSession([await rig.host([.server(control)])])
-        defer { Task { await session.end() } }
-        await session.resume()
-        let input = TerminalInputController()
-        let store = store(session, input: input)
-        store.viewDidResize(cols: 80, rows: 24)
-        try await waitUntil("the stream") { await rig.endpoint.streamCount == 1 }
-        // A program asks for its device attributes and cursor while it paints.
-        await rig.begin()
-        await rig.endpoint.send(Data("\u{1B}[c\u{1B}[6n".utf8))
-        let answers = Data("\u{1B}[?62;22c\u{1B}[24;1R".utf8)
-        #expect(!input.send(answers))
-        try await waitUntil("the first paint") { store.status == .live }
-
-        #expect(!RexTerminalInput.isOpen)
-        #expect(input.liveGeneration == nil)
-        #expect(!input.send(answers))
-        #expect(!input.send(Data("ls\r".utf8)))
-        #expect(input.requestPaste("echo hi", bracketedPaste: true) == .blocked)
-        input.scroll(Data("\u{1B}[A".utf8), rows: 1)
-        store.send(Data("ls\r".utf8))
-        try await Task.sleep(for: .milliseconds(100))
-
-        let asked = Set(await methods(control))
-        let allowed = Set([
-            "server.status", "session.attach_all", "session.view", "session.list_blocks", "session.attach",
-            "data.connect", Self.resizeMethod,
-        ]).union(["title", "process", "modes", "format", "blob_read"].map(RexInventoryWire.terminalMethod))
-        #expect(asked.isSubset(of: allowed), "\(asked.subtracting(allowed))")
-        await store.stop()
-    }
+    // MARK: Size
 
     /// The view's grid is asked for on arrival and once it settles after a
     /// change, again when the owner lets go, and the block is never owned.

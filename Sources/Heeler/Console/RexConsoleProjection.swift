@@ -260,6 +260,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 case .finished, .serverGone: throw TerminalProgramEnd.finished
                 case .connectionReset: throw TransportError.cancelled
                 case .outputUnavailable: throw TransportError.rexTerminalOutputUnavailable
+                case .inputFailed:
+                    // As the other Server Kinds say an input write failed.
+                    throw TransportError.channelFailed(detail: String(localized: "attach input failed"))
                 }
             }
         }

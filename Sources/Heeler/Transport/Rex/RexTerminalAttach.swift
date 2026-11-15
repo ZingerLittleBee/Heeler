@@ -28,6 +28,10 @@ enum RexTerminalEnding: Error, Sendable, Equatable {
     case connectionReset
     /// The block's output stopped, and starting it again did not bring it back.
     case outputUnavailable
+    /// Input may have reached the terminal with no answer, or the server
+    /// refused it. Nothing typed after it was sent, and it is never sent
+    /// again, so nothing lands twice or out of order.
+    case inputFailed
 }
 
 /// One terminal's hold on its Rex Host's connection, for as long as the
@@ -55,6 +59,13 @@ struct RexTerminalConnection: Sendable {
     let forgetAttachment: @Sendable () async -> Void
     /// Sends one request about the block on the current control link.
     let call: @Sendable (_ method: String, _ payload: JSONValue) async throws -> Void
+    /// Sends one request of the view's input on the live control link while it
+    /// is still the terminal's: the same server, SSH connection and control
+    /// client, which a link that resumed the client keeps. It never waits for
+    /// a link; with none, the request is not sent.
+    let deliver: @Sendable (_ method: String, _ payload: JSONValue) async -> RexDelivery
+    /// The largest request the terminal's control link accepts, in bytes.
+    let maxMessageBytes: Int
 }
 
 /// Hands each open Rex terminal what concerns it: its block's events, which
@@ -136,14 +147,27 @@ final class RexTerminalHub: Sendable {
     }
 }
 
-/// One view of a Rex terminal block (ADR 0049): the stream's paints and output
-/// become the view's bytes, the view's grid is asked for and the block never
-/// owned, and the ways it ends become `RexTerminalEnding`.
+/// One view of a Rex terminal block (ADRs 0049 and 0050): the stream's paints and output
+/// become the view's bytes, the view's input goes out one request at a time,
+/// the view's grid is asked for and the block never owned, and the ways it
+/// ends become `RexTerminalEnding`.
 ///
 /// Nothing reaches the view before the first paint, which starts with a full
 /// reset, as every later paint does; a paint arrives as one write, so the view
 /// replaces what it showed in one go. The title follows the inventory's, and
-/// the colors stay Heeler's. Input stays shut behind `RexTerminalInput`.
+/// the colors stay Heeler's.
+///
+/// Input: one queue per view takes keys, pastes, scrolling, focus, the Keys
+/// panel and Stop alike, and sends one request at a time, each waiting for its
+/// answer, since Rex may apply requests out of order when several are out.
+/// Typed bytes go to the terminal's `write` as text, read by
+/// `RexTerminalKeyReader`; keystrokes that queued meanwhile join the next
+/// write, and pastes and events go as `block.event`. The gate opens with the
+/// first paint and closes for good when the block closes, the program ends or
+/// the attach ends; on a link that is not the terminal's, as while it drops,
+/// input is not sent and not kept. A request that may have arrived with no
+/// answer, or that the server refused, is never sent again: what queued behind
+/// it is dropped and the attach ends with `inputFailed`, so the view says so.
 actor RexTerminalAttach {
     struct Options: Sendable {
         var stream = RexTerminalStream.Options()
@@ -153,6 +177,9 @@ actor RexTerminalAttach {
         /// the attach ends anyway. Rex closes the link itself once the block's
         /// last output is out, so the view keeps that output.
         var closeGrace: Duration = .seconds(1)
+        /// How long one request of input may wait for its answer before its
+        /// outcome counts as unknown.
+        var inputDeadline: Duration = .seconds(10)
 
         init() {}
     }
@@ -171,17 +198,25 @@ actor RexTerminalAttach {
     private var ending: RexTerminalEnding?
     private var blockClosed = false
     private var stopped = false
+    private let input: TerminalAttachInputQueue
+    private var keys: RexTerminalKeyReader
+    /// The first paint reached the view, so input may follow.
+    private var painted = false
+    /// The block's stream ended, or input failed: nothing more is sent.
+    private var inputClosed = false
 
     private init(
-        connection: RexTerminalConnection, columns: Int, rows: Int,
+        connection: RexTerminalConnection, input: TerminalAttachInputQueue, columns: Int, rows: Int,
         reports: AsyncStream<TerminalSizeReport>.Continuation
     ) {
         self.connection = connection
+        self.input = input
         self.reports = reports
         stream = RexTerminalStream(
             session: connection.address.sessionID, block: connection.address.blockID, route: connection.route,
             options: connection.options.stream, sleep: connection.sleep)
         report = TerminalSizeReport(local: Grid(columns: columns, rows: rows), client: connection.clientID)
+        keys = RexTerminalKeyReader(budget: Self.textBudget(connection))
     }
 
     /// Opens the block's stream for a view of `columns` by `rows`, and asks
@@ -189,20 +224,23 @@ actor RexTerminalAttach {
     static func session(on connection: RexTerminalConnection, columns: Int, rows: Int) async -> TerminalAttachSession {
         let (reports, continuation) = AsyncStream.makeStream(
             of: TerminalSizeReport.self, bufferingPolicy: .bufferingNewest(1))
-        let attach = RexTerminalAttach(connection: connection, columns: columns, rows: rows, reports: continuation)
-        await attach.start()
         let input = TerminalAttachInputQueue()
+        let attach = RexTerminalAttach(
+            connection: connection, input: input, columns: columns, rows: rows, reports: continuation)
+        await attach.start()
         let pump = Task {
             try? await input.pump(
-                // Input is shut (`RexTerminalInput`): the view has no writer,
-                // and nothing written here anyway leaves.
-                write: { _ in },
+                write: { bytes in try await attach.write(bytes) },
                 resize: { columns, rows in await attach.resize(columns: columns, rows: rows) })
         }
+        let paster = TerminalAttachPaster(
+            refusal: { text in Self.pasteRefusal(text, on: connection) },
+            paste: { text in input.perform { await attach.paste(text) } })
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
             input: input,
-            acceptsInput: RexTerminalInput.isOpen,
+            inputBeginsWithOutput: true,
+            paster: paster,
             sizeReports: reports
         ) {
             input.finish()
@@ -238,7 +276,11 @@ actor RexTerminalAttach {
                 report.server = Grid(columns: grid.columns, rows: grid.rows)
                 report.owner = grid.owner
                 reports.yield(report)
-            case .paint(let bytes, _), .feed(let bytes):
+            case .paint(let bytes, _):
+                guard !bytes.isEmpty else { continue }
+                painted = true
+                return bytes
+            case .feed(let bytes):
                 if !bytes.isEmpty { return bytes }
             case .title, .theme:
                 // The title follows the inventory's title, and Heeler keeps
@@ -247,6 +289,7 @@ actor RexTerminalAttach {
             case .exited:
                 await end(.finished)
             case .ended(let end):
+                inputClosed = true
                 if let ending { throw ending }
                 switch end {
                 case .closedHere:
@@ -285,6 +328,126 @@ actor RexTerminalAttach {
             reports.finish()
         }
         await stream.stop()
+    }
+
+    // MARK: Input
+
+    /// Input may go out: the first paint is in, and the block, its program and
+    /// the attach are all still there.
+    private var inputIsOpen: Bool {
+        painted && !inputClosed && !blockClosed && ending == nil && !stopped
+    }
+
+    /// Sends one write of the view's, with the keystrokes queued behind it
+    /// joined in where they fit. Throws `TerminalAttachInputError.notSent`
+    /// for input not sent, which the queue skips, and `.sessionEnded` once
+    /// nothing more will be.
+    func write(_ bytes: Data) async throws {
+        guard inputIsOpen else { throw turnAway() }
+        var pieces = keys.read(bytes)
+        for queued in input.takeQueuedKeystrokes() {
+            pieces += keys.read(queued)
+        }
+        try await send(RexTerminalKeyReader.merged(pieces, budget: keys.budget))
+    }
+
+    /// Sends a paste whole, for the server to frame as its terminal's modes say.
+    func paste(_ text: String) async {
+        guard inputIsOpen else {
+            _ = turnAway()
+            return
+        }
+        try? await send([.paste(text)])
+    }
+
+    /// Input the gate turns away is dropped, with the keystrokes queued
+    /// behind it: none of it was sent, and none is kept for later.
+    private func turnAway() -> TerminalAttachInputError {
+        _ = input.takeQueuedKeystrokes()
+        return .notSent
+    }
+
+    private func send(_ pieces: [RexTerminalInputPiece]) async throws {
+        for piece in pieces {
+            guard inputIsOpen else { throw turnAway() }
+            let request = Self.request(for: piece, at: connection.address)
+            switch await connection.deliver(request.method, request.payload) {
+            case .answered:
+                continue
+            case .notSent:
+                // The live link is not the terminal's, as while it drops. The
+                // terminal carries on once the link is back, or ends.
+                throw turnAway()
+            case .refused(let failure) where failure.kind == .notFound:
+                closeInput()
+                await end(.finished)
+                throw TerminalAttachInputError.sessionEnded
+            case .refused, .unknown:
+                closeInput()
+                await failInput()
+                throw TerminalAttachInputError.sessionEnded
+            }
+        }
+    }
+
+    /// Nothing more is sent, and what queued is dropped.
+    private func closeInput() {
+        inputClosed = true
+        input.abandon()
+    }
+
+    /// Ends the attach for input that may have arrived unanswered, or was
+    /// refused, so the view says so. It wins over a reset the view has not
+    /// heard of yet, after which a new attach would carry on as if nothing
+    /// was lost.
+    private func failInput() async {
+        guard !stopped else { return }
+        if ending == nil || ending == .connectionReset { ending = .inputFailed }
+        await stream.stop()
+    }
+
+    /// The most JSON one text write may carry, under the control link's limit
+    /// with room for the rest of the request.
+    static func textBudget(_ connection: RexTerminalConnection) -> Int {
+        let address = connection.address
+        return connection.maxMessageBytes - 1024 - 6 * (address.sessionID.utf8.count + address.blockID.utf8.count)
+    }
+
+    /// Why `text` cannot go to the terminal as one paste, or nil when it can:
+    /// its request would pass the control link's limit. A paste is never cut.
+    static func pasteRefusal(_ text: String, on connection: RexTerminalConnection) -> String? {
+        let request = Self.request(for: .paste(text), at: connection.address)
+        let probe = JSONValue.object([
+            "type": .string("request"), "id": .string("h\(UInt64.max)"), "method": .string(request.method),
+            "payload": request.payload,
+        ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        guard let bytes = try? encoder.encode(probe).count, bytes <= connection.maxMessageBytes else {
+            return String(localized:
+                "This paste is too large to send to a Rex terminal in one piece. Paste less at a time.")
+        }
+        return nil
+    }
+
+    /// The request that carries `piece` to the block at `address`.
+    static func request(
+        for piece: RexTerminalInputPiece, at address: RexPaneAddress
+    ) -> (method: String, payload: JSONValue) {
+        var payload: [String: JSONValue] = [
+            "session_id": .string(address.sessionID), "block_id": .string(address.blockID),
+        ]
+        switch piece {
+        case .text(let text):
+            payload["args"] = .object(["data": .string(text)])
+            return (RexInventoryWire.terminalMethod("write"), .object(payload))
+        case .paste(let text):
+            payload["event"] = .object(["type": .string("paste"), "payload": .object(["text": .string(text)])])
+            return ("block.event", .object(payload))
+        case .event(let type, let eventPayload):
+            payload["event"] = .object(["type": .string(type), "payload": eventPayload])
+            return ("block.event", .object(payload))
+        }
     }
 
     // MARK: Signals

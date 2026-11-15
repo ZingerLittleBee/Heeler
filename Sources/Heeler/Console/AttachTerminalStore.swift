@@ -614,11 +614,7 @@ final class AttachTerminalStore {
         }
         // A new attach sets its own modes; the old attach's are not its.
         feed.modes.reset()
-        // A session whose input is shut gets no writer, so nothing the view
-        // types, pastes or answers leaves, and none of it reads as sent.
-        let takesInput = session.acceptsInput
         func beginInput() -> TerminalInputController.SessionGeneration? {
-            guard takesInput else { return nil }
             let generation = input.beginSession(
                 writer: { data in session.send(data) },
                 scroller: { sequence, rows in
@@ -626,16 +622,19 @@ final class AttachTerminalStore {
                 },
                 discardPendingScroll: { session.discardPendingScroll() },
                 acknowledgedWriter: { data in try await session.sendAcknowledged(data) },
-                tmuxSend: session.tmuxSend)
+                tmuxSend: session.tmuxSend,
+                paster: session.paster)
             self.inputGeneration = generation
             return generation
         }
         // A reattach opens its channel while the screen still shows the lost
         // session, and a kept restart shows the program that ended. A key typed
         // at that screen would answer whatever the pane has moved on to, so its
-        // input begins with the new output.
+        // input begins with the new output, as a session's does whose first
+        // output is its first paint.
         var inputGeneration =
-            status == .reconnecting || status == .restarting ? nil : beginInput()
+            status == .reconnecting || status == .restarting || session.inputBeginsWithOutput
+            ? nil : beginInput()
         if let latestCols = cols, let latestRows = rows,
             latestCols != initialCols || latestRows != initialRows
         {
