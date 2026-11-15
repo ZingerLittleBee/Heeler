@@ -9,13 +9,14 @@ A remote machine reachable over SSH. The unit a user adds, names, and authentica
 _Avoid_: server, machine, connection
 
 **Server**:
-One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
-session, or a tmux server. Each is on or off on this device (Show in Heeler).
+One thing on a Host that holds Agents or Terminals: a Herdr TUI session, a
+herdr-core session, a tmux server, or a Rex server (one per Host at most). Each
+is on or off on this device (Show in Heeler).
 One that is on has its own connection, Agents, Terminals, notifications and
 settings, and its own page under Host detail. A look at the Host finds its
 Servers; ones found after the Host was added arrive off. In code, and wherever
-this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
-Server that is on: the catalog still stores one `Host` record for each (ADR
+this glossary says "a herdr-core Host", "a tmux Host" or "a Rex Host", the
+thing meant is one Server that is on: the catalog still stores one `Host` record for each (ADR
 0047).
 _Avoid_: service, backend, instance
 
@@ -28,14 +29,17 @@ app is still herdr-core; the app's organization is data it carries, not
 another kind. A Server keeps its kind: neither a connection nor an edit
 changes it, and turning it off and on again makes a new record (ADRs 0031 and
 0047). A Pairing Code always adds a Herdr TUI Server; herdr-core and tmux
-Servers are found by a look or turned on by name.
+Servers are found by a look or turned on by name, and a Rex Server only by a
+look.
 _Avoid_: backend, server type, flavor
 
 **Rex Host**:
-A Host whose Server Kind is Rex: one Rex server on macOS or Linux that is
-already running, found by the Unix socket it listens on and stored with that
-socket's path. Heeler never starts the server and never runs the `rex`
-command-line tool to find it. It shows in the Console's Terminals list only:
+A Host's Rex Server that is on: one Rex server on macOS or Linux, found by the
+Unix socket it listens on and stored with that socket's path. A look lists it
+running where the socket is there, and not running where Rex is installed
+without one; turned on then, it connects once the user starts Rex, since
+Heeler never starts the server and never runs the `rex` command-line tool to
+find it. It shows in the Console's Terminals list only:
 no Agent status, Chat, Composer, notifications, Live Activities or Usage.
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0048). One control connection follows the whole server: every session's

@@ -14,11 +14,18 @@ an experiment that ships switched off.
 Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
 is gone, and every build offers Rex.
 
+Amended by [ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md), as
+[Update 2026-11-16: a Server of its Host](#update-2026-11-16-a-server-of-its-host)
+says: a Rex server is a Server of its Host, listed by the look that adds or
+scans the Host and turned on with a switch, so nothing is confirmed in Host
+detail.
+
 ## Decision
 
 - Rex is an experimental Server Kind under ADR 0031's rules: a Host added by
   hand is confirmed once in Host detail and never switches kind, and a Pairing
-  Code never adds one. A confirmed Rex Host persists in a defaults catalog of
+  Code never adds one. (Amended 2026-11-16: a Rex Server is turned on, not
+  confirmed; see the update below.) A confirmed Rex Host persists in a defaults catalog of
   its own (`rexHosts`), which builds before this change never read, so they
   neither show nor rewrite its Hosts.
 - A Rex Host is one Rex server that is already running on a macOS or Linux
@@ -27,7 +34,9 @@ is gone, and every build offers Rex.
   read, or one Heeler could not quote as one shell word, is a lookup to make
   again, never a reason to hide the Host or fail the catalog.
 - Heeler never starts a Rex server. Where none runs, Rex is not offered, and a
-  Rex Host's checks say to start Rex on the machine.
+  Rex Host's checks say to start Rex on the machine. (Amended 2026-11-16: an
+  installed Rex with no server is listed as not running; see the update
+  below.)
 - Detection works without the Rex command-line tool. It tests files in the
   detection exec Heeler already runs: whether each place a server listens holds
   a socket, whether the account owns it and may read and write it, and whether
@@ -47,6 +56,7 @@ is gone, and every build offers Rex.
 - Detection offers Rex only where it found a socket the account may use. It
   says plainly when Rex is installed and no server runs, and when a socket is
   there that this account cannot use. Confirming stores the socket found.
+  (Superseded 2026-11-16 by the update below: turning Rex on stores it.)
 - (Removed 2026-11-16, see the update below.) One switch,
   `RexHostsExperiment`, decides whether this build offers Rex. It
   is off by default and cannot be turned on in a Release build; a Debug build
@@ -173,3 +183,54 @@ What every build now does, and what it means for people without Rex:
 - Agents, Chat, Composer, New Agent and New Terminal, notifications, Live
   Activities, widgets, Usage and background refresh still leave Rex Hosts out
   by Server Kind, as before.
+
+## Update 2026-11-16: a Server of its Host
+
+ADR 0047, written on the main branch beside this one, made a Host the machine
+and had it list its Servers. A Rex server joins that model the way a tmux
+server did. Where Rex differs from tmux, this says how and why.
+
+- **One Rex Server per Host.** A look lists one at most: the server on the
+  socket it prefers, the account's own before a shared one. Its key names
+  nothing (`HostServerKey(kind: .rex, name: "")`), so it reads `Rex` wherever a
+  Server is named, and a Rex record of the Host maps to that key whatever
+  socket it stores. The socket stays in the record, not in the key. A key that
+  held the path would put a home directory into labels, would change when a
+  Linux runtime directory does, and could not match a record that stores no
+  socket yet.
+- **Running, not running, missing.** A socket this account may use is a Server
+  that runs, and Add Host starts it checked. Rex installed with no socket is a
+  Server that is not running, listed unchecked as a stopped tmux is. Turned on,
+  it connects once the user starts Rex. Until then its page and the Console
+  say to start Rex, since the reason, `rexServerNotRunning`, is retried on its
+  own. That replaces the note that told the user to start Rex before Rex could
+  be confirmed. A socket this account cannot use is the one case where a look
+  names Rex missing, with that reason. Unlike a tmux that is not installed,
+  Rex that is not installed, a Rex part that did not read, and a kernel other
+  than macOS or Linux name Rex nowhere: Rex is experimental, the Setup Guide
+  covers herdr only, and a Host whose user has no Rex shows nothing new. The
+  row for a Rex named missing gives its reason and offers no Setup Guide.
+- **On and off.** Turning Rex on, in Add Host or in Host detail, stores the
+  socket the look found, in the `rexHosts` catalog. Turned on while Rex is not
+  running, it stores none and looks the socket up on each connection, as a
+  stored path that does not read already did. Turning it off removes its
+  record, which ends its connections, and leaves the Host's other Servers as
+  they are. A Rex Host saved before this change keeps its stored shape and is
+  the Rex Server of the Host its connection matches.
+- **Not by name.** Add by Name does not offer Rex. A Rex Server has no name to
+  type, its socket is found and never typed, and a look already lists an
+  installed Rex that is not running.
+- **Found later.** A Rex server that starts on a Host added earlier is marked in
+  the Hosts list and tagged New in Host detail, and stays off, as any Server
+  found later does.
+- **Kept out by kind.** Usage reads a Host through its records that can read
+  Usage, so a Rex record is never what a Host is read through or named by, and
+  a Host whose only Server is Rex has no Usage entry. Agents, Chat, Composer,
+  New Agent and New Terminal, notifications, Live Activities, widgets,
+  background refresh, the plugin, the Host Helper and Pairing Codes still
+  leave Rex out.
+
+For Rex this supersedes the confirmation in Host detail, "where none runs,
+Rex is not offered", and detection that offers Rex only for a usable socket.
+ADR 0047's change to ADR 0031's confirmation applies to Rex as it does to
+herdr-core and tmux.
