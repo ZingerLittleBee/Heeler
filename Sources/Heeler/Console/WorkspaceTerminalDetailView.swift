@@ -101,9 +101,28 @@ struct WorkspaceTerminalDetailView: View {
             for: agent, console: console, preferred: agentSurface.preferred, keepingTo: corePin) == .chat
     }
 
+    /// A Terminal whose Host lists it but cannot open it yet, such as a Rex
+    /// Host's: the screen says so, with no attach, Reattach or keyboard.
+    private var opensTerminal: Bool {
+        console.capabilities(for: terminal.hostID).opensTerminals
+    }
+
     var body: some View {
         Group {
-            if isMissing {
+            if !opensTerminal {
+                terminalSurface {
+                    TerminalStatusDialog(
+                        glyph: .symbol("terminal"),
+                        title: String(localized: "Can't Open Yet"),
+                        message: TerminalStatusPresentation.rexTerminalsListedOnlyMessage,
+                        palette: themePalette,
+                        dimsBackground: false
+                    ) {
+                        Button(backTitle) { onBack() }
+                            .buttonStyle(.terminalStatusSecondary)
+                    }
+                }
+            } else if isMissing {
                 terminalSurface {
                     TerminalStatusDialog(
                         glyph: .symbol("terminal"),
@@ -300,7 +319,7 @@ struct WorkspaceTerminalDetailView: View {
     }
 
     private func reclaimPooledEntry() {
-        guard entry == nil, !isMissing else { return }
+        guard entry == nil, opensTerminal, !isMissing else { return }
         entry = console.terminalConnections.reclaim(
             hostID: terminal.hostID, identity: identity, ownerID: ownerID,
             sceneID: sceneRouting?.sceneID,
@@ -310,7 +329,7 @@ struct WorkspaceTerminalDetailView: View {
     }
 
     private func load() async {
-        guard !isMissing, !windowHasEnded else { return }
+        guard opensTerminal, !isMissing, !windowHasEnded else { return }
         failure = nil
         if let entry, entry.store.identity != identity {
             console.terminalConnections.release(

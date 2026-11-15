@@ -258,7 +258,7 @@ extension TransportError {
             TransportErrorPresentation(
                 summary: String(localized: "Rex terminals cannot open yet"),
                 detail: nil,
-                recoverySuggestion: String(localized: "This build of Heeler lists the terminals of a Rex Host but cannot open them yet."))
+                recoverySuggestion: TerminalStatusPresentation.rexTerminalsListedOnlyMessage)
         case .rexServerGone:
             TransportErrorPresentation(
                 summary: String(localized: "This Terminal belongs to a Rex server that is gone"),

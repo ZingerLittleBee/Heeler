@@ -124,5 +124,5 @@ session with detached terminals once a minute, whichever holds.
   a server.
 - Opening a Rex terminal is the next step: it needs `session.attach` on this
   control connection before a data link, and `RexHostSession.withConnection`
-  hands both out. Until then an Attach on a Rex Pane fails with one reason
-  that says this build cannot open Rex terminals yet.
+  hands both out. Until then a Rex Pane's detail says it cannot open yet,
+  with a way back and nothing to retry, and an Attach fails with that reason.

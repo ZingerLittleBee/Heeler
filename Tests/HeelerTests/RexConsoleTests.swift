@@ -245,7 +245,15 @@ struct RexConsoleTests {
         let error = TransportError.rexTerminalsNotOpenableYet
         #expect(!error.isRetryable)
         #expect(error.presentation.summary == "Rex terminals cannot open yet")
-        #expect(error.presentation.message.contains("cannot open them yet"))
+        #expect(error.presentation.recoverySuggestion == TerminalStatusPresentation.rexTerminalsListedOnlyMessage)
+        // The reason is said once, not again in its suggestion.
+        #expect(error.presentation.message.components(separatedBy: "cannot open").count == 2)
+
+        // A detail says so instead of attaching, so it offers no Reattach.
+        #expect(!store.capabilities(for: rex.id).opensTerminals)
+        for kind in [ServerKind.herdrTUI, .herdrCore, .tmux] {
+            #expect(HostCapabilities(serverKind: kind).opensTerminals)
+        }
     }
 
     /// A Rex Host lists Terminals only: the Agents list, its Host filter and
