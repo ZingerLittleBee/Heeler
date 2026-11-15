@@ -23,12 +23,17 @@ observed yet.
   (`RexDataLink`). Heeler skips the stream's snapshot (`RexStreamScanner`) and
   paints from the server's `vt` redraw instead (`RexTerminalPaint`);
   `RexTerminalStream` runs the three for one view.
-- The Console opens a Rex terminal for viewing only
+- The Console opens a Rex terminal from the server's redraw
   ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)):
   `RexHostSession.withTerminal` calls `session.attach` on the Host's control
-  connection and holds the block to one data connection, `RexTerminalAttach`
-  turns its stream into the view's bytes and asks for the view's size, and
-  input stays shut behind `RexTerminalInput`.
+  connection and holds the block to one data connection, and
+  `RexTerminalAttach` turns its stream into the view's bytes and asks for the
+  view's size.
+- Input to a Rex terminal goes on the control connection one request at a
+  time ([ADR 0050](../adr/0050-rex-terminal-input-goes-one-request-at-a-time.md)):
+  typed bytes as text through the terminal's `write`, read by
+  `RexTerminalKeyReader`; pastes, focus changes and mouse reports text cannot
+  carry through `block.event`.
 
 ## Versioned observations
 
@@ -234,9 +239,55 @@ Lab capture `d2_queries`.
   secondary device attributes, cursor position, status, version (as a DCS
   string), a palette color (OSC 4), a mode's state and the kitty keyboard
   flags. Anything Heeler's emulator answered as well would reach the program
-  as typed input; Heeler drops those answers (`RexTerminalAnswerFilter`).
+  as typed input; Heeler drops those answers (`RexTerminalKeyReader`).
 - A background color query (OSC 11) got no answer. Answers to the window size
   reports (`CSI 14 t`, `CSI 18 t`) were not captured.
+- In `RexTerminalKeyReaderTests`, Heeler's own Ghostty wrote 18 answers to 21
+  queries (device attributes, status and cursor reports, version, colors, mode
+  states, kitty flags, window sizes, color scheme, a setting and a terminfo
+  capability); none of them left.
+
+### Terminal input
+
+Lab capture `d_input` (the input run), each case on a lab shell whose program
+recorded the bytes it read, under a set of modes.
+
+- Writes sent one at a time, each after the last one's answer, arrived in
+  order (100 of 100). Writes sent without waiting arrived out of order in each
+  of three runs of 300, and their answers did not come back in request order.
+  300 paste events sent without waiting arrived in order. 200 writes and
+  events mixed and sent without waiting did not.
+- A `write` passed its text's UTF-8 bytes to the program unchanged: C0
+  controls, ESC, DEL, C1 code points as UTF-8, a lone line feed, and 64 KiB
+  and 400,000 bytes in one request. A lone surrogate escaped in the JSON
+  arrived as U+FFFD. An answer counted the bytes written.
+- A paste event reached the program framed with the paste markers only while
+  it had bracketed paste on, line feeds kept. With it off, a line feed became
+  a carriage return, and CR LF two carriage returns. ESC and other C0 controls
+  in a paste became spaces either way, so an end marker inside the text could
+  not end the paste early.
+- A mouse event reached the program only under mouse tracking, in the
+  program's own encoding, SGR or legacy, at the cell given (0-based in the
+  event, 1-based in the report). Motion, with a button held or none, reached
+  it under any-motion tracking (1003) and not under click tracking (1000);
+  button tracking (1002) was not tried. A wheel event with
+  `delta_y` -1 reported wheel up and +1 wheel down, `delta_x` +1 wheel right;
+  a delta of 3 lines or 40 pixels still gave one report, and an event with no
+  cell reported the top left one.
+- A focus event reached the program as `CSI I` or `CSI O` only with focus
+  reporting on.
+- Live suite `RexTerminalInputLiveTests` (Heeler's runner, view store and
+  input controller over a local socket), on a shell block another control
+  client had created and still owned while Heeler typed: writes to a block
+  Heeler's client did not own were applied. 300 numbered tokens, each its own
+  write from the view, sent as fast as the view handed them over to a shell
+  running `cat -v` with echo off, all came back in the server's text, once
+  and in order. A two-line paste reviewed through the input controller came
+  back as two lines with no paste markers while the program had bracketed
+  paste off, and between `^[[200~` and `^[[201~` once it turned the mode on.
+  A bracketed paste carried in the view's own bytes, with an ESC inside, went
+  as a paste event; `cat -v` showed that ESC as a space in both modes. The
+  view finished once the session was destroyed.
 
 ### Documented for API revision 12, not observed
 
