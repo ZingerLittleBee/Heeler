@@ -63,7 +63,9 @@ restarted servers without showing a stale or half-read list.
   not dialed in a tight loop.
 - `server.status` names the server instance. Another instance is another
   server: every detail open on the last one's terminals has left the inventory,
-  as with another tmux server (ADR 0045).
+  as with another tmux server (ADR 0045), and none of the last one's titles,
+  programs or directories is shown for the new one's terminals before they are
+  read.
 - Leaving on purpose closes the connection with a close frame, so the server
   forgets the client at once: suspending with the app once its grace period
   ran out, and the Host removed or replaced or the Console ending. Open

@@ -98,11 +98,11 @@ actor RexHostSession {
     private var waitSleep: Task<Void, any Error>?
     private var lifecycleTransition: Task<Void, Never>?
     /// Which follow may publish, so a late inventory from one that stopped is
-    /// dropped, and what the last one published, whose details the next one
-    /// starts from.
+    /// dropped, and what the last one published and on which server
+    /// instance, whose details the next one on the same instance starts from.
     private final class Follows: Sendable {
         let run = Mutex<UInt64>(0)
-        let lastInventory = Mutex<RexInventory?>(nil)
+        let lastInventory = Mutex<(instanceID: String, inventory: RexInventory)?>(nil)
 
         func stopAll() {
             run.withLock { $0 &+= 1 }
@@ -354,7 +354,7 @@ actor RexHostSession {
                 guard activationIsCurrent(generation) else { break }
                 announce(server, latency: started.duration(to: .now), routeID: transport.routeID)
                 let followed = ContinuousClock.now
-                let follow = await follow(link)
+                let follow = await follow(link, server: server)
                 guard activationIsCurrent(generation) else { break }
                 // A follow that read the inventory and lasted was healthy: its
                 // end is news, and the next link is tried at once.
@@ -393,12 +393,19 @@ actor RexHostSession {
 
     /// Follows the inventory on `link` until the follow ends. Each update
     /// reaches the open terminals too, before the inventory applies it.
-    private func follow(_ link: RexControlLink) async -> (ending: RexInventoryFollower.Ending, published: Bool) {
+    /// Another server instance's details say nothing of this one's terminals,
+    /// whose ids may repeat, so only the same instance's are carried.
+    private func follow(_ link: RexControlLink, server: RexServerStatus) async
+        -> (ending: RexInventoryFollower.Ending, published: Bool)
+    {
         let run = follows.run.withLock {
             $0 &+= 1
             return $0
         }
-        let carried = follows.lastInventory.withLock { $0?.details } ?? [:]
+        let carried =
+            follows.lastInventory.withLock { last in
+                last.flatMap { $0.instanceID == server.instanceID ? $0.inventory.details : nil }
+            } ?? [:]
         let follower = RexInventoryFollower(
             link: link, carrying: carried, maxReadsInFlight: maxReadsInFlight,
             observe: { [follows, terminals] update in
@@ -407,7 +414,7 @@ actor RexHostSession {
             }
         ) { [updatesContinuation, follows] inventory in
             guard follows.run.withLock({ $0 == run }) else { return }
-            follows.lastInventory.withLock { $0 = inventory }
+            follows.lastInventory.withLock { $0 = (server.instanceID, inventory) }
             updatesContinuation.yield(.inventory(inventory))
         }
         let ending = await follower.run()

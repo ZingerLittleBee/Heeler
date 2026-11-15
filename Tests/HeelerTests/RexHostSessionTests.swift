@@ -467,6 +467,32 @@ struct RexHostSessionTests {
         await session.end()
     }
 
+    /// What one server instance knew of its terminals is not shown for
+    /// another's, whose ids may repeat: the new instance's terminals wait for
+    /// its own reads of their titles and programs.
+    @Test func anotherInstanceStartsWithoutTheLastOnesDetails() async throws {
+        let world = world()
+        let first = await server(world)
+        let second = await server(world)
+        await second.stopAnswering(RexInventoryWire.terminalMethod("title"))
+        await second.stopAnswering(RexInventoryWire.terminalMethod("process"))
+        let session = session(Dialer([ScriptedRexHost(control: [.server(first), .server(second)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+        let before = log.inventories.count
+
+        world.restart(as: "instance-0002")
+        await first.close(.goingAway, reason: "shutting down")
+        try await log.waitUntil("the new server's inventory") {
+            $0.servers.count == 2 && $0.inventories.count > before
+        }
+        let terminals = log.inventories[before].sessions.first?.terminals ?? []
+        #expect(!terminals.isEmpty)
+        #expect(terminals.allSatisfy { $0.details == RexTerminalDetails() })
+        await session.end()
+    }
+
     // MARK: Failures
 
     /// A server that is not running is retried; a socket SSH will not forward
