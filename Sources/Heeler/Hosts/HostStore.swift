@@ -522,6 +522,12 @@ final class HostStore {
         hosts.filter(\.serverKind.hasHostIntegrations)
     }
 
+    /// Whether Rex Servers are all that is on: Hosts lists them, and Usage and
+    /// Settings' per-Host pages have no Host to read (ADR 0048).
+    var hasOnlyRexServersOn: Bool {
+        integratedHosts.isEmpty && hosts.contains { $0.serverKind == .rex }
+    }
+
     /// A Host waiting for its Server Kind stays out of Live Activities, and so
     /// does a Rex Host, which reports no Agents. Whether a herdr-core or tmux
     /// Host may show one is its registration's call, see `LiveActivityGate`.

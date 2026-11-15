@@ -62,6 +62,18 @@ struct RexConsoleTests {
                 keys: NotificationKeyStore(secrets: InMemorySecretStore())))
         notifications.setHosts([rex])
         #expect(notifications.hosts.isEmpty)
+
+        // Usage and Accounts then have no Host, and say why instead of asking
+        // for one; a Host with nothing on, or any other kind on, keeps asking.
+        let tmux = Host(
+            name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
+        let held = Host(name: "Held", address: "held.example", username: "dev", serverKind: .unconfirmed)
+        #expect(HostStore(volatileHosts: [rex]).integratedHosts.isEmpty)
+        #expect(HostStore(volatileHosts: [rex]).hasOnlyRexServersOn)
+        #expect(HostStore(volatileHosts: [rex, held]).hasOnlyRexServersOn)
+        #expect(!HostStore(volatileHosts: [rex, tmux]).hasOnlyRexServersOn)
+        #expect(!HostStore(volatileHosts: [held]).hasOnlyRexServersOn)
+        #expect(!HostStore(volatileHosts: []).hasOnlyRexServersOn)
     }
 
     /// What the Console dialed, in order.

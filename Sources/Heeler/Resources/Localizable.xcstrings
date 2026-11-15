@@ -6191,6 +6191,7 @@
         }
       }
     },
+    "Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none." : {},
     "Accounts are not available on this Host." : {
       "localizations" : {
         "ja" : {
@@ -65530,6 +65531,7 @@
         }
       }
     },
+    "Usage comes from herdr and tmux Servers. Rex Servers report none." : {},
     "Usage comes with the Host Helper, which is not available on native Windows yet." : {
       "localizations" : {
         "ja" : {

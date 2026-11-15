@@ -233,10 +233,12 @@ server did. Where Rex differs from tmux, this says how and why.
   every Host and point out each Server that is off as new again.
 - **Kept out by kind.** Usage reads a Host through its records that can read
   Usage, so a Rex record is never what a Host is read through or named by, and
-  a Host whose only Server is Rex has no Usage entry. Agents, Chat, Composer,
-  New Agent and New Terminal, notifications, Live Activities, widgets,
-  background refresh, the plugin, the Host Helper and Pairing Codes still
-  leave Rex out.
+  a Host whose only Server is Rex has no Usage entry. Where Rex Servers are
+  all that is on, Usage and the Accounts in Settings say that Rex reports
+  none, rather than asking for a Host that Hosts already lists. Agents, Chat,
+  Composer, New Agent and New Terminal, notifications, Live Activities,
+  widgets, background refresh, the plugin, the Host Helper and Pairing Codes
+  still leave Rex out.
 
 For Rex this supersedes the confirmation in Host detail, "where none runs,
 Rex is not offered", and detection that offers Rex only for a usable socket.

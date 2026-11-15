@@ -6,6 +6,9 @@ import SwiftUI
 struct AgentsAndAccountsSettingsView: View {
     let console: ConsoleStore
     let hosts: [Host]
+    /// Hosts has Hosts, and only Rex Servers are on: there is no Host to add,
+    /// only none that keeps Accounts.
+    var hasOnlyRexServersOn = false
     @State private var editing: Editing?
 
     private struct Editing: Identifiable {
@@ -44,7 +47,10 @@ struct AgentsAndAccountsSettingsView: View {
             }
 
             Section {
-                if hosts.isEmpty {
+                if hosts.isEmpty, hasOnlyRexServersOn {
+                    Text("Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none.")
+                        .foregroundStyle(.secondary)
+                } else if hosts.isEmpty {
                     Text("Add a Host to keep its Accounts.").foregroundStyle(.secondary)
                 }
                 // A Host's Servers keep one set of Accounts on it, so the Host
