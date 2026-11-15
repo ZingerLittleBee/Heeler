@@ -28,7 +28,8 @@ struct FoundServer: Hashable, Codable, Identifiable, Sendable {
 /// detection exec, and the kinds it looked for in vain.
 struct HostServerScan: Equatable, Sendable {
     /// A kind the look did not find, with what it saw instead where that says
-    /// more than "not found": a tmux too old to drive.
+    /// more than "not found": a tmux too old to drive, a Rex socket this
+    /// account cannot use.
     struct Missing: Equatable, Sendable {
         let kind: ServerKind
         let note: String?
@@ -94,6 +95,23 @@ struct HostServerScan: Equatable, Sendable {
             break
         }
 
+        // A Host has one Rex Server at most: the server on the socket the look
+        // prefers (ADR 0048). Installed and not running, it is found as a
+        // stopped tmux is, since turned on it connects once the user starts
+        // Rex. Rex is named missing only where a socket shows a server this
+        // account cannot use: a machine without Rex shows nothing of it.
+        switch detection.rex {
+        case .socketFound:
+            servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: true, version: nil))
+        case .notRunning:
+            servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: false, version: nil))
+        case .notUsable:
+            missing.append(
+                Missing(kind: .rex, note: String(localized: "Socket found, but this account cannot use it")))
+        case .notInstalled, .unreadable, .unsupported:
+            break
+        }
+
         self.servers = servers
         self.missing = missing
     }
@@ -105,6 +123,14 @@ struct HostServerScan: Equatable, Sendable {
     func tmuxPaths(for server: HostServerKey) -> TmuxPaths? {
         guard server.kind == .tmux else { return nil }
         return detection.tmuxPaths(socketName: server.name)
+    }
+
+    /// What a Rex Server turned on from this look stores: the socket the look
+    /// found a server on. Nil while Rex is not running, which leaves the
+    /// record's connections to look it up (ADR 0048).
+    func rexSocket(for server: HostServerKey) -> RexSocket? {
+        guard server.kind == .rex else { return nil }
+        return detection.rexSocket
     }
 }
 

@@ -48,16 +48,27 @@ struct NewHostWizardTests {
             channel: .refused)
     }
 
+    /// The same Host with a Rex server too, on `rexSocket` while that is set and
+    /// installed and not running otherwise.
+    private static func machineWithRex(socket rexSocket: String?) -> ScriptedCoreHost {
+        ScriptedCoreHost(
+            herdrRead: .answers(sessionsJSON),
+            tmuxProbe: ScriptedCoreHost.tmuxLines(executable: tmuxPath, sockets: ["default", "work"]),
+            rexProbe: ScriptedCoreHost.rexLines(sockets: rexSocket.map { [($0, true, true)] } ?? []),
+            channel: .refused)
+    }
+
     private func makeRig(
         catalog: HostStore = HostStore(volatileHosts: []),
         outcome: FakeTransportConnector.Outcome = .connects(pingResult: .failure(.cancelled)),
         presentedKeyBlob: Data? = nil,
         presentedJumpKeyBlob: Data? = nil,
-        knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore()
+        knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore(),
+        machine: ScriptedCoreHost = Self.machine()
     ) -> WizardRig {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
-            presentedJumpKeyBlob: presentedJumpKeyBlob, core: Self.machine())
+            presentedJumpKeyBlob: presentedJumpKeyBlob, core: machine)
         let dependencies = HostOnboardingDependencies(
             connector: connector,
             knownHosts: knownHosts,
@@ -340,6 +351,43 @@ struct NewHostWizardTests {
         _ = await rig.finish()
 
         #expect(rig.serversOn == [Self.core])
+    }
+
+    /// A running Rex is listed after tmux and starts checked like any Server
+    /// that runs; its record keeps the socket the look found (ADR 0048).
+    @Test func aRunningRexIsCheckedAndSavedWithItsSocket() async throws {
+        let socket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let rex = HostServerKey(kind: .rex, name: "")
+        let rig = makeRig(machine: Self.machineWithRex(socket: socket))
+        fill(rig.wizard)
+
+        await rig.wizard.connect()
+
+        #expect(rig.wizard.scan?.servers.map(\.key) == [Self.tui, Self.core, Self.tmux, Self.workTmux, rex])
+        #expect(rig.wizard.checked == [Self.tui, Self.tmux, Self.workTmux, rex])
+
+        rig.wizard.checked = [rex]
+        _ = await rig.finish()
+
+        let host = try #require(rig.catalog.machines.first)
+        #expect(rig.serversOn == [rex])
+        #expect(host.record(of: rex)?.id == rig.wizard.recordID)
+        #expect(host.record(of: rex)?.rexSocket?.path == socket)
+        #expect(rig.discoveries.unseen(on: host).isEmpty)
+    }
+
+    /// A Rex that is not running is listed unchecked, as any stopped Server is.
+    @Test func aStoppedRexStartsUncheckedAndStaysOff() async throws {
+        let rex = HostServerKey(kind: .rex, name: "")
+        let rig = makeRig(machine: Self.machineWithRex(socket: nil))
+        fill(rig.wizard)
+
+        await rig.wizard.connect()
+        _ = await rig.finish()
+
+        #expect(rig.wizard.scan?.servers.last == FoundServer(key: rex, isRunning: false, version: nil))
+        #expect(!rig.wizard.checked.contains(rex))
+        #expect(rig.serversOn == [Self.tui, Self.tmux, Self.workTmux])
     }
 
     @Test func savingWithoutConnectingAddsAHostWithNoServer() async throws {

@@ -181,7 +181,7 @@ struct ServerKindDetection: Equatable, Sendable {
 
     private static let rexKernels = [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel]
 
-    /// The socket a Rex Host confirmed from this detection stores.
+    /// The socket a Rex Server turned on from this detection stores.
     var rexSocket: RexSocket? {
         guard case .socketFound(let path) = rex else { return nil }
         return RexSocket(path: path)
@@ -224,19 +224,6 @@ extension RexProbe {
                 String(localized: "Server Kind detection exited with status \(result.exitStatus)."))
         }
         return ServerKindDetection.rex(try? parse(stdout: result.stdout, nonce: nonce))
-    }
-}
-
-extension ServerKindDetection.RexFinding {
-    var summary: String {
-        switch self {
-        case .unsupported: String(localized: "Not supported on this Host")
-        case .unreadable: String(localized: "Could not read")
-        case .notInstalled: String(localized: "Not found")
-        case .notRunning: String(localized: "Installed, not running")
-        case .notUsable: String(localized: "Socket found, but this account cannot use it")
-        case .socketFound: String(localized: "Socket found")
-        }
     }
 }
 

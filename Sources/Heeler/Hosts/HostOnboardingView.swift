@@ -308,12 +308,18 @@ struct HostOnboardingView: View {
     @ViewBuilder
     private var showInHeelerSection: some View {
         if let turnOff {
+            let machineName = hostMachine?.name ?? store.host.machineName
             Section {
                 Toggle("Show in Heeler", isOn: Binding(get: { true }, set: { if !$0 { turnOff() } }))
                     .accessibilityIdentifier("hosts.detail.showInHeeler")
             } footer: {
-                Text(
-                    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on \(hostMachine?.name ?? store.host.machineName) keeps running.")
+                // A Rex Server brings Terminals only (ADR 0048).
+                if store.host.serverKind.reportsAgents {
+                    Text(
+                        "Off removes its Agents, Terminals and notifications from this device. Whatever runs on \(machineName) keeps running.")
+                } else {
+                    Text("Off removes its Terminals from this device. Whatever runs on \(machineName) keeps running.")
+                }
             }
         }
     }

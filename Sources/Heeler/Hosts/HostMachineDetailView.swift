@@ -177,7 +177,7 @@ struct HostMachineDetailView: View {
         rows += found.filter { !listed.contains($0.key) }.map {
             ServerRow(id: .server($0.key), key: $0.key, record: nil, found: $0)
         }
-        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux]
+        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux, .rex]
         return rows.sorted { lhs, rhs in
             let left = (
                 kinds.firstIndex(of: lhs.key.kind) ?? kinds.count, lhs.key.distinguishingName ?? "",
@@ -455,7 +455,9 @@ private struct HostMachineDetailSheets: ViewModifier {
 }
 
 /// Turns on a Server a look cannot find: a session or socket by a name the
-/// user knows, running or not.
+/// user knows, running or not. Rex is not among the kinds: a Host's one Rex
+/// Server has no name to type, and a look lists it wherever Rex is installed
+/// (ADR 0048).
 private struct HostServerNameSheet: View {
     let machine: HostMachine
     let isNativeWindows: Bool

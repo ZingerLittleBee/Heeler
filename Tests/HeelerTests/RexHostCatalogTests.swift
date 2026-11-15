@@ -375,6 +375,62 @@ struct RexHostCatalogTests {
         #expect(try persistedHostIDs(in: defaults, key: Self.rexKey) == [rex.id, future])
     }
 
+    /// Turning Rex on for a Host writes its record to Rex's own catalog, with
+    /// the socket the look found, and leaves the shared one as it was.
+    @Test func turningRexOnKeepsItsRecordInItsOwnCatalog() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = InMemorySecretStore()
+        let store = makeStore(defaults, secrets: secrets)
+        let tui = Host(name: "Studio", address: "studio.example", username: "dev")
+        try store.add(tui)
+        let shared = defaults.data(forKey: "hosts")
+
+        let on = try store.turnOn(HostServerKey(kind: .rex, name: ""), onHostOf: tui.id, rexSocket: socket)
+
+        #expect(on.serverKind == .rex)
+        #expect(on.rexSocket == socket)
+        #expect(defaults.data(forKey: "hosts") == shared)
+        #expect(try persistedHostIDs(in: defaults, key: Self.rexKey) == [on.id])
+        let reloaded = makeStore(defaults, secrets: secrets)
+        #expect(reloaded.machines.map { $0.members.map(\.id) } == [[tui.id, on.id]])
+        #expect(reloaded.hosts.map(\.displayName) == ["Studio · Herdr TUI", "Studio · Rex"])
+    }
+
+    /// A Rex Host saved before Hosts listed their Servers, in the shape that
+    /// build wrote, is the Rex Server of the Host its connection matches: it
+    /// is on, so a look that finds Rex there shows it neither twice nor new.
+    @Test func aRexHostSavedBeforeHostsListedServersIsAServerOfItsMachine() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let tuiID = UUID()
+        let rexID = UUID()
+        let path = "/Users/dev/Library/Application Support/rex/server.sock"
+        let flat = #""name":"Studio","username":"dev","authMethod":"deviceKey","address":"studio.example","port":22"#
+        let tui = #"{"id":"\#(tuiID.uuidString)","serverKind":"herdrTUI","sessionName":"",\#(flat)}"#
+        let rex = #"{"id":"\#(rexID.uuidString)","serverKind":"rex","sessionName":"","rexSocket":{"path":"\#(path)"},\#(flat)}"#
+        let order = [tuiID, rexID].map { "\"\($0.uuidString)\"" }.joined(separator: ",")
+        defaults.set(Data(#"{"version":1,"hosts":[\#(tui)]}"#.utf8), forKey: "hosts")
+        defaults.set(Data(#"{"version":1,"hosts":[\#(rex)],"order":[\#(order)]}"#.utf8), forKey: Self.rexKey)
+
+        let store = makeStore(defaults, secrets: InMemorySecretStore())
+
+        let machine = try #require(store.machines.first)
+        let key = HostServerKey(kind: .rex, name: "")
+        #expect(store.machines.count == 1)
+        #expect(machine.members.map(\.id) == [tuiID, rexID])
+        #expect(machine.record(of: key)?.rexSocket?.path == path)
+        let scripted = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil),
+            rexProbe: ScriptedCoreHost.rexLines(sockets: [(path, true, true)]), channel: .refused)
+        let scan = HostServerScan(try await ServerKindDetection.run(over: scripted, session: ""))
+        let discoveries = HostServerDiscoveryStore(defaults: nil)
+        discoveries.note(scan, on: machine.id)
+        #expect(scan.servers.map(\.key) == [key])
+        #expect(discoveries.unseen(on: machine).isEmpty)
+        #expect(!machine.needsRecord(for: key))
+    }
+
     @Test func aRexHostIsAConsoleHostWithoutAgentsIntegrationsOrLiveActivities() throws {
         let rex = rexHost()
         let tmux = tmuxHost()

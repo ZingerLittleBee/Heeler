@@ -425,10 +425,12 @@ final class HostStore {
     /// `newRecordID`, with the same connection and password. Host key trust lives
     /// outside the catalog, so a caller that sees `HostMachine.needsRecord` puts it
     /// in place under that id first: the record's first connection then finds it.
+    /// `tmuxPaths` and `rexSocket` are what a look read of the Server, kept only
+    /// by a record of their kind.
     @discardableResult
     func turnOn(
         _ server: HostServerKey, onHostOf member: Host.ID, tmuxPaths: TmuxPaths? = nil,
-        newRecordID: Host.ID = UUID()
+        rexSocket: RexSocket? = nil, newRecordID: Host.ID = UUID()
     ) throws -> Host {
         guard let machine = machine(containing: member) else { throw HostStoreError.unknownHost }
         guard server.kind.isConfirmed, server.endpointSocketPath == nil else {
@@ -437,7 +439,7 @@ final class HostStore {
         if let record = machine.record(of: server) { return record }
         if let spare = machine.spareRecord {
             return try confirmServerKind(
-                server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths)
+                server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths, rexSocket: rexSocket)
         }
         if let reason = server.kind.sessionNameRefusal(server.name) {
             throw HostStoreError.sessionNameRefused(reason: reason)
@@ -451,6 +453,7 @@ final class HostStore {
             serverKind: server.kind,
             sessionName: server.name,
             tmuxPaths: tmuxPaths,
+            rexSocket: rexSocket,
             routes: source.routes)
         try add(record, password: source.authMethod == .password ? try password(for: source) : nil)
         return hosts.first { $0.id == record.id } ?? record

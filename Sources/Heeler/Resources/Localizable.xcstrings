@@ -29135,7 +29135,6 @@
         }
       }
     },
-    "Installed, not running" : {},
     "Instructions dictated to a coding agent" : {
       "localizations" : {
         "ja" : {
@@ -35582,28 +35581,6 @@
         }
       }
     },
-    "Not found" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "見つかりません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到"
-          }
-        }
-      }
-    },
     "Not in This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -36379,6 +36356,7 @@
       }
     },
     "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
+    "Off removes its Terminals from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {
@@ -49027,7 +49005,6 @@
       }
     },
     "Socket (blank for default)" : {},
-    "Socket found" : {},
     "Socket found, but this account cannot use it" : {},
     "Some Changes details were truncated." : {
       "localizations" : {
@@ -59211,6 +59188,7 @@
         }
       }
     },
+    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {

@@ -20,19 +20,25 @@ struct HostServerDiscoveryStoreTests {
         HostMachine.grouped(records)[0]
     }
 
-    /// A look that found a tmux Server on each of `sockets`, and a core that is
-    /// installed and runs or not where `coreRuns` says.
-    private func scan(tmux sockets: [String] = [], coreRuns: Bool? = nil) async throws -> HostServerScan {
+    /// A look that found a tmux Server on each of `sockets`, a core that is
+    /// installed and runs or not where `coreRuns` says, and Rex the same way
+    /// where `rexRuns` says.
+    private func scan(
+        tmux sockets: [String] = [], coreRuns: Bool? = nil, rexRuns: Bool? = nil
+    ) async throws -> HostServerScan {
         let locator =
             switch coreRuns {
             case nil: ScriptedCoreHost.locatorLines(executable: nil)
             case false?: ScriptedCoreHost.locatorLines()
             case true?: ScriptedCoreHost.locatorLines(socketFile: true)
             }
+        let rexSocket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let rex = rexRuns.map { runs in ScriptedCoreHost.rexLines(sockets: runs ? [(rexSocket, true, true)] : []) }
         let host = ScriptedCoreHost(
             locator: locator,
             tmuxProbe: sockets.isEmpty
                 ? ScriptedCoreHost.tmuxLines() : ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: sockets),
+            rexProbe: rex,
             channel: .refused)
         return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
     }
@@ -114,6 +120,26 @@ struct HostServerDiscoveryStoreTests {
         store.note(try await scan(tmux: ["default"], coreRuns: true), on: studio.id)
 
         #expect(store.unseen(on: studio).map(\.key) == [Self.core])
+    }
+
+    /// A Rex server started on a Host added earlier is pointed out as a new
+    /// tmux server is, and stays off until the user turns it on.
+    @Test func aRexServerThatStartsLaterIsPointedOutAndLeftOff() async throws {
+        let store = HostServerDiscoveryStore(defaults: nil)
+        let tui = record()
+        let studio = machine(tui)
+        let rex = HostServerKey(kind: .rex, name: "")
+        store.note(try await scan(rexRuns: false), on: studio.id, shown: true)
+        #expect(store.found(on: studio.id).map(\.key) == [rex])
+        #expect(store.unseen(on: studio).isEmpty)
+
+        store.note(try await scan(rexRuns: true), on: studio.id)
+
+        #expect(store.unseen(on: studio).map(\.key) == [rex])
+        #expect(store.unseen(on: studio).map(\.key.badgeLabel) == ["Rex"])
+        #expect(studio.record(of: rex) == nil)
+        // Once its record is on, it is news no more.
+        #expect(store.unseen(on: machine(tui, record(kind: .rex))).isEmpty)
     }
 
     // MARK: When a background look is due
