@@ -229,6 +229,21 @@ struct RexTransportTests {
         }
     }
 
+    /// Endings only a misbehaving or overloaded server brings each say what
+    /// happened, and every one is retried.
+    @Test(arguments: [
+        (RexControlEnding.droppedByServer, "too many events were waiting"),
+        (.messageTooBig, "too large"),
+        (.protocolFailure, "did not agree on the connection's protocol"),
+        (.linkLost, "The connection to Rex ended."),
+        (.serverWentAway(code: 1001), "The connection to Rex ended."),
+    ])
+    func aLinkEndingSaysWhichItWas(reason: RexControlEnding, says: String) {
+        let failure = TransportError(rexControl: .linkEnded(reason))
+        #expect(failure.presentation.message.contains(says))
+        #expect(failure.isRetryable)
+    }
+
     /// Rex's own refusals and answers it cannot read name Rex, not herdr, and
     /// keep the retry behavior of herdr's counterparts.
     @Test func rexsOwnAnswersNameRex() {

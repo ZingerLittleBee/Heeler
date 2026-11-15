@@ -326,6 +326,14 @@ struct RexHostSessionTests {
         #expect(await second.nextHello()["reconnect_token"] == nil)
         #expect(await second.requests.contains { $0.method == "session.attach_all" })
         #expect(log.statuses.last == .connected)
+        let reconnecting = log.statuses.first {
+            if case .reconnecting = $0 { true } else { false }
+        }
+        guard case .reconnecting(_, _, let failure)? = reconnecting else {
+            Issue.record("No reconnect after the server let go")
+            return
+        }
+        #expect(failure.presentation.message.contains("too many events were waiting"))
         await session.end()
     }
 

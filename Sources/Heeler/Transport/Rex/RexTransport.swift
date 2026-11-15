@@ -263,8 +263,25 @@ extension TransportError {
             self = .channelFailed(detail: String(localized: "Heeler could not write the request to Rex."))
         case .unreadableResult:
             self = .rexAnswerUnreadable(String(localized: "Rex's answer could not be read."))
-        case .linkEnded:
-            self = .channelFailed(detail: String(localized: "The connection to Rex ended."))
+        case .linkEnded(let reason):
+            self = .channelFailed(detail: Self.rexLinkEndedDetail(reason))
+        }
+    }
+
+    /// Why a control link ended, where the user can tell one ending from
+    /// another. Each is retried: the next link reads the Host again.
+    private static func rexLinkEndedDetail(_ reason: RexControlEnding) -> String {
+        switch reason {
+        case .droppedByServer:
+            String(localized: "Rex dropped the connection because too many events were waiting for Heeler.")
+        case .messageTooBig:
+            String(localized:
+                "A message was too large for the connection to Rex. If this keeps happening, check the Rex version on the Host.")
+        case .protocolFailure:
+            String(localized:
+                "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host.")
+        case .closedHere, .serverWentAway, .linkLost:
+            String(localized: "The connection to Rex ended.")
         }
     }
 }
