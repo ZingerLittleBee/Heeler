@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at 184b5334 -->
+<!-- Translated from docs/guides/rex.md at 6e189266 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -35,7 +35,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | Heeler 检测到 | 操作方法 |
 | --- | --- |
 | **Rex** 显示 **Running** | 保持勾选 **Rex**，然后轻点 **Add Host with 1 Server**。 |
-| **Rex** 显示 **Not running** | Rex 已安装但没有运行，因此 **Rex** 默认不勾选。在 Host 上启动 Rex 后轻点 **Scan Again**，或者现在就勾选 **Rex**，稍后再启动 Rex。 |
+| **Rex** 显示 **Not running** | Rex 已安装但没有运行，因此 **Rex** 默认不勾选。勾选 **Rex**，等你启动 Rex 后它就会连接。也可以先不勾选它添加 Host，然后启动 Rex，打开该 Host，轻点 **Scan Again**，再开启 **Rex**。 |
 | 同时检测到 Rex 与 Herdr TUI、herdr-core 或 tmux | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
 | 没有 **Rex** | Rex 没有安装。仍然添加该 Host，安装并启动 Rex，打开该 Host，轻点 **Scan Again**，然后开启 **Rex**。 |
 
