@@ -86,6 +86,38 @@ The app wrapper resolves a Simulator name once, enables the accessibility tree,
 then restores only the preferences it changed. Direct `xcodebuild` skips that
 preparation and can miss SwiftUI labels on a clean Simulator (#339).
 
+## Opt-in live suites
+
+`Tests/HeelerLiveTests` is a separate target and scheme, `HeelerLiveTests`,
+for suites that run against a real server the operator owns. They are not
+members of `HeelerTests`, so `make test`, the `test-ci-*` lanes and every CI
+workflow never select them, and the CI coverage contract never counts them.
+Each suite reads its configuration from the Simulator's launchd environment
+and fails rather than skips when selected without it.
+
+| Suite | Gate | Needs |
+| --- | --- | --- |
+| `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
+| `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
+| `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing |
+| `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
+| `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
+
+Set the gate, run one suite, then unset it:
+
+```sh
+xcrun simctl spawn <UDID> launchctl setenv HEELER_REX_LIVE_SOCKET "<socket path>"
+make test-app SCHEME=HeelerLiveTests \
+  SIM_DESTINATION='platform=iOS Simulator,id=<UDID>' \
+  TEST_SELECTOR='HeelerLiveTests/RexInventoryLiveTests'
+xcrun simctl spawn <UDID> launchctl unsetenv HEELER_REX_LIVE_SOCKET
+```
+
+Each suite's header comment states what it may create or change. Never commit
+or print a configuration, key seed, session label or terminal contents. The
+Rex suites print counts and booleans only; record their Rex version in
+[rex-compatibility.md](rex-compatibility.md) when they inform an observation.
+
 ## Lane selection
 
 | Change | Entry point | What it establishes |

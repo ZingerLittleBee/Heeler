@@ -42,6 +42,45 @@ observed yet.
   `session.disown_block` when the view stops showing the terminal or the
   attach ends, unless the server passed the block to Heeler by itself.
 
+## Known limits
+
+What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.14 (API
+revision 12). The user guide, [Connect Rex](../guides/rex.md), says the same
+in users' words.
+
+- **One API revision.** Only revision 12 is accepted; a server that welcomes
+  no hello at revision 12 is refused as `rexUnsupportedRevision`, naming the
+  revision it offers when it says ([ADR 0047](../adr/0047-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
+- **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
+  check and a server started by a login service have never met a running
+  Linux Rex server; `scripts/test-server-kind-detection.py` runs the
+  detection script against fake Linux homes only. Every observation below is
+  from macOS.
+- **What the first paint leaves out.** The `vt` redraw carries no title,
+  cursor shape, OSC 10 or 11 default colors or saved cursor, and while a
+  program uses the alternate screen none of the primary screen or scrollback
+  behind it (`b_redraw`). Heeler reads the title on its own and follows its
+  events, keeps its own colors, and paints the primary screen again once the
+  program leaves the alternate screen; the cursor shape stays Heeler's until
+  the program sets it again. With autowrap off, soft wraps are not joined. A
+  program that never pauses for 250 ms keeps a best-effort first paint, and
+  a redraw past 32 MiB ends the attach as too long to show
+  ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
+- **Another client's size is clipped.** A block another client owns at
+  another grid shows at the server's grid, cut to the view, until the user
+  takes the size; there is no view scaled to the remote grid
+  ([ADR 0051](../adr/0051-rex-terminal-size-is-taken-only-when-the-user-asks.md),
+  as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
+  says for tmux).
+- **Existing terminals only.** Nothing is created, closed or renamed, and no
+  layout changes; no Agents, Chat, Composer, notifications, Live Activities
+  or Usage.
+- **Where it has run.** Only the Simulator and the opt-in live suites, on one
+  Mac. No physical iPhone or iPad has opened a Rex terminal, and no Rex
+  terminal has been opened while the Rex desktop app showed the same one:
+  the other devices were lab control clients on `heeler-lab-` sessions, and
+  sessions whose blocks the desktop app owns were listed, never opened.
+
 ## Versioned observations
 
 All below: Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket,
@@ -49,8 +88,9 @@ All below: Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket,
 repository (`f_control` for the control connection and layout operations,
 `g_reconnect` for drops and resumes, `a_snapshot_skip` for how a terminal's
 stream starts, `b_redraw` and `b2_edges` for the redraw, `c2_handoff` for
-first paints, the input run, `r6_ownership` and `r6b_handover` for taking and
-giving back a block), a review probe, the Simulator acceptance run, or a
+first paints, `d2_queries` for query answers, `d_input` for the input run,
+`e_size` for sizes and owners, `r6_ownership` and `r6b_handover` for taking
+and giving back a block), a review probe, the Simulator acceptance run, or a
 committed live test.
 
 ### Control connection
@@ -61,8 +101,9 @@ committed live test.
   130-second watch (`g_reconnect`). A review probe that never answered pings
   saw them at 120, 180 and 240 seconds, then a close with 1001 and the reason
   `keepalive timeout` about 300 seconds in; the server listed that client as
-  lost, and a hello with its token resumed it as the same client. Heeler's own
-  pings, once a second, kept a link up (`RexControlWebSocketLiveTests`).
+  lost, and a hello with its token resumed it as the same client. A link that
+  sent its own pings once a second, as `RexControlWebSocketLiveTests` sets it
+  up, stayed open; Heeler's control and data links ping every 30 seconds.
 - A fresh connection's `session.attach_all` answered with seq 0, and the events
   after it were numbered 1, 2, 3 and on with no gaps (`f_control` watchers).
 - A text frame that was not valid UTF-8 closed the control connection with
