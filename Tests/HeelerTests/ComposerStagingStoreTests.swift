@@ -740,6 +740,30 @@ struct ComposerStagingStoreTests {
         }
     }
 
+    @Test func statusBarHidesInlineImageStatesWhileKeepingNonRetryableImageErrorsAndFiles() {
+        #expect(!ComposerStagingStatusBar.showsBar(for: .idle))
+        #expect(!ComposerStagingStatusBar.showsBar(for: .preparing(.image)))
+        #expect(ComposerStagingStatusBar.showsBar(for: .preparing(.file)))
+        let progress = AttachmentStageProgress(transferredBytes: 10, totalBytes: 100)
+        #expect(!ComposerStagingStatusBar.showsBar(for: .uploading(.image, progress)))
+        #expect(ComposerStagingStatusBar.showsBar(for: .uploading(.file, progress)))
+        #expect(
+            !ComposerStagingStatusBar.showsBar(
+                for: .completed(.init(medium: .image, path: "/tmp/a.jpg", copied: true))))
+        #expect(
+            ComposerStagingStatusBar.showsBar(
+                for: .completed(.init(medium: .file, path: "/tmp/a.txt", copied: true))))
+        #expect(
+            !ComposerStagingStatusBar.showsBar(
+                for: .failed(.init(medium: .image, message: "retry", isRetryable: true))))
+        #expect(
+            ComposerStagingStatusBar.showsBar(
+                for: .failed(.init(medium: .image, message: "unsupported", isRetryable: false))))
+        #expect(
+            ComposerStagingStatusBar.showsBar(
+                for: .failed(.init(medium: .file, message: "retry", isRetryable: true))))
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(5),

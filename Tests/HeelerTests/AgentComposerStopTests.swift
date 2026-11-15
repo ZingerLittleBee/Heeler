@@ -18,6 +18,15 @@ struct AgentComposerPrimaryControlTests {
         #expect(
             AgentComposerPrimaryControl(status: .working, draft: "and the tests", canStop: true)
                 == .send)
+        #expect(
+            AgentComposerPrimaryControl(
+                status: .working, draft: "", hasAttachments: true, canStop: true)
+                == .send)
+        #expect(
+            AgentComposerPrimaryControl(
+                status: .blocked, draft: "", hasAttachments: true, canStop: true,
+                alsoWhileBlocked: true)
+                == .send)
     }
 
     @Test func onlyWorkingOffersStop() {

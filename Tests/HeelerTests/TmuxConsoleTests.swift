@@ -602,9 +602,11 @@ struct TmuxConsoleTests {
             "/tmp/heeler-stage/stage-0/image.jpg", "/tmp/heeler-stage/stage-1/meeting_notes.txt",
         ])
         #expect(staged.last?.contents == contents)
+        #expect(session.composer.readyImagePaths == ["/tmp/heeler-stage/stage-0/image.jpg"])
+        #expect(session.composer.draft == "/tmp/heeler-stage/stage-1/meeting_notes.txt ")
         #expect(
-            session.composer.draft
-                == "/tmp/heeler-stage/stage-0/image.jpg /tmp/heeler-stage/stage-1/meeting_notes.txt ")
+            session.composer.composedDraft
+                == "/tmp/heeler-stage/stage-1/meeting_notes.txt /tmp/heeler-stage/stage-0/image.jpg ")
 
         await tmux.failStages(with: [.sftpUnavailable])
         let failingFile = folder.appendingPathComponent("retry.txt")

@@ -11640,6 +11640,29 @@
         }
       }
     },
+    "Cancel %@" : {
+      "comment" : "Accessibility label for cancelling an uploading image pill in the Composer.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をキャンセル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消%@"
+          }
+        }
+      }
+    },
     "Cancel Checks" : {
       "localizations" : {
         "ja" : {
@@ -28202,6 +28225,29 @@
         }
       }
     },
+    "Image %@" : {
+      "comment" : "Title of an attached image pill in the Composer, numbered in order (e.g. Image 1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片 %@"
+          }
+        }
+      }
+    },
     "Image generation" : {
       "localizations" : {
         "ja" : {
@@ -38211,6 +38257,29 @@
         }
       }
     },
+    "Opens a large preview of the image" : {
+      "comment" : "Accessibility hint on a Composer image pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像の拡大プレビューを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开图片的大图预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開圖片的大圖預覽"
+          }
+        }
+      }
+    },
     "Opens a new shell tab in %@. Choose New Workspace in the menu to start somewhere else." : {
       "localizations" : {
         "ja" : {
@@ -40500,6 +40569,29 @@
         }
       }
     },
+    "Preparing…" : {
+      "comment" : "Subtitle on a Composer image pill while decoding and resizing locally.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备中…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        }
+      }
+    },
     "Presentation" : {
       "localizations" : {
         "ja" : {
@@ -42687,6 +42779,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除"
+          }
+        }
+      }
+    },
+    "Remove %@" : {
+      "comment" : "Accessibility label for removing an attached image pill from the Composer.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@を削除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
           }
         }
       }
@@ -64979,6 +65094,52 @@
         }
       }
     },
+    "Upload failed · Tap to retry" : {
+      "comment" : "Subtitle on a retryable failed Composer image pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップロード失敗 · タップして再試行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传失败 · 点击重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上傳失敗 · 點擊重試"
+          }
+        }
+      }
+    },
+    "Uploading %@…" : {
+      "comment" : "Subtitle on a Composer image pill while uploading; placeholder is a formatted percentage such as 64%.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップロード中 %@…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在上传 %@…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在上傳 %@…"
+          }
+        }
+      }
+    },
     "Uploading File, %lld percent" : {
       "localizations" : {
         "ja" : {
@@ -66825,6 +66986,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待重試"
+          }
+        }
+      }
+    },
+    "Waiting…" : {
+      "comment" : "Subtitle on a queued Composer image pill waiting for an earlier upload to finish.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
           }
         }
       }
