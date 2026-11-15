@@ -200,8 +200,9 @@ final class RexTerminalHub: Sendable {
 /// Size (ADR 0051): the block is owned only once the user takes its size for
 /// the view, never on open, on a new link or client, or when its owner goes.
 /// The view gives back what the user took when it stops showing the terminal
-/// and when the attach ends, unless the server has since handed the block to
-/// this client by itself, which stays as the server made it. Taking and
+/// and when the attach ends, unless the server has since passed the block to
+/// this client because its owner's link dropped: that one stays as the server
+/// made it, so the owner gets it back when it resumes. Taking and
 /// giving back go out one at a time, each once, through the same gate as
 /// input.
 ///
@@ -269,8 +270,10 @@ actor RexTerminalAttach {
     /// may own it: set once a take was answered or may have arrived, and
     /// cleared once a give back was answered.
     private var claimed = false
-    /// The server passed the block to this client by itself, as when the
-    /// client that took it back from this one let go: it stays as it is.
+    /// The server passed the block to this client because its owner's link
+    /// dropped, as when the client that took it back from this one did: it
+    /// stays as it is, for that owner to get back when it resumes. One its
+    /// owner let go of or left is given back like any size the user took.
     private var handed = false
     /// The last take or give back, which the next one waits for, so they
     /// never overlap and go out in the order they were asked.
@@ -563,9 +566,10 @@ actor RexTerminalAttach {
             report.owner = owner
             if owner == nil || owner != connection.clientID {
                 handed = false
-            } else if reason != Self.takeReason, reason != Self.restoreReason {
-                // Not this client's own take: the server passed the block on,
-                // as to a client in line when its owner lets go or drops.
+            } else if reason == Self.lostReason {
+                // The server passed the block on because its owner's link
+                // dropped: that owner gets it back when it resumes, unless
+                // the block's owner changes meanwhile.
                 handed = true
             }
             reports.yield(report)
@@ -638,9 +642,9 @@ actor RexTerminalAttach {
     static let takeMethod = "session.own_block"
     static let giveBackMethod = "session.disown_block"
     /// The reasons Rex gives for an owner change that this client made by
-    /// taking, and for an owner that came back and got its block back.
+    /// taking, and for a block passed on because its owner's link dropped.
     static let takeReason = "take"
-    static let restoreReason = "restore"
+    static let lostReason = "lost"
 
     /// Takes the block's size for the view, at the user's request: this
     /// client owns the block, and the view's grid is asked for as its owner.
@@ -715,9 +719,10 @@ actor RexTerminalAttach {
 
     /// Gives back a size the user took: the block passes to the next client
     /// in line, or keeps its size with no owner; one this client no longer
-    /// owns only takes it out of line. A block the server handed to this
-    /// client by itself is left alone. Sent once; one that was not sent, or
-    /// had no answer, stays for the next give back to try.
+    /// owns only takes it out of line. A block the server passed to this
+    /// client because its owner's link dropped is left alone. Sent once; one
+    /// that was not sent, or had no answer, stays for the next give back to
+    /// try.
     private func performGiveBack() async {
         guard claimed, !blockClosed else { return }
         if handed, report.owner == connection.clientID { return }

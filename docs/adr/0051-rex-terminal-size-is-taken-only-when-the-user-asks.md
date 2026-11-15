@@ -38,10 +38,12 @@ left it with no owner at its size.
   answer waits for the next of these to try. A give back while another device
   has the block takes this client out of line, so the block is not passed to
   it later.
-- **What the server handed over stays.** When the server passes the block to
-  this client by itself, as when the device that took it back lets go or
-  drops while this client is in line, the block stays as the server made it:
-  leaving does not give it up.
+- **What the server handed over after a drop stays.** When the server passes
+  the block to this client because its owner's link dropped, as when the
+  device that took it back drops while this client is in line, the block
+  stays as the server made it: leaving does not give it up. A block passed on
+  because its owner let go of it or left with a close frame is given back
+  like any size the user took.
 - **The notice.** A live terminal whose block another client owns, at a grid
   other than the view's, shows a small notice once that has held for a second:
   "Sized for another device", with Fit to Screen and a way to dismiss it. It
@@ -63,10 +65,12 @@ left it with no owner at its size.
   device it took the size from is often the one its user is back at. Giving
   back on leaving puts the size back in that device's hands without anyone
   having to take it again.
-- Giving up a block the server handed over cannot be undone: Rex returns a
-  block to an owner that comes back after a drop only while the block's owner
-  has not changed since. Giving it up would leave the block with no owner, and
-  the device that dropped would not get it back.
+- Giving up a block the server handed over after a drop cannot be undone:
+  Rex returns a block to an owner that comes back after a drop only while the
+  block's owner has not changed since. Giving it up would leave the block with
+  no owner, and the device that dropped would not get it back. A block its
+  owner let go of, or left with a close frame, has nobody to go back to:
+  keeping it would only hold this screen's size on every other device.
 - A notice in a row of its own would shrink the view's grid, which could then
   match or miss the other device's and make the notice come and go by itself.
   Over the grid it changes nothing, and it can be dismissed.
@@ -104,7 +108,8 @@ captures, live tests and fakes, recorded with their sources in
 - Giving back only when the attach ends: rejected; a terminal the retention
   pool keeps off screen, for up to five minutes, would hold the other
   device's size all that time.
-- Giving up a block the server handed over: rejected for the reason above.
+- Giving up a block the server handed over after a drop: rejected for the
+  reason above.
 - A bar of its own above the grid: rejected; it changes the view's grid.
 - Scaling the other device's grid to the screen: rejected, as in ADR 0045.
 

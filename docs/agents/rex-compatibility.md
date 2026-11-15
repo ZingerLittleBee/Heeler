@@ -40,7 +40,8 @@ observed yet.
   `RexTerminalAttach` sends `session.own_block` with mode `take` for the one
   block, then the view's grid, and gives the size back with
   `session.disown_block` when the view stops showing the terminal or the
-  attach ends, unless the server passed the block to Heeler by itself.
+  attach ends, unless the server passed the block to Heeler because its
+  owner's link dropped.
 
 ## Known limits
 
@@ -333,7 +334,9 @@ wanted size of 62x51; and a third.
 - The same, but the stand-in gave up the block it was passed while the other
   device was away: the block was left with no owner at the stand-in's size,
   and the other device did not get it back when it resumed (`r6b_handover`).
-  Heeler therefore leaves a block the server passed to it as it is.
+  Heeler therefore leaves a block the server passed to it because its owner
+  dropped as it is. One passed on with `disown` or `disconnect` has no owner
+  to come back for it, so Heeler gives it back like a size the user took.
 - A client that took ranked ahead in line of one that had only requested
   (`own_block`, mode `request`): the taker was passed the block
   (`r6b_handover`).

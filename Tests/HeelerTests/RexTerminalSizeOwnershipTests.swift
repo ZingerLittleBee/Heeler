@@ -392,9 +392,9 @@ struct RexTerminalSizeOwnershipTests {
         #expect(await ownership(control) == [Self.take, Self.giveBack])
     }
 
-    /// A block the server passed to this client by itself, as when the device
-    /// that took it back let go, stays as the server made it: neither leaving
-    /// nor ending gives it back.
+    /// A block the server passed to this client because the device that took
+    /// it back dropped stays as the server made it, for that device to get
+    /// back when it resumes: neither leaving nor ending gives it back.
     @Test func aSizeTheServerHandedOverIsLeftAlone() async throws {
         let rig = Rig()
         let control = await rig.server()
@@ -412,6 +412,29 @@ struct RexTerminalSizeOwnershipTests {
         try await Task.sleep(for: .milliseconds(100))
         await store.stop()
         #expect(await ownership(control) == [Self.take])
+    }
+
+    /// A block passed to this client because the device that took it back
+    /// let go of it, or left with a close frame, has nobody to go back to:
+    /// leaving gives it back like the size the user took.
+    @Test(arguments: ["disown", "disconnect"])
+    func aSizeTheOwnerLetGoOfIsGivenBack(reason: String) async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let store = try await openSizedElsewhere(rig, session: session)
+        try await takeFromTheNotice(store, on: control)
+
+        await pushOwner(control, Self.otherDevice, previous: Self.thisClient, reason: "take")
+        try await waitUntil("the other device's take") { store.sizeReport?.owner == Self.otherDevice }
+        await pushOwner(control, Self.thisClient, previous: Self.otherDevice, reason: reason)
+        try await waitUntil("the hand-over") { store.sizeReport?.owner == Self.thisClient }
+        store.setViewed(false)
+        try await waitUntil("the give back") { await ownership(control) == [Self.take, Self.giveBack] }
+        await store.stop()
+        #expect(await ownership(control) == [Self.take, Self.giveBack])
     }
 
     /// A give back asked for while the take is out waits for its answer, so
