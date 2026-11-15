@@ -129,8 +129,9 @@ struct ShellTerminalView: View {
         }
         screen.keyboardControl = keyboardControl
         screen.isLocalInputEnabled = true
-        // A session that takes no input, such as a Rex terminal's for now,
-        // scrolls its own history: a wheel report would have nowhere to go.
+        // A session that takes no input, such as a Rex terminal's before its
+        // first paint, scrolls its own history: a wheel report would have
+        // nowhere to go.
         screen.isRemoteScrollEnabled = store.takesInput && store.terminalStatus == .live
         // The first surface of this screen takes the keyboard only if the
         // screen it came from left it up. A later surface on the same screen

@@ -354,7 +354,8 @@ final class ShellTerminalStore {
     }
 
     /// Whether what the view sends can reach the pane now: the session is live
-    /// and took the view's input. A Rex terminal's never does yet (ADR 0049).
+    /// and took the view's input. A Rex terminal's does from its first paint
+    /// (ADR 0050).
     var takesInput: Bool { terminal.status == .live && input.isEnabled && input.liveGeneration != nil }
 
     /// How the terminal's size stands with a server that keeps its own, such

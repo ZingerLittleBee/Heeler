@@ -4,9 +4,9 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it (ADRs 0047 to 0049):
+/// What a Rex Host offers and how the Console shows it (ADRs 0047 to 0050):
 /// nothing to start, close or rename, no integrations, its terminals listed
-/// from the server, and opened for viewing.
+/// from the server, and opened to view and type into.
 @MainActor
 @Suite("Rex Console")
 struct RexConsoleTests {
@@ -224,11 +224,13 @@ struct RexConsoleTests {
         try await waitUntil("the new server's terminals") { console.terminals.count == 5 }
     }
 
-    /// A Rex terminal opens for viewing through the Console's runner: it
-    /// paints and goes live, and takes no input (ADR 0049).
-    @Test func aRexTerminalOpensForViewing() async throws {
+    /// A Rex terminal opens through the Console's runner: it paints and goes
+    /// live, and takes input from that first paint (ADRs 0049 and 0050).
+    @Test func aRexTerminalOpensAndTakesInput() async throws {
         let rig = RexTerminalAttachTests.Rig()
-        let host = await rig.host([.server(await rig.server())])
+        let server = await rig.server()
+        await server.answer(RexTerminalInputTests.write, with: .result(["bytes_written": 3]))
+        let host = await rig.host([.server(server)])
         let console = store(rexConnect: { socket, previous in
             try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
         })
@@ -244,10 +246,14 @@ struct RexConsoleTests {
             runTerminal: console.terminalRunner(for: rex.id, keepingTo: console.corePin(on: rex.id)))
 
         terminal.viewDidResize(cols: 80, rows: 24)
+        #expect(!input.send(Data("early\r".utf8)))
         await rig.begin()
         try await waitUntil("the first paint") { terminal.status == .live }
-        #expect(input.liveGeneration == nil)
-        #expect(!input.send(Data("ls\r".utf8)))
+        #expect(input.send(Data("ls\r".utf8)))
+        try await waitUntil("the write") {
+            await server.requests.contains { $0.payload?["args"]?["data"]?.stringValue == "ls\r" }
+        }
+        #expect(await !server.requests.contains { $0.payload?["args"]?["data"]?.stringValue == "early\r" })
         await terminal.stop()
         #expect(await rig.attachSlotsTaken == 0)
     }

@@ -6,9 +6,9 @@ import Foundation
 /// `RexOrganization` reads them, and a Rex Host lists Terminals only.
 ///
 /// A Pane keeps to its server instance, as a tmux Pane does: another instance
-/// leaves every detail open on the last one's terminals. This build opens a
-/// terminal for viewing only (ADR 0049), and every action a Host offers is
-/// unavailable on a Rex Host.
+/// leaves every detail open on the last one's terminals. A terminal opens
+/// from the server's redraw (ADR 0049) and takes input from its first paint
+/// (ADR 0050); every action a Host offers is unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     let host: Host
@@ -233,11 +233,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: The live connection
 
-    /// Opens a Rex terminal for viewing (ADR 0049): its session is attached,
+    /// Opens a Rex terminal (ADRs 0049 and 0050): its session is attached,
     /// its block's stream paints the view and follows its output, and the
-    /// view's grid is asked for. Input stays shut. A block that closed, a
-    /// program that exited and another server end the terminal; a connection
-    /// that went or was replaced reattaches, and the next attach paints afresh.
+    /// view's grid is asked for, and the view's input goes out from the first
+    /// paint. A block that closed, a program that exited and another server
+    /// end the terminal; a connection that went or was replaced reattaches,
+    /// and the next attach paints afresh. Input that may have reached the
+    /// program unanswered ends it as a failed input write.
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
         return { request, handler in

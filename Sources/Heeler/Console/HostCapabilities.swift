@@ -103,8 +103,8 @@ extension HostCapabilities {
         // A Rex Host offers nothing yet (ADR 0047): it starts and closes no
         // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
         // Composer, Chat, Host scripts or layout, and is never taken over. So it
-        // stays out of New Agent and New Terminal. Its Terminals open for
-        // viewing (ADR 0049).
+        // stays out of New Agent and New Terminal. Its Terminals open and take
+        // input (ADRs 0049 and 0050).
         guard serverKind != .rex else {
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
