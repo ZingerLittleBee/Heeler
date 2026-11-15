@@ -1114,17 +1114,17 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// start over. The tmux Host's `.herdrCoreTerminalGone`.
     case tmuxServerGone
     /// A Rex terminal's output stopped, and starting its stream again did not
-    /// bring it back (ADR 0049). Reattach opens it afresh.
+    /// bring it back (ADR 0050). Reattach opens it afresh.
     case rexTerminalOutputUnavailable
     /// A Rex terminal's redraw, its whole history, is too long to paint
-    /// (ADR 0049). Reattaching meets the same history until it is cleared.
+    /// (ADR 0050). Reattaching meets the same history until it is cleared.
     case rexTerminalHistoryTooLong
     /// Nothing was sent: the action came from a detail opened on one Rex
     /// server's terminal, and the Host now runs another server. The Rex
     /// Host's `.tmuxServerGone`.
     case rexServerGone
     /// A Rex Host stores no socket, and looking for one found no Rex on the
-    /// Host (ADR 0047).
+    /// Host (ADR 0048).
     case rexNotInstalled
     /// Looking for a Rex Host's socket failed. `reason` is one sentence.
     case rexLookupFailed(reason: String)

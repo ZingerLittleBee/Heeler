@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// Explicit opt-in only: a Rex terminal opened for viewing (ADR 0049) through
+/// Explicit opt-in only: a Rex terminal opened for viewing (ADR 0050) through
 /// the Console's runner and the store a view uses, against a Rex server that
 /// already runs on this Mac, over its local Unix socket. It never runs in the
 /// HeelerTests target or in CI, and fails rather than skips when selected

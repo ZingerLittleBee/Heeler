@@ -49,7 +49,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   direct-streamlocal carries inventory, events and terminal input, and each
   open terminal adds a data link on a channel of its own, painted from the
   server's redraw. Connecting never starts a server or runs `rex`; a block's
-  size is taken only at the user's tap (ADRs 0047 to 0051).
+  size is taken only at the user's tap (ADRs 0048 to 0052).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

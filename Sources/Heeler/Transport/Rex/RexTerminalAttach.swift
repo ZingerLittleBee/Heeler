@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-/// What an open Rex terminal hears of its block and its connection (ADR 0049).
+/// What an open Rex terminal hears of its block and its connection (ADR 0050).
 enum RexTerminalSignal: Sendable, Equatable {
     /// The block closed, or its session went.
     case blockClosed
@@ -38,7 +38,7 @@ enum RexTerminalEnding: Error, Sendable, Equatable {
 }
 
 /// One terminal's hold on its Rex Host's connection, for as long as the
-/// terminal is open (ADR 0049).
+/// terminal is open (ADR 0050).
 struct RexTerminalConnection: Sendable {
     let address: RexPaneAddress
     /// The server the terminal opened on. Another one ends it.
@@ -75,7 +75,7 @@ struct RexTerminalConnection: Sendable {
     /// The largest request the terminal's control link accepts, in bytes.
     let maxMessageBytes: Int
     /// What an earlier attach of the block on this control client claimed of
-    /// its size and did not give back (ADR 0051), which this one gives back
+    /// its size and did not give back (ADR 0052), which this one gives back
     /// as if it had claimed it itself.
     let sizeClaim: RexSizeClaim?
     /// Keeps what this attach claims of the block's size, nil once it is
@@ -86,7 +86,7 @@ struct RexTerminalConnection: Sendable {
     let isCurrent: @Sendable () async -> Bool
 }
 
-/// What a control client claimed of a Rex block's size (ADR 0051).
+/// What a control client claimed of a Rex block's size (ADR 0052).
 enum RexSizeClaim: Sendable, Equatable {
     /// The user took it, or a take may have arrived: it is given back.
     case taken
@@ -97,7 +97,7 @@ enum RexSizeClaim: Sendable, Equatable {
 
 /// Hands each open Rex terminal what concerns it: its block's events, which
 /// the inventory follower passes on as it reads them, and what became of the
-/// connection (ADR 0049). Nothing here changes the inventory.
+/// connection (ADR 0050). Nothing here changes the inventory.
 final class RexTerminalHub: Sendable {
     private struct Subscriber: Sendable {
         let address: RexPaneAddress
@@ -211,12 +211,12 @@ final class RexTerminalHub: Sendable {
     }
 }
 
-/// One view of a Rex terminal block (ADRs 0049 and 0050): the stream's paints and output
+/// One view of a Rex terminal block (ADRs 0050 and 0051): the stream's paints and output
 /// become the view's bytes, the view's input goes out one request at a time,
 /// the view's grid is asked for, and the ways it ends become
 /// `RexTerminalEnding`.
 ///
-/// Size (ADR 0051): the block is owned only once the user takes its size for
+/// Size (ADR 0052): the block is owned only once the user takes its size for
 /// the view, never on open, on a new link or client, or when its owner goes.
 /// The view gives back what the user took when it stops showing the terminal
 /// and when the attach ends, unless the server has since passed the block to

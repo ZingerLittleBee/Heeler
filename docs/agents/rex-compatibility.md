@@ -11,13 +11,13 @@ observed yet.
 
 - Rex Hosts are a fourth Server Kind, offered in every build and still
   experimental for users
-  ([ADR 0047](../adr/0047-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
+  ([ADR 0048](../adr/0048-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
   Heeler reaches a running server's Unix socket over a direct-streamlocal SSH
   channel and never runs `rex` or starts a server.
 - One WebSocket control connection per Host carries everything but terminal
   data: hello at API revision 12 only, `server.status`, `session.attach_all`
   and the inventory reads
-  ([ADR 0048](../adr/0048-rex-hosts-follow-inventory-on-one-control-connection.md)).
+  ([ADR 0049](../adr/0049-rex-hosts-follow-inventory-on-one-control-connection.md)).
   `RexHostSession` owns it; `RexInventoryFollower` and `RexInventoryBook` read
   and order the inventory.
 - A terminal's output arrives on a data connection of its own
@@ -25,18 +25,18 @@ observed yet.
   paints from the server's `vt` redraw instead (`RexTerminalPaint`);
   `RexTerminalStream` runs the three for one view.
 - The Console opens a Rex terminal from the server's redraw
-  ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)):
+  ([ADR 0050](../adr/0050-rex-terminals-open-for-viewing-from-the-servers-redraw.md)):
   `RexHostSession.withTerminal` calls `session.attach` on the Host's control
   connection and holds the block to one data connection, and
   `RexTerminalAttach` turns its stream into the view's bytes and asks for the
   view's size.
 - Input to a Rex terminal goes on the control connection one request at a
-  time ([ADR 0050](../adr/0050-rex-terminal-input-goes-one-request-at-a-time.md)):
+  time ([ADR 0051](../adr/0051-rex-terminal-input-goes-one-request-at-a-time.md)):
   typed bytes as text through the terminal's `write`, read by
   `RexTerminalKeyReader`; pastes, focus changes and mouse reports text cannot
   carry through `block.event`.
 - A Rex terminal's size is taken only when the user taps the notice's Fit to
-  Screen ([ADR 0051](../adr/0051-rex-terminal-size-is-taken-only-when-the-user-asks.md)):
+  Screen ([ADR 0052](../adr/0052-rex-terminal-size-is-taken-only-when-the-user-asks.md)):
   `RexTerminalAttach` sends `session.own_block` with mode `take` for the one
   block, then the view's grid, and gives the size back with
   `session.disown_block` when the view stops showing the terminal or the
@@ -51,7 +51,7 @@ in users' words.
 
 - **One API revision.** Only revision 12 is accepted; a server that welcomes
   no hello at revision 12 is refused as `rexUnsupportedRevision`, naming the
-  revision it offers when it says ([ADR 0047](../adr/0047-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
+  revision it offers when it says ([ADR 0048](../adr/0048-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
 - **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
@@ -66,7 +66,7 @@ in users' words.
   the program sets it again. With autowrap off, soft wraps are not joined. A
   program that never pauses for 250 ms keeps a best-effort first paint, and
   a redraw past 32 MiB ends the attach as too long to show
-  ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
+  ([ADR 0050](../adr/0050-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
 - **Another client's size is not fitted.** A block another client owns at
   another grid shows at the server's grid until the user takes the size.
   Lines wider than the view wrap at the view's width, in the first paint,
@@ -74,7 +74,7 @@ in users' words.
   view's last column; a program that places its rows with cursor moves
   mostly shows their left part. There is no view scaled to or cut at the
   remote grid
-  ([ADR 0051](../adr/0051-rex-terminal-size-is-taken-only-when-the-user-asks.md),
+  ([ADR 0052](../adr/0052-rex-terminal-size-is-taken-only-when-the-user-asks.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
 - **Existing terminals only.** Nothing is created, closed or renamed, and no

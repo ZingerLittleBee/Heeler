@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it (ADRs 0047 to 0050):
+/// What a Rex Host offers and how the Console shows it (ADRs 0048 to 0051):
 /// nothing to start, close or rename, no integrations, its terminals listed
 /// from the server, and opened to view and type into.
 @MainActor
@@ -205,7 +205,7 @@ struct RexConsoleTests {
     }
 
     /// A Rex terminal opens through the Console's runner: it paints and goes
-    /// live, and takes input from that first paint (ADRs 0049 and 0050).
+    /// live, and takes input from that first paint (ADRs 0050 and 0051).
     @Test func aRexTerminalOpensAndTakesInput() async throws {
         let rig = RexTerminalAttachTests.Rig()
         let server = await rig.server()

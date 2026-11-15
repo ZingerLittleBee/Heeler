@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// Input to a Rex terminal (ADR 0050), from the controller the view writes
+/// Input to a Rex terminal (ADR 0051), from the controller the view writes
 /// through to a fake server's block: one request at a time and in order, typed
 /// text through the terminal's `write`, pastes and events through
 /// `block.event`, the gate, and what happens to input whose fate is unknown.

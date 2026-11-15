@@ -1,6 +1,6 @@
 import Foundation
 
-/// The handshake of a Rex data connection (ADR 0049), written by hand from
+/// The handshake of a Rex data connection (ADR 0050), written by hand from
 /// what Rex 0.1.0-preview.14 (API revision 12) was seen to do. A data
 /// connection is a one-way WebSocket at `/api/data`: one block's output flows
 /// to this side. This side speaks first, either a HELLO that spends a

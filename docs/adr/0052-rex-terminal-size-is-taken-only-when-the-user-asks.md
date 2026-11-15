@@ -4,7 +4,7 @@ status: proposed
 
 # Rex terminal size is taken only when the user asks
 
-A Rex block has one size, its owner's (ADR 0049). Heeler asks for the view's
+A Rex block has one size, its owner's (ADR 0050). Heeler asks for the view's
 grid and never owns the block on its own, so a terminal that another device
 owns shows at that device's size: lines wrap at its width, a line wider than
 the view wraps again at the view's, and rows run past or stop short of the
@@ -25,7 +25,7 @@ left it with no owner at its size.
   owner letting go or dropping, the view coming back, or the app's return.
 - **The same gate as input.** A take or give back goes out only on the live
   control link while it is still the terminal's: the same server instance, SSH
-  connection and control client (ADR 0050). The two go out one at a time, in
+  connection and control client (ADR 0051). The two go out one at a time, in
   the order asked, each once. A take that was refused, not sent, or left with
   no answer is never sent again on its own; the notice says which, and only
   another tap tries again. A take with no answer may have arrived, so it counts

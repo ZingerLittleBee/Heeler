@@ -1,6 +1,6 @@
 import Foundation
 
-/// One piece of what a Rex terminal's view sends, as it leaves (ADR 0050).
+/// One piece of what a Rex terminal's view sends, as it leaves (ADR 0051).
 enum RexTerminalInputPiece: Sendable, Equatable {
     /// Text for the terminal's `write` method: always valid UTF-8, made of
     /// whole characters and whole escape sequences.
@@ -13,7 +13,7 @@ enum RexTerminalInputPiece: Sendable, Equatable {
 }
 
 /// Reads what Heeler's view writes for a Rex terminal into what leaves for it
-/// (ADR 0050), one write at a time: Ghostty writes a key, a report or an answer
+/// (ADR 0051), one write at a time: Ghostty writes a key, a report or an answer
 /// in one piece, so each write is read whole.
 ///
 /// - Answers to a program's queries are dropped, since Rex's server answers

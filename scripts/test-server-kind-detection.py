@@ -319,7 +319,7 @@ class FindingTests(DetectionTestCase):
 
 
 class RexTests(DetectionTestCase):
-    """Rex is found by its socket files alone, and its CLI never runs (ADR 0047)."""
+    """Rex is found by its socket files alone, and its CLI never runs (ADR 0048)."""
 
     def setUp(self) -> None:
         super().setUp()

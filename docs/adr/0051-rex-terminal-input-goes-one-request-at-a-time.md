@@ -4,7 +4,7 @@ status: proposed
 
 # Rex terminal input goes out one request at a time
 
-A Rex terminal opens for viewing from the server's redraw (ADR 0049). Typing
+A Rex terminal opens for viewing from the server's redraw (ADR 0050). Typing
 into it, pasting, scrolling, the Keys panel and Stop must reach the program in
 order, exactly once, and never in another terminal. Rex takes input on the
 control connection in two ways: the terminal's `write` method, whose text
@@ -26,7 +26,7 @@ the whole control connection.
   while a request was out join the next write, within a budget under the
   link's message limit, and never across a paste or an event. Text is cut
   only between characters and between whole escape sequences.
-- **Answers to queries are dropped** on the way out, as ADR 0049 set out: Rex
+- **Answers to queries are dropped** on the way out, as ADR 0050 set out: Rex
   answers a program's queries itself.
 - **Never invalid text.** The bytes the view writes are not always UTF-8. A
   legacy X10 mouse report past column or row 95 goes as the mouse or wheel
@@ -148,5 +148,5 @@ lab capture and the live input test, recorded with their sources in
   as a connection reset, so the terminal reattaches and paints afresh even
   where its data stream could have carried on. A link that drops while
   nothing is typed costs no reattach.
-- ADR 0051 shows `TerminalSizeReport`'s mismatch and an explicit take of the
+- ADR 0052 shows `TerminalSizeReport`'s mismatch and an explicit take of the
   block's size, through the same gate as input.

@@ -273,7 +273,7 @@ final class AttachTerminalStore {
     /// the last session that said; nil for a Server Kind that sizes to the view.
     private(set) var sizeReport: TerminalSizeReport?
     /// What the view says while the live terminal shows at a size another
-    /// device set, once that has held for a moment (ADR 0051); nil otherwise.
+    /// device set, once that has held for a moment (ADR 0052); nil otherwise.
     private(set) var sizeNotice: TerminalSizeNotice?
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()

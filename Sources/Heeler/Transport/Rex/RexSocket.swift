@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where a Rex Host's server listens: the Unix socket detection found it on
-/// (ADR 0047). Absolute and quotable as one remote shell word, like every path
+/// (ADR 0048). Absolute and quotable as one remote shell word, like every path
 /// Heeler names on a Host, so a path with spaces, such as macOS's
 /// `~/Library/Application Support/rex/server.sock`, is fine.
 struct RexSocket: Codable, Hashable, Sendable {

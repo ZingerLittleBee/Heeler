@@ -1,6 +1,6 @@
 import Foundation
 
-/// One Rex terminal block's output for one view (ADR 0049): a data link, the
+/// One Rex terminal block's output for one view (ADR 0050): a data link, the
 /// stream scanner, and the paint engine, run together. `next` hands out the
 /// view's instructions in order, ending with `.ended`.
 ///

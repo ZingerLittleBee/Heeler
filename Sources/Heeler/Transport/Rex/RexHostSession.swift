@@ -9,7 +9,7 @@ enum RexHostSessionUpdate: Sendable, Equatable {
     /// another server, and whatever was known of the last one is void.
     case server(RexServerStatus)
     /// Every terminal the server lists: once after each `server`, and again
-    /// each time something changed (ADR 0048).
+    /// each time something changed (ADR 0049).
     case inventory(RexInventory)
 }
 
@@ -22,7 +22,7 @@ struct RexConnection: Sendable {
     let server: RexServerStatus
 }
 
-/// Owns a Rex Host's connection (ADRs 0047 and 0048), as `TmuxHostSession`
+/// Owns a Rex Host's connection (ADRs 0048 and 0049), as `TmuxHostSession`
 /// owns a tmux Host's. It reuses `EventsSession`'s reconnect policy and status,
 /// and suspends and resumes with the app the same way.
 ///
@@ -31,7 +31,7 @@ struct RexConnection: Sendable {
 /// link. A link that drops without a close frame leaves its client with the
 /// server for a while: the next link says hello with its reconnect token, on
 /// the same SSH connection when that is still up and over a new one when it is
-/// not, unless that client opened a terminal's data link (ADR 0049). Either
+/// not, unless that client opened a terminal's data link (ADR 0050). Either
 /// way events sent in between are lost, so every new link reads the inventory
 /// again. A link the server closed is followed by a plain hello, unless it
 /// closed with 1001, as Rex does for a client that stopped answering its pings
@@ -111,7 +111,7 @@ actor RexHostSession {
 
     private nonisolated let follows = Follows()
 
-    // Terminals (ADR 0049).
+    // Terminals (ADR 0050).
     private nonisolated let terminals = RexTerminalHub()
     private let terminalOptions: RexTerminalAttach.Options
     private let terminalSleep: RexTerminalStream.Sleep
@@ -142,7 +142,7 @@ actor RexHostSession {
     private var terminalLink: RexControlLink?
     private var terminalLinkGeneration: UInt64?
     /// What each block's attaches claimed of its size and have not given
-    /// back, with the client epoch they claimed it in (ADR 0051). It outlives
+    /// back, with the client epoch they claimed it in (ADR 0052). It outlives
     /// the attach, so a give back that could not go out before an attach
     /// ended is made by the next attach of the block on the same client, or
     /// here once a link takes the client back. A new client claims nothing.
@@ -584,7 +584,7 @@ actor RexHostSession {
 
     // MARK: Terminals
 
-    /// Runs one terminal's attach on `address` (ADR 0049), once a server
+    /// Runs one terminal's attach on `address` (ADR 0050), once a server
     /// answers, waiting through a reconnect. Throws when the session ends, or
     /// its run stops for good, before one does.
     ///

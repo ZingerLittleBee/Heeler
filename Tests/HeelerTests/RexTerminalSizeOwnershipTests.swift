@@ -4,7 +4,7 @@ import Testing
 
 @testable import Heeler
 
-/// Taking a Rex terminal's size for the view and giving it back (ADR 0051),
+/// Taking a Rex terminal's size for the view and giving it back (ADR 0052),
 /// from the store the view uses to a fake server's block: only a tap takes
 /// it, once, through the same gate as input; what the user took goes back
 /// when the view stops showing the terminal and when the attach ends, and

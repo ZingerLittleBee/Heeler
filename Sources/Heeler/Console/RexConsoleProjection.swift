@@ -1,14 +1,14 @@
 import Foundation
 
-/// A Rex Host's share of the Console (ADRs 0047 and 0048): its connection, the
+/// A Rex Host's share of the Console (ADRs 0048 and 0049): its connection, the
 /// server that answers on its socket, and the terminals that server lists. A
 /// session is a Workspace, a window a Tab and a terminal block a Pane, as
 /// `RexOrganization` reads them, and a Rex Host lists Terminals only.
 ///
 /// A Pane keeps to its server instance, as a tmux Pane does: another instance
 /// leaves every detail open on the last one's terminals. A terminal opens
-/// from the server's redraw (ADR 0049) and takes input from its first paint
-/// (ADR 0050); every action a Host offers is unavailable on a Rex Host.
+/// from the server's redraw (ADR 0050) and takes input from its first paint
+/// (ADR 0051); every action a Host offers is unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     let host: Host
@@ -192,7 +192,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: Actions
 
-    /// Nothing is started, closed or renamed on a Rex Host (ADR 0047).
+    /// Nothing is started, closed or renamed on a Rex Host (ADR 0048).
     private nonisolated static var unavailable: TransportError {
         .hostFeatureUnavailable(feature: String(localized: "This action on a Rex Host"))
     }
@@ -233,7 +233,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: The live connection
 
-    /// Opens a Rex terminal (ADRs 0049 and 0050): its session is attached,
+    /// Opens a Rex terminal (ADRs 0050 and 0051): its session is attached,
     /// its block's stream paints the view and follows its output, and the
     /// view's grid is asked for, and the view's input goes out from the first
     /// paint. A block that closed, a program that exited and another server

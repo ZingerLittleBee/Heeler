@@ -5,7 +5,7 @@ import UIKit
 @testable import Heeler
 
 /// What leaves for a Rex terminal of the bytes Heeler's view writes (ADR
-/// 0049): the emulator's answers to queries never; keys, text and mouse
+/// 0050): the emulator's answers to queries never; keys, text and mouse
 /// reports as valid text; focus reports, pastes and mouse reports text cannot
 /// carry as events; never invalid UTF-8.
 @Suite("Rex terminal key reader")

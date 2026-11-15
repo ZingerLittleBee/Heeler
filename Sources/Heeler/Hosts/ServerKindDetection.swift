@@ -48,7 +48,7 @@ struct ServerKindDetection: Equatable, Sendable {
         case running(version: String, sockets: [String])
     }
 
-    /// What the Rex probe says, from files alone (ADR 0047). A socket file is
+    /// What the Rex probe says, from files alone (ADR 0048). A socket file is
     /// all it can report of a running server.
     enum RexFinding: Equatable, Sendable {
         /// Not macOS or Linux, where Heeler finds no Rex server.
@@ -236,7 +236,7 @@ struct ServerKindDetection: Equatable, Sendable {
     /// and confirming says why. A tmux with no server running stays on offer beside
     /// whatever was found: its Host connects once the user starts one (ADR 0044).
     /// Rex is on offer exactly when a socket this account may use was found,
-    /// since Heeler never starts its server (ADR 0047).
+    /// since Heeler never starts its server (ADR 0048).
     var offeredKinds: [ServerKind] {
         if case .sessionRefused = herdrCore { return supportedKinds + (rexSocket != nil ? [.rex] : []) }
         let found = foundKinds

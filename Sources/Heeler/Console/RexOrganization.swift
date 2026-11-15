@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fills the Console's snapshot shape from a Rex server's inventory (ADR 0048).
+/// Fills the Console's snapshot shape from a Rex server's inventory (ADR 0049).
 /// A session is a Workspace, a window a Tab and a terminal block a Pane, named
 /// and ordered as Rex lists them: Heeler keeps no organization of its own. A
 /// session's detached terminals, in none of its windows, share one Tab of

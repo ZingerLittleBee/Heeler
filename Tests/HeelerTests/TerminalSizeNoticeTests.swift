@@ -7,7 +7,7 @@ import UIKit
 @testable import Heeler
 
 /// The store's notice that a terminal shows at a size another device set
-/// (ADR 0051), over a hand-built session whose size reports and take the
+/// (ADR 0052), over a hand-built session whose size reports and take the
 /// test drives: when it shows, after the size settles; when it goes and
 /// comes back; dismissing it; and how a tap's take ends. Ids are invented.
 @MainActor

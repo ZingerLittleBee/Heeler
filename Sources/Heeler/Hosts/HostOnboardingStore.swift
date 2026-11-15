@@ -461,7 +461,7 @@ final class HostOnboardingStore {
     }
 
     /// A Rex Host's checks reach its server's socket and say hello, then close
-    /// with a close frame, which changes nothing on the server (ADR 0047). A
+    /// with a close frame, which changes nothing on the server (ADR 0048). A
     /// Host that stores no socket has it looked up again, and the catalog keeps
     /// what was found. They never run `rex` or start a server.
     private func performRexChecks(settings: SSHTransportSettings) async {
@@ -598,7 +598,7 @@ final class HostOnboardingStore {
     }
 
     /// Why Rex, installed on this Host, is not on offer: Heeler adds only a
-    /// Rex server that already runs, and never starts one (ADR 0047).
+    /// Rex server that already runs, and never starts one (ADR 0048).
     var rexNote: String? {
         guard host.serverKind == .unconfirmed, detection?.rex == .notRunning else { return nil }
         return String(localized: "To add this machine as a Rex Host, start Rex on it, then run the checks again.")
@@ -622,7 +622,7 @@ final class HostOnboardingStore {
         do {
             // A tmux Host takes the socket chosen here, and the paths this
             // detection's login shell resolved for it (ADR 0044). A Rex Host takes
-            // the socket this detection found (ADR 0047).
+            // the socket this detection found (ADR 0048).
             host =
                 switch kind {
                 case .tmux:

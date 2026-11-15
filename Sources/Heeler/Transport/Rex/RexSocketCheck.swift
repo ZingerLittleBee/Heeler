@@ -1,7 +1,7 @@
 import Foundation
 
 /// The read that explains why SSH would not open a Rex server's socket
-/// (ADR 0047). SSH, through libssh2, reports a missing socket, one nothing
+/// (ADR 0048). SSH, through libssh2, reports a missing socket, one nothing
 /// listens on, and an SSH server that forbids socket forwarding with the same
 /// error, and only the last needs the user to change the SSH server. Pure: it
 /// builds a script for one bounded exec and reads what it prints.

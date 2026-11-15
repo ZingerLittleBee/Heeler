@@ -355,7 +355,7 @@ final class ShellTerminalStore {
 
     /// Whether what the view sends can reach the pane now: the session is live
     /// and took the view's input. A Rex terminal's does from its first paint
-    /// (ADR 0050).
+    /// (ADR 0051).
     var takesInput: Bool { terminal.status == .live && input.isEnabled && input.liveGeneration != nil }
 
     /// How the terminal's size stands with a server that keeps its own, such
@@ -363,7 +363,7 @@ final class ShellTerminalStore {
     var sizeReport: TerminalSizeReport? { terminal.sizeReport }
 
     /// What the view says while the terminal shows at a size another device
-    /// set (ADR 0051); nil when there is nothing to say.
+    /// set (ADR 0052); nil when there is nothing to say.
     var sizeNotice: TerminalSizeNotice? { terminal.sizeNotice }
 
     /// Takes the terminal's size for this view, at the user's tap.

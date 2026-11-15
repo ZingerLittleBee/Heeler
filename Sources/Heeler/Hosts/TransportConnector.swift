@@ -17,7 +17,7 @@ protocol TransportConnector: Sendable {
     /// Dials a Rex Host: SSH, a channel to its server's socket, and the control
     /// link's hello, carrying `previous`'s reconnect token when there is one.
     /// With no socket in `settings` it looks for one first. It never runs
-    /// `rex`, and connecting starts no server (ADR 0047).
+    /// `rex`, and connecting starts no server (ADR 0048).
     func connectRex(
         settings: SSHTransportSettings, resuming previous: RexControlLink?
     ) async throws -> any RexTransport

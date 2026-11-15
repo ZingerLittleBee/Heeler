@@ -8,7 +8,7 @@ enum PreflightCheck: CaseIterable, Sendable {
     /// The checks a Host of this kind runs, in order. A tmux Host speaks no
     /// protocol of Heeler's: its version is part of being installed. A Rex
     /// Host needs no shell setup: its checks reach the server's socket and say
-    /// hello, which changes nothing on the server (ADR 0047).
+    /// hello, which changes nothing on the server (ADR 0048).
     static func cases(for serverKind: ServerKind) -> [PreflightCheck] {
         switch serverKind {
         case .tmux: allCases.filter { $0 != .protocolCompatible }

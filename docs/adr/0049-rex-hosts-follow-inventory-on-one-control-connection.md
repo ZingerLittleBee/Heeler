@@ -4,7 +4,7 @@ status: proposed
 
 # Rex Hosts follow their inventory on one control connection
 
-A confirmed Rex Host (ADR 0047) lists its Terminals in the Console. Rex keeps
+A confirmed Rex Host (ADR 0048) lists its Terminals in the Console. Rex keeps
 its own organization, sessions holding windows holding layers of blocks, and
 pushes numbered events over the control connection as it changes. Heeler has
 to read that organization once, keep it current, and survive dropped links and
@@ -15,7 +15,7 @@ restarted servers without showing a stale or half-read list.
 - Each Rex Host has one control connection, owned by `RexHostSession`, as a
   tmux Host's connection is owned by `TmuxHostSession`. Inventory, server
   identity and, later, terminal attachment requests all go over it. Terminal
-  data takes channels of its own (ADR 0047).
+  data takes channels of its own (ADR 0048).
 - The connection attaches to every session at once with `session.attach_all`,
   asking for every event, terminals' own events included, so a row's title,
   program and directory follow `title_changed` and `process_changed` without
@@ -36,7 +36,7 @@ restarted servers without showing a stale or half-read list.
   API document says relabeling a detached block raises no event, so a session
   with detached terminals also reads its structure again once a minute.
 - A read's answer comes in order after everything else the connection
-  carries, terminal redraw pages included (ADR 0049), so a read waits as long
+  carries, terminal redraw pages included (ADR 0050), so a read waits as long
   as the connection keeps receiving: it gives up after half a minute in which
   nothing arrives, or two minutes in all. The check on a return to the
   foreground waits the same way, with five seconds of silence and half a
@@ -51,7 +51,7 @@ restarted servers without showing a stale or half-read list.
 - A control connection that drops without a close frame is followed by a new
   one whose hello carries its reconnect token, on the same SSH connection when
   that is still up and over a new one when it is not, unless the client opened
-  a terminal's data link (ADR 0049). Rex's API document says
+  a terminal's data link (ADR 0050). Rex's API document says
   events sent in between are lost even when the server takes the client back,
   so every new connection reads the whole inventory again. A connection the server closed, as it does
   when too many events queue up for a client, is followed by a plain hello and
@@ -73,7 +73,7 @@ restarted servers without showing a stale or half-read list.
   longer than three seconds, and only then does the SSH connection go. A
   short trip to the background keeps the connection as it is, and a
   connection that dropped is taken back by the next one.
-- Only API revision 12 is accepted (ADR 0047).
+- Only API revision 12 is accepted (ADR 0048).
 - A Rex session is a Workspace, a window a Tab and a terminal block a Pane,
   named and ordered as Rex shows them. A window lists its terminals in reading
   order: its tiled layout before-then-after, then its floating layers. A
@@ -142,7 +142,7 @@ session with detached terminals once a minute, whichever holds.
   control connection before a data link, and `RexHostSession.withConnection`
   hands both out. Until then a Rex Pane's detail says it cannot open yet,
   with a way back and nothing to retry, and an Attach fails with that reason.
-  (ADR 0049 took that step and replaced this: `RexHostSession.withTerminal`
+  (ADR 0050 took that step and replaced this: `RexHostSession.withTerminal`
   attaches the session on this connection, holds the block to one data
   stream and hands out the terminal's connection, and a Rex Pane's detail
-  opens its terminal. Its input goes on this connection too (ADR 0050).)
+  opens its terminal. Its input goes on this connection too (ADR 0051).)

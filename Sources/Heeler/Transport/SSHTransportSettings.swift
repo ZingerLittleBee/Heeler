@@ -99,7 +99,7 @@ struct SSHTransportSettings: Sendable {
     var tmuxSocketName = TmuxSocketName.defaultName
     var tmuxPaths: TmuxPaths?
     /// A Rex Host's server socket; nil sends connecting to look for it first
-    /// (ADR 0047).
+    /// (ADR 0048).
     var rexSocket: RexSocket?
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The Rex server a control link reached. Another instance is another server
-/// process: what was known of the last one is void (ADR 0048).
+/// process: what was known of the last one is void (ADR 0049).
 struct RexServerStatus: Sendable, Equatable {
     let instanceID: String
 
@@ -21,7 +21,7 @@ struct RexServerStatus: Sendable, Equatable {
 
 /// Where a Rex terminal lives: its session and its block. A Pane's id is this
 /// address written as one opaque string, so no other code reads Rex's ids
-/// apart (ADR 0048).
+/// apart (ADR 0049).
 struct RexPaneAddress: Hashable, Sendable {
     let sessionID: String
     let blockID: String
@@ -84,7 +84,7 @@ struct RexTerminalDetails: Sendable, Equatable {
     }
 }
 
-/// Every terminal a Rex server lists, in Rex's order (ADR 0048). A session
+/// Every terminal a Rex server lists, in Rex's order (ADR 0049). A session
 /// lists its windows in order, each window its terminals in reading order:
 /// the tiled layout first, then the floating layers. Terminals that belong to
 /// a session but to none of its windows are its detached ones. Blocks that
