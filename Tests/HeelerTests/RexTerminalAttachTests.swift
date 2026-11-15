@@ -740,6 +740,41 @@ struct RexTerminalAttachTests {
         #expect(await session.openTerminalCount == 0)
     }
 
+    /// A view that stops while it waits for an attach slot leaves the line:
+    /// the slot a view gives up later goes to no one, and it never asked for
+    /// a ticket or opened a channel.
+    @Test func aViewStoppedWhileWaitingForASlotTakesNone() async throws {
+        let rig = Rig(streams: 6)
+        rig.world.update { sessions in sessions[0].detached.append(FakeRexWorld.Block("block:extra")) }
+        let session = hostSession([await rig.host([.server(await rig.server())])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let blocks = ["block:left", "block:right", "block:solo", "block:float", "block:detached"]
+        var stores: [AttachTerminalStore] = []
+        for (index, block) in blocks.enumerated() {
+            let store = store(session, address: RexPaneAddress(sessionID: "session:studio", blockID: block))
+            store.viewDidResize(cols: 80, rows: 24)
+            await rig.begin(stream: index)
+            try await waitUntil("\(block)'s paint") { store.status == .live }
+            stores.append(store)
+        }
+        let sixth = store(session, address: RexPaneAddress(sessionID: "session:studio", blockID: "block:extra"))
+        sixth.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the sixth view in line") { await rig.admission.waitingRequests() == 1 }
+
+        await sixth.stop()
+        #expect(await rig.admission.waitingRequests() == 0)
+        await stores.removeFirst().stop()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(await rig.attachSlotsTaken == 4)
+        #expect(await rig.endpoint.channels.count == 5)
+        #expect(rig.endpoint.tickets.requests.count == 5)
+        #expect(await session.openTerminalCount == 4)
+        for store in stores { await store.stop() }
+        #expect(await rig.attachSlotsTaken == 0)
+        #expect(await session.openTerminalCount == 0)
+    }
+
     /// A view closed and opened again at once never meets its old stream.
     @Test func aQuickCloseAndReopenAsksForOneStreamAtATime() async throws {
         let rig = Rig()

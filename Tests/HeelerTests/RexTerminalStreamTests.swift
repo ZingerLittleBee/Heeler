@@ -262,6 +262,57 @@ struct RexTerminalStreamTests {
         #expect(last == .ended(.closedHere))
     }
 
+    // MARK: Stopping while opening
+
+    /// Stopping while the ticket is on its way closes the channel opened for
+    /// it, never upgraded, and the stream says it ended here.
+    @Test func stoppingWhileTheTicketIsOnItsWayClosesTheChannel() async throws {
+        let fixture = try await Self.fixture()
+        await fixture.control.stopAnswering("data.connect")
+        await fixture.stream.start()
+        #expect(await fixture.control.nextRequest().method == "data.connect")
+
+        await fixture.stream.stop()
+        let channel = try #require(await fixture.endpoint.channels.first)
+        await channel.waitUntilClosed()
+        #expect(await channel.upgradeRequest == nil)
+        #expect(await fixture.endpoint.handshakes.isEmpty)
+        #expect(await fixture.stream.next() == .ended(.closedHere))
+        #expect(await fixture.stream.next() == nil)
+    }
+
+    /// Stopping while the HELLO waits for its answer drops the connection.
+    @Test func stoppingWhileTheHelloIsUnansweredDropsTheConnection() async throws {
+        let fixture = try await Self.fixture()
+        await fixture.endpoint.script(.stayQuiet)
+        await fixture.stream.start()
+        await fixture.endpoint.waitForHandshakes(1)
+
+        await fixture.stream.stop()
+        let channel = try #require(await fixture.endpoint.channels.first)
+        await channel.waitUntilClosed()
+        #expect(await fixture.endpoint.handshakes.map(\.outcome) == [.unanswered])
+        #expect(await fixture.endpoint.channels.count == 1)
+        #expect(await fixture.stream.next() == .ended(.closedHere))
+    }
+
+    /// Stopping while the first paint's reads are out closes the stream on
+    /// the server with 1000, and no paint follows.
+    @Test func stoppingDuringTheFirstPaintClosesTheConnection() async throws {
+        let fixture = try await Self.fixture()
+        await fixture.control.stopAnswering(RexInventoryWire.terminalMethod("modes"))
+        await fixture.stream.start()
+        await fixture.begin()
+        #expect(await fixture.stream.next() == .grid(Self.grid))
+        #expect(await fixture.control.nextRequest().method == RexInventoryWire.terminalMethod("modes"))
+
+        await fixture.stream.stop()
+        #expect(await fixture.endpoint.clientCloses == [WebSocketClose(code: .normalClosure)])
+        #expect(await fixture.stream.next() == .ended(.closedHere))
+        #expect(await fixture.stream.next() == nil)
+        #expect(await fixture.stream.status.paintCount == 0)
+    }
+
     @Test func theProgramsExitIsPassedOn() async throws {
         let fixture = try await Self.fixture()
         await fixture.stream.start()
