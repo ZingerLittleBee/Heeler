@@ -5,11 +5,11 @@ import Foundation
 /// sheet that lists everything. Work a read can't vouch for stops claiming
 /// to run: with the Host away or the read failing its row freezes, and work
 /// silent for longer than it runs says when it was last seen.
-struct ChatBackgroundWorkPresentation: Equatable {
+struct ChatBackgroundWorkPresentation: Equatable, Sendable {
     /// The rows the strip shows before "+N more".
     static let stripLimit = 3
 
-    enum Status: Equatable {
+    enum Status: Equatable, Sendable {
         /// Running, as a live read shows.
         case running
         /// Running as of the last read, which is not live now.
@@ -26,15 +26,34 @@ struct ChatBackgroundWorkPresentation: Equatable {
             case .completed, .failed, .stopped: true
             }
         }
+
+        var badgeLabel: String {
+            switch self {
+            case .running:
+                String(localized: "Running")
+            case .unconfirmed:
+                String(localized: "Not updating")
+            case .quiet:
+                String(localized: "No recent updates")
+            case .completed:
+                String(
+                    localized: "Agent status Done", defaultValue: "Done",
+                    comment: "Agent status, not the button that closes a sheet")
+            case .failed:
+                String(localized: "Failed")
+            case .stopped:
+                String(localized: "Stopped")
+            }
+        }
     }
 
-    struct Fraction: Equatable {
+    struct Fraction: Equatable, Sendable {
         var done: Int
         var total: Int
     }
 
     /// One agent of a Workflow, as its journal lists it.
-    struct Agent: Identifiable, Equatable {
+    struct Agent: Identifiable, Equatable, Sendable {
         let id: String
         let status: Status
         let label: String
@@ -42,7 +61,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
         let accessibilityLabel: String
     }
 
-    struct Row: Identifiable, Equatable {
+    struct Row: Identifiable, Equatable, Sendable {
         let id: String
         let kind: ChatBackgroundWorkItem.Kind
         let status: Status
@@ -65,10 +84,91 @@ struct ChatBackgroundWorkPresentation: Equatable {
         let usage: String?
         let agents: [Agent]
         let accessibilityLabel: String
+
+        static func singleLine(_ text: String) -> String {
+            text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+
+        /// Human-first single-line label for the floating strip above the Composer.
+        var stripHeadline: String {
+            if kind == .command || kind == .workflow,
+                let detail,
+                let cleanDetail = Optional(Self.singleLine(detail)),
+                !cleanDetail.isEmpty
+            {
+                return cleanDetail
+            }
+            let cleanTitle = Self.singleLine(title)
+            return cleanTitle.isEmpty ? title : cleanTitle
+        }
+
+        /// Primary title inside an activity card; nil when a Command has no
+        /// separate human summary so the command is not repeated above its terminal box.
+        var cardHeadline: String? {
+            switch kind {
+            case .command:
+                guard let detail else { return nil }
+                let clean = Self.singleLine(detail)
+                return clean.isEmpty ? nil : clean
+            case .subagent:
+                let clean = Self.singleLine(title)
+                return clean.isEmpty ? title : clean
+            case .workflow:
+                if let detail {
+                    let cleanDetail = Self.singleLine(detail)
+                    if !cleanDetail.isEmpty { return cleanDetail }
+                }
+                let clean = Self.singleLine(title)
+                return clean.isEmpty ? title : clean
+            }
+        }
+
+        /// Single-line normalized text for a card's recessed terminal/identifier box.
+        var terminalPreview: String? {
+            switch kind {
+            case .command:
+                let clean = Self.singleLine(title)
+                return clean.isEmpty ? nil : "$ \(clean)"
+            case .workflow:
+                guard let detail else { return nil }
+                let cleanDetail = Self.singleLine(detail)
+                let cleanTitle = Self.singleLine(title)
+                guard !cleanDetail.isEmpty, !cleanTitle.isEmpty, cleanDetail != cleanTitle else { return nil }
+                return cleanTitle
+            case .subagent:
+                return nil
+            }
+        }
+
+        /// Full multi-line command text when a Command card is expanded in the sheet.
+        var fullTerminalText: String? {
+            switch kind {
+            case .command:
+                let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : "$ \(trimmed)"
+            case .workflow:
+                return terminalPreview
+            case .subagent:
+                return nil
+            }
+        }
+
+        var kindBadge: String {
+            switch kind {
+            case .command:
+                return caption
+            case .subagent:
+                let base = String(localized: "Subagent")
+                return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
+            case .workflow:
+                let base = String(localized: "Workflow")
+                return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
+            }
+        }
     }
 
     /// The one line the rows condense to.
-    struct Summary: Equatable {
+    struct Summary: Equatable, Sendable {
         let status: Status
         let text: String
         let accessibilityValue: String
@@ -89,8 +189,10 @@ struct ChatBackgroundWorkPresentation: Equatable {
     var overflow: Int { max(0, rows.count - Self.stripLimit) }
     var unfinished: [Row] { rows.filter { !$0.status.isFinished } }
     var finished: [Row] { rows.filter(\.status.isFinished) }
+    var hasRunning: Bool { rows.contains { $0.status == .running } }
+    var hasFailed: Bool { rows.contains { $0.status == .failed } }
     /// Only running rows show a moving time.
-    var ticks: Bool { rows.contains { $0.status == .running } }
+    var ticks: Bool { hasRunning }
 
     var summary: Summary? {
         guard !rows.isEmpty else { return nil }
@@ -170,13 +272,14 @@ struct ChatBackgroundWorkPresentation: Equatable {
                 // running, its last agent's.
                 case .workflow:
                     (started.last { $0.state == .running } ?? started.last)?.phase ?? String(localized: "Workflow")
+                case .command: String(localized: "Command")
                 }
             var spoken = [item.title, kindPhrase(item), statePhrase(status, lastSeen: lastSeen)]
             if let fraction { spoken.append(String(localized: "\(fraction.done) of \(fraction.total) agents done")) }
             if let seconds { spoken.append(ChatBackgroundWorkPresentation.duration(seconds, width: .wide, locale: locale)) }
             return Row(
                 id: item.id, kind: item.kind, status: status, title: item.title, caption: caption,
-                detail: item.kind == .workflow ? item.subtitle : nil, fraction: fraction,
+                detail: item.kind == .workflow || item.kind == .command ? item.subtitle : nil, fraction: fraction,
                 time: seconds.map { ChatBackgroundWorkPresentation.duration($0, width: .narrow, locale: locale) },
                 note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status),
                 accessibilityLabel: spoken.joined(separator: ", "))
@@ -251,6 +354,7 @@ struct ChatBackgroundWorkPresentation: Equatable {
             switch item.kind {
             case .subagent: item.subtitle.map { String(localized: "\($0) subagent") } ?? String(localized: "Subagent")
             case .workflow: String(localized: "Workflow")
+            case .command: String(localized: "Command")
             }
         }
 

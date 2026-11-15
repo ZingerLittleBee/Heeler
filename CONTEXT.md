@@ -157,7 +157,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected Transcript read confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -504,12 +504,14 @@ says why instead, since its prompt would act on those keys.
 _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Background Work**:
-The Subagents and Workflows a Claude Code Agent runs in the background, which
-Chat lists over the Composer from their launch and end records in the
-Transcript and, for a Workflow, its journal beside it. Running work comes
-first; finished work stays until the user's next prompt. Chat only shows it
-and stops none of it. A Subagent is one background agent; a Workflow is a
-script that runs many and is listed as one row with its agents done.
+The Subagents, Workflows and non-daemon background commands an Agent runs in
+the background (Claude Code Subagents and Workflows; Antigravity CLI Subagents,
+Workflows and background commands), which Chat lists over the Composer from
+their launch and end records in the Transcript and, for a Claude Code Workflow,
+its journal beside it. Running work comes first; finished work stays until the
+user's next prompt. Chat only shows it and stops none of it. A Subagent is one
+background agent; a Workflow is a script that runs many and is listed as one
+row with its agents done when its journal records them.
 _Avoid_: background task, task list, jobs
 
 **Turn**:

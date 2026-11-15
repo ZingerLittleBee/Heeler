@@ -784,8 +784,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            let staging = session.staging
-            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
+            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -1008,7 +1007,7 @@ struct AgentTerminalView: View {
             attachLinkCount: attach.attachLinks.count,
             addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
             pasteImage: capabilities.uploads
-                ? { _ = session.staging.begin(.photo(ClipboardImageSelection.current())) } : nil,
+                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
             addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal

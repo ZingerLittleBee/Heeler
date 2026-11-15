@@ -236,6 +236,7 @@ final class ConsoleStore {
     @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
+    @ObservationIgnored private var isRebuilding = false
     @ObservationIgnored private lazy var agyTitles = AgyAnnotationTitleStore(
         retryDelay: chatPrefetchRetryDelay
     ) { [weak self] in
@@ -1064,9 +1065,17 @@ final class ConsoleStore {
                     root: root, rootID: rootID)
                 self.reconcileAgyAnnotationTitles()
             }
+            source.onRunningBackgroundWorkChanged = { [weak self] _ in
+                guard let self, !self.isRebuilding else { return }
+                self.rebuild()
+            }
         }
+        let rawAgent =
+            projections[hostID]?.agentsByPane[paneID].map { agyTitles.applying(to: $0).agent }
+            ?? agent.agent
         let store = AgentChatStore(
-            agentID: agent.id, agent: agent.agent, program: program, source: source, timing: chatTiming, now: chatNow)
+            agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
+        store.hostConnectionChanged(hostStatuses[hostID] == .connected)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
         return store
@@ -1682,7 +1691,11 @@ final class ConsoleStore {
 
     private func rebuild() {
         let span = PerfTrace.begin("console.rebuild")
-        defer { PerfTrace.end(span) }
+        isRebuilding = true
+        defer {
+            isRebuilding = false
+            PerfTrace.end(span)
+        }
         let current = Array(projections.values)
         let nextCoreKernels = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
@@ -1836,9 +1849,9 @@ final class ConsoleStore {
             .map { agyTitles.applying(to: $0) }
             .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
         if departedAgents != nextDeparted { departedAgents = nextDeparted }
+        publishChatAgents()
         rebuildAgentOrder()
         publishAgentStatuses()
-        publishChatAgents()
         reconcileChatCache()
         reconcileAgyAnnotationTitles()
         // A reconnecting Host's empty projection is not proof its Agents
@@ -2179,11 +2192,36 @@ final class ConsoleStore {
         }
     }
 
+    /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
+    /// foreground turn finishes, even while its Subagents, Workflows, or
+    /// non-daemon background commands keep running. Present the Agent as
+    /// `Working` across Console and Composer surfaces while a live connected
+    /// transcript confirms running, non-stale Background Work.
+    private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
+        guard row.agent.kind == ChatProgram.agy.rawValue,
+            row.agent.status == .idle || row.agent.status == .done,
+            hostStatuses[row.hostID] == .connected,
+            !hostsAwaitingSnapshot.contains(row.hostID),
+            let store = chatStores[row.id],
+            store.program == .agy,
+            store.hasRunningBackgroundWork,
+            store.agent.terminalID == row.agent.terminalID,
+            store.agent.workspaceID == row.agent.workspaceID,
+            store.agent.tabID == row.agent.tabID,
+            store.agent.paneID == row.agent.paneID
+        else {
+            return row
+        }
+        var copy = row
+        copy.agent.status = .working
+        return copy
+    }
+
     private func rebuildAgentOrder() {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-            .map { agyTitles.applying(to: $0) }
+            .map { applyingAgyBackgroundWork(to: agyTitles.applying(to: $0)) }
         // A Host with no plugin has no snapshot to say: it keeps status priority,
         // and within a status the order its projection lists, the desktop app's.
         let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
@@ -2795,8 +2833,19 @@ final class ConsoleStore {
         guard !chatStores.isEmpty else { return }
         let span = PerfTrace.begin("console.rebuild.chat-agents")
         defer { PerfTrace.end(span) }
-        let current = Dictionary(agents.map { ($0.id, $0.agent) }) { first, _ in first }
+        // Pass the Host's underlying reported status (with title overlays only,
+        // before client-side Background Work promotion) so Chat stores,
+        // Antigravity CLI idle permission checks, and echo clocks see true
+        // foreground turn state.
+        let current = Dictionary(
+            projections.values.flatMap { $0.agentsByPane.values }
+                .map { row in
+                    let titled = agyTitles.applying(to: row)
+                    return (titled.id, titled)
+                }
+        ) { first, _ in first }
         for (id, store) in chatStores {
+            store.hostConnectionChanged(hostStatuses[id.hostID] == .connected)
             let processBound = projections[id.hostID].flatMap { $0.usesProcessBoundChat ? $0 : nil }
             // Another core's or server instance's Agents are other Agents: its
             // Transcripts are keyed apart, and this store is keyed to the last one.
@@ -2807,7 +2856,7 @@ final class ConsoleStore {
                 chatSessionEventRevisions[id] = nil
                 // A Chat on screen says so only once, when it appears, and it
                 // stays on screen across this.
-                if !viewers.isEmpty, let agent = agents.first(where: { $0.id == id }),
+                if !viewers.isEmpty, let agent = current[id],
                     let next = chatStore(for: agent, program: store.program)
                 {
                     for viewer in viewers { next.show(viewer) }
@@ -2820,7 +2869,7 @@ final class ConsoleStore {
                     store.sessionEvidenceMayHaveChanged()
                 }
             }
-            if let agent = current[id] ?? departedAgents.first(where: { $0.id == id })?.agent {
+            if let agent = current[id]?.agent ?? departedAgents.first(where: { $0.id == id })?.agent {
                 store.agentDidChange(agent)
             } else if hostStatuses[id.hostID] == .connected,
                 !hostsAwaitingSnapshot.contains(id.hostID)

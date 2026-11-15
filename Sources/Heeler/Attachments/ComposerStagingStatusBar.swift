@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// The staging's progress or result, with its commands, above the Composer:
-/// the same bar on the Agent terminal and in Chat. Empty while idle.
+/// the same bar on the Agent terminal and in Chat. Empty while idle, and
+/// silent for image stages that the Composer's inline pill strip already shows.
 struct ComposerStagingStatusBar: View {
     let staging: ComposerStagingStore
 
     var body: some View {
-        if let presentation = staging.presentation {
+        if Self.showsBar(for: staging.state), let presentation = staging.presentation {
             AttachmentStatusBar(
                 icon: presentation.icon,
                 title: presentation.title,
@@ -16,6 +17,19 @@ struct ComposerStagingStatusBar: View {
                     MainActorContent { commandButton(command) }
                 }
             }
+        }
+    }
+
+    static func showsBar(for state: ComposerStagingStore.State) -> Bool {
+        switch state {
+        case .idle:
+            false
+        case .preparing(let medium), .uploading(let medium, _):
+            medium == .file
+        case .completed(let outcome):
+            outcome.medium == .file
+        case .failed(let failure), .backgroundInterrupted(let failure):
+            failure.medium == .file || !failure.isRetryable
         }
     }
 

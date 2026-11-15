@@ -553,6 +553,118 @@ struct ConsoleStoreTests {
         store.setHosts([])
     }
 
+    /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its foreground
+    /// turn replies, even while its Subagents or background commands keep
+    /// running. ConsoleStore promotes the Agent's displayed status to `Working`
+    /// while a live connected transcript confirms running Background Work,
+    /// keeps `AgentChatStore.agent.status` at the Host's underlying `Idle`
+    /// status so idle permission checks and echo clocks stay accurate, and
+    /// drops back once Background Work finishes.
+    @Test func agyIdleAgentShowsWorkingWhileBackgroundWorkRunsWithoutMaskingChatIdleState() async throws {
+        let host = Host.fixture()
+        let agySessionID = "72f562e4-129f-4e43-87dc-be2f661d5633"
+        let subID = "11111111-1111-4000-8000-000000000001"
+        let claudeInfo = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+            agentSession: AgentSessionInfo(
+                agent: "claude", kind: .id, source: "herdr:claude", value: "e951205e-24af-4a5e-baa7-3ccbebd2de2c"),
+            cwd: "/home/dev/proj")
+        let agyInfo = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1,
+            tabID: "t1", terminalID: "term-2", workspaceID: "w1", agent: "agy",
+            agentSession: AgentSessionInfo(
+                agent: ChatProgram.agy.sessionNaming.agent,
+                kind: .id,
+                source: ChatProgram.agy.sessionNaming.source,
+                value: agySessionID),
+            cwd: "/home/dev/proj")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [claudeInfo, agyInfo]))
+        let files = VirtualHostFiles()
+        let agyPath = "/home/dev/.gemini/antigravity-cli/brain/\(agySessionID)/.system_generated/logs/transcript_full.jsonl"
+        let initialSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nAudit router in background\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "invoke_subagent": .object([
+                        "TypeName": .string("research"),
+                        "Role": .string("Codebase Researcher"),
+                        "Prompt": .string("Inspect Router.swift"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", content: AgyTranscriptReducerTests.launchedSubagentResult(subID)),
+            AgyToolActivityTests.step(
+                3, "MODEL", "PLANNER_RESPONSE", content: "Launched subagent; standing by."),
+        ]
+        await files.write(AgyToolActivityTests.jsonl(initialSteps), at: agyPath)
+        await transport.scriptChat(files: files.hostFiles(), agent: Agent(agyInfo))
+        let fixedNow = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(10),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatTiming: AgentChatStore.Timing(activeInterval: .milliseconds(15), idleInterval: .milliseconds(15)),
+            chatNow: { fixedNow })
+        defer { store.setHosts([]) }
+        let agyID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2")
+
+        var observedStatuses: [AgentStatus?] = []
+        let observer = Task { @MainActor in
+            for await update in store.agentStatusUpdates(for: agyID) {
+                observedStatuses.append(update.status)
+            }
+        }
+        defer { observer.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("prefetched Antigravity CLI Background Work promotes Console status to Working") {
+            store.agents.first(where: { $0.id == agyID })?.agent.status == .working
+        }
+
+        // Priority sort places Working w1:p2 ahead of Idle w1:p1, and detail + Composer see Working.
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p2", "w1:p1"])
+        #expect(store.detailAgent(for: agyID)?.agent.status == .working)
+        try await waitUntil("Composer status stream receives Working") {
+            observedStatuses.last == .some(.working)
+        }
+
+        // Meanwhile AgentChatStore keeps herdr's underlying Idle status so idle
+        // permission dialogs and echo clocks are never masked.
+        let agyRow = try #require(store.agents.first(where: { $0.id == agyID }))
+        let chat = try #require(store.chatStore(for: agyRow, program: .agy))
+        #expect(chat.agent.status == .idle)
+        #expect(chat.hasRunningBackgroundWork)
+
+        // When the Subagent finishes without any new herdr event, the hidden
+        // watch loop clears the promotion back to Idle.
+        let completionSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                4, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyTranscriptReducerTests.systemMessage(
+                    timestamp: "2026-11-07T16:26:00Z", sender: subID,
+                    content: "Found 3 callers in Router.swift.")),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", content: "All callers verified."),
+        ]
+        await files.append(AgyToolActivityTests.jsonl(completionSteps), to: agyPath)
+
+        try await waitUntil("completed Background Work returns Console status to Idle") {
+            store.agents.first(where: { $0.id == agyID })?.agent.status == .idle
+        }
+        #expect(store.detailAgent(for: agyID)?.agent.status == .idle)
+        try await waitUntil("Composer status stream returns to Idle") {
+            observedStatuses.last == .some(.idle)
+        }
+    }
+
     /// Each read of a conversation an adapter reads by query is an exec on
     /// the Host, and the prefetch key changes with every status: only an
     /// open Chat reads it (ADR 0025).

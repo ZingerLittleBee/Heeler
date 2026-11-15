@@ -174,6 +174,7 @@
 		241E9CD5A4D36EE1A8FC556F /* HerdrCoreChatPickTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C83CF11592ECE4BA3FAC3A /* HerdrCoreChatPickTests.swift */; };
 		2421B1820D5785CFD3BC5963 /* ChangesCountsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0C6500E42E81CD914D5B90 /* ChangesCountsViews.swift */; };
 		24402713220DD25CBF0C02AE /* HostHelperNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571CB5240AB300D135A35EB2 /* HostHelperNotificationsTests.swift */; };
+		245CDD82322E60ABF7851F5E /* ComposerImageStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBF2ACA7D216D85B9E2CE04A /* ComposerImageStrip.swift */; };
 		247E069905D31490FEF889CE /* ComposerStagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */; };
 		24A3743DAAD2B878C24CC4D4 /* AgentUsageLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD05613124EA385DF48CF72 /* AgentUsageLimitsTests.swift */; };
 		24B38E6323258B77CF7E17B8 /* NotificationPreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87F6E13D72316E56DC0C571 /* NotificationPreferencesStore.swift */; };
@@ -881,6 +882,7 @@
 		BE6E5B65B5F471C78273989B /* CheckoutChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD163326F33D84419346620D /* CheckoutChanges.swift */; };
 		BE92EAF1AB7A7A6B6E65170F /* TerminalMessageJumpControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98C291FF5279ECEDF232B5D /* TerminalMessageJumpControllerTests.swift */; };
 		BF22FFBA362B7389807D12D0 /* GrokToolSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B1ABD77CFF84CDB66BA6EA /* GrokToolSummary.swift */; };
+		BF2B2F4FFE8627278A0BBB94 /* ComposerImageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBAAAD8FA88138BA1FF09A1 /* ComposerImageAttachment.swift */; };
 		BF34AFDEB274D8503D59FB05 /* HerdrCoreEventCursorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6D00C5E1D095E6FD02BD1F /* HerdrCoreEventCursorTests.swift */; };
 		BFD16454AE4CC2E7D764586F /* TerminalKeyEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92B6C7B2265DE1822819EF3 /* TerminalKeyEncoderTests.swift */; };
 		BFD46C3E11710F91B39D1186 /* ChangesFailureViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D52F3F413A577A7598C79CE /* ChangesFailureViewTests.swift */; };
@@ -1830,6 +1832,7 @@
 		7B0A5D6A13F3F940E50EDCFD /* DemoScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoScreenshotMode.swift; sourceTree = "<group>"; };
 		7B0CD085F5EC85BFB1DE381E /* BlockedCardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedCardStore.swift; sourceTree = "<group>"; };
 		7BB186843F581A953B0BF650 /* TmuxInputVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxInputVectorTests.swift; sourceTree = "<group>"; };
+		7BBAAAD8FA88138BA1FF09A1 /* ComposerImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerImageAttachment.swift; sourceTree = "<group>"; };
 		7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SealedEnvelopeCodec.swift; sourceTree = "<group>"; };
 		7C26CB9A95794EEDF88CF131 /* ClaudeChainResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeChainResolverTests.swift; sourceTree = "<group>"; };
 		7C3C7B94577B96CE8B76F3BB /* HostLiveActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostLiveActivityCoordinator.swift; sourceTree = "<group>"; };
@@ -2124,6 +2127,7 @@
 		BB88FD9AAB5A30EB50570B3C /* OMPDialogParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OMPDialogParserTests.swift; sourceTree = "<group>"; };
 		BBCA847045534254FC9757E9 /* ClaudeChainResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeChainResolver.swift; sourceTree = "<group>"; };
 		BBD76A6D34E9A458C7E07ED0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		BBF2ACA7D216D85B9E2CE04A /* ComposerImageStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerImageStrip.swift; sourceTree = "<group>"; };
 		BC019B4A164A7B01F1D46344 /* TerminalKeysKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboard.swift; sourceTree = "<group>"; };
 		BCC2054BD2E630F945FF3954 /* HarnessConfigEditStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessConfigEditStoreTests.swift; sourceTree = "<group>"; };
 		BCDD3A343C4D08ED707188AF /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -3367,6 +3371,7 @@
 				1D46328CE795C513FE11AD04 /* ClosePaneStore.swift */,
 				24572762858C00624BE837E8 /* ComposerDeliveryPolicy.swift */,
 				D663C74D9F4453BB34CA7A36 /* ComposerDrop.swift */,
+				BBF2ACA7D216D85B9E2CE04A /* ComposerImageStrip.swift */,
 				D842B59171066E39D6832108 /* ComposerLiveVoiceRecorder.swift */,
 				974D58E1400071FFEC11333C /* ComposerVoiceControls.swift */,
 				6D83F0739372AE699009E238 /* ConsoleAgent.swift */,
@@ -3984,6 +3989,7 @@
 			isa = PBXGroup;
 			children = (
 				BB47B059A9FC5B8A63C834F2 /* AttachmentStaging.swift */,
+				7BBAAAD8FA88138BA1FF09A1 /* ComposerImageAttachment.swift */,
 				95E3DFAF306DA35CB2C079E2 /* ComposerStagingStatusBar.swift */,
 				8D23517AF3A39615725A0ADC /* ComposerStagingStore.swift */,
 			);
@@ -4594,6 +4600,8 @@
 				A25D752D1FF77B0A6F4DAA15 /* CommandBlock.swift in Sources */,
 				DB2D4ECC14CBA551236420C2 /* ComposerDeliveryPolicy.swift in Sources */,
 				49924070055C376D1C0E2A8E /* ComposerDrop.swift in Sources */,
+				BF2B2F4FFE8627278A0BBB94 /* ComposerImageAttachment.swift in Sources */,
+				245CDD82322E60ABF7851F5E /* ComposerImageStrip.swift in Sources */,
 				C6091E60672FFF85AB99EEDE /* ComposerLiveVoiceRecorder.swift in Sources */,
 				DAC71CBDA8D8B092ED157288 /* ComposerStagingStatusBar.swift in Sources */,
 				247E069905D31490FEF889CE /* ComposerStagingStore.swift in Sources */,

@@ -34,6 +34,8 @@ struct AgentChatSource: Sendable {
     var picks: ChatPickIO?
     /// Notifies listeners when an Antigravity CLI chat binds or resolves its root conversation.
     var onAgyConversationBound: (@MainActor @Sendable (_ root: String?, _ rootID: String?) -> Void)? = nil
+    /// Notifies listeners when live non-stale Background Work starts or stops holding active pace.
+    var onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -203,9 +205,14 @@ final class AgentChatStore {
     let blocked: BlockedCardStore
     /// Output read again for expanded tool rows in this conversation.
     private(set) var outputs = ChatToolOutputs()
-    /// The Subagents and Workflows the conversation's program runs beside
-    /// it, as last read.
+    /// The Subagents, Workflows, and background commands the conversation's
+    /// program runs beside it, as last read.
     private(set) var backgroundWork = ChatBackgroundWork()
+
+    /// Whether a live read on a connected Host shows non-stale Background Work still running.
+    var hasRunningBackgroundWork: Bool {
+        isHostConnected && backgroundWork.holdsActivePace
+    }
     /// Codex's visible model catalog (`models_cache.json` on the Host, or
     /// built-in presets before a cache file exists).
     private(set) var codexModelCatalog = CodexModelCatalog.fallback
@@ -345,6 +352,9 @@ final class AgentChatStore {
     @ObservationIgnored private var isSuspended = false
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var loopID: UUID?
+    @ObservationIgnored private var isWatchingWhileHidden = false
+    @ObservationIgnored private var hasPrefetched = false
+    @ObservationIgnored private var lastReportedRunningBackgroundWork = false
     /// The last loop's end, saving included; a new loop waits for it.
     @ObservationIgnored private var finishing: Task<Void, Never>?
     @ObservationIgnored private var sleeper: Task<Void, Never>?
@@ -515,17 +525,23 @@ final class AgentChatStore {
         needsAgentRefresh = true
         needsLaunchCheck = true
         refreshCodexModelCatalogIfNeeded()
+        if isWatchingWhileHidden {
+            isWatchingWhileHidden = false
+            wake()
+        }
         startLoop()
         blocked.show()
     }
 
     /// A Chat view left the screen. The last one out stops reading, saving
-    /// what showed.
+    /// what showed, unless Antigravity CLI still runs Background Work that
+    /// holds the Agent's status at Working.
     func hide(_ viewer: UUID = AgentChatStore.soleViewer) {
         viewers.remove(viewer)
         guard viewers.isEmpty else { return }
         isVisible = false
         stopLoop()
+        startLoop(afterPause: true)
         blocked.hide()
     }
 
@@ -555,6 +571,8 @@ final class AgentChatStore {
         isVisible = false
         stopLoop()
         blocked.end()
+        backgroundWork = ChatBackgroundWork()
+        notifyRunningBackgroundWorkIfNeeded()
     }
 
     /// Warms the local document once after a fresh Host snapshot, without
@@ -568,7 +586,13 @@ final class AgentChatStore {
     func prefetch() async -> Bool {
         guard !isSuspended, !Task.isCancelled else { return false }
         if isVisible { return loop.map { !$0.isCancelled } ?? false }
+        if isWatchingWhileHidden {
+            needsAgentRefresh = true
+            wake()
+            return loop.map { !$0.isCancelled } ?? false
+        }
         guard loop == nil else { return false }
+        hasPrefetched = true
         needsAgentRefresh = true
         let previous = finishing
         let id = UUID()
@@ -585,7 +609,7 @@ final class AgentChatStore {
             guard self.loopID == id else { return }
             self.loop = nil
             self.loopID = nil
-            self.startLoop()
+            self.startLoop(afterPause: !self.isVisible)
         }
         loop = task
         await withTaskCancellationHandler {
@@ -660,10 +684,17 @@ final class AgentChatStore {
         thumbnails.hostConnectionChanged(isConnected)
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
-        guard isConnected else { return }
+        notifyRunningBackgroundWorkIfNeeded()
+        guard isConnected else {
+            if isWatchingWhileHidden { stopLoop() }
+            return
+        }
         // Whatever happened meanwhile sent no event this Chat saw.
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
+        if isVisible || hasPrefetched {
+            startLoop()
+        }
         let waiting = waitingOutputs
         for id in waiting {
             loadOutput(id)
@@ -1058,19 +1089,44 @@ final class AgentChatStore {
         }
     }
 
-    private func startLoop() {
-        guard isVisible, !isSuspended, loop == nil else { return }
+    /// Antigravity CLI's Host hook reports `Idle` once its foreground turn
+    /// finishes, even while its Subagents, Workflows, or background commands
+    /// keep running. Keep polling gently while hidden until they finish so
+    /// the Console's Working adaptation clears on time.
+    private var watchesBackgroundWorkWhileHidden: Bool {
+        program == .agy && hasRunningBackgroundWork
+    }
+
+    private var shouldRunLoop: Bool {
+        isVisible || watchesBackgroundWorkWhileHidden
+    }
+
+    private func startLoop(afterPause: Bool = false) {
+        guard shouldRunLoop, !isSuspended, loop == nil else { return }
         let previous = finishing
-        loopID = UUID()
+        let id = UUID()
+        loopID = id
+        isWatchingWhileHidden = !isVisible
         loop = Task { [weak self] in
             await previous?.value
+            if afterPause, let self, !Task.isCancelled, !self.isVisible, self.shouldRunLoop {
+                await self.pause(self.timing.idleInterval)
+            }
             while !Task.isCancelled {
-                guard let self else { return }
+                guard let self, self.shouldRunLoop else { break }
+                self.isWatchingWhileHidden = !self.isVisible
                 await self.step()
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.shouldRunLoop else { break }
                 // The next page of a request doesn't wait for the pace.
-                if self.olderRequest != nil, self.engine != nil, !self.isAwaitingSession { continue }
-                await self.pause(self.interval)
+                if self.isVisible, self.olderRequest != nil, self.engine != nil, !self.isAwaitingSession { continue }
+                await self.pause(self.isVisible ? self.interval : self.timing.idleInterval)
+            }
+            guard let self, !Task.isCancelled else { return }
+            await self.engine?.save(force: true)
+            if self.loopID == id {
+                self.loop = nil
+                self.loopID = nil
+                self.isWatchingWhileHidden = false
             }
         }
     }
@@ -1078,6 +1134,7 @@ final class AgentChatStore {
     private func stopLoop() {
         codexCatalogTask?.cancel()
         codexCatalogTask = nil
+        isWatchingWhileHidden = false
         guard let loop else { return }
         loop.cancel()
         sleeper?.cancel()
@@ -1571,6 +1628,7 @@ final class AgentChatStore {
         workflowProgress = [:]
         backgroundWork = ChatBackgroundWork()
         hasReadLive = false
+        notifyRunningBackgroundWorkIfNeeded()
         if target == nil {
             showUnavailable()
         } else {
@@ -2045,7 +2103,10 @@ final class AgentChatStore {
     }
 
     private func updateReadFailure() {
-        conversation.readFailure = transcriptReadFailure ?? agentRefreshFailure
+        let next = transcriptReadFailure ?? agentRefreshFailure
+        guard conversation.readFailure != next else { return }
+        conversation.readFailure = next
+        refreshBackgroundWork()
     }
 
     private var isUnavailable: Bool {
@@ -2064,6 +2125,14 @@ final class AgentChatStore {
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
+        notifyRunningBackgroundWorkIfNeeded()
+    }
+
+    private func notifyRunningBackgroundWorkIfNeeded() {
+        let current = hasRunningBackgroundWork
+        guard current != lastReportedRunningBackgroundWork else { return }
+        lastReportedRunningBackgroundWork = current
+        source.onRunningBackgroundWorkChanged?(current)
     }
 
     private var isFailedOlder: Bool {

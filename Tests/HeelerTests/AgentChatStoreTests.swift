@@ -113,7 +113,8 @@ struct AgentChatStoreTests {
             cachedSession: @escaping @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil },
             screen: BlockedScreenIO = .unavailable,
             processInfo: (@Sendable () async throws -> PaneProcessInfo)? = nil,
-            heldStatus: HeldStatus? = nil
+            heldStatus: HeldStatus? = nil,
+            onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
         ) {
             let agent = AgentChatStoreTests.agent(session: session, program: program)
             let server = Server(agent)
@@ -137,7 +138,8 @@ struct AgentChatStoreTests {
                     hostID: AgentChatStoreTests.host, socketLocation: .defaultSession,
                     files: hostFiles, agentInfo: { try await server.read() }, cache: cache,
                     adapter: adapter ?? NumberedChatReducer.adapter(limits: limits, wantsFirstLine: program == .codex),
-                    cachedSession: cachedSession, processInfo: processInfo, screen: screen),
+                    cachedSession: cachedSession, processInfo: processInfo, screen: screen,
+                    onRunningBackgroundWorkChanged: onRunningBackgroundWorkChanged),
                 timing: timing, now: { clock.now })
         }
 
@@ -4115,6 +4117,143 @@ struct AgentChatStoreTests {
         #expect(fixture.store.conversationGeneration == generation + 1)
         #expect(fixture.store.conversation.phase == .following(path: agyPath(otherRootID)))
         #expect(Self.ids(fixture.store) == NumberedChatReducer.ids(10..<12))
+    }
+
+    @Test func agyPrefetchContinuesWatchingBackgroundWorkWhileHiddenAndStopsOnceDone() async throws {
+        let rootID = "72f562e4-129f-4e43-87dc-be2f661d5633"
+        let subID = "11111111-1111-4000-8000-000000000001"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            timing: AgentChatStore.Timing(activeInterval: .milliseconds(10), idleInterval: .milliseconds(10)),
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let initialSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nAudit router in background\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "invoke_subagent": .object([
+                        "TypeName": .string("research"),
+                        "Role": .string("Codebase Researcher"),
+                        "Prompt": .string("Inspect Router.swift"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", content: AgyTranscriptReducerTests.launchedSubagentResult(subID)),
+            AgyToolActivityTests.step(
+                3, "MODEL", "PLANNER_RESPONSE", content: "Subagent launched; waiting for its findings."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(initialSteps), at: path)
+
+        #expect(await fixture.store.prefetch())
+        #expect(!fixture.store.isVisible)
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true])
+
+        // Without opening Chat or receiving any further Host event, the hidden
+        // watch loop notices when the Subagent posts its reply and stops polling.
+        let completionSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                4, "SYSTEM_SDK", "SYSTEM_MESSAGE",
+                content: AgyTranscriptReducerTests.systemMessage(
+                    timestamp: "2026-11-07T16:26:00Z", sender: subID,
+                    content: "Found 3 callers in Router.swift.")),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", content: "All callers verified."),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(completionSteps), to: path)
+
+        try await Self.waitUntil { !fixture.store.hasRunningBackgroundWork }
+        #expect(reported == [true, false])
+        try await Task.sleep(for: .milliseconds(25))
+        let readsAfterCompletion = await fixture.files.reads.count
+        await fixture.files.append(
+            AgyToolActivityTests.jsonl([
+                AgyToolActivityTests.step(
+                    6, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nFollow up\n</USER_REQUEST>")
+            ]),
+            to: path)
+        try await Task.sleep(for: .milliseconds(35))
+        #expect(await fixture.files.reads.count == readsAfterCompletion, "hidden watch loop stops once background work finishes")
+    }
+
+    @Test func agyRunningBackgroundWorkSkipsDaemonsAndDropsOnDisconnectOrStaleness() async throws {
+        let rootID = "82f562e4-129f-4e43-87dc-be2f661d5634"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let daemonOnly: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nStart server\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string("npm run dev"),
+                        "IsDaemon": .bool(true),
+                    ]),
+                    "schedule": .object([
+                        "DurationSeconds": .number(30),
+                        "Prompt": .string("Check status"),
+                    ]),
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID, task: 2, "npm run dev")),
+            AgyToolActivityTests.step(
+                3, "MODEL", "GENERIC", status: "RUNNING",
+                content: "Timer scheduled for 30s."),
+            AgyToolActivityTests.step(4, "MODEL", "PLANNER_RESPONSE", content: "Dev server running."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(daemonOnly), at: path)
+
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported.isEmpty)
+
+        // A non-daemon background command activates running Background Work.
+        let commandSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                5, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string("pytest -q"),
+                        "IsDaemon": .bool(false),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                6, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(rootID, task: 6, "pytest -q")),
+            AgyToolActivityTests.step(7, "MODEL", "PLANNER_RESPONSE", content: "Running test suite in background."),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(commandSteps), to: path)
+
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true])
+
+        fixture.store.hostConnectionChanged(false)
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false])
+
+        fixture.store.hostConnectionChanged(true)
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false, true])
+
+        // Once silent past the staleness window, it stops claiming to run.
+        fixture.advance(4 * 3600)
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false, true, false])
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {
