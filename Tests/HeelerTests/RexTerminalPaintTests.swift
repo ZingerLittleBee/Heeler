@@ -239,8 +239,8 @@ struct RexTerminalPaintTests {
         #expect(harness.wait == nil)
     }
 
-    /// A quiet repaint that output disturbs paints nothing and waits for the
-    /// next quiet spell.
+    /// A quiet repaint that output disturbs paints nothing and waits for a
+    /// quiet spell twice as long.
     @Test func aDisturbedQuietRepaintWaitsAgain() {
         var harness = Harness { $0.attempts = 1 }
         harness.resize()
@@ -252,6 +252,31 @@ struct RexTerminalPaintTests {
         harness.readBusily("TWO", before: "x", after: "y")
         #expect(harness.drain() == [Harness.feed("x"), Harness.feed("y")])
         #expect(harness.engine.paintCount == 1)
+        #expect(harness.wait?.duration == .milliseconds(500))
+    }
+
+    /// Each quiet repaint reads the whole redraw, so one that output keeps
+    /// disturbing backs off up to the limit; an exact paint starts it over.
+    @Test func disturbedQuietRepaintsBackOffUntilOneIsExact() {
+        var harness = Harness {
+            $0.attempts = 1
+            $0.quietRepaintLimit = .seconds(1)
+        }
+        harness.resize()
+        harness.readBusily("ONE")
+        for (window, next) in [(250, 500), (500, 1000), (1000, 1000)] {
+            harness.pass(.milliseconds(window))
+            harness.readBusily("AGAIN")
+            #expect(harness.wait?.duration == .milliseconds(next))
+        }
+        harness.pass(.seconds(1))
+        harness.readQuietly("QUIET")
+        #expect(!harness.engine.isDirty)
+        #expect(harness.wait == nil)
+
+        harness.resize(RexTerminalGrid(columns: 100, rows: 30, cellWidth: 9, cellHeight: 18, owner: "client:a"))
+        harness.readBusily("WIDER")
+        #expect(harness.engine.isDirty)
         #expect(harness.wait?.duration == .milliseconds(250))
     }
 

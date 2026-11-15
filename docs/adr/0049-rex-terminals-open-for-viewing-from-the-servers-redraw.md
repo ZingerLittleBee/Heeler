@@ -37,7 +37,9 @@ terminal for viewing; ADR 0050 adds its input.
   then the last one is shown best effort and repainted after 250 ms with no
   output. A program that never goes quiet for 250 ms, such as a spinner or a
   streaming agent, keeps a best-effort first paint until it pauses: the lines
-  that raced the redraw may show twice or not at all until then.
+  that raced the redraw may show twice or not at all until then. Each repaint
+  reads the whole redraw again, so one that output disturbed doubles the
+  quiet the next one waits for, up to 30 seconds, until one is exact.
 - **Bounds.** Skipping the snapshot keeps less than one marker's length
   between reads, however long it is. A view that stops reading holds its
   block back: the stream stops reading once 1 MiB waits for the view, and the

@@ -92,7 +92,8 @@ enum RexTerminalAnswer: Sendable, Equatable {
 ///   the last is painted best effort and marked dirty.
 /// - Dirty: once the stream has been quiet for `quietRepaint`, one attempt is
 ///   made; it paints only if exact, which clears the mark. Otherwise the
-///   wait starts over.
+///   wait starts over, twice as long after each such attempt up to
+///   `quietRepaintLimit`, since each one reads the whole redraw again.
 /// - Repaints: when the program leaves the alternate screen it was painted
 ///   on (the redraw carries no primary screen behind it), and when the
 ///   server's grid changes, a paint runs as the first one does. Output keeps
@@ -119,6 +120,9 @@ struct RexTerminalPaint: Sendable {
         var retryWaitLimit: Duration = .milliseconds(200)
         /// A dirty paint is redone once the stream has been quiet this long.
         var quietRepaint: Duration = .milliseconds(250)
+        /// The longest quiet asked for: each quiet repaint that output
+        /// disturbs doubles the next one's, up to this.
+        var quietRepaintLimit: Duration = .seconds(30)
         /// Attempts at a paint before one is shown best effort.
         var attempts = 3
         /// The largest page asked for, as the server measures it (encoded as
@@ -215,6 +219,8 @@ struct RexTerminalPaint: Sendable {
     private var modes = TerminalModeTracker()
     private var paintedOnAlternateScreen = false
     private var repaintPending = false
+    /// Quiet repaints that output disturbed since the last exact paint.
+    private var quietMisses = 0
     /// Theme and exit notices that came before the first paint.
     private var held: [RexTerminalInstruction] = []
     private var failedReads = 0
@@ -247,6 +253,7 @@ struct RexTerminalPaint: Sendable {
         modes = TerminalModeTracker()
         paintedOnAlternateScreen = false
         repaintPending = false
+        quietMisses = 0
         held = []
         failedReads = 0
         hasEnded = false
@@ -446,6 +453,7 @@ struct RexTerminalPaint: Sendable {
         }
         switch current.run {
         case .quiet:
+            quietMisses += 1
             return repaintPending ? startAttempt(.full, number: 1) : watchForQuiet()
         case .full where current.number < parameters.attempts:
             return arm(.retryPause(activity: activity, waited: .zero, next: current.number + 1), after: parameters.retryQuiet)
@@ -467,7 +475,10 @@ struct RexTerminalPaint: Sendable {
         effects += held.map { .emit($0) }
         held = []
         paintCount += 1
-        if exact { exactPaintCount += 1 }
+        if exact {
+            exactPaintCount += 1
+            quietMisses = 0
+        }
         isPainted = true
         isDirty = !exact
         // The paint starts with RIS, which leaves the tracker as new from
@@ -516,7 +527,13 @@ struct RexTerminalPaint: Sendable {
     }
 
     private mutating func watchForQuiet(after delay: Duration? = nil) -> [Effect] {
-        arm(.quietWatch(activity: activity), after: delay ?? parameters.quietRepaint)
+        arm(.quietWatch(activity: activity), after: delay ?? quietWindow)
+    }
+
+    /// `quietRepaint`, doubled for each quiet repaint output disturbed.
+    private var quietWindow: Duration {
+        let limit = max(parameters.quietRepaint, parameters.quietRepaintLimit)
+        return min(parameters.quietRepaint * (1 << min(quietMisses, 16)), limit)
     }
 
     private mutating func arm(_ kind: Timer, after delay: Duration) -> [Effect] {
