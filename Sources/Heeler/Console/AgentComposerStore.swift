@@ -70,6 +70,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         let id: UUID
         let text: String
         let route: ComposerRoute
+        let stagedImagePaths: [String]
         fileprivate let draftText: String
         fileprivate var stagedImages: [ComposerImageAttachment]
         fileprivate var agentWasWorkingAtSend: Bool
@@ -517,6 +518,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             id: UUID(),
             text: promptText,
             route: policy.route,
+            stagedImagePaths: readyImagePaths,
             draftText: draft,
             stagedImages: imageAttachments,
             agentWasWorkingAtSend: agentStatus == .working,

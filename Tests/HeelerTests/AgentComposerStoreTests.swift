@@ -1250,7 +1250,7 @@ struct AgentComposerStoreTests {
         #expect(fixture.store.draft.isEmpty)
         #expect(fixture.store.canSend)
 
-        await fixture.transport.configurePromptAgentOutcomes([.failure(TransportError.timedOut)])
+        await fixture.transport.setAgentPromptFailure(TransportError.timedOut)
         #expect(await fixture.store.send() == .failed)
         let failedID = try #require(fixture.store.messages.first?.id)
         #expect(fixture.store.imageAttachments.isEmpty)
@@ -1262,12 +1262,10 @@ struct AgentComposerStoreTests {
         #expect(FileManager.default.fileExists(atPath: previewURL.path))
 
         fixture.store.replaceDraft(with: "Check this")
-        await fixture.transport.configurePromptAgentOutcomes([
-            .success(Agent(.fixture(paneID: "w1:p1", status: .working))),
-        ])
-        #expect(await fixture.store.send() == .sent)
+        await fixture.transport.setAgentPromptFailure(nil)
+        #expect(await fixture.store.send() == .deliveredViaPrompt)
         let params = await fixture.transport.agentPromptParams
-        #expect(params.last?.prompt == "Check this /tmp/heeler-a.jpg ")
+        #expect(params.last?.text == "Check this /tmp/heeler-a.jpg ")
         #expect(fixture.store.draft.isEmpty)
         #expect(fixture.store.imageAttachments.isEmpty)
 

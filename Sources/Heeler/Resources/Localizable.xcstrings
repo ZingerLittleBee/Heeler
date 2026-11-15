@@ -4,9 +4,6 @@
     "" : {
       "shouldTranslate" : false
     },
-    " %@" : {
-      "shouldTranslate" : false
-    },
     " (no newline)" : {
       "localizations" : {
         "ja" : {
@@ -28221,6 +28218,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "圖片"
+          }
+        }
+      }
+    },
+    "Image #%@" : {
+      "comment" : "Short label shown in a sent Chat message bubble in place of a staged image's temporary Host path, numbered in order within the message (e.g. Image #1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像#%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片#%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片#%@"
           }
         }
       }
