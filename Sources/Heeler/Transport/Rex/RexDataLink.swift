@@ -223,8 +223,11 @@ actor RexDataLink {
     /// The channel comes first: waiting for an attach slot can outlast a
     /// ticket, which Rex honors for a minute. Rex (0.1.0-preview.14, API
     /// revision 12) kept a connection that sent nothing for 10 seconds before
-    /// its upgrade, and a ticket takes a round trip on the control link. A
-    /// channel the ticket never comes for is closed.
+    /// its upgrade, and a ticket takes a round trip on the control link,
+    /// which can queue behind other terminals' redraw pages. When the
+    /// connection ended before its upgrade was answered, the unused ticket
+    /// goes once more on a new channel. A channel the ticket never comes for
+    /// is closed.
     static func open(
         session: String, block: String, route: RexDataRoute, options: Options = Options(),
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
@@ -238,7 +241,12 @@ actor RexDataLink {
             try? await channel.close(timeout: Self.channelCloseTimeout)
             throw error
         }
-        let webSocket = try await upgrade(channel, options: options, sleep: sleep)
+        let webSocket: WebSocketLink
+        do {
+            webSocket = try await upgrade(channel, options: options, sleep: sleep)
+        } catch RexDataLinkError.ended(.linkLost) {
+            webSocket = try await upgrade(try await route.openChannel(), options: options, sleep: sleep)
+        }
         let welcome = try await exchange(RexDataHandshake.hello(ticket), on: webSocket, options: options, sleep: sleep)
         return RexDataLink(
             webSocket: webSocket, welcome: welcome, receivedByteCount: 0, resumed: false, options: options,

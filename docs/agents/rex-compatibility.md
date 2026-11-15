@@ -202,7 +202,9 @@ Lab captures `a_snapshot_skip` and `g_reconnect`, and the committed
   the upgrade after 1 and 6 seconds and closed after 10 seconds (review probe).
   Heeler opens the channel before it asks for the ticket and sends the upgrade
   and the HELLO at once, so neither clock runs while it waits for an attach
-  slot.
+  slot. The upgrade's clock does run while the ticket comes, so a channel the
+  server ended before its upgrade was answered is opened once more with the
+  same, still unused, ticket.
 - The WELCOME said 60000 ms of retention. A connection dropped without a close
   frame was resumed with the exact byte count: same nonce, no new snapshot, and
   the output went on with nothing lost or repeated (`g_reconnect`; the resume

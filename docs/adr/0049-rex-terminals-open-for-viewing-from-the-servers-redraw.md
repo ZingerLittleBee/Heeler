@@ -19,7 +19,9 @@ terminal for viewing; ADR 0050 adds its input.
   the block's data link (`RexTerminalStream`) on a channel of its own under an
   attach slot. It asks `data.connect` for the ticket only once that channel is
   open, so a wait for a slot never spends the ticket's minute, and closes the
-  channel if the ticket does not come. `RexHostSession` remembers which
+  channel if the ticket does not come. Rex ends a channel that stays silent
+  too long before its upgrade, so when the server ended it while the ticket
+  came, the unused ticket goes once more on a new channel. `RexHostSession` remembers which
   sessions its control client attached. A client the server took back keeps them; after a new client, it
   sends `session.attach` again for every session with an open terminal.
 - **The first paint skips the snapshot.** Heeler never decodes the snapshot.

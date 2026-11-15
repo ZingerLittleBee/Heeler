@@ -206,6 +206,26 @@ struct RexDataLinkTests {
         #expect(await channel.upgradeRequest == nil)
     }
 
+    /// Rex ends a connection that stays silent too long before its upgrade,
+    /// which a slow ticket can outlast: the unused ticket goes once more on a
+    /// new channel, and a second such ending is the link's.
+    @Test func aChannelEndedBeforeItsUpgradeIsOpenedOnceMore() async throws {
+        let fixture = try await Self.fixture()
+        await fixture.endpoint.script(.closeBeforeUpgrade)
+        let link = try await fixture.open()
+        #expect(await fixture.endpoint.channels.count == 2)
+        #expect(fixture.endpoint.tickets.requests.count == 1)
+        #expect(await fixture.endpoint.handshakes == [.init(kind: .hello, byteCount: 17, outcome: .welcomed(stream: 0))])
+        await link.close()
+
+        let again = try await Self.fixture()
+        await again.endpoint.script(.closeBeforeUpgrade, .closeBeforeUpgrade)
+        let failure = await error { try await again.open() }
+        #expect(ending(of: failure) == .linkLost)
+        #expect(await again.endpoint.channels.count == 2)
+        #expect(again.endpoint.tickets.requests.count == 1)
+    }
+
     @Test func aRefusedUpgradeSaysItsStatus() async throws {
         let fixture = try await Self.fixture()
         await fixture.endpoint.script(.refuseUpgrade(status: 404))

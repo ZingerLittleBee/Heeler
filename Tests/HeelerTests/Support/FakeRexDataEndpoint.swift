@@ -94,6 +94,9 @@ actor FakeRexDataEndpoint {
         case refuse(reason: UInt8, close: WebSocketCloseCode = .policyViolation)
         /// Reads the handshake and never answers it.
         case stayQuiet
+        /// Ends the connection with no answer before the upgrade, as Rex
+        /// ends one that stayed silent too long before upgrading.
+        case closeBeforeUpgrade
     }
 
     /// One handshake as the endpoint read it. Never the credential itself.
@@ -235,6 +238,10 @@ actor FakeRexDataEndpoint {
     // MARK: Serving
 
     private func serve(_ channel: FakeWebSocketServer, script: Script?) async {
+        if case .closeBeforeUpgrade = script {
+            await channel.deliverEndOfFile()
+            return
+        }
         if case .refuseUpgrade(let status) = script {
             _ = await channel.nextUpgradeRequest()
             await channel.deliver(Data("HTTP/1.1 \(status) Refused\r\nContent-Length: 0\r\n\r\n".utf8))
@@ -256,7 +263,7 @@ actor FakeRexDataEndpoint {
         case .refuse(let reason, let close):
             await refuse(channel, kind: kind, byteCount: bytes.count, reason: reason, close: close)
             return
-        case .refuseUpgrade, nil:
+        case .refuseUpgrade, .closeBeforeUpgrade, nil:
             break
         }
         switch kind {
