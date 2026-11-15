@@ -13,6 +13,20 @@ struct AgyToolCall: Sendable {
         let line: ChatOutputReference
     }
 
+    /// How a subagent launched by `invoke_subagent` ended, from its reply,
+    /// an error message from `system`, or a `manage_subagents` kill.
+    struct SubagentEnd: Sendable {
+        enum Outcome: Sendable {
+            case completed
+            case failed
+            case killed
+        }
+
+        let outcome: Outcome
+        let text: String?
+        let line: ChatOutputReference?
+    }
+
     /// How the call's turn ended, as far as the call cares.
     enum TurnEnd: Sendable {
         /// The turn went on past the call without its result, or ended with
@@ -26,19 +40,26 @@ struct AgyToolCall: Sendable {
     let entryID: ChatEntryID
     let name: String
     let args: JSONValue?
+    let callOffset: UInt64
+    let callCreatedAt: Date?
     var result: AgyStep?
     var taskID: String?
     var taskEnd: TaskEnd?
-    /// Antigravity CLI restarted while the task ran, which stops it.
+    var killedByManageTask = false
+    var subagentID: String?
+    var subagentEnd: SubagentEnd?
+    /// Antigravity CLI restarted while the task or subagent ran, which stops it.
     var stoppedByRestart = false
     var turnEnd: TurnEnd?
     /// Another step of the call's turn came after its result.
     var isFollowed = false
 
-    init(entryID: ChatEntryID, call: AgyStep.Call) {
+    init(entryID: ChatEntryID, call: AgyStep.Call, offset: UInt64 = 0, createdAt: Date? = nil) {
         self.entryID = entryID
         name = call.name
         args = call.args
+        callOffset = offset
+        callCreatedAt = createdAt
     }
 
     var kind: ChatToolActivity.Kind { Self.kinds[name] ?? .other }
@@ -58,6 +79,7 @@ struct AgyToolCall: Sendable {
         "list_dir": .listing,
         "search_web": .web, "read_url_content": .web, "read_url": .web,
         "invoke_subagent": .agent, "manage_subagents": .agent, "send_message": .agent, "browser_subagent": .agent,
+        "run_workflow": .agent,
         "ask_question": .question,
         "generate_image": .image,
     ]
@@ -95,8 +117,9 @@ struct AgyToolCall: Sendable {
     var backgroundCommand: ChatBackgroundCommand? {
         guard taskID != nil else { return nil }
         return ChatBackgroundCommand(
-            callID: entryID.rawValue, command: command, isRunning: taskEnd == nil && !stoppedByRestart,
-            isDaemon: args?["IsDaemon"] == .bool(true))
+            callID: entryID.rawValue, command: command,
+            isRunning: taskEnd == nil && !killedByManageTask && !stoppedByRestart,
+            isDaemon: isDaemon)
     }
 
     // MARK: Status
@@ -115,12 +138,25 @@ struct AgyToolCall: Sendable {
             let code = Self.exitCode(in: taskEnd.result)
             return ((code ?? 0) == 0 ? .succeeded : .failed, String(localized: "Finished in the background"))
         }
+        if killedByManageTask {
+            return (.interrupted, String(localized: "Stopped in the background"))
+        }
+        if let subagentEnd {
+            switch subagentEnd.outcome {
+            case .completed: return (.succeeded, nil)
+            case .failed: return (.failed, nil)
+            case .killed: return (.interrupted, String(localized: "Stopped in the background"))
+            }
+        }
         if stoppedByRestart {
             return (
                 .interrupted,
                 String(
                     localized: "Stopped when Antigravity CLI restarted",
                     comment: "Under a Chat tool row: the background command stopped when Antigravity CLI restarted"))
+        }
+        if subagentID != nil {
+            return (.running, nil)
         }
         if let result {
             switch result.status {
@@ -198,10 +234,12 @@ struct AgyToolCall: Sendable {
         }
         // A result agy sent to the background is its instructions to the
         // model, not output: a command's row reads its task's end instead,
-        // and a wait's reads none.
+        // a subagent's reads its reply or error, and a wait's reads none.
         if let taskEnd {
             tool.output = taskEnd.line
-        } else if let result, !isInTheBackground {
+        } else if let subagentEnd {
+            tool.output = subagentEnd.line
+        } else if let result, !isInTheBackground, subagentID == nil, !killedByManageTask {
             tool.output = ChatOutputReference(offset: result.offset, length: result.length)
             if result.isTruncated {
                 tool.preview?.isTruncated = true
@@ -212,12 +250,20 @@ struct AgyToolCall: Sendable {
         return tool
     }
 
-    /// The output a row shows: the task's result once a background task
-    /// ends, else the call's result.
+    /// The output a row shows: the task's or subagent's result once
+    /// background work ends, else the call's result.
     var preview: ChatToolPreview? {
         if let taskEnd { return Self.preview(ofTaskResult: taskEnd.result) }
+        if let subagentEnd { return subagentEnd.text.flatMap(Self.preview(ofSubagentMessage:)) }
+        if killedByManageTask || subagentID != nil { return nil }
         guard let result, result.status != .running else { return nil }
         return Self.preview(of: result, kind: kind)
+    }
+
+    /// A subagent's reply or system error message as its row shows it.
+    static func preview(ofSubagentMessage text: String) -> ChatToolPreview? {
+        let trimmed = normalized(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : ChatToolPreview(capping: trimmed)
     }
 
     /// A result's text as a row shows it: an error's message, a command's
@@ -311,9 +357,13 @@ struct AgyToolCall: Sendable {
     /// The command a Blocked card matches on.
     var command: String? { string("CommandLine") }
 
+    var toolSummary: String? { string("toolSummary") }
+
+    var isDaemon: Bool { args?["IsDaemon"] == .bool(true) }
+
     /// The row's title and the line under it.
     var titles: (title: String, subtitle: String?) {
-        let summary = string("toolSummary")
+        let summary = toolSummary
         var subtitle: String? = summary
         let title: String?
         switch name {
@@ -335,6 +385,10 @@ struct AgyToolCall: Sendable {
         case "invoke_subagent":
             title = string("Role") ?? string("TypeName")
             subtitle = string("TypeName")
+        case "run_workflow":
+            let script = string("ScriptPath").map { URL(fileURLWithPath: $0).lastPathComponent }
+            title = string("Description") ?? script
+            subtitle = summary ?? (string("Description") == nil ? nil : script)
         case "send_message":
             title = string("Recipient").map { recipient in
                 String(

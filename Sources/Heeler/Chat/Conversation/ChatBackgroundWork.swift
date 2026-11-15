@@ -28,9 +28,10 @@ struct ChatWorkflowProgress: Equatable, Sendable {
 }
 
 /// The Background Work Chat lists above its Composer (ADR 0024): the
-/// transcript's Subagents and Workflows, each Workflow with its journal's
-/// progress, running work first. Built afresh after every read and never
-/// saved, so nothing read from the device can claim to be running.
+/// transcript's Subagents, Workflows and background commands, each Workflow
+/// with its journal's progress, running work first. Built afresh after every
+/// read and never saved, so nothing read from the device can claim to be
+/// running.
 struct ChatBackgroundWork: Equatable, Sendable {
     struct Row: Identifiable, Equatable, Sendable {
         var item: ChatBackgroundWorkItem
@@ -38,8 +39,9 @@ struct ChatBackgroundWork: Equatable, Sendable {
         /// Running, with no sign of it for longer than such work runs: the
         /// program may have stopped it without saying.
         var isStale = false
-        /// The newest sign of the work, on the Host's clock: its launch, or
-        /// a Workflow's latest journal write.
+        /// The newest sign of the work, on the Host's clock: its launch, a
+        /// status check in the transcript, or a Workflow's latest journal
+        /// write.
         var lastActivity: Date?
 
         var id: String { item.id }
@@ -52,7 +54,8 @@ struct ChatBackgroundWork: Equatable, Sendable {
         /// A Workflow's journal gains a line as each of its agents starts
         /// or ends.
         var workflowQuiet: TimeInterval = 2 * 3_600
-        /// A Subagent records nothing until it ends.
+        /// A Subagent or background command records nothing until it ends
+        /// unless a status tool checks on it.
         var subagentRun: TimeInterval = 3 * 3_600
     }
 
@@ -70,7 +73,7 @@ struct ChatBackgroundWork: Equatable, Sendable {
         self.isLive = isLive
         let rows = transcript.listedBackgroundWork.map { item in
             var row = Row(item: item, progress: progress[item.id])
-            row.lastActivity = [item.launchedAt, row.progress?.updatedAt].compactMap(\.self).max()
+            row.lastActivity = [item.launchedAt, item.lastActivityAt, row.progress?.updatedAt].compactMap(\.self).max()
             if item.state == .running, let lastActivity = row.lastActivity {
                 let limit = item.kind == .workflow ? staleness.workflowQuiet : staleness.subagentRun
                 row.isStale = now.timeIntervalSince(lastActivity) > limit
