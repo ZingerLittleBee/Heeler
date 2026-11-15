@@ -1172,12 +1172,17 @@ tests and decoded by the Swift tests.
     discretion (at most every 30 minutes), reads the stale Hosts while the
     app is closed: one short-lived SSH connection per Host with the same
     credentials and trusted host keys, up to six re-reads 3 seconds
-    apart while `refreshing`, then close. A refreshing report serves the
-    last run's figures, so its reading is dated by `scan.coveredThrough`,
-    not by when the app read it: the "Updated" capsule shows its true age,
-    a newer reading the snapshot holds is kept while the report counts the
-    same Accounts, and the Host stays stale
-    for the next foreground or background read. It skips Overlay Network routes
+    apart while `refreshing`, then close. A refreshing report can still
+    serve the last run's figures: the worker commits its scan before it
+    reads the limits, so the scan turns current within about a second
+    while the limits stay the last run's until the worker ends. Its
+    reading is therefore dated by the oldest of `scan.coveredThrough` and
+    the `observedAt` of each limits reading the program itself answered
+    (`state: ok`, `source: service`), not by when the app read it: the
+    "Updated" capsule shows its true age and the Host stays stale for the
+    next foreground or background read. A reading from a past session or
+    kept through a failed read is no older for the wait, so it leaves the
+    date alone. It skips Overlay Network routes
     and leaves the Console suspended. Background App Refresh off, Low Power
     Mode, or a force-quit app leaves the widgets to the foreground reads. Usage
     Limits countdowns step each minute while a reset is under a day away.
