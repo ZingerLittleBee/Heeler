@@ -63485,6 +63485,7 @@
         }
       }
     },
+    "To add this machine as a Rex Host, start Rex on it, then run the checks again." : {},
     "Today" : {
       "localizations" : {
         "ja" : {

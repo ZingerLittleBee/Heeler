@@ -357,8 +357,15 @@ struct HostOnboardingView: View {
         } header: {
             preflightHeader
         } footer: {
-            if let note = store.confirmationNote {
-                Text(note)
+            if store.confirmationNote != nil || store.rexNote != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let note = store.confirmationNote {
+                        Text(note)
+                    }
+                    if let rexNote = store.rexNote {
+                        Text(rexNote)
+                    }
+                }
             }
         }
     }

@@ -597,6 +597,13 @@ final class HostOnboardingStore {
         }
     }
 
+    /// Why Rex, installed on this Host, is not on offer: Heeler adds only a
+    /// Rex server that already runs, and never starts one (ADR 0047).
+    var rexNote: String? {
+        guard host.serverKind == .unconfirmed, detection?.rex == .notRunning else { return nil }
+        return String(localized: "To add this machine as a Rex Host, start Rex on it, then run the checks again.")
+    }
+
     /// Confirms the Host's kind, once, then runs that kind's checks. A name refused
     /// for that kind, by its server or by what this Host's platform can carry, leaves
     /// the Host as it was and says why.

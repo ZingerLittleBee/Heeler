@@ -339,7 +339,34 @@ struct RexHostOnboardingTests {
         #expect(store.detection?.rex == .notInstalled)
         #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
         #expect(store.confirmationNote?.hasPrefix("None of them was found") == true)
+        #expect(store.rexNote == nil)
         #expect(await scripted.log == ["detection", "close"])
+    }
+
+    /// Heeler never starts Rex, so an installed Rex with no server is not on
+    /// offer, and the confirmation says how to make it so.
+    @Test func anInstalledRexWithoutAServerSaysToStartIt() async throws {
+        let sessions = #"{"sessions":[{"name":"default","default":true,"running":true}]}"#
+        let scripted = ScriptedCoreHost(
+            locator: ScriptedCoreHost.locatorLines(executable: nil), herdrRead: .answers(sessions),
+            rexProbe: ScriptedCoreHost.rexLines(installed: true), channel: .refused)
+        let host = Host(address: "mac.example", username: "dev", serverKind: .unconfirmed)
+        let store = makeStore(host, scripted: scripted)
+
+        await store.runChecks()
+
+        #expect(store.detection?.rex == .notRunning)
+        #expect(store.offeredKinds == [.herdrTUI])
+        #expect(store.confirmationNote == nil)
+        #expect(store.rexNote?.contains("start Rex") == true)
+
+        let running = makeStore(
+            host,
+            scripted: ScriptedCoreHost(
+                rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.socket, true, true)]), channel: .refused))
+        await running.runChecks()
+        #expect(running.offeredKinds.contains(.rex))
+        #expect(running.rexNote == nil)
     }
 
     /// A Host whose socket did not read has it looked up again, and the
