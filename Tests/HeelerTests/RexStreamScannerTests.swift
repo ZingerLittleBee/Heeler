@@ -110,6 +110,28 @@ struct RexStreamScannerTests {
         #expect(scanner.skippedSnapshotBytes == UInt64(Self.snapshot.count))
     }
 
+    /// However long the snapshot, skipping it keeps no more than a partial
+    /// prefix between chunks, even when every chunk ends in one.
+    @Test func aLongSnapshotIsSkippedInLittleMemory() {
+        var scanner = RexStreamScanner(nonce: Self.nonce)
+        let prefix = Data([Self.esc]) + Data("_rex1;\(Self.nonce);".utf8)
+        let partial = prefix.prefix(prefix.count - 1)
+        // A look-alike escape, then a chunk's worth of snapshot, then the
+        // start of a prefix the next chunk's first byte turns out not to be.
+        let filler = Data([Self.esc, 0x5F]) + Data(repeating: 0x61, count: 32 * 1024)
+        var fed: UInt64 = 0
+        for _ in 0..<64 {
+            let chunk = Data("x".utf8) + filler + partial
+            #expect(scanner.scan(chunk).isEmpty)
+            fed += UInt64(chunk.count)
+            #expect(fed - scanner.skippedSnapshotBytes < UInt64(prefix.count))
+        }
+        #expect(!scanner.isPastSnapshot)
+        let items = scanner.scan(FakeRexStream.resize(columns: 80, rows: 24, nonce: Self.nonce))
+        #expect(items.count == 1)
+        #expect(scanner.skippedSnapshotBytes == fed)
+    }
+
     @Test func aForeignNoncePassesThroughAsProgramBytes() {
         let (items, _) = Self.scan([
             FakeRexStream.resize(columns: 80, rows: 24, nonce: Self.nonce), Self.foreign,

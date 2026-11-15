@@ -23,10 +23,11 @@ import Foundation
 ///   `.notAttached` when the last ticket was refused for want of an attach.
 ///
 /// The view must read promptly. While no paint is being read, reading the
-/// stream pauses once `queuedByteLimit` of instructions wait unread, which
-/// holds the program's output back on the server. During a paint the stream
-/// is read regardless, because the paint's exactness depends on seeing
-/// output as it comes.
+/// stream pauses once `queuedByteLimit` of instructions wait unread; the data
+/// link then reads at most its `readAheadBytes` ahead, and the channel goes
+/// unread, which holds the program's output back on the server. During a
+/// paint the stream is read regardless, because the paint's exactness
+/// depends on seeing output as it comes; the paint bounds what it keeps.
 actor RexTerminalStream {
     typealias Sleep = WebSocketLink.Sleep
 

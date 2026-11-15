@@ -102,6 +102,40 @@ struct RexTerminalStreamTests {
         await fixture.stream.stop()
     }
 
+    /// A view that stops reading holds the stream back: past
+    /// `queuedByteLimit` unread and the data link's read-ahead, the channel
+    /// goes unread, so the server keeps the rest. Reading again takes it
+    /// all, in order.
+    @Test func aSlowViewHoldsTheStreamBack() async throws {
+        let fixture = try await Self.fixture { options in
+            options.queuedByteLimit = 100
+            options.link.readAheadBytes = 100
+        }
+        await fixture.stream.start()
+        await fixture.begin()
+        _ = await fixture.stream.next()
+        _ = await fixture.paint()
+        let chunks = (0..<8).map { String(repeating: String($0), count: 80) }
+        for chunk in chunks { await fixture.write(chunk) }
+        let channel = try #require(await fixture.endpoint.channels.first)
+        try await Task.sleep(for: .milliseconds(200))
+        // Two instructions wait for the view, two messages in the link: the
+        // last four never left the channel.
+        #expect(await channel.unreadByteCount == 4 * (80 + 2))
+
+        var fed = ""
+        while fed.utf8.count < 8 * 80 {
+            guard case .feed(let bytes)? = await fixture.stream.next() else {
+                Issue.record("The stream ended before all of its output")
+                break
+            }
+            fed += String(decoding: bytes, as: UTF8.self)
+        }
+        #expect(fed == chunks.joined())
+        #expect(await channel.unreadByteCount == 0)
+        await fixture.stream.stop()
+    }
+
     // MARK: Resuming and starting over
 
     /// A dropped connection is resumed with every byte counted, and the

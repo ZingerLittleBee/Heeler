@@ -157,6 +157,60 @@ struct RexHostSessionTests {
         await session.end()
     }
 
+    /// A burst of events while a session's structure read is out costs that
+    /// read and one more, however many events came, and the inventory ends
+    /// where the last of them left it.
+    @Test func aBurstOfEventsCostsTheReadOutAndOneMore() async throws {
+        let world = world()
+        let server = await server(world)
+        let session = session(Dialer([ScriptedRexHost(control: [.server(server)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+        let viewsBefore = await server.requests.filter { $0.method == "session.view" }.count
+        let inventoriesBefore = log.inventories.count
+
+        await server.stopAnswering("session.view")
+        world.update { $0[0].revision = 4 }
+        let askedAt = await server.push("session_view_changed", ["revision": 4], session: "session:studio")
+        let held = await server.nextRequest()
+        #expect(held.method == "session.view")
+        let asked = world.sessions[0]
+        for revision in 5...300 {
+            await server.push("session_view_changed", ["revision": .number(Double(revision))], session: "session:studio")
+            await server.push(
+                "block_event",
+                ["block_id": "block:solo", "creator_name": .string(RexInventoryWire.terminalCreator),
+                 "name": "title_changed", "payload": ["title": .string("step \(revision)")]],
+                session: "session:studio")
+        }
+        // Where the burst left the server: the floating terminal closed, and
+        // the last title is what a read of it would say too.
+        world.update { sessions in
+            sessions[0].windows[1].layers.removeLast()
+            sessions[0].revision = 300
+            for window in sessions[0].windows.indices {
+                for layer in sessions[0].windows[window].layers.indices {
+                    for block in sessions[0].windows[window].layers[layer].blocks.indices
+                    where sessions[0].windows[window].layers[layer].blocks[block].id == "block:solo" {
+                        sessions[0].windows[window].layers[layer].blocks[block].title = "step 300"
+                    }
+                }
+            }
+        }
+        await world.install(on: server)
+        await server.respond(to: held, with: FakeRexWorld.view(asked), seq: askedAt)
+
+        try await log.waitUntil("the burst settled") { seen in
+            let terminals = seen.inventories.last?.sessions.first?.terminals ?? []
+            return !terminals.contains { $0.blockID == "block:float" }
+                && terminals.first { $0.blockID == "block:solo" }?.details.title == "step 300"
+        }
+        #expect(await server.requests.filter { $0.method == "session.view" }.count - viewsBefore <= 2)
+        #expect(log.inventories.count - inventoriesBefore <= 2)
+        await session.end()
+    }
+
     /// Rex raises no event when a detached terminal's label changes, so the
     /// follower reads a session with detached terminals again on its interval.
     @Test func aDetachedTerminalsLabelIsReadAgainOnAnInterval() async throws {
