@@ -30,10 +30,10 @@ the whole control connection.
   answers a program's queries itself.
 - **Never invalid text.** The bytes the view writes are not always UTF-8. A
   legacy X10 mouse report past column or row 95 goes as the mouse or wheel
-  event it reports. A report in the UTF-8 mouse encoding (DECSET 1005) is
-  valid text and goes as written. Any other byte that is not part of a character is an 8-bit Meta
-  key and goes as ESC and the byte without its high bit, the form programs
-  read as Alt.
+  event it reports. A report in the UTF-8 mouse encoding (DECSET 1005) is valid
+  text and goes as written. Any other byte that is not part of a character is
+  an 8-bit Meta key and goes as ESC and the byte without its high bit, the form
+  programs read as Alt.
 - **Pastes go as the server's paste event**, never as bytes: single lines,
   reviewed multiline pastes and multiline Snippets. Heeler never frames one
   with bracket markers; the server frames it as its own terminal's mode says.
@@ -57,21 +57,24 @@ the whole control connection.
   a link that resumed the client keeps. The gate closes at once when the
   block's close is heard, the block's stream ends, the program exits, or the
   attach ends for a reset, another server or the view letting go; a terminal
-  that comes back opens again with its next paint. Input that meets a closed
-  gate is dropped with what queued behind it, never kept for later. Input that
-  finds no link that is the terminal's, as while a dropped control link
-  resumes, is dropped the same way, and the attach ends as a connection reset:
-  the view shows it is reconnecting instead of looking live while keys go
-  nowhere, and the terminal opens again with its next paint.
+  that comes back opens again with its next paint. It also closes while the
+  block's stream starts over, until the new stream's first paint, because the
+  view keeps showing a screen the program may have left. Input that meets a
+  closed gate is dropped with what queued behind it, never kept for later.
+  Input that finds no link that is the terminal's, as while a dropped control
+  link resumes, is dropped the same way, and the attach ends as a connection
+  reset: the view shows it is reconnecting instead of looking live while keys
+  go nowhere, and the terminal opens again with its next paint.
 - **An unknown outcome is never sent again.** A request that left with no
   answer, because the link ended, the link stayed silent for 10 seconds after
-  it was written or its sender was cancelled, may have reached the program. So may one the server
-  refused. Neither is sent again: what queued behind it is dropped, the queue
-  takes nothing more, and the attach ends with `RexTerminalEnding.inputFailed`,
-  which the view shows as the other Server Kinds show a failed input write
-  ("Connection dropped: attach input failed."), with Reattach. That ending wins
-  over a connection reset the view has not yet heard of. A refusal because the
-  block is gone finishes the terminal instead.
+  it was written or its sender was cancelled, may have reached the program. So
+  may one the server refused. Neither is sent again: what queued behind it is
+  dropped, the queue takes nothing more, and the attach ends with
+  `RexTerminalEnding.inputFailed`, which the view shows as the other Server
+  Kinds show a failed input write ("Connection dropped: attach input
+  failed."), with Reattach. That ending wins over a connection reset the view
+  has not yet heard of. A refusal because the block is gone finishes the
+  terminal instead.
 
 ## Why
 

@@ -16,7 +16,7 @@ import Foundation
 /// - A refused resume, a cancelled provider, `try again later`, and the
 ///   like start a new stream from a new ticket, after `startOverDelay`. The
 ///   view keeps what it shows until the new stream's first paint, which
-///   resets it.
+///   resets it; `.restarting` comes first, to say it may be out of date.
 /// - After `startOverAttempts` new streams in a row that never painted, or
 ///   that could not open, it ends with `.streamUnavailable`, or with
 ///   `.notAttached` when the last ticket was refused for want of an attach.
@@ -264,8 +264,10 @@ actor RexTerminalStream {
                 return finish(ending == .blockClosed ? .blockClosed : .closedHere)
             case .startOver(let ending):
                 lastEnding = ending
-                failures = engine.paintCount > paints ? 1 : failures + 1
+                let painted = engine.paintCount > paints
+                failures = painted ? 1 : failures + 1
                 if failures > options.startOverAttempts { return finish(.streamUnavailable(ending)) }
+                if painted { enqueue(.restarting) }
             }
         }
     }

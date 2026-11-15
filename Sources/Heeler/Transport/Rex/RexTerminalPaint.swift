@@ -20,6 +20,9 @@ enum RexTerminalInstruction: Sendable, Equatable {
     /// The program exited. On macOS, Rex 0.1.0-preview.14 reported 0 whatever
     /// the program's real status, because programs run under `login`.
     case exited(code: Int?)
+    /// The stream is starting over. What the view shows may be out of date
+    /// until the next paint, which replaces it.
+    case restarting
     /// Nothing follows.
     case ended(RexTerminalEnd)
 }

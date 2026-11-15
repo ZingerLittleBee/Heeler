@@ -82,21 +82,25 @@ struct RexTerminalInputTests {
             terminalOptions: options)
     }
 
-    private func store(_ session: RexHostSession, input: TerminalInputController) -> AttachTerminalStore {
+    private func store(
+        _ session: RexHostSession, input: TerminalInputController,
+        chunks: RexTerminalAttachTests.Chunks = RexTerminalAttachTests.Chunks()
+    ) -> AttachTerminalStore {
         let host = Host(
             name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
             rexSocket: RexSocket(path: RexTerminalAttachTests.socket))
         let runner = RexConsoleProjection(host: host, session: session, onChange: {}).terminalRunner()
         let pin = TerminalCorePin()
         return AttachTerminalStore(
-            target: .terminal(Self.address.paneID), input: input, observeOutput: { _ in },
+            target: .terminal(Self.address.paneID), input: input, observeOutput: { chunks.append($0) },
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
     }
 
     private func openPainted(
-        _ rig: Rig, session: RexHostSession, input: TerminalInputController, stream: Int = 0
+        _ rig: Rig, session: RexHostSession, input: TerminalInputController, stream: Int = 0,
+        chunks: RexTerminalAttachTests.Chunks = RexTerminalAttachTests.Chunks()
     ) async throws -> AttachTerminalStore {
-        let store = store(session, input: input)
+        let store = store(session, input: input, chunks: chunks)
         store.viewDidResize(cols: 80, rows: 24)
         await rig.begin(stream: stream)
         try await waitUntil("the first paint") { store.status == .live }
@@ -475,6 +479,35 @@ struct RexTerminalInputTests {
         type("kept\r", into: input)
         try await waitUntil("the keys") { await sent(second) == [.text("kept\r")] }
         #expect(await sent(first).isEmpty)
+        await store.stop()
+    }
+
+    /// A stream that starts over leaves the view showing a screen the program
+    /// may have moved on from: nothing typed at it is sent, and input goes on
+    /// once the new stream paints.
+    @Test func aStreamStartingOverTakesNoInputUntilItPaints() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        await answerInput(on: control)
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let input = TerminalInputController()
+        let chunks = RexTerminalAttachTests.Chunks()
+        let store = try await openPainted(rig, session: session, input: input, chunks: chunks)
+
+        await rig.endpoint.script(.refuse(reason: 3))
+        await rig.endpoint.drop()
+        await rig.endpoint.waitForStreams(2)
+        type("stale\r", into: input)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await inputRequests(control).isEmpty)
+        await rig.begin(stream: 1)
+        try await waitUntil("the new paint") { chunks.all.count == 2 }
+        #expect(store.status == .live)
+
+        type("fresh\r", into: input)
+        try await waitUntil("the keys") { await sent(control) == [.text("fresh\r")] }
         await store.stop()
     }
 

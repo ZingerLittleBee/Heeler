@@ -571,7 +571,7 @@ final class GhosttyReplica {
         case .paint(let bytes, _): terminal.receive(bytes)
         case .feed(let bytes): terminal.receive(bytes)
         case .title(let title): self.title = title
-        case .theme, .exited: break
+        case .theme, .exited, .restarting: break
         case .ended(let end): ended = end
         }
     }

@@ -291,6 +291,11 @@ actor RexTerminalAttach {
                 continue
             case .exited:
                 await end(.finished)
+            case .restarting:
+                // The screen may show what the program has moved on from, so
+                // nothing typed at it is sent until the next paint.
+                painted = false
+                _ = turnAway()
             case .ended(let end):
                 inputClosed = true
                 if let ending { throw ending }

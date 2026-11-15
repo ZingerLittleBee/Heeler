@@ -143,6 +143,7 @@ struct RexTerminalStreamTests {
         await fixture.endpoint.drop()
         #expect(await fixture.clock.pass(RexTerminalStream.Options().startOverDelay))
         fixture.reads.set(redraw: "again")
+        #expect(await fixture.stream.next() == .restarting)
         await fixture.begin(stream: 1)
         #expect(await fixture.stream.next() == .grid(Self.grid))
         #expect(await fixture.paint() == [Self.painted("again"), .title("lab")])
@@ -164,6 +165,7 @@ struct RexTerminalStreamTests {
 
         await fixture.endpoint.close(code: .goingAway, reason: RexDataEnding.providerCanceledReason)
         #expect(await fixture.clock.pass(.seconds(1)))
+        #expect(await fixture.stream.next() == .restarting)
         await fixture.begin(stream: 1)
         #expect(await fixture.stream.next() == .grid(Self.grid))
         #expect(await fixture.stream.status.resumes == 0)
