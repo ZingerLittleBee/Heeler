@@ -365,6 +365,22 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         }
     }
 
+    /// Whether expanding the row reveals a detail block beneath its header.
+    var hasExpandableDetails: Bool {
+        if let subtitle, !subtitle.isEmpty { return true }
+        if let note, !note.isEmpty { return true }
+        if !questions.isEmpty { return true }
+        if showsDiffAsOutput, fileChanges != nil { return true }
+        if preview != nil { return true }
+        if let outputRead {
+            switch outputRead {
+            case .loading, .failed, .unavailable: return true
+            case .read: return ran
+            }
+        }
+        return ran
+    }
+
     // `preview`, `cardAnswer`, `outputRead` and `isNotUpdating` are
     // deliberately absent: decoding leaves them unset.
     private enum CodingKeys: String, CodingKey {

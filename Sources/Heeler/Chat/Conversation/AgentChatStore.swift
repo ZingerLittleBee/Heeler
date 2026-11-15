@@ -131,6 +131,13 @@ final class AgentChatStore {
         /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
         /// My Pi without its extension the open of its session file (ADR 0034).
         var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
+        /// How often Chat reads an Antigravity CLI pane's screen to confirm or
+        /// retire running Background Work while Chat is visible vs hidden.
+        var agyBackgroundTaskScreenCheckVisible: TimeInterval = 15
+        var agyBackgroundTaskScreenCheckHidden: TimeInterval = 30
+        /// How long an Antigravity CLI subagent's own transcript stays idle
+        /// before standing in for a missing parent `SYSTEM_MESSAGE`.
+        var agySubagentIdleSettle: TimeInterval = 5
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -428,6 +435,12 @@ final class AgentChatStore {
     @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
     /// What each listed Workflow's journal showed, by the Workflow's id.
     @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
+    /// Live SFTP and screen evidence for Antigravity CLI Background Work.
+    @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    @ObservationIgnored private var needsAgyScreenCheck = true
+    @ObservationIgnored private var lastAgyScreenCheck: Date?
+    @ObservationIgnored private var agyScreenCheckUnavailable = false
     @ObservationIgnored private var loadedCodexCatalogScope: String?
     @ObservationIgnored private var codexCatalogTask: Task<Void, Never>?
 
@@ -524,6 +537,7 @@ final class AgentChatStore {
         isVisible = true
         needsAgentRefresh = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
         refreshCodexModelCatalogIfNeeded()
         if isWatchingWhileHidden {
             isWatchingWhileHidden = false
@@ -560,6 +574,7 @@ final class AgentChatStore {
         consecutiveAgentRefreshLinkFailures = 0
         needsAgentRefresh = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
         refreshCodexModelCatalogIfNeeded()
         startLoop()
         blocked.resume()
@@ -725,10 +740,19 @@ final class AgentChatStore {
         failedOpens = 0
         screenCheckRequested = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
         loadedCodexCatalogScope = nil
         refreshCodexModelCatalogIfNeeded()
         retryRequests += 1
         isRetrying = true
+        wake()
+    }
+
+    /// Wakes Chat for a fresh Antigravity CLI screen check, such as right
+    /// after Stop's `/tasks` follow-through ends background commands.
+    func noteAgyBackgroundWorkMayHaveChanged() {
+        guard program == .agy else { return }
+        needsAgyScreenCheck = true
         wake()
     }
 
@@ -897,6 +921,8 @@ final class AgentChatStore {
         if identityChanged {
             forgetStaleSession()
             evidenceReason = nil
+            agyScreenCheckUnavailable = false
+            needsAgyScreenCheck = true
             sessionEvidenceMayHaveChanged()
         }
         let reported = resolveReported(next.agentSession)
@@ -921,6 +947,7 @@ final class AgentChatStore {
         noteActivity(activity)
         notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
+        if activity == .idle { needsAgyScreenCheck = true }
         lateEvidenceCheckAt =
             activity == .idle && source.sessionEvidence != nil
             ? timing.lateEvidenceCheck[program].map { now().addingTimeInterval($0) } : nil
@@ -1055,6 +1082,13 @@ final class AgentChatStore {
             let progress = await engine.followWorkflows()
             if engine === self.engine { workflowProgress = progress }
         }
+        if program == .agy, polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
+            let fileEvidence = await engine.followAgyBackgroundWork()
+            if engine === self.engine { agyFileEvidence = fileEvidence }
+        }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+        await checkAgyBackgroundWorkScreen(from: engine)
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         refreshBackgroundWork()
         // After the transcript, which never waits on it.
         guard !Task.isCancelled else { return }
@@ -1626,6 +1660,10 @@ final class AgentChatStore {
         outputs = ChatToolOutputs()
         waitingOutputs = []
         workflowProgress = [:]
+        agyFileEvidence = [:]
+        agyScreenEvidence = [:]
+        needsAgyScreenCheck = true
+        lastAgyScreenCheck = nil
         backgroundWork = ChatBackgroundWork()
         hasReadLive = false
         notifyRunningBackgroundWorkIfNeeded()
@@ -1656,12 +1694,15 @@ final class AgentChatStore {
     }
 
     private func makeEngine(_ reference: ConversationReference) -> ChatConversationEngine {
-        ChatConversationEngine(
+        var agyLimits = AgyBackgroundWorkFollower.Limits()
+        agyLimits.subagentIdleSettle = timing.agySubagentIdleSettle
+        return ChatConversationEngine(
             reference: reference,
             cacheKey: ChatCacheKey(
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
                 coreScope: source.coreScope),
             files: source.files, cache: source.cache, adapter: source.adapter,
+            agyBackgroundWorkLimits: agyLimits,
             transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
             sessionMayPrecedeItsStore: source.sessionEvidence != nil, now: now)
     }
@@ -2121,11 +2162,150 @@ final class AgentChatStore {
         let next =
             hasReadLive
             ? ChatBackgroundWork(
-                transcript: conversation.transcript, progress: workflowProgress, isLive: isLive, now: now(),
+                transcript: conversation.transcript, progress: workflowProgress,
+                evidence: mergedAgyBackgroundWorkEvidence(), isLive: isLive, now: now(),
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
         notifyRunningBackgroundWorkIfNeeded()
+    }
+
+    private func mergedAgyBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
+        guard program == .agy else { return [:] }
+        var merged = agyFileEvidence
+        for (id, screen) in agyScreenEvidence {
+            merged[id] = merged[id]?.merging(screen) ?? screen
+        }
+        return merged
+    }
+
+    /// Reads the Antigravity CLI pane's screen when needed to confirm silent
+    /// long-running tasks stay alive or to retire tasks/subagents that ended
+    /// on the Host without writing a `SYSTEM_MESSAGE` yet.
+    private func checkAgyBackgroundWorkScreen(from engine: ChatConversationEngine) async {
+        guard program == .agy,
+            isHostConnected,
+            !agyScreenCheckUnavailable,
+            case .following = conversation.phase,
+            !conversation.isFromCache,
+            conversation.readFailure == nil
+        else { return }
+
+        let listedItems = conversation.transcript.listedBackgroundWork
+        var runningByID: [String: ChatBackgroundWorkItem] = [:]
+        for item in listedItems where item.state == .running {
+            runningByID[item.id] = item
+        }
+        agyScreenEvidence = agyScreenEvidence.compactMapValues { existing in
+            existing
+        }.filter { id, _ in
+            runningByID[id] != nil
+        }
+        for (id, item) in runningByID {
+            if let latestStart = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max(),
+                let endedAt = agyScreenEvidence[id]?.endedAt,
+                endedAt < latestStart
+            {
+                agyScreenEvidence[id]?.endedState = nil
+                agyScreenEvidence[id]?.endedAt = nil
+            }
+        }
+
+        let mergedBefore = mergedAgyBackgroundWorkEvidence()
+        let unresolved = listedItems.filter { item in
+            guard item.state == .running,
+                item.id.hasPrefix("agy:task:") || item.id.hasPrefix("agy:subagent:")
+            else { return false }
+            guard mergedBefore[item.id]?.endedState != nil else { return true }
+            guard let endedAt = mergedBefore[item.id]?.endedAt,
+                let start = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
+            else { return false }
+            return endedAt < start
+        }
+        guard !unresolved.isEmpty else {
+            needsAgyScreenCheck = false
+            return
+        }
+
+        let date = now()
+        let interval = isVisible ? timing.agyBackgroundTaskScreenCheckVisible : timing.agyBackgroundTaskScreenCheckHidden
+        let intervalElapsed = lastAgyScreenCheck.map { date.timeIntervalSince($0) >= interval } ?? true
+        let isAgentIdle = ChatAgentActivity(agent.status) == .idle
+        let hasTask = unresolved.contains { $0.id.hasPrefix("agy:task:") }
+        let hasAgingTask = unresolved.contains { item in
+            guard item.id.hasPrefix("agy:task:") else { return false }
+            let lastSeen = [item.launchedAt, item.lastActivityAt, mergedBefore[item.id]?.lastSeenAt]
+                .compactMap(\.self).max()
+            guard let lastSeen else { return true }
+            let limit =
+                item.kind == .workflow
+                ? timing.backgroundWorkStaleness.workflowQuiet
+                : timing.backgroundWorkStaleness.subagentRun
+            return date.timeIntervalSince(lastSeen) >= limit / 2
+        }
+        let hasQuietSubagent = unresolved.contains { item in
+            guard item.id.hasPrefix("agy:subagent:") else { return false }
+            let lastSeen = [item.launchedAt, item.lastActivityAt, mergedBefore[item.id]?.lastSeenAt]
+                .compactMap(\.self).max()
+            guard let lastSeen else { return true }
+            return date.timeIntervalSince(lastSeen) >= timing.agyBackgroundTaskScreenCheckHidden
+        }
+
+        let shouldCheck: Bool
+        if needsAgyScreenCheck && (hasTask || hasQuietSubagent) && (isAgentIdle || hasAgingTask) {
+            shouldCheck = true
+        } else if intervalElapsed && isAgentIdle && (hasTask || hasQuietSubagent) {
+            shouldCheck = true
+        } else if intervalElapsed && hasAgingTask {
+            shouldCheck = true
+        } else {
+            shouldCheck = false
+        }
+        guard shouldCheck else { return }
+
+        let screen: ANSIScreen
+        do {
+            screen = try await source.screen.readScreen()
+        } catch {
+            guard !Task.isCancelled else { return }
+            if case .hostFeatureUnavailable? = error as? TransportError {
+                agyScreenCheckUnavailable = true
+                needsAgyScreenCheck = false
+            }
+            return
+        }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+
+        let checkDate = now()
+        needsAgyScreenCheck = false
+        lastAgyScreenCheck = checkDate
+        let agy = AgyScreen(screen)
+        var freshEvidence = agy.backgroundWorkEvidence(for: unresolved, at: checkDate)
+        guard !freshEvidence.isEmpty else { return }
+
+        if freshEvidence.values.contains(where: { $0.endedState != nil }) {
+            // Re-poll once before recording an ended state so a task or
+            // subagent that just wrote its `SYSTEM_MESSAGE` takes its real
+            // outcome from the transcript instead of `.stopped`.
+            let repolled = await engine.poll(context: projectionContext)
+            guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+            apply(repolled, from: engine)
+            matchSends()
+            let stillRunning = conversation.transcript.listedBackgroundWork.filter { $0.state == .running }
+            freshEvidence = agy.backgroundWorkEvidence(for: stillRunning, at: checkDate)
+        }
+
+        for (id, observed) in freshEvidence {
+            var current = agyScreenEvidence[id] ?? ChatBackgroundWorkEvidence()
+            if let seenAt = observed.lastSeenAt {
+                current.lastSeenAt = [current.lastSeenAt, seenAt].compactMap(\.self).max()
+            }
+            if let endedState = observed.endedState {
+                current.endedState = endedState
+                current.endedAt = observed.endedAt
+            }
+            agyScreenEvidence[id] = current
+        }
     }
 
     private func notifyRunningBackgroundWorkIfNeeded() {

@@ -362,6 +362,8 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
+    private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
+    private var agyBackgroundWork = AgyBackgroundWorkFollower()
     /// Where the Agent's own program keeps Transcripts, from a check of its process
     /// (ADR 0034): Claude Code's config dir, or Pi's or Oh My Pi's sessions folder.
     /// Nil looks in the Host's default place.
@@ -380,6 +382,7 @@ actor ChatConversationEngine {
         adapter: ChatTranscriptAdapter,
         saveInterval: TimeInterval = 10,
         workflowLimits: WorkflowLimits = WorkflowLimits(),
+        agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits = AgyBackgroundWorkFollower.Limits(),
         transcriptRoot: String? = nil,
         sessionMayPrecedeItsStore: Bool = false,
         localization: String = ChatCacheDocument.currentLocalization,
@@ -395,6 +398,7 @@ actor ChatConversationEngine {
         self.adapter = adapter
         self.saveInterval = saveInterval
         self.workflowLimits = workflowLimits
+        self.agyBackgroundWorkLimits = agyBackgroundWorkLimits
         self.now = now
     }
 
@@ -758,6 +762,34 @@ actor ChatConversationEngine {
         let delay = delays.isEmpty ? 0 : delays[min(followed.failures, delays.count - 1)]
         followed.failures += 1
         followed.nextLook = date.addingTimeInterval(delay)
+    }
+
+    /// Reads SFTP side files of an Antigravity CLI conversation's running
+    /// Background Work (`tasks/task-<N>.log` and subagent transcripts) within
+    /// a bounded budget, never throwing and never changing the snapshot.
+    func followAgyBackgroundWork() async -> [String: ChatBackgroundWorkEvidence] {
+        guard reference.program == .agy else { return [:] }
+        let date = now()
+        guard case .following(let path) = snapshot.phase,
+            !snapshot.isFromCache,
+            snapshot.readFailure == nil,
+            AgyTranscriptLocator.sessionID(ofTranscript: path) != nil
+        else {
+            return agyBackgroundWork.snapshotEvidence(at: date, limits: agyBackgroundWorkLimits)
+        }
+        var follower = agyBackgroundWork
+        let evidence = await follower.poll(
+            root: AgyTranscriptLocator.root(ofTranscript: path),
+            items: snapshot.transcript.listedBackgroundWork,
+            files: files,
+            limits: agyBackgroundWorkLimits,
+            at: date,
+            isCancellation: Self.isCancellation)
+        if case .following(let currentPath) = snapshot.phase, currentPath == path {
+            agyBackgroundWork = follower
+            return evidence
+        }
+        return agyBackgroundWork.snapshotEvidence(at: date, limits: agyBackgroundWorkLimits)
     }
 
     // MARK: Output

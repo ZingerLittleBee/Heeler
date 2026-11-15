@@ -153,6 +153,20 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             }
         }
 
+        /// Whether expanding reveals multi-line command formatting that
+        /// `terminalPreview` collapsed onto one line.
+        var hasMultiLineTerminalText: Bool {
+            guard kind == .command else { return false }
+            return title.trimmingCharacters(in: .whitespacesAndNewlines).contains(where: \.isNewline)
+        }
+
+        /// Whether the card has expandable content regardless of width (Workflow
+        /// agents or a multi-line Command); width-dependent truncation is
+        /// measured by the card view itself.
+        var hasIntrinsicExpandableContent: Bool {
+            !agents.isEmpty || hasMultiLineTerminalText
+        }
+
         var kindBadge: String {
             switch kind {
             case .command:
@@ -187,6 +201,8 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
 
     var stripRows: [Row] { Array(rows.prefix(Self.stripLimit)) }
     var overflow: Int { max(0, rows.count - Self.stripLimit) }
+    var running: [Row] { rows.filter { $0.status == .running } }
+    var notUpdating: [Row] { rows.filter { $0.status == .unconfirmed || $0.status == .quiet } }
     var unfinished: [Row] { rows.filter { !$0.status.isFinished } }
     var finished: [Row] { rows.filter(\.status.isFinished) }
     var hasRunning: Bool { rows.contains { $0.status == .running } }

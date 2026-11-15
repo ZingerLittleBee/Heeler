@@ -27,6 +27,32 @@ struct ChatWorkflowProgress: Equatable, Sendable {
     var started: Int { agents.count }
 }
 
+/// Live Host signs of one listed Background Work item outside the main
+/// transcript, such as Antigravity CLI's background-task strip, `/tasks`
+/// panel, task log, or subagent transcript.
+struct ChatBackgroundWorkEvidence: Equatable, Sendable {
+    /// When the Host last showed the work still running or writing.
+    var lastSeenAt: Date?
+    /// A terminal state observed on the Host before the main transcript
+    /// recorded its end.
+    var endedState: ChatBackgroundWorkItem.State?
+    /// When the Host observed `endedState`.
+    var endedAt: Date?
+
+    /// Combines another live source's evidence with this one, keeping the
+    /// newest activity timestamp and preserving an already-known terminal
+    /// state unless only `other` has one.
+    func merging(_ other: ChatBackgroundWorkEvidence) -> ChatBackgroundWorkEvidence {
+        var merged = self
+        merged.lastSeenAt = [lastSeenAt, other.lastSeenAt].compactMap(\.self).max()
+        if merged.endedState == nil, let otherEnded = other.endedState {
+            merged.endedState = otherEnded
+            merged.endedAt = other.endedAt
+        }
+        return merged
+    }
+}
+
 /// The Background Work Chat lists above its Composer (ADR 0024): the
 /// transcript's Subagents, Workflows and background commands, each Workflow
 /// with its journal's progress, running work first. Built afresh after every
@@ -40,8 +66,8 @@ struct ChatBackgroundWork: Equatable, Sendable {
         /// program may have stopped it without saying.
         var isStale = false
         /// The newest sign of the work, on the Host's clock: its launch, a
-        /// status check in the transcript, or a Workflow's latest journal
-        /// write.
+        /// status check in the transcript, a Workflow's latest journal
+        /// write, or live Host task/subagent evidence.
         var lastActivity: Date?
 
         var id: String { item.id }
@@ -67,13 +93,30 @@ struct ChatBackgroundWork: Equatable, Sendable {
     init() {}
 
     init(
-        transcript: ChatTranscript, progress: [String: ChatWorkflowProgress], isLive: Bool, now: Date,
+        transcript: ChatTranscript, progress: [String: ChatWorkflowProgress],
+        evidence: [String: ChatBackgroundWorkEvidence] = [:], isLive: Bool, now: Date,
         staleness: Staleness = Staleness()
     ) {
         self.isLive = isLive
-        let rows = transcript.listedBackgroundWork.map { item in
+        let rows = transcript.listedBackgroundWork.map { rawItem in
+            var item = rawItem
+            let itemEvidence = evidence[item.id]
+            if item.state == .running, let itemEvidence, let endedState = itemEvidence.endedState {
+                let latestStart = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
+                let postdatesStart: Bool =
+                    switch (latestStart, itemEvidence.endedAt) {
+                    case (let start?, let endedAt?): endedAt >= start
+                    default: true
+                    }
+                if postdatesStart {
+                    item.state = endedState
+                    item.endedAt = item.endedAt ?? itemEvidence.endedAt
+                }
+            }
             var row = Row(item: item, progress: progress[item.id])
-            row.lastActivity = [item.launchedAt, item.lastActivityAt, row.progress?.updatedAt].compactMap(\.self).max()
+            row.lastActivity = [
+                item.launchedAt, item.lastActivityAt, row.progress?.updatedAt, itemEvidence?.lastSeenAt,
+            ].compactMap(\.self).max()
             if item.state == .running, let lastActivity = row.lastActivity {
                 let limit = item.kind == .workflow ? staleness.workflowQuiet : staleness.subagentRun
                 row.isStale = now.timeIntervalSince(lastActivity) > limit

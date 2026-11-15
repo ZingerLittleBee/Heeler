@@ -1697,11 +1697,18 @@ struct AgentChatSurfaceView: View {
         let composer = composer
         return {
             guard chat.agent.status == .working else { return nil }
-            return AgyBackgroundTaskStop.followThrough(
-                reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
-                    ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
-                },
-                io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            guard
+                let followThrough = AgyBackgroundTaskStop.followThrough(
+                    reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
+                        ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
+                    },
+                    io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            else { return nil }
+            return {
+                let notice = await followThrough()
+                chat.noteAgyBackgroundWorkMayHaveChanged()
+                return notice
+            }
         }
     }
 

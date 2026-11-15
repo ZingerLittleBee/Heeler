@@ -13,10 +13,9 @@ struct ChatBackgroundWorkSheet: View {
     /// describes the sheet, not the screen.
     let sheetPresentation: ConsoleSheetPresentation
 
-    /// Workflows open to their agents (starting with `focus`), and Command
-    /// cards expand to their full un-truncated command when tapped.
-    @State private var expandedWorkflows: Set<String>
-    @State private var expandedCommands: Set<String> = []
+    /// Cards expanded by the user, plus an initial Workflow `focus` when that
+    /// Workflow already has agent rows to show.
+    @State private var expandedCards: Set<String>
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @Environment(\.calendar) private var calendar
@@ -27,7 +26,13 @@ struct ChatBackgroundWorkSheet: View {
         self.chat = chat
         self.isHostConnected = isHostConnected
         self.sheetPresentation = sheetPresentation
-        _expandedWorkflows = State(initialValue: focus.map { [$0] } ?? [])
+        if let focus,
+            chat.backgroundWork.rows.first(where: { $0.item.id == focus })?.progress?.agents.isEmpty == false
+        {
+            _expandedCards = State(initialValue: [focus])
+        } else {
+            _expandedCards = State(initialValue: [])
+        }
     }
 
     var body: some View {
@@ -66,12 +71,19 @@ struct ChatBackgroundWorkSheet: View {
     private func cardsPage(_ presentation: ChatBackgroundWorkPresentation) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if !presentation.unfinished.isEmpty {
+                if !presentation.running.isEmpty {
                     cardSection(
                         title: String(localized: "Running"),
-                        count: presentation.unfinished.count,
-                        highlightsCount: presentation.hasRunning,
-                        rows: presentation.unfinished)
+                        count: presentation.running.count,
+                        highlightsCount: true,
+                        rows: presentation.running)
+                }
+                if !presentation.notUpdating.isEmpty {
+                    cardSection(
+                        title: String(localized: "Not updating"),
+                        count: presentation.notUpdating.count,
+                        highlightsCount: false,
+                        rows: presentation.notUpdating)
                 }
                 if !presentation.finished.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -132,60 +144,56 @@ struct ChatBackgroundWorkSheet: View {
 
     @ViewBuilder
     private func card(for row: ChatBackgroundWorkPresentation.Row) -> some View {
-        let canExpandAgents = !row.agents.isEmpty
-        let canExpandCommand = row.kind == .command && row.fullTerminalText != nil
-        let isExpanded =
-            canExpandAgents
-            ? expandedWorkflows.contains(row.id)
-            : (canExpandCommand && expandedCommands.contains(row.id))
-
-        ChatBackgroundWorkActivityCard(
-            row: row,
-            isExpandable: canExpandAgents || canExpandCommand,
-            isExpanded: isExpanded,
-            onToggleExpand: (canExpandAgents || canExpandCommand)
-                ? {
-                    withAnimation(.snappy(duration: 0.22)) {
-                        if canExpandAgents {
-                            if expandedWorkflows.contains(row.id) {
-                                expandedWorkflows.remove(row.id)
-                            } else {
-                                expandedWorkflows.insert(row.id)
-                            }
-                        } else if canExpandCommand {
-                            if expandedCommands.contains(row.id) {
-                                expandedCommands.remove(row.id)
-                            } else {
-                                expandedCommands.insert(row.id)
-                            }
-                        }
-                    }
-                }
-                : nil)
+        ChatBackgroundWorkActivityCard(row: row, expandedCards: $expandedCards)
     }
 }
 
 /// Option 2 structured activity card: status & kind badges with tabular time
 /// in the top bar, human-readable summary in the middle, and a full-width
-/// recessed terminal box or Workflow progress bar underneath.
-private struct ChatBackgroundWorkActivityCard: View {
+/// recessed terminal box or Workflow progress bar underneath. Shows a
+/// disclosure chevron and responds to tap-to-expand only when the card actually
+/// has hidden agents, multi-line command formatting, or truncated text.
+struct ChatBackgroundWorkActivityCard: View {
     let row: ChatBackgroundWorkPresentation.Row
-    let isExpandable: Bool
-    let isExpanded: Bool
-    let onToggleExpand: (() -> Void)?
+    @Binding var expandedCards: Set<String>
+
+    @State private var headlineIsTruncated = false
+    @State private var terminalIsTruncated = false
 
     private static let innerBox = RoundedRectangle(cornerRadius: 10, style: .continuous)
 
+    private var isExpandable: Bool {
+        row.hasIntrinsicExpandableContent || headlineIsTruncated || terminalIsTruncated
+    }
+
+    private var isExpanded: Bool {
+        isExpandable && expandedCards.contains(row.id)
+    }
+
+    private func toggleExpand() {
+        guard isExpandable else { return }
+        withAnimation(.snappy(duration: 0.22)) {
+            if expandedCards.contains(row.id) {
+                expandedCards.remove(row.id)
+            } else {
+                expandedCards.insert(row.id)
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            headerSection
-                .contentShape(.rect)
-                .onTapGesture {
-                    onToggleExpand?()
-                }
+            if isExpandable {
+                headerSection
+                    .contentShape(.rect)
+                    .onTapGesture(perform: toggleExpand)
+            } else {
+                headerSection
+            }
 
-            if let terminalText = isExpanded ? (row.fullTerminalText ?? row.terminalPreview) : row.terminalPreview {
-                terminalBox(terminalText)
+            if let preview = row.terminalPreview {
+                let shown = isExpanded ? (row.fullTerminalText ?? preview) : preview
+                terminalBox(shown: shown, preview: preview)
             }
 
             if let fraction = row.fraction {
@@ -220,6 +228,12 @@ private struct ChatBackgroundWorkActivityCard: View {
         .overlay {
             ChatBackgroundWorkStyle.card
                 .stroke(ChatBackgroundWorkPalette.cardBorder(row.status), lineWidth: 1)
+        }
+        .onChange(of: row.cardHeadline == nil) { _, isNil in
+            if isNil { headlineIsTruncated = false }
+        }
+        .onChange(of: row.terminalPreview == nil) { _, isNil in
+            if isNil { terminalIsTruncated = false }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel([row.accessibilityLabel, row.detail, row.usage].compactMap(\.self).joined(separator: ", "))
@@ -261,11 +275,16 @@ private struct ChatBackgroundWorkActivityCard: View {
             }
 
             if let headline = row.cardHeadline {
+                let headlineFont = Font.subheadline.weight(.semibold)
                 Text(verbatim: headline)
-                    .font(.subheadline.weight(.semibold))
+                    .font(headlineFont)
                     .foregroundStyle(row.status.isFinished ? Color.primary.opacity(0.88) : .primary)
                     .lineLimit(isExpanded ? nil : 3)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .modifier(
+                        ChatTextTruncationProbe(
+                            text: headline, font: headlineFont, lineLimit: 3, isTruncated: $headlineIsTruncated))
             }
 
             if let note = row.note, note != row.status.badgeLabel {
@@ -277,13 +296,16 @@ private struct ChatBackgroundWorkActivityCard: View {
     }
 
     @ViewBuilder
-    private func terminalBox(_ text: String) -> some View {
+    private func terminalBox(shown text: String, preview: String) -> some View {
         let box = Text(verbatim: text)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .lineLimit(isExpanded ? nil : 2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(
+                ChatTextTruncationProbe(
+                    text: preview, font: .caption, isCode: true, lineLimit: 2, isTruncated: $terminalIsTruncated))
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
@@ -291,19 +313,18 @@ private struct ChatBackgroundWorkActivityCard: View {
                 Self.innerBox.stroke(ChatBackgroundWorkPalette.terminalBorder, lineWidth: 1)
             }
 
-        if isExpanded {
+        if !isExpandable || isExpanded {
             box.textSelection(.enabled)
         } else {
             box
                 .contentShape(.rect)
-                .onTapGesture {
-                    onToggleExpand?()
-                }
+                .onTapGesture(perform: toggleExpand)
         }
     }
 
+    @ViewBuilder
     private func workflowProgress(_ fraction: ChatBackgroundWorkPresentation.Fraction) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let progress = VStack(alignment: .leading, spacing: 5) {
             if !row.status.isFinished {
                 ProgressView(
                     value: Double(min(fraction.done, fraction.total)),
@@ -318,9 +339,13 @@ private struct ChatBackgroundWorkActivityCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
-        .contentShape(.rect)
-        .onTapGesture {
-            onToggleExpand?()
+
+        if isExpandable {
+            progress
+                .contentShape(.rect)
+                .onTapGesture(perform: toggleExpand)
+        } else {
+            progress
         }
     }
 
@@ -371,5 +396,63 @@ private struct ChatBackgroundWorkAgentRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(agent.accessibilityLabel)
+    }
+}
+
+/// Measures whether `text` truncates at `lineLimit` inside the modified view's
+/// resolved width, keeping the answer stable even while the visible text is
+/// expanded (`lineLimit(nil)`).
+struct ChatTextTruncationProbe: ViewModifier {
+    let text: String
+    let font: Font
+    var isCode = false
+    let lineLimit: Int
+    @Binding var isTruncated: Bool
+
+    @State private var limitedHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                GeometryReader { proxy in
+                    let probeWidth = max(1, proxy.size.width + 1)
+                    ZStack(alignment: .topLeading) {
+                        probeText
+                            .lineLimit(lineLimit)
+                            .frame(width: probeWidth, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                limitedHeight = height
+                                recompute()
+                            }
+                        probeText
+                            .lineLimit(nil)
+                            .frame(width: probeWidth, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                fullHeight = height
+                                recompute()
+                            }
+                    }
+                }
+                .hidden()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+    }
+
+    private var probeText: some View {
+        Text(verbatim: text)
+            .font(font)
+            .fontDesign(isCode ? .monospaced : nil)
+    }
+
+    private func recompute() {
+        guard limitedHeight > 0, fullHeight > 0 else { return }
+        let truncated = fullHeight > limitedHeight + 1
+        if isTruncated != truncated {
+            isTruncated = truncated
+        }
     }
 }
