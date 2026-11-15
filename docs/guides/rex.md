@@ -1,6 +1,6 @@
 # Connect Rex
 
-Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host, and open its terminals on your iPhone or iPad beside the Rex app.
+Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host, and open its terminals on your iPhone or iPad while Rex keeps running them.
 
 > [!IMPORTANT]
 > Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals Rex already has: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
@@ -58,7 +58,7 @@ Heeler shows your Rex layout as it is and changes nothing in it:
 
 ## Working in a terminal
 
-Tap a terminal in **Terminals** to open it. The Rex app and other devices keep showing it while you work:
+Tap a terminal in **Terminals** to open it. Other Rex clients keep showing it while you work:
 
 - **Opening:** The terminal appears once Rex has redrawn its screen and history, so a long history can take a few seconds on a slow connection. A program that keeps writing, such as a spinner, can show a few lines twice or out of place until it pauses; Heeler then paints it again.
 - **Typing and pasting:** Type in Text or Keys mode, tap **Paste**, or send a Snippet. You can type whichever device set the terminal's size. What you type reaches the terminal in order, and Heeler never sends it twice: when the connection drops before Rex answers, the terminal shows **Connection dropped** with **Reattach**, and nothing typed after that point was sent. Keys typed while Heeler reconnects are not sent either; the terminal reconnects and paints again. A paste too large to send in one piece is blocked rather than split; paste less at a time.
