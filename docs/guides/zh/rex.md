@@ -1,7 +1,7 @@
-<!-- Translated from docs/guides/rex.md at dd62bfe8 -->
+<!-- Translated from docs/guides/rex.md at a04c1e62 -->
 # 连接 Rex
 
-通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 iPhone 或 iPad 上与 Rex 应用并列打开其中的终端。
+通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。
 
 > [!IMPORTANT]
 > Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，只能打开 Rex 中已有的终端：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
@@ -59,7 +59,7 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 ## 使用终端
 
-在 **Terminals** 中轻点一个终端即可打开。你操作期间，Rex 应用和其他设备会继续显示它：
+在 **Terminals** 中轻点一个终端即可打开。你操作期间，其他 Rex 客户端会继续显示它：
 
 - **打开：** 终端会在 Rex 重绘完屏幕和历史记录后显示，因此在较慢的连接上，较长的历史记录可能需要几秒钟。持续输出的程序（例如 spinner）在暂停之前，可能有几行重复或错位；暂停后 Heeler 会重新绘制。
 - **输入与粘贴：** 在 Text 或 Keys 模式下输入、轻点 **Paste**，或发送 Snippet。无论终端尺寸由哪台设备设定，你都可以输入。你输入的内容按顺序到达终端，Heeler 绝不会重复发送：如果连接在 Rex 回复前断开，终端会显示 **Connection dropped** 和 **Reattach**，此后输入的内容都没有发送。Heeler 重新连接期间输入的按键同样不会发送；终端会重新连接并重新绘制。过大、无法一次发送的粘贴会被阻止而不会拆分；请分几次粘贴。
