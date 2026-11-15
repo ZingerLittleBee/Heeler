@@ -353,8 +353,10 @@ actor RexLab {
 
     /// One session with a window per block, each block a program under a
     /// scrubbed environment, sized to `grid`. The session is attached.
-    func createSession(blocks: [(String, [String])], grid: LocalGrid) async throws -> (id: String, blocks: [String]) {
-        let label = Self.labelPrefix + "r4a-" + String(UUID().uuidString.prefix(6)).lowercased()
+    func createSession(
+        blocks: [(String, [String])], grid: LocalGrid, name: String = "r4a"
+    ) async throws -> (id: String, blocks: [String]) {
+        let label = Self.labelPrefix + name + "-" + String(UUID().uuidString.prefix(6)).lowercased()
         let windows: [JSONValue] = blocks.map { name, argv in
             let command: [JSONValue] =
                 [

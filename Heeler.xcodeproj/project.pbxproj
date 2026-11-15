@@ -110,6 +110,7 @@
 		1747A0F8594C0F27B0740AD8 /* GrokTranscriptLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215ABB7E9355C37B919A81F7 /* GrokTranscriptLocator.swift */; };
 		179292D9C3E605BC46282FE0 /* ComposerAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4616CECA2722086A6B8B490 /* ComposerAttachmentTests.swift */; };
 		179E5731501163CFB7E15DDB /* HerdrCoreCloseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9FD9D3F622DF65FB055AB4B /* HerdrCoreCloseTests.swift */; };
+		17C6B44F96DD17E8E205AA8C /* RexTerminalAttachLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73FDBDD1511161541878E55 /* RexTerminalAttachLiveTests.swift */; };
 		17D1240218F42353E594D354 /* HerdrCoreStartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 223213BE55DB0EF568EC4279 /* HerdrCoreStartTests.swift */; };
 		17F313D8AE9647F8F5D4DBFD /* AgentAttachStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F8ED10B8A8A33D307789E6 /* AgentAttachStore.swift */; };
 		18266687C19C47984496DD47 /* HostLiveActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A7DD50C003CDD7220D86CE /* HostLiveActivityCoordinatorTests.swift */; };
@@ -2242,6 +2243,7 @@
 		C6D0DECE02D676878FE14388 /* host-helper-version-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "host-helper-version-v1.json"; sourceTree = "<group>"; };
 		C7166C68F40482EF9C1E917F /* ThemeColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeColors.swift; sourceTree = "<group>"; };
 		C73651B04E7933DB8E85ADD4 /* VoiceInputRequestOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputRequestOptionsView.swift; sourceTree = "<group>"; };
+		C73FDBDD1511161541878E55 /* RexTerminalAttachLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexTerminalAttachLiveTests.swift; sourceTree = "<group>"; };
 		C74A32020C9520EB5629B071 /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
 		C74CE585C09A319294FB635B /* TransportErrorPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportErrorPresentationTests.swift; sourceTree = "<group>"; };
 		C80A20EF3C132BD85029F687 /* TmuxComposerSendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxComposerSendTests.swift; sourceTree = "<group>"; };
@@ -3096,6 +3098,7 @@
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
 				28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */,
 				307EB907CD0D9F938B9493A3 /* RexSSHLiveTests.swift */,
+				C73FDBDD1511161541878E55 /* RexTerminalAttachLiveTests.swift */,
 				2C7E98BBFFE1277FE0D33B11 /* RexTerminalLiveTests.swift */,
 				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
@@ -4464,6 +4467,7 @@
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
 				E37D12C65C1143ADB642AE00 /* RexInventoryLiveTests.swift in Sources */,
 				E6687F153BE7D91DA036CA17 /* RexSSHLiveTests.swift in Sources */,
+				17C6B44F96DD17E8E205AA8C /* RexTerminalAttachLiveTests.swift in Sources */,
 				390D83535270A502EC558F86 /* RexTerminalLiveTests.swift in Sources */,
 				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);

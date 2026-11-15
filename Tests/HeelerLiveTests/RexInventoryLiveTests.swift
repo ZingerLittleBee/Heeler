@@ -80,8 +80,8 @@ struct RexInventoryLiveTests {
 }
 
 /// A Rex Host's transport over the local socket, in place of SSH: the control
-/// link opens on a Unix socket channel of its own.
-private actor LocalRexTransport: RexTransport {
+/// link and each data link open on a Unix socket channel of their own.
+actor LocalRexTransport: RexTransport {
     nonisolated let routeID: UUID? = nil
     nonisolated let socket: RexSocket
     nonisolated let foundSocket: RexSocket? = nil
@@ -118,7 +118,7 @@ private actor LocalRexTransport: RexTransport {
     }
 
     func openDataChannel() async throws -> any HeelerSSHAPIChannel {
-        throw TransportError.hostFeatureUnavailable(feature: "data links in this test")
+        try UnixDomainSocketChannel(path: path)
     }
 
     func close() async {
