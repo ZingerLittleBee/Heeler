@@ -106,6 +106,24 @@ struct WebSocketLinkTests {
         await server.waitUntilClosed()
     }
 
+    /// A task cancelled before it connects closes the channel at once,
+    /// rather than wait out the handshake deadline for an answer.
+    @Test func anUpgradeCancelledBeforeItBeginsClosesTheChannel() async throws {
+        let server = FakeWebSocketServer()
+        let connecting = Task {
+            while !Task.isCancelled { await Task.yield() }
+            return try await WebSocketLink.connect(
+                over: server, path: "/api/control", subprotocol: "rex.control.v1",
+                sleep: ManualClock().parkedSleep(for:))
+        }
+        connecting.cancel()
+        do {
+            _ = try await connecting.value
+            Issue.record("A cancelled upgrade opened the link")
+        } catch is CancellationError {}
+        await server.waitUntilClosed()
+    }
+
     // MARK: Messages
 
     @Test func masksEveryFrameWithAFreshKey() async throws {

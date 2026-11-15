@@ -328,6 +328,11 @@ actor WebSocketLink {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 if let ending {
                     continuation.resume(throwing: ending)
+                } else if Task.isCancelled {
+                    // Cancelled before the waiter was in place, so the
+                    // handler below found nothing to end.
+                    continuation.resume(throwing: CancellationError())
+                    abandon()
                 } else {
                     handshakeWaiter = continuation
                 }
