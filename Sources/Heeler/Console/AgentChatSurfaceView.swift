@@ -942,8 +942,11 @@ struct AgentChatSurfaceView: View {
         var isReady = !conversation.transcript.entries.isEmpty || !pending.isEmpty
         if case .locating = conversation.phase {} else { isReady = true }
         // Work that has shown no sign of itself for hours keeps no turn open.
+        // Use the Host's underlying foreground activity so a completed or
+        // earlier interrupted turn does not sprout a foreground Working timer
+        // while Antigravity CLI's Background Work promotes the Console row.
         let signals = ChatTurnSignals(
-            activity: ChatAgentActivity(agent.agent.status),
+            activity: ChatAgentActivity(chat.agent.status),
             isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: ChatTurnSignals.isLive(hostStatus: console.hostStatuses[agent.hostID], conversation: conversation),
@@ -1686,12 +1689,15 @@ struct AgentChatSurfaceView: View {
     }
 
     /// Antigravity CLI's Stop also ends the commands the turn sent to the
-    /// background, which its Esc leaves running (ADR 0024).
+    /// background, which its Esc leaves running (ADR 0024). When only
+    /// Background Work keeps the Agent Working after its foreground turn
+    /// already finished, there is no open foreground turn to place.
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
         guard program == .agy, let chat else { return nil }
         let composer = composer
         return {
-            AgyBackgroundTaskStop.followThrough(
+            guard chat.agent.status == .working else { return nil }
+            return AgyBackgroundTaskStop.followThrough(
                 reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
                     ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
                 },

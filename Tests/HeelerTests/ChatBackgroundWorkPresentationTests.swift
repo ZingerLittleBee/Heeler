@@ -180,6 +180,23 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(Self.present((1...3).map { Self.row("work \($0)") }).overflow == 0)
     }
 
+    @Test func aCommandRowShowsItsKindAndSummary() {
+        let presentation = Self.present([
+            Self.row("python3 -c '\nimport os'", kind: .command, subtitle: "Run Python tests", launchedAgo: 42),
+            Self.row("make lint", kind: .command, state: .stopped, launchedAgo: 90, endedAgo: 30),
+        ])
+        #expect(presentation.rows.map(\.caption) == ["Command", "Command"])
+        #expect(presentation.rows.map(\.kindBadge) == ["Command", "Command"])
+        #expect(presentation.rows.map(\.detail) == ["Run Python tests", nil])
+        #expect(presentation.rows.map(\.stripHeadline) == ["Run Python tests", "make lint"])
+        #expect(presentation.rows.map(\.cardHeadline) == ["Run Python tests", nil])
+        #expect(presentation.rows.map(\.terminalPreview) == ["$ python3 -c ' import os'", "$ make lint"])
+        #expect(presentation.rows.map(\.fullTerminalText) == ["$ python3 -c '\nimport os'", "$ make lint"])
+        #expect(presentation.rows[0].accessibilityLabel == "python3 -c '\nimport os', Command, running, 42 seconds")
+        #expect(presentation.rows[1].accessibilityLabel == "make lint, Command, stopped, 1 minute")
+        #expect(presentation.summary?.text == "1 running · python3 -c '\nimport os'")
+    }
+
     @Test(arguments: [(0.0, "0s"), (38.9, "38s"), (138, "2m 18s"), (3_900, "1h 5m"), (-5, "0s")])
     func durationsReadAsThoughtForDoes(seconds: TimeInterval, text: String) {
         #expect(ChatBackgroundWorkPresentation.duration(seconds, width: .narrow, locale: Self.english) == text)

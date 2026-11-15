@@ -236,6 +236,15 @@ struct ChatBackgroundWorkTests {
             transcript: ChatTranscript(backgroundWork: [Self.item("long", launchedAgo: 250, at: 3)]), progress: [:],
             isLive: true, now: Self.now, staleness: staleness)
         #expect(!allStale.holdsActivePace)
+
+        var checked = Self.item("checked", kind: .command, launchedAgo: 250, at: 5)
+        checked.lastActivityAt = Self.now.addingTimeInterval(-20)
+        let refreshed = ChatBackgroundWork(
+            transcript: ChatTranscript(backgroundWork: [checked]), progress: [:],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(refreshed.rows.map(\.isStale) == [false])
+        #expect(refreshed.rows.first?.lastActivity == Self.now.addingTimeInterval(-20))
+        #expect(refreshed.holdsActivePace)
     }
 
     @Test func workAnEarlierReadListedCarriesIntoALaterWindow() {

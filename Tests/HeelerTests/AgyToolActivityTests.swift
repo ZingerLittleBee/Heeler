@@ -351,12 +351,15 @@ struct AgyToolActivityTests {
             + content + "\n</SYSTEM_MESSAGE>"
     }
 
-    static func lines(_ steps: [JSONValue]) -> [ChatLine] {
-        let text = steps.compactMap { step -> String? in
+    static func jsonl(_ steps: [JSONValue]) -> String {
+        steps.compactMap { step -> String? in
             guard let data = try? JSONEncoder().encode(step) else { return nil }
             return String(decoding: data, as: UTF8.self)
         }.joined(separator: "\n") + "\n"
-        return JSONLLineFramer.lines(in: Data(text.utf8))
+    }
+
+    static func lines(_ steps: [JSONValue]) -> [ChatLine] {
+        JSONLLineFramer.lines(in: Data(jsonl(steps).utf8))
     }
 
     @Test func aCanceledTaskReadsAsInterrupted() throws {
