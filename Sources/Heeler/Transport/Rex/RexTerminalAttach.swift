@@ -81,6 +81,9 @@ struct RexTerminalConnection: Sendable {
     /// Keeps what this attach claims of the block's size, nil once it is
     /// given back, for whatever comes after it on the same control client.
     let noteSizeClaim: @Sendable (RexSizeClaim?) -> Void
+    /// Whether a server answers on the connection the terminal opened on now:
+    /// the same server, SSH connection and control client.
+    let isCurrent: @Sendable () async -> Bool
 }
 
 /// What a control client claimed of a Rex block's size (ADR 0051).
@@ -413,8 +416,15 @@ actor RexTerminalAttach {
                     throw RexTerminalEnding.connectionReset
                 case .redrawTooLarge where !blockClosed:
                     throw RexTerminalEnding.historyTooLong
+                case .connectionLost:
+                    throw blockClosed ? RexTerminalEnding.finished : RexTerminalEnding.connectionReset
                 case .paintFailed, .notAttached, .streamUnavailable, .redrawTooLarge:
-                    throw blockClosed ? RexTerminalEnding.finished : RexTerminalEnding.outputUnavailable
+                    if blockClosed { throw RexTerminalEnding.finished }
+                    // A stream that gave up while its connection went, or was
+                    // replaced, ended with the connection, not on Rex's side:
+                    // the view reconnects.
+                    if await !connection.isCurrent() { throw RexTerminalEnding.connectionReset }
+                    throw RexTerminalEnding.outputUnavailable
                 }
             }
         }

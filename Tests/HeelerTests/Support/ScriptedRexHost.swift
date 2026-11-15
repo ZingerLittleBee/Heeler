@@ -87,6 +87,8 @@ final actor ScriptedRexHost: RexHostConnection {
 
     func openRexDataChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         log.append("data \(socketPath)")
+        // As `HeelerSSHTransport` refuses once its connection is closed.
+        guard isConnected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
         let channel = try next(from: &dataChannels)
         guard let admission else { return try await serve(channel, at: socketPath) }
         return try await admission.admitAttachLink { try await self.serve(channel, at: socketPath) }

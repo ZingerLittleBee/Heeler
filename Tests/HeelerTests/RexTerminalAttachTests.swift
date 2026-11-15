@@ -546,6 +546,41 @@ struct RexTerminalAttachTests {
 
     nonisolated static let secondClient = "client:00000000-0000-7000-8000-000000000002"
 
+    /// An SSH connection that goes takes the terminal's data link with it,
+    /// and no channel opens on it again: the terminal reconnects, however
+    /// long the next connection takes, rather than read as Rex no longer
+    /// sending its output, and paints afresh once one answers.
+    @Test func aDataLinkLostWithItsSSHConnectionReconnects() async throws {
+        let rig = Rig()
+        let first = await rig.server()
+        let second = await rig.server()
+        let firstHost = await rig.host([.server(first)], closingClosesChannels: true)
+        let dialer = RexHostSessionTests.Dialer([firstHost, await rig.host([.server(second, welcome: nil)])])
+        let session = hostSession(dialer)
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        rig.reads.set(redraw: "new connection")
+        try await firstHost.close()
+        await second.acceptUpgrade()
+        try await waitUntil("the reconnect") { store.status == .reconnecting }
+        // Well past every resume and new stream the old one could try.
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(store.status == .reconnecting)
+
+        _ = await second.nextHello()
+        var welcome = FakeRexServer.Welcome()
+        welcome.clientID = Self.secondClient
+        await rig.endpoint.tickets.install(on: second, client: Self.secondClient)
+        await second.sendWelcome(welcome)
+        await rig.begin(stream: 1)
+        try await waitUntil("the fresh paint") { chunks.all.count == 2 && store.status == .live }
+        #expect(chunks.all.last == Self.painted("new connection"))
+        await store.stop()
+    }
+
     /// Another server instance on the socket finishes a terminal of the last
     /// one, with no reattach.
     @Test func anotherServerFinishesTheTerminal() async throws {

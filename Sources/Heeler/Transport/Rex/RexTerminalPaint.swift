@@ -43,6 +43,10 @@ enum RexTerminalEnd: Sendable, Equatable {
     case notAttached
     /// No stream could be opened or kept, after the last way it ended.
     case streamUnavailable(RexDataEnding?)
+    /// The connection the stream rode is gone: its SSH connection closed or
+    /// was replaced, so no channel or ticket can come from it again. Only a
+    /// new attach, on the next connection, goes on.
+    case connectionLost
 }
 
 /// One read a paint asks of the control link, against the block's terminal.

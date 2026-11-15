@@ -621,7 +621,11 @@ actor RexHostSession {
                 },
                 maxMessageBytes: ready.control.maxMessageBytes,
                 sizeClaim: sizeClaims.claim(at: address, epoch: epoch),
-                noteSizeClaim: { [sizeClaims] claim in sizeClaims.note(claim, at: address, epoch: epoch) })
+                noteSizeClaim: { [sizeClaims] claim in sizeClaims.note(claim, at: address, epoch: epoch) },
+                isCurrent: { [weak self] in
+                    await self?.connectionIsCurrent(server: ready.server, generation: ready.generation, epoch: epoch)
+                        ?? false
+                })
             return try await operation(connection)
         }
     }
@@ -635,6 +639,13 @@ actor RexHostSession {
     private func connectionClosed(generation: UInt64) {
         guard generation == currentConnectionGeneration, transport != nil, !transportSuspect else { return }
         transportSuspect = true
+    }
+
+    /// Whether a server answers on `server`, `generation` and the client of
+    /// `epoch` now.
+    private func connectionIsCurrent(server: RexServerStatus, generation: UInt64, epoch: UInt64) -> Bool {
+        guard let ready = readyConnection else { return false }
+        return ready.server == server && ready.generation == generation && clientEpoch == epoch
     }
 
     private var readyConnection: RexConnection? {

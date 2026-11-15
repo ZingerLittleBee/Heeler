@@ -70,7 +70,7 @@ When a terminal stops, it says why:
 | --- | --- |
 | **Connection dropped** | Something you typed may not have arrived. Tap **Reattach** and check the screen before typing again. |
 | **This terminal's history is too long to show** | Clear the terminal's scrollback in Rex, then tap **Reattach**. |
-| **Rex stopped sending this terminal's output** | Tap **Reattach**. |
+| **Rex stopped sending this terminal's output** | Rex stopped the terminal's output while the Host stayed connected. Tap **Reattach**. When the connection to the Host drops, the terminal reconnects and paints again by itself instead. |
 | **This Terminal belongs to a Rex server that is gone** | Rex restarted. Open the terminal again from **Terminals**. |
 
 ### Sized for another device

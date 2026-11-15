@@ -71,7 +71,7 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 | --- | --- |
 | **Connection dropped** | 你输入的内容可能没有送达。轻点 **Reattach**，确认屏幕内容后再继续输入。 |
 | **This terminal's history is too long to show** | 在 Rex 中清除该终端的回滚记录，然后轻点 **Reattach**。 |
-| **Rex stopped sending this terminal's output** | 轻点 **Reattach**。 |
+| **Rex stopped sending this terminal's output** | Host 保持连接期间，Rex 停止了该终端的输出。轻点 **Reattach**。如果是与 Host 的连接断开，终端会自行重新连接并重新绘制，不会显示这条消息。 |
 | **This Terminal belongs to a Rex server that is gone** | Rex 已重启。请从 **Terminals** 重新打开该终端。 |
 
 ### Sized for another device

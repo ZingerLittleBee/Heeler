@@ -21,6 +21,9 @@ import Foundation
 /// - After `startOverAttempts` new streams in a row that never painted, or
 ///   that could not open, it ends with `.streamUnavailable`, or with
 ///   `.notAttached` when the last ticket was refused for want of an attach.
+/// - A channel or ticket the route refuses because its connection is gone
+///   ends it at once with `.connectionLost`: nothing on that connection can
+///   bring the stream back.
 ///
 /// The view must read promptly. While no paint is being read, reading the
 /// stream pauses once `queuedByteLimit` of instructions wait unread; the data
@@ -220,6 +223,17 @@ actor RexTerminalStream {
         case finished
         case stop(RexDataEnding)
         case startOver(RexDataEnding?)
+        case connectionLost
+    }
+
+    /// Whether `error`, from the route's channel or control link, says the
+    /// connection under the stream is gone for good: the SSH connection is
+    /// closed or in doubt, or another one replaced it.
+    static func saysConnectionIsGone(_ error: any Error) -> Bool {
+        switch error {
+        case TransportError.sshUnreachable, RexTerminalEnding.connectionReset: true
+        default: false
+        }
     }
 
     private func run() async {
@@ -237,6 +251,7 @@ actor RexTerminalStream {
                     session: session, block: block, route: route, options: options.link, sleep: sleep)
             } catch {
                 if finished || error is CancellationError { return }
+                if Self.saysConnectionIsGone(error) { return finish(.connectionLost) }
                 if case RexDataLinkError.ticketUnavailable(.server(let failure)) = error {
                     if failure.kind == .notFound { return finish(.blockClosed) }
                     refusedForAttach = failure.kind == .conflict
@@ -270,6 +285,8 @@ actor RexTerminalStream {
                 failures = painted ? 1 : failures + 1
                 if failures > options.startOverAttempts { return finish(.streamUnavailable(ending)) }
                 if painted { enqueue(.restarting) }
+            case .connectionLost:
+                return finish(.connectionLost)
             }
         }
     }
@@ -295,13 +312,16 @@ actor RexTerminalStream {
                     await current.disconnect()
                     return .startOver(ending)
                 case .resume:
-                    guard let resumed = await resume(current) else {
-                        if finished { return .finished }
-                        return .startOver(ending)
+                    switch await resume(current) {
+                    case .resumed(let resumed):
+                        current = resumed
+                        link = current
+                        continue
+                    case .failed:
+                        return finished ? .finished : .startOver(ending)
+                    case .connectionLost:
+                        return finished ? .finished : .connectionLost
                     }
-                    current = resumed
-                    link = current
-                    continue
                 }
             } catch {
                 await current.disconnect()
@@ -315,30 +335,39 @@ actor RexTerminalStream {
         return .finished
     }
 
-    /// A connection to go on with, or nil when only a new stream will do.
-    private func resume(_ dropped: RexDataLink) async -> RexDataLink? {
+    private enum Resumption {
+        /// A connection to go on with.
+        case resumed(RexDataLink)
+        /// Only a new stream will do.
+        case failed
+        /// The route's connection is gone: nothing on it goes on.
+        case connectionLost
+    }
+
+    private func resume(_ dropped: RexDataLink) async -> Resumption {
         apply(engine.streamPaused())
         for attempt in 0..<max(1, options.resumeAttempts) {
             if attempt > 0 {
-                do { try await sleep(options.resumeDelay) } catch { return nil }
+                do { try await sleep(options.resumeDelay) } catch { return .failed }
             }
-            if finished { return nil }
+            if finished { return .failed }
             do {
                 let next = try await dropped.resume(over: route)
                 if finished {
                     await next.close()
-                    return nil
+                    return .failed
                 }
                 counters.resumes += 1
                 apply(engine.streamResumed())
-                return next
+                return .resumed(next)
             } catch {
+                if error is CancellationError { return .failed }
+                if Self.saysConnectionIsGone(error) { return .connectionLost }
                 // Only a channel that could not be opened, before the RESUME went out, is worth another try.
-                if error is CancellationError { return nil }
-                guard await dropped.canResume else { return nil }
+                guard await dropped.canResume else { return .failed }
             }
         }
-        return nil
+        return .failed
     }
 
     // MARK: Effects
