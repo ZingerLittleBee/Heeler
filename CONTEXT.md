@@ -32,9 +32,11 @@ unlisted (ADR 0047). One control connection follows the whole server: every
 session's terminals, kept current by Rex's events and read again after any
 new connection. Another server instance on the socket is another server, as
 with tmux (ADR 0048). A Rex Host's Terminals open from the server's own
-redraw, and their size is asked for and never taken (ADR 0049). They take
-input from their first paint, one request at a time on the control
-connection, never sent twice (ADR 0050).
+redraw, and their size is asked for (ADR 0049). They take input from their
+first paint, one request at a time on the control connection, never sent
+twice (ADR 0050). A Terminal another device sized says so; its size is taken
+only when the user taps to fit it to the screen, and given back once the view
+stops showing it (ADR 0051).
 _Avoid_: Rex session (for the Host), Rex app (for the server)
 
 **Detached Terminal**:

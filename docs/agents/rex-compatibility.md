@@ -34,6 +34,12 @@ observed yet.
   typed bytes as text through the terminal's `write`, read by
   `RexTerminalKeyReader`; pastes, focus changes and mouse reports text cannot
   carry through `block.event`.
+- A Rex terminal's size is taken only when the user taps the notice's Fit to
+  Screen ([ADR 0051](../adr/0051-rex-terminal-size-is-taken-only-when-the-user-asks.md)):
+  `RexTerminalAttach` sends `session.own_block` with mode `take` for the one
+  block, then the view's grid, and gives the size back with
+  `session.disown_block` when the view stops showing the terminal or the
+  attach ends, unless the server passed the block to Heeler by itself.
 
 ## Versioned observations
 
@@ -42,8 +48,9 @@ All below: Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket,
 repository (`f_control` for the control connection and layout operations,
 `g_reconnect` for drops and resumes, `a_snapshot_skip` for how a terminal's
 stream starts, `b_redraw` and `b2_edges` for the redraw, `c2_handoff` for
-first paints, the input run), a review probe, the Simulator acceptance run, or
-a committed live test.
+first paints, the input run, `r6_ownership` and `r6b_handover` for taking and
+giving back a block), a review probe, the Simulator acceptance run, or a
+committed live test.
 
 ### Control connection
 
@@ -226,9 +233,11 @@ Lab capture `e_size`, three lab clients on one block.
 - `own_block` with mode `request` succeeded only for a block with no owner;
   mode `take` succeeded at once, and the taker's wanted size applied.
 - An owner whose control connection dropped without a close frame lost the
-  block at once to the next client with a wanted size, and the terminal took
-  that client's size; when the owner resumed, the block and its size went back
-  to it. An owner that closed with a close frame lost its wanted size as well.
+  block at once to another client, and the terminal took that client's size;
+  when the owner resumed, the block and its size went back to it. An owner
+  that closed with a close frame lost its wanted size as well. The client the
+  block went to was one in line for it (`r6_ownership` below), not merely one
+  with a wanted size.
 - A `resize` with 0 or more than 65535 columns or rows was refused with 400.
 - In the maintainer's own session, the Rex desktop app's client owned every
   block, so a request from Heeler there would not apply.
@@ -240,6 +249,58 @@ Lab capture `e_size`, three lab clients on one block.
   `session.attach` and `data.connect` from Heeler's own control client,
   followed its output, and finished the view without a reattach once the
   session was destroyed.
+
+Lab captures `r6_ownership` and `r6b_handover`, three lab clients on one lab
+block: one standing in for another device, which created it and owned it at
+100x30; one standing in for Heeler, attached with a data connection open and a
+wanted size of 62x51; and a third.
+
+- A take (`own_block`, mode `take`) from Heeler's stand-in, which did not own
+  the block, was answered in about 3 ms, listing the stand-in as owner. Every
+  attached client heard the owner change, with the reason `take`, and then the
+  size change. The stand-in's earlier wanted size, 62x51, applied at once; its
+  own stream carried a resize message naming it as owner, and that message
+  and the owner change both arrived before the answer.
+- The other device taking the block back moved it the same way, to its own
+  wanted size.
+- A give back (`disown_block`) from a client that did not own the block was
+  answered with the current owner and raised no event: it only took the
+  client out of line.
+- A give back from the owner passed the block to the client in line, with the
+  reason `disown`, and that client's wanted size applied. With nobody in line,
+  the block was left with no owner and kept its size.
+- A take of a block with no owner applied at once. While a client owned the
+  block, another's `resize` only noted a wanted size; the owner's own `resize`
+  applied at once.
+- A client that had only asked for a size, and never claimed the block, was
+  never passed it: an owner that closed with a close frame then left the block
+  with no owner (reason `disconnect`) at its size.
+- An owner that dropped without a close frame passed the block to the client
+  in line (reason `lost`), or left it with none; when it resumed, it got the
+  block back (reason `restore`), from no owner too. The resuming client was
+  not sent that `restore` event itself.
+- In line: the stand-in took, the other device took back, so the stand-in
+  stayed in line, and the other device dropped. The stand-in was passed the
+  block at its wanted size; the other device resumed and got it back at its
+  own (`r6b_handover`).
+- The same, but the stand-in gave up the block it was passed while the other
+  device was away: the block was left with no owner at the stand-in's size,
+  and the other device did not get it back when it resumed (`r6b_handover`).
+  Heeler therefore leaves a block the server passed to it as it is.
+- A client that took ranked ahead in line of one that had only requested
+  (`own_block`, mode `request`): the taker was passed the block
+  (`r6b_handover`).
+- A take or give back of a closed block was refused with 400. A take from a
+  client attached to no session was refused with 409, and from one attached
+  only with `session.attach_all` with 400; a `resize` from that client was
+  accepted and noted as a wanted size.
+- Live suite `RexTerminalSizeLiveTests` (Heeler's runner and view store over a
+  local socket): the lab's own client created a shell block at 100x30, asked
+  for that size and took the block. Heeler's 80x24 view reported a size set
+  elsewhere and showed its notice; the take from the view made Heeler's client
+  the owner and the server's grid 80x24; the view going off screen passed the
+  block back to the lab's client at 100x30; and the view coming back took
+  nothing.
 
 ### Query answers
 
@@ -330,6 +391,8 @@ where noted.
   redraw. `max_bytes` is capped at 983,040 and counts the JSON-escaped text.
 - The server may run a block's methods concurrently, so Heeler never relies on
   the order of the redraw and title reads.
+- A take or give back that names no blocks, or an empty list, applies to every
+  block in the session. Heeler always names the one block it means.
 
 ### Not observed
 
