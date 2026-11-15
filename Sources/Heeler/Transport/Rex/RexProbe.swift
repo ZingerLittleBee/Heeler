@@ -28,7 +28,9 @@ enum RexProbe {
     struct Report: Equatable, Sendable {
         /// `uname -s`.
         var kernel: String?
-        /// A Rex app, its data folder, or a `rex` on the exec's PATH is there.
+        /// A Rex app, named in its bundle, or Rex's own data folder is
+        /// there. A `rex` on the exec's PATH is not enough: other software
+        /// has a command of that name.
         var isInstalled = false
         /// The sockets found, in the order the script looks: the account's own
         /// server before a shared one.
@@ -75,9 +77,13 @@ enum RexProbe {
         case $k in
         Darwin)
             look "$HOME/Library/Application Support/rex/server.sock"
-            [ -d "$HOME/Library/Application Support/rex" ] && printf 'installed\\n'
+            # The data folder by its exact name, which a case-insensitive
+            # volume would also match in another app's capitalized one.
+            for d in "$HOME/Library/Application Support"/[r]ex; do
+                [ -d "$d" ] && printf 'installed\\n'
+            done
             for a in /Applications/Rex*.app "$HOME"/Applications/Rex*.app; do
-                [ -d "$a" ] && printf 'installed\\n'
+                grep -q 'com\\.superlogical\\.rex' "$a/Contents/Info.plist" 2>/dev/null && printf 'installed\\n'
             done
             ;;
         Linux)
@@ -87,7 +93,6 @@ enum RexProbe {
             look "$HOME/.local/state/rex/run/server.sock"
             look /run/rex/server.sock
             look /var/run/rex/server.sock
-            command -v rex >/dev/null 2>&1 && printf 'installed\\n'
             [ -d "$HOME/.local/state/rex" ] && printf 'installed\\n'
             ;;
         esac

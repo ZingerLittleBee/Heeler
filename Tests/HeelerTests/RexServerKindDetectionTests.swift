@@ -56,9 +56,10 @@ struct RexServerKindDetectionTests {
         let commands = part.replacingOccurrences(of: "n0nce rex begin", with: "")
             .replacingOccurrences(of: "n0nce rex end", with: "")
         let words = commands.components(separatedBy: CharacterSet(charactersIn: " \t\n;&|()`$\"'"))
-        let runs = zip(words, words.dropFirst()).filter { $0.1 == "rex" && $0.0 != "-v" }
+        let runs = words.filter { $0 == "rex" }
         #expect(runs.isEmpty, "\(runs)")
-        #expect(part.contains("command -v rex >/dev/null"))
+        // Not even looked up: other software has a command of that name.
+        #expect(!part.contains("command -v rex"))
         #expect(!part.contains("REX_AUTOSTART"))
         #expect(!part.contains("login-server.sock"))
         // Every path it names is quoted, so one with spaces stays one word.

@@ -39,6 +39,10 @@ is gone, and every build offers Rex.
     `~/.local/state/rex/run/server.sock`, `/run/rex/server.sock` and
     `/var/run/rex/server.sock`. The account's own server comes before a shared
     one. The root-only login server's socket is never one of them.
+  - Rex looks installed on macOS when its data folder, named exactly `rex`, or
+    an app whose bundle names Rex is there, and on Linux when
+    `~/.local/state/rex` is. A `rex` command alone is not enough: other
+    software has one.
   - A native Windows Host is never asked.
 - Detection offers Rex only where it found a socket the account may use. It
   says plainly when Rex is installed and no server runs, and when a socket is

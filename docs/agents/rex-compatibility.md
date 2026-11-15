@@ -98,6 +98,14 @@ first paints, `d2_queries` for query answers, `d_input` for the input run,
 and giving back a block), a review probe, the Simulator acceptance run, or a
 committed live test.
 
+### Installation
+
+- The macOS app, installed as `Rex Beta.app`, names `com.superlogical.rex` as
+  its bundle identifier in its `Info.plist`, and the server keeps its socket
+  and data in `~/Library/Application Support/rex` (review probe of the
+  installed app). Detection reads these, not a `rex` on the PATH, which other
+  software also ships.
+
 ### Control connection
 
 - The server welcomes a hello at revision 12 with a client id and a reconnect

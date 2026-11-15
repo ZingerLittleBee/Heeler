@@ -393,6 +393,16 @@ class RexTests(DetectionTestCase):
                 self.assertFalse(found["rexInstalled"])
                 self.assertEqual(found["rexSockets"], [])
 
+    def test_an_unrelated_rex_command_is_not_rex(self) -> None:
+        # Other software ships a `rex` command; only Rex's own places count.
+        self.kernel("Linux")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertTrue(found["rexRead"])
+                self.assertFalse(found["rexInstalled"])
+        self.assert_rex_never_ran()
+
     def test_a_socket_the_account_cannot_write_is_not_usable(self) -> None:
         if os.geteuid() == 0:
             self.skipTest("root may write any socket")
