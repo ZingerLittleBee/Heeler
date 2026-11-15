@@ -1,7 +1,7 @@
-<!-- Translated from docs/guides/rex.md at 5becbe18 -->
+<!-- Translated from docs/guides/rex.md at 184b5334 -->
 # 连接 Rex
 
-通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。
+通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
 
 > [!IMPORTANT]
 > Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，只能打开 Rex 中已有的终端：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
@@ -9,7 +9,7 @@
 ## 开始之前
 
 - Host 上的 Rex 以你通过 SSH 登录的账户运行。Heeler 只连接已在运行的 Rex 服务端，绝不会自行启动。
-- 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。Rex Host 不支持原生 Windows。
+- 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。Rex 不支持原生 Windows。
 - SSH 服务端允许转发到 Unix socket，OpenSSH 默认即允许。如果它的 `sshd_config` 设置了 `AllowStreamLocalForwarding no` 或 `AllowTcpForwarding no`，Heeler 将无法连接 Rex。
 - 让 iPhone 或 iPad 能够连通 Host：处于同一局域网下直连、通过 [Overlay Network](overlay-networks.md) 连接，或经由 [Jump Host](vps-jump-host-setup.md) 中转。一个 Host 可以配置[多条路由](host-routes.md)。
 
@@ -17,27 +17,33 @@
 
 Heeler 在连接或检查时绝不会启动 Rex，也从不运行 `rex` 命令。
 
-### 1. 填写 SSH 设置
+### 1. 连接
 
-1. 在 **Hosts** 中轻点 **Add Host**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Host。
-2. 输入运行 Rex 的账户作为 SSH **User**，添加一条 Route，并选择 **Device Key**、**RSA Key** 或 **Password**。
-3. 若选择 **Device Key**，请将表单中的公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
-4. **Session name** 留空，Rex Host 没有会话名称。轻点 **Save**，并在核对 Host 的密钥指纹后轻点 **Trust**。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Server。
+2. 输入 **Address**，并以运行 Rex 的账户作为 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
+3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
+4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
 
-### 2. 确认 Server Kind
-
-Heeler 会在不启动任何服务的情况下检查一次，随后在 **Server Kind** 下列出检测结果：
-
-| Rex 一行显示 | 操作方法 |
+| Connect | Trust |
 | --- | --- |
-| **Socket found** | 轻点 **Use Rex**。 |
-| **Installed, not running** | 在 Host 上启动 Rex，然后轻点 **Run Checks Again**。 |
-| **Socket found, but this account cannot use it** | Rex 以另一个账户运行。将 Host 的 **User** 改为该账户。 |
-| **Not found** | 安装并启动 Rex，然后轻点 **Run Checks Again**。 |
+| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-trust.png"><img src="../images/hosts/add-host-trust.png" width="260" alt="New Host 面板的 Trust 步骤，显示 Trust this Host?、密钥指纹、Copy the Command That Prints It 和 Trust and Continue"></a> |
 
-如果这台机器还运行着 Herdr TUI、herdr-core 或 tmux，请先在此确认其中一种，再为同一台机器重新添加一个 Host 以使用另一种。确认后，**Server Kind** 即固定不变。
+### 2. 选择 Server
 
-**成功的标志是** Host 详情将 **Server Kind** 显示为 `Rex`，**Socket** 显示 Rex 监听的路径，且 **SSH connection**、**Rex installed**、**Rex server running** 与 **protocol compatible** 均通过。
+Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一次，并列出这台机器上运行的内容。一个 Host 只有一个 Rex Server，显示为 **Rex**：
+
+| Heeler 检测到 | 操作方法 |
+| --- | --- |
+| **Rex** 显示 **Running** | 保持勾选 **Rex**，然后轻点 **Add Host with 1 Server**。 |
+| **Rex** 显示 **Not running** | Rex 已安装但没有运行，因此 **Rex** 默认不勾选。在 Host 上启动 Rex 后轻点 **Scan Again**，或者现在就勾选 **Rex**，稍后再启动 Rex。 |
+| 同时检测到 Rex 与 Herdr TUI、herdr-core 或 tmux | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
+| 没有 **Rex** | Rex 没有安装。仍然添加该 Host，安装并启动 Rex，打开该 Host，轻点 **Scan Again**，然后开启 **Rex**。 |
+
+每个 Server 在 Host 页面上都有一个开关。**Rex** 开启后，轻点它可打开它自己的页面，其中有它的连接和检查项。**Add by Name…** 不提供 Rex：一个 Host 唯一的 Rex Server 没有需要输入的名称，而且只要装了 Rex，Heeler 就会列出它。
+
+如果 Host 页面上的 **Rex** 显示 **Socket found, but this account cannot use it**，说明 Rex 以另一个账户运行。请以该账户作为 **User**，把这台机器另外添加为一个 Host。
+
+**成功的标志是**该 Host 所在的行显示绿色的 **Rex** 标签，且该 Server 的页面将 **Server Kind** 显示为 `Rex`，**Socket** 显示 Rex 监听的路径，**SSH connection**、**Rex installed**、**Rex server running** 与 **protocol compatible** 均通过。
 
 ## 无法连接时
 
@@ -46,7 +52,7 @@ Heeler 会在不启动任何服务的情况下检查一次，随后在 **Server 
 | **Rex is not running** | 在 Host 上启动 Rex，然后轻点 **Run Checks Again**。 |
 | **The SSH server refuses socket forwarding** | 在 Host 的 SSH 服务端中允许转发到 Unix socket（参见[开始之前](#开始之前)），然后轻点 **Run Checks Again**。 |
 | **Rex is not answering** | Heeler 无法判断是以上哪一种情况。请两项都检查，然后轻点 **Run Checks Again**。 |
-| **Rex did not let this account in** | 将 Host 的 **User** 改为运行 Rex 的账户。 |
+| **Rex did not let this account in** | Rex 以另一个账户运行。请以该账户作为 **User**，把这台机器另外添加为一个 Host。 |
 | **This version of Rex is not supported** | Heeler 只支持 Rex API revision 12。如果提示中 Rex 提供的 revision 更旧，请升级 Rex；如果更新，请等待 Heeler 更新。 |
 | **Rex was not found on this Host** | 安装并启动 Rex，然后轻点 **Run Checks Again**。 |
 
@@ -55,7 +61,7 @@ Heeler 会在不启动任何服务的情况下检查一次，随后在 **Server 
 Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 - **Workspaces、Tabs 与 Panes：** 按 Rex 自身的顺序，每个 Rex 会话（session）是一个 Workspace，每个窗口（window）是一个 Tab，每个终端是一个 Pane。会话中不属于任何窗口的终端共用一个名为 **Detached** 的 Tab。没有终端的会话不会列出。
-- **只有 Terminals：** Rex Host 只出现在 **Terminals** 中，从不出现在 **Agents** 中，即使终端里运行着编程 Agent。标题、程序与目录会随 Rex 中的变化同步更新。
+- **只有 Terminals：** Rex 的终端只出现在 **Terminals** 中，从不出现在 **Agents** 中，即使终端里运行着编程 Agent。标题、程序与目录会随 Rex 中的变化同步更新。
 
 ## 使用终端
 
@@ -85,9 +91,9 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。没有设备�
 
 ## 尚未支持的功能
 
-- **没有 Agent：** Rex Host 没有 Agent Status、Chat、Composer、Agent Notifications、Live Activities、Usage 或小组件。
+- **没有 Agent：** Rex 没有 Agent Status、Chat、Composer、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
 - **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
-- **Rex Host 不支持上传、Worktrees、Host Helper 与扫码配对。**
+- **Rex 不支持上传、Worktrees、Host Helper、扫码配对与 Add by Name。**
 
 ## 已知限制
 
@@ -95,6 +101,6 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。没有设备�
 - **尚未在 Linux 上试用：** Heeler 会在 Linux 上 Rex 存放 socket 的位置查找，但还没有用 Linux 上的 Rex 服务端实际试过。
 - **首次绘制不包含的内容：** Rex 的重绘不包含光标形状和终端自身的默认颜色，因此在程序重新设置之前光标保持 Heeler 的形状，终端使用你的 Heeler 主题配色。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
 - **其他设备设定的尺寸不会适配屏幕：** 在你轻点 **Fit to Screen** 之前，如果其他设备设定的尺寸比你的屏幕宽，终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。Heeler 不会将其缩小显示，也不会截掉超出的部分。
-- **目前的测试范围：** Rex Host 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
+- **目前的测试范围：** Rex 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
 
-最后核对于 2026-11-15，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），在 iOS 模拟器中进行。
+最后核对于 2026-11-16，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），在 iOS 模拟器中进行。
