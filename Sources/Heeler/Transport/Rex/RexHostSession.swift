@@ -141,6 +141,38 @@ actor RexHostSession {
     /// The control link open terminals are on, and its SSH connection.
     private var terminalLink: RexControlLink?
     private var terminalLinkGeneration: UInt64?
+    /// What each block's attaches claimed of its size and have not given
+    /// back, with the client epoch they claimed it in (ADR 0051). It outlives
+    /// the attach, so a give back that could not go out before an attach
+    /// ended is made by the next attach of the block on the same client, or
+    /// here once a link takes the client back. A new client claims nothing.
+    private final class SizeClaims: Sendable {
+        private let claims = Mutex<[RexPaneAddress: (epoch: UInt64, claim: RexSizeClaim)]>([:])
+
+        func claim(at address: RexPaneAddress, epoch: UInt64) -> RexSizeClaim? {
+            claims.withLock { $0[address] }.flatMap { $0.epoch == epoch ? $0.claim : nil }
+        }
+
+        /// A newer client's claim is never replaced by an older one's.
+        func note(_ claim: RexSizeClaim?, at address: RexPaneAddress, epoch: UInt64) {
+            claims.withLock { claims in
+                guard (claims[address]?.epoch ?? 0) <= epoch else { return }
+                claims[address] = claim.map { (epoch: epoch, claim: $0) }
+            }
+        }
+
+        func taken(epoch: UInt64) -> [RexPaneAddress] {
+            claims.withLock { claims in
+                claims.compactMap { $0.value.epoch == epoch && $0.value.claim == .taken ? $0.key : nil }
+            }
+        }
+
+        func clear() {
+            claims.withLock { $0 = [:] }
+        }
+    }
+
+    private nonisolated let sizeClaims = SizeClaims()
     /// Blocks a terminal holds a data stream for, and those waiting to.
     private var heldBlocks: Set<RexPaneAddress> = []
     private var blockWaiters: [RexPaneAddress: [(id: UUID, continuation: CheckedContinuation<Void, any Error>)]] =
@@ -587,7 +619,9 @@ actor RexHostSession {
                         method, payload: payload, deadline: deadline, server: ready.server,
                         generation: ready.generation, epoch: epoch)
                 },
-                maxMessageBytes: ready.control.maxMessageBytes)
+                maxMessageBytes: ready.control.maxMessageBytes,
+                sizeClaim: sizeClaims.claim(at: address, epoch: epoch),
+                noteSizeClaim: { [sizeClaims] claim in sizeClaims.note(claim, at: address, epoch: epoch) })
             return try await operation(connection)
         }
     }
@@ -668,8 +702,10 @@ actor RexHostSession {
     /// A new control link answered for `server`, before anyone else hears of
     /// it. Open terminals carry on over a link that took back their client on
     /// their SSH connection, whose attachments and data streams the server
-    /// kept. Otherwise they end, to open afresh, and a client the server does
-    /// not know is attached again to each session they were open in.
+    /// kept, and a size an ended attach could not give back goes back now.
+    /// Otherwise they end, to open afresh, and a client the server does not
+    /// know is attached again to each session they were open in; what the
+    /// old client claimed went with it.
     private func settleTerminals(on link: RexControlLink, server: RexServerStatus) async {
         guard link !== terminalLink else { return }
         let generation = currentConnectionGeneration
@@ -680,11 +716,48 @@ actor RexHostSession {
         if fresh {
             clientEpoch &+= 1
             clientOpenedDataLinks = false
+            sizeClaims.clear()
         }
         terminals.linkChanged(to: server, carriesOn: carriesOn)
-        guard fresh else { return }
+        guard fresh else {
+            giveBackLeftSizes(server: server, generation: generation)
+            return
+        }
         for sessionID in terminals.openSessions(on: server).sorted() {
             try? await attachSession(sessionID, on: link)
+        }
+    }
+
+    /// Each size an attach took and could not give back before it ended goes
+    /// back once on the link that took the client back, unless an attach of
+    /// the block that holds it now gives it back first. One whose give back
+    /// is not sent, or has no answer, waits for the next attach of the block
+    /// or the next resume.
+    private func giveBackLeftSizes(server: RexServerStatus, generation: UInt64) {
+        let epoch = clientEpoch
+        for address in sizeClaims.taken(epoch: epoch) {
+            Task { await self.giveBackLeftSize(address, server: server, generation: generation, epoch: epoch) }
+        }
+    }
+
+    /// Waits for the block's attach, if one holds it, and holds the block
+    /// while its size goes back, so no attach of it takes the size meanwhile.
+    /// It goes through the same gate as a view's give back: only on the live
+    /// link of the client that claimed it.
+    private func giveBackLeftSize(
+        _ address: RexPaneAddress, server: RexServerStatus, generation: UInt64, epoch: UInt64
+    ) async {
+        do { try await holdBlock(address) } catch { return }
+        defer { releaseBlock(address) }
+        guard sizeClaims.claim(at: address, epoch: epoch) == .taken else { return }
+        let delivery = await deliverTerminalRequest(
+            RexTerminalAttach.giveBackMethod, payload: RexTerminalAttach.ownershipPayload(address, take: false),
+            deadline: terminalOptions.giveBackDeadline, server: server, generation: generation, epoch: epoch)
+        switch delivery {
+        case .answered, .refused:
+            sizeClaims.note(nil, at: address, epoch: epoch)
+        case .notSent, .unknown:
+            break
         }
     }
 

@@ -372,6 +372,79 @@ struct RexTerminalSizeOwnershipTests {
         #expect(await ownership(control) == [Self.take, Self.giveBack])
     }
 
+    /// An attach that ends while no link is its client's, here for keys typed
+    /// while the link resumes, cannot give the size back. The next attach of
+    /// the block on the same client, which the server gives the block back
+    /// to, gives it back once the view leaves, once.
+    @Test func theNextAttachOnTheSameClientGivesBackWhatTheLastCouldNot() async throws {
+        let rig = Rig()
+        let first = await rig.server()
+        let second = await rig.server()
+        var resumed = FakeRexServer.Welcome()
+        resumed.resumed = true
+        let session = hostSession([await rig.host([.server(first), .server(second, welcome: nil)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let input = TerminalInputController()
+        let store = try await openSizedElsewhere(rig, session: session, input: input)
+        try await takeFromTheNotice(store, on: first)
+
+        await first.drop()
+        await second.acceptUpgrade()
+        #expect(input.send(Data("one\r".utf8)))
+        try await waitUntil("the reconnect") { store.status == .reconnecting }
+        _ = await second.nextHello()
+        await second.sendWelcome(resumed)
+        await rig.begin(stream: 1, columns: 100, rows: 30)
+        try await waitUntil("the new paint") { store.status == .live }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await ownership(second).isEmpty)
+
+        store.setViewed(false)
+        try await waitUntil("the give back") { await ownership(second) == [Self.giveBack] }
+        await store.stop()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await ownership(first) == [Self.take])
+        #expect(await ownership(second) == [Self.giveBack])
+    }
+
+    /// An attach that ends for input lost with its link, and is not opened
+    /// again, leaves the size it could not give back to the Host session,
+    /// which gives it back once a link takes the client back.
+    @Test func aSizeNoAttachCouldGiveBackGoesBackOnceTheClientResumes() async throws {
+        let rig = Rig()
+        let first = await rig.server()
+        await first.stopAnswering(RexInventoryWire.terminalMethod("write"))
+        let second = await rig.server()
+        var resumed = FakeRexServer.Welcome()
+        resumed.resumed = true
+        let session = hostSession([await rig.host([.server(first), .server(second, welcome: nil)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let input = TerminalInputController()
+        let store = try await openSizedElsewhere(rig, session: session, input: input)
+        try await takeFromTheNotice(store, on: first)
+
+        #expect(input.send(Data("one\r".utf8)))
+        try await waitUntil("the write") {
+            await requests(first, RexInventoryWire.terminalMethod("write")).count == 1
+        }
+        await first.drop()
+        try await waitUntil("the end") {
+            if case .ended = store.status { true } else { false }
+        }
+        #expect(await ownership(first) == [Self.take])
+
+        await second.acceptUpgrade()
+        _ = await second.nextHello()
+        await second.sendWelcome(resumed)
+        try await waitUntil("the give back") { await ownership(second) == [Self.giveBack] }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await ownership(second) == [Self.giveBack])
+        #expect(rig.world.owner(of: "block:left") == nil)
+        await store.stop()
+    }
+
     /// After another device takes the size back the notice returns, and
     /// leaving takes this client out of line, so the block is never passed
     /// to it once it has gone.

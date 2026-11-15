@@ -36,9 +36,11 @@ left it with no owner at its size.
   background, and when the attach ends for any reason, before the block is
   free for its next attach. Giving back is best effort: it waits at most two
   seconds of silence and ten in all, and one that was not sent or had no
-  answer waits for the next of these to try. A give back while another device
-  has the block takes this client out of line, so the block is not passed to
-  it later.
+  answer waits for the next of these to try. That includes the next attach
+  of the block on the same control client, and the control link that takes
+  the client back after a drop, which gives back what no attach holds. A give
+  back while another device has the block takes this client out of line, so
+  the block is not passed to it later.
 - **What the server handed over after a drop stays.** When the server passes
   the block to this client because its owner's link dropped, as when the
   device that took it back drops while this client is in line, the block
@@ -122,7 +124,11 @@ captures, live tests and fakes, recorded with their sources in
 - `RexTerminalConnection.deliver` takes a deadline of silence and a limit in
   all, so input and taking the size wait 10 seconds of silence and a minute in
   all, and giving back two and ten.
-- A give back that could not go out leaves this client in line until the
-  attach ends; if the owner lets go meanwhile, the block can be passed to it.
-- A terminal that ends and opens again, as after a reset, has given its size
-  back; the notice offers it again.
+- `RexHostSession` keeps what each block's attaches claimed, per control
+  client, past the attach: a give back that could not go out before an
+  attach ended is made by the next attach of the block on that client, or by
+  the session once a link takes the client back. Until then the client stays
+  in line, and if the owner lets go meanwhile the block can be passed to it.
+- A new control client claims nothing: the server forgot the old client and
+  its claims. A terminal that opens again on one has nothing to give back,
+  and the notice offers the size again.

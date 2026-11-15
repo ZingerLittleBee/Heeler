@@ -74,6 +74,22 @@ struct RexTerminalConnection: Sendable {
         -> RexDelivery
     /// The largest request the terminal's control link accepts, in bytes.
     let maxMessageBytes: Int
+    /// What an earlier attach of the block on this control client claimed of
+    /// its size and did not give back (ADR 0051), which this one gives back
+    /// as if it had claimed it itself.
+    let sizeClaim: RexSizeClaim?
+    /// Keeps what this attach claims of the block's size, nil once it is
+    /// given back, for whatever comes after it on the same control client.
+    let noteSizeClaim: @Sendable (RexSizeClaim?) -> Void
+}
+
+/// What a control client claimed of a Rex block's size (ADR 0051).
+enum RexSizeClaim: Sendable, Equatable {
+    /// The user took it, or a take may have arrived: it is given back.
+    case taken
+    /// The server passed the block to the client because its owner's link
+    /// dropped: it stays as the server made it.
+    case handed
 }
 
 /// Hands each open Rex terminal what concerns it: its block's events, which
@@ -268,13 +284,16 @@ actor RexTerminalAttach {
     private var inputClosed = false
     /// The user took the size, so this client is in line for the block and
     /// may own it: set once a take was answered or may have arrived, and
-    /// cleared once a give back was answered.
+    /// cleared once a give back was answered. An attach starts with what an
+    /// earlier one on the same control client left.
     private var claimed = false
     /// The server passed the block to this client because its owner's link
     /// dropped, as when the client that took it back from this one did: it
     /// stays as it is, for that owner to get back when it resumes. One its
     /// owner let go of or left is given back like any size the user took.
     private var handed = false
+    /// The claim last kept with the Host session.
+    private var keptClaim: RexSizeClaim?
     /// The last take or give back, which the next one waits for, so they
     /// never overlap and go out in the order they were asked.
     private var ownershipTail: Task<Void, Never>?
@@ -295,6 +314,9 @@ actor RexTerminalAttach {
             options: connection.options.stream, sleep: connection.sleep)
         report = TerminalSizeReport(local: Grid(columns: columns, rows: rows), client: connection.clientID)
         keys = RexTerminalKeyReader(budget: Self.textBudget(connection))
+        claimed = connection.sizeClaim != nil
+        handed = connection.sizeClaim == .handed
+        keptClaim = connection.sizeClaim
     }
 
     /// Opens the block's stream for a view of `columns` by `rows`, and asks
@@ -572,6 +594,7 @@ actor RexTerminalAttach {
                 // the block's owner changes meanwhile.
                 handed = true
             }
+            keepClaim()
             reports.yield(report)
             // A size asked for while another client owned the block is not
             // applied when it lets go, so it is asked for again.
@@ -688,6 +711,7 @@ actor RexTerminalAttach {
             claimed = true
             handed = false
             noteOwner(in: response)
+            keepClaim()
             await sendTakenSize()
             return .taken
         case .refused:
@@ -698,8 +722,21 @@ actor RexTerminalAttach {
             // It may have arrived, so this client may own the block: what
             // gives back a size the user took gives this one back too.
             claimed = true
+            handed = false
+            keepClaim()
             return .unknown
         }
+    }
+
+    /// Keeps what this client claims of the block with the Host session, so
+    /// a give back that could not go out before the attach ended is made by
+    /// the next attach on the same control client, or by the session once a
+    /// link takes the client back.
+    private func keepClaim() {
+        let claim: RexSizeClaim? = claimed ? (handed ? .handed : .taken) : nil
+        guard claim != keptClaim else { return }
+        keptClaim = claim
+        connection.noteSizeClaim(claim)
     }
 
     /// Asks for the view's grid as the block's owner, so it applies at once
@@ -724,7 +761,13 @@ actor RexTerminalAttach {
     /// that was not sent, or had no answer, stays for the next give back to
     /// try.
     private func performGiveBack() async {
-        guard claimed, !blockClosed else { return }
+        guard claimed else { return }
+        guard !blockClosed else {
+            // A closed block has no size to give back.
+            claimed = false
+            keepClaim()
+            return
+        }
         if handed, report.owner == connection.clientID { return }
         let delivery = await connection.deliver(
             Self.giveBackMethod, Self.ownershipPayload(connection.address, take: false),
@@ -738,6 +781,7 @@ actor RexTerminalAttach {
         case .notSent, .unknown:
             break
         }
+        keepClaim()
     }
 
     /// The block's owner as an answer to a take or give back lists it.
@@ -747,6 +791,7 @@ actor RexTerminalAttach {
         else { return }
         report.owner = block.owner
         if block.owner != connection.clientID { handed = false }
+        keepClaim()
         if !stopped { reports.yield(report) }
     }
 
