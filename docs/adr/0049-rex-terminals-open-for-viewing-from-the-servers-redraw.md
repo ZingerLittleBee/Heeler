@@ -49,14 +49,15 @@ terminal for viewing; ADR 0050 adds its input.
   pass. Ghostty writes an answer in one piece, so a string opener with no
   terminator is an Alt key (`ESC ]`, `ESC P`) and passes. Focus reports are
   real input, and go as focus events (ADR 0050).
-- **Size is a request, never ownership.** The view's grid is asked for with
+- **Size is a request, not ownership.** The view's grid is asked for with
   the terminal's `resize` method on arrival and once a change has held for
   150 ms, never twice the same, and again when the block's owner lets go,
-  since a size asked for under another owner is not applied then. Heeler
-  never calls `own_block`. The view shows the block at the server's size; the
-  server's grid, the view's grid, the owner and this client reach the view as
-  `TerminalSizeReport`, which the next slice uses for its notice and an
-  explicit take.
+  since a size asked for under another owner is not applied then. Opening a
+  terminal never calls `own_block`; only the user's tap takes the size, and
+  ADR 0051 sets out when it is taken and given back. The view shows the block
+  at the server's size; the server's grid, the view's grid, the owner and this
+  client reach the view as `TerminalSizeReport`, from which ADR 0051's notice
+  says when another device set the size.
 - **Resume or a fresh paint.**
   - A data link that drops while the control link is fine is resumed with the
     exact byte count, within the server's retention; a refused resume opens a
@@ -159,7 +160,7 @@ captures, live tests and fakes, recorded with their sources in
 - `RexTerminalAttach` turns one stream into one view's bytes, size requests
   and endings; `RexHostSession.withTerminal` holds the block, waits for the
   connection and hands out a `RexTerminalConnection` with the block's signals.
-- ADR 0050 sends the view's input; the slice after it shows
-  `TerminalSizeReport`'s mismatch.
+- ADR 0050 sends the view's input; ADR 0051 shows `TerminalSizeReport`'s
+  mismatch and takes the size when the user asks.
 - A first paint costs the snapshot and the redraw, each about the size of the
   scrollback; on a slow link a long history takes seconds to appear.

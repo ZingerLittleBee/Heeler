@@ -145,5 +145,5 @@ lab capture and the live input test, recorded with their sources in
   as a connection reset, so the terminal reattaches and paints afresh even
   where its data stream could have carried on. A link that drops while
   nothing is typed costs no reattach.
-- The next slice shows `TerminalSizeReport`'s mismatch and an explicit take
-  of the block's size.
+- ADR 0051 shows `TerminalSizeReport`'s mismatch and an explicit take of the
+  block's size, through the same gate as input.
