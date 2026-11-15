@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at 5171f178 -->
+<!-- Translated from docs/guides/pairing.md at a76a7a53 -->
 
 # 扫码配对 Host
 
@@ -66,6 +66,9 @@ herdr plugin action invoke heeler.pair
 **运行位置：iPhone 或 iPad**
 
 1. 打开 **Hosts**，轻点 **Scan to Pair**（**+** 旁边的二维码按钮）。在带侧边栏的 iPad 上，从侧边栏底部打开 **Hosts**。
+
+   <a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页，右上角显示 + 旁边的 Scan to Pair 二维码按钮，下方显示一台已连接的 Host"></a>
+
 2. 允许访问相机；如果 iOS 询问，也请允许访问本地网络中的设备。然后将相机对准二维码。
 3. 配对会立即开始，Heeler 会逐项显示每个步骤的完成情况。无需核对指纹：配对码中已包含指纹。
 

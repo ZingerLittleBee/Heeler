@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/herdr-core.md at 5171f178 -->
+<!-- Translated from docs/guides/herdr-core.md at a76a7a53 -->
 # 连接 herdr-core
 
 Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。在同时运行两者的机器上，它们各自是 Heeler 中同一个 Host 的一个 Server。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
@@ -20,20 +20,32 @@ Heeler 在连接或检查时绝不会启动 core。请先启动 Herdr 桌面端�
 3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
 4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
 
+| Connect | Trust |
+| --- | --- |
+| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-trust.png"><img src="../images/hosts/add-host-trust.png" width="260" alt="New Host 面板的 Trust 步骤，显示 Trust this Host?、密钥指纹、Copy the Command That Prints It 和 Trust and Continue"></a> |
+
 ### 2. 选择 Server
 
 Heeler 会在不启动任何服务的情况下查看一次，并列出这台机器上运行的内容：
+
+<a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="300" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、herdr-core 和 tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a>
 
 | Heeler 检测到 | 操作方法 |
 | --- | --- |
 | herdr-core | 保持勾选，然后轻点 **Add Host with 1 Server**。 |
 | herdr-core 与 Herdr TUI 或 tmux 并存 | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
-| 未检测到 herdr-core | 仍然添加该 Host。启动 core，打开该 Host，然后轻点 **Scan Again**。 |
-| 以 `HC_SESSION=<name>` 启动的 core | 添加该 Host 并打开它，轻点 **Add by Name…**，选择 **herdr-core**，然后输入该名称。 |
+| 未检测到 herdr-core | 仍然添加该 Host。启动 core，打开该 Host，轻点 **Scan Again**，然后开启 **herdr-core**。 |
+| 以 `HC_SESSION=<name>` 启动的 core | 添加该 Host 并打开它，轻点 **Add by Name…**，选择 **herdr-core**，输入该名称并轻点 **Turn On**。 |
 
 每个 Server 在 Host 页面上都有一个开关。轻点已开启的 Server 可打开它自己的页面，其中有它的连接、检查项和 Host Helper。
 
+| 该 Host 的页面 | Add by Name |
+| --- | --- |
+| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、Routes 和 Account"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
+
 **成功的标志是**该 Host 所在的行显示绿色的 **herdr-core** 标签，且该 Server 的页面将 **Server Kind** 显示为带版本号的 herdr-core，**herdr-core running** 检查通过。
+
+<a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
 
 ## 无法连接时
 
