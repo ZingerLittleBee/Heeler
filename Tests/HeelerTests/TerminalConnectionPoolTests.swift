@@ -370,12 +370,12 @@ struct TerminalConnectionPoolTests {
         try #require(await eventually { await probe.requests.count == 1 })
         pool.release(hostID: host, identity: shell, ownerID: owner)
 
-        // Non-tmux Hosts pass `tmuxServerInstance: nil`: an idle pinned shell stays.
-        await pool.reconcile(hostID: host, identities: [shell], tmuxServerInstance: nil)
+        // Hosts without server instances pass `serverInstance: nil`: an idle pinned shell stays.
+        await pool.reconcile(hostID: host, identities: [shell], serverInstance: nil)
         #expect(pool.entries[.init(hostID: host, identity: shell)] === entry)
 
-        // A tmux server restart (`s2`) evicts the idle shell pinned to `s1`.
-        await pool.reconcile(hostID: host, identities: [shell], tmuxServerInstance: "s2")
+        // A tmux or Rex server restart (`s2`) evicts the idle shell pinned to `s1`.
+        await pool.reconcile(hostID: host, identities: [shell], serverInstance: "s2")
         #expect(pool.entries.isEmpty)
         #expect(await probe.ended == ["one"])
         await pool.suspend()

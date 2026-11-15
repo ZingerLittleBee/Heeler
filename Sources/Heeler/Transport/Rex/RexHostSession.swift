@@ -1,4 +1,5 @@
 import Foundation
+import HeelerSSH
 import Synchronization
 
 /// One element of a Rex Host session's update stream, in the order it happened.
@@ -106,6 +107,33 @@ actor RexHostSession {
 
     private nonisolated let follows = Follows()
 
+    // Terminals (ADR 0049).
+    private nonisolated let terminals = RexTerminalHub()
+    private let terminalOptions: RexTerminalAttach.Options
+    private let terminalSleep: RexTerminalStream.Sleep
+    private struct ConnectionWaiter {
+        let id: UUID
+        /// The activation it was asked in; nil when asked while suspended,
+        /// which waits on for the next activation.
+        let activationGeneration: UInt64?
+        let continuation: CheckedContinuation<RexConnection, any Error>
+    }
+    private var connectionWaiters: [ConnectionWaiter] = []
+    /// Why the run stopped for good, for terminals that ask meanwhile.
+    private var connectionFailure: TransportError?
+    /// Advances with each new control client, one that did not resume the
+    /// last: its attachments are the server's to forget.
+    private var clientEpoch: UInt64 = 0
+    /// The client epoch each session was attached in with `session.attach`.
+    private var attachedSessions: [String: UInt64] = [:]
+    /// The control link open terminals are on, and its SSH connection.
+    private var terminalLink: RexControlLink?
+    private var terminalLinkGeneration: UInt64?
+    /// Blocks a terminal holds a data stream for, and those waiting to.
+    private var heldBlocks: Set<RexPaneAddress> = []
+    private var blockWaiters: [RexPaneAddress: [(id: UUID, continuation: CheckedContinuation<Void, any Error>)]] =
+        [:]
+
     /// `connect` dials the Host; `storedSocket` is the catalog's.
     init(
         storedSocket: RexSocket?,
@@ -114,6 +142,8 @@ actor RexHostSession {
         revalidateDeadline: Duration = .seconds(5),
         healthyFollowLife: Duration = .seconds(10),
         maxReadsInFlight: Int = 4,
+        terminalOptions: RexTerminalAttach.Options = RexTerminalAttach.Options(),
+        terminalSleep: @escaping RexTerminalStream.Sleep = { try await Task.sleep(for: $0) },
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
     ) {
         socket = storedSocket
@@ -122,6 +152,8 @@ actor RexHostSession {
         self.revalidateDeadline = revalidateDeadline
         self.healthyFollowLife = healthyFollowLife
         self.maxReadsInFlight = maxReadsInFlight
+        self.terminalOptions = terminalOptions
+        self.terminalSleep = terminalSleep
         self.sleep = sleep
         (updates, updatesContinuation) = AsyncStream.makeStream(of: RexHostSessionUpdate.self)
         (latencyUpdates, latencyContinuation) = AsyncStream.makeStream(
@@ -184,6 +216,7 @@ actor RexHostSession {
     private func activate() {
         guard phase == .suspended else { return }
         phase = .active
+        connectionFailure = nil
         startRun()
     }
 
@@ -192,6 +225,7 @@ actor RexHostSession {
             activate()
             return
         }
+        connectionFailure = nil
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldStatus(.connecting)
@@ -210,6 +244,7 @@ actor RexHostSession {
     private func deactivate() async {
         guard phase == .active else { return }
         phase = .suspended
+        failPinnedConnectionWaiters(.cancelled)
         await windDown(forGood: false)
         yieldStatus(.suspended)
     }
@@ -222,6 +257,7 @@ actor RexHostSession {
     private func finish() async {
         guard phase != .ended else { return }
         phase = .ended
+        failConnectionWaiters(.cancelled)
         await windDown(forGood: true)
         yieldStatus(.ended)
         updatesContinuation.finish()
@@ -262,6 +298,8 @@ actor RexHostSession {
                 let status = try await link.call("server.status")
                 let server = try RexServerStatus(reading: try status.result(JSONValue.self))
                 guard activationIsCurrent(generation) else { break }
+                await settleTerminals(on: link, server: server)
+                guard activationIsCurrent(generation) else { break }
                 announce(server, latency: started.duration(to: .now), routeID: transport.routeID)
                 let followed = ContinuousClock.now
                 let follow = await follow(link)
@@ -278,6 +316,8 @@ actor RexHostSession {
                 failure = await settleFailedAttempt(error)
             }
             guard failure.isRetryable else {
+                connectionFailure = failure
+                failConnectionWaiters(failure)
                 yieldStatus(.failed(failure))
                 return
             }
@@ -296,9 +336,11 @@ actor RexHostSession {
         if previous == nil { updatesContinuation.yield(.status(.connected)) }
         if previous != server { updatesContinuation.yield(.server(server)) }
         latencyContinuation.yield()
+        resumeConnectionWaiters()
     }
 
-    /// Follows the inventory on `link` until the follow ends.
+    /// Follows the inventory on `link` until the follow ends. Each update
+    /// reaches the open terminals too, before the inventory applies it.
     private func follow(_ link: RexControlLink) async -> (ending: RexInventoryFollower.Ending, published: Bool) {
         let run = follows.run.withLock {
             $0 &+= 1
@@ -306,7 +348,11 @@ actor RexHostSession {
         }
         let carried = follows.lastInventory.withLock { $0?.details } ?? [:]
         let follower = RexInventoryFollower(
-            link: link, carrying: carried, maxReadsInFlight: maxReadsInFlight
+            link: link, carrying: carried, maxReadsInFlight: maxReadsInFlight,
+            observe: { [follows, terminals] update in
+                guard follows.run.withLock({ $0 == run }) else { return }
+                terminals.observe(update)
+            }
         ) { [updatesContinuation, follows] inventory in
             guard follows.run.withLock({ $0 == run }) else { return }
             follows.lastInventory.withLock { $0 = inventory }
@@ -436,6 +482,8 @@ actor RexHostSession {
         task?.cancel()
         follows.stopAll()
         liveServer = nil
+        // Every data link rides the SSH connection going down here.
+        terminals.resetAll()
         if let transport {
             self.transport = nil
             let control = await transport.control
@@ -451,6 +499,231 @@ actor RexHostSession {
         }
         link = nil
         transportSuspect = false
+    }
+
+    // MARK: Terminals
+
+    /// Runs one terminal's attach on `address` (ADR 0049), once a server
+    /// answers, waiting through a reconnect. Throws when the session ends, or
+    /// its run stops for good, before one does.
+    ///
+    /// One data stream per block per client: an attach waits here until the
+    /// block's last one has ended, so two views, or a quick close and reopen,
+    /// never ask for a second while the first is open. Its connection hears
+    /// the block's events and what becomes of the link until it returns.
+    func withTerminal<Value: Sendable>(
+        _ address: RexPaneAddress, _ operation: @Sendable (RexTerminalConnection) async throws -> Value
+    ) async throws -> Value {
+        try await holdBlock(address)
+        defer { releaseBlock(address) }
+        while true {
+            let ready = try await awaitConnection()
+            guard await ready.transport.isConnected else {
+                connectionClosed(generation: ready.generation)
+                continue
+            }
+            let (id, signals) = terminals.subscribe(address, server: ready.server)
+            defer { terminals.unsubscribe(id) }
+            let connection = RexTerminalConnection(
+                address: address, server: ready.server, generation: ready.generation,
+                clientID: ready.control.clientID, signals: signals,
+                route: terminalRoute(server: ready.server, generation: ready.generation),
+                options: terminalOptions, sleep: terminalSleep,
+                attachSession: { [weak self] in
+                    guard let self else { throw RexTerminalEnding.connectionReset }
+                    try await self.attachSession(address.sessionID, server: ready.server, generation: ready.generation)
+                },
+                call: { [weak self] method, payload in
+                    guard let self else { throw RexTerminalEnding.connectionReset }
+                    let control = try await self.terminalControl(server: ready.server, generation: ready.generation)
+                    _ = try await control.call(method, payload: payload)
+                })
+            return try await operation(connection)
+        }
+    }
+
+    /// Terminals open now, which tests wait on.
+    var openTerminalCount: Int { terminals.openTerminalCount }
+
+    /// Terminals waiting for a server, which tests wait on.
+    var terminalWaiterCount: Int { connectionWaiters.count }
+
+    private func connectionClosed(generation: UInt64) {
+        guard generation == currentConnectionGeneration, transport != nil, !transportSuspect else { return }
+        transportSuspect = true
+    }
+
+    private var readyConnection: RexConnection? {
+        guard phase == .active, let transport, let link, let liveServer, !transportSuspect else { return nil }
+        return RexConnection(transport: transport, control: link, generation: currentConnectionGeneration, server: liveServer)
+    }
+
+    private func awaitConnection() async throws -> RexConnection {
+        let id = UUID()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if phase == .ended {
+                    continuation.resume(throwing: TransportError.cancelled)
+                } else if let ready = readyConnection {
+                    continuation.resume(returning: ready)
+                } else if phase == .active, let connectionFailure {
+                    continuation.resume(throwing: connectionFailure)
+                } else {
+                    connectionWaiters.append(
+                        ConnectionWaiter(
+                            id: id, activationGeneration: phase == .active ? activationGeneration : nil,
+                            continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelConnectionWaiter(id) }
+        }
+    }
+
+    private func cancelConnectionWaiter(_ id: UUID) {
+        guard let index = connectionWaiters.firstIndex(where: { $0.id == id }) else { return }
+        connectionWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+
+    private func resumeConnectionWaiters() {
+        guard let ready = readyConnection else { return }
+        let waiters = connectionWaiters
+        connectionWaiters = []
+        for waiter in waiters {
+            if let asked = waiter.activationGeneration, asked != activationGeneration {
+                waiter.continuation.resume(throwing: TransportError.cancelled)
+            } else {
+                waiter.continuation.resume(returning: ready)
+            }
+        }
+    }
+
+    /// Those asked in an activation that is going away get nothing from it.
+    /// One asked while suspended waits on for the next activation.
+    private func failPinnedConnectionWaiters(_ failure: TransportError) {
+        let pinned = connectionWaiters.filter { $0.activationGeneration != nil }
+        connectionWaiters.removeAll { $0.activationGeneration != nil }
+        for waiter in pinned { waiter.continuation.resume(throwing: failure) }
+    }
+
+    private func failConnectionWaiters(_ failure: TransportError) {
+        let waiters = connectionWaiters
+        connectionWaiters = []
+        for waiter in waiters { waiter.continuation.resume(throwing: failure) }
+    }
+
+    /// A new control link answered for `server`, before anyone else hears of
+    /// it. Open terminals carry on over a link that took back their client on
+    /// their SSH connection, whose attachments and data streams the server
+    /// kept. Otherwise they end, to open afresh, and a client the server does
+    /// not know is attached again to each session they were open in.
+    private func settleTerminals(on link: RexControlLink, server: RexServerStatus) async {
+        guard link !== terminalLink else { return }
+        let generation = currentConnectionGeneration
+        let fresh = !link.resumed
+        let carriesOn = !fresh && terminalLinkGeneration == generation
+        terminalLink = link
+        terminalLinkGeneration = generation
+        if fresh { clientEpoch &+= 1 }
+        terminals.linkChanged(to: server, carriesOn: carriesOn)
+        guard fresh else { return }
+        for sessionID in terminals.openSessions(on: server).sorted() {
+            try? await attachSession(sessionID, on: link)
+        }
+    }
+
+    /// Attaches the control client to `sessionID` unless it already is, on
+    /// the link a terminal on `server` and `generation` uses.
+    private func attachSession(_ sessionID: String, server: RexServerStatus, generation: UInt64) async throws {
+        let control = try await terminalControl(server: server, generation: generation)
+        try await attachSession(sessionID, on: control)
+    }
+
+    private func attachSession(_ sessionID: String, on link: RexControlLink) async throws {
+        let epoch = clientEpoch
+        guard attachedSessions[sessionID] != epoch else { return }
+        do {
+            _ = try await link.call("session.attach", payload: JSONValue.object(["session_id": .string(sessionID)]))
+        } catch RexControlError.server(let failure) where failure.kind == .notFound {
+            throw RexTerminalEnding.finished
+        } catch let error as RexControlError {
+            switch error {
+            case .linkEnded, .deadlineExceeded: throw RexTerminalEnding.connectionReset
+            default: throw TransportError(rexControl: error)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw RexTerminalEnding.connectionReset
+        }
+        if clientEpoch == epoch { attachedSessions[sessionID] = epoch }
+    }
+
+    /// The control link a terminal on `server` and `generation` asks on: the
+    /// live one, once it answers again after a drop. Another server or SSH
+    /// connection has nothing for the terminal.
+    private func terminalControl(server: RexServerStatus, generation: UInt64) async throws -> RexControlLink {
+        let ready = try await awaitConnection()
+        guard ready.server == server, ready.generation == generation else { throw RexTerminalEnding.connectionReset }
+        return ready.control
+    }
+
+    private func terminalDataChannel(generation: UInt64) async throws -> any HeelerSSHAPIChannel {
+        guard phase == .active, let transport, currentConnectionGeneration == generation, !transportSuspect else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        return try await transport.openDataChannel()
+    }
+
+    private nonisolated func terminalRoute(server: RexServerStatus, generation: UInt64) -> RexDataRoute {
+        RexDataRoute(
+            control: { [weak self] in
+                guard let self else { throw RexTerminalEnding.connectionReset }
+                return try await self.terminalControl(server: server, generation: generation)
+            },
+            openChannel: { [weak self] in
+                guard let self else { throw RexTerminalEnding.connectionReset }
+                return try await self.terminalDataChannel(generation: generation)
+            })
+    }
+
+    private func holdBlock(_ address: RexPaneAddress) async throws {
+        try Task.checkCancellation()
+        guard heldBlocks.contains(address) else {
+            heldBlocks.insert(address)
+            return
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                blockWaiters[address, default: []].append((id, continuation))
+            }
+        } onCancel: {
+            Task { await self.cancelBlockWaiter(id, at: address) }
+        }
+    }
+
+    /// Hands the block to the next attach waiting for it, if any.
+    private func releaseBlock(_ address: RexPaneAddress) {
+        guard var waiters = blockWaiters[address], !waiters.isEmpty else {
+            heldBlocks.remove(address)
+            return
+        }
+        let next = waiters.removeFirst()
+        blockWaiters[address] = waiters.isEmpty ? nil : waiters
+        next.continuation.resume()
+    }
+
+    private func cancelBlockWaiter(_ id: UUID, at address: RexPaneAddress) {
+        guard var waiters = blockWaiters[address], let index = waiters.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let waiter = waiters.remove(at: index)
+        blockWaiters[address] = waiters.isEmpty ? nil : waiters
+        waiter.continuation.resume(throwing: CancellationError())
     }
 
     private static func transportFailure(_ error: any Error) -> TransportError {

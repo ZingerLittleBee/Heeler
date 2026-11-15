@@ -77,10 +77,6 @@ struct TerminalStatusPresentation: Equatable {
     static let rexServerGoneMessage = String(
         localized: "This Terminal belongs to a Rex server that is gone. Open it again from the list.")
 
-    /// Why a Rex terminal does not open, beneath a title that says it cannot.
-    static let rexTerminalsListedOnlyMessage = String(
-        localized: "This build of Heeler only lists the terminals of a Rex Host.")
-
     static func ended(message: String) -> TerminalStatusPresentation {
         TerminalStatusPresentation(
             kind: .ended,

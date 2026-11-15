@@ -269,6 +269,9 @@ final class AttachTerminalStore {
     }
 
     private(set) var status: Status = .waitingForSize
+    /// How the terminal's size stands with a server that keeps its own, from
+    /// the last session that said; nil for a Server Kind that sizes to the view.
+    private(set) var sizeReport: TerminalSizeReport?
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
     /// What the remote program has asked of its terminal in this session.
@@ -318,6 +321,7 @@ final class AttachTerminalStore {
     private var preservesPendingPasteOnStop = false
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
+    private var sizeReportTask: Task<Void, Never>?
     private var runTask: Task<Void, Never>?
     #if DEBUG
     private(set) var restorationTrace = AttachRestorationTrace()
@@ -601,9 +605,20 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
+        if let reports = session.sizeReports {
+            sizeReportTask = Task { [weak self] in
+                for await report in reports {
+                    self?.sizeReport = report
+                }
+            }
+        }
         // A new attach sets its own modes; the old attach's are not its.
         feed.modes.reset()
-        func beginInput() -> TerminalInputController.SessionGeneration {
+        // A session whose input is shut gets no writer, so nothing the view
+        // types, pastes or answers leaves, and none of it reads as sent.
+        let takesInput = session.acceptsInput
+        func beginInput() -> TerminalInputController.SessionGeneration? {
+            guard takesInput else { return nil }
             let generation = input.beginSession(
                 writer: { data in session.send(data) },
                 scroller: { sequence, rows in
@@ -644,10 +659,9 @@ final class AttachTerminalStore {
                 // connecting. This does not prove that a renderer presented
                 // the bytes on screen.
                 if status == .connecting || status == .reconnecting || status == .restarting {
-                    let liveGeneration = inputGeneration ?? beginInput()
-                    inputGeneration = liveGeneration
+                    inputGeneration = inputGeneration ?? beginInput()
                     status = .live
-                    input.sessionDidBecomeLive(liveGeneration)
+                    if let inputGeneration { input.sessionDidBecomeLive(inputGeneration) }
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
@@ -668,6 +682,8 @@ final class AttachTerminalStore {
 
     private func finishSession(_ inputGeneration: TerminalInputController.SessionGeneration?) {
         self.session = nil
+        sizeReportTask?.cancel()
+        sizeReportTask = nil
         guard let inputGeneration else { return }
         input.endSession(
             inputGeneration,

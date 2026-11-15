@@ -1890,9 +1890,12 @@ final class ConsoleStore {
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
-            // Only a tmux Host can restart its server on the same SSH connection and
-            // reuse an address such as `%0` without bumping `transportGeneration`.
-            let tmuxServerInstance = projection.host.serverKind == .tmux ? projection.inventoryCore : nil
+            // A tmux or Rex Host can restart its server on the same SSH connection,
+            // and a tmux one reuse an address such as `%0`, without bumping
+            // `transportGeneration`.
+            let kind = projection.host.serverKind
+            let serverInstance = kind == .tmux || kind == .rex ? projection.inventoryCore : nil
+            let tmuxServerInstance = kind == .tmux ? serverInstance : nil
             // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
                 + Array(projection.departedAgentsByPane.values)
@@ -1903,7 +1906,7 @@ final class ConsoleStore {
             }
             Task {
                 await terminalConnections.reconcile(
-                    hostID: hostID, identities: identities, tmuxServerInstance: tmuxServerInstance,
+                    hostID: hostID, identities: identities, serverInstance: serverInstance,
                     isCurrent: isCurrent)
                 await agentTerminals.reconcile(
                     hostID: hostID, agents: agents, tmuxServerInstance: tmuxServerInstance, isCurrent: isCurrent)

@@ -855,6 +855,31 @@ final class TerminalAttachInputQueue: Sendable {
     }
 }
 
+/// How a terminal's size stands between one view and a server whose terminals
+/// keep their own size, as a Rex block does (ADR 0049). The view asks for its
+/// grid; the server applies it only while no other client owns the block.
+struct TerminalSizeReport: Sendable, Equatable {
+    struct Grid: Sendable, Equatable {
+        let columns: Int
+        let rows: Int
+    }
+
+    /// The size the server's terminal has, once its stream said.
+    var server: Grid?
+    /// The size this view asked for last.
+    var local: Grid?
+    /// The client that owns the block and so sets its size; nil for none.
+    var owner: String?
+    /// This view's own client, so `owner == client` says the size is its own.
+    var client: String?
+
+    /// The view shows the terminal at another size than it asked for.
+    var isMismatched: Bool {
+        guard let server, let local else { return false }
+        return server != local
+    }
+}
+
 /// A live interactive Attach session over its Host's dedicated terminal
 /// channel: raw PTY bytes out, keystrokes and window changes in. The byte
 /// stream feeds the terminal emulator directly without app-level framing.
@@ -884,6 +909,13 @@ final class TerminalAttachSession: Sendable {
     private let onConsumed: (@Sendable (Int) -> Void)?
     private let onPresence: (@Sendable (TerminalViewerPresence) -> Void)?
     let tmuxSend: TmuxAttachSend?
+    /// Whether the view's input may reach the program at all. A Rex terminal's
+    /// stays shut until Rex input lands (ADR 0049): the view then gets no
+    /// writer, so nothing is sent and nothing reads as sent.
+    let acceptsInput: Bool
+    /// How the terminal's size stands with its server, for a Server Kind whose
+    /// terminals keep a size of their own. One reader; nil for the others.
+    let sizeReports: AsyncStream<TerminalSizeReport>?
     private let ender: @Sendable () async -> Void
 
     init(
@@ -893,6 +925,8 @@ final class TerminalAttachSession: Sendable {
         onConsumed: (@Sendable (Int) -> Void)? = nil,
         onPresence: (@Sendable (TerminalViewerPresence) -> Void)? = nil,
         tmuxSend: TmuxAttachSend? = nil,
+        acceptsInput: Bool = true,
+        sizeReports: AsyncStream<TerminalSizeReport>? = nil,
         ender: @escaping @Sendable () async -> Void
     ) {
         self.makeOutput = makeOutput
@@ -901,6 +935,8 @@ final class TerminalAttachSession: Sendable {
         self.onConsumed = onConsumed
         self.onPresence = onPresence
         self.tmuxSend = tmuxSend
+        self.acceptsInput = acceptsInput
+        self.sizeReports = sizeReports
         self.ender = ender
     }
 

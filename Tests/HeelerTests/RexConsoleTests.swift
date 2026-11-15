@@ -4,9 +4,9 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it (ADRs 0047 and 0048):
+/// What a Rex Host offers and how the Console shows it (ADRs 0047 to 0049):
 /// nothing to start, close or rename, no integrations, its terminals listed
-/// from the server, and none opened yet.
+/// from the server, and opened for viewing.
 @MainActor
 @Suite("Rex Console")
 struct RexConsoleTests {
@@ -224,36 +224,32 @@ struct RexConsoleTests {
         try await waitUntil("the new server's terminals") { console.terminals.count == 5 }
     }
 
-    /// Opening a Rex terminal fails with the one reason that says this build
-    /// cannot yet, and no Retry changes that.
-    @Test func openingARexTerminalSaysThisBuildCannotYet() async throws {
-        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
-        let store = store(servers: await served(world))
-        defer { store.setHosts([]) }
+    /// A Rex terminal opens for viewing through the Console's runner: it
+    /// paints and goes live, and takes no input (ADR 0049).
+    @Test func aRexTerminalOpensForViewing() async throws {
+        let rig = RexTerminalAttachTests.Rig()
+        let host = await rig.host([.server(await rig.server())])
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
         let rex = rex
-        store.setHosts([rex])
-        await store.resume()
-        try await waitUntil("the terminals") { store.terminals.count == 5 }
-        let paneID = try #require(store.terminals.first?.paneID)
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+        let paneID = try #require(console.terminals.first?.paneID)
+        let input = TerminalInputController()
+        let terminal = AttachTerminalStore(
+            target: .terminal(paneID), input: input,
+            runTerminal: console.terminalRunner(for: rex.id, keepingTo: console.corePin(on: rex.id)))
 
-        let runner = store.terminalRunner(for: rex.id)
-        await #expect(throws: TransportError.rexTerminalsNotOpenableYet) {
-            try await runner(
-                TerminalAttachRequest(target: .terminal(paneID), cols: 80, rows: 24),
-                TerminalSessionHandler { _ in })
-        }
-        let error = TransportError.rexTerminalsNotOpenableYet
-        #expect(!error.isRetryable)
-        #expect(error.presentation.summary == "Rex terminals cannot open yet")
-        #expect(error.presentation.recoverySuggestion == TerminalStatusPresentation.rexTerminalsListedOnlyMessage)
-        // The reason is said once, not again in its suggestion.
-        #expect(error.presentation.message.components(separatedBy: "cannot open").count == 2)
-
-        // A detail says so instead of attaching, so it offers no Reattach.
-        #expect(!store.capabilities(for: rex.id).opensTerminals)
-        for kind in [ServerKind.herdrTUI, .herdrCore, .tmux] {
-            #expect(HostCapabilities(serverKind: kind).opensTerminals)
-        }
+        terminal.viewDidResize(cols: 80, rows: 24)
+        await rig.begin()
+        try await waitUntil("the first paint") { terminal.status == .live }
+        #expect(input.liveGeneration == nil)
+        #expect(!input.send(Data("ls\r".utf8)))
+        await terminal.stop()
+        #expect(await rig.attachSlotsTaken == 0)
     }
 
     /// A Rex Host lists Terminals only: the Agents list, its Host filter and

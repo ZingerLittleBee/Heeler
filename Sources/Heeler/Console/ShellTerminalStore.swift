@@ -353,8 +353,16 @@ final class ShellTerminalStore {
         _ = input.confirmPaste()
     }
 
+    /// Whether what the view sends can reach the pane now: the session is live
+    /// and took the view's input. A Rex terminal's never does yet (ADR 0049).
+    var takesInput: Bool { terminal.status == .live && input.isEnabled && input.liveGeneration != nil }
+
+    /// How the terminal's size stands with a server that keeps its own, such
+    /// as a Rex Host's: what it shows, what this view asked for, and who owns it.
+    var sizeReport: TerminalSizeReport? { terminal.sizeReport }
+
     /// Whether a password typed into the sheet can reach the pane now.
-    var canInsertPassword: Bool { terminal.status == .live && input.isEnabled }
+    var canInsertPassword: Bool { takesInput }
 
     /// See `TerminalInputController.insertSecret`.
     func insertPassword(_ password: String) -> Bool {

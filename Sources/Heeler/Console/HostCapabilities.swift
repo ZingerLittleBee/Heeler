@@ -57,10 +57,6 @@ struct HostCapabilities: Equatable, Sendable {
     /// A Host that names a Workspace it creates, such as a tmux session, and
     /// does not also name Tabs. Existing memberwise callers leave it off.
     var namesCreatedWorkspaces = false
-    /// Whether a Terminal it lists opens. A Rex Host's do not yet, so a
-    /// detail says so instead of attaching. Existing memberwise callers
-    /// leave it on.
-    var opensTerminals = true
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -107,13 +103,14 @@ extension HostCapabilities {
         // A Rex Host offers nothing yet (ADR 0047): it starts and closes no
         // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
         // Composer, Chat, Host scripts or layout, and is never taken over. So it
-        // stays out of New Agent and New Terminal. Its Terminals do not open yet.
+        // stays out of New Agent and New Terminal. Its Terminals open for
+        // viewing (ADR 0049).
         guard serverKind != .rex else {
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
                 worktrees: false, uploads: false, composerSend: false, chat: false,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
-                composerStop: false, chatPrograms: [], hostScripts: false, opensTerminals: false)
+                composerStop: false, chatPrograms: [], hostScripts: false)
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes

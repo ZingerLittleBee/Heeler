@@ -11,6 +11,8 @@ final actor ScriptedRexHost: RexHostConnection {
         /// SSH opens it to this server. With a welcome, the server answers the
         /// upgrade and the hello by itself; without one, the test drives it.
         case server(FakeRexServer, welcome: FakeRexServer.Welcome? = FakeRexServer.Welcome())
+        /// SSH opens it to this data endpoint, which serves it as Rex would.
+        case endpoint(FakeRexDataEndpoint)
         /// SSH refuses it, as libssh2 reports any refused socket.
         case refused
         case fails(TransportError)
@@ -24,6 +26,8 @@ final actor ScriptedRexHost: RexHostConnection {
     private let socketCheck: String?
     private var controlChannels: [Channel]
     private var dataChannels: [Channel]
+    /// Where data channels take their attach slots, as `HeelerSSHTransport`'s do.
+    nonisolated let admission: SSHChannelAdmission?
     private(set) var isConnected = true
     /// What was asked of the connection, in order.
     private(set) var log: [String] = []
@@ -32,13 +36,19 @@ final actor ScriptedRexHost: RexHostConnection {
 
     init(
         probe: [String]? = nil, socketCheck: String? = nil, control: [Channel] = [], data: [Channel] = [],
-        platform: HostPlatform = .posix
+        admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix
     ) {
         self.probe = probe
         self.socketCheck = socketCheck
         controlChannels = control
         dataChannels = data
+        self.admission = admission
         self.platform = platform
+    }
+
+    /// Serves `endpoint` for every data channel from now on.
+    func serveData(from endpoint: FakeRexDataEndpoint, count: Int = 64) {
+        dataChannels += Array(repeating: .endpoint(endpoint), count: count)
     }
 
     /// What a Rex probe prints for one socket this account owns and may use.
@@ -67,12 +77,14 @@ final actor ScriptedRexHost: RexHostConnection {
 
     func openRexControlChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         log.append("control \(socketPath)")
-        return try open(socketPath, from: &controlChannels)
+        return try await serve(try next(from: &controlChannels), at: socketPath)
     }
 
     func openRexDataChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         log.append("data \(socketPath)")
-        return try open(socketPath, from: &dataChannels)
+        let channel = try next(from: &dataChannels)
+        guard let admission else { return try await serve(channel, at: socketPath) }
+        return try await admission.admitAttachLink { try await self.serve(channel, at: socketPath) }
     }
 
     func runRexSocketCheck(_ script: Data) async throws -> GitExecResult {
@@ -90,13 +102,19 @@ final actor ScriptedRexHost: RexHostConnection {
         isConnected = false
     }
 
-    private func open(_ socketPath: String, from queue: inout [Channel]) throws -> any HeelerSSHAPIChannel {
+    private func next(from queue: inout [Channel]) throws -> Channel {
         guard !queue.isEmpty else { throw TransportError.channelFailed(detail: "No channel scripted") }
-        switch queue.removeFirst() {
+        return queue.removeFirst()
+    }
+
+    private func serve(_ channel: Channel, at socketPath: String) async throws -> any HeelerSSHAPIChannel {
+        switch channel {
         case .server(let server, let welcome):
             servers.append(server)
             if let welcome { Task { await server.handshake(welcome) } }
             return server.channel
+        case .endpoint(let endpoint):
+            return await endpoint.connect()
         case .refused:
             throw TransportError.streamLocalOpenFailed(path: socketPath)
         case .fails(let error):

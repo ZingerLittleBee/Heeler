@@ -1113,9 +1113,9 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// server's Pane, and the Host now runs another server, whose pane ids
     /// start over. The tmux Host's `.herdrCoreTerminalGone`.
     case tmuxServerGone
-    /// A Rex Host's terminal, which this build lists but cannot open yet (ADR
-    /// 0048). Nothing was sent.
-    case rexTerminalsNotOpenableYet
+    /// A Rex terminal's output stopped, and starting its stream again did not
+    /// bring it back (ADR 0049). Reattach opens it afresh.
+    case rexTerminalOutputUnavailable
     /// Nothing was sent: the action came from a detail opened on one Rex
     /// server's terminal, and the Host now runs another server. The Rex
     /// Host's `.tmuxServerGone`.
@@ -1202,7 +1202,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
-            .rexTerminalsNotOpenableYet, .rexServerGone, .rexNotInstalled, .rexLookupFailed, .rexForwardingRefused,
+            .rexTerminalOutputUnavailable, .rexServerGone, .rexNotInstalled, .rexLookupFailed, .rexForwardingRefused,
             .rexAccountRefused, .rexUnsupportedRevision, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse, .rexAnswerUnreadable:

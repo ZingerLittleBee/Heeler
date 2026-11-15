@@ -142,9 +142,14 @@ actor RexTerminalStream {
 
     /// Ends the stream for good: its connection closes with 1000, which the
     /// server takes as the end. `.ended(.closedHere)` is the last instruction.
+    /// Returns once nothing of the stream is left: whatever the run still
+    /// waited on, such as a resume's channel or a new ticket, is cancelled and
+    /// over, so a new stream for the block never meets this one's connection.
     func stop() async {
         finish(.closedHere)
         await closing?.value
+        runTask?.cancel()
+        await runTask?.value
     }
 
     private func waiterCancelled(_ id: UInt64) {

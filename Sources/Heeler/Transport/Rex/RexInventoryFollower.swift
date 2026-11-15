@@ -33,6 +33,7 @@ actor RexInventoryFollower {
     private let detachedRereadInterval: Duration?
     private let sleep: Sleep
     private let publish: @Sendable (RexInventory) -> Void
+    private let observe: @Sendable (RexControlUpdate) -> Void
     private var book: RexInventoryBook
     private var listing: Task<Void, Never>?
     private var reads: [UInt64: Task<Void, Never>] = [:]
@@ -48,17 +49,21 @@ actor RexInventoryFollower {
 
     /// `carrying` is what the last link knew of each terminal, shown until
     /// this one reads it again. `detachedRereadInterval` is how often sessions
-    /// with detached terminals are read again; nil never. `publish` hears each
+    /// with detached terminals are read again; nil never. `observe` hears each
+    /// update from the link as it arrives, for whatever else follows a block's
+    /// events, and before the inventory applies it. `publish` hears each
     /// inventory in order.
     init(
         link: RexControlLink, carrying: [RexPaneAddress: RexTerminalDetails] = [:], maxReadsInFlight: Int = 4,
         detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
+        observe: @escaping @Sendable (RexControlUpdate) -> Void = { _ in },
         publish: @escaping @Sendable (RexInventory) -> Void
     ) {
         self.link = link
         self.maxReadsInFlight = max(1, maxReadsInFlight)
         self.detachedRereadInterval = detachedRereadInterval
         self.sleep = sleep
+        self.observe = observe
         self.publish = publish
         book = RexInventoryBook(carrying: carrying)
     }
@@ -116,6 +121,7 @@ actor RexInventoryFollower {
 
     private func receive(_ update: RexControlUpdate) {
         guard ending == nil else { return }
+        observe(update)
         switch update {
         case .event(let event):
             book.apply(event)

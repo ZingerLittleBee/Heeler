@@ -254,11 +254,11 @@ extension TransportError {
                 summary: String(localized: "This Pane belongs to a tmux server that is gone"),
                 detail: String(localized: "Nothing was sent"),
                 recoverySuggestion: String(localized: "Open it again from the list."))
-        case .rexTerminalsNotOpenableYet:
+        case .rexTerminalOutputUnavailable:
             TransportErrorPresentation(
-                summary: String(localized: "Rex terminals cannot open yet"),
+                summary: String(localized: "Rex stopped sending this terminal's output"),
                 detail: nil,
-                recoverySuggestion: TerminalStatusPresentation.rexTerminalsListedOnlyMessage)
+                recoverySuggestion: String(localized: "Reattach to open it again."))
         case .rexServerGone:
             TransportErrorPresentation(
                 summary: String(localized: "This Terminal belongs to a Rex server that is gone"),

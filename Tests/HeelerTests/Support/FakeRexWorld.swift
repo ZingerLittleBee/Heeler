@@ -101,6 +101,15 @@ final class FakeRexWorld: Sendable {
             guard let block = block(request) else { return Self.blockNotFound }
             return .result(Self.process(block))
         }
+        // What an open terminal asks: its session attached, and its size.
+        await server.answer("session.attach") { [self] request in
+            guard let session = session(request) else { return Self.sessionNotFound }
+            return .result(["session_id": .string(session.id)])
+        }
+        await server.answer(RexInventoryWire.terminalMethod("resize")) { [self] request in
+            guard block(request) != nil else { return Self.blockNotFound }
+            return .result(.object([:]))
+        }
     }
 
     // MARK: Answers

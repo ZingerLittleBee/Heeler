@@ -6,9 +6,9 @@ import Foundation
 /// `RexOrganization` reads them, and a Rex Host lists Terminals only.
 ///
 /// A Pane keeps to its server instance, as a tmux Pane does: another instance
-/// leaves every detail open on the last one's terminals. This build lists
-/// terminals and opens none: opening one fails with that reason, and every
-/// action a Host offers is unavailable on a Rex Host.
+/// leaves every detail open on the last one's terminals. This build opens a
+/// terminal for viewing only (ADR 0049), and every action a Host offers is
+/// unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     let host: Host
@@ -233,10 +233,36 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: The live connection
 
-    /// Opening a Rex terminal is not built yet: every Attach fails with the
-    /// one reason that says so, and asks nothing of the Host.
+    /// Opens a Rex terminal for viewing (ADR 0049): its session is attached,
+    /// its block's stream paints the view and follows its output, and the
+    /// view's grid is asked for. Input stays shut. A block that closed, a
+    /// program that exited and another server end the terminal; a connection
+    /// that went or was replaced reattaches, and the next attach paints afresh.
     func terminalRunner() -> TerminalSessionRunner {
-        { _, _ in throw TransportError.rexTerminalsNotOpenableYet }
+        let session = session
+        return { request, handler in
+            guard let address = RexPaneAddress(paneID: request.target.identifier) else {
+                throw TerminalProgramEnd.finished
+            }
+            do {
+                try await session.withTerminal(address) { connection in
+                    guard await handler.admitsCore(connection.server.instanceID) else {
+                        throw TerminalProgramEnd.finished
+                    }
+                    await handler.transportDidBecomeReady(connection.generation)
+                    try await connection.attachSession()
+                    let terminal = await RexTerminalAttach.session(
+                        on: connection, columns: request.cols, rows: request.rows)
+                    try await handler.runEndingSession(terminal)
+                }
+            } catch let ending as RexTerminalEnding {
+                switch ending {
+                case .finished, .serverGone: throw TerminalProgramEnd.finished
+                case .connectionReset: throw TransportError.cancelled
+                case .outputUnavailable: throw TransportError.rexTerminalOutputUnavailable
+                }
+            }
+        }
     }
     func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
         { _, _ in throw Self.unavailable }

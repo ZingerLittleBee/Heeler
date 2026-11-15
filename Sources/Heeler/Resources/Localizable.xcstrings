@@ -11545,7 +11545,6 @@
         }
       }
     },
-    "Can't Open Yet" : {},
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -42284,6 +42283,7 @@
         }
       }
     },
+    "Reattach to open it again." : {},
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -44774,7 +44774,7 @@
     "Rex rejected the request" : {},
     "Rex sent an answer Heeler cannot read" : {},
     "Rex server running" : {},
-    "Rex terminals cannot open yet" : {},
+    "Rex stopped sending this terminal's output" : {},
     "Rex was not found on this Host" : {},
     "Rex's answer could not be read." : {},
     "Rex's session list could not be read." : {},
@@ -61665,7 +61665,6 @@
         }
       }
     },
-    "This build of Heeler only lists the terminals of a Rex Host." : {},
     "This build was made from commit %@, whose source pins each component's exact version." : {
       "localizations" : {
         "ja" : {
