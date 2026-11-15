@@ -52,7 +52,8 @@ an experiment that ships switched off.
   welcome it at revision 12 is named as unsupported, with the revision it
   offers. More channels to the same socket carry data links under the Attach
   admission slots. A Host whose socket was not stored has it looked up again
-  when connecting, and keeps what was found.
+  on each connection. The Host's checks have the catalog keep what they found;
+  the Console keeps a socket it found only for that Host session.
 - When SSH will not open the socket, one bounded exec reads whether a socket
   file is there and whether a server listens on it (`/proc/net/unix` on Linux,
   `lsof` over the account's own processes on macOS). The reason then says Rex
