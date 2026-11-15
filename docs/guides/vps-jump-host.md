@@ -453,13 +453,16 @@ In **Hosts**, tap **+**, tap **More Options** to enter the tunnel and Jump Host 
 | Jump Host user (in More Options) | `herdr-jump` |
 | Authentication | `Device Key` |
 
-Tap **Connect**, and confirm both host keys independently as Heeler shows them, one after the other:
+Tap **Connect**, and confirm both host keys independently with **Trust and Continue** as Heeler shows them, one after the other:
 
 - the public VPS endpoint;
 - the Mac host key presented through `127.0.0.1:2222`.
 
 The Jump Host does not make the Mac trusted. A changed fingerprint on either
 hop is a separate security event.
+
+On the last step, leave **Herdr TUI** checked, name the Host if you like, and
+add it. Open the Host and tap **Herdr TUI** for its **Preflight** checks.
 
 ## macOS Authentication Hardening
 
@@ -579,7 +582,7 @@ The route target and Host user remain:
 | Port (in Route) | `2222` |
 | User | `MAC_USER` |
 
-Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, then complete the **Preflight** checks and open an Agent through Attach. This is the functional cutover point.
+Tap **Save** on the route (if adding a new route) and tap **Save** on **Edit Host**. Confirm the new VPS fingerprint when prompted, open the Server's page to complete its **Preflight** checks, and open an Agent through Attach. This is the functional cutover point.
 
 ### Phase 4: Retire the Old VPS
 
