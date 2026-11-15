@@ -12,6 +12,9 @@ struct ChatTimelineView: UIViewControllerRepresentable {
     var nextMessageRequest: Int = 0
     /// Incremented by Jump to Top (long-press `↑`).
     var topJumpRequest: Int = 0
+    /// True while the user keeps holding the `↑` long-press, so reaching the
+    /// top pauses 500ms, vibrates, and loads earlier history.
+    var isHoldingTopJump = false
     /// Incremented after a send: follow the newest row again, unanimated.
     let followRequest: Int
     /// Incremented by the floating Collapse Steps button.
@@ -56,6 +59,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
+        controller.setHoldingTopJump(isHoldingTopJump)
         return controller
     }
 
@@ -69,6 +73,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
         controller.setTrailingReserve(trailingReserve)
         controller.view.accessibilityElementsHidden = hidesFromAccessibility
         controller.apply(state)
+        controller.refreshPreviousMessageAvailability()
         let coordinator = context.coordinator
         if coordinator.followRequest != followRequest {
             coordinator.followRequest = followRequest
@@ -82,6 +87,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
             coordinator.topJumpRequest = topJumpRequest
             controller.jumpToTop()
         }
+        controller.setHoldingTopJump(isHoldingTopJump)
         if coordinator.previousMessageRequest != previousMessageRequest {
             coordinator.previousMessageRequest = previousMessageRequest
             controller.jumpToPreviousUserMessage()
@@ -155,24 +161,31 @@ struct ChatMessageJumpControl: View {
     let showsLatest: Bool
     let jumpPrevious: () -> Void
     let jumpTop: () -> Void
+    var jumpTopHoldingChanged: (Bool) -> Void = { _ in }
     let jumpNext: () -> Void
     let jumpLatest: () -> Void
 
+    @State private var isHoldingPrevious = false
     @State private var lastSingleIcon = "chevron.down"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var isVisible: Bool { showsPrevious || showsLatest }
-    private var showsBoth: Bool { showsPrevious && showsLatest }
+    private var displaysPrevious: Bool { showsPrevious || isHoldingPrevious }
+    private var isVisible: Bool { displaysPrevious || showsLatest }
+    private var showsBoth: Bool { displaysPrevious && showsLatest }
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsPrevious {
+            if displaysPrevious {
                 ChatJumpSegmentButton(
                     systemImage: "chevron.up",
                     topHitPadding: Self.hitInset,
                     bottomHitPadding: showsBoth ? 0 : Self.hitInset,
                     onTap: jumpPrevious,
-                    onLongPress: jumpTop
+                    onLongPress: jumpTop,
+                    onLongPressHoldingChanged: { isHolding in
+                        isHoldingPrevious = isHolding
+                        jumpTopHoldingChanged(isHolding)
+                    }
                 )
                 .accessibilityLabel("Earlier message")
                 .accessibilityHint("Scrolls the Agent to the previous message you sent")
@@ -219,13 +232,13 @@ struct ChatMessageJumpControl: View {
         .accessibilityHidden(!isVisible)
         .animation(
             reduceMotion ? nil : .snappy(duration: 0.2),
-            value: StateSnapshot(showsPrevious: showsPrevious, showsLatest: showsLatest))
+            value: StateSnapshot(showsPrevious: displaysPrevious, showsLatest: showsLatest))
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isVisible)
-        .onChange(of: showsPrevious, initial: true) { _, isShown in
+        .onChange(of: displaysPrevious, initial: true) { _, isShown in
             if isShown, !showsLatest { lastSingleIcon = "chevron.up" }
         }
         .onChange(of: showsLatest, initial: true) { _, isShown in
-            if isShown, !showsPrevious { lastSingleIcon = "chevron.down" }
+            if isShown, !displaysPrevious { lastSingleIcon = "chevron.down" }
         }
     }
 
@@ -244,13 +257,15 @@ private struct ChatJumpSegmentButton: View {
     let bottomHitPadding: CGFloat
     let onTap: () -> Void
     let onLongPress: () -> Void
+    var onLongPressHoldingChanged: (Bool) -> Void = { _ in }
 
     @GestureState private var isHoldingLongPress = false
+    @State private var reportedHolding = false
     @State private var suppressTapUntil: ContinuousClock.Instant?
 
     var body: some View {
         Button {
-            if isHoldingLongPress { return }
+            if isHoldingLongPress || reportedHolding { return }
             if let until = suppressTapUntil, ContinuousClock.now < until {
                 suppressTapUntil = nil
                 return
@@ -276,10 +291,22 @@ private struct ChatJumpSegmentButton: View {
         .onChange(of: isHoldingLongPress) { wasHolding, isHolding in
             if !wasHolding, isHolding {
                 suppressTapUntil = .now + .seconds(10)
+                reportedHolding = true
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onLongPress()
+                onLongPressHoldingChanged(true)
             } else if wasHolding, !isHolding {
                 suppressTapUntil = .now + .milliseconds(250)
+                if reportedHolding {
+                    reportedHolding = false
+                    onLongPressHoldingChanged(false)
+                }
+            }
+        }
+        .onDisappear {
+            if reportedHolding {
+                reportedHolding = false
+                onLongPressHoldingChanged(false)
             }
         }
     }
