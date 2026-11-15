@@ -31,10 +31,11 @@ struct RexConnection: Sendable {
 /// link. A link that drops without a close frame leaves its client with the
 /// server for a while: the next link says hello with its reconnect token, on
 /// the same SSH connection when that is still up and over a new one when it is
-/// not. Either way events sent in between are lost, so every new link reads
-/// the inventory again. A link the server closed is followed by a plain hello,
-/// unless it closed with 1001, as Rex does for a client that stopped answering
-/// its pings and still keeps: that one is resumed as a dropped one is.
+/// not, unless that client opened a terminal's data link (ADR 0049). Either
+/// way events sent in between are lost, so every new link reads the inventory
+/// again. A link the server closed is followed by a plain hello, unless it
+/// closed with 1001, as Rex does for a client that stopped answering its pings
+/// and still keeps: that one is resumed as a dropped one is.
 ///
 /// Suspending drops the link without a close frame, so a quick return may
 /// take the client back; ending closes it with one, so the server forgets
@@ -126,6 +127,11 @@ actor RexHostSession {
     private var clientEpoch: UInt64 = 0
     /// The client epoch each session was attached in with `session.attach`.
     private var attachedSessions: [String: UInt64] = [:]
+    /// The control client asked for a data channel. An SSH connection that
+    /// died half-open can leave its data links open on the server, which then
+    /// refuses that client another link to the same block until it notices,
+    /// minutes later. So a new SSH connection does not take this client back.
+    private var clientOpenedDataLinks = false
     /// The control link open terminals are on, and its SSH connection.
     private var terminalLink: RexControlLink?
     private var terminalLinkGeneration: UInt64?
@@ -411,7 +417,9 @@ actor RexHostSession {
     /// The link to follow on: the one in hand while it is open, else a new one
     /// on the same SSH connection while that is up and trusted, else a new
     /// connection. A new link takes back the client of one dropped without a
-    /// close frame.
+    /// close frame, except across SSH connections once that client opened a
+    /// data link: the new connection then starts a new client, whose terminals
+    /// attach again and paint afresh, as they would after the resume anyway.
     private func ensureLink(for generation: UInt64) async throws -> (any RexTransport, RexControlLink) {
         if let transport, !transportSuspect, await transport.isConnected {
             if let link, await link.isOpen { return (transport, link) }
@@ -432,7 +440,7 @@ actor RexHostSession {
             if let resumable { await resumable.disconnect() }
             await transport.close()
         }
-        let previous = resumable
+        let previous = clientOpenedDataLinks ? nil : resumable
         resumable = nil
         let fresh: any RexTransport
         do {
@@ -637,7 +645,10 @@ actor RexHostSession {
         let carriesOn = !fresh && terminalLinkGeneration == generation
         terminalLink = link
         terminalLinkGeneration = generation
-        if fresh { clientEpoch &+= 1 }
+        if fresh {
+            clientEpoch &+= 1
+            clientOpenedDataLinks = false
+        }
         terminals.linkChanged(to: server, carriesOn: carriesOn)
         guard fresh else { return }
         for sessionID in terminals.openSessions(on: server).sorted() {
@@ -705,6 +716,7 @@ actor RexHostSession {
         guard phase == .active, let transport, currentConnectionGeneration == generation, !transportSuspect else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
+        clientOpenedDataLinks = true
         return try await transport.openDataChannel()
     }
 

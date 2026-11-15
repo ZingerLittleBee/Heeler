@@ -10,6 +10,8 @@ final class FakeRexTicketBook: @unchecked Sendable {
     struct Target: Sendable, Equatable {
         let session: String
         let block: String
+        /// The control client that asked: each client has its own stream of a block.
+        let client: String?
     }
 
     private struct Issued {
@@ -23,9 +25,10 @@ final class FakeRexTicketBook: @unchecked Sendable {
     private var failures: [FakeRexServer.Answer] = []
     private var payloads: [JSONValue] = []
 
-    /// Answers `data.connect` on `server` from now on.
-    func install(on server: FakeRexServer) async {
-        await server.answer("data.connect") { [self] request in answer(request) }
+    /// Answers `data.connect` on `server` from now on, with tickets for
+    /// `client`, the one `server` welcomed.
+    func install(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
+        await server.answer("data.connect") { [self] request in answer(request, client: client) }
     }
 
     /// The next `data.connect` calls fail with these, in order.
@@ -52,7 +55,7 @@ final class FakeRexTicketBook: @unchecked Sendable {
         }
     }
 
-    private func answer(_ request: FakeRexServer.Request) -> FakeRexServer.Answer {
+    private func answer(_ request: FakeRexServer.Request, client: String?) -> FakeRexServer.Answer {
         lock.withLock {
             payloads.append(request.payload ?? .null)
             if !failures.isEmpty { return failures.removeFirst() }
@@ -61,7 +64,7 @@ final class FakeRexTicketBook: @unchecked Sendable {
             else { return .error(code: "bad_request", message: "missing target", status: 400) }
             let number = issued.count
             let bytes = (0..<16).map { UInt8(truncatingIfNeeded: 0xA5 ^ (number &* 16 &+ $0 &* 3)) }
-            issued.append(Issued(bytes: bytes, target: Target(session: session, block: block)))
+            issued.append(Issued(bytes: bytes, target: Target(session: session, block: block, client: client)))
             return .result(["ticket": .string(Self.text(bytes))])
         }
     }
@@ -79,9 +82,10 @@ final class FakeRexTicketBook: @unchecked Sendable {
 /// tickets from a `FakeRexTicketBook`, welcomes with a nonce and a token,
 /// refuses as scripted or as Rex would, and checks a RESUME's byte count
 /// against what it delivered: fewer is refused with 3, more with 5, and any
-/// refused RESUME leaves the stream unusable. Tests write the stream's bytes
-/// and end its connections. Nothing here is a captured snapshot; nonces and
-/// tokens are invented.
+/// refused RESUME leaves the stream unusable. A HELLO for a block whose
+/// stream for the same client still has a live connection is refused with 2.
+/// Tests write the stream's bytes and end its connections. Nothing here is a
+/// captured snapshot; nonces and tokens are invented.
 actor FakeRexDataEndpoint {
     /// What the next connection gets instead of being served as Rex would.
     enum Script: Sendable {
@@ -122,6 +126,9 @@ actor FakeRexDataEndpoint {
         var connection: FakeWebSocketServer?
         /// Refused a RESUME, or ended: nothing resumes it.
         var unusable = false
+        /// The connection went half-open: it counts as live, and nothing the
+        /// client sends on it arrives, until a RESUME replaces it.
+        var stranded = false
     }
 
     static let rejectReason = "data handshake rejected"
@@ -208,6 +215,16 @@ actor FakeRexDataEndpoint {
         await connection.sendClose(code, reason: reason)
     }
 
+    /// The stream's current connection goes half-open, as under an SSH
+    /// connection that died without either end hearing: the server still
+    /// counts it as live, so the same client's HELLO for the block is refused
+    /// with 2, and a close frame the client sends on it never arrives (it is
+    /// still answered, so the client is not kept waiting). A RESUME of the
+    /// stream replaces it, welcomed or refused.
+    func strand(stream: Int = 0) {
+        streams[stream].stranded = true
+    }
+
     /// Ends the stream's current connection with no close frame.
     func drop(stream: Int = 0) async {
         guard let connection = streams[stream].connection else { return }
@@ -257,6 +274,9 @@ actor FakeRexDataEndpoint {
             return await refuse(channel, kind: .hello, byteCount: 17, reason: 1)
         }
         for index in streams.indices where streams[index].target == target {
+            if streams[index].stranded {
+                return await refuse(channel, kind: .hello, byteCount: 17, reason: 2)
+            }
             if let connection = streams[index].connection, !(await connection.isClosed) {
                 return await refuse(channel, kind: .hello, byteCount: 17, reason: 2)
             }
@@ -279,6 +299,8 @@ actor FakeRexDataEndpoint {
         guard let index = streams.firstIndex(where: { $0.token == token }) else {
             return await refuse(channel, kind: kind, byteCount: 25, reason: 1)
         }
+        // A RESUME replaces a half-open connection whatever its answer.
+        streams[index].stranded = false
         let sent = streams[index].sent
         var refusal: UInt8?
         if streams[index].unusable || count < sent {
@@ -329,8 +351,10 @@ actor FakeRexDataEndpoint {
     }
 
     private func clientClosed(_ close: WebSocketClose, on channel: FakeWebSocketServer) {
+        let index = streams.firstIndex(where: { $0.connection === channel })
+        if let index, streams[index].stranded { return }
         clientCloses.append(close)
-        guard let index = streams.firstIndex(where: { $0.connection === channel }) else { return }
+        guard let index else { return }
         streams[index].connection = nil
         if close.code == .normalClosure { streams[index].unusable = true }
         signalChange()

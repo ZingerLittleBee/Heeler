@@ -76,13 +76,16 @@ struct RexTerminalAttachTests {
     }
 
     private func hostSession(_ hosts: [ScriptedRexHost]) -> RexHostSession {
+        hostSession(RexHostSessionTests.Dialer(hosts))
+    }
+
+    private func hostSession(_ dialer: RexHostSessionTests.Dialer) -> RexHostSession {
         var options = RexTerminalAttach.Options()
         options.stream.link = .testing
         options.stream.startOverDelay = .milliseconds(20)
         options.stream.resumeDelay = .milliseconds(20)
         options.sizeSettle = .milliseconds(40)
         options.closeGrace = .milliseconds(150)
-        let dialer = RexHostSessionTests.Dialer(hosts)
         return RexHostSession(
             storedSocket: RexSocket(path: Self.socket), connect: { try await dialer.dial($0, $1) },
             reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
@@ -437,6 +440,51 @@ struct RexTerminalAttachTests {
         #expect(session.currentConnectionGeneration == 1)
         await store.stop()
     }
+
+    /// An SSH connection that died half-open can leave its data link open on
+    /// the server, which then refuses the same client another link to the
+    /// block. Once a data link opened, a new SSH connection starts a new
+    /// client, which attaches again and paints afresh.
+    @Test func aNewSSHConnectionAfterADataLinkStartsANewClient() async throws {
+        let rig = Rig()
+        let first = await rig.server()
+        let second = await rig.server()
+        let firstHost = await rig.host([.server(first)])
+        let dialer = RexHostSessionTests.Dialer([firstHost, await rig.host([.server(second, welcome: nil)])])
+        let session = hostSession(dialer)
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        await rig.endpoint.strand()
+        rig.reads.set(redraw: "new client")
+        try await firstHost.close()
+        await first.drop()
+        // The server takes back a client whose token it was given, as Rex does.
+        await second.acceptUpgrade()
+        let hello = await second.nextHello()
+        var welcome = FakeRexServer.Welcome()
+        if hello["reconnect_token"] != nil {
+            welcome.resumed = true
+        } else {
+            welcome.clientID = Self.secondClient
+            await rig.endpoint.tickets.install(on: second, client: Self.secondClient)
+        }
+        await second.sendWelcome(welcome)
+        try await waitUntil("a second stream") { await rig.endpoint.streamCount == 2 }
+        try #require(await rig.endpoint.streamCount == 2)
+        await rig.begin(stream: 1)
+        try await waitUntil("the fresh paint") { chunks.all.count == 2 && store.status == .live }
+
+        #expect(chunks.all.last == Self.painted("new client"))
+        #expect(dialer.dialsResuming == [false, false])
+        #expect(await methods(second).filter { $0 == "session.attach" }.count == 1)
+        #expect(await rig.endpoint.handshakes.map(\.outcome) == [.welcomed(stream: 0), .welcomed(stream: 1)])
+        await store.stop()
+    }
+
+    nonisolated static let secondClient = "client:00000000-0000-7000-8000-000000000002"
 
     /// Another server instance on the socket finishes a terminal of the last
     /// one, with no reattach.
