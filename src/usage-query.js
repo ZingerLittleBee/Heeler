@@ -5,13 +5,20 @@ import { usageReport } from "./usage/query.js";
 
 try {
   const { values } = parseArgs({
-    options: { tz: { type: "string" }, "claude-limits": { type: "boolean", default: false } },
+    options: {
+      tz: { type: "string" },
+      "claude-limits": { type: "boolean", default: false },
+      "no-codex-limits": { type: "boolean", default: false },
+      "no-agy-limits": { type: "boolean", default: false },
+    },
     allowPositionals: false,
   });
   const configDirectory = process.env.HERDR_PLUGIN_CONFIG_DIR;
   console.log(JSON.stringify(usageReport({
     timeZone: values.tz,
     claudeLimits: values["claude-limits"],
+    codexLimits: !values["no-codex-limits"],
+    agyLimits: !values["no-agy-limits"],
     runtimeDirectory: configDirectory,
     accountDirectory: configDirectory,
     worker: {
