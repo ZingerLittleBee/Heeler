@@ -1175,7 +1175,8 @@ tests and decoded by the Swift tests.
     apart while `refreshing`, then close. A refreshing report serves the
     last run's figures, so its reading is dated by `scan.coveredThrough`,
     not by when the app read it: the "Updated" capsule shows its true age,
-    a newer reading the snapshot holds is kept, and the Host stays stale
+    a newer reading the snapshot holds is kept while the report counts the
+    same Accounts, and the Host stays stale
     for the next foreground or background read. It skips Overlay Network routes
     and leaves the Console suspended. Background App Refresh off, Low Power
     Mode, or a force-quit app leaves the widgets to the foreground reads. Usage

@@ -109,19 +109,21 @@ extension UsageWidgetSnapshot.Host {
         switch reading.state {
         case .available(let report):
             let readAt = report.figuresDate(readAt: reading.readAt ?? now)
+            let fresh = Self(id: reading.id, name: reading.name, report: report, readAt: readAt)
             // A reading made while the app was away is newer than the
-            // report the app still holds from before.
+            // report the app still holds from before. It stays while the
+            // report counts the same Accounts, under this device's opt-out.
             if var kept, let keptAt = kept.readAt, keptAt > readAt {
                 kept.name = reading.name
-                // The figures stay, but this device's opt-out applies now.
                 if report.claudeProgram?.usageLimits.state == "disabled" {
-                    kept.limits = Self.limits(
-                        kept.limits, claudeFrom: Self(id: reading.id, name: reading.name, report: report, readAt: readAt))
+                    kept.limits = Self.limits(kept.limits, claudeFrom: fresh)
                 }
-                self = kept
-            } else {
-                self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
+                if kept.countsSameAccounts(as: fresh) {
+                    self = kept
+                    return
+                }
             }
+            self = fresh
         case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.exclusion(for: reading.state))
         case .idle, .loading, .failed:
@@ -146,6 +148,12 @@ extension UsageWidgetSnapshot.Host {
             }
             self.init(id: reading.id, name: reading.name, excludedReason: reason)
         }
+    }
+
+    /// Whether `other` lists limits for the same programs' Accounts: an
+    /// Account added or removed since changes what the figures count.
+    private func countsSameAccounts(as other: Self) -> Bool {
+        Set(limits.map { [$0.program, $0.accountID ?? ""] }) == Set(other.limits.map { [$0.program, $0.accountID ?? ""] })
     }
 
     /// `limits` with Claude Code's entries swapped for `other`'s, in their place.
