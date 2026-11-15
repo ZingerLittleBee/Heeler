@@ -9676,6 +9676,7 @@
         }
       }
     },
+    "Asks the Host again to resize the terminal to fit this screen." : {},
     "Assign one to this device in the EasyTier console." : {
       "localizations" : {
         "ja" : {
@@ -17642,6 +17643,7 @@
         }
       }
     },
+    "Couldn't fit to this screen" : {},
     "Couldn't load output: %@" : {
       "localizations" : {
         "ja" : {
@@ -23073,6 +23075,8 @@
         }
       }
     },
+    "Fit to Screen" : {},
+    "Fitting to this screen…" : {},
     "Fix it in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -29931,6 +29935,7 @@
         }
       }
     },
+    "Keeps the size the other device set." : {},
     "Kept in this device's Keychain and sent only with recordings to %@." : {
       "localizations" : {
         "ja" : {
@@ -44284,6 +44289,7 @@
         }
       }
     },
+    "Resizes the terminal to fit this screen. Other devices show it at this size until you leave it." : {},
     "Resolving the Host's home directory timed out." : {
       "localizations" : {
         "ja" : {
@@ -47998,6 +48004,16 @@
         }
       }
     },
+    "Shown at %lld columns by %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shown at %1$lld columns by %2$lld rows"
+          }
+        }
+      }
+    },
     "Shown per Host" : {
       "localizations" : {
         "ja" : {
@@ -48773,6 +48789,7 @@
         }
       }
     },
+    "Sized for another device" : {},
     "Skill" : {
       "localizations" : {
         "ja" : {
@@ -54531,6 +54548,7 @@
         }
       }
     },
+    "The Host didn't answer. The size may still change." : {},
     "The Host does not accept RSA-SHA2-512" : {
       "localizations" : {
         "ja" : {
@@ -54847,6 +54865,7 @@
         }
       }
     },
+    "The Host isn't connected right now." : {},
     "The Host plugin probe failed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -55137,6 +55156,7 @@
         }
       }
     },
+    "The Host turned down the new size." : {},
     "The Host's Address and Port are resolved from the Jump Host, usually through a loopback-only reverse tunnel. %@ You confirm each machine's host key fingerprint independently on first connect." : {
       "localizations" : {
         "ja" : {

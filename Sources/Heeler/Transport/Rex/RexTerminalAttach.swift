@@ -5,8 +5,9 @@ import Synchronization
 enum RexTerminalSignal: Sendable, Equatable {
     /// The block closed, or its session went.
     case blockClosed
-    /// Another client owns the block now, or none does.
-    case ownerChanged(String?)
+    /// Another client owns the block now, or none does, and the server's
+    /// reason, such as `take`, or `lost` for an owner whose link dropped.
+    case ownerChanged(String?, reason: String?)
     /// An event the block's creator raised, such as a title or process change.
     case blockEvent(name: String, payload: JSONValue?)
     /// The connection the terminal opened on is gone, or its control client
@@ -60,11 +61,13 @@ struct RexTerminalConnection: Sendable {
     let forgetAttachment: @Sendable () async -> Void
     /// Sends one request about the block on the current control link.
     let call: @Sendable (_ method: String, _ payload: JSONValue) async throws -> Void
-    /// Sends one request of the view's input on the live control link while it
-    /// is still the terminal's: the same server, SSH connection and control
-    /// client, which a link that resumed the client keeps. It never waits for
-    /// a link; with none, the request is not sent.
-    let deliver: @Sendable (_ method: String, _ payload: JSONValue) async -> RexDelivery
+    /// Sends one request of the view's, its input or taking and giving back
+    /// its size, on the live control link while it is still the terminal's:
+    /// the same server, SSH connection and control client, which a link that
+    /// resumed the client keeps. It never waits for a link; with none, the
+    /// request is not sent. `deadline` is how long the link may stay silent
+    /// once it is written before its outcome counts as unknown.
+    let deliver: @Sendable (_ method: String, _ payload: JSONValue, _ deadline: Duration) async -> RexDelivery
     /// The largest request the terminal's control link accepts, in bytes.
     let maxMessageBytes: Int
 }
@@ -138,8 +141,8 @@ final class RexTerminalHub: Sendable {
         switch event.body {
         case .blockClosed(let blockID) where blockID == address.blockID:
             return .blockClosed
-        case .blockOwnerChanged(let blockID, let owner, _, _) where blockID == address.blockID:
-            return .ownerChanged(owner)
+        case .blockOwnerChanged(let blockID, let owner, _, let reason) where blockID == address.blockID:
+            return .ownerChanged(owner, reason: reason)
         case .blockEvent(let blockID, _, let name, let payload) where blockID == address.blockID:
             return .blockEvent(name: name, payload: payload)
         default:
@@ -150,8 +153,16 @@ final class RexTerminalHub: Sendable {
 
 /// One view of a Rex terminal block (ADRs 0049 and 0050): the stream's paints and output
 /// become the view's bytes, the view's input goes out one request at a time,
-/// the view's grid is asked for and the block never owned, and the ways it
-/// ends become `RexTerminalEnding`.
+/// the view's grid is asked for, and the ways it ends become
+/// `RexTerminalEnding`.
+///
+/// Size (ADR 0051): the block is owned only once the user takes its size for
+/// the view, never on open, on a new link or client, or when its owner goes.
+/// The view gives back what the user took when it stops showing the terminal
+/// and when the attach ends, unless the server has since handed the block to
+/// this client by itself, which stays as the server made it. Taking and
+/// giving back go out one at a time, each once, through the same gate as
+/// input.
 ///
 /// Nothing reaches the view before the first paint, which starts with a full
 /// reset, as every later paint does; a paint arrives as one write, so the view
@@ -182,8 +193,12 @@ actor RexTerminalAttach {
         var closeGrace: Duration = .seconds(1)
         /// How long the control link may stay silent, once a request of input
         /// is written, before its outcome counts as unknown. Its answer may
-        /// wait behind other messages as long as they keep arriving.
+        /// wait behind other messages as long as they keep arriving. Taking
+        /// the size waits as long.
         var inputDeadline: Duration = .seconds(10)
+        /// How long giving the size back may wait in silence. Short, since
+        /// the attach waits for it as it ends.
+        var giveBackDeadline: Duration = .seconds(2)
 
         init() {}
     }
@@ -208,6 +223,20 @@ actor RexTerminalAttach {
     private var painted = false
     /// The block's stream ended, or input failed: nothing more is sent.
     private var inputClosed = false
+    /// The user took the size, so this client is in line for the block and
+    /// may own it: set once a take was answered or may have arrived, and
+    /// cleared once a give back was answered.
+    private var claimed = false
+    /// The server passed the block to this client by itself, as when the
+    /// client that took it back from this one let go: it stays as it is.
+    private var handed = false
+    /// The last take or give back, which the next one waits for, so they
+    /// never overlap and go out in the order they were asked.
+    private var ownershipTail: Task<Void, Never>?
+    /// The take still out or waiting, which stopping lets go of.
+    private var pendingTake: Task<TerminalSizeTake, Never>?
+    /// The give back stopping started, which every stop waits for.
+    private var finalGiveBack: Task<Void, Never>?
 
     private init(
         connection: RexTerminalConnection, input: TerminalAttachInputQueue, columns: Int, rows: Int,
@@ -240,12 +269,16 @@ actor RexTerminalAttach {
         let paster = TerminalAttachPaster(
             refusal: { text in Self.pasteRefusal(text, on: connection) },
             paste: { text in input.perform { await attach.paste(text) } })
+        let ownership = TerminalSizeOwnership(
+            take: { await attach.take() },
+            viewerLeft: { Task { await attach.viewerLeft() } })
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
             input: input,
             inputBeginsWithOutput: true,
             paster: paster,
-            sizeReports: reports
+            sizeReports: reports,
+            sizeOwnership: ownership
         ) {
             input.finish()
             pump.cancel()
@@ -326,8 +359,9 @@ actor RexTerminalAttach {
         await stream.stop()
     }
 
-    /// The view let go: the stream closes with 1000, and this returns once
-    /// nothing of it is left, so the block is free for its next data link.
+    /// The view let go: the stream closes with 1000, a size the user took is
+    /// given back, and this returns once both are done, so the block is free
+    /// for its next data link.
     func stop() async {
         if !stopped {
             stopped = true
@@ -335,8 +369,13 @@ actor RexTerminalAttach {
             closeTask?.cancel()
             signalTask?.cancel()
             reports.finish()
+            // A take still out is let go of; whether it may have arrived
+            // decides whether there is anything to give back.
+            pendingTake?.cancel()
+            finalGiveBack = enqueueGiveBack()
         }
         await stream.stop()
+        await finalGiveBack?.value
     }
 
     // MARK: Input
@@ -380,7 +419,7 @@ actor RexTerminalAttach {
         for piece in pieces {
             guard inputIsOpen else { throw turnAway() }
             let request = Self.request(for: piece, at: connection.address)
-            switch await connection.deliver(request.method, request.payload) {
+            switch await connection.deliver(request.method, request.payload, connection.options.inputDeadline) {
             case .answered:
                 continue
             case .notSent:
@@ -476,8 +515,15 @@ actor RexTerminalAttach {
                 do { try await sleep(grace) } catch { return }
                 await self?.end(.finished)
             }
-        case .ownerChanged(let owner):
+        case .ownerChanged(let owner, let reason):
             report.owner = owner
+            if owner == nil || owner != connection.clientID {
+                handed = false
+            } else if reason != Self.takeReason, reason != Self.restoreReason {
+                // Not this client's own take: the server passed the block on,
+                // as to a client in line when its owner lets go or drops.
+                handed = true
+            }
             reports.yield(report)
             // A size asked for while another client owned the block is not
             // applied when it lets go, so it is asked for again.
@@ -517,7 +563,7 @@ actor RexTerminalAttach {
     }
 
     /// Asks the server for the view's grid. Rex applies it only while no
-    /// client owns the block; Heeler never takes ownership.
+    /// client owns the block, or this one does.
     private func sendSize() async {
         guard !stopped, ending == nil, let wanted = report.local, wanted != asked,
             Self.sizeRange.contains(wanted.columns), Self.sizeRange.contains(wanted.rows)
@@ -542,4 +588,142 @@ actor RexTerminalAttach {
             "args": .object(["columns": .number(Double(columns)), "rows": .number(Double(rows))]),
         ])
     }
+
+    // MARK: Taking the size
+
+    static let takeMethod = "session.own_block"
+    static let giveBackMethod = "session.disown_block"
+    /// The reasons Rex gives for an owner change that this client made by
+    /// taking, and for an owner that came back and got its block back.
+    static let takeReason = "take"
+    static let restoreReason = "restore"
+
+    /// Takes the block's size for the view, at the user's request: this
+    /// client owns the block, and the view's grid is asked for as its owner.
+    /// Waits for a give back before it, and is never sent again.
+    func take() async -> TerminalSizeTake {
+        guard !stopped else { return .notSent }
+        let previous = ownershipTail
+        let operation = Task { () -> TerminalSizeTake in
+            await previous?.value
+            return await self.performTake()
+        }
+        pendingTake = operation
+        ownershipTail = Task { _ = await operation.value }
+        return await operation.value
+    }
+
+    /// The view stopped showing the terminal: a size the user took is given
+    /// back once the take or give back before it is done.
+    func viewerLeft() {
+        guard !stopped else { return }
+        enqueueGiveBack()
+    }
+
+    @discardableResult
+    private func enqueueGiveBack() -> Task<Void, Never> {
+        let previous = ownershipTail
+        let operation = Task {
+            await previous?.value
+            await self.performGiveBack()
+        }
+        ownershipTail = operation
+        return operation
+    }
+
+    private func performTake() async -> TerminalSizeTake {
+        guard !stopped, ending == nil, !blockClosed, !Task.isCancelled else { return .notSent }
+        let delivery = await connection.deliver(
+            Self.takeMethod, Self.ownershipPayload(connection.address, take: true), connection.options.inputDeadline)
+        switch delivery {
+        case .answered(let response):
+            claimed = true
+            handed = false
+            noteOwner(in: response)
+            await sendTakenSize()
+            return .taken
+        case .refused:
+            return .refused
+        case .notSent:
+            return .notSent
+        case .unknown:
+            // It may have arrived, so this client may own the block: what
+            // gives back a size the user took gives this one back too.
+            claimed = true
+            return .unknown
+        }
+    }
+
+    /// Asks for the view's grid as the block's owner, so it applies at once
+    /// even when the server had another size in mind for this client.
+    private func sendTakenSize() async {
+        guard let wanted = report.local, Self.sizeRange.contains(wanted.columns), Self.sizeRange.contains(wanted.rows)
+        else { return }
+        asked = wanted
+        let delivery = await connection.deliver(
+            RexInventoryWire.terminalMethod("resize"),
+            Self.resizePayload(connection.address, columns: wanted.columns, rows: wanted.rows),
+            connection.options.inputDeadline)
+        if case .answered = delivery { return }
+        // Asked again with the next change.
+        if asked == wanted { asked = nil }
+    }
+
+    /// Gives back a size the user took: the block passes to the next client
+    /// in line, or keeps its size with no owner; one this client no longer
+    /// owns only takes it out of line. A block the server handed to this
+    /// client by itself is left alone. Sent once; one that was not sent, or
+    /// had no answer, stays for the next give back to try.
+    private func performGiveBack() async {
+        guard claimed, !blockClosed else { return }
+        if handed, report.owner == connection.clientID { return }
+        let delivery = await connection.deliver(
+            Self.giveBackMethod, Self.ownershipPayload(connection.address, take: false),
+            connection.options.giveBackDeadline)
+        switch delivery {
+        case .answered(let response):
+            claimed = false
+            noteOwner(in: response)
+        case .refused:
+            claimed = false
+        case .notSent, .unknown:
+            break
+        }
+    }
+
+    /// The block's owner as an answer to a take or give back lists it.
+    private func noteOwner(in response: RexResponse) {
+        guard let answer = try? response.result(RexOwnershipAnswer.self),
+            let block = answer.blocks?.first(where: { $0.blockID == connection.address.blockID })
+        else { return }
+        report.owner = block.owner
+        if block.owner != connection.clientID { handed = false }
+        if !stopped { reports.yield(report) }
+    }
+
+    /// One block, named so: an empty list would claim or give up every
+    /// block in the session.
+    static func ownershipPayload(_ address: RexPaneAddress, take: Bool) -> JSONValue {
+        var payload: [String: JSONValue] = [
+            "session_id": .string(address.sessionID), "block_ids": .array([.string(address.blockID)]),
+        ]
+        if take { payload["mode"] = .string(Self.takeReason) }
+        return .object(payload)
+    }
+}
+
+/// What Rex answers a take or give back with: each block and its owner after
+/// it, with no owner left out.
+private struct RexOwnershipAnswer: Decodable {
+    struct Block: Decodable {
+        let blockID: String?
+        let owner: String?
+
+        enum CodingKeys: String, CodingKey {
+            case blockID = "block_id"
+            case owner
+        }
+    }
+
+    let blocks: [Block]?
 }

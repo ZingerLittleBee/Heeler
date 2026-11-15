@@ -365,6 +365,13 @@ struct ShellTerminalView: View {
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
             .padding(.top, terminalTopInset)
+            // Below the back header and under it, so the header's menu and
+            // the drawer it opens stay on top.
+            .modifier(TerminalSizeNoticeOverlay(
+                store: store, palette: themePalette,
+                colorScheme: terminal.themes.selection(for: themeAppearance)
+                    .chromeColorScheme(for: themeAppearance),
+                top: sizeNoticeTop, isHidden: isHeaderDrawerOpen))
             .overlay(alignment: .top) {
                 AgentDetailHeader(
                     palette: themePalette,
@@ -467,8 +474,7 @@ struct ShellTerminalView: View {
             .onChange(of: activity.activationCount, initial: true) { _, _ in
                 store.didBecomeActive(
                     afterPossibleSuspension: activity.lastAbsenceMayHaveSuspended)
-            }
-            // A recovered terminal is a fresh surface that starts in Text and
+            }            // A recovered terminal is a fresh surface that starts in Text and
             // decides the keyboard itself from the user's last intent (see
             // `claimsKeyboard`); app-side mode state has to follow it back to
             // Text without raising anything on its own.
@@ -514,6 +520,12 @@ struct ShellTerminalView: View {
 
     private var backHeaderTop: CGFloat {
         AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
+    }
+
+    /// Below the back header's row, or the bar it shares, and the output's
+    /// top edge.
+    private var sizeNoticeTop: CGFloat {
+        max(backHeaderTop + AgentDetailHeader.controlSize, terminalTopInset) + 8
     }
 
     private var headerSharesBar: Bool { AgentDetailHeader.levelsWithBar(barRow) }

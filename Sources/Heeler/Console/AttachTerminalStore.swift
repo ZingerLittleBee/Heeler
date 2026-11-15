@@ -272,6 +272,9 @@ final class AttachTerminalStore {
     /// How the terminal's size stands with a server that keeps its own, from
     /// the last session that said; nil for a Server Kind that sizes to the view.
     private(set) var sizeReport: TerminalSizeReport?
+    /// What the view says while the live terminal shows at a size another
+    /// device set, once that has held for a moment (ADR 0051); nil otherwise.
+    private(set) var sizeNotice: TerminalSizeNotice?
     /// The byte pipe the terminal view consumes.
     let feed = TerminalByteFeed()
     /// What the remote program has asked of its terminal in this session.
@@ -322,6 +325,13 @@ final class AttachTerminalStore {
     private var session: TerminalAttachSession?
     private var inputGeneration: TerminalInputController.SessionGeneration?
     private var sizeReportTask: Task<Void, Never>?
+    /// How long a size set elsewhere must hold before the notice shows, so a
+    /// size on its way, as on opening or rotating, says nothing.
+    private let settleSizeNotice: @Sendable () async throws -> Void
+    private var sizeNoticeTask: Task<Void, Never>?
+    /// The client whose size the user chose to keep: no notice for it until
+    /// another client takes the size, or the sizes agree.
+    private var keptSizeOwner: String?
     private var runTask: Task<Void, Never>?
     #if DEBUG
     private(set) var restorationTrace = AttachRestorationTrace()
@@ -342,6 +352,9 @@ final class AttachTerminalStore {
             _, _ in
         },
         runDidFinish: @escaping @MainActor @Sendable (TerminalSurfaceID) -> Void = { _ in },
+        settleSizeNotice: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(for: AttachTerminalStore.sizeNoticeSettle)
+        },
         runTerminal: @escaping TerminalSessionRunner
     ) {
         self.target = target
@@ -354,6 +367,7 @@ final class AttachTerminalStore {
         self.finishOutput = finishOutput
         self.transportReady = transportReady
         self.runDidFinish = runDidFinish
+        self.settleSizeNotice = settleSizeNotice
         self.runTerminal = runTerminal
         feed.onDisplayFactsChange = { [weak self] facts in
             guard let self, self.isViewed else { return }
@@ -442,10 +456,110 @@ final class AttachTerminalStore {
     }
 
     /// The surface came on or off screen while its session stays attached.
+    /// Going off gives back a size the user took; coming back takes nothing.
     func setViewed(_ viewed: Bool) {
         guard viewed != isViewed else { return }
         isViewed = viewed
         session?.setPresence(viewed ? .viewed(feed.displayFacts) : .hidden)
+        if !viewed { session?.sizeOwnership?.viewerLeft() }
+    }
+
+    /// The scene went to the background, the surface still on its screen: a
+    /// size the user took is given back, and nothing takes it again on return.
+    func sceneDidEnterBackground() {
+        session?.sizeOwnership?.viewerLeft()
+    }
+
+    // MARK: Size set elsewhere
+
+    /// How long a size set elsewhere holds before the notice shows.
+    nonisolated static let sizeNoticeSettle: Duration = .seconds(1)
+
+    /// Takes the terminal's size for this view, as the notice offers. Sent
+    /// once; the notice says how it ended, and only another tap tries again.
+    func takeSize() {
+        guard var notice = sizeNotice, notice.phase != .taking, let session,
+            let ownership = session.sizeOwnership
+        else { return }
+        notice.phase = .taking
+        sizeNotice = notice
+        Task { [weak self] in
+            let outcome = await ownership.take()
+            self?.sizeTakeEnded(outcome, on: session)
+        }
+    }
+
+    /// The user chose to keep the size the other device set: the notice
+    /// stays away until another client takes the size, or the sizes agree.
+    func dismissSizeNotice() {
+        guard sizeNotice != nil || sizeNoticeTask != nil else { return }
+        keptSizeOwner = sizeReport?.owner
+        hideSizeNotice()
+    }
+
+    private func receiveSizeReport(_ report: TerminalSizeReport) {
+        sizeReport = report
+        updateSizeNotice()
+    }
+
+    /// Shows the notice once a live terminal's size has been set elsewhere
+    /// for a moment, and hides it as soon as it is not.
+    private func updateSizeNotice() {
+        if sizeReport?.isSetElsewhere != true || sizeReport?.owner != keptSizeOwner {
+            keptSizeOwner = nil
+        }
+        guard wantsSizeNotice, let server = sizeReport?.server else {
+            hideSizeNotice()
+            return
+        }
+        if var notice = sizeNotice {
+            notice.server = server
+            sizeNotice = notice
+            return
+        }
+        guard sizeNoticeTask == nil else { return }
+        sizeNoticeTask = Task { [weak self, settle = settleSizeNotice] in
+            do { try await settle() } catch { return }
+            guard let self, !Task.isCancelled else { return }
+            self.sizeNoticeTask = nil
+            guard self.wantsSizeNotice, self.sizeNotice == nil, let server = self.sizeReport?.server else { return }
+            self.sizeNotice = TerminalSizeNotice(server: server, phase: .offered)
+        }
+    }
+
+    private var wantsSizeNotice: Bool {
+        status == .live && session?.sizeOwnership != nil && sizeReport?.isSetElsewhere == true
+            && keptSizeOwner == nil
+    }
+
+    private func hideSizeNotice() {
+        sizeNoticeTask?.cancel()
+        sizeNoticeTask = nil
+        sizeNotice = nil
+    }
+
+    private func sizeTakeEnded(_ outcome: TerminalSizeTake, on session: TerminalAttachSession) {
+        guard self.session === session, var notice = sizeNotice, notice.phase == .taking else { return }
+        guard let failure = Self.sizeTakeFailure(outcome) else {
+            hideSizeNotice()
+            return
+        }
+        notice.phase = .failed(failure)
+        sizeNotice = notice
+    }
+
+    /// What the notice says of a take that did not go through.
+    static func sizeTakeFailure(_ outcome: TerminalSizeTake) -> String? {
+        switch outcome {
+        case .taken:
+            nil
+        case .refused:
+            String(localized: "The Host turned down the new size.")
+        case .notSent:
+            String(localized: "The Host isn't connected right now.")
+        case .unknown:
+            String(localized: "The Host didn't answer. The size may still change.")
+        }
     }
 
     /// Ends the session by explicit close (only `end()` runs the channel's
@@ -608,7 +722,7 @@ final class AttachTerminalStore {
         if let reports = session.sizeReports {
             sizeReportTask = Task { [weak self] in
                 for await report in reports {
-                    self?.sizeReport = report
+                    self?.receiveSizeReport(report)
                 }
             }
         }
@@ -661,6 +775,7 @@ final class AttachTerminalStore {
                     inputGeneration = inputGeneration ?? beginInput()
                     status = .live
                     if let inputGeneration { input.sessionDidBecomeLive(inputGeneration) }
+                    updateSizeNotice()
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)
@@ -683,6 +798,7 @@ final class AttachTerminalStore {
         self.session = nil
         sizeReportTask?.cancel()
         sizeReportTask = nil
+        hideSizeNotice()
         guard let inputGeneration else { return }
         input.endSession(
             inputGeneration,

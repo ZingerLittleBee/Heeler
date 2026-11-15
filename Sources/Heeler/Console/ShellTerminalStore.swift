@@ -362,6 +362,19 @@ final class ShellTerminalStore {
     /// as a Rex Host's: what it shows, what this view asked for, and who owns it.
     var sizeReport: TerminalSizeReport? { terminal.sizeReport }
 
+    /// What the view says while the terminal shows at a size another device
+    /// set (ADR 0051); nil when there is nothing to say.
+    var sizeNotice: TerminalSizeNotice? { terminal.sizeNotice }
+
+    /// Takes the terminal's size for this view, at the user's tap.
+    func takeTerminalSize() { terminal.takeSize() }
+
+    /// Keeps the size the other device set, and hides the notice.
+    func dismissSizeNotice() { terminal.dismissSizeNotice() }
+
+    /// The scene went to the background: a size the user took is given back.
+    func sceneDidEnterBackground() { terminal.sceneDidEnterBackground() }
+
     /// Whether a password typed into the sheet can reach the pane now.
     var canInsertPassword: Bool { takesInput }
 

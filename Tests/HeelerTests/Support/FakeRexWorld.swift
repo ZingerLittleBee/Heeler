@@ -79,8 +79,9 @@ final class FakeRexWorld: Sendable {
         state.withLock { $0.instanceID = instanceID }
     }
 
-    /// Answers every read the inventory makes as this world stands at the time.
-    func install(on server: FakeRexServer) async {
+    /// Answers every read the inventory makes as this world stands at the time,
+    /// and what an open terminal asks of `client`'s blocks.
+    func install(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
         await server.answer("server.status") { [self] _ in
             .result(["instance_id": .string(state.withLock { $0.instanceID }), "session_count": 1])
         }
@@ -110,6 +111,67 @@ final class FakeRexWorld: Sendable {
             guard block(request) != nil else { return Self.blockNotFound }
             return .result(.object([:]))
         }
+        // Taking a block makes `client` its owner; giving it back leaves it
+        // with none, as when nobody else is in line. Neither pushes the owner
+        // change, which a test pushes as the server would.
+        await server.answer("session.own_block") { [self] request in
+            claim(request) { _ in client }
+        }
+        await server.answer("session.disown_block") { [self] request in
+            claim(request) { owner in owner == client ? nil : owner }
+        }
+    }
+
+    /// Sets the owner of each block a take or give back names, and answers
+    /// with each one's owner after it, as Rex does.
+    private func claim(_ request: FakeRexServer.Request, owner next: (String?) -> String?) -> FakeRexServer.Answer {
+        guard case .array(let ids)? = request.payload?["block_ids"], !ids.isEmpty,
+            let sessionID = request.payload?["session_id"]?.stringValue
+        else { return .error(code: "bad_request", message: "name the blocks", status: 400) }
+        let named = ids.compactMap(\.stringValue)
+        var answered: [JSONValue] = []
+        let found = state.withLock { state -> Bool in
+            guard let index = state.sessions.firstIndex(where: { $0.id == sessionID }) else { return false }
+            var session = state.sessions[index]
+            for id in named {
+                guard Self.update(id, in: &session, { $0.owner = next($0.owner) }) else { return false }
+            }
+            state.sessions[index] = session
+            for id in named {
+                let owner = Self.blocks(of: session).first { $0.id == id }?.owner
+                var entry: [String: JSONValue] = ["block_id": .string(id)]
+                if let owner { entry["owner"] = .string(owner) }
+                answered.append(.object(entry))
+            }
+            return true
+        }
+        guard found else { return .error(code: "bad_request", message: "no such block", status: 400) }
+        return .result(["blocks": .array(answered)])
+    }
+
+    private static func blocks(of session: Session) -> [Block] {
+        session.windows.flatMap { $0.layers.flatMap(\.blocks) } + session.detached
+    }
+
+    private static func update(_ id: String, in session: inout Session, _ change: (inout Block) -> Void) -> Bool {
+        for window in session.windows.indices {
+            for layer in session.windows[window].layers.indices {
+                if let index = session.windows[window].layers[layer].blocks.firstIndex(where: { $0.id == id }) {
+                    change(&session.windows[window].layers[layer].blocks[index])
+                    return true
+                }
+            }
+        }
+        if let index = session.detached.firstIndex(where: { $0.id == id }) {
+            change(&session.detached[index])
+            return true
+        }
+        return false
+    }
+
+    /// The owner of `blockID` in `sessionID`, as the world stands.
+    func owner(of blockID: String, in sessionID: String = "session:studio") -> String? {
+        sessions.first { $0.id == sessionID }.flatMap { Self.blocks(of: $0).first { $0.id == blockID }?.owner }
     }
 
     // MARK: Answers

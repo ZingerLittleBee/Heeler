@@ -550,10 +550,11 @@ actor RexHostSession {
                     let control = try await self.terminalControl(server: ready.server, generation: ready.generation)
                     _ = try await control.call(method, payload: payload)
                 },
-                deliver: { [weak self] method, payload in
+                deliver: { [weak self] method, payload, deadline in
                     guard let self else { return .notSent }
-                    return await self.deliverTerminalInput(
-                        method, payload: payload, server: ready.server, generation: ready.generation, epoch: epoch)
+                    return await self.deliverTerminalRequest(
+                        method, payload: payload, deadline: deadline, server: ready.server,
+                        generation: ready.generation, epoch: epoch)
                 },
                 maxMessageBytes: ready.control.maxMessageBytes)
             return try await operation(connection)
@@ -698,18 +699,20 @@ actor RexHostSession {
         return ready.control
     }
 
-    /// Sends one request of a terminal's input on the live control link while
-    /// it is still the terminal's: the same server, SSH connection and control
-    /// client (`epoch`), which a link that resumed the client keeps. Never
-    /// waits for a link, so input typed while none is the terminal's is not
-    /// sent, and never sent later.
-    private func deliverTerminalInput(
-        _ method: String, payload: JSONValue, server: RexServerStatus, generation: UInt64, epoch: UInt64
+    /// Sends one request of a terminal's, its input or taking and giving back
+    /// its size, on the live control link while it is still the terminal's:
+    /// the same server, SSH connection and control client (`epoch`), which a
+    /// link that resumed the client keeps. Never waits for a link, so what
+    /// the view asked for while none is the terminal's is not sent, and never
+    /// sent later.
+    private func deliverTerminalRequest(
+        _ method: String, payload: JSONValue, deadline: Duration, server: RexServerStatus, generation: UInt64,
+        epoch: UInt64
     ) async -> RexDelivery {
         guard let ready = readyConnection, ready.server == server, ready.generation == generation,
             clientEpoch == epoch
         else { return .notSent }
-        return await ready.control.deliver(method, payload: payload, deadline: terminalOptions.inputDeadline)
+        return await ready.control.deliver(method, payload: payload, deadline: deadline)
     }
 
     private func terminalDataChannel(generation: UInt64) async throws -> any HeelerSSHAPIChannel {
