@@ -1,5 +1,5 @@
 {
-  "version": "0.5.8",
+  "version": "0.5.9",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -139,7 +139,7 @@
     },
     {
       "path": "shared/usage/buckets.js",
-      "sha256": "60013b9540a2cf32920081aa7235444dd76b7bb1b5d82fead1008601b21e7762"
+      "sha256": "4e5b9ea8fdf5730d988d10e935948a9ffd4e67974396bef2c731b999dd050d00"
     },
     {
       "path": "shared/usage/cache.js",
@@ -199,7 +199,7 @@
     },
     {
       "path": "shared/usage/query.js",
-      "sha256": "ef811e83dc7a92d741f3150a81cc2c94105bb182de617bd45e363cd6c7442abc"
+      "sha256": "75e42952be87078e4c0cffffadf844fad27a97e4c63c8c670793b68f960c7559"
     },
     {
       "path": "shared/usage/runtime-record.js",
@@ -207,7 +207,7 @@
     },
     {
       "path": "shared/usage/worker.js",
-      "sha256": "f02a3c8719e11ad4659e78bc47253e5a95401dfaec655d011eb0d63b236492a3"
+      "sha256": "aface49e6fd0e220509f3ebbd0ecd5f601ad6ca319faf65a69bfa615cf1ffee5"
     },
     {
       "path": "tmux/client.js",
@@ -255,7 +255,7 @@
     },
     {
       "path": "usage-query.js",
-      "sha256": "a74585f92ba5317e5c70c849ef05c6d88c797fe00c13c76730a71bad17907f05"
+      "sha256": "0fac00a13221c5fb9a288b22eb69007c0cef53b65cdc2f0a6916e59ebceb2957"
     },
     {
       "path": "usage-worker.js",
@@ -279,7 +279,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "62780f68060ebe9cfa00b9283fe01634cfa00777fc987f3013d1a98721b8b353"
+      "sha256": "b4df6a904780f51d5f0630845fba2fcae0869434dee7802dfbf7a69d78c7d89b"
     }
   ]
 }

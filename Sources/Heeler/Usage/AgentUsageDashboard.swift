@@ -323,22 +323,37 @@ struct AgentUsageDashboard: View {
     // MARK: Usage Limits
 
     private func limitsSection(_ scope: AgentUsageScope) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(String(localized: "Usage Limits"), detail: scope.included.count > 1 ? String(localized: "per Host") : nil) {
+        let chips = AgentUsageLimitChip.chips(in: scope)
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(
+                String(localized: "Usage Limits"),
+                detail: scope.included.count > 1 && !chips.isEmpty ? String(localized: "per Host") : nil
+            ) {
                 Button("Details") { isShowingLimits = true }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AgentUsageLimitChip.chips(in: scope)) { chip in
-                        Button { isShowingLimits = true } label: {
-                            AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            if chips.isEmpty {
+                Button { isShowingLimits = true } label: {
+                    Text("Usage Limits are off.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 16)
+                .buttonStyle(.plain)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(chips) { chip in
+                            Button { isShowingLimits = true } label: {
+                                AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.horizontal, -16)
             }
-            .padding(.horizontal, -16)
         }
         .padding(.top, 22)
     }

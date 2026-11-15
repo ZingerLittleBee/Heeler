@@ -8,6 +8,7 @@ try {
     options: {
       tz: { type: "string" },
       "claude-limits": { type: "boolean", default: false },
+      "no-codex-limits": { type: "boolean", default: false },
       "no-agy-limits": { type: "boolean", default: false },
     },
     allowPositionals: false,
@@ -16,6 +17,7 @@ try {
   console.log(JSON.stringify(usageReport({
     timeZone: values.tz,
     claudeLimits: values["claude-limits"],
+    codexLimits: !values["no-codex-limits"],
     agyLimits: !values["no-agy-limits"],
     runtimeDirectory: configDirectory,
     accountDirectory: configDirectory,

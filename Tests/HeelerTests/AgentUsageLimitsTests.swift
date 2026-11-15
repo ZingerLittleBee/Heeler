@@ -400,6 +400,51 @@ struct AgentUsageLimitsTests {
         }
     }
 
+    @Test func codexToggleRendersOnSheetAndWidePageAndDefaultsToOn() async throws {
+        let report = try AgentUsageFixture.codexAccountsReport()
+        let name = "codex-render-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let hostID = UUID()
+        let store = AgentUsageStore(hostID: hostID, defaults: defaults) { _, _ in .available(report) }
+        #expect(store.codexLimitsEnabled)
+        await store.refresh()
+        let entry = AgentUsageHostEntry(id: hostID, name: "Studio Mac", store: store, isConnected: true)
+
+        let sheet = UIHostingController(
+            rootView: AgentUsageLimitsSheet(entries: [entry])
+                .environment(\.locale, Locale(identifier: "en_US")))
+        let sheetBounds = CGRect(x: 0, y: 0, width: 390, height: 900)
+        sheet.view.frame = sheetBounds
+        try await withTestWindow(frame: sheetBounds, rootViewController: sheet) { _ in
+            let onLabels = try await shownLabels(in: sheet, once: "Codex limits")
+            #expect(onLabels.contains("Codex limits"))
+            #expect(onLabels.contains("Codex shows only its default limit group."))
+
+            store.codexLimitsEnabled = false
+            let offLabels = try await shownLabels(in: sheet, once: "Usage Limits are off.")
+            #expect(offLabels.contains("Codex limits"))
+            #expect(!offLabels.contains("Codex shows only its default limit group."))
+        }
+
+        let wide = UIHostingController(
+            rootView: AgentUsageLimitsPage(entries: [entry], showTokenUsage: {})
+                .frame(width: 900, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .environment(\.locale, Locale(identifier: "en_US")))
+        let wideSize = wide.sizeThatFits(in: CGSize(width: 900, height: 5_000))
+        let wideBounds = CGRect(origin: .zero, size: wideSize)
+        wide.view.frame = wideBounds
+        try await withTestWindow(frame: wideBounds, rootViewController: wide) { _ in
+            wide.view.layoutIfNeeded()
+            let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: wide.view)
+                .joined(separator: "\n")
+            #expect(labels.contains("Codex"))
+            #expect(labels.contains("Codex limits"))
+            #expect(labels.contains("Usage Limits are off."))
+        }
+    }
+
     /// `controller`'s labels, one per line, once they include `text`, or
     /// after five seconds without it. A List fills its cells after its
     /// window appears.

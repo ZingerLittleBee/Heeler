@@ -386,12 +386,13 @@ suite("the Helper's Usage query", () => {
    * following a core, and `hc`, `herdr-core` and `herdr` as tripwires. What the
    * query is run with stands for the SSH session, which lacks the core's variables.
    */
-  async function host({ registered = ["work"], claude = false } = {}) {
+  async function host({ registered = ["work"], claude = false, codex = false } = {}) {
     const coreHome = join(root, "core-home");
     const config = join(root, "core-claude");
     const bin = join(root, "bin");
     const tripwire = join(root, "tripwire");
     const claudeLog = join(root, "claude-log");
+    const codexLog = join(root, "codex-log");
     mkdirSync(coreHome);
     mkdirSync(bin);
     for (const name of ["hc", "herdr-core", "herdr"]) {
@@ -401,6 +402,10 @@ suite("the Helper's Usage query", () => {
     if (claude) {
       writeFileSync(join(bin, "claude"), `#!/bin/sh\necho "$*" >> "${claudeLog}"\n`);
       chmodSync(join(bin, "claude"), 0o755);
+    }
+    if (codex) {
+      writeFileSync(join(bin, "codex"), `#!/bin/sh\necho "$*" >> "${codexLog}"\nexit 1\n`);
+      chmodSync(join(bin, "codex"), 0o755);
     }
     mkdirSync(join(config, "projects", "-work"), { recursive: true });
     writeFileSync(
@@ -450,10 +455,12 @@ suite("the Helper's Usage query", () => {
     };
     const tripped = () => (existsSync(tripwire) ? readFileSync(tripwire, "utf8") : "");
     const claudeCalls = () => (existsSync(claudeLog) ? readFileSync(claudeLog, "utf8") : "");
-    return { config, query, run, settled, tripped, claudeCalls };
+    const codexCalls = () => (existsSync(codexLog) ? readFileSync(codexLog, "utf8") : "");
+    return { config, query, run, settled, tripped, claudeCalls, codexCalls };
   }
 
   const claudeProgram = (report) => report.programs.find((program) => program.program === "claude");
+  const codexProgram = (report) => report.programs.find((program) => program.program === "codex");
 
   test("counts the Default Account the core's environment names, from a bare copy", async () => {
     const { config, settled, tripped } = await host();
@@ -533,6 +540,19 @@ suite("the Helper's Usage query", () => {
 
     await settled("--claude-limits");
     assert.match(claudeCalls(), /--version/);
+    assert.equal(tripped(), "");
+  });
+
+  test("runs Codex for its Usage Limits by default and skips it with --no-codex-limits", async () => {
+    const { settled, tripped, codexCalls } = await host({ codex: true });
+    await waitFor(() => existsSync(recordPath("work")), "the record", PATIENCE_MS);
+
+    const disabled = await settled("--no-codex-limits");
+    assert.deepEqual(codexProgram(disabled).usageLimits, { state: "disabled" });
+    assert.equal(codexCalls(), "");
+
+    await settled();
+    assert.match(codexCalls(), /app-server/);
     assert.equal(tripped(), "");
   });
 
