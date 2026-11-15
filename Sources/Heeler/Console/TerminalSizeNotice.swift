@@ -30,22 +30,30 @@ struct TerminalSizeNoticeView: View {
     let onTake: () -> Void
     let onDismiss: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private static let cornerRadius: CGFloat = 22
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                summary
-                actionButton
-                dismissButton
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // The action under the words, as wide as it needs.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 10) {
+                        summary
+                        Spacer(minLength: 0)
+                        dismissButton
+                    }
+                    actionButton
+                }
+            } else {
+                // One row; the words wrap beside the action if they must.
+                HStack(spacing: 10) {
                     summary
-                    Spacer(minLength: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    actionButton
                     dismissButton
                 }
-                actionButton
             }
         }
         .padding(.leading, 14)
@@ -64,9 +72,9 @@ struct TerminalSizeNoticeView: View {
     }
 
     /// The terminal's background lifted toward its foreground, as the status
-    /// dialog's card is, and nearly opaque, so the text over the grid reads.
+    /// dialog's card is, and opaque, so no output shows through the words.
     private var background: Color {
-        palette.background.mix(with: palette.foreground, by: 0.12).opacity(0.96)
+        palette.background.mix(with: palette.foreground, by: 0.08)
     }
 
     private var summary: some View {
@@ -88,13 +96,13 @@ struct TerminalSizeNoticeView: View {
         .accessibilityValue(sizeDescription)
     }
 
+    /// Only a state the words alone do not show: the request at work, or
+    /// one that did not go through. The offer needs its room for the words.
     @ViewBuilder
     private var glyph: some View {
         switch notice.phase {
         case .offered:
-            Image(systemName: "rectangle.dashed")
-                .foregroundStyle(palette.foreground.opacity(0.72))
-                .accessibilityHidden(true)
+            EmptyView()
         case .taking:
             ProgressView()
                 .controlSize(.small)
@@ -209,7 +217,7 @@ private struct TerminalSizeNoticeButtonStyle: ButtonStyle {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .foregroundStyle(palette.background)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .frame(minHeight: 32)
                 .background(palette.foreground, in: .capsule)
                 .contentShape(.capsule)
