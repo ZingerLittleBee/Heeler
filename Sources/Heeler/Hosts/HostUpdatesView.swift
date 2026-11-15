@@ -107,6 +107,7 @@ struct HostUpdatesView: View {
 
     private func section(_ group: HostUpdatesSnapshot.Group) -> some View {
         let notes = group.items.filter { $0.state.isOutstanding }.flatMap(\.notes)
+        let failed = group.items.filter { $0.state.failure != nil }
         return Section {
             ForEach(group.items) { @Sendable item in
                 MainActorContent {
@@ -116,9 +117,15 @@ struct HostUpdatesView: View {
         } header: {
             Text(group.name)
         } footer: {
-            if !notes.isEmpty {
+            if !notes.isEmpty || !failed.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(notes, id: \.self) { @Sendable note in Text(note) }
+                    if let first = failed.first {
+                        // One kind failed: its own steps. Both: the guide's
+                        // table of what each failure asks for.
+                        HostUpdateGuideLink(component: failed.count == 1 ? first.component : nil)
+                            .font(.footnote)
+                    }
                 }
             }
         }
@@ -425,6 +432,7 @@ struct HostUpdateDetailView: View {
                 }
                 .padding(.vertical, 4)
                 .accessibilityIdentifier("hosts.updates.detail.failure")
+                HostUpdateGuideLink(component: item.component)
             }
         case .waiting, .updating, .readingBack:
             Section {
@@ -466,6 +474,32 @@ struct HostUpdateDetailView: View {
         ]
         if let detail = failure.detail { lines.append(detail) }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// The way on when updating from the app keeps failing: the user guide's
+/// steps for doing it on the Host.
+struct HostUpdateGuideLink: View {
+    /// The Plugin's steps or the Helper's; nil for the guide's table of
+    /// failures.
+    let component: HostUpdateItem.Component?
+
+    var body: some View {
+        if let url = HostUpdateGuide.url(for: component) {
+            Link(destination: url) {
+                HStack(spacing: 4) {
+                    Text("How to Update Manually")
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption2.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                // A footer's line is too short a target on its own.
+                .frame(minHeight: 32, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .accessibilityHint("Opens in your default browser")
+            .accessibilityIdentifier("hosts.updates.guide")
+        }
     }
 }
 

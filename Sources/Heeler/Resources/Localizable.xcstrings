@@ -28447,6 +28447,28 @@
         }
       }
     },
+    "How to Update Manually" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動で更新する方法"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手动更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手動更新"
+          }
+        }
+      }
+    },
     "Hunks" : {
       "localizations" : {
         "ja" : {

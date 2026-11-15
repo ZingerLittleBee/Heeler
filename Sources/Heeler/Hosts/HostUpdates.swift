@@ -370,3 +370,31 @@ extension HostUpdatesSnapshot.PrimaryAction {
         }
     }
 }
+
+/// The user guide's steps for updating on the Host itself, for an update that
+/// keeps failing from the app. The guide is written in English and Simplified
+/// Chinese; every other language reads the English one, as the READMEs link
+/// it.
+enum HostUpdateGuide {
+    /// The steps for `component`, or with none the guide's table of failures.
+    /// Each fragment is a heading of `docs/guides/updates.md` or its
+    /// `zh/updates.md` as GitHub slugs it, which the docs site keeps. Apps
+    /// already released hold these links, so those headings stay as they are.
+    static func url(
+        for component: HostUpdateItem.Component?,
+        localization: String = Bundle.main.preferredLocalizations.first ?? "en"
+    ) -> URL? {
+        let isChinese = localization == "zh-Hans"
+        var url = URLComponents()
+        url.scheme = "https"
+        url.host = "docs.heeler.bybee.dev"
+        url.path = isChinese ? "/zh/updates" : "/updates"
+        url.fragment =
+            switch component {
+            case .plugin?: isChinese ? "手动更新-heeler-插件" : "update-the-heeler-plugin-by-hand"
+            case .helper?: isChinese ? "手动更新-host-helper" : "update-the-host-helper-by-hand"
+            case nil: isChinese ? "更新失败时" : "when-an-update-fails"
+            }
+        return url.url
+    }
+}

@@ -64,7 +64,10 @@ own visit, its own sheet and its own tap.
 
   A failed row keeps Try Again, and its detail page shows what the Host said
   with Copy Details. The card and the badge then say that updates failed
-  until the user retries or the Host reads current.
+  until the user retries or the Host reads current. Under a Host with a
+  failed update, and on that update's detail page, a link opens the user
+  guide's steps for updating on the Host itself (`docs/guides/updates.md`),
+  in Simplified Chinese when the app shows that and in English otherwise.
 
 ## Why
 
@@ -115,3 +118,6 @@ own visit, its own sheet and its own tap.
   explains it.
 - An update that ends without an answer is concluded after one more read. A
   slow install that finishes later shows as current at the next read.
+- Released apps link to headings of the updates guide by their anchors, so
+  those headings keep their wording in both languages, and the guide has to
+  be published before a build with the link reaches users.
