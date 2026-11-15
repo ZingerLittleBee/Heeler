@@ -2124,7 +2124,7 @@ final class ConsoleStore {
         let hostIDs = usageCatalog.map(\.id).filter { id in
             canReadUsageForWidgets(id) && widgetUsageRefreshes[id] == nil
                 && agentUsageStores[id]?.isLoading != true
-                && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.readAt)
+                && usageWidgets.isStale(id, readAt: agentUsageStores[id]?.figuresReadAt)
         }
         for id in hostIDs {
             let refresh = UUID()

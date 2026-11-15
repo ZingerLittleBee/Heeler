@@ -106,6 +106,12 @@ final class AgentUsageStore {
     private(set) var refreshFailure: String?
     /// When the state was last read from the Host.
     private(set) var readAt: Date?
+    /// When the shown figures were read on the Host, which a refreshing
+    /// report puts before `readAt`.
+    var figuresReadAt: Date? {
+        guard let readAt, case .available(let report) = snapshotState else { return readAt }
+        return report.figuresDate(readAt: readAt)
+    }
     /// The plugin release behind the shown state, when its read learned it.
     private(set) var pluginVersion: PluginVersion?
     /// Called after the state or the Claude Code limits choice changes, so
