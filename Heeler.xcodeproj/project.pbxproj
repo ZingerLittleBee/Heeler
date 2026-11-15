@@ -133,6 +133,7 @@
 		1BEAD980FB59182C1809FEDB /* ANSIScreenDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8312DDAA1D7F4763CA3DDA6D /* ANSIScreenDecoderTests.swift */; };
 		1C21AA358DBA860A052AED75 /* HerdrCoreMacOSSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684625CED7CF2D39D570FF65 /* HerdrCoreMacOSSessionBinderTests.swift */; };
 		1C272721DE9E8729217C2AB6 /* OpenCodeDialogParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC8E75167BC2094BFC790DE /* OpenCodeDialogParser.swift */; };
+		1C492F136C81E1A8602673B4 /* RexTerminalSizeLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88BD9F610971DD8E19094C73 /* RexTerminalSizeLiveTests.swift */; };
 		1CB9743773B28FD982E4D4E2 /* ChatCacheSettingsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01D0C3DA5EC4635D967B9BB3 /* ChatCacheSettingsModelTests.swift */; };
 		1CBC732401A04A7F61307E5F /* HerdrCoreProgramChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80814D611E6B27213B94DFB1 /* HerdrCoreProgramChatTests.swift */; };
 		1CCAA769DDCA71EC02D40707 /* pairing-code-v2.json in Resources */ = {isa = PBXBuildFile; fileRef = 791A29C99001477839E4C3E5 /* pairing-code-v2.json */; };
@@ -1958,6 +1959,7 @@
 		88442EF4C1A2660C9FCD59C8 /* DiffWordChangesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffWordChangesTests.swift; sourceTree = "<group>"; };
 		884AFF5E583F527547B61F95 /* AgentLayoutTokensEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLayoutTokensEditingTests.swift; sourceTree = "<group>"; };
 		88A7E1308B558F009B396A9F /* ClaudeTranscriptLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTranscriptLocator.swift; sourceTree = "<group>"; };
+		88BD9F610971DD8E19094C73 /* RexTerminalSizeLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexTerminalSizeLiveTests.swift; sourceTree = "<group>"; };
 		88DA44F3EA811A40E96E06F2 /* SidebarLayoutVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarLayoutVectorFile.swift; sourceTree = "<group>"; };
 		88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConsoleProjection.swift; sourceTree = "<group>"; };
 		8953460255499CCB2589E59A /* LiveVoiceTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveVoiceTranscriber.swift; sourceTree = "<group>"; };
@@ -3114,6 +3116,7 @@
 				C73FDBDD1511161541878E55 /* RexTerminalAttachLiveTests.swift */,
 				761D997909AC2A06E266F0EA /* RexTerminalInputLiveTests.swift */,
 				2C7E98BBFFE1277FE0D33B11 /* RexTerminalLiveTests.swift */,
+				88BD9F610971DD8E19094C73 /* RexTerminalSizeLiveTests.swift */,
 				F1DCC9DD7AB03D8C78B53F35 /* UnixDomainSocketChannel.swift */,
 			);
 			path = HeelerLiveTests;
@@ -4485,6 +4488,7 @@
 				17C6B44F96DD17E8E205AA8C /* RexTerminalAttachLiveTests.swift in Sources */,
 				DDE54585C36C1BBC0BD561DC /* RexTerminalInputLiveTests.swift in Sources */,
 				390D83535270A502EC558F86 /* RexTerminalLiveTests.swift in Sources */,
+				1C492F136C81E1A8602673B4 /* RexTerminalSizeLiveTests.swift in Sources */,
 				C0EFC9A2622B21272002DDF6 /* UnixDomainSocketChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
