@@ -3,7 +3,8 @@ import SwiftUI
 import UIKit
 
 /// Settings › Overlay Networks: the in-app Tailscale, ZeroTier, and EasyTier
-/// networks a Host can be reached through (ADR 0021). Each row has the
+/// networks and tailcat tunnels a Host can be reached through (ADRs 0021
+/// and 0048). Each row has the
 /// network's status and a switch that keeps it connected; signing in,
 /// editing, and the network's machines are on its own screen.
 struct OverlayNetworksSettingsView: View {
@@ -129,7 +130,7 @@ struct OverlayNetworksSettingsView: View {
                 Label("No Networks", systemImage: OverlayKind.glyphSymbol)
             } description: {
                 Text(
-                    String(localized: "Reach a Mac outside your local network through Tailscale, ZeroTier, or EasyTier. Heeler joins on its own, without a VPN."))
+                    String(localized: "Reach a Mac outside your local network through Tailscale, ZeroTier, EasyTier, or tailcat. Heeler joins on its own, without a VPN."))
             } actions: {
                 Button("Add Network") { isAdding = true }
                     .buttonStyle(.bordered)
@@ -264,6 +265,7 @@ extension OverlayKind {
         case .tailscale: .blue
         case .zerotier: .orange
         case .easytier: .indigo
+        case .tailcat: .teal
         }
     }
 }
@@ -363,9 +365,11 @@ struct OverlayNetworkHeadline: Equatable {
             subtitle = OverlayStatusCopy.explanation(status, failure: failure)
                 ?? peers.flatMap { OverlayStatusCopy.peerCount($0, kind: network.kind) }
                 ?? (status == .stopped && failure == nil ? String(localized: "Connects when a Host needs it.") : nil)
+            // A tunnel's path already says it is connected, and a row has
+            // no room for both beside the kind's name.
             rowSummary = peers
                 .flatMap { OverlayStatusCopy.shortPeerCount($0, kind: network.kind) }
-                .map { "\(summary) · \($0)" } ?? summary
+                .map { network.kind == .tailcat ? $0 : "\(summary) · \($0)" } ?? summary
             let assigned = status.isOnline ? store.details[id]?.assignedNetworks ?? [] : []
             let refused = assigned.filter { $0.error != nil }
             if !refused.isEmpty {
@@ -411,7 +415,7 @@ enum OverlayWaitReason: Equatable {
         case .easytierConfigServer:
             self = detail.hasPrefix(Self.configServerConnectionDetail)
                 ? .configServerConnection : .configServerAssignment
-        case .tailscale, .easytier:
+        case .tailscale, .easytier, .tailcat:
             return nil
         }
     }
@@ -543,6 +547,7 @@ enum OverlayStatusCopy {
     /// "9 peers" where the overlay does not say who is online. ZeroTier
     /// roots are infrastructure, not peers.
     static func peerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
+        if kind == .tailcat { return tailcatPath(peers) }
         let members = members(peers, kind: kind)
         guard !members.isEmpty else { return noOtherPeers(kind: kind) }
         guard let online = onlineCount(members) else { return peerTotal(members.count, kind: kind) }
@@ -552,10 +557,21 @@ enum OverlayStatusCopy {
     /// `peerCount` for a row beside "Connected": "2 of 9 online"; nil
     /// without peers.
     static func shortPeerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
+        if kind == .tailcat { return tailcatPath(peers) }
         let members = members(peers, kind: kind)
         guard !members.isEmpty else { return nil }
         guard let online = onlineCount(members) else { return peerTotal(members.count, kind: kind) }
         return String(localized: "\(online) of \(members.count) online")
+    }
+
+    /// A tailcat tunnel has one peer, its server, so how it is reached says
+    /// more than a count: "Direct · 12 ms", "Relayed · 130 ms", or that it
+    /// stopped answering.
+    private static func tailcatPath(_ peers: [OverlayPeer]) -> String? {
+        guard let server = peers.first else { return nil }
+        if server.isOnline == false { return String(localized: "The server is not answering") }
+        let path = peerReachability(server)
+        return path.isEmpty ? nil : path
     }
 
     private static func members(_ peers: [OverlayPeer], kind: OverlayKind) -> [OverlayPeer] {
@@ -582,7 +598,8 @@ enum OverlayStatusCopy {
         switch kind {
         case .tailscale: String(localized: "No other machines yet")
         case .zerotier: String(localized: "No other members yet")
-        case .easytier: String(localized: "No other peers yet")
+        // tailcat never gets here (`tailcatPath`); it shares the wording.
+        case .easytier, .tailcat: String(localized: "No other peers yet")
         }
     }
 
@@ -592,8 +609,8 @@ enum OverlayStatusCopy {
         case (.tailscale, false): String(localized: "\(count) machines")
         case (.zerotier, true): String(localized: "1 member")
         case (.zerotier, false): String(localized: "\(count) members")
-        case (.easytier, true): String(localized: "1 peer")
-        case (.easytier, false): String(localized: "\(count) peers")
+        case (.easytier, true), (.tailcat, true): String(localized: "1 peer")
+        case (.easytier, false), (.tailcat, false): String(localized: "\(count) peers")
         }
     }
 
@@ -603,8 +620,8 @@ enum OverlayStatusCopy {
         case (.tailscale, false): String(localized: "\(online) of \(count) machines online")
         case (.zerotier, true): String(localized: "\(online) of 1 member online")
         case (.zerotier, false): String(localized: "\(online) of \(count) members online")
-        case (.easytier, true): String(localized: "\(online) of 1 peer online")
-        case (.easytier, false): String(localized: "\(online) of \(count) peers online")
+        case (.easytier, true), (.tailcat, true): String(localized: "\(online) of 1 peer online")
+        case (.easytier, false), (.tailcat, false): String(localized: "\(online) of \(count) peers online")
         }
     }
 

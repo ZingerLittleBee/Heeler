@@ -5972,6 +5972,72 @@
         }
       }
     },
+    "A tailcat address with a pre-shared key." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事前共有鍵付きの tailcat アドレスです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "带预共享密钥的 tailcat 地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "含預先共用金鑰的 tailcat 位址。"
+          }
+        }
+      }
+    },
+    "A tailcat tunnel reaches one machine, the one running tailcat serve, as %@. The Jump Host's port must be one that tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat トンネルが到達できるのは tailcat serve を実行しているマシン 1 台だけで、アドレスは %@ です。ジャンプホストのポートは、tailcat serve が公開しているポートのいずれかである必要があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 隧道只连接一台机器，即运行 tailcat serve 的那台，地址为 %@。跳板机的端口必须是 tailcat serve 开放的端口之一。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 通道只會連到一台機器，也就是執行 tailcat serve 的那台，位址為 %@。跳板主機的連接埠必須是 tailcat serve 開放的其中一個。"
+          }
+        }
+      }
+    },
+    "A tailcat tunnel reaches one machine, the one running tailcat serve, as %@. This Host's port must be one that tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat トンネルが到達できるのは tailcat serve を実行しているマシン 1 台だけで、アドレスは %@ です。このホストのポートは、tailcat serve が公開しているポートのいずれかである必要があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 隧道只连接一台机器，即运行 tailcat serve 的那台，地址为 %@。此主机的端口必须是 tailcat serve 开放的端口之一。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 通道只會連到一台機器，也就是執行 tailcat serve 的那台，位址為 %@。此主機的連接埠必須是 tailcat serve 開放的其中一個。"
+          }
+        }
+      }
+    },
     "A text field in the dialog has the cursor, so a digit would be typed into it." : {
       "localizations" : {
         "ja" : {
@@ -19347,24 +19413,24 @@
         }
       }
     },
-    "Direct uses this device's own network connection. Add Tailscale, ZeroTier, or EasyTier networks in Settings › Overlay Networks." : {
+    "Direct uses this device's own network connection. Add Tailscale, ZeroTier, EasyTier, or tailcat networks in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「直接」はこのデバイス自身のネットワーク接続を使います。Tailscale、ZeroTier、EasyTier のネットワークは「設定 › オーバーレイネットワーク」で追加してください。"
+            "value" : "「直接」はこのデバイス自身のネットワーク接続を使います。Tailscale、ZeroTier、EasyTier、tailcat のネットワークは「設定 › オーバーレイネットワーク」で追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“直连”使用此设备自身的网络连接。可在“设置”>“叠加网络”中添加 Tailscale、ZeroTier 或 EasyTier 网络。"
+            "value" : "“直连”使用此设备自身的网络连接。可在“设置”>“叠加网络”中添加 Tailscale、ZeroTier、EasyTier 或 tailcat 网络。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接連線會使用此裝置本身的網路連線。你可以在「設定 › 覆蓋網路」中加入 Tailscale、ZeroTier 或 EasyTier 網路。"
+            "value" : "直接連線會使用此裝置本身的網路連線。你可以在「設定 › 覆蓋網路」中加入 Tailscale、ZeroTier、EasyTier 或 tailcat 網路。"
           }
         }
       }
@@ -36678,6 +36744,28 @@
         }
       }
     },
+    "One machine, by its address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アドレスで 1 台のマシンに接続"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "凭地址连接一台机器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以位址連到一台機器"
+          }
+        }
+      }
+    },
     "Online" : {
       "localizations" : {
         "ja" : {
@@ -39609,6 +39697,28 @@
         }
       }
     },
+    "Paste a new address when the server's key changes. Hosts on this tunnel keep their routes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーの鍵が変わったら、新しいアドレスをペーストしてください。このトンネルを使うホストの経路はそのままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的密钥变更后，请粘贴新地址。使用此隧道的主机会保留其线路。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的金鑰變更後，請貼上新位址。使用此通道的主機會保留其路由。"
+          }
+        }
+      }
+    },
     "Pastes the clipboard into the Agent" : {
       "localizations" : {
         "ja" : {
@@ -41516,24 +41626,24 @@
         }
       }
     },
-    "Reach a Mac outside your local network through Tailscale, ZeroTier, or EasyTier. Heeler joins on its own, without a VPN." : {
+    "Reach a Mac outside your local network through Tailscale, ZeroTier, EasyTier, or tailcat. Heeler joins on its own, without a VPN." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ローカルネットワークの外にある Mac へは、Tailscale、ZeroTier、EasyTier 経由で接続します。Heeler は VPN なしで自動的に参加します。"
+            "value" : "ローカルネットワークの外にある Mac へは、Tailscale、ZeroTier、EasyTier、tailcat 経由で接続します。Heeler は VPN なしで自動的に参加します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通过 Tailscale、ZeroTier 或 EasyTier 连接局域网外的 Mac。Heeler 无需开启 VPN 即可自行加入网络。"
+            "value" : "通过 Tailscale、ZeroTier、EasyTier 或 tailcat 连接局域网外的 Mac。Heeler 无需开启 VPN 即可自行加入网络。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "透過 Tailscale、ZeroTier 或 EasyTier 連到區域網路以外的 Mac。Heeler 會自行加入，不需要 VPN。"
+            "value" : "透過 Tailscale、ZeroTier、EasyTier 或 tailcat 連到區域網路以外的 Mac。Heeler 會自行加入，不需要 VPN。"
           }
         }
       }
@@ -44916,6 +45026,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請在主機上執行 %@，然後重新檢查。"
+          }
+        }
+      }
+    },
+    "Run %@ on the machine and paste the address it prints. Anyone who has it can reach that port, so Heeler keeps it in the Keychain." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのマシンで %@ を実行し、表示されたアドレスをペーストしてください。このアドレスを知っていれば誰でもそのポートに接続できるため、Heeler はキーチェーンに保管します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在那台机器上运行 %@，然后粘贴它打印的地址。任何拿到该地址的人都能访问那个端口，因此 Heeler 会将其保存在钥匙串中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在那台機器上執行 %@，然後貼上它印出的位址。任何取得該位址的人都能連到那個連接埠，因此 Heeler 會將它存放在鑰匙圈中。"
           }
         }
       }
@@ -55776,6 +55908,28 @@
         }
       }
     },
+    "The address changes every time tailcat serve starts, unless the machine has a saved key: %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat serve を起動するたびにアドレスは変わります。マシンに鍵を保存しておけば変わりません: %@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次启动 tailcat serve 地址都会改变，除非那台机器保存了密钥：%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次啟動 tailcat serve 位址都會改變，除非那台機器已儲存金鑰：%@。"
+          }
+        }
+      }
+    },
     "The approval has no such action." : {
       "comment" : "Planner refusal for an approval",
       "localizations" : {
@@ -57599,6 +57753,28 @@
         }
       }
     },
+    "The machine running tailcat serve. Tap it to add it as a Host, on a port tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat serve を実行しているマシンです。タップするとホストとして追加できます。ポートは tailcat serve が公開しているものを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行 tailcat serve 的机器。轻点即可将其添加为主机，端口需是 tailcat serve 开放的端口。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行 tailcat serve 的機器。點一下即可將其加入為主機，連接埠須為 tailcat serve 開放的連接埠。"
+          }
+        }
+      }
+    },
     "The message contains terminal control characters." : {
       "comment" : "Error message when a message contains terminal control characters.",
       "isCommentAutoGenerated" : true,
@@ -59291,6 +59467,28 @@
         }
       }
     },
+    "The server is not answering" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーが応答していません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器没有应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器沒有回應"
+          }
+        }
+      }
+    },
     "The server knows the network secrets and decides which peers this device connects to." : {
       "localizations" : {
         "ja" : {
@@ -59686,6 +59884,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此步驟失敗"
+          }
+        }
+      }
+    },
+    "The tailcat address is missing" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat アドレスがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 tailcat 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 tailcat 位址"
           }
         }
       }
@@ -61254,6 +61474,28 @@
         }
       }
     },
+    "This address has no pre-shared key: whoever runs its relay could open the tunnel too." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスには事前共有鍵がありません。リレーの運営者もトンネルを開ける可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址不含预共享密钥：运营其中继的人也能打开这条隧道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址不含預先共用金鑰：營運其中繼的人也能開啟這條通道。"
+          }
+        }
+      }
+    },
     "This app carries a newer Host Helper." : {
       "localizations" : {
         "ja" : {
@@ -62311,6 +62553,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這已不是同一個連結的工作樹，未移除任何內容。"
+          }
+        }
+      }
+    },
+    "This is not a tailcat address. Copy the whole address that tailcat serve prints, starting with tc." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは tailcat アドレスではありません。tailcat serve が表示する、tc で始まるアドレス全体をコピーしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是 tailcat 地址。请完整拷贝 tailcat serve 打印的、以 tc 开头的地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不是 tailcat 位址。請完整複製 tailcat serve 印出、以 tc 開頭的位址。"
           }
         }
       }
@@ -65801,6 +66065,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "language、prompt、response_format 或 stream 請使用單一值，且不含括號。"
+          }
+        }
+      }
+    },
+    "Use the Tunnel's Address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トンネルのアドレスを使用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用隧道的地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用通道的位址"
           }
         }
       }
@@ -71682,6 +71968,50 @@
       }
     },
     "sync issue" : {},
+    "tailcat address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat アドレス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 位址"
+          }
+        }
+      }
+    },
+    "tailcat server" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat サーバー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 伺服器"
+          }
+        }
+      }
+    },
     "tcp://host:11010, one per line" : {
       "localizations" : {
         "ja" : {
