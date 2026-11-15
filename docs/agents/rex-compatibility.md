@@ -22,8 +22,13 @@ observed yet.
 - A terminal's output arrives on a data connection of its own
   (`RexDataLink`). Heeler skips the stream's snapshot (`RexStreamScanner`) and
   paints from the server's `vt` redraw instead (`RexTerminalPaint`);
-  `RexTerminalStream` runs the three for one view. The Console does not use
-  them yet.
+  `RexTerminalStream` runs the three for one view.
+- The Console opens a Rex terminal for viewing only
+  ([ADR 0049](../adr/0049-rex-terminals-open-for-viewing-from-the-servers-redraw.md)):
+  `RexHostSession.withTerminal` calls `session.attach` on the Host's control
+  connection and holds the block to one data connection, `RexTerminalAttach`
+  turns its stream into the view's bytes and asks for the view's size, and
+  input stays shut behind `RexTerminalInput`.
 
 ## Versioned observations
 
@@ -192,6 +197,46 @@ Lab captures `b_redraw`, `b2_edges` and `c2_handoff`, and the committed
   handoffs, some through a 40 ± 30 ms delay (`c2_handoff`). A program writing a
   line about every 12 ms got a best-effort first paint and one exact repaint
   once it stopped (`RexTerminalLiveTests`).
+
+### Terminal size and ownership
+
+Lab capture `e_size`, three lab clients on one block.
+
+- A block's size is its owner's. A `resize` request from a client that did not
+  own the block was kept in a list of wanted sizes and changed nothing; once
+  the block had no owner, a request applied at once, and the stream's resize
+  message followed.
+- When the owner let go of the block, the size stayed as it was: a size another
+  client had asked for earlier was not applied until it asked again.
+- `own_block` with mode `request` succeeded only for a block with no owner;
+  mode `take` succeeded at once, and the taker's wanted size applied.
+- An owner whose control connection dropped without a close frame lost the
+  block at once to the next client with a wanted size, and the terminal took
+  that client's size; when the owner resumed, the block and its size went back
+  to it. An owner that closed with a close frame lost its wanted size as well.
+- A `resize` with 0 or more than 65535 columns or rows was refused with 400.
+- In the maintainer's own session, the Rex desktop app's client owned every
+  block, so a request from Heeler there would not apply.
+- Live suite `RexTerminalAttachLiveTests` (Heeler's runner and view store
+  over a local socket): a shell block another control client created with
+  `session.create` and then attached to was owned by a client other than
+  Heeler's. Heeler's request for 100x30 left the block at 80x24, and the
+  block stayed with its owner. The same run painted the terminal after
+  `session.attach` and `data.connect` from Heeler's own control client,
+  followed its output, and finished the view without a reattach once the
+  session was destroyed.
+
+### Query answers
+
+Lab capture `d2_queries`.
+
+- Rex answered a program's queries itself, from its own terminal: primary and
+  secondary device attributes, cursor position, status, version (as a DCS
+  string), a palette color (OSC 4), a mode's state and the kitty keyboard
+  flags. Anything Heeler's emulator answered as well would reach the program
+  as typed input; Heeler drops those answers (`RexTerminalAnswerFilter`).
+- A background color query (OSC 11) got no answer. Answers to the window size
+  reports (`CSI 14 t`, `CSI 18 t`) were not captured.
 
 ### Documented for API revision 12, not observed
 
