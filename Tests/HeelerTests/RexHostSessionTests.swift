@@ -245,6 +245,44 @@ struct RexHostSessionTests {
         #expect(await following.value == .linkEnded(.closedHere))
     }
 
+    /// A session whose first structure read the server refused is not
+    /// published as missing: the follower reads it again after a pause, and
+    /// the inventory shows once it reads.
+    @Test func aRefusedFirstStructureReadIsTriedAgain() async throws {
+        final class Published: Sendable {
+            let inventories = Mutex<[RexInventory]>([])
+            var all: [RexInventory] { inventories.withLock { $0 } }
+        }
+        let world = world()
+        let (server, link) = try await FakeRexServer.open()
+        await world.install(on: server)
+        let refusals = Mutex(1)
+        let studio = world.sessions[0]
+        await server.answer("session.view") { _ in
+            let refuse = refusals.withLock { count in
+                defer { count -= 1 }
+                return count > 0
+            }
+            return refuse ? .error(code: "internal", message: "busy", status: 500) : .result(FakeRexWorld.view(studio))
+        }
+        let clock = ManualClock()
+        let published = Published()
+        let follower = RexInventoryFollower(
+            link: link, firstReadRetryDelay: .seconds(2), detachedRereadInterval: nil, sleep: clock.parkedSleep(for:)
+        ) { inventory in published.inventories.withLock { $0.append(inventory) } }
+        let following = Task { await follower.run() }
+
+        #expect(await clock.parks(for: .seconds(2)))
+        #expect(published.all.isEmpty)
+        clock.advance(.seconds(2))
+        for _ in 0..<500 where published.all.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(published.all.first?.sessions.map(\.id) == [studio.id])
+        #expect(await server.requests.count(where: { $0.method == "session.view" }) == 2)
+
+        await link.close()
+        #expect(await following.value == .linkEnded(.closedHere))
+    }
+
     // MARK: Drops
 
     /// A link that drops without a close frame is resumed with its reconnect

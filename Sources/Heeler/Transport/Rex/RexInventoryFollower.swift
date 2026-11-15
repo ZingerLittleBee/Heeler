@@ -33,6 +33,7 @@ actor RexInventoryFollower {
     private let link: RexControlLink
     private let maxReadsInFlight: Int
     private let readDeadline: RexDeliveryDeadline
+    private let firstReadRetryDelay: Duration
     private let detachedRereadInterval: Duration?
     private let sleep: Sleep
     private let publish: @Sendable (RexInventory) -> Void
@@ -43,6 +44,7 @@ actor RexInventoryFollower {
     private var nextRead: UInt64 = 0
     private var eventTask: Task<Void, Never>?
     private var rereadTask: Task<Void, Never>?
+    private var retries: [String: Task<Void, Never>] = [:]
     private var published: RexInventory?
     private var ending: Ending?
     private var waiter: CheckedContinuation<Ending, Never>?
@@ -53,19 +55,23 @@ actor RexInventoryFollower {
     /// `carrying` is what the last link knew of each terminal, shown until
     /// this one reads it again. `detachedRereadInterval` is how often sessions
     /// with detached terminals are read again; nil never. `readDeadline` is
-    /// how long each read waits for its answer. `observe` hears each
+    /// how long each read waits for its answer. `firstReadRetryDelay` is how
+    /// long a session whose first structure read failed waits before it is
+    /// read again (`RexInventoryBook.structureRead`). `observe` hears each
     /// update from the link as it arrives, for whatever else follows a block's
     /// events, and before the inventory applies it. `publish` hears each
     /// inventory in order.
     init(
         link: RexControlLink, carrying: [RexPaneAddress: RexTerminalDetails] = [:], maxReadsInFlight: Int = 4,
-        readDeadline: RexDeliveryDeadline = .sharedLinkRead, detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
+        readDeadline: RexDeliveryDeadline = .sharedLinkRead, firstReadRetryDelay: Duration = .seconds(2),
+        detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
         observe: @escaping @Sendable (RexControlUpdate) -> Void = { _ in },
         publish: @escaping @Sendable (RexInventory) -> Void
     ) {
         self.link = link
         self.maxReadsInFlight = max(1, maxReadsInFlight)
         self.readDeadline = readDeadline
+        self.firstReadRetryDelay = firstReadRetryDelay
         self.detachedRereadInterval = detachedRereadInterval
         self.sleep = sleep
         self.observe = observe
@@ -118,6 +124,8 @@ actor RexInventoryFollower {
         listing?.cancel()
         for read in reads.values { read.cancel() }
         reads = [:]
+        for retry in retries.values { retry.cancel() }
+        retries = [:]
         waiter?.resume(returning: reason)
         waiter = nil
     }
@@ -206,27 +214,45 @@ actor RexInventoryFollower {
         advance()
     }
 
+    /// A half the server refuses or Heeler cannot read comes back with no
+    /// value; one that says the session is gone ends the read there.
     private func readStructure(of sessionID: String) async throws {
-        let target = SessionTarget(sessionID: sessionID)
-        let view: RexInventoryBook.Answer<RexInventoryWire.View?>
-        let listing: RexInventoryBook.Answer<[RexInventoryWire.ListedBlock]?>
-        do {
-            let viewResponse = try await link.call("session.view", payload: target, waiting: readDeadline)
-            view = .init(value: try? RexInventoryWire.view(viewResponse.result(JSONValue.self)), seq: viewResponse.seq)
-            let listResponse = try await link.call("session.list_blocks", payload: target, waiting: readDeadline)
-            listing = .init(
-                value: try? RexInventoryWire.blocks(listResponse.result(JSONValue.self)), seq: listResponse.seq)
-        } catch RexControlError.server(let failure) {
-            guard ending == nil else { return }
-            if failure.saysSessionIsGone {
-                book.sessionGone(sessionID)
-            } else {
-                book.structureReadFailed(sessionID)
-            }
+        let view = try await readHalf("session.view", of: sessionID, reading: RexInventoryWire.view)
+        let listing =
+            view == nil ? nil : try await readHalf("session.list_blocks", of: sessionID, reading: RexInventoryWire.blocks)
+        guard ending == nil else { return }
+        guard let view, let listing else {
+            book.sessionGone(sessionID)
             return
         }
+        if book.structureRead(sessionID, view: view, listing: listing) { retryLater(sessionID) }
+    }
+
+    /// Nil when the server says the session is gone.
+    private func readHalf<Value>(
+        _ method: String, of sessionID: String, reading: (JSONValue) -> Value?
+    ) async throws -> RexInventoryBook.Answer<Value?>? {
+        do {
+            let response = try await link.call(method, payload: SessionTarget(sessionID: sessionID), waiting: readDeadline)
+            return .init(value: (try? response.result(JSONValue.self)).flatMap(reading), seq: response.seq)
+        } catch RexControlError.server(let failure) {
+            return failure.saysSessionIsGone ? nil : .init(value: nil, seq: 0)
+        }
+    }
+
+    private func retryLater(_ sessionID: String) {
+        retries[sessionID]?.cancel()
+        retries[sessionID] = Task { [weak self, sleep, delay = firstReadRetryDelay] in
+            do { try await sleep(delay) } catch { return }
+            await self?.retry(sessionID)
+        }
+    }
+
+    private func retry(_ sessionID: String) {
+        retries[sessionID] = nil
         guard ending == nil else { return }
-        book.structureRead(sessionID, view: view, listing: listing)
+        book.retryRead(sessionID)
+        advance()
     }
 
     /// Each half that the server refuses or Heeler cannot read is left as it

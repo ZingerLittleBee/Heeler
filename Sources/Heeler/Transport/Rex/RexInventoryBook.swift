@@ -45,10 +45,14 @@ struct RexInventoryBook {
         var readFromSeq: UInt64 = 0
         /// A read finished, or failed, at least once.
         var hasSettled = false
+        /// Reads that left the view unread before the session first settled.
+        var failedFirstReads = 0
+        /// A failed first read waits for `retryRead` before it goes again.
+        var awaitingRetry = false
         var closedBlocks: Set<String> = []
         var owners: [String: (owner: String?, seq: UInt64)] = [:]
 
-        var needsRead: Bool { !reading && (forced || wantedSeq > heldSeq) }
+        var needsRead: Bool { !reading && !awaitingRetry && (forced || wantedSeq > heldSeq) }
 
         mutating func noteOwner(_ block: RexInventoryWire.BlockFacts, seq: UInt64) {
             guard seq >= owners[block.id]?.seq ?? 0 else { return }
@@ -81,6 +85,9 @@ struct RexInventoryBook {
     /// The session list needs reading again: an event that changed it could
     /// not be read, or events went missing.
     private(set) var needsListing = true
+
+    /// Reads of a session whose view never read before it settles unread.
+    static let firstReadAttempts = 3
 
     init(carrying carried: [RexPaneAddress: RexTerminalDetails] = [:]) {
         self.carried = carried
@@ -127,10 +134,13 @@ struct RexInventoryBook {
 
     /// Each session with a detached terminal reads its structure again. Rex
     /// raises no event when a detached block's label changes, so only a read
-    /// shows it. A session whose read is in flight reads once more after it.
+    /// shows it. So does a session whose view could never be read. A session
+    /// whose read is in flight reads once more after it.
     mutating func rereadDetached() {
         for id in order {
-            guard let record = sessions[id], session(id, record)?.detached.isEmpty == false else { continue }
+            guard let record = sessions[id] else { continue }
+            let unread = record.hasSettled && record.view == nil
+            guard unread || session(id, record)?.detached.isEmpty == false else { continue }
             sessions[id]?.forced = true
         }
     }
@@ -271,14 +281,21 @@ struct RexInventoryBook {
         return reads
     }
 
-    /// A structure read's answers. A nil view or listing could not be read.
+    /// A structure read's answers. A nil view or listing could not be read,
+    /// or the server refused it.
+    ///
+    /// Returns true when the session's view has still never been read and
+    /// fewer than `firstReadAttempts` reads were made: the session stays
+    /// unsettled, so no inventory shows it as empty or leaves it out, and is
+    /// read again once `retryRead` says so. After that many it settles
+    /// unread, and `rereadDetached` reads it again.
+    @discardableResult
     mutating func structureRead(
         _ sessionID: String, view: Answer<RexInventoryWire.View?>, listing: Answer<[RexInventoryWire.ListedBlock]?>
-    ) {
+    ) -> Bool {
         readEnded()
-        guard var record = sessions[sessionID] else { return }
+        guard var record = sessions[sessionID] else { return false }
         record.reading = false
-        record.hasSettled = true
         if let newView = view.value, view.seq >= record.viewSeq,
             newView.revision >= record.view?.revision ?? Int.min
         {
@@ -297,6 +314,16 @@ struct RexInventoryBook {
             record.listingSeq = listing.seq
             for block in newListing { record.noteOwner(block.facts, seq: listing.seq) }
         }
+        if record.view == nil, !record.hasSettled {
+            record.failedFirstReads += 1
+            if record.failedFirstReads < Self.firstReadAttempts {
+                record.forced = true
+                record.awaitingRetry = true
+                sessions[sessionID] = record
+                return true
+            }
+        }
+        record.hasSettled = true
         if view.value == nil || listing.value == nil {
             // An answer that did not read is not asked again until something changes.
             record.heldSeq = max(record.heldSeq, record.readFromSeq)
@@ -304,17 +331,12 @@ struct RexInventoryBook {
             record.heldSeq = max(record.heldSeq, min(view.seq, listing.seq))
         }
         sessions[sessionID] = record
+        return false
     }
 
-    /// The server could not answer a structure read. It is not asked again
-    /// until something changes.
-    mutating func structureReadFailed(_ sessionID: String) {
-        readEnded()
-        guard var record = sessions[sessionID] else { return }
-        record.reading = false
-        record.hasSettled = true
-        record.heldSeq = max(record.heldSeq, record.readFromSeq)
-        sessions[sessionID] = record
+    /// A session whose first read left its view unread may be read again.
+    mutating func retryRead(_ sessionID: String) {
+        sessions[sessionID]?.awaitingRetry = false
     }
 
     /// A structure read's answer: the server no longer knows the session.

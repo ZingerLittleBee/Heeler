@@ -340,6 +340,48 @@ struct RexInventoryBookTests {
         #expect(session.detached.map(\.blockID) == ["block:detached"])
     }
 
+    /// A session whose view could not be read on its first read is neither
+    /// shown empty nor left out at once: it stays unsettled until it is read
+    /// again.
+    @Test func aSessionWhoseFirstReadFailedIsReadAgainBeforeItSettles() {
+        var book = RexInventoryBook()
+        book.beginListing()
+        book.listed([.init(id: studio.id, label: "studio")], seq: 0)
+        #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+        let again = book.structureRead(studio.id, view: .init(value: nil, seq: 0), listing: .init(value: nil, seq: 0))
+        #expect(again)
+        #expect(!book.isStructureSettled)
+        #expect(structureReads(&book).isEmpty)
+
+        book.retryRead(studio.id)
+        #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+        answer(&book, studio, seq: 0)
+        #expect(book.isStructureSettled)
+        #expect(book.inventory.sessions.map(\.id) == [studio.id])
+    }
+
+    /// After its attempts a session that never reads settles unread, so the
+    /// rest of the inventory shows, and the periodic read tries it again.
+    @Test func aSessionThatNeverReadsSettlesAfterItsAttempts() {
+        var book = RexInventoryBook()
+        book.beginListing()
+        book.listed([.init(id: studio.id, label: "studio")], seq: 0)
+        for attempt in 1...RexInventoryBook.firstReadAttempts {
+            #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+            let again = book.structureRead(
+                studio.id, view: .init(value: nil, seq: 0), listing: .init(value: nil, seq: 0))
+            #expect(again == (attempt < RexInventoryBook.firstReadAttempts))
+            book.retryRead(studio.id)
+        }
+        #expect(book.isStructureSettled)
+        #expect(book.inventory.sessions.isEmpty)
+
+        book.rereadDetached()
+        #expect(structureReads(&book) == [.structure(sessionID: studio.id)])
+        answer(&book, studio, seq: 0)
+        #expect(book.inventory.sessions.map(\.id) == [studio.id])
+    }
+
     /// An answer older than the view already held is not applied.
     @Test func anOlderViewDoesNotReplaceANewerOne() throws {
         var book = settled([studio])
