@@ -44,12 +44,13 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
   from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
   readers (ADRs 0044, 0045, and 0046).
-- Rex Hosts (experimental) target one running macOS or Linux Rex server by
-  its Unix socket, API revision 12 only: one WebSocket control link over
-  direct-streamlocal carries inventory, events and terminal input, and each
-  open terminal adds a data link on a channel of its own, painted from the
-  server's redraw. Connecting never starts a server or runs `rex`; a block's
-  size is taken only at the user's tap (ADRs 0048 to 0052).
+- Rex Hosts (experimental; one Rex Server per Host, listed by a look) target
+  one running macOS or Linux Rex server by its Unix socket, API revision 12
+  only: one WebSocket control link over direct-streamlocal carries inventory,
+  events and terminal input, and each open terminal adds a data link on a
+  channel of its own, painted from the server's redraw. Connecting never
+  starts a server or runs `rex`; a block's size is taken only at the user's
+  tap (ADRs 0048 to 0052).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

@@ -76,7 +76,7 @@ herdr-core の Host（Herdr デスクトップアプリを実行しているマ�
 
 tmux の Host（macOS と Linux の tmux >= 3.3）も手動で追加し、Server Kind とソケット名を確認します。接続しただけで tmux サーバーが起動することはありませんが、Linux では必要に応じて New Workspace から起動できます。ライブターミナルは tmux の制御モードでデスクトップクライアントと共存してペインごとに接続し、画面に合わせてサイズ調整しつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Claude Code のフックで Blocked、Done、会話 ID を報告でき、オプションの Host Helper を入れるとステータスの読み取り、Pi と Oh My Pi の拡張機能、通知、ライブアクティビティ、Usage を利用できます（[tmux に接続する](https://docs.heeler.bybee.dev/tmux)）。
 
-Rex の Host（実験的。macOS と Linux、Rex 0.1.0-preview.14 を基準に開発）も手動で追加し、Server Kind を確認します。Heeler は動作中の Rex サーバーの Unix ソケットに direct-streamlocal チャネルで接続し、サーバーを起動することはなく、Rex API revision 12 のみに対応します。Rex の Host は Terminals のみを表示し、Agent、Chat、通知、Usage はなく、Heeler から作成、名前の変更、終了を行うこともできません（[Rex に接続する](https://docs.heeler.bybee.dev/rex)）。
+Rex サーバー（実験的。macOS と Linux、Rex 0.1.0-preview.14 を基準に開発）は、動作しているマシンの Host の Server の 1 つです。Heeler がマシンを調べると一覧に表示され、オンにして使います。Heeler は動作中の Rex サーバーの Unix ソケットに direct-streamlocal チャネルで接続し、サーバーを起動することはなく、Rex API revision 12 のみに対応します。Rex の Server は Terminals のみを表示し、Agent、Chat、通知、Usage はなく、Heeler から作成、名前の変更、終了を行うこともできません（[Rex に接続する](https://docs.heeler.bybee.dev/rex)）。
 
 Tailscale、ZeroTier、EasyTier でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
 
