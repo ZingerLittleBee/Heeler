@@ -312,6 +312,9 @@ struct NewHostWizardView: View {
                 } footer: {
                     if let existing = wizard.existing {
                         Text("\(existing.name) is already in Heeler. Checked servers are turned on there.")
+                    } else if wizard.bringsTerminalsOnly {
+                        Text(
+                            "Checked servers bring their Terminals into Heeler. The rest stay on this Host, switched off.")
                     } else {
                         Text(
                             "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off.")
