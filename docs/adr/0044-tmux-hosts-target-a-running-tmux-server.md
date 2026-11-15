@@ -4,6 +4,11 @@ status: proposed
 
 # tmux Hosts target a running tmux server
 
+Amended by [ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md):
+a tmux server is a Server of its Host. Add Host and Host detail list every
+socket that answers and turn each on by itself, so nothing is confirmed in Host
+detail and no socket is picked there.
+
 Many people run coding agents in tmux sessions they started themselves, over
 SSH or on a desktop. tmux is neither Herdr TUI nor herdr-core: it has no API
 socket Heeler can speak, no plugins, and no Program Status of its own. Heeler

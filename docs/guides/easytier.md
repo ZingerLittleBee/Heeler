@@ -96,7 +96,7 @@ Tap **Add** next to the Mac under **Peers**, or follow [Connect from Heeler](ove
 - User: your Mac username, with the sign-in method you picked
 - Jump Host: none
 
-Save. Trust the SSH fingerprint only if it matches the one from your Mac, then complete [Verify the connection](overlay-networks.md#verify-the-connection). For the cellular check, first follow [Reaching a Mac outside the LAN](#reaching-a-mac-outside-the-lan).
+Tap **Connect**. Tap **Trust and Continue** only if the SSH fingerprint matches the one from your Mac, add the Host with the Servers you want checked, then complete [Verify the connection](overlay-networks.md#verify-the-connection). For the cellular check, first follow [Reaching a Mac outside the LAN](#reaching-a-mac-outside-the-lan).
 
 ## Config Server: get the network from a web console
 

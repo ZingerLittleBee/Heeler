@@ -34,6 +34,16 @@ struct ServerKindDetectionTests {
         return try await ServerKindDetection.run(over: host, session: session)
     }
 
+    /// The kind of each Server a Host lists from `detection` (ADR 0047).
+    private func listedKinds(_ detection: ServerKindDetection) -> [ServerKind] {
+        HostServerScan(detection).servers.map(\.key.kind)
+    }
+
+    /// The kinds a Host names as looked for in vain.
+    private func missingKinds(_ detection: ServerKindDetection) -> [ServerKind] {
+        HostServerScan(detection).missing.map(\.kind)
+    }
+
     // MARK: The script
 
     @Test func oneExecRunsTheHerdrTUIReadAndTheLocator() async throws {
@@ -102,7 +112,7 @@ struct ServerKindDetectionTests {
 
         #expect(detection.herdrTUI == .found(sessions: Self.sessions))
         #expect(detection.herdrCore == .notInstalled)
-        #expect(detection.foundKinds == [.herdrTUI])
+        #expect(listedKinds(detection) == [.herdrTUI])
     }
 
     @Test func neither() async throws {
@@ -110,7 +120,7 @@ struct ServerKindDetectionTests {
 
         #expect(detection.herdrTUI == .notFound)
         #expect(detection.herdrCore == .notInstalled)
-        #expect(detection.foundKinds.isEmpty)
+        #expect(listedKinds(detection).isEmpty)
     }
 
     @Test func both() async throws {
@@ -118,7 +128,7 @@ struct ServerKindDetectionTests {
             herdr: .answers(Self.sessionsJSON),
             locator: ScriptedCoreHost.locatorLines(socketFile: true))
 
-        #expect(detection.foundKinds == [.herdrTUI, .herdrCore])
+        #expect(listedKinds(detection) == [.herdrTUI, .herdrCore])
     }
 
     @Test func herdrCoreOnlyInEachLocatorState() async throws {
@@ -151,7 +161,14 @@ struct ServerKindDetectionTests {
             let detection = try await detect(locator: lines)
             #expect(detection.herdrCore == finding)
             #expect(detection.herdrTUI == .notFound)
-            #expect(detection.foundKinds == [.herdrCore])
+            #expect(detection.tmux == .notInstalled)
+            // A socket path past the limit is a core no connection can reach:
+            // the Host names it instead of listing it.
+            if case .socketPathTooLong = finding {
+                #expect(listedKinds(detection).isEmpty)
+            } else {
+                #expect(listedKinds(detection) == [.herdrCore])
+            }
         }
     }
 
@@ -168,7 +185,7 @@ struct ServerKindDetectionTests {
         let detection = try await detect(herdr: read)
 
         #expect(detection.herdrTUI == .notFound)
-        #expect(detection.foundKinds == [.herdrCore])
+        #expect(listedKinds(detection) == [.herdrCore])
     }
 
     @Test func startupOutputInAnyEncodingIsIgnored() async throws {
@@ -221,32 +238,35 @@ struct ServerKindDetectionTests {
         for (finding, summary) in cases {
             #expect(finding.summary == summary)
         }
-        #expect(ServerKindDetection.HerdrTUIFinding.found(sessions: []).summary == "Found")
-        #expect(ServerKindDetection.HerdrTUIFinding.notFound.summary == "Not found")
     }
 
-    // MARK: What is offered
+    // MARK: What a Host lists
 
-    @Test func theFoundKindsAreOffered() async throws {
+    @Test func theFoundServersAreListedAndTheRestNamedMissing() async throws {
         let both = try await detect(herdr: .answers(Self.sessionsJSON))
-        #expect(both.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(listedKinds(both) == [.herdrTUI, .herdrCore])
+        #expect(missingKinds(both) == [.tmux])
 
         let tui = try await detect(
             herdr: .answers(Self.sessionsJSON),
             locator: ScriptedCoreHost.locatorLines(executable: nil))
-        #expect(tui.offeredKinds == [.herdrTUI])
+        #expect(listedKinds(tui) == [.herdrTUI])
+        #expect(missingKinds(tui) == [.herdrCore, .tmux])
 
         let core = try await detect()
-        #expect(core.offeredKinds == [.herdrCore])
+        #expect(listedKinds(core) == [.herdrCore])
+        #expect(missingKinds(core) == [.herdrTUI, .tmux])
 
-        // Nothing there yet: the user may be about to install any of them.
+        // Nothing there yet: every kind is named, for the user to set one up.
         let neither = try await detect(locator: ScriptedCoreHost.locatorLines(executable: nil))
-        #expect(neither.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(ServerKindDetection.offeredWithoutFindings == [.herdrTUI, .herdrCore, .tmux])
+        #expect(listedKinds(neither).isEmpty)
+        #expect(missingKinds(neither) == [.herdrTUI, .herdrCore, .tmux])
 
-        // Offered, so that confirming it says why it cannot be.
+        // A core whose session name was refused is named with the reason it was not read.
         let refused = try await detect(herdr: .answers(Self.sessionsJSON), session: "a/b")
-        #expect(refused.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(listedKinds(refused) == [.herdrTUI])
+        #expect(
+            HostServerScan(refused).missing.first { $0.kind == .herdrCore }?.note == "Session name refused")
     }
 
     // MARK: tmux
@@ -284,9 +304,10 @@ struct ServerKindDetectionTests {
             ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["alpha", "default", "work"]))
 
         #expect(detection.tmux == .running(version: "3.4", sockets: ["default", "alpha", "work"]))
-        #expect(detection.tmuxSockets == ["default", "alpha", "work"])
-        #expect(detection.foundKinds == [.tmux])
-        #expect(detection.offeredKinds == [.tmux])
+        // Each socket a server answers on is a Server of its own.
+        let listed = HostServerScan(detection).servers
+        #expect(listed.map(\.key.name) == ["default", "alpha", "work"])
+        #expect(listed.allSatisfy { $0.key.kind == .tmux && $0.isRunning })
         #expect(detection.tmux.summary == "3.4, running")
     }
 
@@ -295,25 +316,8 @@ struct ServerKindDetectionTests {
             ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["default"]),
             herdr: .answers(Self.sessionsJSON), locator: ScriptedCoreHost.locatorLines())
 
-        #expect(detection.foundKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-    }
-
-    @Test func theConfirmationStartsOnTheTypedSocketWhenItsServerAnswers() async throws {
-        let running = try await detectTmux(
-            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["default", "work"]))
-        #expect(running.preselectedTmuxSocket(typed: "") == "default")
-        #expect(running.preselectedTmuxSocket(typed: " work ") == "work")
-        #expect(running.preselectedTmuxSocket(typed: "absent") == "default")
-
-        let withoutDefault = try await detectTmux(
-            ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: ["work", "play"]))
-        #expect(withoutDefault.preselectedTmuxSocket(typed: "") == "work")
-
-        // With no server answering, the typed name stands.
-        let stopped = try await detectTmux(ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath))
-        #expect(stopped.preselectedTmuxSocket(typed: "") == "default")
-        #expect(stopped.preselectedTmuxSocket(typed: "later") == "later")
+        #expect(listedKinds(detection) == [.herdrTUI, .herdrCore, .tmux])
+        #expect(missingKinds(detection).isEmpty)
     }
 
     @Test func whatTheLoginShellResolvedIsWhatAConfirmedHostStores() async throws {
@@ -332,44 +336,50 @@ struct ServerKindDetectionTests {
         #expect(none.tmuxPaths(socketName: "default") == nil)
     }
 
-    @Test func aTmuxWithNoServerRunningIsNotFoundButStaysOnOffer() async throws {
+    /// Its Server connects once the user starts one (ADR 0044), so it is listed
+    /// as not running.
+    @Test func aTmuxWithNoServerRunningIsListedNotRunning() async throws {
         let alone = try await detectTmux(ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath))
         #expect(alone.tmux == .notRunning(version: "3.4"))
-        #expect(alone.foundKinds.isEmpty)
-        #expect(alone.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        let listed = HostServerScan(alone).servers
+        #expect(listed.map(\.key) == [HostServerKey(kind: .tmux, name: "")])
+        #expect(listed.first?.isRunning == false)
         #expect(alone.tmux.summary == "3.4, no server running")
 
         let besideHerdr = try await detectTmux(
             ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath), herdr: .answers(Self.sessionsJSON))
-        #expect(besideHerdr.foundKinds == [.herdrTUI])
-        #expect(besideHerdr.offeredKinds == [.herdrTUI, .tmux])
+        #expect(listedKinds(besideHerdr) == [.herdrTUI, .tmux])
+        #expect(HostServerScan(besideHerdr).servers.map(\.isRunning) == [true, false])
     }
 
-    @Test func aTmuxHeelerCannotUseIsOfferedOnlyWhenNothingWasFound() async throws {
+    @Test func aTmuxHeelerCannotUseIsNamedAndNeverListed() async throws {
         let old = ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, version: "tmux 3.2a")
         let alone = try await detectTmux(old)
         #expect(alone.tmux == .updateRequired(version: "3.2a"))
         #expect(alone.tmux.summary == "3.2a, needs 3.3 or newer")
-        #expect(alone.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
+        #expect(listedKinds(alone).isEmpty)
+        #expect(
+            HostServerScan(alone).missing.first { $0.kind == .tmux }?.note == "3.2a, needs 3.3 or newer")
 
         let besideHerdr = try await detectTmux(old, herdr: .answers(Self.sessionsJSON))
-        #expect(besideHerdr.offeredKinds == [.herdrTUI])
+        #expect(listedKinds(besideHerdr) == [.herdrTUI])
 
         let missing = try await detectTmux(ScriptedCoreHost.tmuxLines(), herdr: .answers(Self.sessionsJSON))
         #expect(missing.tmux == .notInstalled)
         #expect(missing.tmux.summary == "Not installed")
-        #expect(missing.offeredKinds == [.herdrTUI])
+        #expect(listedKinds(missing) == [.herdrTUI])
+        #expect(missingKinds(missing) == [.herdrCore, .tmux])
     }
 
     @Test(arguments: ["FreeBSD", "OpenBSD", "SunOS", ""])
-    func tmuxIsOnlyOfferedOnMacOSAndLinux(kernel: String) async throws {
+    func tmuxIsOnlyListedOnMacOSAndLinux(kernel: String) async throws {
         let detection = try await detectTmux(
             ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, kernel: kernel, sockets: ["default"]))
 
         #expect(detection.tmux == .unsupported)
-        #expect(detection.foundKinds.isEmpty)
-        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore])
-        #expect(detection.tmuxSockets.isEmpty)
+        #expect(listedKinds(detection).isEmpty)
+        // Heeler drives no tmux there, so there is none to miss either.
+        #expect(missingKinds(detection) == [.herdrTUI, .herdrCore])
     }
 
     @Test func aMacIsATmuxHostToo() async throws {
@@ -387,7 +397,7 @@ struct ServerKindDetectionTests {
         #expect(detection.herdrTUI == .found(sessions: Self.sessions))
         #expect(detection.tmux == .unreadable)
         #expect(detection.tmux.summary == "Could not read")
-        #expect(detection.offeredKinds == [.herdrTUI])
+        #expect(listedKinds(detection) == [.herdrTUI])
     }
 
     // MARK: A native Windows target
@@ -406,13 +416,16 @@ struct ServerKindDetectionTests {
         let (running, host) = try await detectOnWindows()
         #expect(await host.log == ["windows-detection"])
         #expect(running.herdrCore == .socketFilePresent(version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
-        #expect(running.offeredKinds == [.herdrCore])
+        #expect(listedKinds(running) == [.herdrCore])
+        #expect(HostServerScan(running).servers.first?.isRunning == true)
+        #expect(HostServerScan(running).isNativeWindows)
         #expect(running.herdrCore.summary == "0.1.16, running")
 
         let (stopped, _) = try await detectOnWindows(
             locator: ScriptedCoreHost.windowsLocatorLines(lock: ScriptedCoreHost.windowsPipe, pipe: false))
         #expect(stopped.herdrCore == .notRunning(version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
-        #expect(stopped.offeredKinds == [.herdrCore])
+        #expect(listedKinds(stopped) == [.herdrCore])
+        #expect(HostServerScan(stopped).servers.first?.isRunning == false)
 
         let (absent, _) = try await detectOnWindows(
             locator: ScriptedCoreHost.windowsLocatorLines(executable: nil, pipe: false))
@@ -424,7 +437,7 @@ struct ServerKindDetectionTests {
             herdr: .answers(Self.sessionsJSON), shellBanner: Data("Windows banner\r\n".utf8))
 
         #expect(detection.herdrTUI == .found(sessions: Self.sessions))
-        #expect(detection.offeredKinds == [.herdrTUI, .herdrCore])
+        #expect(listedKinds(detection) == [.herdrTUI, .herdrCore])
         let body = try #require(await host.scripts.first)
         #expect(await host.scripts.count == 1)
         #expect(body.contains("session list --json"))

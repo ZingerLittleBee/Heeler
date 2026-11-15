@@ -423,88 +423,22 @@ struct HostOnboardingStoreTests {
         #expect(store.availableSessions == sessions)
     }
 
-    // MARK: Detecting and confirming the Server Kind
+    // MARK: A Server's checks beside looking for Servers
 
-    private static let sessionsJSON =
-        #"{"sessions":[{"name":"default","default":true,"running":true}]}"#
-
-    /// An unconfirmed Host in a catalog of its own, with its store.
-    private func unconfirmedStore(
-        _ core: ScriptedCoreHost, session: String = "work",
-        outcome: FakeTransportConnector.Outcome = .connects(pingResult: healthyPing),
-        presentedKeyBlob: Data? = nil
-    ) throws -> (HostOnboardingStore, FakeTransportConnector, HostStore) {
-        let host = Host(
-            address: "box.example", username: "dev", serverKind: .unconfirmed, sessionName: session)
-        let catalog = HostStore(volatileHosts: [host])
-        let (store, connector) = try makeStore(
-            host: host, outcome: outcome, presentedKeyBlob: presentedKeyBlob,
-            sessions: [HerdrSession(name: "tui-only", isDefault: false, isRunning: true)],
-            core: core)
-        return (store, connector, catalog)
-    }
-
-    @Test func anUnconfirmedHostsDetailRunsDetectionAndNoPreflight() async throws {
-        let core = ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused)
-        let (store, connector, _) = try unconfirmedStore(core)
-
-        await store.runChecks()
-
-        #expect(store.phase == .finished)
-        #expect(store.detection?.herdrTUI == .found(sessions: [
-            HerdrSession(name: "default", isDefault: true, isRunning: true)
-        ]))
-        #expect(store.detection?.foundKinds == [.herdrTUI, .herdrCore])
-        #expect(await core.log == ["detection", "close"])
-        // No Herdr TUI transport, session read, or core link: only the one exec.
-        #expect(await connector.transports.isEmpty)
-        #expect(store.availableSessions.isEmpty)
-        #expect(store.report == nil)
-        #expect(store.serverInfo == nil)
-        #expect(store.host.serverKind == .unconfirmed)
-    }
-
-    @Test func theLocatorReadsTheTypedSession() async throws {
+    /// Looking for Servers is Host detail's (ADR 0047): a Server's own checks
+    /// never run the detection exec.
+    @Test func aServersChecksNeverDetect() async throws {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, _) = try unconfirmedStore(core, session: "work team")
+        let (store, _) = try makeStore(core: core)
 
         await store.runChecks()
 
-        #expect(await core.scripts.first?.contains("__session='work team'\n") == true)
-    }
-
-    /// Nothing but what detection found decides what is on offer.
-    @Test func detectionOffersHerdrCore() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core)
-        #expect(store.offeredKinds.isEmpty)
-
-        await store.runChecks()
-
-        #expect(store.offeredKinds == [.herdrCore])
-        await store.confirmServerKind(.herdrCore, in: catalog)
-        #expect(store.host.serverKind == .herdrCore)
-    }
-
-    @Test func aTargetRunningOnlyHerdrTUIIsOfferedOnlyHerdrTUI() async throws {
-        let core = ScriptedCoreHost(
-            locator: ScriptedCoreHost.locatorLines(executable: nil),
-            herdrRead: .answers(Self.sessionsJSON), channel: .refused)
-        let (store, connector, catalog) = try unconfirmedStore(core)
-
-        await store.runChecks()
-
-        #expect(store.offeredKinds == [.herdrTUI])
-        await store.confirmServerKind(.herdrCore, in: catalog)
-        #expect(store.host.serverKind == .unconfirmed)
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-        #expect(store.host.serverKind == .herdrTUI)
         #expect(store.report?.isFullyPassed == true)
-        #expect(await connector.transports.count == 1)
+        #expect(await core.log.isEmpty)
     }
 
-    /// A Pairing Code names a Herdr TUI socket, so its Host is never asked.
-    @Test func aPairedHostIsHerdrTUIAndDetectsNothing() async throws {
+    /// A Pairing Code names a Herdr TUI socket, and its checks detect nothing either.
+    @Test func aPairedHostsChecksNeverDetect() async throws {
         let core = ScriptedCoreHost(channel: .refused)
         let host = try endpointHost()
         #expect(host.serverKind == .herdrTUI)
@@ -512,79 +446,31 @@ struct HostOnboardingStoreTests {
 
         await store.runChecks()
 
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds.isEmpty)
         #expect(await core.log.isEmpty)
     }
 
-    @Test func theFoundKindsAreOffered() async throws {
-        let cases: [(ScriptedCoreHost, [ServerKind])] = [
-            (ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused), [.herdrTUI, .herdrCore]),
-            (ScriptedCoreHost(channel: .refused), [.herdrCore]),
-            (
-                ScriptedCoreHost(
-                    locator: ScriptedCoreHost.locatorLines(executable: nil),
-                    herdrRead: .answers(Self.sessionsJSON), channel: .refused),
-                [.herdrTUI]
-            ),
-            (
-                ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused),
-                [.herdrTUI, .herdrCore, .tmux]
-            ),
-        ]
-        for (core, offered) in cases {
-            let (store, _, _) = try unconfirmedStore(core)
+    /// A record with no Server holds a Host and has no Server page: its checks
+    /// reach for nothing.
+    @Test func aRecordWithNoServerChecksNothing() async throws {
+        let core = ScriptedCoreHost(channel: .refused)
+        let host = Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
+        let (store, connector) = try makeStore(host: host, core: core)
 
-            await store.runChecks()
-
-            #expect(store.offeredKinds == offered)
-        }
-    }
-
-    @Test func confirmingHerdrTUIRunsItsPreflight() async throws {
-        let core = ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused)
-        let (store, connector, catalog) = try unconfirmedStore(core)
         await store.runChecks()
 
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-
-        #expect(store.host.serverKind == .herdrTUI)
-        #expect(catalog.hosts == [store.host])
-        #expect(catalog.consoleHosts == [store.host])
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds.isEmpty)
-        #expect(store.report?.isFullyPassed == true)
-        #expect(store.serverInfo == ServerInfo(version: "0.7.5", protocolVersion: 17))
-        #expect(store.availableSessions.map(\.name) == ["tui-only"])
-        #expect(store.serverKindSummary == "Herdr TUI")
-        #expect(await connector.transports.count == 1)
-        #expect(await core.log == ["detection", "close"])
-    }
-
-    @Test func confirmingHerdrCoreRunsItsPreflightAndNamesTheCoreVersion() async throws {
-        let core = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
-        let (store, connector, catalog) = try unconfirmedStore(core)
-        await store.runChecks()
-        #expect(store.serverKindSummary == "Not confirmed")
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.host.serverKind == .herdrCore)
-        #expect(catalog.hosts == [store.host])
-        #expect(store.report?.isFullyPassed == true)
-        #expect(store.serverKindSummary == "herdr-core 0.1.13")
-        #expect(await core.log == [
-            "detection", "close", "locator", "open \(ScriptedCoreHost.socketPath)", "close",
-        ])
+        #expect(store.phase == .finished)
+        #expect(store.report == nil)
+        #expect(store.serverInfo == nil)
+        #expect(await connector.capturedSettings.isEmpty)
         #expect(await connector.transports.isEmpty)
+        #expect(await core.log.isEmpty)
     }
 
     @Test func aFailedCorePreflightStillNamesTheKind() async throws {
         let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core)
-        await store.runChecks()
+        let (store, _) = try coreStore(core)
 
-        await store.confirmServerKind(.herdrCore, in: catalog)
+        await store.runChecks()
 
         #expect(store.serverKindSummary == "herdr-core")
         guard case .failed(let hint) = store.report?[.serverRunning] else {
@@ -594,177 +480,15 @@ struct HostOnboardingStoreTests {
         #expect(hint.contains("not running"))
     }
 
-    @Test func aKindNotOnOfferIsNotConfirmed() async throws {
-        let core = ScriptedCoreHost(channel: .answersHello(ScriptedCoreHost.helloReply()))
-        let (store, _, catalog) = try unconfirmedStore(core)
-        await store.runChecks()
-
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(await core.log == ["detection", "close"])
-    }
-
-    @Test func nothingIsConfirmedBeforeDetectionFinishes() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, connector, catalog) = try unconfirmedStore(core)
-
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(await connector.capturedSettings.isEmpty)
-    }
-
-    @Test func confirmingHerdrCoreWithASessionNameHCRefusesSaysWhy() async throws {
-        let core = ScriptedCoreHost(herdrRead: .answers(Self.sessionsJSON), channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core, session: "a/b")
-        await store.runChecks()
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        guard case .sessionRefused = store.detection?.herdrCore else {
-            Issue.record("Detection should say hc refuses the name")
-            return
-        }
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.confirmationRefusal == ServerKind.herdrCore.sessionNameRefusal("a/b"))
-        #expect(store.confirmationRefusal?.contains("herdr-core refuses") == true)
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(await core.log == ["detection", "close"])
-
-        store.dismissConfirmationRefusal()
-        #expect(store.confirmationRefusal == nil)
-    }
-
-    /// Windows carries fewer names than hc, and the Host stays free to change kind.
-    @Test func confirmingHerdrCoreWithASessionNameWindowsRefusesSaysWhy() async throws {
-        let core = ScriptedCoreHost(
-            windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core, session: "my work")
-        await store.runChecks()
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore])
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.confirmationRefusal == HerdrCoreSessionName.windowsRefusal("my work"))
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(await core.log == ["windows-detection", "close"])
-    }
-
-    /// The Console's first attempt may never reach the Host, and it already knows
-    /// what this one is. Nothing about a Unix Host's first attempt changes.
-    @Test(arguments: [true, false])
-    func confirmingACoreHostRemembersOnlyThatItIsWindows(isWindows: Bool) async throws {
-        let core = isWindows
-            ? ScriptedCoreHost(
-                windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .refused)
-            : ScriptedCoreHost(channel: .refused)
-        let host = Host(
-            address: "box.example", username: "dev", serverKind: .unconfirmed, sessionName: "work")
-        let catalog = HostStore(volatileHosts: [host])
-        let connector = FakeTransportConnector(
-            outcome: .connects(pingResult: Self.healthyPing), presentedKeyBlob: nil, core: core)
-        var noted: [Host.ID] = []
-        let store = HostOnboardingStore(
-            host: host, connector: connector, noteWindowsCore: { noted.append($0) })
-        await store.runChecks()
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.host.serverKind == .herdrCore)
-        #expect(noted == (isWindows ? [host.id] : []))
-    }
-
-    @Test func theConfirmationSaysWhatTheFindingsLeaveOpen() async throws {
-        let absent = ScriptedCoreHost.locatorLines(executable: nil)
-        let found = HostOnboardingStoreTests.sessionsJSON
-        let cases: [(ScriptedCoreHost, String?)] = [
-            (ScriptedCoreHost(herdrRead: .answers(found), channel: .refused), "This machine runs both"),
-            (ScriptedCoreHost(locator: absent, channel: .refused), "None of them was found"),
-            (ScriptedCoreHost(channel: .refused), nil),
-            (ScriptedCoreHost(locator: absent, herdrRead: .answers(found), channel: .refused), nil),
-        ]
-        for (core, note) in cases {
-            let (store, _, _) = try unconfirmedStore(core)
-            await store.runChecks()
-            if let note {
-                #expect(store.confirmationNote?.hasPrefix(note) == true)
-            } else {
-                #expect(store.confirmationNote == nil)
-            }
-        }
-    }
-
-    /// The locator did not run, so "neither was found" would claim too much.
-    @Test func aRefusedSessionNameSaysWhyHerdrCoreWasNotRead() async throws {
-        let (store, _, _) = try unconfirmedStore(
-            ScriptedCoreHost(channel: .refused), session: "a/b")
-
-        await store.runChecks()
-
-        #expect(store.confirmationNote == ServerKind.herdrCore.sessionNameRefusal("a/b"))
-    }
-
-    @Test func anUnreachableHostOffersNothing() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, _) = try unconfirmedStore(
-            core, outcome: .connectFails(.authenticationFailed))
-
-        await store.runChecks()
-
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds.isEmpty)
-        guard case .failed = store.report?[.connection] else {
-            Issue.record("The connection should fail its check")
-            return
-        }
-        #expect(await core.log.isEmpty)
-    }
-
-    /// A reached Host that could not be read can still be confirmed, and its
-    /// preflight then runs.
-    @Test func aDetectionThatFailsStillOffersWhatIsOnOffer() async throws {
-        let core = ScriptedCoreHost(
-            detectionFailure: .malformedResponse("Server Kind detection's output is unreadable."),
-            channel: .refused)
-        let (store, connector, catalog) = try unconfirmedStore(core)
-
-        await store.runChecks()
-
-        #expect(store.detection == nil)
-        #expect(store.detectionFailure?.contains("Server Kind detection") == true)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(store.report == nil)
-        #expect(await core.log == ["detection", "close"])
-
-        await store.confirmServerKind(.herdrTUI, in: catalog)
-
-        #expect(store.detectionFailure == nil)
-        #expect(store.report?.isFullyPassed == true)
-        #expect(await connector.transports.count == 1)
-    }
-
-    /// The probe found the core stopped: starting it there is the user's to do.
-    @Test func aWindowsTargetsDetectionComesFromItsProbeAndItsStartIsInstructions() async throws {
+    /// The locator found the core stopped: starting it there is the user's to do.
+    @Test func aWindowsCoreThatIsNotRunningOffersInstructions() async throws {
         let core = ScriptedCoreHost(
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(pipe: false), channel: .core(.init()))
         await core.helper.configure { $0.platform = .nativeWindows }
-        let (store, _, catalog) = try unconfirmedStore(core)
+        let (store, _) = try coreStore(core)
 
         await store.runChecks()
 
-        #expect(store.offeredKinds == [.herdrCore])
-        #expect(store.detection?.herdrCore == .notRunning(
-            version: "0.1.16", socketPath: ScriptedCoreHost.windowsPipe))
-        #expect(await core.log == ["windows-detection", "close"])
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(store.host.serverKind == .herdrCore)
         #expect(
             store.report == .failure(
                 TransportError.herdrCoreNotRunning(
@@ -776,65 +500,8 @@ struct HostOnboardingStoreTests {
         let log = await core.log
         #expect(!log.contains("connect"))
         #expect(!log.contains("start"))
-        #expect(!log.contains("detection"))
+        #expect(!log.contains { $0.hasSuffix("detection") })
         #expect(!log.contains { $0.hasPrefix("open") })
-    }
-
-    @Test func confirmingHerdrCoreWithASocketPathOverTheLimitSaysWhy() async throws {
-        let long = "/" + String(repeating: "a", count: 107)
-        let core = ScriptedCoreHost(
-            locator: ScriptedCoreHost.locatorLines(defaultPath: long), channel: .refused)
-        let (store, _, catalog) = try unconfirmedStore(core)
-        await store.runChecks()
-        #expect(store.offeredKinds == [.herdrCore])
-
-        await store.confirmServerKind(.herdrCore, in: catalog)
-
-        #expect(
-            store.confirmationRefusal
-                == TransportError.herdrCoreSocketPathTooLong(path: long, limit: 107).presentation.message)
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(await core.log == ["detection", "close"])
-    }
-
-    @Test func detectionAsksToTrustTheHostFirst() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, _) = try unconfirmedStore(core, presentedKeyBlob: keyBlob)
-
-        let running = Task { await store.runChecks() }
-        try await waitUntil("the trust prompt shows") { store.pendingFingerprint != nil }
-        #expect(await core.log.isEmpty)
-        store.confirmFingerprint(trusted: true)
-        await running.value
-
-        #expect(store.detection != nil)
-    }
-
-    @Test func cancellingDetectionLeavesNothingToConfirm() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, _, _) = try unconfirmedStore(core, outcome: .hangs(.milliseconds(300)))
-
-        let running = Task { await store.runChecks() }
-        try await waitUntil("detection running") { store.phase == .running }
-        store.cancelChecks()
-        await running.value
-
-        #expect(store.phase == .finished)
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds.isEmpty)
-        #expect(store.report == .failure(TransportError.cancelled, authMethod: store.host.authMethod))
-    }
-
-    @Test func aConfirmedHostNeverDetects() async throws {
-        let core = ScriptedCoreHost(channel: .refused)
-        let (store, _) = try makeStore(core: core)
-
-        await store.runChecks()
-
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds.isEmpty)
-        #expect(await core.log.isEmpty)
     }
 
     private func coreStore(

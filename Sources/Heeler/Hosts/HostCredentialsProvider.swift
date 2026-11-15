@@ -40,6 +40,15 @@ struct HostCredentialsProvider: Sendable {
         }
     }
 
+    /// As `credentials(for:)`, for a Host still being added: a password typed
+    /// and not yet stored is the one it authenticates with.
+    func credentials(for host: Host, typedPassword: String?) throws -> SSHCredentials {
+        if host.authMethod == .password, let typedPassword, !typedPassword.isEmpty {
+            return .password(typedPassword)
+        }
+        return try credentials(for: host)
+    }
+
     /// The device public key material shown during Host setup.
     func deviceKey() throws -> DeviceKey {
         try deviceKeys.loadOrCreate()

@@ -71,15 +71,15 @@ struct HostDraft: Equatable, Sendable {
     var name = ""
     var username = ""
     var authMethod: Host.AuthMethod = .deviceKey
-    /// A new Host is unconfirmed until its Host detail confirms a kind. Set from
-    /// the Host being edited or duplicated. Nothing in the form changes it
-    /// (ADR 0031).
+    /// A new record holds a Host with no Server on, unconfirmed until one is
+    /// turned on (ADR 0047). Set from the record being edited. Nothing in the
+    /// form changes it.
     private(set) var serverKind: ServerKind = .unconfirmed
     /// Blank means "keep the stored password" when editing.
     var password = ""
     var sessionName = ""
-    /// The Pairing Code's herdr endpoint, carried through Edit and Duplicate
-    /// unchanged. The form shows it read-only; nil for every other Host.
+    /// The Pairing Code's herdr endpoint, carried through Edit unchanged; nil
+    /// for every other Host.
     var herdrEndpoint: HerdrEndpoint?
     /// A tmux Host's resolved paths, carried through Edit unchanged. They stop
     /// counting once the socket name names another socket (ADR 0044).
@@ -101,59 +101,6 @@ struct HostDraft: Equatable, Sendable {
         herdrEndpoint = host.herdrEndpoint
         tmuxPaths = host.tmuxPaths
         routes = host.routes.map(HostRouteDraft.init(route:))
-    }
-
-    /// Prefill for adding a copy of `host`: every field Edit prefills, the
-    /// stored `password` for password authentication, and the next free
-    /// copy name among `existingNames` (display names).
-    init(duplicating host: Host, password: String?, existingNames: [String]) {
-        self.init(host: host)
-        // The copy may be another machine once its routes are edited.
-        tmuxPaths = nil
-        name = Self.duplicateName(of: host.displayName, existingNames: existingNames)
-        // The copy's routes are its own.
-        for index in routes.indices {
-            routes[index].id = UUID()
-        }
-        if host.authMethod == .password {
-            self.password = password ?? ""
-        }
-    }
-
-    /// Names a copy the way Finder does: `name copy`, then `name copy 2`,
-    /// `name copy 3`, … — the first one not taken. Duplicating a copy
-    /// continues its series (`box copy` → `box copy 2`) instead of stacking
-    /// (`box copy copy`).
-    static func duplicateName(of name: String, existingNames: [String]) -> String {
-        let taken = Set(existingNames.map { $0.trimmingCharacters(in: .whitespaces) })
-        let first = String(localized: "\(copyStem(of: name.trimmingCharacters(in: .whitespaces))) copy")
-        guard taken.contains(first) else { return first }
-        var count = 2
-        while taken.contains("\(first) \(count)") {
-            count += 1
-        }
-        return "\(first) \(count)"
-    }
-
-    /// `box` for `box copy` and `box copy 3`; any other name is its own stem.
-    /// The English suffix counts too, so a copy named before the language
-    /// changed still continues its series.
-    private static func copyStem(of name: String) -> String {
-        let suffixes = [String(localized: " copy"), " copy"]
-        var stem = Substring(name)
-        if let space = stem.lastIndex(of: " ") {
-            let number = stem[stem.index(after: space)...]
-            let head = stem[..<space]
-            if !number.isEmpty, number.allSatisfy({ ("0"..."9").contains($0) }),
-               suffixes.contains(where: { head.hasSuffix($0) })
-            {
-                stem = head
-            }
-        }
-        if let suffix = suffixes.first(where: { stem.hasSuffix($0) }) {
-            stem = stem.dropLast(suffix.count)
-        }
-        return String(stem)
     }
 
     /// The first route; blank while there is none.

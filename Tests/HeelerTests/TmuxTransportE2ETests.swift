@@ -59,13 +59,15 @@ struct TmuxTransportE2ETests {
                         sockets: [TmuxSocketName.defaultName, fixture.socketName]))
             #expect(found.herdrTUI == .notFound)
             #expect(found.herdrCore == .notInstalled)
-            #expect(found.foundKinds == [.tmux])
-            #expect(found.offeredKinds == [.tmux])
-            // `default` is preselected, and a typed name whose server answers stands.
-            #expect(found.preselectedTmuxSocket(typed: "") == TmuxSocketName.defaultName)
-            #expect(found.preselectedTmuxSocket(typed: fixture.socketName) == fixture.socketName)
-            #expect(found.preselectedTmuxSocket(typed: killed) == TmuxSocketName.defaultName)
-            // What a confirmed Host stores comes from this same exec.
+            // A Host lists a Server for each socket that answers, `default`
+            // first, and none for the socket its server left behind.
+            #expect(
+                HostServerScan(found).servers.map(\.key) == [
+                    HostServerKey(kind: .tmux, name: TmuxSocketName.defaultName),
+                    HostServerKey(kind: .tmux, name: fixture.socketName),
+                ])
+            #expect(HostServerScan(found).servers.allSatisfy { $0.isRunning })
+            // What a Server turned on stores comes from this same exec.
             #expect(found.tmuxPaths(socketName: fixture.socketName) == (try fixture.paths()))
 
             let confirmed = try await fixture.read(storedPaths: found.tmuxPaths(socketName: fixture.socketName))

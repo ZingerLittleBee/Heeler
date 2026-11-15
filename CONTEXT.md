@@ -5,19 +5,29 @@ A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH, as added for one Server Kind. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host targets one server, so an SSH target running several, of one kind or more, is one Host for each.
+A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes and its account.
 _Avoid_: server, machine, connection
 
+**Server**:
+One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
+session, or a tmux server. Each is on or off on this device (Show in Heeler).
+One that is on has its own connection, Agents, Terminals, notifications and
+settings, and its own page under Host detail. A look at the Host finds its
+Servers; ones found after the Host was added arrive off. In code, and wherever
+this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
+Server that is on: the catalog still stores one `Host` record for each (ADR
+0047).
+_Avoid_: service, backend, instance
+
 **Server Kind**:
-Which server a Host's Agents live in: Herdr TUI (the original herdr server),
-herdr-core (the vendor's headless terminal runtime, `hc`), or a tmux server.
-They share no Agents. A herdr-core Host whose core also serves the Herdr desktop
-app is still herdr-core; the app's organization is data the Host carries, not
-another kind. Adding a Host by hand saves it unconfirmed, a stored state no
-connection, Agent or notification reaches. Its Host detail detects the kinds
-and the user confirms one, once; a Pairing Code always adds a confirmed Herdr
-TUI Host, so a tmux Host is always added by hand. The Host keeps it: neither a
-connection nor an edit switches a Host to another kind (ADR 0031).
+Which kind a Server is: Herdr TUI (the original herdr server), herdr-core (the
+vendor's headless terminal runtime, `hc`), or a tmux server. They share no
+Agents. A herdr-core Server whose core also serves the Herdr desktop app is
+still herdr-core; the app's organization is data it carries, not another kind.
+A Server keeps its kind: neither a connection nor an edit changes it, and
+turning it off and on again makes a new record (ADRs 0031 and 0047). A Pairing
+Code always adds a Herdr TUI Server; herdr-core and tmux Servers are found by a
+look or turned on by name.
 _Avoid_: backend, server type, flavor
 
 **tmux server**:
@@ -703,8 +713,8 @@ it.
 It exists so Host Connection Status can report running work honestly without
 the app withdrawing the explanation at the moment the user is reading it: a
 Host re-proved on a foreground return is Connecting, and every status-derived
-surface but Host detail keeps presenting the Standing Failure until the
-activation answers. Host detail, where the user asks for Reconnect, reads only
+surface but the Server's page keeps presenting the Standing Failure until the
+activation answers. The Server's page, where the user asks for Reconnect, reads only
 Connecting… once the activation begins, since there the old failure read as the
 new attempt's own. The failure remains stored and continues to render on Agent
 detail, the Console, and the Hosts list.
@@ -734,7 +744,7 @@ instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
 Detail with it. A Hosts list row names a problem by its Summary alone, beside
-Retry once the Host stops; Host detail, one tap away, shows the rest. A first-hop failure is presented against the Jump Host; where no
+Retry once the Host stops; Host detail names it against the Server that stopped, and that Server's page shows the rest. A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the
@@ -743,11 +753,11 @@ _Avoid_: Connection Guidance, error message, connection error, retry hint,
 actionable error
 
 **Reconnect Request**:
-A user's explicit Reconnect press on Host detail, and the brief window in which
+A user's explicit Reconnect press on a Server's page, and the brief window in which
 the app shows that press being served. It is feedback about a request, not a
 Host Connection Status: it is never derived from the status and never changes
 it, an automatic Reconnecting is not a Reconnect Request, and a press in flight
-suppresses the Host detail failure footer while driving the button's own
+suppresses that page's failure footer while driving the button's own
 progress (#160).
 _Avoid_: retry, reconnecting, manual reconnect state
 

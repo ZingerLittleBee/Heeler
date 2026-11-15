@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/pairing.md at d65d8b36 -->
 
 # 扫码配对 Host
 
@@ -42,7 +42,7 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中该 Host 的页面会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
+herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中 **Herdr TUI** Server 的页面（先打开 Host，再打开该 Server）会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
 
 ## 3. 显示配对码
 
@@ -66,10 +66,13 @@ herdr plugin action invoke heeler.pair
 **运行位置：iPhone 或 iPad**
 
 1. 打开 **Hosts**，轻点 **Scan to Pair**（**+** 旁边的二维码按钮）。在带侧边栏的 iPad 上，从侧边栏底部打开 **Hosts**。
+
+   <a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页，右上角显示 + 旁边的 Scan to Pair 二维码按钮，下方显示一台已连接的 Host"></a>
+
 2. 允许访问相机；如果 iOS 询问，也请允许访问本地网络中的设备。然后将相机对准二维码。
 3. 配对会立即开始，Heeler 会逐项显示每个步骤的完成情况。无需核对指纹：配对码中已包含指纹。
 
-配对完成后，Heeler 会打开新添加的 Host 并运行检查。
+配对完成后，Heeler 会打开新添加的 **Herdr TUI** Server 页面并运行检查。
 
 如果无法使用相机，请在弹窗中按 `c`。在 Mac 上，这会复制配对码；把它传到 iPhone 或 iPad 上（例如通过通用剪贴板），然后在 **Scan to Pair** 中轻点 **Paste Pairing Code**。在 Linux 上，按 `c` 会在二维码下方打印配对码：把它发送到 iPhone 或 iPad（例如发到自己的备忘录或消息中），在设备上复制后按同样方式粘贴。
 
@@ -84,7 +87,7 @@ herdr plugin action invoke heeler.pair
 - 打开 **Agents** 查看已连接 Host 上的编程 Agent，再打开某个 Agent 使用它的终端或 [Chat](chat.md)。
 - Host 会以你的用户名和这台机器的地址命名。如需重命名，请从 **Hosts** 中打开它并轻点 **Edit**。
 - Heeler 使用这台设备的 Device Key（设备密钥）登录。如需配对另一台 iPhone 或 iPad，请在那台设备上重复步骤 3 和步骤 4。
-- 如果这台机器已经在 **Hosts** 中，再次配对会新增一个条目。在不再需要的条目上向左轻扫并轻点 **Remove** 即可移除。
+- 如果这台机器已经在 **Hosts** 中，再次配对会把它再添加一次：新增一个条目，或者在两者的连接方式相同时，成为同一个 Host 下的第二个 **Herdr TUI** Server。在不再需要的条目上向左轻扫并轻点 **Remove**，或在 Host 页面上关闭多余的 Server。
 - 如需在 iPhone 或 iPad 上收到 Agent 等待处理（**Blocked**）或任务完成（**Done**）的通知，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后在 **Hosts** 下打开该 Host 的开关。
 
 ## 外出时使用

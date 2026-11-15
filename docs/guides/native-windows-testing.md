@@ -128,16 +128,17 @@ and [Windows bridge lifecycle](https://github.com/herdrdev/herdr/blob/7b116c05bf
 
 ## 3. Test manual password authentication
 
-1. In Heeler, open **Add Host** and enter the Windows address, SSH port, and
-   SSH username.
-2. Select **Password** and enter the account password. Leave **Session name**
-   blank to test the default session first, if you have one running.
-3. Save. Compare the first-connection SSH host key fingerprint with the key
-   on Windows before trusting it.
-4. Run the preflight checks. The remote environment step must pass without
-   `The remote home directory could not be resolved`.
-5. Select `heeler-win-test` from the discovered sessions, or enter that exact
-   name in **Edit Host > Session name** and reconnect.
+1. In Heeler, open **Hosts**, tap **+**, and enter the Windows address and SSH
+   username, with the SSH port under **More Options**.
+2. Select **Password**, enter the account password, and tap **Connect**.
+3. Compare the first-connection SSH host key fingerprint with the key on
+   Windows before trusting it.
+4. On the last step, leave **Herdr TUI** checked to test the default session
+   first, if you have one running, and add the Host. Open that Server from the
+   Host and run the preflight checks. The remote environment step must pass
+   without `The remote home directory could not be resolved`.
+5. Back on the Host, turn on **Herdr TUI · heeler-win-test**. A session that
+   is not listed is turned on with **Add by Name…** and that exact name.
 6. Confirm that Console shows that session's workspaces and agents. A newer
    protocol advisory may appear; it must not reject an otherwise compatible
    server.
@@ -308,8 +309,8 @@ Confirm that both its Console labels and terminal's `heeler-session-A` marker
 belong to that session. Type `Write-Output 'heeler-selected-session-input'`
 on the phone and confirm it appears only in that session's Windows pane.
 Switch to `heeler-win-other`, repeat with another marker, and switch back.
-If a default session is running, repeat with **Session name** blank while the
-override still points to `heeler-win-other`.
+If a default session is running, repeat with the default session's Server
+(**Herdr TUI**) while the override still points to `heeler-win-other`.
 
 Expected: API snapshots, event updates, terminal output, and terminal input
 all follow the selected session; no other session receives the input. Finish
@@ -407,19 +408,23 @@ starts a core when none runs, so a core you stop comes back within about a secon
 By the same source it updates itself and then the core, which can move herdr-core off
 the version under test.
 
-1. Stop the core. On the phone, add the machine with Session left blank or a
-   plain name. The form says to add the Device Key line to `~/.ssh/authorized_keys`,
+1. Stop the core. On the phone, add the machine from **Hosts**, **+**. The form
+   says to add the Device Key line to `~/.ssh/authorized_keys`,
    or for an administrator account on Windows to
    `C:\ProgramData\ssh\administrators_authorized_keys`, which Windows OpenSSH reads
    instead for an account in the Administrators group, with the access list in
-   [section 4](#4-test-device-key-authentication). Server Kind detection also runs
+   [section 4](#4-test-device-key-authentication). After **Connect**, the look also runs
    `herdr session list --json` there (by Heeler's source), so on a machine with a
-   Herdr TUI server it reaches that server's sessions and reads Herdr TUI **Found**
-   beside herdr-core. Confirm **herdr-core** with **Use herdr-core**. The Host reads
+   Herdr TUI server the last step lists that server's default session and its running
+   ones beside **herdr-core**, which reads **Not running** and starts unchecked. Check
+   **herdr-core** and add the Host, or for a plain session name turn it on from the
+   Host with **Add by Name…**. Open that Server from the Host. It reads
    **Reconnecting…** and **herdr-core is not running**, with a note naming the missing
    pipe. The start command is not in that status: it is in its own card below
    Preflight, and no Start button is offered. On the machine no `herdr-core` process
-   appears.
+   appears. The runs recorded below added the Host through the earlier form, which
+   confirmed the kind with **Use herdr-core**; the steps above have not been run on
+   Windows.
 2. In your desktop session, in PowerShell, not as administrator, run the command
    the Host shows. Within its retry, the Host connects by itself, and the core takes
    the Session's name: its state is `%LOCALAPPDATA%\herdr-core\<session>` and its pipe
@@ -452,13 +457,14 @@ the version under test.
    subfolder of a repository. Its card takes the repository's folder name, and
    Worktrees stay off. Outside a repository it takes its directory's. This exercises
    Heeler's PowerShell checkout read through sshd.
-9. Edit the Host's Session to a name with a space. Below the field the form says
-   Heeler cannot use that session name on native Windows, and Save stays off. A
-   Host the app has not yet found on Windows takes the name; after Save it reads
-   **Can't Connect** and **This session name can't be used**, with the same note
-   and one closing period, and Rename and Worktrees are still not offered. The
-   recheck saw Edit Host's refusal, ending in one period, with Save off; Add Host took
-   the name, which was put back before Save, so the state after Save was not seen.
+9. On the Host, tap **Add by Name…**, choose **herdr-core**, and enter a name with
+   a space. Below the field the sheet says Heeler cannot use that session name on
+   native Windows, and **Turn On** stays off. A Host no look has yet found on
+   Windows takes the name; turned on, that Server reads **Can't Connect** and
+   **This session name can't be used**, with the same note and one closing period,
+   and Rename and Worktrees are still not offered. Not run in this sheet: the
+   recheck saw the same refusal in the earlier Edit Host form, ending in one period,
+   with Save off, and the state after a refused name was saved was not seen.
 10. Install an agent the launch can find, with OpenCode too if you have it. New
     Agent lists what a Windows PowerShell session over SSH finds, and OpenCode's
     version reaches its launch (`-s ses_...` in the Terminal's argv on 2.1 or newer).

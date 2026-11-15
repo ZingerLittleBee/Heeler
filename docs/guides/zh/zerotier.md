@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/zerotier.md at ed1e9e66 -->
+<!-- Translated from docs/guides/zerotier.md at d65d8b36 -->
 
 # 通过 ZeroTier 连接 Heeler
 
@@ -60,20 +60,20 @@ ZeroTier 有新旧两个控制台。2025 年 11 月 5 日之后注册的账号�
 
 ## 4. Heeler：将 Mac 添加为 Host
 
-前往 **Hosts > Add Host**，在 **Routes** 下轻点 **Add Route**，按[从 Heeler 连接](overlay-networks.md#从-heeler-连接)的步骤填写以下字段：
+在 **Hosts** 中轻点 **+**，按[从 Heeler 连接](overlay-networks.md#从-heeler-连接)的步骤填写以下字段：
 
 | 字段 | 值 |
 | --- | --- |
+| Address | Mac 的受管 IP（不带 `/24` 后缀） |
 | User | 你的 Mac 用户名 |
-| Network（在 Route 中） | 刚才连接的 ZeroTier 网络 |
-| Address（在 Route 中） | Mac 的受管 IP（不带 `/24` 后缀） |
-| Port（在 Route 中） | Mac 的 SSH 端口，通常为 `22` |
-| Jump Host（在 Route 中） | 留空 |
+| Network（在 More Options 中） | 刚才连接的 ZeroTier 网络 |
+| Port（在 More Options 中） | Mac 的 SSH 端口，通常为 `22` |
+| Jump Host（在 More Options 中） | 留空 |
 | Authentication | 你所选的登录方式 |
 
-请在 Address 中填写 IP 地址，不要填写设备名称或 Node ID。先保存路由，再保存 Host。
+请在 Address 中填写 IP 地址，不要填写设备名称或 Node ID。然后轻点 **Connect**。
 
-核对 SSH 指纹，等待 Host 检查通过，然后完成[验证连接](overlay-networks.md#验证连接)。
+确认 SSH 指纹一致后轻点 **Trust and Continue**，保持勾选需要的 Server 并添加 Host，然后完成[验证连接](overlay-networks.md#验证连接)。
 
 ## 故障排查
 

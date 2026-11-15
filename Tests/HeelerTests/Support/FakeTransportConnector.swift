@@ -242,6 +242,7 @@ final actor FakeTransportConnector: TransportConnector {
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
         capturedSettings.append(settings)
+        try await evaluateJumpHostKey(settings: settings)
         if let presentedKeyBlob {
             try await evaluateHostKey(
                 HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)
@@ -282,15 +283,7 @@ final actor FakeTransportConnector: TransportConnector {
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {
         capturedSettings.append(settings)
-        if let presentedJumpKeyBlob, let jump = settings.routes.first?.jump {
-            let presented = HostKeyFingerprint(publicKeyBlob: presentedJumpKeyBlob)
-            if let known = await settings.hostKeyPolicy.knownHosts.fingerprint(
-                host: jump.host, port: jump.port), known != presented
-            {
-                throw TransportError.jumpHostFailed(
-                    .hostKeyMismatch(known: known, presented: presented))
-            }
-        }
+        try await evaluateJumpHostKey(settings: settings)
         if let presentedKeyBlob {
             try await evaluateHostKey(
                 HostKeyFingerprint(publicKeyBlob: presentedKeyBlob), settings: settings)
@@ -308,6 +301,27 @@ final actor FakeTransportConnector: TransportConnector {
             transports.append(transport)
             return transport
         }
+    }
+
+    /// The first route's Jump Host shows its key before the Host does. Its
+    /// trust is kept by the endpoint dialled: a key not seen there is asked
+    /// about, a changed one refused, and either failure names the Jump Host.
+    private func evaluateJumpHostKey(settings: SSHTransportSettings) async throws {
+        guard let presentedJumpKeyBlob, let jump = settings.routes.first?.jump else { return }
+        let presented = HostKeyFingerprint(publicKeyBlob: presentedJumpKeyBlob)
+        let policy = settings.hostKeyPolicy
+        if let known = await policy.knownHosts.fingerprint(host: jump.host, port: jump.port) {
+            guard known == presented else {
+                throw TransportError.jumpHostFailed(
+                    .hostKeyMismatch(known: known, presented: presented))
+            }
+            return
+        }
+        let candidate = HostKeyCandidate(host: jump.host, port: jump.port, fingerprint: presented)
+        guard await policy.confirmFirstConnect(candidate) else {
+            throw TransportError.jumpHostFailed(.hostKeyRejected(presented: presented))
+        }
+        await policy.knownHosts.setFingerprint(presented, host: jump.host, port: jump.port)
     }
 
     /// Mirrors `HeelerSSHHostKeyVerifier.verify` at the policy level,

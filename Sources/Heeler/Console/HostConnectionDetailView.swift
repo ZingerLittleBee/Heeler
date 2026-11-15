@@ -199,7 +199,7 @@ struct HostConnectionDetailContent: View {
         .sheet(isPresented: $isEditing) {
             // A full form over the shorter one, so the stack reads as one
             // card rather than two sheet styles layered.
-            HostFormView(store: catalog, editing: host)
+            HostFormView(store: catalog, editing: catalog.machine(containing: host.id)?.formRecord ?? host)
                 .modifier(ConsoleSheetPresentationModifier(presentation: sheetPresentation))
         }
     }

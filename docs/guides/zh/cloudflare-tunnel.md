@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/cloudflare-tunnel.md at ed1e9e66 -->
+<!-- Translated from docs/guides/cloudflare-tunnel.md at 5171f178 -->
 
 # 通过 Cloudflare Tunnel 连接 Mac
 
@@ -68,9 +68,9 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 
 按[准备 Host](overlay-networks.md#准备-host) 中的说明，在 Mac 上准备好账户、登录方式与 herdr 会话，然后按以下步骤添加 Host：
 
-1. 打开 **Hosts** 并轻点 **Add Host**。在 **Routes** 下轻点 **Add Route**，将 **Network** 设为 **Direct**，填写第 2 步的地址与端口 `22`，**Jump Host** 留空，然后轻点 **Save**。（**Direct** 表示由 Heeler 自己发起连接，是 VPN App 让该地址变得可达。）
-2. 返回 **Add Host** 页面，填写其余字段并轻点 **Save**。
-3. 仅在显示的指纹与 Mac 上的一致时轻点 **Trust**。
+1. 打开 **Hosts** 并轻点 **+**。填写第 2 步的地址。在 **More Options** 下，**Network** 保持 **Direct**，端口保持 `22`，**Jump Host** 留空。（**Direct** 表示由 Heeler 自己发起连接，是 VPN App 让该地址变得可达。）
+2. 填写 **User** 和登录方式，然后轻点 **Connect**。
+3. 仅在显示的指纹与 Mac 上的一致时轻点 **Trust and Continue**，然后保持勾选你想要的 Server 并添加 Host。
 4. 如果 iOS 询问 Heeler 是否可以访问本地网络，请允许。Mac 的地址属于私有地址，缺少该权限时路由会失败。
 
 在家时 Mac 通常也会在局域网地址上响应。同一个 Host 可以配置多条路由，因此可以把局域网地址作为第二条路由加入，由 Heeler 选用最先连通的一条。参见[多条路由](host-routes.md#添加路由)。
@@ -78,7 +78,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 ## 验证连接
 
 1. Cloudflare One Agent 显示 **Connected**，且 **Networking > Tunnels** 中的隧道为 **Healthy**。
-2. 从 **Hosts** 打开该 Host，确认标记为 **In Use** 的路由就是指向 Mac 私有地址的那一条。
+2. 从 **Hosts** 打开该 Host，轻点其中一个 Server，确认标记为 **In Use** 的路由就是指向 Mac 私有地址的那一条。
 3. Host 各项检查全部通过，会话中的 Agent 或终端正常加载。
 4. 打开一个 **New Terminal**，运行 `pwd` 能输出 Mac 上的目录。
 5. 关闭手机 Wi-Fi，在蜂窝网络下重复上述测试，并再次检查 **In Use**。
@@ -94,7 +94,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 | 改完设置，手机上没有任何变化 | 等待十分钟，然后断开并重新连接 VPN App。 |
 | 手机就在 Mac 的局域网内，却显示 **Can't Connect** 并超时 | iOS 可能拒绝给 Heeler 本地网络权限。请检查手机上的 **Settings > Privacy & Security > Local Network**。 |
 | SSH 登录失败 | 检查用户名、“远程登录”访问权限，以及所用的密钥或密码。 |
-| SSH 正常，但 herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 herdr，或会话名称有误。 |
+| SSH 正常，但 herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 herdr，或已开启的 Server 不是 herdr 正在运行的会话。 |
 | 局域网内其它设备能访问本不该访问的服务 | CIDR 路由会暴露其中的所有地址，且默认允许组织内每台已注册设备使用它。把路由收窄到 Mac 的 `/32`，并在 **Traffic policies** 中添加 Gateway 网络策略，只放行需要访问的目标。 |
 
 ## 附录：改用 VPS 替代 VPN 应用

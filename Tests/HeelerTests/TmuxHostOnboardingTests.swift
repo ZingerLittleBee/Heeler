@@ -30,16 +30,6 @@ struct TmuxHostOnboardingTests {
         return (store, connector)
     }
 
-    /// An unconfirmed Host in a catalog of its own, with its store.
-    private func unconfirmedStore(
-        _ tmux: ScriptedTmuxHost, session: String = ""
-    ) -> (HostOnboardingStore, FakeTransportConnector, HostStore) {
-        let host = Host(address: "mac.example", username: "dev", serverKind: .unconfirmed, sessionName: session)
-        let catalog = HostStore(volatileHosts: [host])
-        let (store, connector) = makeStore(host, tmux: tmux)
-        return (store, connector, catalog)
-    }
-
     private func failedCheck(_ store: HostOnboardingStore) -> (PreflightCheck, String)? {
         guard let report = store.report else { return nil }
         for check in PreflightCheck.cases(for: store.host.serverKind) {
@@ -48,137 +38,55 @@ struct TmuxHostOnboardingTests {
         return nil
     }
 
-    // MARK: Detection
+    // MARK: A tmux Host's checks
 
-    @Test func detectionOffersTmuxWithTheSocketsItsServersAnswerOn() async throws {
-        let tmux = ScriptedTmuxHost(sockets: ["work", "default"])
-        let (store, connector, _) = unconfirmedStore(tmux)
-
-        await store.runChecks()
-
-        #expect(store.detection?.tmux == .running(version: "3.7b", sockets: ["default", "work"]))
-        #expect(store.offeredKinds == [.tmux])
-        #expect(store.tmuxSocketChoices == ["default", "work"])
-        #expect(store.tmuxSocket == "default")
-        #expect(store.confirmationNote == nil)
-        #expect(await tmux.log == ["detection", "close"])
-        #expect(await connector.transports.isEmpty)
-        #expect(store.host.serverKind == .unconfirmed)
+    private func confirmedHost(paths: TmuxPaths? = ScriptedTmuxHost.paths(), socket: String = "default") -> Host {
+        Host(
+            address: "mac.example", username: "dev", serverKind: .tmux, sessionName: socket, tmuxPaths: paths)
     }
 
-    @Test func theTypedSocketIsPreselectedWhenItsServerAnswers() async throws {
-        let tmux = ScriptedTmuxHost(sockets: ["default", "work"])
-        let (store, _, _) = unconfirmedStore(tmux, session: "work")
-
-        await store.runChecks()
-
-        #expect(store.tmuxSocket == "work")
-    }
-
-    @Test func onlyAnOfferedSocketCanBeChosen() async throws {
-        let tmux = ScriptedTmuxHost(sockets: ["default", "work"])
-        let (store, _, _) = unconfirmedStore(tmux)
-        await store.runChecks()
-
-        store.selectTmuxSocket("elsewhere")
-        #expect(store.tmuxSocket == "default")
-
-        store.selectTmuxSocket("work")
-        #expect(store.tmuxSocket == "work")
-    }
-
-    // MARK: Confirmation
-
-    @Test func confirmingTmuxStoresTheSocketAndThePathsDetectionResolved() async throws {
+    /// Nothing but the tmux transport dials, with the paths the Host stores, and
+    /// what a Herdr Host would read beside its checks reads as a tmux Host's.
+    @Test func aTmuxHostsChecksDialOnlyTmux() async throws {
         let tmux = ScriptedTmuxHost()
-        let (store, connector, catalog) = unconfirmedStore(tmux)
+        let (store, connector) = makeStore(confirmedHost(), tmux: tmux)
+
         await store.runChecks()
 
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.host.serverKind == .tmux)
-        #expect(store.host.sessionName == "default")
-        #expect(store.host.storedTmuxPaths == ScriptedTmuxHost.paths())
-        #expect(catalog.hosts == [store.host])
-        // Its checks follow at once, with the paths detection just resolved:
-        // no startup file runs a second time.
         #expect(store.report == .allPassed)
         #expect(store.phase == .finished)
-        #expect(await tmux.log == ["detection", "close", "probe stored", "close"])
         #expect(store.serverKindSummary == "tmux 3.7b")
         #expect(store.pluginStatus == .unsupportedServerKind)
         #expect(store.hostHelper?.status == .notInstalled)
-        #expect(store.offeredKinds.isEmpty)
-        // Nothing but the tmux transport ever dialed.
         #expect(await connector.transports.isEmpty)
         #expect(await connector.capturedSettings.last?.serverKind == .tmux)
         #expect(await connector.capturedSettings.last?.tmuxPaths == ScriptedTmuxHost.paths())
     }
 
-    @Test func theChosenSocketIsTheOneConfirmed() async throws {
-        let tmux = ScriptedTmuxHost(sockets: ["default", "work"])
-        let (store, _, catalog) = unconfirmedStore(tmux)
-        await store.runChecks()
-        store.selectTmuxSocket("work")
-
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.host.sessionName == "work")
-        #expect(store.host.storedTmuxPaths == ScriptedTmuxHost.paths("work"))
-        #expect(store.report == .allPassed)
-        #expect(catalog.hosts.first?.sessionName == "work")
-    }
-
-    @Test func aHostWithNoServerRunningCanStillBeConfirmed() async throws {
+    @Test func aSocketWithNoServerIsNamedAndNoneIsStarted() async throws {
         let tmux = ScriptedTmuxHost(sockets: [])
-        let (store, _, catalog) = unconfirmedStore(tmux, session: "later")
+        let (store, _) = makeStore(
+            confirmedHost(paths: ScriptedTmuxHost.paths("later"), socket: "later"), tmux: tmux)
+
         await store.runChecks()
-        #expect(store.detection?.tmux == .notRunning(version: "3.7b"))
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(store.tmuxSocketChoices.isEmpty)
-        #expect(store.tmuxSocket == "later")
 
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.host.serverKind == .tmux)
-        #expect(store.host.sessionName == "later")
-        #expect(store.host.storedTmuxPaths == ScriptedTmuxHost.paths("later"))
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .serverRunning)
         #expect(hint.contains("No tmux server running"))
         #expect(hint.contains("\"later\""))
         #expect(store.report?[.herdrInstalled] == .passed)
-        // Confirming and checking started no server.
+        // Checking started no server.
         for script in await tmux.scripts {
             #expect(!script.contains("new-session"))
         }
     }
 
-    @Test func aSocketPathIsRefusedAndTheHostStaysUnconfirmed() async throws {
-        let tmux = ScriptedTmuxHost(sockets: [])
-        let (store, _, catalog) = unconfirmedStore(tmux, session: "/tmp/tmux-501/default")
-        await store.runChecks()
-
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.confirmationRefusal == ServerKind.tmux.sessionNameRefusal("/tmp/tmux-501/default"))
-        #expect(store.confirmationRefusal?.contains("A socket path is not supported") == true)
-        #expect(store.host.serverKind == .unconfirmed)
-        #expect(catalog.hosts.first?.serverKind == .unconfirmed)
-        #expect(await tmux.log == ["detection", "close"])
-    }
-
-    @Test func aHostWithoutTmuxReadsNotInstalledOnceConfirmed() async throws {
+    @Test func aHostWithoutTmuxReadsNotInstalled() async throws {
         let tmux = ScriptedTmuxHost(executable: nil, sockets: [])
-        let (store, _, catalog) = unconfirmedStore(tmux)
+        let (store, _) = makeStore(confirmedHost(paths: nil), tmux: tmux)
+
         await store.runChecks()
-        #expect(store.detection?.tmux == .notInstalled)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(store.confirmationNote?.contains("None of them was found") == true)
 
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.host.serverKind == .tmux)
         #expect(store.host.tmuxPaths == nil)
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .herdrInstalled)
@@ -189,11 +97,9 @@ struct TmuxHostOnboardingTests {
 
     @Test func anOldTmuxReadsUpdateRequiredWithTheVersionFound() async throws {
         let tmux = ScriptedTmuxHost(version: "tmux 3.2a")
-        let (store, _, catalog) = unconfirmedStore(tmux)
-        await store.runChecks()
-        #expect(store.detection?.tmux == .updateRequired(version: "3.2a"))
+        let (store, _) = makeStore(confirmedHost(paths: nil), tmux: tmux)
 
-        await store.confirmServerKind(.tmux, in: catalog)
+        await store.runChecks()
 
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .herdrInstalled)
@@ -202,47 +108,17 @@ struct TmuxHostOnboardingTests {
         #expect(hint.contains("3.3"))
     }
 
-    @Test func aDetectionThatFailsStillLetsTmuxBeConfirmed() async throws {
+    /// Nothing was resolved when the Server was turned on, so the first
+    /// connection asks the login shell, and what it finds is kept.
+    @Test func aHostWithNoStoredPathsAsksTheLoginShellAndKeepsWhatItFinds() async throws {
         let tmux = ScriptedTmuxHost()
-        await tmux.failNextProbe(.malformedResponse("Server Kind detection's output is unreadable."))
-        let (store, _, catalog) = unconfirmedStore(tmux)
+        let (store, _) = makeStore(confirmedHost(paths: nil), tmux: tmux)
+
         await store.runChecks()
-        #expect(store.detection == nil)
-        #expect(store.offeredKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(store.tmuxSocket == "default")
 
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        // Nothing was resolved, so the first connection asks the login shell,
-        // and what it finds is kept.
         #expect(store.report == .allPassed)
-        #expect(await tmux.log == ["detection", "close", "probe login", "close"])
+        #expect(await tmux.log == ["probe login", "close"])
         #expect(store.host.storedTmuxPaths == ScriptedTmuxHost.paths())
-    }
-
-    @Test func anUnreadableTmuxCatalogRefusesInWords() async throws {
-        let suite = "tmux-onboarding-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(Data("{not json".utf8), forKey: "tmuxHosts")
-        let catalog = HostStore(defaults: defaults, secrets: InMemorySecretStore())
-        let host = Host(address: "mac.example", username: "dev", serverKind: .unconfirmed)
-        try catalog.add(host)
-        let tmux = ScriptedTmuxHost()
-        let (store, _) = makeStore(host, tmux: tmux)
-        await store.runChecks()
-
-        await store.confirmServerKind(.tmux, in: catalog)
-
-        #expect(store.confirmationRefusal == "The saved tmux Hosts could not be read, so no tmux Host can be added.")
-        #expect(store.host.serverKind == .unconfirmed)
-    }
-
-    // MARK: A confirmed tmux Host's checks
-
-    private func confirmedHost(paths: TmuxPaths? = ScriptedTmuxHost.paths(), socket: String = "default") -> Host {
-        Host(
-            address: "mac.example", username: "dev", serverKind: .tmux, sessionName: socket, tmuxPaths: paths)
     }
 
     @Test func aConfirmedHostsChecksAskOnlyItsStoredPaths() async throws {
@@ -253,7 +129,6 @@ struct TmuxHostOnboardingTests {
         await store.runChecks()
 
         #expect(store.report == .allPassed)
-        #expect(store.detection == nil)
         #expect(await tmux.log == ["probe stored", "close"])
         #expect(noted.notes.isEmpty)
         #expect(await connector.transports.isEmpty)
@@ -361,27 +236,5 @@ struct TmuxHostOnboardingTests {
         #expect(
             await tmux.helper.files[workPathsFile]?.contents
                 == TmuxClaudeCodeHooks.storedPaths(ScriptedTmuxHost.paths("work")))
-    }
-
-    // MARK: What the confirmation says
-
-    @Test func theNoteCountsTheKindsFound() async throws {
-        let all = ScriptedCoreHost(
-            herdrRead: .answers(#"{"sessions":[{"name":"default","default":true,"running":true}]}"#),
-            tmuxProbe: ScriptedCoreHost.tmuxLines(executable: "/usr/bin/tmux", sockets: ["default"]),
-            channel: .refused)
-        let host = Host(address: "box.example", username: "dev", serverKind: .unconfirmed)
-        let connector = FakeTransportConnector(outcome: .connects(pingResult: .failure(.cancelled)), core: all)
-        let store = HostOnboardingStore(
-            host: host, connector: connector, knownHosts: InMemoryKnownHostsStore(),
-            credentials: HostCredentialsProvider(
-                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
-                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
-                secrets: InMemorySecretStore()))
-
-        await store.runChecks()
-
-        #expect(store.detection?.foundKinds == [.herdrTUI, .herdrCore, .tmux])
-        #expect(store.confirmationNote?.contains("more than one") == true)
     }
 }

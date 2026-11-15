@@ -40,7 +40,7 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the Host's page in Heeler says so and can update it for you; running the same command on the Host also updates it.
+herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the **Herdr TUI** Server's page in Heeler (open the Host, then the Server) says so and can update it for you; running the same command on the Host also updates it.
 
 ## 3. Show a Pairing Code
 
@@ -64,10 +64,13 @@ Leave the popup open and don't press any keys while you scan. Any key except `c`
 **Run on: iPhone or iPad**
 
 1. Open **Hosts** and tap **Scan to Pair** (the QR code button next to **+**). On an iPad with the sidebar, open **Hosts** from the bottom of the sidebar.
+
+   <a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab with the Scan to Pair QR code button next to + at the top right, and a connected Host below"></a>
+
 2. Allow camera access and, if iOS asks, access to devices on your local network. Then point the camera at the QR code.
 3. Pairing starts right away and Heeler shows each step as it completes. There is no fingerprint to compare: the code carries it.
 
-When pairing finishes, Heeler opens the new Host and runs its checks.
+When pairing finishes, Heeler opens the new **Herdr TUI** Server's page and runs its checks.
 
 If you can't use the camera, press `c` in the popup. On a Mac this copies the code; get it onto your iPhone or iPad (for example with Universal Clipboard) and tap **Paste Pairing Code** in **Scan to Pair**. On Linux, `c` prints the code below the QR code instead: send it to your iPhone or iPad, for example in a note or message to yourself, then copy it there and paste it the same way.
 
@@ -82,7 +85,7 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 - Open **Agents** to see coding Agents across your connected Hosts. Open one to use its terminal or [Chat](chat.md).
 - The Host is named after your username and its address. To rename it, open it from **Hosts** and tap **Edit**.
 - Heeler signs in with this device's Device Key. To pair another iPhone or iPad, repeat steps 3 and 4 on it.
-- Pairing a machine that is already in **Hosts** adds a second entry. Swipe left on the one you no longer need and tap **Remove**.
+- Pairing a machine that is already in **Hosts** adds it again: as a second entry, or as a second **Herdr TUI** Server of the same Host when both reach it the same way. Swipe left on the entry you no longer need and tap **Remove**, or switch the extra Server off on the Host's page.
 - To get notifications on your iPhone or iPad when an Agent needs you (**Blocked**) or finishes (**Done**), go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on this Host's switch under **Hosts**.
 
 ## Use it away from home
@@ -134,4 +137,4 @@ Checked against Heeler plugin 0.6.0 on 2026-10-14.
 
 ## herdr-app / herdr-core
 
-The legacy plugin's Pairing Code connects to herdr, not to herdr-core. For Agents started in the desktop client, [add a herdr-core Host with SSH authentication](herdr-core.md).
+The legacy plugin's Pairing Code adds a **Herdr TUI** Server, not **herdr-core**. For Agents started in the desktop client, turn on **herdr-core** on the Host's page, or [add the Host over SSH](herdr-core.md).

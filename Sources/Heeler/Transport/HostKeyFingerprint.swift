@@ -29,6 +29,21 @@ struct HostKeyFingerprint: Sendable, Hashable {
         "SHA256:" + digest.base64EncodedString().trimmingCharacters(in: ["="])
     }
 
+    /// Prints the fingerprint of the macOS or Linux host key of this key's
+    /// type, which sshd serves. A command the user runs, not copy: it stays the
+    /// same in every locale.
+    var printCommand: String {
+        let keyType =
+            if algorithm.contains("ecdsa") {
+                "ecdsa"
+            } else if algorithm.contains("rsa") {
+                "rsa"
+            } else {
+                "ed25519"
+            }
+        return "ssh-keygen -lf /etc/ssh/ssh_host_\(keyType)_key.pub"
+    }
+
     static func == (lhs: HostKeyFingerprint, rhs: HostKeyFingerprint) -> Bool {
         lhs.digest == rhs.digest
     }

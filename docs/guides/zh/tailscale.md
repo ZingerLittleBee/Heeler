@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/tailscale.md at 93baae40 -->
+<!-- Translated from docs/guides/tailscale.md at 5171f178 -->
 
 # 通过 Tailscale 连接 Heeler
 
@@ -47,10 +47,10 @@ Heeler 会直接加入你的 tailnet，因此手机上无需安装 Tailscale 应
 
 按以下配置添加 Host（详细说明见[从 Heeler 连接](overlay-networks.md#从-heeler-连接)）：
 
-1. 在网络详情页直接轻点 Mac 旁的 **Add** 自动填入路由；或者前往 **Hosts > Add Host**，在 **Routes** 下轻点 **Add Route**，将 **Network** 设为刚才创建的 Tailscale 网络，然后轻点 **Choose from Tailnet…**（保持 **Fill In** 为 **IP Address**）并选择你的 Mac。
-2. 路由端口保持为 `22`，**Jump Host** 留空；若通过 **Add Route** 进入，轻点保存该路由。
-3. 在 **Add Host** 中填入你的 Mac 用户名（`User`）和所选登录方式。
-4. 保存后，核对指纹与 Mac 一致再轻点信任。
+1. 在网络详情页直接轻点 Mac 旁的 **Add** 自动填入其地址；或者前往 **Hosts**，轻点 **+**，再轻点 **More Options**，将 **Network** 设为刚才创建的 Tailscale 网络，然后轻点 **Choose from Tailnet…**（保持 **Fill In** 为 **IP Address**）并选择你的 Mac。
+2. 端口保持为 `22`，**Jump Host** 留空；若打开过 **More Options**，请返回。
+3. 填入你的 Mac 用户名（`User`）和所选登录方式，然后轻点 **Connect**。
+4. 核对指纹与 Mac 一致再轻点信任，然后保持勾选你想要的 Server 并添加 Host。
 
 <a href="../images/overlay-networks/tailscale-machines.png"><img src="../images/overlay-networks/tailscale-machines.png" width="300" alt="已连接的 tailnet，上方显示 This device，下方 Machines 列表中服务器旁为 Add，已保存的 Mac 旁为 Host"></a>
 
