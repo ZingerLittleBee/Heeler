@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at a04c1e62 -->
+<!-- Translated from docs/guides/rex.md at 5becbe18 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。
