@@ -11545,6 +11545,7 @@
         }
       }
     },
+    "Can't Open Yet" : {},
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -12688,6 +12689,7 @@
         }
       }
     },
+    "Check the Rex version on the Host." : {},
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -44769,6 +44771,8 @@
       }
     },
     "Rex refused the connection with HTTP status %lld." : {},
+    "Rex rejected the request" : {},
+    "Rex sent an answer Heeler cannot read" : {},
     "Rex server running" : {},
     "Rex terminals cannot open yet" : {},
     "Rex was not found on this Host" : {},
@@ -61661,7 +61665,7 @@
         }
       }
     },
-    "This build of Heeler lists the terminals of a Rex Host but cannot open them yet." : {},
+    "This build of Heeler only lists the terminals of a Rex Host." : {},
     "This build was made from commit %@, whose source pins each component's exact version." : {
       "localizations" : {
         "ja" : {
