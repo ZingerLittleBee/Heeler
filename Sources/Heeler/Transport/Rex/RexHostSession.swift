@@ -220,13 +220,16 @@ actor RexHostSession {
     }
 
     /// Asks the server that was answering, on a foreground return. A link that
-    /// does not answer in time is dropped for a new one at once.
+    /// stays silent for `revalidateDeadline` before the answer, or brings no
+    /// answer in half a minute however much else arrives, is dropped for a
+    /// new one at once. The answer may queue behind a redraw's pages, which
+    /// keep the link from going silent.
     func revalidate() async {
         guard phase == .active, liveServer != nil, let link else { return }
-        let deadline = revalidateDeadline
+        let deadline = RexDeliveryDeadline(silence: revalidateDeadline, limit: max(revalidateDeadline, .seconds(30)))
         Task { [weak self] in
             do {
-                _ = try await link.call("server.status", deadline: deadline)
+                _ = try await link.call("server.status", payload: JSONValue?.none, waiting: deadline)
             } catch {
                 await self?.dropInDoubt(link)
             }

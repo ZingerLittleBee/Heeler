@@ -35,6 +35,12 @@ restarted servers without showing a stale or half-read list.
   most four reads are in flight per Host, structure ahead of details. Rex's
   API document says relabeling a detached block raises no event, so a session
   with detached terminals also reads its structure again once a minute.
+- A read's answer comes in order after everything else the connection
+  carries, terminal redraw pages included (ADR 0049), so a read waits as long
+  as the connection keeps receiving: it gives up after half a minute in which
+  nothing arrives, or two minutes in all. The check on a return to the
+  foreground waits the same way, with five seconds of silence and half a
+  minute in all, before it drops the connection for a new one.
 - The Console sees an inventory only once every session's structure is
   current: first with the structure, then again when the terminals' details
   are read, then on each change once it settles.

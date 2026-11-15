@@ -104,6 +104,10 @@ struct RexDeliveryDeadline: Sendable, Equatable {
     /// The longest it waits in all, however much else keeps arriving, so a
     /// server that keeps sending but never answers cannot hold it for ever.
     var limit: Duration
+
+    /// What a read on a control link that also carries redraw pages waits:
+    /// half a minute of silence, two minutes in all.
+    static let sharedLinkRead = RexDeliveryDeadline(silence: .seconds(30), limit: .seconds(120))
 }
 
 /// What a control link's event sequence yields.
@@ -319,6 +323,17 @@ actor RexControlLink {
         try await exchange(method, payload: payload, wait: .fromNow(deadline ?? options.requestDeadline)).outcome.get()
     }
 
+    /// Sends `method` as `call` does, but times its answer as `deliver` does:
+    /// from when it is written, failing with `deadlineExceeded` once the link
+    /// stays silent for `deadline.silence`, or after `deadline.limit` in all.
+    /// For a request whose answer may queue behind long messages on the
+    /// link, such as a terminal redraw's pages, while they keep arriving.
+    func call<Payload: Encodable & Sendable>(
+        _ method: String, payload: Payload?, waiting deadline: RexDeliveryDeadline
+    ) async throws -> RexResponse {
+        try await exchange(method, payload: payload, wait: .afterWriting(deadline)).outcome.get()
+    }
+
     /// Sends `method` with `payload` as `call` does, and says whether it was
     /// answered, refused, never sent, or may have reached the server with no
     /// answer. A request that left is never sent again here.
@@ -340,9 +355,10 @@ actor RexControlLink {
 
     /// When a request's deadline starts, and what it counts.
     private enum Wait {
-        /// From now, whatever arrives: `call`'s.
+        /// From now, whatever arrives: a `call` given a duration.
         case fromNow(Duration)
-        /// From when it is written, counting the link's silence: `deliver`'s.
+        /// From when it is written, counting the link's silence: `deliver`'s,
+        /// and a `call` given a `RexDeliveryDeadline`.
         case afterWriting(RexDeliveryDeadline)
     }
 

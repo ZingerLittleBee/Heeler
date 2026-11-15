@@ -9,6 +9,8 @@ import Foundation
 /// detached terminals is read again on an interval, since no event says when
 /// one of their labels changes.
 ///
+/// Each read waits as long as the link keeps receiving, within a limit, since
+/// its answer may queue behind a terminal redraw's pages on the same link.
 /// It follows until the link ends, a read stalls past its deadline, or the
 /// server refuses to attach. It never ends the link: whoever opened the link
 /// decides between resuming its client and starting afresh.
@@ -30,6 +32,7 @@ actor RexInventoryFollower {
 
     private let link: RexControlLink
     private let maxReadsInFlight: Int
+    private let readDeadline: RexDeliveryDeadline
     private let detachedRereadInterval: Duration?
     private let sleep: Sleep
     private let publish: @Sendable (RexInventory) -> Void
@@ -49,18 +52,20 @@ actor RexInventoryFollower {
 
     /// `carrying` is what the last link knew of each terminal, shown until
     /// this one reads it again. `detachedRereadInterval` is how often sessions
-    /// with detached terminals are read again; nil never. `observe` hears each
+    /// with detached terminals are read again; nil never. `readDeadline` is
+    /// how long each read waits for its answer. `observe` hears each
     /// update from the link as it arrives, for whatever else follows a block's
     /// events, and before the inventory applies it. `publish` hears each
     /// inventory in order.
     init(
         link: RexControlLink, carrying: [RexPaneAddress: RexTerminalDetails] = [:], maxReadsInFlight: Int = 4,
-        detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
+        readDeadline: RexDeliveryDeadline = .sharedLinkRead, detachedRereadInterval: Duration? = .seconds(60), sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
         observe: @escaping @Sendable (RexControlUpdate) -> Void = { _ in },
         publish: @escaping @Sendable (RexInventory) -> Void
     ) {
         self.link = link
         self.maxReadsInFlight = max(1, maxReadsInFlight)
+        self.readDeadline = readDeadline
         self.detachedRereadInterval = detachedRereadInterval
         self.sleep = sleep
         self.observe = observe
@@ -147,7 +152,8 @@ actor RexInventoryFollower {
 
     private func list() async {
         do {
-            let response = try await link.call("session.attach_all", payload: AttachAll(eventScope: Self.eventScope))
+            let response = try await link.call(
+                "session.attach_all", payload: AttachAll(eventScope: Self.eventScope), waiting: readDeadline)
             guard let entries = RexInventoryWire.sessions(try response.result(JSONValue.self)) else {
                 finish(.refused(.rexAnswerUnreadable(String(localized: "Rex's session list could not be read."))))
                 return
@@ -205,9 +211,9 @@ actor RexInventoryFollower {
         let view: RexInventoryBook.Answer<RexInventoryWire.View?>
         let listing: RexInventoryBook.Answer<[RexInventoryWire.ListedBlock]?>
         do {
-            let viewResponse = try await link.call("session.view", payload: target)
+            let viewResponse = try await link.call("session.view", payload: target, waiting: readDeadline)
             view = .init(value: try? RexInventoryWire.view(viewResponse.result(JSONValue.self)), seq: viewResponse.seq)
-            let listResponse = try await link.call("session.list_blocks", payload: target)
+            let listResponse = try await link.call("session.list_blocks", payload: target, waiting: readDeadline)
             listing = .init(
                 value: try? RexInventoryWire.blocks(listResponse.result(JSONValue.self)), seq: listResponse.seq)
         } catch RexControlError.server(let failure) {
@@ -230,13 +236,15 @@ actor RexInventoryFollower {
         var title: RexInventoryBook.Answer<String?>?
         var process: RexInventoryBook.Answer<RexInventoryWire.Process>?
         do {
-            let response = try await link.call(RexInventoryWire.terminalMethod("title"), payload: target)
+            let response = try await link.call(
+                RexInventoryWire.terminalMethod("title"), payload: target, waiting: readDeadline)
             if let value = try? response.result(JSONValue.self) {
                 title = .init(value: RexInventoryWire.title(value), seq: response.seq)
             }
         } catch RexControlError.server {}
         do {
-            let response = try await link.call(RexInventoryWire.terminalMethod("process"), payload: target)
+            let response = try await link.call(
+                RexInventoryWire.terminalMethod("process"), payload: target, waiting: readDeadline)
             if let value = try? response.result(JSONValue.self) {
                 process = .init(value: RexInventoryWire.process(value), seq: response.seq)
             }

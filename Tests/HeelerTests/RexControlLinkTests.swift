@@ -235,6 +235,32 @@ struct RexControlLinkTests {
         await link.close()
     }
 
+    /// A call timed by the link's silence waits while other messages keep
+    /// arriving, as a redraw's pages do, and fails once the link goes quiet.
+    @Test func aCallTimedBySilenceWaitsWhileTheLinkKeepsReceiving() async throws {
+        let clock = ManualClock()
+        let (server, link) = try await FakeRexServer.open(clock: clock)
+        var events = link.events.makeAsyncIterator()
+        let call = Task { try await link.call("session.view", payload: JSONValue?.none, waiting: Self.delivery) }
+        _ = await server.nextRequest()
+        for number in 1...3 {
+            #expect(await clock.parks(for: .seconds(10)))
+            await server.push("session_destroyed", ["session_id": .string("session:\(number)")])
+            _ = try await events.next()
+            clock.advance(.seconds(10))
+        }
+        #expect(await clock.parks(for: .seconds(10)))
+        clock.advance(.seconds(10))
+
+        let failure = await error { try await call.value }
+        guard case .deadlineExceeded(method: "session.view")? = failure as? RexControlError else {
+            Issue.record("Expected the deadline after a silence, got \(String(describing: failure))")
+            return
+        }
+        #expect(await link.isOpen)
+        await link.close()
+    }
+
     /// A delivery's deadline passes only after that long with nothing at all
     /// arriving: its answer may queue behind long messages while they stream in.
     @Test func aDeliveryWaitsWhileTheLinkKeepsReceiving() async throws {
