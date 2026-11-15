@@ -34,7 +34,7 @@ Heeler looks once through your login shell without starting anything and lists w
 | Heeler found | What to do |
 | --- | --- |
 | **Rex** reading **Running** | Leave **Rex** checked and tap **Add Host with 1 Server**. |
-| **Rex** reading **Not running** | Rex is installed but not running, so **Rex** starts unchecked. Start Rex on the Host and tap **Scan Again**, or check **Rex** now and start Rex later. |
+| **Rex** reading **Not running** | Rex is installed but not running, so **Rex** starts unchecked. Check **Rex** to have it connect once you start Rex. Or add the Host without it, start Rex, open the Host, tap **Scan Again**, and turn on **Rex**. |
 | Rex alongside Herdr TUI, herdr-core, or tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
 | No **Rex** | Rex is not installed. Add the Host anyway, install and start Rex, open the Host, tap **Scan Again**, and turn on **Rex**. |
 
