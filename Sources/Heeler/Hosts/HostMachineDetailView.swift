@@ -293,7 +293,9 @@ struct HostMachineDetailView: View {
             Text(stateLine(row, state: state))
                 .font(.subheadline)
                 .foregroundStyle(state?.isProblem == true ? Color.red : Color.secondary)
-                .lineLimit(1)
+                // A reason with its attempt count is longer than the switch
+                // leaves room for on one line.
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
