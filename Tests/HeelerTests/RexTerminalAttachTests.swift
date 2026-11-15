@@ -425,6 +425,34 @@ struct RexTerminalAttachTests {
         #expect(await rig.attachSlotsTaken == 0)
     }
 
+    /// A stream refused for want of an attach means the server no longer
+    /// counts the session as attached for this client: the next attach sends
+    /// `session.attach` again, on the same client, and paints afresh.
+    @Test func aStreamRefusedForWantOfAnAttachAttachesAgain() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        // The resume is refused, and each new ticket after it too.
+        let conflict = FakeRexServer.Answer.error(code: "conflict", message: "attach first", status: 409)
+        rig.endpoint.tickets.fail(with: Array(repeating: conflict, count: 3))
+        await rig.endpoint.script(.refuse(reason: 3))
+        rig.reads.set(redraw: "attached again")
+        await rig.endpoint.drop()
+        await rig.begin(stream: 1)
+        try await waitUntil("the fresh paint") { chunks.all.count == 2 && store.status == .live }
+
+        #expect(chunks.all.last == Self.painted("attached again"))
+        #expect(await methods(control).filter { $0 == "session.attach" }.count == 2)
+        #expect(rig.endpoint.tickets.requests.count == 5)
+        await store.stop()
+        #expect(await rig.attachSlotsTaken == 0)
+    }
+
     /// A new SSH connection ends the terminal's link, and the next attach
     /// paints afresh on the new one.
     @Test func aNewSSHConnectionPaintsAfresh() async throws {

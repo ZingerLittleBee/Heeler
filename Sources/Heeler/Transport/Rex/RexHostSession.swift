@@ -533,6 +533,9 @@ actor RexHostSession {
                     guard let self else { throw RexTerminalEnding.connectionReset }
                     try await self.attachSession(address.sessionID, server: ready.server, generation: ready.generation)
                 },
+                forgetAttachment: { [weak self] in
+                    await self?.forgetAttachment(address.sessionID)
+                },
                 call: { [weak self] method, payload in
                     guard let self else { throw RexTerminalEnding.connectionReset }
                     let control = try await self.terminalControl(server: ready.server, generation: ready.generation)
@@ -660,6 +663,12 @@ actor RexHostSession {
             throw RexTerminalEnding.connectionReset
         }
         if clientEpoch == epoch { attachedSessions[sessionID] = epoch }
+    }
+
+    /// The server refused a stream in `sessionID` for want of an attach, so
+    /// the next terminal there sends `session.attach` again.
+    private func forgetAttachment(_ sessionID: String) {
+        attachedSessions[sessionID] = nil
     }
 
     /// The control link a terminal on `server` and `generation` asks on: the

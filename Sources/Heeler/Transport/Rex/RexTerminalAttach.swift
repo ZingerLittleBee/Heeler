@@ -22,8 +22,9 @@ enum RexTerminalEnding: Error, Sendable, Equatable {
     case finished
     /// Another server answers on the socket: the block was the last one's.
     case serverGone
-    /// The connection under the attach was lost or replaced. A new attach
-    /// takes the next one and paints afresh.
+    /// The connection under the attach was lost or replaced, or the server
+    /// forgot the session's attach. A new attach takes the next connection,
+    /// attaches again where needed, and paints afresh.
     case connectionReset
     /// The block's output stopped, and starting it again did not bring it back.
     case outputUnavailable
@@ -49,6 +50,9 @@ struct RexTerminalConnection: Sendable {
     /// Attaches the control client to the block's session with
     /// `session.attach` unless it already is. Data links need it.
     let attachSession: @Sendable () async throws -> Void
+    /// The server refused the block's stream for want of an attach: the
+    /// next `attachSession` sends `session.attach` again.
+    let forgetAttachment: @Sendable () async -> Void
     /// Sends one request about the block on the current control link.
     let call: @Sendable (_ method: String, _ payload: JSONValue) async throws -> Void
 }
@@ -249,6 +253,12 @@ actor RexTerminalAttach {
                     return nil
                 case .blockClosed:
                     throw RexTerminalEnding.finished
+                case .notAttached where !blockClosed:
+                    // The server no longer counts the session as attached for
+                    // this client, so the attach this side remembers is stale:
+                    // the next one attaches again and paints afresh.
+                    await connection.forgetAttachment()
+                    throw RexTerminalEnding.connectionReset
                 case .paintFailed, .notAttached, .streamUnavailable:
                     throw blockClosed ? RexTerminalEnding.finished : RexTerminalEnding.outputUnavailable
                 }

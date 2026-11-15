@@ -66,6 +66,9 @@ terminal for viewing only; input is the next slice.
   - A new control client, or a new SSH connection, ends every open terminal's
     attach as a lost connection: the view keeps its screen, reattaches, and
     paints afresh.
+  - A stream whose new tickets the server keeps refusing for want of an
+    attach ends the same way, and the next attach sends `session.attach`
+    again on the same client.
   - Another server instance finishes the terminal, as another tmux server
     does; a detail keeps to the instance it opened on.
   - A block that closes, its session going, or its program exiting finishes
