@@ -1140,6 +1140,12 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// Rex does not speak the API revision this build does. `offered` is the
     /// newest revision it named, nil when it named none. Never retried.
     case rexUnsupportedRevision(offered: Int?)
+    /// Rex answered a request with an error, in its own words and code. The
+    /// Rex Host's `.apiRejected`, retried for the same reason.
+    case rexRejected(code: String, message: String)
+    /// Rex answered in a shape this build cannot read. The Rex Host's
+    /// `.malformedResponse`. `detail` is one sentence.
+    case rexAnswerUnreadable(String)
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1183,7 +1189,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale,
-            .tmuxServerNotRunning, .rexServerNotRunning, .rexSocketUnreachable:
+            .tmuxServerNotRunning, .rexServerNotRunning, .rexSocketUnreachable, .rexRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
@@ -1199,7 +1205,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .rexTerminalsNotOpenableYet, .rexServerGone, .rexNotInstalled, .rexLookupFailed, .rexForwardingRefused,
             .rexAccountRefused, .rexUnsupportedRevision, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
-            .terminalChannelAlreadyOpen, .malformedResponse:
+            .terminalChannelAlreadyOpen, .malformedResponse, .rexAnswerUnreadable:
             false
         // A Jump Host is retryable exactly when the failure behind it is: a
         // rebooting VPS should reconnect on its own, a rejected key should not.

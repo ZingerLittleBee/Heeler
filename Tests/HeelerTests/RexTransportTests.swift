@@ -73,6 +73,19 @@ struct RexTransportTests {
         #expect(await host.log == ["probe", "close"])
     }
 
+    /// A probe whose exec fails is a lookup that could not read the Host, not
+    /// a server's malformed answer.
+    @Test func aLookupWhoseProbeFailsSaysItCouldNotLook() async {
+        let host = ScriptedRexHost(probe: nil)
+
+        let error = await failure(host, socket: nil)
+
+        #expect(
+            error as? TransportError
+                == .rexLookupFailed(reason: "Heeler could not read whether Rex is on this Host."))
+        #expect(await host.log == ["probe", "close"])
+    }
+
     /// SSH reports a refused socket one way whatever the cause, so the Host is
     /// asked whether anything listens there.
     @Test(arguments: [
@@ -205,10 +218,32 @@ struct RexTransportTests {
         #expect(TransportError(rexControl: .deadlineExceeded(method: "session.list")) == .timedOut)
         #expect(
             TransportError(rexControl: .server(RexServerError(code: "refused", message: "no", status: 403)))
-                == .apiRejected(code: "refused", message: "no"))
+                == .rexRejected(code: "refused", message: "no"))
+        guard case .rexAnswerUnreadable = TransportError(rexControl: .unreadableResult(method: "session.view")) else {
+            Issue.record("An unreadable result is not Rex's unreadable answer")
+            return
+        }
         guard case .channelFailed = TransportError(rexControl: .linkEnded(.linkLost)) else {
             Issue.record("A lost link is not a channel failure")
             return
+        }
+    }
+
+    /// Rex's own refusals and answers it cannot read name Rex, not herdr, and
+    /// keep the retry behavior of herdr's counterparts.
+    @Test func rexsOwnAnswersNameRex() {
+        let rejected = TransportError.rexRejected(code: "internal", message: "something broke").presentation
+        #expect(rejected.summary == "Rex rejected the request")
+        #expect(rejected.detail == "something broke (internal)")
+        #expect(TransportError.rexRejected(code: "internal", message: "x").isRetryable)
+
+        let unreadable = TransportError.rexAnswerUnreadable("Rex's status named no server instance.").presentation
+        #expect(unreadable.summary == "Rex sent an answer Heeler cannot read")
+        #expect(unreadable.detail == "Rex's status named no server instance")
+        #expect(unreadable.recoverySuggestion == "Check the Rex version on the Host.")
+        #expect(!TransportError.rexAnswerUnreadable("x").isRetryable)
+        for error in [TransportError.rexRejected(code: "internal", message: "x"), .rexAnswerUnreadable("x")] {
+            #expect(!error.presentation.message.contains("herdr"))
         }
     }
 }

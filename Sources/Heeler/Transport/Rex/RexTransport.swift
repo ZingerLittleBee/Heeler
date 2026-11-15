@@ -172,7 +172,15 @@ actor RexSSHTransport: RexTransport {
     /// A fresh look for the socket, as detection makes, for a Host that
     /// stores none.
     private static func lookUp(over connection: any RexHostConnection, nonce: String) async throws -> RexSocket {
-        switch try await RexProbe.run(over: connection, nonce: nonce) {
+        let finding: ServerKindDetection.RexFinding
+        do {
+            finding = try await RexProbe.run(over: connection, nonce: nonce)
+        } catch TransportError.malformedResponse {
+            // The probe's exec failed: as unreadable as output it cannot parse.
+            throw TransportError.rexLookupFailed(
+                reason: String(localized: "Heeler could not read whether Rex is on this Host."))
+        }
+        switch finding {
         case .socketFound(let path):
             guard let socket = RexSocket(path: path) else {
                 throw TransportError.rexLookupFailed(
@@ -248,13 +256,13 @@ extension TransportError {
         case .unsupportedVersion(let offer):
             self = .rexUnsupportedRevision(offered: offer.newestRevision)
         case .server(let error):
-            self = .apiRejected(code: error.code, message: error.message)
+            self = .rexRejected(code: error.code, message: error.message)
         case .requestTooLarge:
             self = .channelFailed(detail: String(localized: "The request was larger than Rex accepts, so it was not sent."))
         case .requestUnencodable:
             self = .channelFailed(detail: String(localized: "Heeler could not write the request to Rex."))
         case .unreadableResult:
-            self = .malformedResponse(String(localized: "Rex's answer could not be read."))
+            self = .rexAnswerUnreadable(String(localized: "Rex's answer could not be read."))
         case .linkEnded:
             self = .channelFailed(detail: String(localized: "The connection to Rex ended."))
         }

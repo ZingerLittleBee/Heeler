@@ -116,7 +116,7 @@ actor RexInventoryFollower {
         do {
             let response = try await link.call("session.attach_all", payload: AttachAll(eventScope: Self.eventScope))
             guard let entries = RexInventoryWire.sessions(try response.result(JSONValue.self)) else {
-                finish(.refused(.malformedResponse(String(localized: "Rex's session list could not be read."))))
+                finish(.refused(.rexAnswerUnreadable(String(localized: "Rex's session list could not be read."))))
                 return
             }
             listing = nil

@@ -9,7 +9,7 @@ struct RexServerStatus: Sendable, Equatable {
     /// no instance.
     init(reading result: JSONValue) throws {
         guard let instanceID = result["instance_id"]?.stringValue, !instanceID.isEmpty else {
-            throw TransportError.malformedResponse(String(localized: "Rex's status named no server instance."))
+            throw TransportError.rexAnswerUnreadable(String(localized: "Rex's status named no server instance."))
         }
         self.instanceID = instanceID
     }

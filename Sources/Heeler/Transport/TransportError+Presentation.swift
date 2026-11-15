@@ -302,6 +302,16 @@ extension TransportError {
                 recoverySuggestion: String(localized: "Connect as the account that runs Rex."))
         case .rexUnsupportedRevision(let offered):
             Self.rexRevisionPresentation(offered: offered)
+        case .rexRejected(let code, let message):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex rejected the request"),
+                detail: "\(message) (\(code))",
+                recoverySuggestion: nil)
+        case .rexAnswerUnreadable(let detail):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex sent an answer Heeler cannot read"),
+                detail: Self.droppingTrailingPeriods(detail),
+                recoverySuggestion: String(localized: "Check the Rex version on the Host."))
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),

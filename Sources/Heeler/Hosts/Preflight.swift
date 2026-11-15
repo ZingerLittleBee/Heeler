@@ -195,10 +195,10 @@ struct PreflightReport: Equatable, Sendable {
         case .rexNotInstalled, .rexLookupFailed:
             check = .herdrInstalled
             hint = error.presentation.message
-        case .rexServerNotRunning, .rexForwardingRefused, .rexSocketUnreachable, .rexAccountRefused:
+        case .rexServerNotRunning, .rexForwardingRefused, .rexSocketUnreachable, .rexAccountRefused, .rexRejected:
             check = .serverRunning
             hint = error.presentation.message
-        case .rexUnsupportedRevision:
+        case .rexUnsupportedRevision, .rexAnswerUnreadable:
             check = .protocolCompatible
             hint = error.presentation.message
         case .gitTimedOut:
