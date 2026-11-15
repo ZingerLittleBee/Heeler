@@ -445,8 +445,9 @@ struct RexTerminalInputTests {
         #expect(await inputRequests(control).isEmpty)
     }
 
-    /// While the control link is down nothing typed is sent or kept; once a
-    /// link takes the client back, input goes on over it.
+    /// Input typed while the control link is down is neither sent nor kept,
+    /// and the view stops looking live: it reconnects, and once a link takes
+    /// the client back and the terminal paints again, input goes on over it.
     @Test func aDroppedLinkSendsNothingUntilItsClientIsBack() async throws {
         let rig = Rig()
         let first = await rig.server()
@@ -464,13 +465,12 @@ struct RexTerminalInputTests {
         await first.drop()
         await second.acceptUpgrade()
         type("lost\r", into: input)
-        #expect(input.requestPaste("lost paste") == .inserted)
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntil("the reconnect") { store.status == .reconnecting }
+        #expect(!input.send(Data("early\r".utf8)))
         _ = await second.nextHello()
         await second.sendWelcome(resumed)
-        try await waitUntil("the resumed link") { await second.requests.contains { $0.method == "server.status" } }
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(store.status == .live)
+        await rig.begin(stream: 1)
+        try await waitUntil("the fresh paint") { store.status == .live }
 
         type("kept\r", into: input)
         try await waitUntil("the keys") { await sent(second) == [.text("kept\r")] }

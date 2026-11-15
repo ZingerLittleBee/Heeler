@@ -164,10 +164,12 @@ final class RexTerminalHub: Sendable {
 /// `RexTerminalKeyReader`; keystrokes that queued meanwhile join the next
 /// write, and pastes and events go as `block.event`. The gate opens with the
 /// first paint and closes for good when the block closes, the program ends or
-/// the attach ends; on a link that is not the terminal's, as while it drops,
-/// input is not sent and not kept. A request that may have arrived with no
-/// answer, or that the server refused, is never sent again: what queued behind
-/// it is dropped and the attach ends with `inputFailed`, so the view says so.
+/// the attach ends. Input that finds no link that is the terminal's, as while
+/// a dropped one resumes, is not sent and not kept, and the attach ends as a
+/// connection reset, so the view reconnects. A request that may have arrived
+/// with no answer, or that the server refused, is never sent again: what
+/// queued behind it is dropped and the attach ends with `inputFailed`, so the
+/// view says so.
 actor RexTerminalAttach {
     struct Options: Sendable {
         var stream = RexTerminalStream.Options()
@@ -376,9 +378,13 @@ actor RexTerminalAttach {
             case .answered:
                 continue
             case .notSent:
-                // The live link is not the terminal's, as while it drops. The
-                // terminal carries on once the link is back, or ends.
-                throw turnAway()
+                if stopped || Task.isCancelled { throw turnAway() }
+                // No link is the terminal's, as while a dropped one resumes.
+                // Nothing was sent and nothing is kept, so the view must not
+                // look live meanwhile: it reconnects and paints afresh.
+                closeInput()
+                await end(.connectionReset)
+                throw TerminalAttachInputError.sessionEnded
             case .refused(let failure) where failure.kind == .notFound:
                 closeInput()
                 await end(.finished)

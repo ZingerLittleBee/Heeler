@@ -58,8 +58,11 @@ the whole control connection.
   block's close is heard, the block's stream ends, the program exits, or the
   attach ends for a reset, another server or the view letting go; a terminal
   that comes back opens again with its next paint. Input that meets a closed
-  gate, or no link that is the terminal's, is dropped with what queued behind
-  it, never kept for later.
+  gate is dropped with what queued behind it, never kept for later. Input that
+  finds no link that is the terminal's, as while a dropped control link
+  resumes, is dropped the same way, and the attach ends as a connection reset:
+  the view shows it is reconnecting instead of looking live while keys go
+  nowhere, and the terminal opens again with its next paint.
 - **An unknown outcome is never sent again.** A request that left with no
   answer, because the link ended, the link stayed silent for 10 seconds after
   it was written or its sender was cancelled, may have reached the program. So may one the server
@@ -135,7 +138,9 @@ lab capture and the live input test, recorded with their sources in
 - `TerminalAttachInputQueue` gains a way to take the keystrokes queued at its
   head and to drop everything on an unknown outcome; `TerminalAttachSession`
   says when input begins and carries a paster that sends a paste as itself.
-- Input typed while a dropped control link is being resumed is dropped
-  silently: the view stays live over the data stream meanwhile.
+- Input typed while a dropped control link is being resumed ends the attach
+  as a connection reset, so the terminal reattaches and paints afresh even
+  where its data stream could have carried on. A link that drops while
+  nothing is typed costs no reattach.
 - The next slice shows `TerminalSizeReport`'s mismatch and an explicit take
   of the block's size.
