@@ -13,7 +13,9 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
     struct Host: Codable, Equatable, Sendable, Identifiable {
         let id: UUID
         var name: String
-        /// When the app read this Host's report; nil while it never has.
+        /// When the Host read this report's figures, which is when the app
+        /// read the report unless the Host was still refreshing it; nil
+        /// while the app never has.
         var readAt: Date?
         /// Why All Hosts leaves this Host out; nil while it reports.
         var excludedReason: AgentUsageExclusion?

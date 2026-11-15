@@ -78,6 +78,30 @@ struct MessageJumpControlTests {
         #expect(container.hostedFrame?.minX == lowest.minX)
     }
 
+    @MainActor
+    @Test func containerReportsWhereItsChromeSitsOnlyWhenItMoves() throws {
+        let container = MessageJumpChromeContainer(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 400))
+        var reported: [CGRect?] = []
+        container.onFrameChange = { reported.append($0) }
+        let host = MessageJumpSizedHost()
+        host.fixedSize = CGSize(width: 44, height: 72)
+        container.embed(host)
+        container.layoutIfNeeded()
+        let lowest = try #require(container.hostedFrame)
+        #expect(reported == [lowest])
+
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(reported.count == 1, "the same frame is not reported again")
+
+        container.edgeFraction = 0
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(reported.last == container.hostedFrame)
+        #expect(reported.last??.minY == 0)
+    }
+
     @Test func availabilityRequiresAlternateScreen() {
         #expect(
             MessageJumpControlAvailability.evaluate(

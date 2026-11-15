@@ -147,15 +147,12 @@ final class HostLiveActivityCoordinator {
         guard !didStart else { return }
         didStart = true
         let known = supportedHostIDs()
-        for (id, hostID) in controller.currentActivities() {
-            if !known.contains(hostID) {
-                controller.end(id: id, finalContent: nil, immediate: true)
+        for activity in controller.currentActivities() {
+            if !known.contains(activity.hostID) {
+                controller.end(id: activity.id, finalContent: nil, immediate: true)
                 continue
             }
-            guard sessions[hostID] == nil else { continue }
-            beginSession(
-                LiveActivityHandle(id: id, hostID: hostID),
-                awaitingFirstSnapshot: isAwaitingSnapshot(hostID))
+            adoptOrEnd(activity)
         }
         var hosts = Set(latestAgents.keys)
         hosts.formUnion(sessions.keys)
@@ -202,27 +199,28 @@ final class HostLiveActivityCoordinator {
         dropTransientState(for: hostID)
     }
 
-    /// Foreground return: notice dismissals that happened while we were away,
-    /// adopt or orphan whatever ActivityKit still holds, and retry dirty
-    /// token writes.
+    /// Foreground return: notice dismissals and ends that happened while we
+    /// were away, adopt or orphan whatever ActivityKit still holds, retry
+    /// dirty token writes, and retry starts iOS refused in the background.
     func reconcile() {
         guard didStart else { return }
         let known = supportedHostIDs()
         let current = controller.currentActivities()
-        let currentByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0.hostID) })
+        let states = Dictionary(current.map { ($0.id, $0.state) }) { first, _ in first }
 
         // A Host outside the catalog has no Console projection to write
         // its clear through, so its activity ends without one.
-        for (id, hostID) in current where !known.contains(hostID) {
-            controller.end(id: id, finalContent: nil, immediate: true)
-            if sessions[hostID]?.id == id {
-                dropSession(hostID, endOnController: false)
+        for activity in current where !known.contains(activity.hostID) {
+            controller.end(id: activity.id, finalContent: nil, immediate: true)
+            if sessions[activity.hostID]?.id == activity.id {
+                dropSession(activity.hostID, endOnController: false)
             }
         }
 
-        for (hostID, session) in sessions where currentByID[session.id] == nil {
-            dropSession(hostID, endOnController: false)
-            enqueue(.clear, for: hostID)
+        let trackedIDs = Set(sessions.values.map(\.id))
+        for (hostID, session) in sessions {
+            let state = states[session.id] ?? .dismissed
+            if !state.isRunning { considerState(state, hostID: hostID) }
         }
 
         var tracked = Set(pipes.keys).union(settleTasks.keys).union(writerTasks.keys)
@@ -234,14 +232,31 @@ final class HostLiveActivityCoordinator {
             dropTransientState(for: hostID)
         }
 
-        for (id, hostID) in current where known.contains(hostID) && sessions[hostID] == nil {
-            beginSession(
-                LiveActivityHandle(id: id, hostID: hostID),
-                awaitingFirstSnapshot: isAwaitingSnapshot(hostID))
+        for activity in current where known.contains(activity.hostID) && !trackedIDs.contains(activity.id) {
+            adoptOrEnd(activity)
         }
 
         retryDirtyPipes(onlyIfConnected: false)
         releaseSnapshotHolds()
+        // iOS starts an activity only while the app is on screen, so a start
+        // the settle made after the app left is retried here.
+        for hostID in Set(latestAgents.keys).union(sessions.keys) {
+            scheduleSettle(for: hostID)
+        }
+    }
+
+    /// Takes over a known Host's running activity when the Host has none
+    /// tracked. One iOS already ended takes no more updates, so it leaves the
+    /// Lock Screen and the Host's Agents get a new one.
+    private func adoptOrEnd(_ activity: LiveActivitySnapshot) {
+        guard activity.state.isRunning else {
+            controller.end(id: activity.id, finalContent: nil, immediate: true)
+            return
+        }
+        guard sessions[activity.hostID] == nil else { return }
+        beginSession(
+            LiveActivityHandle(id: activity.id, hostID: activity.hostID),
+            awaitingFirstSnapshot: isAwaitingSnapshot(activity.hostID))
     }
 
     /// Connection or snapshot-hold change: retry token writes for Hosts that
@@ -501,12 +516,18 @@ final class HostLiveActivityCoordinator {
         enqueue(.set(hex: hex, startedAt: now()), for: hostID)
     }
 
+    /// A swiped-away activity stays away until the Agents change. One iOS
+    /// ended, at its eight-hour limit or on the Host's end push, is not the
+    /// user's choice, so the same Agents start a new one.
     private func considerState(_ state: LiveActivityRunState, hostID: Host.ID) {
+        guard sessions[hostID] != nil else { return }
         switch state {
-        case .dismissed, .ended:
-            guard sessions[hostID] != nil else { return }
+        case .dismissed:
             dropSession(hostID, endOnController: false)
             enqueue(.clear, for: hostID)
+        case .ended:
+            endNow(hostID)
+            scheduleSettle(for: hostID)
         case .active, .stale:
             break
         }

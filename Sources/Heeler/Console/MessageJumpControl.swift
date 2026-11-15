@@ -669,6 +669,8 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
     var onNewer: () -> Void
     /// The user docked the chrome at a new fraction; remember it.
     var onDock: (CGFloat) -> Void = { _ in }
+    /// The chrome moved, or hid on nil, so other edge controls can clear it.
+    var onFrameChange: (CGRect?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -678,6 +680,7 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
         let container = MessageJumpChromeContainer()
         container.minimumBottomInset = minimumBottomInset
         container.edgeFraction = edgeFraction
+        container.onFrameChange = onFrameChange
         let host = UIHostingController(rootView: makeRoot(coordinator: context.coordinator))
         host.view.backgroundColor = .clear
         host.view.isOpaque = false
@@ -695,6 +698,7 @@ struct MessageJumpChromeOverlay: UIViewRepresentable {
     func updateUIView(_ container: MessageJumpChromeContainer, context: Context) {
         context.coordinator.host?.rootView = makeRoot(coordinator: context.coordinator)
         context.coordinator.onDock = onDock
+        container.onFrameChange = onFrameChange
         container.minimumBottomInset = minimumBottomInset
         // A lift in progress owns the position until it drops.
         if context.coordinator.liftBase == nil {
@@ -762,8 +766,13 @@ final class MessageJumpChromeContainer: UIView {
     /// How far the chrome could slide at the last layout, for turning a
     /// drag's points into a fraction.
     private(set) var edgeTravel: CGFloat = 0
-    /// Test seam: last frame applied to the hosted chrome, or `nil` when hidden.
-    private(set) var hostedFrame: CGRect?
+    /// Last frame applied to the hosted chrome, or `nil` when hidden.
+    private(set) var hostedFrame: CGRect? {
+        didSet {
+            if hostedFrame != oldValue { onFrameChange?(hostedFrame) }
+        }
+    }
+    var onFrameChange: ((CGRect?) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
