@@ -614,6 +614,10 @@ private struct ChatSubagentActivityRow: View {
 
     private var presentation: ChatSubagentPresentation { ChatSubagentPresentation(activity: activity) }
 
+    private var hasExpandableContent: Bool {
+        (activity.agentPath?.isEmpty == false) || !presentation.history.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: toggle) {
@@ -627,7 +631,9 @@ private struct ChatSubagentActivityRow: View {
                             .font(.subheadline.weight(.medium))
                             .lineLimit(isExpanded ? nil : 2)
                         Spacer(minLength: 4)
-                        disclosureIcon
+                        if hasExpandableContent {
+                            disclosureIcon
+                        }
                     }
                     Text("\(presentation.status) · \(presentation.eventCount)")
                         .font(.caption)
@@ -639,14 +645,20 @@ private struct ChatSubagentActivityRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .disabled(!hasExpandableContent)
             .accessibilityLabel("Subagent, \(presentation.name)")
             .accessibilityValue(
-                [
-                    presentation.status, presentation.eventCount,
-                    isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"),
-                ].joined(separator: ", "))
-            .accessibilityHint(isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
-            if isExpanded {
+                (
+                    [presentation.status, presentation.eventCount]
+                    + (hasExpandableContent
+                        ? [isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed")]
+                        : [])
+                ).joined(separator: ", "))
+            .accessibilityHint(
+                hasExpandableContent
+                    ? (isExpanded ? String(localized: "Hides activity history") : String(localized: "Shows activity history"))
+                    : "")
+            if isExpanded, hasExpandableContent {
                 VStack(alignment: .leading, spacing: 8) {
                     if let path = activity.agentPath, !path.isEmpty {
                         Text(verbatim: path)
@@ -713,6 +725,15 @@ private struct ChatToolRow: View {
     let previewImage: @MainActor (String, UIImage?) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var titleIsTruncated = false
+
+    private var needsTitleTruncationProbe: Bool {
+        !tool.hasExpandableDetails && !tool.title.contains(where: \.isNewline)
+    }
+
+    private var canExpand: Bool {
+        tool.hasExpandableDetails || tool.title.contains(where: \.isNewline) || titleIsTruncated
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -720,10 +741,7 @@ private struct ChatToolRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
                     // A read that showed an image reads as one.
                     ChatToolKindIcon(kind: tool.imagePath == nil ? tool.kind : .image)
-                    Text(verbatim: tool.title)
-                        .font(.subheadline)
-                        .modifier(ChatFontDesign(isCode: titleIsCode))
-                        .lineLimit(isExpanded ? nil : 1)
+                    titleText
                     if let diff = tool.diff {
                         ChatDiffBadge(diff: diff)
                     }
@@ -732,10 +750,12 @@ private struct ChatToolRow: View {
                             status: tool.status, exitCode: tool.exitCode, cardAnswer: tool.cardAnswer,
                             isNotUpdating: tool.isNotUpdating)
                     }
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
+                    if canExpand {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
+                    }
                     Spacer(minLength: 0)
                 }
                 .font(.subheadline)
@@ -744,8 +764,9 @@ private struct ChatToolRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(hint)
+            .disabled(!canExpand)
+            .accessibilityValue(canExpand ? (isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed")) : "")
+            .accessibilityHint(canExpand ? hint : "")
             .accessibilityActions {
                 if let textActions {
                     Button("Copy", action: textActions.copy)
@@ -756,7 +777,7 @@ private struct ChatToolRow: View {
                 ChatImageThumbnail(path: path, thumbnails: thumbnails) { previewImage(path, $0) }
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
-            if isExpanded {
+            if isExpanded, tool.hasExpandableDetails {
                 details
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
@@ -766,6 +787,22 @@ private struct ChatToolRow: View {
                     missingOutputText: fileMissingOutputText, actions: files)
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var titleText: some View {
+        let base = Text(verbatim: tool.title)
+            .font(.subheadline)
+            .modifier(ChatFontDesign(isCode: titleIsCode))
+            .lineLimit(canExpand && isExpanded ? nil : 1)
+        if needsTitleTruncationProbe {
+            base.modifier(
+                ChatTextTruncationProbe(
+                    text: tool.title, font: .subheadline, isCode: titleIsCode, lineLimit: 1,
+                    isTruncated: $titleIsTruncated))
+        } else {
+            base
         }
     }
 

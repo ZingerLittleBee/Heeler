@@ -133,6 +133,42 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
     /// The notice agy adds to a conversation resumed after it restarted.
     static let restartNotice = "[Notice] All your subagents and background tasks have been stopped due to server restart"
 
+    /// `<conv>/task-<step>` in a result agy sent to the background.
+    static func backgroundTaskID(in body: String) -> String? {
+        guard let start = body.range(of: "background task with task id: ") else { return nil }
+        let id = body[start.upperBound...].prefix { !$0.isWhitespace }
+        return id.isEmpty ? nil : String(id)
+    }
+
+    /// `conversationId` in `invoke_subagent`'s `Created the following subagent:` JSON block.
+    static func launchedSubagentID(in body: String) -> String? {
+        let normalized = AgyToolCall.normalized(body)
+        guard normalized.hasPrefix("Created the following subagent:"),
+            let brace = normalized.firstIndex(of: "{"),
+            let data = normalized[brace...].data(using: .utf8),
+            let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+            let id = value["conversationId"]?.stringValue, !id.isEmpty
+        else { return nil }
+        return id
+    }
+
+    /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
+    static func jsonArray(in body: String) -> [JSONValue] {
+        let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
+        let start: String.Index
+        if normalized.hasPrefix("[") {
+            start = normalized.startIndex
+        } else if let line = normalized.range(of: "\n[") {
+            start = normalized.index(after: line.lowerBound)
+        } else {
+            return []
+        }
+        guard let data = normalized[start...].data(using: .utf8),
+            case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return [] }
+        return items
+    }
+
     // MARK: Projection
 
     /// The turn the latest prompt, or a background task's end, opened.
@@ -689,41 +725,16 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             }
         }
 
-        /// `<conv>/task-<step>` in a result agy sent to the background.
         static func backgroundTaskID(in body: String) -> String? {
-            guard let start = body.range(of: "background task with task id: ") else { return nil }
-            let id = body[start.upperBound...].prefix { !$0.isWhitespace }
-            return id.isEmpty ? nil : String(id)
+            AgyTranscriptReducer.backgroundTaskID(in: body)
         }
 
-        /// `conversationId` in `invoke_subagent`'s `Created the following subagent:` JSON block.
         static func launchedSubagentID(in body: String) -> String? {
-            let normalized = AgyToolCall.normalized(body)
-            guard normalized.hasPrefix("Created the following subagent:"),
-                let brace = normalized.firstIndex(of: "{"),
-                let data = normalized[brace...].data(using: .utf8),
-                let value = try? JSONDecoder().decode(JSONValue.self, from: data),
-                let id = value["conversationId"]?.stringValue, !id.isEmpty
-            else { return nil }
-            return id
+            AgyTranscriptReducer.launchedSubagentID(in: body)
         }
 
-        /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
         static func jsonArray(in body: String) -> [JSONValue] {
-            let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
-            let start: String.Index?
-            if normalized.hasPrefix("[") {
-                start = normalized.startIndex
-            } else if let line = normalized.range(of: "\n[") {
-                start = normalized.index(after: line.lowerBound)
-            } else {
-                start = nil
-            }
-            guard let start,
-                let data = normalized[start...].data(using: .utf8),
-                case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
-            else { return [] }
-            return items
+            AgyTranscriptReducer.jsonArray(in: body)
         }
 
         private static func taskWorkID(_ taskID: String) -> String { "agy:task:\(taskID)" }

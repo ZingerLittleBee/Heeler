@@ -2515,6 +2515,29 @@ struct ChatRowViewTests {
         #expect(ranLabels.contains { $0.contains("No output.") }, "\(ranLabels)")
     }
 
+    @Test func aToolRowWithoutExpandableContentHidesItsDisclosure() async throws {
+        let shortInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "sleep 30", status: .interrupted)
+        let multiLineInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "cd /tmp\nsleep 30", status: .interrupted)
+        let notedInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "sleep 30", status: .interrupted, note: "Stopped in the background")
+
+        #expect(!shortInterrupted.hasExpandableDetails)
+        #expect(!multiLineInterrupted.hasExpandableDetails)
+        #expect(notedInterrupted.hasExpandableDetails)
+
+        let shortRow = ChatRow(id: .entry(ChatEntryID("short")), content: .tool(shortInterrupted), revision: 1, topSpacing: 0)
+        let notedRow = ChatRow(id: .entry(ChatEntryID("noted")), content: .tool(notedInterrupted), revision: 1, topSpacing: 0)
+        let (shortImage, shortHeight, _) = try await Self.renderRow(shortRow, width: 402, scale: 2)
+        let (notedImage, notedHeight, _) = try await Self.renderRow(notedRow, width: 402, scale: 2)
+        let shortInk = try #require(Self.inkBounds(in: shortImage, xRange: 0..<402, yRange: 0..<shortHeight, scale: 2))
+        let notedInk = try #require(Self.inkBounds(in: notedImage, xRange: 0..<402, yRange: 0..<notedHeight, scale: 2))
+        // Both rows have identical leading icon + "sleep 30" + "Interrupted" badge;
+        // only `notedRow` adds the trailing `chevron.right` (~10pt wider ink).
+        #expect(notedInk.maxX > shortInk.maxX + 6, "short maxX=\(shortInk.maxX), noted maxX=\(notedInk.maxX)")
+    }
+
     @Test func inlineRowsShareAlignedIconColumnAndDetailIndent() async throws {
         let width: CGFloat = 402
         let scale: CGFloat = 2

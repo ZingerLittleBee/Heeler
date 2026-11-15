@@ -324,16 +324,25 @@ agy's model sometimes ends a turn itself seconds after sending a command
 to the background or starting a Subagent, saying it waits for it. Because
 agy's `PreInvocation` hook reports the Agent Idle as soon as that foreground
 turn finishes, `ConsoleStore` promotes an Idle or Done Antigravity CLI Agent's
-displayed Agent Status to Working while a live connected transcript read
-confirms non-stale running Background Work (Subagents, Workflows, or non-daemon
+displayed Agent Status to Working while a live connected read confirms
+non-stale running Background Work (Subagents, Workflows, or non-daemon
 background commands), and `AgentChatStore` keeps polling gently at its idle
 interval even while Chat is hidden until that Background Work finishes so the
-Console returns to Idle on time. `AgentChatStore` itself still tracks the
-Host's underlying reported status so idle permission dialogs, echo clocks, and
-turn headers stay accurate; Chat's `/tasks` Stop follow-through runs only when
-a foreground turn was actually Working at the tap, so background work after a
-completed turn runs to its end unless the user ends a command in the terminal
-with `/tasks` and `k`. The terminal's own Stop stays one Esc.
+Console returns to Idle on time. Because Antigravity CLI writes nothing to the
+main transcript while a background task or Subagent runs silently for hours —
+nor when a task is killed in `/tasks`, a Subagent finishes after an interrupted
+parent turn, or `agy` exits before the next prompt — `AgentChatStore` also
+follows SFTP `tasks/task-<N>.log` stats and each Subagent's own
+`transcript_full.jsonl` (`AgyBackgroundWorkFollower`) and checks `AgyScreen`
+(the running-task strip and footer count, `/tasks` panel rows, an unobstructed
+idle input box with no running tasks, or `agy`'s exit line, re-polling the
+transcript once before retiring an item as stopped so a concurrent completion
+record wins). `AgentChatStore` itself still tracks the Host's underlying
+reported status so idle permission dialogs, echo clocks, and turn headers stay
+accurate; Chat's `/tasks` Stop follow-through runs only when a foreground turn
+was actually Working at the tap, so background work after a completed turn runs
+to its end unless the user ends a command in the terminal with `/tasks` and
+`k`. The terminal's own Stop stays one Esc.
 
 ## Entry and the terminal
 
@@ -854,14 +863,20 @@ name, its Subagent type, `"Command"` or the phase its Workflow is in, how long
 it has run, and for a Claude Code Workflow the agents done of those started.
 Agent counts come from the Workflow's journal while it runs, read beside the
 transcript a few journals per poll, and from its notification once it ends. A
-running Subagent or background command writes nothing Chat follows beyond
-status checks recorded in the transcript (`manage_subagents`, `manage_task`),
-so it shows its time until it ends.
+Claude Code Subagent writes nothing Chat follows beyond status checks recorded
+in the transcript, so it shows its time until it ends; for Antigravity CLI,
+Chat also stats `tasks/task-<N>.log`, follows each Subagent's own
+`transcript_full.jsonl` (settling a Subagent whose parent turn was interrupted
+once its own turn has stayed idle for five seconds), and reads `AgyScreen` to
+keep multi-hour live tasks ticking and retire killed or exited work without
+waiting for the next prompt.
 
-Running work comes first. Finished work stays, with its time and the counts
-its notification reported, until the user's next prompt. The strip shows
-three rows and "+N more", and condenses to one line while the Composer is open
-or a Blocked card stands in its place, so the conversation keeps its room.
+Running work comes first. Unfinished rows that are paused or quiet (`Not
+updating` or `No updates since …`) sit in a separate `Not updating` section of
+the sheet rather than under `Running`. Finished work stays, with its time and
+the counts its notification reported, until the user's next prompt. The strip
+shows three rows and "+N more", and condenses to one line while the Composer is
+open or a Blocked card stands in its place, so the conversation keeps its room.
 Every row opens a sheet listing all of it as structured activity cards in
 `AgentStatusPalette` colors (leading with the human summary alongside status
 and kind badges, placing commands in a recessed two-line terminal box that

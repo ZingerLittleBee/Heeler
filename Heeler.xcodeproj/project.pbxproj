@@ -889,6 +889,7 @@
 		BFE02F9C58F080B95770E878 /* WakeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C2343D5ED9436077682CD1 /* WakeCommandTests.swift */; };
 		BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */; };
 		C038D3091EC326076D76EDC8 /* QuestionFormCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */; };
+		C047391810B2F0E459C9D240 /* AgyBackgroundWorkFollower.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43F5BDDBA2ABA4400AA33E5 /* AgyBackgroundWorkFollower.swift */; };
 		C07DBBA6976DCE57F1608DC2 /* GrokPromptHistoryWitness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96773BDF5177E9327BB22C2 /* GrokPromptHistoryWitness.swift */; };
 		C0CA2928B947520D9FB9CAF9 /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A058322630CB1827F69DBF53 /* SharedAsyncOperation.swift */; };
 		C0F5DC7258848D70F66DC972 /* AgyAnnotationTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4184E98AD0CB0C686A061C /* AgyAnnotationTitle.swift */; };
@@ -2078,6 +2079,7 @@
 		B3A0D34CD58BD9C168178A23 /* AgentSessionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionConfig.swift; sourceTree = "<group>"; };
 		B3C07C559CE07CF1378BEEA4 /* HeelerSSHTransportBehaviorE2ETests+FilePatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+FilePatch.swift"; sourceTree = "<group>"; };
 		B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionFormCardView.swift; sourceTree = "<group>"; };
+		B43F5BDDBA2ABA4400AA33E5 /* AgyBackgroundWorkFollower.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyBackgroundWorkFollower.swift; sourceTree = "<group>"; };
 		B444D02BD22C7F29D11C024F /* HerdrCoreStaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreStaging.swift; sourceTree = "<group>"; };
 		B49CD83D83EF72199552659A /* ChatDeliveryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDeliveryPolicyTests.swift; sourceTree = "<group>"; };
 		B4A5391C472408A79D1B8B18 /* AgyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyScreen.swift; sourceTree = "<group>"; };
@@ -4028,6 +4030,7 @@
 			isa = PBXGroup;
 			children = (
 				039F9ADB9FC1492503945ECC /* AgyBackgroundTaskStop.swift */,
+				B43F5BDDBA2ABA4400AA33E5 /* AgyBackgroundWorkFollower.swift */,
 				25DEE4A8A81DB029C6A7C728 /* AgyModelCatalog.swift */,
 				C460D3AF53ECA04312DB4E7D /* AgyPromptHistoryWitness.swift */,
 				1A52D0FE0B8C158B226BFF86 /* AgySlashCommands.swift */,
@@ -4478,6 +4481,7 @@
 				8034B5827C6A0E0808972749 /* AgentsAndAccountsSettingsView.swift in Sources */,
 				C0F5DC7258848D70F66DC972 /* AgyAnnotationTitle.swift in Sources */,
 				389242951AF2322478041BCF /* AgyBackgroundTaskStop.swift in Sources */,
+				C047391810B2F0E459C9D240 /* AgyBackgroundWorkFollower.swift in Sources */,
 				D0A284068CBC6B53D4DBDDD7 /* AgyDialogParser.swift in Sources */,
 				F6814974ED116F3287E97B1D /* AgyDialogPlanner.swift in Sources */,
 				FAE0A146BA645B872E898B49 /* AgyInputBoxDetector.swift in Sources */,
