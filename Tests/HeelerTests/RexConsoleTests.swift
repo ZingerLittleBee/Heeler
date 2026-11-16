@@ -325,6 +325,56 @@ struct RexConsoleTests {
         #expect(!store.pins.isPinned(hostID: rex.id, paneID: solo))
     }
 
+    /// An open Rex Agent is its terminal's screen (ADR 0054), so its pooled
+    /// connection stays through every inventory change, as a Terminal's does,
+    /// while a closed terminal's goes.
+    @Test func anOpenRexAgentsTerminalStaysPooled() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world)
+        let console = store(servers: servers)
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent with its status") { console.agents.first?.agent.status == .working }
+        let agentRow = try #require(console.terminals.first { $0.isAgent })
+        let soloPane = RexPaneAddress(sessionID: "session:studio", blockID: "block:solo").paneID
+        let soloRow = try #require(console.terminals.first { $0.paneID == soloPane })
+        // Selected as each detail selects its terminal; neither is sized, so
+        // neither opens a data link.
+        for row in [agentRow, soloRow] {
+            let pin = console.corePin(on: rex.id)
+            _ = try await console.terminalConnections.select(
+                hostID: rex.id,
+                identity: ShellTerminalIdentity(paneID: row.paneID, tabID: row.tabID, terminalID: row.terminalID),
+                ownerID: UUID(), generation: console.hostConnectionGenerations[rex.id], corePin: pin,
+                runTerminal: console.terminalRunner(for: rex.id, keepingTo: pin))
+        }
+        #expect(console.terminalConnections.entries.count == 2)
+
+        await servers[0].push(
+            "block_event",
+            blockEvent(
+                "program_status_changed",
+                ["id": "", "record": world.sessions[0].windows[0].layers[0].blocks[2].record("blocked", app: "codex"),
+                 "reason": "report"]),
+            session: "session:studio")
+        try await waitUntil("the new status") { console.agents.first?.agent.status == .blocked }
+        world.update { sessions in
+            sessions[0].windows[1].layers[0].blocks.removeAll()
+            sessions[0].windows[1].layers[0].layout = nil
+            sessions[0].revision = 4
+        }
+        await servers[0].push("block_closed", ["block_id": "block:solo"], session: "session:studio")
+        await servers[0].push("session_view_changed", ["revision": 4], session: "session:studio")
+        try await waitUntil("the closed terminal's connection gone") {
+            !console.terminalConnections.entries.keys.contains { $0.identity.paneID == soloPane }
+        }
+
+        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [agentRow.paneID])
+        #expect(console.agents.count == 1)
+    }
+
     /// A Rex terminal opened from Terminals whose shell starts a known agent
     /// stays on its screen: that Agent opens as this same screen (ADR 0054),
     /// so leaving for it would only drop the connection and give back a size
@@ -377,6 +427,45 @@ struct RexConsoleTests {
         #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [shell.paneID])
         await hideTestWindowWhenSettled(window)
         window.rootViewController = nil
+    }
+
+    /// What an open Rex Agent's terminal keeps to is the server it opened on:
+    /// another instance leaves it behind, and only a pick from the list opens
+    /// the Agent anew there. While the Host recovers, its row stands in at the
+    /// same address, so the pooled connection is found again.
+    @Test func anOpenRexAgentKeepsToItsServerUntilPickedAnew() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world, count: 2)
+        let host = ScriptedRexHost(control: servers.map { .server($0) })
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent") { console.agents.first?.agent.status == .working }
+        let agent = try #require(console.agents.first)
+        let row = try #require(console.terminals.first { $0.isAgent })
+        let standIn = ConsoleTerminal(standingInFor: agent)
+        #expect(standIn.id == row.id)
+        #expect(standIn.terminalID == row.terminalID)
+        #expect(standIn.tabID == row.tabID)
+        let cores = ConsoleDetailCores()
+        let pin = cores.terminalPin(for: agent, console: console)
+        #expect(cores.terminalPin(for: agent, console: console) === pin)
+        #expect(!cores.openAnew(.agent(agent.id), console: console))
+
+        world.restart(as: "instance-0002")
+        await servers[0].close(.goingAway, reason: "shutting down")
+        try await waitUntil("the new server") { console.hasLeftCore(pin, on: rex.id) }
+
+        #expect(cores.terminalPin(for: agent, console: console) === pin)
+        #expect(cores.listSelection(for: .agent(agent.id), console: console) == .leftBehind(.agent(agent.id)))
+        #expect(cores.openAnew(.agent(agent.id), console: console))
+        let fresh = cores.terminalPin(for: agent, console: console)
+        #expect(fresh !== pin)
+        #expect(!console.hasLeftCore(fresh, on: rex.id))
     }
 
     /// Another server instance on the socket leaves every detail open on the
