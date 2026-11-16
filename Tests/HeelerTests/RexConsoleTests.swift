@@ -548,8 +548,8 @@ struct RexConsoleTests {
 
     /// A Rex terminal opened from Terminals whose shell starts a known agent
     /// stays on its screen: that Agent opens as this same screen (ADR 0054),
-    /// so leaving for it would only drop the connection and give back a size
-    /// the user took.
+    /// so leaving for it would only drop the connection and give back the
+    /// size the screen took.
     @Test func aRexTerminalThatStartsAnAgentStaysOnItsScreen() async throws {
         let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
         let servers = await served(world)
