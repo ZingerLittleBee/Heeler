@@ -46,15 +46,19 @@ anything on the machine.
   counts, per terminal, the reports it hears that take the root record from
   working or blocked to done for the same program, and starts a new count when
   a read finds another record than it held. Within one count a turn ended when
-  the count moved, so the same done reported again ends nothing; across counts
-  (another connection, a relaunch) a record whose time has not moved is the
-  one known, and any other done ended a turn. A program not known to report
-  done ends a turn going from working to idle, as on herdr-core. At first
-  sight a done reads Done and an idle Idle, as nothing says it worked. A
-  report from another owner starts over, so another program's turn is never
-  the one this device looked at. Turns and seen marks stay on this device, in
-  the Host's memory with the server instance, and go with the terminals the
-  server stops listing, another instance and the Host.
+  the count moved, so the same done reported again ends nothing, and a done
+  after the working or blocked known here ended one whatever the count, since
+  Rex removes that record while its program is out of the foreground; across
+  counts (another connection, a relaunch) a record whose time has not moved
+  is the one known, and any other done ended a turn. A program not known to
+  report done ends a turn going from working to idle, as on herdr-core. At
+  first sight a done reads Done and an idle Idle, as nothing says it worked.
+  A report from another owner, or a foreground read as no agent, starts
+  over, so another program's turn is never the one this device looked at; a
+  terminal whose foreground a new connection has yet to read keeps what this
+  device knew. Turns and seen marks stay on this device, in the Host's memory
+  with the server instance, and go with the terminals the server stops
+  listing, another instance and the Host.
 - **Kept current by events.** Each terminal's details read, once per control
   connection, now asks `program_status` after `title` and `process`, gated by
   the response's seq like the other two. Then `program_status_changed` replaces
