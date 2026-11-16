@@ -99,6 +99,7 @@ struct RexConsoleTests {
     /// `servers`, or `rexConnect` when given, and which records each Rex dial.
     private func store(
         servers: [FakeRexServer] = [], dials: Dials = Dials(),
+        memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         rexConnect: (@Sendable (RexSocket?, RexControlLink?) async throws -> any RexTransport)? = nil
     ) -> ConsoleStore {
         let hosts = Mutex(servers.map { ScriptedRexHost(control: [.server($0)]) })
@@ -134,7 +135,8 @@ struct RexConsoleTests {
                     storedSocket: host.rexSocket, connect: rexConnect ?? scripted,
                     reconnectPolicy: ReconnectPolicy(
                         initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)))
-            })
+            },
+            coreHostMemory: memory)
     }
 
     private func waitUntil(
@@ -284,6 +286,91 @@ struct RexConsoleTests {
 
         let methods = Set(await servers[0].requests.map(\.method))
         #expect(methods.isSubset(of: Self.inventoryMethods))
+    }
+
+    /// A Rex Agent reads Done as the other kinds' do (ADR 0054): its program
+    /// reported done and this device has not looked at it since. Opening its
+    /// terminal looks at it; the same done reported again keeps it Idle; the
+    /// next finished turn reads Done again; and what this device saw survives
+    /// a relaunch. The Done count and the status filter take it as any Done,
+    /// and nothing of it reaches the server, a banner or a Host Helper.
+    @Test func aRexAgentReadsDoneUntilThisDeviceLooksAtIt() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world, count: 2)
+        let defaults = try #require(UserDefaults(suiteName: "rex-done-\(UUID().uuidString)"))
+        let first = store(servers: [servers[0]], memory: HerdrCoreHostMemory(defaults: defaults))
+        defer { first.setHosts([]) }
+        let rex = rex
+        let markedHosts = Dials()
+        first.onCoreSeenMarksChanged = { hostID, _, _ in markedHosts.append(hostID.uuidString) }
+        let notifications = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [:]),
+            deviceToken: { nil },
+            ceremony: NotificationRegistrationCeremony(
+                keys: NotificationKeyStore(secrets: InMemorySecretStore())))
+        notifications.setHosts([rex])
+        let banners = AgentNotificationBannerStore(
+            holdDuration: .zero, presentedAgent: { nil }, triggers: { notifications.confirmedTriggers(for: $0) },
+            playSound: {})
+        let block = world.sessions[0].windows[0].layers[0].blocks[2]
+        func report(_ state: String, at second: Int, on server: FakeRexServer) async {
+            let record = block.record(state, app: "codex", at: "2026-11-16T12:01:\(second < 10 ? "0" : "")\(second)+00:00")
+            world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
+            await server.push(
+                "block_event", blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]),
+                session: "session:studio")
+        }
+        /// Every event before it has reached the Console once its title shows.
+        func settle(_ store: ConsoleStore, on server: FakeRexServer, title: String) async throws {
+            await server.push("block_event", blockEvent("title_changed", ["title": .string(title)]), session: "session:studio")
+            try await waitUntil("the title \(title)") { store.agents.first?.agent.terminalTitleStripped == title }
+        }
+
+        first.setHosts([rex])
+        await first.resume()
+        try await waitUntil("the Agent working") { first.agents.first?.agent.status == .working }
+        banners.agentsDidChange(first.agents)
+        await report("done", at: 2, on: servers[0])
+        try await waitUntil("the Agent Done") { first.agents.first?.agent.status == .done }
+        let agent = try #require(first.agents.first)
+        #expect(ConsoleHostAgentStatusCounts(agents: first.agents).done == 1)
+        #expect(Set([ConsoleAgentStatusFilter.done]).admits(agent))
+        banners.agentsDidChange(first.agents)
+
+        let viewer = UUID()
+        first.setAgentShown(agent.id, viewer: viewer, scene: nil)
+        try await waitUntil("the Agent seen") { first.agents.first?.agent.status == .idle }
+        first.setAgentShown(nil, viewer: viewer, scene: nil)
+        await report("done", at: 3, on: servers[0])
+        try await settle(first, on: servers[0], title: "Same turn")
+        #expect(first.agents.first?.agent.status == .idle)
+
+        await report("working", at: 4, on: servers[0])
+        try await waitUntil("the next turn") { first.agents.first?.agent.status == .working }
+        await report("done", at: 5, on: servers[0])
+        try await waitUntil("the next turn Done") { first.agents.first?.agent.status == .done }
+        first.setAgentShown(agent.id, viewer: viewer, scene: nil)
+        try await waitUntil("the next turn seen") { first.agents.first?.agent.status == .idle }
+        first.setAgentShown(nil, viewer: viewer, scene: nil)
+
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(banners.banner == nil)
+        #expect(markedHosts.all.isEmpty)
+        #expect(first.coreSeenMarks(on: rex.id) == nil)
+        #expect(Set(await servers[0].requests.map(\.method)).isSubset(of: Self.inventoryMethods))
+
+        // The app goes, sweeping nothing, and comes back to the same server.
+        first.setHosts([], hostsOutOfSight: nil)
+        let relaunched = store(servers: [servers[1]], memory: HerdrCoreHostMemory(defaults: defaults))
+        defer { relaunched.setHosts([]) }
+        relaunched.setHosts([rex])
+        await relaunched.resume()
+        try await waitUntil("the Agent read again") { relaunched.agents.first?.agent.status == .idle }
+        try await settle(relaunched, on: servers[1], title: "Back")
+        #expect(relaunched.agents.first?.agent.status == .idle)
+        await report("working", at: 6, on: servers[1])
+        await report("done", at: 7, on: servers[1])
+        try await waitUntil("a turn finished after the relaunch") { relaunched.agents.first?.agent.status == .done }
     }
 
     /// A report from a program that has since left reads Unknown, and so does

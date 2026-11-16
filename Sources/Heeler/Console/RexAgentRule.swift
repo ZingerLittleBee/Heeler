@@ -11,7 +11,9 @@ import Foundation
 /// foreground when it was reported, is the foreground now by process id and
 /// name: Rex keeps an exited program's idle, done and error records, and the
 /// system reuses process ids. A report whose `app` names another known program
-/// is that program's. Anything else reads Unknown.
+/// is that program's. Anything else reads Unknown. Done and idle both read
+/// Idle here; whether this device has seen the turn a record finished, and so
+/// whether it reads Done, is `RexTurnState`'s.
 enum RexAgentRule {
     /// The kind of the Agent this terminal hosts, if it hosts one.
     static func agentKind(in details: RexTerminalDetails) -> String? {
@@ -25,11 +27,16 @@ enum RexAgentRule {
 
     /// The status of the Agent of `kind` this terminal hosts.
     static func status(of details: RexTerminalDetails, heldBy kind: String) -> AgentStatus {
+        report(of: details, heldBy: kind).map { HerdrCoreAgentRule.agentStatus($0.state) } ?? .unknown
+    }
+
+    /// The root record, while it is the Agent of `kind`'s own.
+    static func report(of details: RexTerminalDetails, heldBy kind: String) -> RexProgramStatus? {
         guard let report = details.status, let owner = report.ownerProcessID,
             owner == details.processID, report.ownerName == details.program
-        else { return .unknown }
+        else { return nil }
         let app = report.app?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        if let reported = HerdrCoreAgentRule.reportedApps[app], reported != kind { return .unknown }
-        return HerdrCoreAgentRule.agentStatus(report.state)
+        if let reported = HerdrCoreAgentRule.reportedApps[app], reported != kind { return nil }
+        return report
     }
 }

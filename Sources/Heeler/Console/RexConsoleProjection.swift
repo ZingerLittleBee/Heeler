@@ -11,6 +11,10 @@ import Foundation
 /// terminal opens from the server's redraw (ADR 0051) and takes input from its
 /// first paint (ADR 0052), whether it is listed as an Agent or a Terminal;
 /// every action a Host offers is unavailable on a Rex Host.
+///
+/// Done is per device, as on a tmux Host: each terminal's turns and this
+/// device's seen marks (`RexTurnState`) are kept by server instance on this
+/// device only, and opening an Agent's terminal is looking at it.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var host: Host
@@ -44,18 +48,24 @@ final class RexConsoleProjection: ConsoleHostProjection {
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     let terminalLabelKeys: [String] = []
 
+    /// What this device keeps of the Host by server instance, and its Pins.
+    private let memory: HerdrCoreHostMemory
     private let pins: PinnedAgentsStore
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var hasEnded = false
+    /// The Panes this device shows now, whose finished turns are seen as
+    /// they are noted.
+    private var shownAgents: Set<String> = []
 
     init(
-        host: Host, session: RexHostSession, pins: PinnedAgentsStore,
-        onChange: @escaping @MainActor @Sendable () -> Void
+        host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
+        pins: PinnedAgentsStore, onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
+        self.memory = memory
         self.pins = pins
         self.onChange = onChange
     }
@@ -173,13 +183,18 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 if inventoryCore != nil {
                     pins.removePins(hostID: host.id)
                     lastKnownAgentsByPane = [:]
+                    shownAgents = []
                 }
             }
             self.server = server
             inventoryCore = server.instanceID
+            // Turns and seen marks this device kept of another instance, in
+            // this run or an earlier one, go with it.
+            memory.noteCore(server.instanceID, for: host.id)
         case .inventory(let inventory):
             guard status == .connected, server != nil else { return }
             self.inventory = inventory
+            noteTurns(in: inventory)
             rebuildRows()
         }
         onChange()
@@ -207,7 +222,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// longer lists go.
     private func rebuildRows() {
         guard let inventory else { return }
-        let builder = ConsolePaneRowBuilder(host: host, inventory: RexOrganization.build(inventory))
+        let builder = ConsolePaneRowBuilder(
+            host: host, inventory: RexOrganization.build(inventory, doneTerminals: doneTerminals))
         let agents = builder.agentRows(liveChange: { _ in nil })
         terminalsByPane = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         agentsByPane = agents
@@ -220,7 +236,57 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func refreshTerminalInventory() async {}
     func refreshSidebarMetadata() async {}
-    func setShownAgents(_: Set<String>) {}
+
+    // MARK: Done per device
+
+    /// Each listed terminal's record, folded into this device's turns, and
+    /// the turns of terminals the server no longer lists forgotten. A record
+    /// this link has yet to read, or one removed, changes nothing; one that is
+    /// not its Agent's, or a terminal with no Agent, ends a finished turn's
+    /// Done. A terminal never known to host an Agent costs nothing.
+    private func noteTurns(in inventory: RexInventory) {
+        let known = memory.rexTurnStates(for: host.id)
+        var listed: Set<String> = []
+        for session in inventory.sessions {
+            for terminal in session.terminals {
+                let paneID = RexPaneAddress(sessionID: session.id, blockID: terminal.blockID).paneID
+                listed.insert(paneID)
+                let details = terminal.details
+                let kind = RexAgentRule.agentKind(in: details)
+                if let kind, let report = RexAgentRule.report(of: details, heldBy: kind) {
+                    let isShown = shownAgents.contains(paneID)
+                    memory.updateRexTurnState(of: paneID, for: host.id) { state in
+                        state.note(report, kind: kind)
+                        if isShown { state.markSeen() }
+                    }
+                } else if kind == nil || details.status != nil, known[paneID] != nil {
+                    memory.updateRexTurnState(of: paneID, for: host.id) { $0.noteNoAgent() }
+                }
+            }
+        }
+        memory.retainRexPanes(listed, for: host.id)
+    }
+
+    private var doneTerminals: Set<String> {
+        Set(memory.rexTurnStates(for: host.id).filter(\.value.isDone).keys)
+    }
+
+    /// Marks each newly shown Agent's finished turn seen. A turn that ends
+    /// while one stays shown is seen as it is noted, so it never reads Done.
+    func setShownAgents(_ paneIDs: Set<String>) {
+        let opened = paneIDs.subtracting(shownAgents)
+        shownAgents = paneIDs
+        let known = memory.rexTurnStates(for: host.id)
+        let opening = opened.filter { known[$0] != nil }
+        guard !opening.isEmpty else { return }
+        let wasDone = doneTerminals
+        for paneID in opening {
+            memory.updateRexTurnState(of: paneID, for: host.id) { $0.markSeen() }
+        }
+        guard doneTerminals != wasDone, inventory != nil else { return }
+        rebuildRows()
+        onChange()
+    }
 
     func paneExists(_ paneID: String) async throws -> Bool {
         terminalsByPane[paneID] != nil

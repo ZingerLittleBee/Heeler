@@ -62,9 +62,9 @@ struct RexAgentRuleTests {
         return RexAgentRule.status(of: terminal, heldBy: "codex")
     }
 
-    /// The words map as on every other kind; done is Idle, since Done is per
-    /// device there and Rex keeps no turn count, and a word Heeler does not
-    /// know is Unknown.
+    /// The words map as on every other kind, and a word Heeler does not know
+    /// is Unknown. Done and idle read Idle here: Done is per device, this
+    /// device's turns' to say (`RexTurnState`).
     @Test(arguments: [
         ("idle", AgentStatus.idle), ("done", .idle), ("working", .working), ("blocked", .blocked),
         ("error", .error), ("thinking", .unknown), ("WORKING", .unknown),
@@ -149,5 +149,32 @@ struct RexAgentRuleTests {
         #expect(snapshot.agents.map(\.cwd) == ["/home/dev/app", "/home/dev/app"])
         #expect(snapshot.panes.map(\.agent) == ["claude", "codex", nil])
         #expect(snapshot.panes.map(\.agentStatus) == [.blocked, .unknown, .unknown])
+    }
+
+    /// An Agent whose finished turn this device has not seen reads Done while
+    /// its record reads Idle, and only then: not while it works, nor while its
+    /// record is not its own.
+    @Test func anUnseenFinishedTurnReadsDone() {
+        func terminal(_ blockID: String, _ state: String, owner: Int = 77) -> RexInventory.Terminal {
+            let report = RexProgramStatus(state: state, app: "codex", ownerProcessID: owner, ownerName: "codex")
+            return .init(blockID: blockID, label: nil, owner: nil, details: details("codex", argv0: "codex", status: report))
+        }
+        let terminals = [
+            terminal("block:done", "done"), terminal("block:idle", "idle"), terminal("block:working", "working"),
+            terminal("block:stale", "done", owner: 76), terminal("block:seen", "done"),
+        ]
+        let inventory = RexInventory(sessions: [
+            RexInventory.Session(
+                id: "session:studio", label: "studio", activeWindowID: "window:a",
+                windows: [RexInventory.Window(id: "window:a", label: nil, terminals: terminals)], detached: [])
+        ])
+        let unseen = ["block:done", "block:idle", "block:working", "block:stale"].map {
+            RexPaneAddress(sessionID: "session:studio", blockID: $0).paneID
+        }
+
+        let snapshot = RexOrganization.build(inventory, doneTerminals: Set(unseen))
+
+        #expect(snapshot.agents.map(\.agentStatus) == [.done, .done, .working, .unknown, .idle])
+        #expect(snapshot.panes.map(\.agentStatus) == [.done, .done, .working, .unknown, .idle])
     }
 }

@@ -36,10 +36,14 @@ final class FakeRexWorld: Sendable {
         }
 
         /// The root record a report of `state` from the foreground leaves, or
-        /// from `owner` when another process made it.
-        func record(_ state: String, app: String? = nil, owner: (pid: Int, name: String)? = nil) -> JSONValue {
+        /// from `owner` when another process made it, taken at `at`: Rex
+        /// moves the time on every report, the same one made again too.
+        func record(
+            _ state: String, app: String? = nil, owner: (pid: Int, name: String)? = nil,
+            at time: String = "2026-11-16T12:00:00+00:00"
+        ) -> JSONValue {
             var record: [String: JSONValue] = [
-                "state": .string(state), "updated_at": "2026-11-16T12:00:00+00:00",
+                "state": .string(state), "updated_at": .string(time),
                 "owner": [
                     "pid": .number(Double(owner?.pid ?? processID)), "name": .string(owner?.name ?? program ?? ""),
                 ],

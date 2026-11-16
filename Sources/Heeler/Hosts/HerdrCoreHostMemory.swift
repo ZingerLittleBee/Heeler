@@ -11,6 +11,8 @@ import Foundation
 /// A tmux Host keeps its server instance here as its core id (ADR 0045): pane
 /// ids belong to one run of the server as addresses belong to one core, and so
 /// do its Panes' turns and seen marks (ADR 0046), which go with the instance.
+/// A Rex Host keeps its server instance and its terminals' turns and seen
+/// marks the same way (ADR 0054).
 @MainActor
 final class HerdrCoreHostMemory {
     private struct Entry: Codable, Equatable {
@@ -22,6 +24,8 @@ final class HerdrCoreHostMemory {
         var turns: [String: HerdrCoreTurnState] = [:]
         /// A tmux Host's, by pane id.
         var tmuxTurns: [String: TmuxTurnState] = [:]
+        /// A Rex Host's, by pane id.
+        var rexTurns: [String: RexTurnState] = [:]
 
         init(coreID: String? = nil) {
             self.coreID = coreID
@@ -35,6 +39,7 @@ final class HerdrCoreHostMemory {
             directories = try fields.decodeIfPresent([String: String].self, forKey: .directories) ?? [:]
             turns = try fields.decodeIfPresent([String: HerdrCoreTurnState].self, forKey: .turns) ?? [:]
             tmuxTurns = try fields.decodeIfPresent([String: TmuxTurnState].self, forKey: .tmuxTurns) ?? [:]
+            rexTurns = try fields.decodeIfPresent([String: RexTurnState].self, forKey: .rexTurns) ?? [:]
         }
     }
 
@@ -113,6 +118,32 @@ final class HerdrCoreHostMemory {
         let retained = entry.tmuxTurns.filter { paneIDs.contains($0.key) }
         guard retained != entry.tmuxTurns else { return }
         entry.tmuxTurns = retained
+        entries[hostID] = entry
+        save()
+    }
+
+    func rexTurnStates(for hostID: Host.ID) -> [String: RexTurnState] {
+        entries[hostID]?.rexTurns ?? [:]
+    }
+
+    func updateRexTurnState(
+        of paneID: String, for hostID: Host.ID, _ change: (inout RexTurnState) -> Void
+    ) {
+        var entry = entries[hostID] ?? Entry()
+        var state = entry.rexTurns[paneID] ?? RexTurnState()
+        change(&state)
+        guard entry.rexTurns[paneID] != state else { return }
+        entry.rexTurns[paneID] = state
+        entries[hostID] = entry
+        save()
+    }
+
+    /// The terminals a Rex server lists: any other's turns are forgotten.
+    func retainRexPanes(_ paneIDs: Set<String>, for hostID: Host.ID) {
+        guard var entry = entries[hostID] else { return }
+        let retained = entry.rexTurns.filter { paneIDs.contains($0.key) }
+        guard retained != entry.rexTurns else { return }
+        entry.rexTurns = retained
         entries[hostID] = entry
         save()
     }

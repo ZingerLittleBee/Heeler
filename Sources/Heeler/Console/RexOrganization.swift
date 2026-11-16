@@ -5,7 +5,8 @@ import Foundation
 /// and ordered as Rex lists them: Heeler keeps no organization of its own. A
 /// session's detached terminals, in none of its windows, share one Tab of
 /// their own after its windows. A terminal whose foreground is a known agent
-/// program is an Agent too, with the status `RexAgentRule` reads (ADR 0054).
+/// program is an Agent too, with the status `RexAgentRule` reads (ADR 0054),
+/// Done where this device has not seen the turn it finished.
 enum RexOrganization {
     /// The Tab a session's detached terminals share. Its id cannot be a
     /// window's, which Rex never writes with a `/`.
@@ -13,7 +14,9 @@ enum RexOrganization {
         "\(sessionID)/detached"
     }
 
-    static func build(_ inventory: RexInventory) -> SessionSnapshot {
+    /// `doneTerminals` are the panes whose Agent finished a turn this device
+    /// has not seen (`RexTurnState`); one reads Done while it reads Idle.
+    static func build(_ inventory: RexInventory, doneTerminals: Set<String> = []) -> SessionSnapshot {
         var workspaces: [WorkspaceInfo] = []
         var tabs: [TabInfo] = []
         var panes: [PaneInfo] = []
@@ -41,7 +44,8 @@ enum RexOrganization {
                     let paneID = RexPaneAddress(sessionID: session.id, blockID: terminal.blockID).paneID
                     let details = terminal.details
                     let kind = RexAgentRule.agentKind(in: details)
-                    let status = kind.map { RexAgentRule.status(of: details, heldBy: $0) } ?? .unknown
+                    var status = kind.map { RexAgentRule.status(of: details, heldBy: $0) } ?? .unknown
+                    if status == .idle, doneTerminals.contains(paneID) { status = .done }
                     panes.append(
                         PaneInfo(
                             agentStatus: status, focused: false, paneID: paneID, revision: 0, tabID: tab.id,

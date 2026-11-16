@@ -360,8 +360,9 @@ final class ConsoleStore {
         }
         if let hostsOutOfSight {
             let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
-            // A tmux Host's server instance is kept where a core Host's core id is.
-            coreHostMemory.retainHosts(retained.union(hosts.lazy.filter { $0.serverKind == .tmux }.map(\.id)))
+            // A tmux or Rex Host's server instance is kept where a core Host's core id is.
+            coreHostMemory.retainHosts(
+                retained.union(hosts.lazy.filter { $0.serverKind == .tmux || $0.serverKind == .rex }.map(\.id)))
             harnessEdits.retainHosts(retained)
             pendingTitleRenames.retainHosts(hostsOutOfSight.union(incoming.keys))
         }
@@ -1559,8 +1560,9 @@ final class ConsoleStore {
         try await projection(for: hostID).focusAgent(paneID)
     }
 
-    /// Which Agent one Agent detail shows now, nil once it shows none. On a core
-    /// Host this is what Done per device reads: a shown Agent's turns are seen as
+    /// Which Agent one Agent detail shows now, nil once it shows none; a Rex
+    /// Agent's detail is its terminal's screen. On a core, tmux or Rex Host
+    /// this is what Done per device reads: a shown Agent's turns are seen as
     /// they end, whichever window shows it.
     func setAgentShown(_ agent: ConsoleAgent.ID?, viewer: UUID, scene: UUID?) {
         // A window that ended may still run a late update.
@@ -2005,7 +2007,8 @@ final class ConsoleStore {
                         onChange: onChange)
                 case .rex:
                     RexConsoleProjection(
-                        host: host, session: makeRexSession(host), pins: pins, onChange: onChange)
+                        host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
+                        onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
