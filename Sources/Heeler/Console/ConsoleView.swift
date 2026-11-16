@@ -1056,6 +1056,10 @@ struct ConsoleView: View {
             // the split view's it would rebuild both columns with each
             // status change.
             MainActorContent { content }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { agentHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
                     focus: $focusedSearch, tab: .agents,
@@ -1827,15 +1831,19 @@ struct ConsoleView: View {
     }
 
     @ViewBuilder
-    private func agentHostIssueRows(_ issues: [ConsoleHostStatusPresentation]) -> some View {
-        if !issues.isEmpty {
-            // On the Agent rows' edges and, as they are, without rules.
-            ConsoleHostIssueList(
-                issues: issues, onOpenHost: { openHostIssue($0) },
-                onShowAll: { isShowingHostIssues = true })
-                .modifier(ListRowVerticalInsets(0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+    private var agentHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: listPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true }
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
         }
     }
 
@@ -1880,9 +1888,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private func flatAgentListRows(filtered: [ConsoleAgent]) -> some View {
-        MainActorContent {
-            agentHostIssueRows(visibleHostIssues)
-        }
         let keys = makeAgentRowKeys(
             for: filtered, pass: contentPass.number,
             qualifiers: agentTitleQualifiers, saved: console.savedChatEntries)
@@ -1895,20 +1900,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var workspaceAgentListRows: some View {
-        MainActorContent {
-            let issues = visibleHostIssues
-            if !issues.isEmpty {
-                Section {
-                    // Off the cards, on the page: out to the cards' edges, as
-                    // in the Terminals list's By Workspace.
-                    ConsoleHostIssueList(
-                        issues: issues, onOpenHost: { openHostIssue($0) },
-                        onShowAll: { isShowingHostIssues = true })
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                }
-            }
-        }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         let pass = contentPass.number

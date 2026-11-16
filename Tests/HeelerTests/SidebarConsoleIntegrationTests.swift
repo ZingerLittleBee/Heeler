@@ -569,36 +569,47 @@ struct SidebarConsoleIntegrationTests {
         defer { PerfTrace.testCountObserver = nil }
 
         // Drop the flaky Host and let it fail + retry across multiple attempts:
-        // the issue banner row appears (total items 2 -> 3), while ConsoleView.body,
-        // ConsoleView.content, and existing Agent rows never re-evaluate.
+        // the floating corner badge mounts outside the List (total list items stay 2),
+        // while ConsoleView.body, ConsoleView.content, and existing Agent rows never re-evaluate.
         await flakyFirst.setConnectionAlive(false)
         await flakyFirst.failEventStream(.sshUnreachable(detail: "offline"))
         let failDeadline = ContinuousClock.now + .seconds(3)
         while (await flakyConnector.failedAttempts < 2
-            || Self.totalListItems(in: controller.view) != 3),
+            || !Self.hasCornerIssueBadge(in: controller.view)),
             ContinuousClock.now < failDeadline
         {
             try await Task.sleep(for: .milliseconds(20))
             controller.view.layoutIfNeeded()
         }
         #expect(await flakyConnector.failedAttempts >= 2)
-        #expect(Self.totalListItems(in: controller.view) == 3)
+        #expect(Self.hasCornerIssueBadge(in: controller.view))
+        #expect(Self.totalListItems(in: controller.view) == 2)
 
-        // Recover the flaky Host: the issue banner disappears cleanly (3 -> 2 items),
-        // still with zero ConsoleView.body / ConsoleView.content / agentRow rebuilds.
+        // Recover the flaky Host: the floating corner badge disappears cleanly,
+        // list items remain 2 throughout, with zero ConsoleView.body / content / agentRow rebuilds.
         await flakyConnector.allowRecovery()
         let recoverDeadline = ContinuousClock.now + .seconds(3)
-        while (!store.hostIssues.isEmpty || Self.totalListItems(in: controller.view) != 2),
+        while (!store.hostIssues.isEmpty || Self.hasCornerIssueBadge(in: controller.view)),
             ContinuousClock.now < recoverDeadline
         {
             try await Task.sleep(for: .milliseconds(20))
             controller.view.layoutIfNeeded()
         }
         #expect(store.hostIssues.isEmpty)
+        #expect(!Self.hasCornerIssueBadge(in: controller.view))
         #expect(Self.totalListItems(in: controller.view) == 2)
         #expect(counts["ConsoleView.body", default: 0] == 0)
         #expect(counts["ConsoleView.content", default: 0] == 0)
         #expect(counts["ConsoleView.agentRow", default: 0] == 0)
+    }
+
+    private static func hasCornerIssueBadge(in root: UIView) -> Bool {
+        let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+        return accessibleElements(in: root).contains { node in
+            guard node.responds(to: getter) else { return false }
+            return node.value(forKey: "accessibilityIdentifier") as? String
+                == "agents.hostIssues.badge"
+        }
     }
 
     private static func totalListItems(in root: UIView) -> Int? {

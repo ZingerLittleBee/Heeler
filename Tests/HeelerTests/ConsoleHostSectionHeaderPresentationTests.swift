@@ -297,9 +297,9 @@ struct ConsoleListPresentationRoutingTests {
     }
 
     @Test func hostIssuePlacementFollowsPresentationMode() {
-        #expect(ConsoleHostIssuePlacement(mode: .flat) == .flatIssueRows)
+        #expect(ConsoleHostIssuePlacement(mode: .flat) == .floatingCorner)
         #expect(ConsoleHostIssuePlacement(mode: .grouped) == .sectionHeaders)
-        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .flatIssueRows)
+        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .floatingCorner)
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {
