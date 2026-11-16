@@ -63,8 +63,11 @@ struct RexTerminalInputLiveTests {
         ).terminalRunner()
         let input = TerminalInputController()
         let pin = TerminalCorePin()
+        // Off screen, as the retention pool keeps a terminal, so it never
+        // takes the block's size (ADR 0053) and types into a block another
+        // client owns.
         let store = AttachTerminalStore(
-            target: .terminal(address.paneID), input: input, observeOutput: { _ in },
+            target: .terminal(address.paneID), isViewed: false, input: input, observeOutput: { _ in },
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
 
         store.viewDidResize(cols: 100, rows: 30)

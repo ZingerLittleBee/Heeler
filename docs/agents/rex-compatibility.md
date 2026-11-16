@@ -402,7 +402,8 @@ Lab capture `e_size`, three lab clients on one block.
 - In the maintainer's own session, the Rex desktop app's client owned every
   block, so a request from Heeler there would not apply.
 - Live suite `RexTerminalAttachLiveTests` (Heeler's runner and view store
-  over a local socket): a shell block another control client created with
+  over a local socket, the store kept off screen so it never takes the
+  size): a shell block another control client created with
   `session.create` and then attached to was owned by a client other than
   Heeler's. Heeler's request for 100x30 left the block at 80x24, and the
   block stayed with its owner. The same run painted the terminal after
@@ -536,7 +537,8 @@ recorded the bytes it read, under a set of modes.
 - A focus event reached the program as `CSI I` or `CSI O` only with focus
   reporting on.
 - Live suite `RexTerminalInputLiveTests` (Heeler's runner, view store and
-  input controller over a local socket), on a shell block another control
+  input controller over a local socket, the store kept off screen so it
+  never takes the size), on a shell block another control
   client had created and still owned while Heeler typed: writes to a block
   Heeler's client did not own were applied. 300 numbered tokens, each its own
   write from the view, sent as fast as the view handed them over to a shell

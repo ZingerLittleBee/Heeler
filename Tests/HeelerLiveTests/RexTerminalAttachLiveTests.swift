@@ -72,8 +72,11 @@ struct RexTerminalAttachLiveTests {
         let chunks = Chunks()
         let input = TerminalInputController()
         let pin = TerminalCorePin()
+        // Off screen, as the retention pool keeps a terminal, so it never
+        // takes the block's size (ADR 0053): only asks for one.
         let store = AttachTerminalStore(
-            target: .terminal(address.paneID), input: input, observeOutput: { chunks.append($0) },
+            target: .terminal(address.paneID), isViewed: false, input: input,
+            observeOutput: { chunks.append($0) },
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
 
         // The first paint: a full reset, then the server's redraw.
