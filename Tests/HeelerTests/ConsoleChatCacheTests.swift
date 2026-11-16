@@ -525,6 +525,46 @@ struct ConsoleChatCacheTests {
         #expect(directory.agents(on: host).isEmpty)
     }
 
+    @Test func chatHostFilesCachesAccountDirectoriesUntilAccountsChange() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        var initialFile = UsageAccountFile()
+        _ = try initialFile.add(
+            directory: "/home/dev/.claude-work", name: "Work", defaultDirectory: "/home/dev/.claude",
+            for: .claude)
+        await transport.setUsageAccountFile(try initialFile.encoded())
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: VolatileChatTranscriptCache()) {
+            _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await Self.waitUntil { console.hostStatuses[host.id] == .connected }
+
+        let files = console.chatHostFiles(for: host.id)
+        let first = try await files.accountDirectories(.claude)
+        let readsAfterFirst = await transport.usageAccountFileReads
+        let second = try await files.accountDirectories(.claude)
+        let third = try await files.accountDirectories(.claude)
+
+        #expect(first == ["/home/dev/.claude-work"])
+        #expect(second == first)
+        #expect(third == first)
+        #expect(await transport.usageAccountFileReads == readsAfterFirst)
+
+        // Mutating accounts through HostAccountsStore invalidates the cached directories.
+        var updatedFile = initialFile
+        _ = try updatedFile.add(
+            directory: "/home/dev/.claude-personal", name: "Personal", defaultDirectory: "/home/dev/.claude",
+            for: .claude)
+        await transport.setUsageAccountFile(try updatedFile.encoded())
+        _ = await console.hostAccountsStore(for: host.id).setVariable("CLAUDE_CONFIG_DIR", for: .claude)
+
+        let refreshed = try await files.accountDirectories(.claude)
+        #expect(refreshed == ["/home/dev/.claude-work", "/home/dev/.claude-personal"])
+    }
+
     private static func agent(
         host: Host, session: String?, terminalID: String = "t1", workspaceID: String = "w1",
         tabID: String = "tab1", kind: String = "codex", paneID: String = "w1:p1",

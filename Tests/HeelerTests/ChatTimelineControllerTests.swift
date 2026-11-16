@@ -2296,6 +2296,38 @@ struct ChatTimelineModelTests {
         #expect(model.state.rows.isEmpty)
         #expect(!model.state.isReady)
     }
+
+    @Test func updateIfNeededSkipsIdenticalRequestAndUpdatesSignalsSynchronously() async {
+        let model = ChatTimelineModel()
+        let entries = ChatTimelineControllerTests.entries(0..<3)
+        let input = ChatTimelineInput(entries: entries)
+        let cachedSignals = ChatTurnSignals(activity: .idle, foldsFinishedTurns: true, isLive: false)
+        model.updateIfNeeded(conversation: 1, input: input, signals: cachedSignals, isReady: true)
+        await model.settled()
+
+        let revisionAfterBuild = model.state.revision
+        let generation = model.state.generation
+        let rowID = ChatRowID.entry(entries[0].id)
+        let measured = ChatMeasuredHeight(height: 84, width: 390, contentSizeCategory: "L|system", revision: 1)
+        model.recordMeasuredHeight(measured, for: rowID, generation: generation)
+        #expect(model.measuredHeights[rowID] == measured)
+
+        // Identical feed on surface re-mount is a no-op.
+        model.updateIfNeeded(conversation: 1, input: input, signals: cachedSignals, isReady: true)
+        #expect(model.state.revision == revisionAfterBuild)
+
+        // Signal-only change (e.g. cache confirmed live) updates synchronously on MainActor
+        // without waiting on the async row builder.
+        let liveSignals = ChatTurnSignals(activity: .idle, foldsFinishedTurns: true, isLive: true)
+        model.updateIfNeeded(conversation: 1, input: input, signals: liveSignals, isReady: true)
+        #expect(model.state.revision == revisionAfterBuild + 1)
+        #expect(model.state.signals == liveSignals)
+        #expect(model.measuredHeights[rowID] == measured)
+
+        model.reset()
+        #expect(model.state.rows.isEmpty)
+        #expect(model.measuredHeights.isEmpty)
+    }
 }
 
 @Suite("Chat row builder")

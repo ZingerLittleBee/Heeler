@@ -4689,6 +4689,40 @@ struct AgentChatStoreTests {
         #expect(fixture.store.backgroundWork.rows.isEmpty)
     }
 
+    @Test func prefetchPrewarmsTimelineAndEndResetsIt() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<4), at: Self.path(Self.first))
+
+        let prefetched = await fixture.store.prefetch()
+
+        #expect(prefetched)
+        #expect(fixture.store.timeline.state.isReady)
+        #expect(fixture.store.timeline.state.rows.count == 4)
+
+        fixture.store.end()
+
+        #expect(fixture.store.timeline.state.rows.isEmpty)
+        #expect(!fixture.store.timeline.state.isReady)
+    }
+
+    @Test func reconnectingClearsOfflineOpenBackoffImmediately() async throws {
+        let fixture = Fixture(session: Self.first)
+        fixture.store.hostConnectionChanged(false)
+        await fixture.files.failNext(.home, with: TransportError.sshUnreachable(detail: "offline"))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversation.phase == .locating)
+
+        // Once the Host connects, the next step opens right away without
+        // waiting out `locateBackoff`.
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        fixture.store.hostConnectionChanged(true)
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(fixture.store.conversation.transcript.entries.count == 2)
+    }
+
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {
         guard case .hit(let document) = await cache.load(key) else { return [] }
         return document.entries.map(\.id.rawValue)

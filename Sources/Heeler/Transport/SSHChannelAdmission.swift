@@ -19,6 +19,11 @@ actor SSHChannelAdmission {
         case attach
     }
 
+    enum Priority: Sendable {
+        case normal
+        case interactive
+    }
+
     struct Limits: Sendable, Equatable {
         let ordinaryForwarding: Int
         let events: Int
@@ -51,6 +56,7 @@ actor SSHChannelAdmission {
     private struct Waiter {
         let id: UInt64
         let channelClass: ChannelClass
+        let priority: Priority
         let continuation: CheckedContinuation<Void, any Error>
     }
 
@@ -78,9 +84,10 @@ actor SSHChannelAdmission {
 
     func withChannel<Value: Sendable>(
         _ channelClass: ChannelClass,
+        priority: Priority = .normal,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        let lease = try await acquire(channelClass)
+        let lease = try await acquire(channelClass, priority: priority)
         do {
             let value = try await operation()
             await lease.release()
@@ -91,7 +98,10 @@ actor SSHChannelAdmission {
         }
     }
 
-    func acquire(_ channelClass: ChannelClass) async throws -> SSHChannelAdmissionLease {
+    func acquire(
+        _ channelClass: ChannelClass,
+        priority: Priority = .normal
+    ) async throws -> SSHChannelAdmissionLease {
         try Task.checkCancellation()
         nextRequestID &+= 1
         let requestID = nextRequestID
@@ -113,6 +123,7 @@ actor SSHChannelAdmission {
                     waiters.append(Waiter(
                         id: requestID,
                         channelClass: channelClass,
+                        priority: priority,
                         continuation: continuation))
                 }
             }
@@ -213,11 +224,20 @@ actor SSHChannelAdmission {
     }
 
     private func resumeEligibleWaiters() {
-        while let index = waiters.firstIndex(where: { canAcquire($0.channelClass) }) {
+        while let index = nextEligibleWaiterIndex() {
             let waiter = waiters.remove(at: index)
             increment(waiter.channelClass)
             waiter.continuation.resume()
         }
+    }
+
+    private func nextEligibleWaiterIndex() -> Int? {
+        if let interactive = waiters.firstIndex(where: {
+            $0.priority == .interactive && canAcquire($0.channelClass)
+        }) {
+            return interactive
+        }
+        return waiters.firstIndex(where: { canAcquire($0.channelClass) })
     }
 
     private func canAcquire(_ channelClass: ChannelClass) -> Bool {

@@ -33,7 +33,8 @@ struct AgentChatSurfaceView: View {
     /// Swaps the detail back to the Agent terminal.
     private let selectSurface: (AgentDetailSurface) -> Void
 
-    @State private var timeline = ChatTimelineModel()
+    @State private var fallbackTimeline = ChatTimelineModel()
+    private var activeTimeline: ChatTimelineModel { chat?.timeline ?? fallbackTimeline }
     @State private var skillsStore: SkillsPaneStore?
     @State private var closer: ClosePaneStore
     /// This view's token with the Chat store, which follows the
@@ -379,7 +380,7 @@ struct AgentChatSurfaceView: View {
             defer { PerfTrace.end(span) }
             let transcript = chat?.conversation.transcript
             let entries = feed.history.marking(transcript?.entries ?? [])
-            timeline.update(
+            activeTimeline.updateIfNeeded(
                 conversation: feed.generation,
                 input: ChatTimelineInput(entries: feed.outputs.marking(entries), pending: feed.pending, older: feed.older),
                 turns: transcript?.turns ?? [], precedingTurnEnd: transcript?.precedingTurnEnd, signals: feed.signals,
@@ -583,15 +584,15 @@ struct AgentChatSurfaceView: View {
         HStack(alignment: .bottom, spacing: 0) {
             Spacer(minLength: 0)
             ChatCollapseTrajectoryButton(
-                isVisible: presentation == .timeline && timeline.state.isReady && canCollapseTrajectory
+                isVisible: presentation == .timeline && activeTimeline.state.isReady && canCollapseTrajectory
             ) {
                 collapseRequest += 1
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapseControlHeight = $0 }
             ChatMessageJumpControl(
-                showsPrevious: presentation == .timeline && timeline.state.isReady
+                showsPrevious: presentation == .timeline && activeTimeline.state.isReady
                     && (canJumpToPreviousMessage || isHoldingTopJump),
-                showsLatest: presentation == .timeline && timeline.state.isReady && !isFollowing,
+                showsLatest: presentation == .timeline && activeTimeline.state.isReady && !isFollowing,
                 jumpPrevious: { previousMessageRequest += 1 },
                 jumpTop: { topJumpRequest += 1 },
                 jumpTopHoldingChanged: { isHoldingTopJump = $0 },
@@ -626,7 +627,9 @@ struct AgentChatSurfaceView: View {
     private var conversation: some View {
         ZStack(alignment: .top) {
             ChatTimelineView(
-                state: timeline.state, jumpRequest: jumpRequest,
+                state: activeTimeline.state,
+                timelineModel: activeTimeline,
+                jumpRequest: jumpRequest,
                 previousMessageRequest: previousMessageRequest,
                 nextMessageRequest: nextMessageRequest,
                 topJumpRequest: topJumpRequest,
@@ -1148,8 +1151,28 @@ struct AgentChatSurfaceView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Yields briefly while a visible Chat is confirming its initial transcript
+    /// or filling the first screen, so secondary SSH execs (`readAgentScreen`,
+    /// `claudePermissionLaunch`, `agy models`) do not contend with the initial
+    /// SFTP transcript open.
+    private func waitForInitialTranscriptLoad() async {
+        guard let chat else { return }
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !Task.isCancelled, ContinuousClock.now < deadline, chat.isPerformingForegroundInitialLoad {
+            do {
+                try await Task.sleep(for: .milliseconds(25))
+            } catch {
+                return
+            }
+        }
+    }
+
     private func loadAgyModels() async {
         guard program == .agy, console.isHostReadyForInput(agent.hostID) else { return }
+        if agyModels.isEmpty {
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, console.isHostReadyForInput(agent.hostID) else { return }
+        }
         if let models = try? await console.fetchAgyModels(on: agent.hostID), !models.isEmpty {
             agyModels = models
         }
@@ -1363,6 +1386,10 @@ struct AgentChatSurfaceView: View {
         case .claude:
             session.settingOverrides.refreshPermissionLaunch(nil, liveMode: nil)
             guard status == .idle || status == .done, console.isHostReadyForInput(agent.hostID) else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
+                console.isHostReadyForInput(agent.hostID)
+            else { return }
             var mode: String?
             for attempt in 0..<10 {
                 let screen = try? await readAgentScreen()
@@ -1385,6 +1412,10 @@ struct AgentChatSurfaceView: View {
             session.settingOverrides.refreshPermissionLaunch(launch, liveMode: mode)
         case .agy:
             guard console.isHostReadyForInput(agent.hostID) else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
+                console.isHostReadyForInput(agent.hostID)
+            else { return }
             let attempts = (status == .idle || status == .done) ? 10 : 1
             for attempt in 0..<attempts {
                 let screen = try? await readAgentScreen()
@@ -1410,6 +1441,11 @@ struct AgentChatSurfaceView: View {
             }
         case .codex:
             guard status == .idle || status == .done,
+                console.isHostReadyForInput(agent.hostID),
+                chat?.conversation.transcript.model == nil
+            else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
                 console.isHostReadyForInput(agent.hostID),
                 chat?.conversation.transcript.model == nil
             else { return }

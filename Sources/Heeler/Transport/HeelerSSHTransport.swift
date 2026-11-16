@@ -885,7 +885,7 @@ actor HeelerSSHTransport: Transport {
         // itself; every caller, first or later, just awaits it.
         let opening = Task { () throws -> SSHSFTPClient in
             defer { sessionFileClientOpening = nil }
-            let lease = try await channelAdmission.acquire(.ordinarySession)
+            let lease = try await channelAdmission.acquire(.ordinarySession, priority: .interactive)
             let client: SSHSFTPClient
             do {
                 client = try await connection.openSFTP(timeout: requestTimeout)
@@ -2685,7 +2685,9 @@ actor HeelerSSHTransport: Transport {
         try await withRequestDeadline {
             try await self.environment.value {
                 if self.connection.serverIdentification?.contains("Windows") != true {
-                    let result = try await self.runExec(Self.cLocaleCommand(self.homeCommand))
+                    let result = try await self.runExec(
+                        Self.cLocaleCommand(self.homeCommand),
+                        priority: .interactive)
                     if result.exitStatus == 0,
                         let home = Self.markerValue(
                             in: result.stdout,
@@ -2695,7 +2697,9 @@ actor HeelerSSHTransport: Transport {
                         return .posix(home: home)
                     }
                 }
-                let windows = try await self.runExec(RemoteHostEnvironment.windowsProbe)
+                let windows = try await self.runExec(
+                    RemoteHostEnvironment.windowsProbe,
+                    priority: .interactive)
                 guard windows.exitStatus == 0,
                     let environment = RemoteHostEnvironment.windows(from: windows.stdout)
                 else {
@@ -2870,7 +2874,8 @@ actor HeelerSSHTransport: Transport {
             deadline: chatQueryTimeout,
             remoteSeconds: max(1, chatQueryTimeout.components.seconds - 2),
             timeoutMarkerPrefix: "__HEELER_OC_TIMEOUT_", timedOut: .hostFileTimedOut,
-            lane: chatQueryLane)
+            lane: chatQueryLane,
+            priority: .interactive)
         return try OpenCodeProbe.parse(
             stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus,
             nonce: nonce, query: query)
@@ -2904,7 +2909,8 @@ actor HeelerSSHTransport: Transport {
     /// to drain, its wait counted against its own deadline.
     func runBoundedScript(
         _ script: Data, feature: String, deadline: Duration, remoteSeconds: Int64,
-        timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil
+        timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil,
+        priority: SSHChannelAdmission.Priority = .normal
     ) async throws -> GitExecResult {
         try await requirePOSIXHost(feature: feature)
         try requireConnected()
@@ -2918,7 +2924,7 @@ actor HeelerSSHTransport: Transport {
             let exchangeTimeout = Duration.seconds(remoteSeconds)
                 + max(requestTimeout, SSHTransportSettings.defaultRequestTimeout)
             return try await Self.runInLane(deadline: deadline, lane: lane) {
-                try await self.channelAdmission.withChannel(.ordinarySession) {
+                try await self.channelAdmission.withChannel(.ordinarySession, priority: priority) {
                     try Task.checkCancellation()
                     try await self.requireConnected()
                     // Awaiting an unstructured task does not forward cancellation.
@@ -3000,8 +3006,12 @@ actor HeelerSSHTransport: Transport {
         return input
     }
 
-    private func runExec(_ command: String, timeout: Duration? = nil) async throws -> SSHExecResult {
-        try await channelAdmission.withChannel(.ordinarySession) {
+    private func runExec(
+        _ command: String,
+        timeout: Duration? = nil,
+        priority: SSHChannelAdmission.Priority = .normal
+    ) async throws -> SSHExecResult {
+        try await channelAdmission.withChannel(.ordinarySession, priority: priority) {
             do {
                 return try await self.connection.execute(
                     command,
@@ -4029,7 +4039,8 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         let result = try await runBoundedScript(
             HostProcessReader.script(request, nonce: nonce), feature: String(localized: "Agent permission modes"),
             deadline: .seconds(12), remoteSeconds: 8,
-            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .hostFileTimedOut)
+            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .hostFileTimedOut,
+            priority: .interactive)
         guard result.exitStatus == 0 else { return [:] }
         return try HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)
     }
@@ -4038,7 +4049,8 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
             script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
-            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut)
+            timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut,
+            priority: .interactive)
     }
 
     /// One bounded exec, cut off on the Host if a startup file waits for input
