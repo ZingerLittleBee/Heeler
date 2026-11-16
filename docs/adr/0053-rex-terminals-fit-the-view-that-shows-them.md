@@ -123,7 +123,13 @@ each can change without revisiting the rest.
   Other Server Kinds size their terminals to the view and have no notice.
 - **No scaled view.** Heeler does not scale the other device's grid down to
   the screen. As with tmux (ADR 0045), that needs a terminal view whose grid
-  the remote side fixes, which no Attach has.
+  the remote side fixes, which no Attach has. So while a line on the other
+  device's grid is wider than the view, the rows do not match: the cursor,
+  which the redraw places by the server's row and column, and output that
+  moves it the same way land on the server's row, over the wrapped text,
+  until a fit paints the terminal at the view's grid. Moving the cursor to
+  where the wrap put the text would need the view to lay the redraw out
+  first, and the program's next move by row and column would undo it.
 
 ## Why
 
