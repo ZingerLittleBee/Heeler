@@ -480,3 +480,27 @@ struct ConsoleRowLiftTests {
         #expect(ConsoleRowLift.cardWidth(rowWidth: 0) == ConsoleRowLift.fallbackWidth)
     }
 }
+
+@Suite("Terminal card edges")
+struct TerminalCardEdgesTests {
+    @Test func theLastShellClosesACardWithoutNewTerminal() {
+        let rows = (0..<3).map { TerminalCardEdges.shell(at: $0, of: 3, endsInNewTerminal: false) }
+        #expect(rows.map(\.isFirst) == [true, false, false])
+        #expect(rows.map(\.isLast) == [false, false, true])
+        #expect(
+            TerminalCardEdges.shell(at: 0, of: 1, endsInNewTerminal: false)
+                == TerminalCardEdges(isFirst: true, isLast: true))
+    }
+
+    @Test func newTerminalClosesACardThatOffersIt() {
+        let rows = (0..<2).map { TerminalCardEdges.shell(at: $0, of: 2, endsInNewTerminal: true) }
+        #expect(rows.map(\.isFirst) == [true, false])
+        #expect(rows.map(\.isLast) == [false, false])
+        #expect(
+            TerminalCardEdges.newTerminal(afterShells: 2)
+                == TerminalCardEdges(isFirst: false, isLast: true))
+        #expect(
+            TerminalCardEdges.newTerminal(afterShells: 0)
+                == TerminalCardEdges(isFirst: true, isLast: true))
+    }
+}

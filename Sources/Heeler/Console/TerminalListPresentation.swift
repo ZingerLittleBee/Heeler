@@ -85,6 +85,25 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
     }
 }
 
+/// Which ends of a By Host Workspace card a row closes. That plain list draws
+/// no cards, so each row rounds its own slice: the first row the top, the
+/// last the bottom. New Terminal ends a card where its Host starts terminals;
+/// otherwise the last shell does, as the grouped By Workspace list closes it.
+struct TerminalCardEdges: Equatable {
+    let isFirst: Bool
+    let isLast: Bool
+
+    /// The shell at `index` of a card listing `count` shells.
+    static func shell(at index: Int, of count: Int, endsInNewTerminal: Bool) -> Self {
+        Self(isFirst: index == 0, isLast: !endsInNewTerminal && index == count - 1)
+    }
+
+    /// New Terminal, after the card's `shellCount` shells.
+    static func newTerminal(afterShells shellCount: Int) -> Self {
+        Self(isFirst: shellCount == 0, isLast: true)
+    }
+}
+
 /// A count of shells as the Terminals list words it.
 enum TerminalCount {
     static func text(_ count: Int) -> String {
