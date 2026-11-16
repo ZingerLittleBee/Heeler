@@ -4,7 +4,8 @@ import Testing
 @testable import Heeler
 
 /// Explicit opt-in only: a lab terminal's Program Status reaching the inventory
-/// a `RexHostSession` follows, and the Agent it makes (ADR 0054), against a Rex
+/// a `RexHostSession` follows, the turns its link counts, and the Agent it
+/// makes, Done included (ADR 0054), against a Rex
 /// server that already runs on this Mac, over its local Unix socket. It never
 /// runs in the HeelerTests target or in CI, and fails rather than skips when
 /// selected without its configuration.
@@ -110,6 +111,40 @@ struct RexProgramStatusLiveTests {
         let refused = try #require(labTerminal())
         print("Rex lab: after an unknown word the record reads \(refused.details.status?.state ?? "nothing")")
         #expect(refused.details.status?.state == "error")
+
+        // Working to done is a turn the link counts, and reads Done until this
+        // device looks at it. The same done made again moves the record's
+        // time, but the link counts no turn, so it stays seen.
+        try await type("working\r")
+        try await waitUntil("the stand-in working again", timeout: .seconds(10)) { reads(.working) }
+        let working = try #require(labTerminal()?.details.status)
+        var turns = RexTurnState()
+        turns.note(working, kind: "codex")
+        try await type("done\r")
+        try await waitUntil("the stand-in done", timeout: .seconds(10)) {
+            reads(.idle) && labTerminal()?.details.status?.state == "done"
+        }
+        let done = try #require(labTerminal()?.details.status)
+        turns.note(done, kind: "codex")
+        print(
+            "Rex lab: done moved the link's count by "
+                + "\((done.follow?.finishedTurns ?? 0) - (working.follow?.finishedTurns ?? 0)), "
+                + "in the same stretch: \(done.follow?.id == working.follow?.id), reads Done: \(turns.isDone)")
+        #expect(done.follow?.id == working.follow?.id)
+        #expect(done.follow?.finishedTurns == (working.follow?.finishedTurns ?? 0) + 1)
+        #expect(turns.isDone)
+        turns.markSeen()
+        try await type("done\r")
+        try await waitUntil("the same done again", timeout: .seconds(10)) {
+            labTerminal()?.details.status.map { $0.state == "done" && $0.updatedAt != done.updatedAt } == true
+        }
+        let again = try #require(labTerminal()?.details.status)
+        turns.note(again, kind: "codex")
+        print(
+            "Rex lab: the same done again moved the time: \(again.updatedAt != done.updatedAt), "
+                + "moved the count: \(again.follow != done.follow), reads Done: \(turns.isDone)")
+        #expect(again.follow == done.follow)
+        #expect(!turns.isDone)
 
         // Idle, then the stand-in exits: the record stays, still naming the
         // stand-in, and the terminal is no Agent.
