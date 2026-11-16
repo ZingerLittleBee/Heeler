@@ -441,6 +441,8 @@ final class AgentChatStore {
     @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
     /// What each listed Workflow's journal showed, by the Workflow's id.
     @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
+    /// Live SFTP end-of-run evidence for Claude Code Workflows.
+    @ObservationIgnored private var claudeWorkflowEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     /// Live SFTP and screen evidence for Antigravity CLI Background Work.
     @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
@@ -1093,10 +1095,18 @@ final class AgentChatStore {
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
             let progress = await engine.followWorkflows()
             if engine === self.engine { workflowProgress = progress }
+            if program == .claude {
+                let workflowEnds = await engine.followClaudeWorkflowEnds()
+                if engine === self.engine {
+                    claudeWorkflowEvidence = stampingEndPromptOffsets(workflowEnds, previous: claudeWorkflowEvidence)
+                }
+            }
         }
         if program == .agy, polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             let fileEvidence = await engine.followAgyBackgroundWork()
-            if engine === self.engine { agyFileEvidence = fileEvidence }
+            if engine === self.engine {
+                agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+            }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         await checkAgyBackgroundWorkScreen(from: engine)
@@ -1673,6 +1683,7 @@ final class AgentChatStore {
         outputs = ChatToolOutputs()
         waitingOutputs = []
         workflowProgress = [:]
+        claudeWorkflowEvidence = [:]
         agyFileEvidence = [:]
         agyScreenEvidence = [:]
         needsAgyScreenCheck = true
@@ -2178,20 +2189,45 @@ final class AgentChatStore {
             hasReadLive
             ? ChatBackgroundWork(
                 transcript: conversation.transcript, progress: workflowProgress,
-                evidence: mergedAgyBackgroundWorkEvidence(), isLive: isLive, now: now(),
+                evidence: mergedBackgroundWorkEvidence(), isLive: isLive, now: now(),
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
         notifyRunningBackgroundWorkIfNeeded()
     }
 
-    private func mergedAgyBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
-        guard program == .agy else { return [:] }
-        var merged = agyFileEvidence
-        for (id, screen) in agyScreenEvidence {
-            merged[id] = merged[id]?.merging(screen) ?? screen
+    private func mergedBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
+        switch program {
+        case .claude:
+            return claudeWorkflowEvidence
+        case .agy:
+            var merged = agyFileEvidence
+            for (id, screen) in agyScreenEvidence {
+                merged[id] = merged[id]?.merging(screen) ?? screen
+            }
+            return merged
+        default:
+            return [:]
         }
-        return merged
+    }
+
+    private func stampingEndPromptOffsets(
+        _ incoming: [String: ChatBackgroundWorkEvidence],
+        previous: [String: ChatBackgroundWorkEvidence]
+    ) -> [String: ChatBackgroundWorkEvidence] {
+        let prompt = conversation.transcript.latestPromptOffset ?? 0
+        var stamped: [String: ChatBackgroundWorkEvidence] = [:]
+        for (id, var entry) in incoming {
+            if entry.endedState != nil {
+                if let prior = previous[id], prior.endedState != nil, prior.endedAt == entry.endedAt {
+                    entry.endPromptOffset = prior.endPromptOffset ?? prompt
+                } else {
+                    entry.endPromptOffset = prompt
+                }
+            }
+            stamped[id] = entry
+        }
+        return stamped
     }
 
     /// Reads the Antigravity CLI pane's screen when needed to confirm silent
@@ -2223,10 +2259,11 @@ final class AgentChatStore {
             {
                 agyScreenEvidence[id]?.endedState = nil
                 agyScreenEvidence[id]?.endedAt = nil
+                agyScreenEvidence[id]?.endPromptOffset = nil
             }
         }
 
-        let mergedBefore = mergedAgyBackgroundWorkEvidence()
+        let mergedBefore = mergedBackgroundWorkEvidence()
         let unresolved = listedItems.filter { item in
             guard item.state == .running,
                 item.id.hasPrefix("agy:task:") || item.id.hasPrefix("agy:subagent:")
@@ -2310,12 +2347,16 @@ final class AgentChatStore {
             freshEvidence = agy.backgroundWorkEvidence(for: stillRunning, at: checkDate)
         }
 
+        let promptOffset = conversation.transcript.latestPromptOffset ?? 0
         for (id, observed) in freshEvidence {
             var current = agyScreenEvidence[id] ?? ChatBackgroundWorkEvidence()
             if let seenAt = observed.lastSeenAt {
                 current.lastSeenAt = [current.lastSeenAt, seenAt].compactMap(\.self).max()
             }
             if let endedState = observed.endedState {
+                if current.endedState == nil || current.endedAt != observed.endedAt {
+                    current.endPromptOffset = promptOffset
+                }
                 current.endedState = endedState
                 current.endedAt = observed.endedAt
             }

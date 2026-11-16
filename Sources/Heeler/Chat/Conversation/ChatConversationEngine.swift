@@ -294,6 +294,11 @@ actor ChatConversationEngine {
         /// at, least recently looked at first.
         var callBudget = 256 << 10
         var journalsPerCall = 2
+        /// How often `<session>/workflows/<runId>.json` is stat'd while a
+        /// Workflow still reads running, and how long it settles so a
+        /// `<task-notification>` in the main transcript lands first.
+        var runEndCheckInterval: TimeInterval = 5
+        var runEndSettle: TimeInterval = 5
         /// Waits after a failed look at a journal, one per failure; the
         /// last repeats.
         var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
@@ -314,6 +319,19 @@ actor ChatConversationEngine {
         var isSettled = false
         /// Too large, or the Host refuses it: not looked at again.
         var isUnreadable = false
+    }
+
+    /// One running Claude Workflow's end-of-run state file
+    /// (`<session>/workflows/<runId>.json`), written only when the run ends.
+    private struct FollowedWorkflowRunEnd {
+        let path: String
+        var launchedAt: Date?
+        var lastLook = 0
+        var failures = 0
+        var nextLook: Date?
+        var isUnreadable = false
+        var firstSeenAt: Date?
+        var settledEvidence: ChatBackgroundWorkEvidence?
     }
 
     /// One request for older history, across the calls that read its pages.
@@ -365,6 +383,8 @@ actor ChatConversationEngine {
     /// lists.
     private var journals: [String: FollowedJournal] = [:]
     private var journalCalls = 0
+    private var workflowRunEnds: [String: FollowedWorkflowRunEnd] = [:]
+    private var workflowRunEndCalls = 0
     private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
     private var agyBackgroundWork = AgyBackgroundWorkFollower()
     /// Where the Agent's own program keeps Transcripts, from a check of its process
@@ -765,6 +785,111 @@ actor ChatConversationEngine {
         let delay = delays.isEmpty ? 0 : delays[min(followed.failures, delays.count - 1)]
         followed.failures += 1
         followed.nextLook = date.addingTimeInterval(delay)
+    }
+
+    /// Checks `<session>/workflows/<runId>.json` for running Claude Code
+    /// Workflows so a run that ended without a matched `<task-notification>`
+    /// retires once its run file settles.
+    func followClaudeWorkflowEnds() async -> [String: ChatBackgroundWorkEvidence] {
+        guard reference.program == .claude else { return [:] }
+        guard case .following = snapshot.phase, !snapshot.isFromCache, snapshot.readFailure == nil else {
+            return claudeWorkflowEndEvidence
+        }
+        var running: [String: (path: String, launchedAt: Date?)] = [:]
+        for item in snapshot.transcript.listedBackgroundWork
+        where item.kind == .workflow && item.state == .running {
+            guard let journalPath = item.journalPath,
+                let runFile = ClaudeTranscriptLocation.workflowRunFile(forJournalPath: journalPath)
+            else { continue }
+            running[item.id] = (runFile, item.launchedAt)
+        }
+        workflowRunEnds = workflowRunEnds.filter { running[$0.key]?.path == $0.value.path }
+        guard !running.isEmpty else { return [:] }
+        for (id, entry) in running {
+            if var existing = workflowRunEnds[id] {
+                existing.launchedAt = entry.launchedAt
+                workflowRunEnds[id] = existing
+            } else {
+                workflowRunEnds[id] = FollowedWorkflowRunEnd(path: entry.path, launchedAt: entry.launchedAt)
+            }
+        }
+        workflowRunEndCalls += 1
+        let date = now()
+        let due = workflowRunEnds
+            .filter {
+                $0.value.settledEvidence == nil
+                    && !$0.value.isUnreadable
+                    && ($0.value.nextLook.map { date >= $0 } ?? true)
+            }
+            .sorted { ($0.value.lastLook, $0.key) < ($1.value.lastLook, $1.key) }
+            .prefix(workflowLimits.journalsPerCall)
+        for (id, var followed) in due {
+            followed.lastLook = workflowRunEndCalls
+            do {
+                guard let status = try await files.status(followed.path) else {
+                    followed.failures = 0
+                    followed.firstSeenAt = nil
+                    followed.nextLook = date.addingTimeInterval(workflowLimits.runEndCheckInterval)
+                    workflowRunEnds[id] = followed
+                    continue
+                }
+                followed.failures = 0
+                let seenAt = followed.firstSeenAt ?? date
+                followed.firstSeenAt = seenAt
+                if date.timeIntervalSince(seenAt) >= workflowLimits.runEndSettle {
+                    let endedState = await resolvedWorkflowRunState(id: id, path: followed.path)
+                    let mtimeDate = status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                    let rawEndedAt = mtimeDate ?? seenAt
+                    let endedAt = followed.launchedAt.map { max($0, rawEndedAt) } ?? rawEndedAt
+                    followed.settledEvidence = ChatBackgroundWorkEvidence(endedState: endedState, endedAt: endedAt)
+                    followed.nextLook = nil
+                } else {
+                    followed.nextLook = seenAt.addingTimeInterval(workflowLimits.runEndSettle)
+                }
+            } catch {
+                if Self.isCancellation(error) { return claudeWorkflowEndEvidence }
+                if case .hostFileUnreadable? = error as? TransportError {
+                    followed.isUnreadable = true
+                } else {
+                    let delays = workflowLimits.backoff
+                    let delay = delays.isEmpty ? 0 : delays[min(followed.failures, delays.count - 1)]
+                    followed.failures += 1
+                    followed.nextLook = date.addingTimeInterval(delay)
+                }
+            }
+            workflowRunEnds[id] = followed
+        }
+        return claudeWorkflowEndEvidence
+    }
+
+    private var claudeWorkflowEndEvidence: [String: ChatBackgroundWorkEvidence] {
+        workflowRunEnds.compactMapValues(\.settledEvidence)
+    }
+
+    private func resolvedWorkflowRunState(id: String, path: String) async -> ChatBackgroundWorkItem.State {
+        struct RunStatusPayload: Decodable {
+            var status: String?
+        }
+        if let slice = try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 16 << 10)),
+            let payload = try? JSONDecoder().decode(RunStatusPayload.self, from: slice.data),
+            let rawStatus = payload.status?.lowercased()
+        {
+            switch rawStatus {
+            case "failed", "error":
+                return .failed
+            case "stopped", "killed", "cancelled", "canceled":
+                return .stopped
+            case "completed", "succeeded", "done":
+                return .completed
+            default:
+                break
+            }
+        }
+        if let agents = journals[id]?.journal.agents, !agents.isEmpty {
+            if agents.contains(where: { $0.state == .running }) { return .stopped }
+            if agents.contains(where: { $0.state == .failed }) { return .failed }
+        }
+        return .completed
     }
 
     /// Reads SFTP side files of an Antigravity CLI conversation's running

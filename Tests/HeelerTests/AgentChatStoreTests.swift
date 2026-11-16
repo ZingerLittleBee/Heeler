@@ -4654,6 +4654,41 @@ struct AgentChatStoreTests {
         #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
     }
 
+    @Test func claudeWorkflowRunFileSettlesUnnotifiedWorkflowAndClearsOnNextPrompt() async throws {
+        let session = Self.first
+        let transcriptPath = Self.path(session)
+        let journalPath = "/home/dev/.claude/projects/-home-dev-proj/\(session)/subagents/workflows/wf_1/journal.jsonl"
+        let runFilePath = "/home/dev/.claude/projects/-home-dev-proj/\(session)/workflows/wf_1.json"
+
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("w1", journal: journalPath, at: fixture.clock.now)
+        await fixture.files.write(NumberedChatReducer.prompt("Run workflow") + launch, at: transcriptPath)
+        await fixture.files.write(
+            #"{"type":"launched"}"# + "\n"
+                + #"{"type":"started","key":"r6","agentId":"a1","label":"r6:size","phase":"Size"}"# + "\n"
+                + #"{"type":"result","key":"r6","agentId":"a1","result":"Done"}"# + "\n"
+                + #"{"type":"started","key":"r7b","agentId":"a2","label":"r7b:docs","phase":"Docs"}"# + "\n",
+            at: journalPath)
+        await fixture.files.write(#"{"runId":"wf_1"}"#, at: runFilePath)
+
+        await fixture.store.step()
+        // First poll after open reads the journal and notices `wf_1.json`, waiting for settle.
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
+
+        // Past the 5s settle window without a `<task-notification>`, `wf_1.json` + unfinished
+        // `r7b` agent settle the Workflow to `.stopped`.
+        fixture.advance(6)
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .stopped)
+
+        // Sending a subsequent user prompt clears the evidence-retired Workflow.
+        await fixture.files.append(NumberedChatReducer.prompt("Next task"), to: transcriptPath)
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.isEmpty)
+    }
+
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {
         guard case .hit(let document) = await cache.load(key) else { return [] }
         return document.entries.map(\.id.rawValue)

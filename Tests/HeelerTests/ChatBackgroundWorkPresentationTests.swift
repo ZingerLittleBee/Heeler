@@ -274,10 +274,15 @@ struct ChatBackgroundWorkStripHostedTests {
         return work
     }
 
-    private static func size(_ work: ChatBackgroundWork, isCondensed: Bool, width: CGFloat = 402) async throws -> CGSize {
+    private static func size(
+        _ work: ChatBackgroundWork, isCondensed: Bool, showsFinishedWork: Bool = true, width: CGFloat = 402
+    ) async throws -> CGSize {
         let controller = UIHostingController(
-            rootView: ChatBackgroundWorkStrip(work: work, isHostConnected: true, isCondensed: isCondensed, open: { _ in })
-                .environment(\.locale, Locale(identifier: "en_US")))
+            rootView: ChatBackgroundWorkStrip(
+                work: work, isHostConnected: true, isCondensed: isCondensed,
+                showsFinishedWork: showsFinishedWork, open: { _ in }
+            )
+            .environment(\.locale, Locale(identifier: "en_US")))
         // The strip's own size, without the window's insets.
         controller.safeAreaRegions = []
         var size = CGSize.zero
@@ -288,8 +293,10 @@ struct ChatBackgroundWorkStripHostedTests {
         return size
     }
 
-    private static func height(_ work: ChatBackgroundWork, isCondensed: Bool) async throws -> CGFloat {
-        try await size(work, isCondensed: isCondensed).height
+    private static func height(
+        _ work: ChatBackgroundWork, isCondensed: Bool, showsFinishedWork: Bool = true
+    ) async throws -> CGFloat {
+        try await size(work, isCondensed: isCondensed, showsFinishedWork: showsFinishedWork).height
     }
 
     @Test func aRowQuietSinceAnotherDayFitsANarrowPhone() async throws {
@@ -322,6 +329,17 @@ struct ChatBackgroundWorkStripHostedTests {
         // Three rows and "+N more" outgrow two rows, and stop there.
         #expect(four > two + 40, "\(two) against \(four)")
         #expect(abs(five - four) < 0.5, "\(four) against \(five)")
+
+        var onlyFinished = ChatBackgroundWork()
+        onlyFinished.isLive = true
+        onlyFinished.rows = [
+            ChatBackgroundWork.Row(
+                item: ChatBackgroundWorkItem(
+                    id: "done-1", kind: .workflow, title: "rex-size-wrap", state: .completed, launchOffset: 1))
+        ]
+        #expect(try await Self.height(onlyFinished, isCondensed: false, showsFinishedWork: false) == 0)
+        #expect(try await Self.height(onlyFinished, isCondensed: true, showsFinishedWork: false) == 0)
+        #expect(try await Self.height(Self.work(2), isCondensed: false, showsFinishedWork: false) > 20)
     }
 
     @Test func activityCardHidesDisclosureChevronUntilContentActuallyExpands() async throws {

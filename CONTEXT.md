@@ -503,10 +503,12 @@ The Subagents, Workflows and non-daemon background commands an Agent runs in
 the background (Claude Code Subagents and Workflows; Antigravity CLI Subagents,
 Workflows and background commands), which Chat lists over the Composer from
 their launch and end records in the Transcript and, for a Claude Code Workflow,
-its journal beside it. Running work comes first; finished work stays until the
-user's next prompt. Chat only shows it and stops none of it. A Subagent is one
-background agent; a Workflow is a script that runs many and is listed as one
-row with its agents done when its journal records them.
+its journal and run file beside it. Running work comes first; finished work
+stays listed until the user's next prompt, and the strip over the Composer hides
+once both the foreground turn and all Background Work have ended. Chat only
+shows it and stops none of it. A Subagent is one background agent; a Workflow is
+a script that runs many and is listed as one row with its agents done when its
+journal records them.
 _Avoid_: background task, task list, jobs
 
 **Turn**:

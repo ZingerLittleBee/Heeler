@@ -852,8 +852,9 @@ box while they run, and Antigravity CLI runs Subagents, Workflows and
 non-daemon background commands past the end of a turn while its prompt sits
 Idle. Chat lists that Background Work over the Composer: for Claude Code, a
 Subagent the Agent tool started in the background and a Workflow, from their
-launch results in the transcript and the `<task-notification>` that reports
-each one's end; for Antigravity CLI, an `invoke_subagent` Subagent (ended by
+launch results in the transcript and the `<task-notification>`, `TaskStop`,
+`agents_killed`, `turn_duration` pending counts, or Workflow `<runId>.json`
+state file that reports each one's end; for Antigravity CLI, an `invoke_subagent` Subagent (ended by
 the Subagent's `[Message]` reply, a `system` error message, `manage_subagents`
 kill or a server-restart notice, and resumed when `send_message` revives it)
 and a non-daemon `run_command` or `run_workflow` background task (ended by its
@@ -873,8 +874,10 @@ waiting for the next prompt.
 
 Running work comes first. Unfinished rows that are paused or quiet (`Not
 updating` or `No updates since …`) sit in a separate `Not updating` section of
-the sheet rather than under `Running`. Finished work stays, with its time and
-the counts its notification reported, until the user's next prompt. The strip
+the sheet rather than under `Running`. Finished work stays in the list, with its
+time and the counts its notification reported, until the user's next prompt,
+while the strip over the Composer hides once both the foreground turn and all
+Background Work have ended. The strip
 shows three rows and "+N more", and condenses to one line while the Composer is
 open or a Blocked card stands in its place, so the conversation keeps its room.
 Every row opens a sheet listing all of it as structured activity cards in
