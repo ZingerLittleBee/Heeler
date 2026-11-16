@@ -51,10 +51,11 @@ struct ConsolePaneRowBuilder {
             }
             var row = ConsoleAgent(
                 hostID: host.id,
-                hostName: host.displayName,
+                hostName: host.hostName,
                 agent: agent,
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
+                backend: host.serverKind.agentBackend,
                 hostUsername: host.username,
                 tabLabel: tab?.label,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] },
@@ -102,7 +103,7 @@ struct ConsolePaneRowBuilder {
                 $0.workspaceID == pane.workspaceID ? $0 : nil
             }
             rows[pane.paneID] = ConsoleTerminal(
-                hostID: host.id, hostName: host.displayName, hostUsername: host.username,
+                hostID: host.id, hostName: host.hostName, hostUsername: host.username,
                 pane: pane, workspaceLabel: workspaceByID[pane.workspaceID]?.label,
                 tabLabel: tab?.label,
                 workspaceOrder: workspacePositions[pane.workspaceID] ?? Int.max,

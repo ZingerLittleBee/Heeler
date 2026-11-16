@@ -47,10 +47,12 @@ struct AgentRowLayoutTests {
             AgentRowLayoutResolver.resolve(
                 hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == console)
         #expect(AgentRowToken(rawValue: "state_icon") == .stateIcon)
+        #expect(AgentRowToken(rawValue: "backend") == .backend)
+        #expect(AgentRowToken.backend.rawValue == "backend")
         #expect(AgentRowToken(rawValue: "path") == .path)
         #expect(AgentRowToken.path.rawValue == "path")
         #expect(AgentRowToken(rawValue: "status_badge") == .statusBadge)
-        #expect(AgentRowToken.heelerBuiltins == [.host, .status, .directory, .path])
+        #expect(AgentRowToken.heelerBuiltins == [.host, .backend, .status, .directory, .path])
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(AgentRowToken.herdrBuiltins.contains(.stateText))
     }

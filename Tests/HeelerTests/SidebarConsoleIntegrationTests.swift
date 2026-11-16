@@ -161,8 +161,8 @@ struct SidebarConsoleIntegrationTests {
         let suite = "sidebar-console-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let alpha = Host.fixture(name: "alpha")
-        let beta = Host.fixture(name: "beta")
+        let alpha = Host.fixture(name: "alpha", address: "alpha.example")
+        let beta = Host.fixture(name: "beta", address: "beta.example")
         let a = ScriptedTransport(snapshot: .fixture(agents: [
             .fixture(paneID: "a0", status: .idle), .fixture(paneID: "a1", status: .blocked),
         ]))

@@ -88,7 +88,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
 
     func consoleAgent(for host: Host) -> ConsoleAgent {
         ConsoleAgent(
-            hostID: host.id, hostName: host.displayName,
+            hostID: host.id, hostName: host.hostName,
             agent: Agent(
                 terminalID: terminalID, kind: kind, title: title, status: .unknown,
                 workspaceID: workspaceID, tabID: tabID, paneID: paneID, cwd: cwd,
@@ -97,6 +97,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
                 paneTitle: paneTitle, agentSession: agentSession, tokens: tokens,
                 foregroundCwd: foregroundCwd),
             workspaceLabel: workspaceLabel, repositoryCheckout: nil,
+            backend: host.serverKind.agentBackend,
             hostUsername: host.username, tabLabel: tabLabel, tabPosition: tabPosition,
             workspaceTabCount: workspaceTabCount, snapshotOrder: snapshotOrder,
             paneLabel: paneLabel)

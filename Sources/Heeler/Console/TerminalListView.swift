@@ -111,7 +111,7 @@ struct TerminalListView: View {
     private var byHost: some View {
         let groups = projection.hostGroups(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
+        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issues.isEmpty }) {
             emptyState
         } else {
             // A plain list, as in the Agents tab, so each Host's header pins
@@ -120,11 +120,17 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 ForEach(groups) { @Sendable group in
                     MainActorContent {
+                        // The header names only the Host: a row for one of
+                        // several Servers says which.
+                        let namesServer = group.servers.count > 1
                         Section {
                             if !isFolded(group) {
-                                if let issue = group.issue {
-                                    ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
-                                        .modifier(TerminalCardRow(isFirst: true, isLast: true))
+                                ForEach(group.issues) { @Sendable issue in
+                                    MainActorContent {
+                                        ConsoleHostIssueRow(
+                                            issue: issue, namesServer: namesServer, onOpenHost: onOpenHost)
+                                            .modifier(TerminalCardRow(isFirst: true, isLast: true))
+                                    }
                                 }
                                 ForEach(group.workspaces) { @Sendable workspace in
                                     MainActorContent { workspaceRows(workspace) }
@@ -135,7 +141,7 @@ struct TerminalListView: View {
                                 if group.opensConnectionDetail {
                                     onOpenHost(group.hostID)
                                 } else {
-                                    toggle(group.hostID)
+                                    toggle(group.hostIDs)
                                 }
                             }
                         }
@@ -357,9 +363,10 @@ struct TerminalListView: View {
         withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(id) }
     }
 
-    private func toggle(_ hostID: Host.ID) {
+    /// Folds or unfolds a Host, given its Servers' records.
+    private func toggle(_ hostIDs: [Host.ID]) {
         guard !isSearching else { return }
-        withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(hostID) }
+        withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(hostIDs) }
     }
 
     // MARK: Creating

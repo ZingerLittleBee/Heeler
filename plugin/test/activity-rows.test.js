@@ -24,12 +24,19 @@ test("renders the three configured rows with styles, unstyled separators and no 
   assert.deepEqual(render([
     ["state_icon", "workspace", "tab", { token: "agent", fg: "#AbC", bold: true, dim: false }],
     ["pane", "terminal_title", "terminal_title_stripped", "$task", "$blank", "$missing"],
-    ["directory", "path", "host", "status", "state_text"],
+    ["directory", "path", "host", "backend", "status", "state_text"],
   ]).rows, [
     [{ text: "Heeler" }, { text: " · " }, { text: "reviewer", fg: "#AbC", bold: true, dim: false }],
     [{ text: "shell" }, { text: " · " }, { text: "⠂ raw" }, { text: " · " }, { text: "stripped" }, { text: " · " }, { text: "**plain text**" }],
-    [{ text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }, { text: " · " }, { text: "My Mac" }, { text: " · " }, { text: "Working" }],
+    [{ text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }, { text: " · " }, { text: "My Mac" }, { text: " · " }, { text: "tui" }, { text: " · " }, { text: "Working" }],
   ]);
+});
+
+test("backend defaults to tui for herdr agents and renders core, rex, tmux, or omits blank overrides", () => {
+  for (const backend of ["core", "tui", "rex", "tmux"]) {
+    assert.deepEqual(render([["backend"]], { agents: [{ ...agent, backend }] }).rows, [[{ text: backend }]]);
+  }
+  assert.deepEqual(render([["backend"]], { agents: [{ ...agent, backend: null }] }).rows, []);
 });
 
 test("directory extracts the last component across POSIX and Windows paths while path keeps trimmed cwd", () => {

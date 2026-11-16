@@ -165,4 +165,18 @@ struct HostMachine: Identifiable, Hashable, Sendable {
         }
         return labels
     }
+
+    /// The Host's name for each record that would not give it by its own
+    /// `machineName`: one the user named apart before it was one Host with
+    /// the others, or left unnamed beside a named one.
+    static func sharedNames(for hosts: [Host]) -> [Host.ID: String] {
+        var names: [Host.ID: String] = [:]
+        for machine in grouped(hosts) {
+            let name = machine.name
+            for record in machine.members where record.machineName != name {
+                names[record.id] = name
+            }
+        }
+        return names
+    }
 }

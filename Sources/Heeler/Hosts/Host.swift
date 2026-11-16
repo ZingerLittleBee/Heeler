@@ -135,6 +135,16 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .unconfirmed: String(localized: "Not confirmed")
         }
     }
+
+    /// Short backend identifier rendered by the `backend` Agent List Field.
+    var agentBackend: AgentBackend? {
+        switch self {
+        case .herdrCore: .core
+        case .herdrTUI: .tui
+        case .tmux: .tmux
+        case .unconfirmed: nil
+        }
+    }
 }
 
 /// A user-added Host (CONTEXT.md): who the machine is, how to authenticate,
@@ -180,6 +190,12 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// label that appears or goes is a rename to everything holding this
     /// record, which is what it is on screen.
     var serverLabel: String?
+    /// The name of the Host this record is a Server of, where it is not this
+    /// record's own `machineName`: records the user named apart before they
+    /// were one Host go by the name the Hosts tab gives that Host, as
+    /// `HostMachine.sharedNames` words it. Set and never stored as
+    /// `serverLabel` is (ADR 0047).
+    var sharedHostName: String?
 
     /// `socatPath` is deliberately absent: Hosts serialized before ADR 0011
     /// still carry it on disk, and leaving it out of the keys both ignores it
@@ -385,12 +401,18 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         return trimmed.isEmpty ? "\(username)@\(address)" : trimmed
     }
 
-    /// What this record's Agents and Terminals are filed under: the Host's
-    /// name, and which of its Servers where that alone would not tell.
+    /// This one record among its Host's Servers: the Host's name, and which
+    /// of its Servers where that alone would not tell. What a picker of
+    /// Servers, a notification or a problem with this Server names.
     var displayName: String {
         guard let serverLabel else { return machineName }
         return "\(machineName) · \(serverLabel)"
     }
+
+    /// What the Agents and Terminals lists file this record's Agents and
+    /// Terminals under: its Host's name alone, as the Hosts tab shows it,
+    /// whichever of the Host's Servers this is (ADR 0047).
+    var hostName: String { sharedHostName ?? machineName }
 
     /// One line for how the Host is reached: `user@address`, with the port
     /// when it is not 22. With several routes the Console does not yet know

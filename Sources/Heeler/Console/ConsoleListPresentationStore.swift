@@ -285,19 +285,28 @@ struct ConsoleCheckoutTitle: Equatable, Sendable {
 }
 
 /// One Host section projected from the Host catalog and the Console's
-/// already-sorted Agent sequence. The section carries the inputs a header
-/// needs to present connection and Agent Inventory readiness honestly.
+/// already-sorted Agent sequence: a Host as the Hosts tab shows it, holding
+/// the Agents of every Server it has on (ADR 0047). The section carries the
+/// inputs a header needs to present connection and Agent Inventory
+/// readiness honestly.
 struct ConsoleHostSection: Identifiable, Equatable {
+    /// The first Server's record, which stands for the Host where one id
+    /// is asked for: the Hosts tab opens the Host from any of them.
     let hostID: Host.ID
-    let hostDisplayName: String
-    let connectionStatus: EventsSessionStatus?
-    let isAwaitingSnapshot: Bool
-    let statusPresentation: ConsoleHostStatusPresentation?
+    /// The Host's name alone, whichever of its Servers are listed.
+    let hostName: String
+    /// The Servers listed, in catalog order, `hostID`'s first.
+    let servers: [ConsoleHostServerState]
+    /// Each Server's Agents in the Console's order, Server after Server.
     let agents: [ConsoleAgent]
     let isCollapsed: Bool
     let statusCounts: ConsoleHostAgentStatusCounts
 
+    var hostIDs: [Host.ID] { servers.map(\.hostID) }
     var id: Host.ID { hostID }
+    /// The Servers' conditions, in their order. Under a header that names
+    /// only the Host, a row of a Host with several Servers says which.
+    var issues: [ConsoleHostStatusPresentation] { servers.compactMap(\.issue) }
 }
 
 /// Active and attention statuses shown in a collapsed Host section. Core
@@ -395,8 +404,11 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
 @MainActor
 @Observable
 final class ConsoleListPresentationStore {
-    /// Hosts follow catalog order; Workspaces follow their first Agent in
-    /// the supplied priority order. Grouping never re-sorts Agents or pins.
+    /// Hosts follow the Hosts tab's order, a Host's Servers together in
+    /// catalog order; Workspaces follow their first Agent in the supplied
+    /// priority order. A Workspace is one Server's, so two of the same name
+    /// on two Servers of a Host are two sections, both under the Host's name.
+    /// Grouping never re-sorts Agents or pins.
     /// `savedStructures` holds the Workspace structure of each Host whose
     /// rows may be saved Chat entries, which report no checkout: its
     /// Workspaces had Agents at the last snapshot and count as Workspaces
@@ -409,12 +421,15 @@ final class ConsoleListPresentationStore {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
-        return sections(
-            hosts: hosts, agents: agents, filteredHostIDs: filteredHostIDs, searchQuery: searchQuery
-        ).flatMap { host in
-            let buckets = Dictionary(grouping: host.agents, by: \.agent.workspaceID)
+        let agentsByHost = searchedAgentsByHost(agents, searchQuery: searchQuery)
+        let records = ConsoleHostSectionGroup.grouping(
+            hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
+        ).flatMap(\.servers)
+        return records.flatMap { host in
+            let hostAgents = agentsByHost[host.id] ?? []
+            let buckets = Dictionary(grouping: hostAgents, by: \.agent.workspaceID)
             var order: [String] = []
-            for agent in host.agents where !order.contains(agent.agent.workspaceID) {
+            for agent in hostAgents where !order.contains(agent.agent.workspaceID) {
                 order.append(agent.agent.workspaceID)
             }
 
@@ -480,7 +495,7 @@ final class ConsoleListPresentationStore {
                 }
                 var section = ConsoleWorkspaceSection(
                     id: id, title: label ?? (workspaceID.isEmpty ? String(localized: "Unknown Workspace") : workspaceID),
-                    hostName: host.hostDisplayName, agents: members(workspaceID),
+                    hostName: host.hostName, agents: members(workspaceID),
                     isCollapsed: !isSearching && collapsedIDs.contains(id),
                     parentID: parentID)
                 if let info = checkout(workspaceID) {
@@ -523,7 +538,9 @@ final class ConsoleListPresentationStore {
     private static let hostFilterDefaultsKey = "console-list.host-filter"
     private static let statusFilterDefaultsKey = "console-list.status-filter"
 
-    /// The Hosts both lists show; empty shows every Host.
+    /// The Hosts both lists show, held as the records of their Servers: a
+    /// record's id outlasts an edit of its Host, and any one of them selects
+    /// the whole Host (ADR 0047). Empty shows every Host.
     private(set) var hostFilter: Set<Host.ID>
 
     func setHostFilter(_ hostIDs: Set<Host.ID>) {
@@ -532,9 +549,9 @@ final class ConsoleListPresentationStore {
         persistHostFilter()
     }
 
-    func toggleHostFilter(_ hostID: Host.ID) {
-        if !hostFilter.insert(hostID).inserted { hostFilter.remove(hostID) }
-        persistHostFilter()
+    /// Selects `host` with every Server it has on, or drops it.
+    func toggleHostFilter(_ host: HostMachine) {
+        setHostFilter(host.toggled(in: hostFilter))
     }
 
     func clearHostFilter() {
@@ -543,10 +560,22 @@ final class ConsoleListPresentationStore {
         defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
     }
 
-    /// Drops Hosts no longer in `hosts`, falling back to All Hosts when the
-    /// last selected Host leaves the catalog.
+    /// Settles the filter on `hosts`, the records of the Servers that are on.
+    /// A selected Host holds every one of its Servers, so a Server turned on
+    /// later shows too, and a selection saved when the filter listed each
+    /// Server selects that Server's Host. A Host with no Server left drops
+    /// out; the last one falls back to All Hosts. So does a filter with one
+    /// Host left to list, which the filter no longer offers: it would show
+    /// what All Hosts shows while reading as filtered, with nothing to clear
+    /// it, and would hide a Host added later.
     func pruneHostFilter(keeping hosts: [Host]) {
-        setHostFilter(hostFilter.intersection(hosts.map(\.id)))
+        let machines = HostMachine.grouped(hosts)
+        guard machines.count > 1 else {
+            clearHostFilter()
+            return
+        }
+        let filter = hostFilter
+        setHostFilter(Set(machines.filter { $0.isSelected(by: filter) }.flatMap(\.servers).map(\.id)))
     }
 
     private func persistHostFilter() {
@@ -605,10 +634,16 @@ final class ConsoleListPresentationStore {
         defaults.set(mode.rawValue, forKey: Self.modeDefaultsKey)
     }
 
-    func isCollapsed(_ hostID: Host.ID) -> Bool {
-        collapsedHostIDs.contains(hostID)
+    /// Whether the Host whose Servers have the records `hostIDs` is folded:
+    /// any of them is, as the Host filter reads a Host (ADR 0047). A Host
+    /// folded while the list showed a section for each Server stays folded
+    /// if any of them was.
+    func isCollapsed(_ hostIDs: [Host.ID]) -> Bool {
+        hostIDs.contains(where: collapsedHostIDs.contains)
     }
 
+    /// Folds one record's section, as a build that listed a section for
+    /// each Server saved it.
     func setCollapsed(_ collapsed: Bool, for hostID: Host.ID) {
         let changed: Bool
         if collapsed {
@@ -620,8 +655,16 @@ final class ConsoleListPresentationStore {
         persistCollapsedHostIDs()
     }
 
-    func toggleCollapsed(_ hostID: Host.ID) {
-        setCollapsed(!isCollapsed(hostID), for: hostID)
+    /// Unfolds the Host of `hostIDs` by dropping every one of them, or folds
+    /// it by holding them all, so it stays folded while any Server is on and
+    /// a build that lists each Server folds them all.
+    func toggleCollapsed(_ hostIDs: [Host.ID]) {
+        if isCollapsed(hostIDs) {
+            collapsedHostIDs.subtract(hostIDs)
+        } else {
+            collapsedHostIDs.formUnion(hostIDs)
+        }
+        persistCollapsedHostIDs()
     }
 
     /// Convenience contract for the Console UI. Reading these observable
@@ -660,9 +703,11 @@ final class ConsoleListPresentationStore {
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
     }
 
-    /// Projects one section per catalog Host, in catalog order. `agents` is
-    /// already sorted by ConsoleStore; filtering it in-place keeps
-    /// that exact relative order within every Host section.
+    /// Projects one section per Host, by its name, in the Hosts tab's order,
+    /// holding the Servers it has on that `hosts` lists (ADR 0047). `agents`
+    /// is already sorted by ConsoleStore; filtering it in-place keeps that
+    /// exact relative order within each Server, and a Host lists its Servers'
+    /// Agents one Server after another, in catalog order.
     func sections(
         hosts: [Host],
         agents: [ConsoleAgent],
@@ -674,53 +719,83 @@ final class ConsoleListPresentationStore {
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
+        // A status filter narrows like a query: only matches, never folded away.
+        let isNarrowed = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !statusFilter.isEmpty
+        let agentsByHost = searchedAgentsByHost(agents, searchQuery: searchQuery)
+        let visible = hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
+
+        return ConsoleHostSectionGroup.grouping(visible).compactMap { group in
+            guard let first = group.servers.first else { return nil }
+            let servers = group.servers.map { host in
+                let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
+                let issue: ConsoleHostStatusPresentation? =
+                    if let statusPresentations {
+                        statusPresentations[host.id]
+                    } else {
+                        ConsoleHostStatusPresentation(
+                            host: host,
+                            status: hostStatuses[host.id],
+                            standingFailure: hostStandingFailures[host.id],
+                            isAwaitingSnapshot: isAwaitingSnapshot,
+                            syncError: hostSyncErrors[host.id])
+                    }
+                return ConsoleHostServerState(
+                    hostID: host.id, connectionStatus: hostStatuses[host.id],
+                    isAwaitingSnapshot: isAwaitingSnapshot, issue: issue)
+            }
+            let hostAgents = group.servers.flatMap { agentsByHost[$0.id] ?? [] }
+            // While searching, a section without a match leaves the list
+            // whatever its Host's state (#292, #316): a query asks for Agents,
+            // and Hosts that cannot answer only bury the matches. Without a
+            // query a Host with no Agents stays visible while it has
+            // something to say or could start one, and otherwise would be a
+            // bare header.
+            if hostAgents.isEmpty
+                && (isNarrowed || !group.keepsEmptySection(servers, listsTerminals: false))
+            {
+                return nil
+            }
+            return ConsoleHostSection(
+                hostID: first.id,
+                hostName: group.name,
+                servers: servers,
+                agents: hostAgents,
+                // A match is never hidden behind a collapsed Host.
+                isCollapsed: !isNarrowed && isCollapsed(group.servers.map(\.id)),
+                statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
+        }
+    }
+
+    /// `agents` that the search and the status filter keep, by record.
+    private func searchedAgentsByHost(_ agents: [ConsoleAgent], searchQuery: String) -> [Host.ID: [ConsoleAgent]] {
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let searchedAgents = agents.filter {
             (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
         }
-        // A status filter narrows like a query: only matches, never folded away.
-        let isNarrowed = !trimmedQuery.isEmpty || !statusFilter.isEmpty
-        let agentsByHost = Dictionary(grouping: searchedAgents, by: \.hostID)
-        var projectedHostIDs: Set<Host.ID> = []
-
-        return hosts.compactMap { host in
-            guard filteredHostIDs.isEmpty || filteredHostIDs.contains(host.id) else { return nil }
-            guard projectedHostIDs.insert(host.id).inserted else { return nil }
-
-            let hostAgents = agentsByHost[host.id] ?? []
-            let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
-            let statusPresentation: ConsoleHostStatusPresentation? =
-                if let statusPresentations {
-                    statusPresentations[host.id]
-                } else {
-                    ConsoleHostStatusPresentation(
-                        host: host,
-                        status: hostStatuses[host.id],
-                        standingFailure: hostStandingFailures[host.id],
-                        isAwaitingSnapshot: isAwaitingSnapshot,
-                        syncError: hostSyncErrors[host.id])
-                }
-            // While searching, a section without a match leaves the list
-            // whatever its Host's state (#292, #316): a query asks for Agents,
-            // and Hosts that cannot answer only bury the matches. Without a
-            // query every catalog Host stays visible, including empty ones.
-            if isNarrowed && hostAgents.isEmpty { return nil }
-            return ConsoleHostSection(
-                hostID: host.id,
-                hostDisplayName: host.displayName,
-                connectionStatus: hostStatuses[host.id],
-                isAwaitingSnapshot: isAwaitingSnapshot,
-                statusPresentation: statusPresentation,
-                agents: hostAgents,
-                // A match is never hidden behind a collapsed Host.
-                isCollapsed: !isNarrowed && isCollapsed(host.id),
-                statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
-        }
+        return Dictionary(grouping: searchedAgents, by: \.hostID)
     }
 
     private func persistCollapsedHostIDs() {
         defaults.set(
             collapsedHostIDs.map(\.uuidString).sorted(),
             forKey: Self.collapsedHostsDefaultsKey)
+    }
+}
+
+/// How the Console's Host filter, a set of record ids, reads a Host: by the
+/// Host, never by one of its Servers (ADR 0047).
+extension HostMachine {
+    /// Whether `filter` holds a record of any of this Host's Servers.
+    func isSelected(by filter: Set<Host.ID>) -> Bool {
+        servers.contains { filter.contains($0.id) }
+    }
+
+    /// `filter` with this Host dropped when it is selected, or else added with
+    /// every Server it has on.
+    func toggled(in filter: Set<Host.ID>) -> Set<Host.ID> {
+        isSelected(by: filter)
+            ? filter.subtracting(members.map(\.id))
+            : filter.union(servers.map(\.id))
     }
 }

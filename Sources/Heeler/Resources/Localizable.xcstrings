@@ -47395,6 +47395,28 @@
         }
       }
     },
+    "Server backend (core, tui, rex, tmux)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーバックエンド（core、tui、rex、tmux）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务端后端（core、tui、rex、tmux）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器後端（core、tui、rex、tmux）"
+          }
+        }
+      }
+    },
     "Servers" : {},
     "Service" : {
       "localizations" : {
