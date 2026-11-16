@@ -62,6 +62,34 @@ struct HostMachineTests {
         #expect(labels[alone.id] == nil)
     }
 
+    /// The Console's lists name the Host alone: every record of a Host goes
+    /// by the name the Hosts tab gives it, a record named apart before it was
+    /// one Host included, while a picker's `displayName` still tells the
+    /// Servers apart.
+    @Test func everyRecordOfAHostGoesByTheHostsName() {
+        let tui = record()
+        let tmux = record(kind: .tmux)
+        let namedApart = record(name: "Studio sockets", kind: .tmux, session: "second")
+        let unnamed = record(name: "", kind: .herdrCore)
+        let alone = record(name: "Build", address: "build.example", kind: .herdrCore)
+
+        let names = HostMachine.sharedNames(for: [tui, tmux, namedApart, unnamed, alone])
+        #expect(names == [namedApart.id: "Studio", unnamed.id: "Studio"])
+
+        let store = HostStore(volatileHosts: [tui, tmux, namedApart, unnamed, alone])
+        #expect(store.hosts.map(\.hostName) == ["Studio", "Studio", "Studio", "Studio", "Build"])
+        #expect(store.hosts.map(\.displayName) == [
+            "Studio · Herdr TUI", "Studio · tmux", "Studio sockets", "dev@studio.example", "Build",
+        ])
+        #expect(store.machines.map(\.name) == ["Studio", "Build"])
+        // Derived like the label, never stored.
+        let shared = store.hosts[2]
+        let decoded = try? JSONDecoder().decode(Host.self, from: JSONEncoder().encode(shared))
+        #expect(shared.sharedHostName == "Studio")
+        #expect(decoded?.sharedHostName == nil)
+        #expect(decoded?.hostName == "Studio sockets")
+    }
+
     /// A Rex Server is one more Server of its Host: grouped by the connection,
     /// labelled by its kind where the records would read alike, and badged.
     @Test func aRexServerBesideAnotherIsOneHost() throws {
