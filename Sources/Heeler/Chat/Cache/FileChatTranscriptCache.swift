@@ -103,7 +103,7 @@ actor FileChatTranscriptCache: ChatTranscriptCache {
         if let allowedHosts, !allowedHosts.contains(host.id) { return }
         let url = agentDirectoryURL(host.id)
         let directory = ChatAgentDirectory(contents, for: host, hostKeys: hostKeys)
-        guard !directory.agents.isEmpty || directory.workspaces?.isEmpty == false,
+        guard !directory.agents.isEmpty || directory.workspaces?.isEmpty == false || directory.sidebarSnapshot != nil,
             let data = try? Self.encoder.encode(directory), data.count <= policy.maxDocumentBytes
         else {
             removeFile(url)

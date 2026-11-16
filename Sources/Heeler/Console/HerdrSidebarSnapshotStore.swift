@@ -20,6 +20,7 @@ final class HerdrSidebarSnapshotStore {
 
     private(set) var states: [Host.ID: HostState] = [:]
     private(set) var loadedSnapshots: [Host.ID: AgentRowLayoutSnapshot] = [:]
+    @ObservationIgnored var onLoaded: (@MainActor (Host.ID, AgentRowLayoutSnapshot?) -> Void)?
     @ObservationIgnored private var connections: [Host.ID: Connection] = [:]
     @ObservationIgnored private var requests: [Host.ID: UUID] = [:]
     @ObservationIgnored private var tasks: [Host.ID: Task<Void, Never>] = [:]
@@ -124,6 +125,7 @@ final class HerdrSidebarSnapshotStore {
             if snapshotChanged { loadedSnapshots[id] = nextSnapshot }
             if states[id] != result { states[id] = result }
             tasks[id] = nil
+            if case .loaded(let snapshot) = result { onLoaded?(id, snapshot) }
             if snapshotChanged { didChange() }
         }
     }

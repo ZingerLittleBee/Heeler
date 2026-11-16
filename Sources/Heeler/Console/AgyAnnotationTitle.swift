@@ -457,25 +457,52 @@ final class AgyAnnotationTitleStore {
     }
 
     func applying(to agent: Agent, id: ConsoleAgent.ID) -> Agent {
+        knownTitle(for: agent, id: id).map(agent.applyingConversationTitle) ?? agent
+    }
+
+    func knownTitle(for agent: Agent, id: ConsoleAgent.ID) -> String? {
         guard agent.kind == ChatProgram.agy.rawValue,
             let entry = entries[id],
             entry.identity == PaneIdentity(agent),
             case .titled(_, let rootID, let title) = entry.known
-        else { return agent }
+        else { return nil }
         if agent.agentSession == nil && entry.boundByChat == nil {
-            return agent
+            return nil
         }
         if let rawSession = agent.agentSession?.value {
             guard let reportedID = ConversationReference.canonicalUUID(rawSession) else {
-                return agent
+                return nil
             }
             let matchesKnownConversation = entry.sessionFamily.contains(reportedID)
                 || resolvedSessionsByHost[id.hostID]?.map[reportedID]?.rootID == rootID
             guard matchesKnownConversation else {
-                return agent
+                return nil
             }
         }
-        return agent.applyingConversationTitle(title)
+        return title
+    }
+
+    func hasResolvedState(for row: ConsoleAgent) -> Bool {
+        guard row.agent.kind == ChatProgram.agy.rawValue,
+            let entry = entries[row.id],
+            entry.identity == PaneIdentity(row.agent)
+        else { return false }
+        switch entry.known {
+        case .unknown:
+            return false
+        case .untitled(_, let rootID), .titled(_, let rootID, _):
+            if row.agent.agentSession == nil && entry.boundByChat == nil {
+                return false
+            }
+            if let rawSession = row.agent.agentSession?.value {
+                guard let reportedID = ConversationReference.canonicalUUID(rawSession) else {
+                    return false
+                }
+                return entry.sessionFamily.contains(reportedID)
+                    || resolvedSessionsByHost[row.id.hostID]?.map[reportedID]?.rootID == rootID
+            }
+            return true
+        }
     }
 
     func isKnownUntitled(for row: ConsoleAgent) -> Bool {

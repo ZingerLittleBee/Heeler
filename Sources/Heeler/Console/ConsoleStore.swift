@@ -333,7 +333,11 @@ final class ConsoleStore {
         self.connectCore = connectCore
         self.connectTmux = connectTmux
         cachedChats.onChange = { [weak self] in
-            self?.rebuildChatDisplayAgents()
+            self?.rebuildAgentOrder()
+        }
+        sidebarSnapshots.onLoaded = { [weak self] hostID, snapshot in
+            guard let self, let host = projections[hostID]?.host else { return }
+            cachedChats.record(sidebarSnapshot: snapshot, on: host)
         }
     }
 
@@ -1104,7 +1108,7 @@ final class ConsoleStore {
             self?.preemptBackgroundPrefetchForVisibleChat(agent.id)
         }
         let rawAgent =
-            projections[hostID]?.agentsByPane[paneID].map { agyTitles.applying(to: $0).agent }
+            projections[hostID]?.agentsByPane[paneID].map { applyingAgyAnnotationTitle(to: $0).agent }
             ?? agent.agent
         let store = AgentChatStore(
             agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
@@ -1356,7 +1360,19 @@ final class ConsoleStore {
             origin.agentsByPane[paneID]?.agent.terminalID == snapshot.agent.terminalID,
             origin.agentsByPane[paneID]?.agent.workspaceID == snapshot.agent.workspaceID,
             origin.agentsByPane[paneID]?.agent.tabID == snapshot.agent.tabID {
-            cachedChats.confirm(enriched, for: snapshot, on: origin.host)
+            var freshRow = snapshot
+            freshRow.agent = fresh
+            let resolvedTitle =
+                agyTitles.knownTitle(for: fresh, id: agentID)
+                ?? (agyTitles.hasResolvedState(for: freshRow)
+                    ? nil
+                    : cachedChats.cachedConversationTitle(for: fresh, on: origin.host))
+            let cachedFresh = resolvedTitle.map(fresh.applyingConversationTitle) ?? fresh
+            cachedChats.confirm(
+                cachedFresh, for: snapshot, conversationTitle: resolvedTitle, on: origin.host)
+            if defersUncachedAgyLocate {
+                return cachedFresh
+            }
         }
         return enriched
     }
@@ -1808,8 +1824,23 @@ final class ConsoleStore {
                 sleep: pendingTitleRenameSleep))
     }
 
+    private func applyingAgyAnnotationTitle(to row: ConsoleAgent) -> ConsoleAgent {
+        let resolved = agyTitles.applying(to: row)
+        if resolved != row || row.agent.kind != ChatProgram.agy.rawValue
+            || agyTitles.hasResolvedState(for: row)
+        {
+            return resolved
+        }
+        guard let host = projections[row.hostID]?.host,
+            let saved = cachedChats.cachedConversationTitle(for: row.agent, on: host)
+        else { return row }
+        var copy = row
+        copy.agent = copy.agent.applyingConversationTitle(saved)
+        return copy
+    }
+
     private func applyingClientTitles(to row: ConsoleAgent) -> ConsoleAgent {
-        pendingTitleRenames.applying(to: agyTitles.applying(to: row))
+        pendingTitleRenames.applying(to: applyingAgyAnnotationTitle(to: row))
     }
 
     private func isAgentBusyInConsole(_ id: ConsoleAgent.ID) -> Bool {
@@ -2396,9 +2427,22 @@ final class ConsoleStore {
         terminals.filter { $0.hostID == hostID && $0.workspaceID == workspaceID }
     }
 
+    private func effectiveSidebarSnapshot(for hostID: Host.ID) -> AgentRowLayoutSnapshot? {
+        if let snapshot = sidebarSnapshots.snapshot(for: hostID) {
+            return snapshot
+        }
+        if case .loaded(nil) = sidebarSnapshots.states[hostID] {
+            return nil
+        }
+        guard let host = projections[hostID]?.host,
+            isActive || !cachedChats.agents(on: host).isEmpty
+        else { return nil }
+        return cachedChats.sidebarSnapshot(on: host)
+    }
+
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         rowLayouts.resolvedLayout(
-            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID),
+            for: hostID, pluginSnapshot: effectiveSidebarSnapshot(for: hostID),
             followsPlugin: coreHost(hostID) == nil)
     }
 
@@ -2672,18 +2716,22 @@ final class ConsoleStore {
         return copy
     }
 
+    private func agentPanelSorts() -> [Host.ID: AgentPanelSort] {
+        // A Host with no plugin has no snapshot to say: it keeps status priority,
+        // and within a status the order its projection lists, the desktop app's.
+        Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
+            projection.host.capabilities.syncLayoutFromPlugin
+                ? effectiveSidebarSnapshot(for: id).map { (id, $0.agentPanelSort) }
+                : (id, AgentPanelSort.priority)
+        })
+    }
+
     private func rebuildAgentOrder() {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
             .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
-        // A Host with no plugin has no snapshot to say: it keeps status priority,
-        // and within a status the order its projection lists, the desktop app's.
-        let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
-            projection.host.capabilities.syncLayoutFromPlugin
-                ? sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
-                : (id, AgentPanelSort.priority)
-        })
+        let sorts = agentPanelSorts()
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
                 .map { (agent.id, $0) }
@@ -2755,7 +2803,9 @@ final class ConsoleStore {
         let savedPairs = projections.values.flatMap {
             projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
             guard projection.showsSavedChats else { return [] }
-            let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
+            let saved = cachedChats.agents(on: projection.host)
+                .filter { !live.contains($0.id) }
+                .map { pendingTitleRenames.applying(to: $0) }
             guard !saved.isEmpty else { return [] }
             let hostReadiness = readiness(of: projection.host)
             return saved.map { ($0, hostReadiness) }
@@ -2766,9 +2816,10 @@ final class ConsoleStore {
             nextDisplay = agents
             nextSavedEntries = [:]
         } else {
+            let sorts = agentPanelSorts()
             nextDisplay =
                 agents
-                + savedPairs.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
+                + savedPairs.map(\.agent).consoleSorted(sortByHost: sorts) { [pins] in
                     pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
                 }
             nextSavedEntries = Dictionary(savedPairs.map { ($0.agent.id, $0.readiness) }) {
@@ -3210,9 +3261,25 @@ final class ConsoleStore {
                 chatCacheValidatedGenerations[host.id] = projection.transportGeneration
                 cachedChats.revalidate(on: host)
             }
-            cachedChats.observe(
-                projection.agentsByPane.values.map { agyTitles.applying(to: $0) },
-                on: host)
+            var conversationTitles: [ConsoleAgent.ID: String] = [:]
+            let observed = projection.agentsByPane.values.map { row -> ConsoleAgent in
+                if let title = agyTitles.knownTitle(for: row.agent, id: row.id) {
+                    conversationTitles[row.id] = title
+                    var copy = row
+                    copy.agent = copy.agent.applyingConversationTitle(title)
+                    return copy
+                }
+                if row.agent.kind == ChatProgram.agy.rawValue, !agyTitles.hasResolvedState(for: row),
+                    let saved = cachedChats.cachedConversationTitle(for: row.agent, on: host)
+                {
+                    conversationTitles[row.id] = saved
+                    var copy = row
+                    copy.agent = copy.agent.applyingConversationTitle(saved)
+                    return copy
+                }
+                return row
+            }
+            cachedChats.observe(observed, conversationTitles: conversationTitles, on: host)
             guard chatPrefetchTasks[host.id] == nil else { continue }
             let generation = projection.transportGeneration
             let candidates = projection.agentsByPane.values.filter { agent in
@@ -3308,7 +3375,7 @@ final class ConsoleStore {
         let current = Dictionary(
             projections.values.flatMap { $0.agentsByPane.values }
                 .map { row in
-                    let titled = agyTitles.applying(to: row)
+                    let titled = applyingAgyAnnotationTitle(to: row)
                     return (titled.id, titled)
                 }
         ) { first, _ in first }
