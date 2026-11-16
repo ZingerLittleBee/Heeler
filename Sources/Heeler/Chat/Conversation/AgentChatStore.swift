@@ -36,6 +36,9 @@ struct AgentChatSource: Sendable {
     var onAgyConversationBound: (@MainActor @Sendable (_ root: String?, _ rootID: String?) -> Void)? = nil
     /// Notifies listeners when live non-stale Background Work starts or stops holding active pace.
     var onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
+    /// Notifies listeners when a Chat becomes visible so in-flight background
+    /// prefetches of other Agents on the same Host can yield the SFTP channel.
+    var onDidBecomeVisible: (@MainActor @Sendable () -> Void)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -199,6 +202,9 @@ final class AgentChatStore {
 
     let agentID: ConsoleAgent.ID
     let program: ChatProgram
+    /// Built timeline rows, Markdown memos, and measured row heights kept
+    /// across surface mounts while this Agent's Chat store lives.
+    let timeline = ChatTimelineModel()
     /// The conversation as last read, or why there is none.
     private(set) var conversation: ChatConversationSnapshot
     /// Whether a Chat view is showing this conversation.
@@ -215,6 +221,17 @@ final class AgentChatStore {
     /// The Subagents, Workflows, and background commands the conversation's
     /// program runs beside it, as last read.
     private(set) var backgroundWork = ChatBackgroundWork()
+
+    /// Whether a visible Chat is still confirming its initial transcript open
+    /// or filling its initial screen, so background prefetches and secondary
+    /// Host reads yield the SFTP channel until the screen settles.
+    var isPerformingForegroundInitialLoad: Bool {
+        guard isVisible, !isSuspended, isHostConnected else { return false }
+        if olderRequest == .automatic { return true }
+        if conversation.isFromCache, conversation.readFailure == nil { return true }
+        if case .locating = conversation.phase, conversation.readFailure == nil { return true }
+        return false
+    }
 
     /// Whether a live read on a connected Host shows non-stale Background Work still running.
     var hasRunningBackgroundWork: Bool {
@@ -546,6 +563,7 @@ final class AgentChatStore {
         needsAgentRefresh = true
         needsLaunchCheck = true
         needsAgyScreenCheck = true
+        source.onDidBecomeVisible?()
         refreshCodexModelCatalogIfNeeded()
         if isWatchingWhileHidden {
             isWatchingWhileHidden = false
@@ -593,9 +611,34 @@ final class AgentChatStore {
         viewers.removeAll()
         isVisible = false
         stopLoop()
+        timeline.reset()
         blocked.end()
         backgroundWork = ChatBackgroundWork()
         notifyRunningBackgroundWorkIfNeeded()
+    }
+
+    private func warmTimelineFromPrefetch() async {
+        guard !isVisible, !conversation.transcript.entries.isEmpty else { return }
+        let transcript = conversation.transcript
+        let markedEntries = outputs.marking(blocked.history.marking(transcript.entries))
+        let foldsFinishedTurns =
+            (UserDefaults.standard.object(forKey: ChatFoldSettings.defaultsKey) as? Bool) ?? true
+        var isReady = !transcript.entries.isEmpty
+        if case .locating = conversation.phase {} else { isReady = true }
+        let signals = ChatTurnSignals(
+            activity: ChatAgentActivity(agent.status),
+            isBackgroundWorkRunning: backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
+            foldsFinishedTurns: foldsFinishedTurns,
+            isLive: isHostConnected && !conversation.isFromCache,
+            olderAwaitsUser: conversation.olderAwaitsUser)
+        timeline.updateIfNeeded(
+            conversation: conversationGeneration,
+            input: ChatTimelineInput(entries: markedEntries, pending: [], older: conversation.older),
+            turns: transcript.turns,
+            precedingTurnEnd: transcript.precedingTurnEnd,
+            signals: signals,
+            isReady: isReady)
+        await timeline.settled()
     }
 
     /// Warms the local document once after a fresh Host snapshot, without
@@ -628,6 +671,9 @@ final class AgentChatStore {
                 self.pollsBeforeNextOlderPage = true
                 await self.step()
                 await self.engine?.save(force: true)
+                if !Task.isCancelled {
+                    await self.warmTimelineFromPrefetch()
+                }
             }
             guard self.loopID == id else { return }
             self.loop = nil
@@ -718,10 +764,26 @@ final class AgentChatStore {
             if isWatchingWhileHidden { stopLoop() }
             return
         }
-        // Whatever happened meanwhile sent no event this Chat saw.
+        // Whatever happened meanwhile sent no event this Chat saw, and opens
+        // that failed while offline backed off against no Host rather than a
+        // missing transcript.
+        if agentRefreshFailure != nil || consecutiveAgentRefreshLinkFailures > 0 {
+            consecutiveAgentRefreshLinkFailures = 0
+            needsAgentRefresh = true
+        }
+        switch conversation.phase {
+        case .locating, .unavailable(.notFound):
+            nextOpen = nil
+            failedOpens = 0
+        default:
+            break
+        }
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
-        if isVisible || hasPrefetched {
+        if isVisible {
+            wake()
+            startLoop()
+        } else if hasPrefetched {
             startLoop()
         }
         let waiting = waitingOutputs
@@ -1051,7 +1113,9 @@ final class AgentChatStore {
             }
             polled = true
         } else if openIsDue {
-            snapshot = await engine.open(directories: directories, context: context, lostAMessage: hasLostAMessage)
+            snapshot = await engine.open(
+                directories: directories, context: context, lostAMessage: hasLostAMessage,
+                requiresLiveBody: hasUnsettledSends)
             if !Task.isCancelled, engine === self.engine { scheduleNextOpen(after: snapshot) }
             opened = true
         } else {
@@ -1091,8 +1155,9 @@ final class AgentChatStore {
         judgePickGuard()
         guard engine === self.engine, !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
-        // transcript read failed leaves the journals for later.
-        if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
+        // transcript read failed or that is still paging older history leaves
+        // the journals for once paging settles.
+        if olderRequest == nil, polled, case .following = snapshot.phase, snapshot.readFailure == nil {
             let progress = await engine.followWorkflows()
             if engine === self.engine { workflowProgress = progress }
             if program == .claude {
@@ -1102,14 +1167,18 @@ final class AgentChatStore {
                 }
             }
         }
-        if program == .agy, polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
+        if olderRequest == nil, program == .agy, polled || opened,
+            case .following = snapshot.phase, snapshot.readFailure == nil
+        {
             let fileEvidence = await engine.followAgyBackgroundWork()
             if engine === self.engine {
                 agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
             }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
-        await checkAgyBackgroundWorkScreen(from: engine)
+        if olderRequest == nil {
+            await checkAgyBackgroundWorkScreen(from: engine)
+        }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         refreshBackgroundWork()
         // After the transcript, which never waits on it.
@@ -2385,6 +2454,17 @@ final class AgentChatStore {
     /// none rather than waiting for its first message.
     private var hasLostAMessage: Bool {
         sends.contains { $0.generation == conversationGeneration && sendStatuses[$0.id] == .overdue }
+    }
+
+    /// Whether Composer messages still wait to be matched against live
+    /// `recordedPrompts`, so `open` reads the live tail body instead of
+    /// confirming from cached entries alone.
+    private var hasUnsettledSends: Bool {
+        sends.contains { send in
+            guard send.deliveredAt != nil, !send.isOrphan else { return false }
+            let status = sendStatuses[send.id]
+            return status != .recorded && status != .abandoned
+        }
     }
 
     private func scheduleNextOpen(after snapshot: ChatConversationSnapshot) {

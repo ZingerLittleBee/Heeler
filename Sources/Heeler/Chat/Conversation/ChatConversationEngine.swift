@@ -356,6 +356,9 @@ actor ChatConversationEngine {
     private var relocatedDirectory: String?
     private var source: (any ChatTranscriptSource)?
     private var reducer: (any ChatTranscriptReducer)?
+    /// True while `.following` is confirmed against `cached` without having
+    /// downloaded and reduced the tail window yet.
+    private var isCacheBacked = false
     /// A transcript was followed: one missing now has gone, not yet to come.
     private var hasFollowed = false
     /// What herdr reported the Agent doing when a search of every Claude
@@ -367,6 +370,9 @@ actor ChatConversationEngine {
     /// Claude Code writes a message as it takes it, so a session that lost
     /// one saves nothing, and is not a new conversation still to start.
     private var lostAMessage = false
+    /// Set by `open` when unconfirmed Composer sends require `recordedPrompts`
+    /// from a live tail read.
+    private var requiresLiveBody = false
     /// The document last restored or saved. Its entries older than the
     /// live window show above it once the window reaches what it covers.
     private var cached: ChatCacheDocument?
@@ -430,18 +436,27 @@ actor ChatConversationEngine {
     /// worded in another language still shows, since a Saved Chat's
     /// messages live only here, but never joins live rows (`joinedCache`),
     /// so the next save words it anew.
+    private static func restoredTranscript(from document: ChatCacheDocument) -> ChatTranscript {
+        var transcript = ChatTranscript(
+            entries: document.entries, title: document.title,
+            needsOlderHistory: !document.reachedStart,
+            backgroundWork: document.backgroundWork ?? [], latestPromptOffset: document.latestPromptOffset,
+            turns: document.turns ?? [], precedingTurnEnd: document.precedingTurnEnd)
+        transcript.model = document.model
+        transcript.effort = document.effort
+        transcript.permissionMode = document.permissionMode
+        return transcript
+    }
+
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
         case .hit(let document) where document.adapterRevision == adapter.revision:
             cached = document
             update {
-                $0.transcript = ChatTranscript(
-                    entries: document.entries, title: document.title,
-                    needsOlderHistory: !document.reachedStart,
-                    backgroundWork: document.backgroundWork ?? [], latestPromptOffset: document.latestPromptOffset,
-                    turns: document.turns ?? [])
+                $0.transcript = Self.restoredTranscript(from: document)
                 $0.readOffset = document.coverageEnd
                 $0.isFromCache = !document.entries.isEmpty
+                $0.olderAwaitsUser = document.olderAwaitsUser ?? false
                 $0.older = document.reachedStart ? .reachedStart : .available
             }
         case .hit:
@@ -458,10 +473,12 @@ actor ChatConversationEngine {
     /// current first. `lostAMessage` says a message delivered to the
     /// Agent went unrecorded past its echo timeout.
     func open(
-        directories: [String], context: ChatProjectionContext, lostAMessage: Bool = false
+        directories: [String], context: ChatProjectionContext, lostAMessage: Bool = false,
+        requiresLiveBody: Bool = false
     ) async -> ChatConversationSnapshot {
         self.directories = directories
         self.lostAMessage = lostAMessage
+        self.requiresLiveBody = requiresLiveBody
         setContext(context)
         do {
             if let makeRecordSource = adapter.makeRecordSource {
@@ -470,6 +487,9 @@ actor ChatConversationEngine {
                 } else {
                     stop(.unidentifiedSession(reference.program))
                 }
+            } else if let preloaded = try await fastLocateCachedFile() {
+                try await follow(
+                    preloaded.path, preloadedStatus: preloaded.status, preloadedHead: preloaded.head)
             } else {
                 switch try await locate() {
                 case .found(let path):
@@ -496,20 +516,33 @@ actor ChatConversationEngine {
         setContext(context)
         if var source {
             do {
+                if isCacheBacked, needsLiveHydrationForCurrentContext {
+                    try await hydrateFromCache()
+                    update { $0.readFailure = nil }
+                    noteReadProgress()
+                    projectIfNeeded()
+                    return snapshot
+                }
                 switch try await source.poll(files) {
                 case .unchanged:
                     self.source = source
                 case .appended(let lines):
-                    self.source = source
-                    reducer?.append(lines)
-                    needsProjection = true
+                    if isCacheBacked {
+                        try await hydrateFromCache()
+                    } else {
+                        self.source = source
+                        reducer?.append(lines)
+                        needsProjection = true
+                    }
                 case .reset(let lines, _):
                     try await start(source, lines: lines)
                 case .missing:
                     // Claude moves a session's file on `/cd`, Codex on
                     // archive, and a store can lose the session: look for
                     // it again, keeping what shows.
-                    return await open(directories: directories, context: context)
+                    return await open(
+                        directories: directories, context: context, lostAMessage: lostAMessage,
+                        requiresLiveBody: requiresLiveBody)
                 }
                 update { $0.readFailure = nil }
             } catch let unavailable as ChatSourceUnavailable {
@@ -555,9 +588,24 @@ actor ChatConversationEngine {
         return await poll(context: context)
     }
 
-    /// Reads the tail of the transcript at `path` and follows it.
-    private func follow(_ path: String) async throws {
-        try await follow(TranscriptFollower(path: path, limits: adapter.limits, identity: adapter.identity))
+    /// Reads the tail of the transcript at `path` and follows it, or confirms
+    /// an unchanged cached document without re-downloading its body.
+    private func follow(
+        _ path: String, preloadedStatus: RemoteFileStatus? = nil, preloadedHead: Data? = nil
+    ) async throws {
+        if try await confirmUnchangedCache(
+            path: path, preloadedStatus: preloadedStatus, preloadedHead: preloadedHead)
+        {
+            return
+        }
+        var follower = TranscriptFollower(path: path, limits: adapter.limits, identity: adapter.identity)
+        if let lines = try await follower.open(
+            files, preloadedStatus: preloadedStatus, preloadedHead: preloadedHead)
+        {
+            try await start(follower, lines: lines)
+        } else {
+            stop(.notFound(searchedAll: true))
+        }
     }
 
     /// Reads the newest records of `source` and follows it.
@@ -586,6 +634,25 @@ actor ChatConversationEngine {
     /// page again.
     func loadOlder(context: ChatProjectionContext, automatic: Bool = false) async -> ChatConversationSnapshot {
         setContext(context)
+        if isCacheBacked {
+            do {
+                try await hydrateFromCache()
+                projectIfNeeded()
+            } catch let unavailable as ChatSourceUnavailable {
+                stop(unavailable.reason)
+                return snapshot
+            } catch {
+                guard !Self.isCancellation(error) else { return snapshot }
+                recordFailure(error)
+                let message =
+                    (error as? TransportError)?.presentation.summary
+                    ?? String(localized: "Earlier messages could not be read")
+                olderSearch = nil
+                update { $0.older = .failed(message) }
+                projectIfNeeded()
+                return snapshot
+            }
+        }
         // So the opener compared below can only come from this page.
         projectIfNeeded()
         if olderSearch == nil {
@@ -620,7 +687,9 @@ actor ChatConversationEngine {
                 break
             case .missing, .rewritten:
                 endOlderSearch()
-                return await open(directories: directories, context: context)
+                return await open(
+                    directories: directories, context: context, lostAMessage: lostAMessage,
+                    requiresLiveBody: requiresLiveBody)
             }
             needsProjection = true
             update { $0.readFailure = nil }
@@ -688,13 +757,24 @@ actor ChatConversationEngine {
         let windowStart = source.windowStart ?? source.readOffset
         let joined = joinedCache(windowStart: windowStart)
         let coverageStart = joined.map { min($0.coverageStart, windowStart) } ?? windowStart
+        let transcript = snapshot.transcript
+        let hadTransientState =
+            !transcript.unrecordedEntryIDs.isEmpty
+            || !transcript.pendingRequests.isEmpty
+            || !transcript.openTurnBackgroundCommands.isEmpty
+            || transcript.links.continuedInSessionID != nil
+            || snapshot.hasUnreadRecords
         let document = ChatCacheDocument(
             key: cacheKey, adapterRevision: adapter.revision, transcriptPath: path, head: head,
             coverageStart: coverageStart, coverageEnd: source.readOffset,
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
-            title: snapshot.transcript.title, entries: entries, savedAt: date,
-            backgroundWork: snapshot.transcript.listedBackgroundWork,
-            latestPromptOffset: snapshot.transcript.latestPromptOffset, turns: snapshot.transcript.turns,
+            title: transcript.title, entries: entries, savedAt: date,
+            backgroundWork: transcript.listedBackgroundWork,
+            latestPromptOffset: transcript.latestPromptOffset, turns: transcript.turns,
+            precedingTurnEnd: transcript.precedingTurnEnd, model: transcript.model,
+            effort: transcript.effort, permissionMode: transcript.permissionMode,
+            tailAnchor: source.savedTailAnchor, hadTransientState: hadTransientState,
+            olderAwaitsUser: snapshot.olderAwaitsUser ? true : nil,
             localization: localization)
         await cache.save(document)
         // What was just saved fills in above a later window: a moved file's
@@ -927,15 +1007,27 @@ actor ChatConversationEngine {
     /// `ChatToolPreview.expandedLimits` and `ChatFileChanges.expandedLimits`,
     /// or the start of the file the program moved a long output to.
     func output(of tool: ChatToolActivity) async -> Result<ChatExpandedOutput, ChatToolOutputFailure> {
-        guard let reference = tool.output, let reducer, let source else {
+        guard let reference = tool.output, source != nil else {
             return .failure(.notFollowing)
         }
         guard reference.length <= ChatToolPreview.maximumFetchBytes else { return .failure(.tooLong) }
         do {
+            if isCacheBacked, self.reference.program == .claude, tool.fileChanges != nil {
+                try await hydrateFromCache()
+                projectIfNeeded()
+            }
+            guard let source else { return .failure(.notFollowing) }
+            let activeReducer: any ChatTranscriptReducer
+            if let reducer {
+                activeReducer = reducer
+            } else {
+                activeReducer = adapter.makeReducer(
+                    ChatReducerSeed(path: source.path, firstLine: try await firstLine(for: source)))
+            }
             guard let line = try await source.line(at: reference, files: files) else { return .failure(.gone) }
             let output = ChatToolPreview.$limits.withValue(ChatToolPreview.expandedLimits) {
                 ChatFileChanges.$limits.withValue(ChatFileChanges.expandedLimits) {
-                    reducer.output(of: line, for: tool)
+                    activeReducer.output(of: line, for: tool)
                 }
             }
             switch output {
@@ -1095,9 +1187,161 @@ actor ChatConversationEngine {
 
     // MARK: Following
 
+    private var needsLiveHydrationForCurrentContext: Bool {
+        if context.activity == .blocked { return true }
+        if !context.skillNames.isEmpty, reference.program == .codex { return true }
+        return false
+    }
+
+    private static func pathIsUnderRoot(_ path: String, root: String) -> Bool {
+        var cleanRoot = root
+        while cleanRoot.count > 1, cleanRoot.hasSuffix("/") || cleanRoot.hasSuffix("\\") {
+            cleanRoot.removeLast()
+        }
+        guard path.hasPrefix(cleanRoot), path.count > cleanRoot.count else { return false }
+        let separator = path[path.index(path.startIndex, offsetBy: cleanRoot.count)]
+        return separator == "/" || separator == "\\"
+    }
+
+    /// Checks whether `cached.transcriptPath` still holds the same conversation
+    /// before running a full directory/config-root search. Codex is excluded
+    /// because an undo writes a new sibling `_<rollout>` file while leaving the
+    /// earlier segment untouched.
+    private func fastLocateCachedFile() async throws -> (
+        path: String, status: RemoteFileStatus, head: Data
+    )? {
+        guard reference.program != .codex, !adapter.readsByQuery,
+            let cached, !cached.transcriptPath.isEmpty
+        else { return nil }
+        if let transcriptRoot, !Self.pathIsUnderRoot(cached.transcriptPath, root: transcriptRoot) {
+            return nil
+        }
+        let status: RemoteFileStatus?
+        do {
+            status = try await files.status(cached.transcriptPath)
+        } catch TransportError.hostFileUnreadable {
+            return nil
+        }
+        guard let status, ClaudeTranscriptLocator.isUsable(status) else { return nil }
+        let head: Data?
+        do {
+            head = try await files.read(
+                path: cached.transcriptPath, from: 0, to: UInt64(adapter.limits.headLength),
+                chunk: adapter.limits.readChunk)
+        } catch TransportError.hostFileUnreadable {
+            return nil
+        }
+        guard let head,
+            TranscriptFollower.sameConversation(cached.head, head, identity: adapter.identity)
+        else { return nil }
+        if reference.program == .claude,
+            ClaudeTranscriptLocator.headVerdict(head, sessionID: reference.sessionID) == false
+        {
+            return nil
+        }
+        return (cached.transcriptPath, status, head)
+    }
+
+    /// Confirms an unchanged cached transcript by checking its size, `head`,
+    /// and `tailAnchor` (4 KiB + 64 B at most) instead of re-downloading and
+    /// re-decoding up to `tailWindow` (1 MiB) of JSONL records.
+    private func confirmUnchangedCache(
+        path: String, preloadedStatus: RemoteFileStatus?, preloadedHead: Data?
+    ) async throws -> Bool {
+        guard !adapter.readsByQuery,
+            !requiresLiveBody,
+            let cached,
+            cached.transcriptPath == path,
+            cached.isWorded(in: localization),
+            let savedAnchor = cached.tailAnchor,
+            !savedAnchor.isEmpty,
+            cached.coverageEnd >= UInt64(savedAnchor.count),
+            cached.hadTransientState != true,
+            !cached.entries.isEmpty,
+            context.activity != .blocked,
+            context.skillNames.isEmpty || reference.program != .codex,
+            (cached.reachedStart
+                || adapter.joinsCachedHistory
+                || cached.coverageEnd - cached.coverageStart <= UInt64(adapter.limits.tailWindow)),
+            !cached.entries.contains(where: { entry in
+                if case .tool(let tool) = entry.content { return tool.status == .running }
+                return false
+            })
+        else { return false }
+
+        let status: RemoteFileStatus?
+        if let preloadedStatus {
+            status = preloadedStatus
+        } else {
+            status = try await files.status(path)
+        }
+        guard let status, let size = status.size, size == cached.coverageEnd else { return false }
+
+        let head: Data?
+        if let preloadedHead {
+            head = preloadedHead
+        } else {
+            head = try await files.read(
+                path: path, from: 0, to: UInt64(adapter.limits.headLength), chunk: adapter.limits.readChunk)
+        }
+        guard let head,
+            TranscriptFollower.sameConversation(cached.head, head, identity: adapter.identity)
+        else { return false }
+
+        let anchor: Data?
+        if UInt64(head.count) == size {
+            anchor = Data(head.suffix(savedAnchor.count))
+        } else {
+            anchor = try await files.read(
+                path: path, from: size - UInt64(savedAnchor.count), to: size,
+                chunk: adapter.limits.readChunk)
+        }
+        guard anchor == savedAnchor else { return false }
+
+        let follower = TranscriptFollower.confirmedFromCache(
+            path: path, limits: adapter.limits, identity: adapter.identity, status: status, head: head,
+            windowStart: cached.coverageStart, readOffset: cached.coverageEnd, tailAnchor: savedAnchor)
+        let movedLayout = hasFollowed && snapshot.phase != .following(path: path)
+        source = follower
+        reducer = nil
+        isCacheBacked = true
+        hasFollowed = true
+        olderUnreadable = false
+        olderSearch = nil
+        needsProjection = false
+        let restored = Self.restoredTranscript(from: cached)
+        update {
+            $0.transcript = restored
+            $0.phase = .following(path: path)
+            $0.readFailure = nil
+            $0.isFromCache = false
+            $0.olderAwaitsUser = cached.olderAwaitsUser ?? false
+            $0.older = cached.reachedStart ? .reachedStart : .available
+            $0.readOffset = cached.coverageEnd
+            if movedLayout { $0.layoutGeneration += 1 }
+        }
+        lastSave = (snapshot.revision, now())
+        return true
+    }
+
+    /// Loads the live tail window and reducer when an operation (`poll` after
+    /// new writes, `loadOlder`, or context re-projection) needs live records
+    /// after a cache-backed open.
+    private func hydrateFromCache() async throws {
+        guard isCacheBacked, let currentPath = source?.path else { return }
+        var follower = TranscriptFollower(path: currentPath, limits: adapter.limits, identity: adapter.identity)
+        guard let lines = try await follower.open(files) else {
+            stop(.notFound(searchedAll: true))
+            return
+        }
+        try await start(follower, lines: lines, hydratingFromCache: true)
+    }
+
     /// Starts over on a freshly opened source: a new reducer over its tail
     /// window. Nothing changes if building it fails.
-    private func start(_ source: any ChatTranscriptSource, lines: [ChatLine]) async throws {
+    private func start(
+        _ source: any ChatTranscriptSource, lines: [ChatLine], hydratingFromCache: Bool = false
+    ) async throws {
         var reducer = adapter.makeReducer(
             ChatReducerSeed(path: source.path, firstLine: try await firstLine(for: source)))
         reducer.append(lines)
@@ -1105,7 +1349,7 @@ actor ChatConversationEngine {
             stop(.unsupportedFormat(format))
             return
         }
-        var movedLayout = hasFollowed || snapshot.readOffset > source.readOffset
+        var movedLayout = (hasFollowed && !hydratingFromCache) || snapshot.readOffset > source.readOffset
         if let cached,
             !TranscriptFollower.sameConversation(cached.head, source.head, identity: adapter.identity)
         {
@@ -1117,6 +1361,7 @@ actor ChatConversationEngine {
         }
         self.source = source
         self.reducer = reducer
+        isCacheBacked = false
         hasFollowed = true
         olderUnreadable = false
         olderSearch = nil
@@ -1134,9 +1379,19 @@ actor ChatConversationEngine {
     /// A tail window that starts past the file's first line still needs it
     /// when the program's records depend on it. Only a file has one.
     private func firstLine(for source: any ChatTranscriptSource) async throws -> ChatLine? {
-        guard adapter.wantsFirstLine, let follower = source as? TranscriptFollower, follower.windowStart != 0,
-            case .line(let data)? = try await files.firstLine(
-                of: follower.path, initialBytes: 64 << 10, limit: 1 << 20)
+        guard adapter.wantsFirstLine, let follower = source as? TranscriptFollower, follower.windowStart != 0 else {
+            return nil
+        }
+        if let head = follower.head {
+            if let newline = head.firstIndex(of: 0x0A) {
+                return ChatLine(offset: 0, data: Data(head[head.startIndex..<newline]))
+            }
+            if let size = follower.knownSize, UInt64(head.count) == size {
+                return nil
+            }
+        }
+        guard case .line(let data)? = try await files.firstLine(
+            of: follower.path, initialBytes: 64 << 10, limit: 1 << 20)
         else { return nil }
         return ChatLine(offset: 0, data: Data(data))
     }
@@ -1146,6 +1401,7 @@ actor ChatConversationEngine {
         endOlderSearch()
         source = nil
         reducer = nil
+        isCacheBacked = false
         update {
             $0.phase = .unavailable(reason)
             $0.readFailure = nil

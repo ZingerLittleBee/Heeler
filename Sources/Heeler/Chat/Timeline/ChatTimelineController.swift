@@ -78,6 +78,7 @@ final class ChatOlderPull {
 @MainActor
 final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     var actions: ChatTimelineActions
+    weak var timelineModel: ChatTimelineModel?
 
     private enum ScrollAnchor {
         case end
@@ -296,6 +297,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
         layout.disclosureAnchor = { [weak self] in self?.disclosureAnchor }
         layout.isPastEnd = { [weak self] in self?.isHeldPastEnd ?? false }
+        layout.onMeasure = { [weak self] id, height in
+            guard let self, let generation = self.applied?.generation else { return }
+            self.timelineModel?.recordMeasuredHeight(height, for: id, generation: generation)
+        }
+        layout.onForgetMeasurements = { [weak self] kept in
+            guard let self, let generation = self.applied?.generation else { return }
+            self.timelineModel?.forgetMeasuredHeights(keeping: kept, generation: generation)
+        }
 
         let registration = UICollectionView.CellRegistration<ChatHostingCell, ChatRowID> {
             [weak self] cell, _, id in
@@ -418,6 +427,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             activeMessageJumpTarget = nil
             latch.reset()
             noteFollowing()
+            if let model = timelineModel,
+                model.measuredConversationGeneration == state.generation,
+                !model.measuredHeights.isEmpty
+            {
+                layout.seedMeasurements(model.measuredHeights)
+            }
             let snapshot = projectedSnapshot()
             UIView.performWithoutAnimation {
                 PerfTrace.span("chat.apply.reload") { dataSource.applySnapshotUsingReloadData(snapshot) }

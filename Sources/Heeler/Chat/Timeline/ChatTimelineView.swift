@@ -4,6 +4,7 @@ import UIKit
 /// SwiftUI's handle on `ChatTimelineController`.
 struct ChatTimelineView: UIViewControllerRepresentable {
     let state: ChatTimelineState
+    var timelineModel: ChatTimelineModel? = nil
     /// Incremented by Jump to Latest (long-press `↓`).
     let jumpRequest: Int
     /// Incremented by Earlier Message (tap `↑`).
@@ -51,6 +52,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> ChatTimelineController {
         let controller = ChatTimelineController(actions: actions)
+        controller.timelineModel = timelineModel
         controller.setTypography(size: textSize, font: font)
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller
@@ -65,6 +67,7 @@ struct ChatTimelineView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: ChatTimelineController, context: Context) {
         controller.actions = actions
+        controller.timelineModel = timelineModel
         controller.setTypography(size: textSize, font: font)
         controller.setTopObstruction(topObstruction)
         bottomEdge.controller = controller

@@ -1143,6 +1143,59 @@ struct ChatConversationEngineTests {
         #expect(await fixture.savedDocument()?.entries.count == 3)
     }
 
+    @Test func reopeningUnchangedCachedConversationSkipsTailBodyDownloadAndHydratesOnAppend() async throws {
+        let fixture = Fixture()
+        await fixture.files.write(Self.lines(0..<30), at: Self.claudePath)
+        let first = fixture.makeEngine()
+        let initial = await fixture.open(first)
+        await first.save(force: true)
+
+        await fixture.files.clearRecords()
+        let reopened = fixture.makeEngine()
+        let restored = await reopened.restore()
+        #expect(restored.isFromCache)
+        #expect(Self.numbers(restored) == Self.numbers(initial))
+
+        let confirmed = await fixture.open(reopened)
+        #expect(confirmed.phase == .following(path: Self.claudePath))
+        #expect(!confirmed.isFromCache)
+        #expect(Self.numbers(confirmed) == Self.numbers(initial))
+        // Fast-locate + anchor confirmation reads only `headLength + anchorLength` (32 + 8 = 40 B),
+        // skipping `home()`, directory listings, and the tail window body.
+        #expect(await fixture.files.listings.isEmpty)
+        #expect(await fixture.bytesRead() <= Self.limits.headLength + Self.limits.anchorLength)
+
+        await fixture.files.clearRecords()
+        let quiet = await fixture.poll(reopened)
+        #expect(quiet.revision == confirmed.revision)
+        #expect(await fixture.bytesRead() == 0)
+
+        await fixture.files.append(Self.lines(30..<32), to: Self.claudePath)
+        let appended = await fixture.poll(reopened)
+        #expect(appended.layoutGeneration == confirmed.layoutGeneration)
+        #expect(Self.numbers(appended).suffix(2) == ["n-30", "n-31"])
+    }
+
+    @Test func firstLineUsesOpenedHeadWithoutExtraRead() async throws {
+        var limits = Self.limits
+        limits.headLength = 128
+        let fixture = Fixture(program: .codex, limits: limits)
+        let meta = #"{"type":"session_meta","payload":{"id":"\#(Self.thread)"}}"#
+        await fixture.files.write(meta + "\n" + Self.lines(0..<30), at: Self.codexPath)
+        await fixture.files.clearRecords()
+        let engine = fixture.makeEngine()
+
+        let opened = await fixture.open(engine)
+
+        #expect(opened.phase == .following(path: Self.codexPath))
+        #expect(opened.transcript.title == meta)
+        // `CodexTranscriptLocator` reads `firstLine` (64 KiB) once during locate;
+        // `ChatConversationEngine.firstLine` reuses `follower.head` instead of
+        // issuing a second 64 KiB `files.firstLine` read.
+        let largeFirstLineReads = await fixture.files.reads.filter { $0.offset == 0 && $0.maxBytes > limits.headLength }
+        #expect(largeFirstLineReads.count == 1)
+    }
+
     // MARK: Sources read by query
 
     private static let recordSession = "s1"

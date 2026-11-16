@@ -156,6 +156,8 @@ extension ConsoleStore {
             },
             read: { [weak self] request in
                 guard let self else { throw TransportError.cancelled }
+                await self.yieldToForegroundChatLoad(on: hostID)
+                try Task.checkCancellation()
                 return try await self.readChanges(request, on: hostID)
             },
             readPatch: { [weak self] request in
