@@ -95,6 +95,8 @@ enum HerdrCoreHostSystem: Equatable, Sendable {
 /// Terminal's record. On a Mac that withholds that process's environment the
 /// foreground's stands in, or there is none (`readTerminalProcesses`). Only the
 /// variables named here are read, on the Host, and `HERDR_*` is never among them.
+/// A tmux Pane's and a Rex terminal's processes are followed the same way, by
+/// their own scopes (`ProcessScope`).
 ///
 /// Claude Code's `<config dir>/sessions/<pid>.json` is read by name, so the
 /// `<pid>.<hash>.key` beside it before the prompt is never read or listed.
@@ -102,6 +104,11 @@ struct HerdrCoreSessionBinder: Sendable {
     enum ProcessScope: Equatable, Sendable {
         case herdrCore
         case tmux(paneID: String, socketPath: String, serverPID: Int)
+        /// A Rex terminal: the session and block every process typed into it
+        /// carries as `REX_SESSION` and `REX_BLOCK`, and the names Rex gave its
+        /// foreground, its name and its first argument's last path part, one
+        /// of which the process read must find on the pid Rex named.
+        case rex(sessionID: String, blockID: String, foregroundNames: Set<String>)
     }
 
     let program: ChatProgram
@@ -359,7 +366,54 @@ struct HerdrCoreSessionBinder: Sendable {
             let withheld = terminal.map(tree.scopeIsUnavailable) ?? tree.scopeIsUnavailable(root)
             guard isOnMacOS, withheld, tree.walkAnswered else { return nil }
             return tree
+        case .rex(let sessionID, let blockID, let foregroundNames):
+            return try await readRexTerminalProcesses(
+                of: record, ask: ask, from: root,
+                sessionID: sessionID, blockID: blockID, foregroundNames: foregroundNames)
         }
+    }
+
+    /// A Rex terminal's processes, from the foreground Rex names, the group
+    /// leader holding its terminal. Rex gives no process of the terminal's
+    /// own, so the foreground's scope is the one to follow. That pid is the
+    /// foreground only while the read finds it under a name Rex gave it: one
+    /// reused since says nothing. A multiplexer run inside the terminal sets
+    /// its own variables for its panes, which keep the terminal's `REX_*`,
+    /// so a process whose tmux or herdr-core variables differ from the
+    /// foreground's is in another terminal. On a Mac that withholds the
+    /// foreground's environment, a walk that answered still says which
+    /// processes are there, and only one carrying none of those variables
+    /// is in scope (rex-compatibility.md).
+    private func readRexTerminalProcesses(
+        of record: HerdrCoreTerminalRecord, ask: ProcessAsk, from root: Int?,
+        sessionID: String, blockID: String, foregroundNames: Set<String>
+    ) async throws -> HerdrCoreTerminalProcesses? {
+        guard let rootPID = record.foreground?.pid ?? root else { return nil }
+        let root = String(rootPID)
+        let nested = HerdrCoreTerminalProcesses.nestedMultiplexerVariables
+        let request = HostProcessReader.Request(
+            pids: [root],
+            readsStart: true,
+            valuesOf: [HerdrCoreTerminalProcesses.rexSessionVariable, HerdrCoreTerminalProcesses.rexBlockVariable]
+                + nested + ask.values,
+            namesOf: ask.namesOf,
+            readsOpenFiles: ask.readsOpenFiles,
+            argumentsAmong: ask.arguments,
+            preservesArgumentOrder: ask.preservesArgumentOrder,
+            descendantsOf: root)
+        let facts = try await processes(request)
+        guard let name = facts[root]?.name, HerdrCoreTerminalProcesses.isNamed(name, oneOf: foregroundNames) else {
+            return nil
+        }
+        var outer: [String: String] = [:]
+        for variable in nested {
+            if case .value(let value)? = facts[root]?.variables[variable] { outer[variable] = value }
+        }
+        let tree = HerdrCoreTerminalProcesses(
+            facts: facts, root: root, scope: .rex(sessionID: sessionID, blockID: blockID, outer: outer))
+        if tree.sharesScope(root) { return tree }
+        guard isOnMacOS, tree.scopeIsUnavailable(root), tree.walkAnswered else { return nil }
+        return tree
     }
 
     private static func isToolOfClaudeCode(_ process: HostProcessReader.Facts?) -> Bool {
@@ -451,6 +505,13 @@ struct HerdrCoreTerminalProcesses: Sendable {
     static let scopeVariable = "HC_SCOPE"
     static let tmuxVariable = "TMUX"
     static let tmuxPaneVariable = "TMUX_PANE"
+    /// What Rex sets for every program in a terminal: its session and block
+    /// ids (Rex 0.1.0-preview.14, rex-compatibility.md).
+    static let rexSessionVariable = "REX_SESSION"
+    static let rexBlockVariable = "REX_BLOCK"
+    /// What a multiplexer Heeler knows sets for the programs in its own
+    /// panes, so a process run in one inside a Rex terminal shows it.
+    static let nestedMultiplexerVariables = [tmuxVariable, tmuxPaneVariable, scopeVariable]
 
     struct TmuxEnvironment: Equatable, Sendable {
         let socketPath: String
@@ -460,6 +521,10 @@ struct HerdrCoreTerminalProcesses: Sendable {
     enum Scope: Equatable, Sendable {
         case herdrCore(String)
         case tmux(paneID: String, socketPath: String, serverPID: Int)
+        /// `outer` is what the terminal's foreground carries of
+        /// `nestedMultiplexerVariables`, which a process in the terminal
+        /// carries too.
+        case rex(sessionID: String, blockID: String, outer: [String: String])
     }
 
     let facts: [String: HostProcessReader.Facts]
@@ -512,6 +577,13 @@ struct HerdrCoreTerminalProcesses: Sendable {
                 let parsed = Self.parseTmuxEnvironment(rawTmux)
             else { return false }
             return parsed == TmuxEnvironment(socketPath: socketPath, serverPID: serverPID)
+        case .rex(let sessionID, let blockID, let outer):
+            guard variables[Self.rexSessionVariable] == .value(sessionID),
+                variables[Self.rexBlockVariable] == .value(blockID)
+            else { return false }
+            return Self.nestedMultiplexerVariables.allSatisfy { name in
+                variables[name] == (outer[name].map(HostProcessReader.Variable.value) ?? .unset)
+            }
         }
     }
 
@@ -522,6 +594,18 @@ struct HerdrCoreTerminalProcesses: Sendable {
             return variables[Self.scopeVariable] == .unavailable
         case .tmux:
             return variables[Self.tmuxVariable] == .unavailable || variables[Self.tmuxPaneVariable] == .unavailable
+        case .rex:
+            return variables[Self.rexSessionVariable] == .unavailable
+                || variables[Self.rexBlockVariable] == .unavailable
+        }
+    }
+
+    /// Whether a process read's `name` is one of `names`: Linux gives the
+    /// kernel's name, cut to 15 bytes.
+    static func isNamed(_ name: String, oneOf names: Set<String>) -> Bool {
+        names.contains { candidate in
+            candidate == name
+                || (candidate.utf8.count > 15 && String(decoding: candidate.utf8.prefix(15), as: UTF8.self) == name)
         }
     }
 
@@ -585,7 +669,10 @@ struct HerdrCoreTerminalProcesses: Sendable {
     ) -> String? {
         let rootInScope = sharesScope(root)
         let allowsWithheldRoot: Bool =
-            if case .tmux = scope { scopeIsUnavailable(root) } else { false }
+            switch scope {
+            case .tmux, .rex: scopeIsUnavailable(root)
+            case .herdrCore, nil: false
+            }
         guard rootInScope || allowsWithheldRoot else { return nil }
         var children: [String: [String]] = [:]
         for pid in descendants where sharesScope(pid) && !skips(facts[pid]) {
