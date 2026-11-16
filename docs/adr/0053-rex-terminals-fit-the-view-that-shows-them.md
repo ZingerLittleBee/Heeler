@@ -38,9 +38,10 @@ each can change without revisiting the rest.
   block before its stream starts: `own_block` with mode `take`, then the
   view's grid asked for as the owner, then `data.connect`. Rex applies an
   owner's size at once, so the stream starts at the view's grid and the first
-  paint is drawn at it, with no notice on the way. The paint waits for the
-  take, about one round trip on the control link; a take with no answer holds
-  it no longer than the input deadline. A take for an attach already painted,
+  paint is drawn at it, with no notice on the way. The paint waits for two
+  round trips on the control link, the take and then the view's grid as its
+  owner, and each waits no longer than the input deadline when it has no
+  answer. A take for an attach already painted,
   as when the pool brings one back or the scene returns, moves the block to
   the view's grid while the screen shows it: the screen keeps the earlier
   layout until the server's grid change, which arrives before the take's
@@ -51,7 +52,11 @@ each can change without revisiting the rest.
   it: one refused, not sent, or with no answer leaves the size where it is,
   and the notice offers Fit to Screen for the rest of the showing. One with no
   answer may have arrived, so it counts as taken for giving back. A take on
-  its own sends nothing while this client owns the block already.
+  its own sends nothing while this client owns the block already. A take that
+  Heeler's own stop of the attach cuts short, before it goes out or while its
+  answer is awaited, did not fail: the stop is Heeler's, as when the screen's
+  pipeline is replaced while it shows, and the attach that replaces it takes
+  the size as it opens. A refusal counts whenever it comes.
 - **No tug of war.** When another client takes the size while the screen
   shows the terminal, Heeler leaves it there: the notice offers Fit to Screen,
   and nothing takes the size back on its own for the rest of the showing, its
@@ -71,8 +76,9 @@ each can change without revisiting the rest.
 - **The tap stays.** The notice and its Fit to Screen stay as they were, as
   the fallback and the way to take the size back within a showing; there is
   no setting and no new control. A tap that goes through lets the showing take
-  the size on its own again, as its next reattach opens. Dismissing the
-  notice keeps the other device's size for the rest of the showing.
+  the size on its own again, as its next reattach opens, unless another
+  client took the size after the tap's take. Dismissing the notice keeps the
+  other device's size for the rest of the showing.
 - **What gives it back.** A size this client took goes back with
   `disown_block` when the screen goes off screen (the user navigates away, or
   the retention pool keeps it off screen), when its scene goes to the
@@ -89,9 +95,13 @@ each can change without revisiting the rest.
   the block to this client because its owner's link dropped, as when the
   device that took it back drops while this client is in line, the block
   stays as the server made it: leaving does not give it up, and a take on its
-  own sends nothing for it, since this client owns it already. A block passed
-  on because its owner let go of it or left with a close frame is given back
-  like any size this client took.
+  own sends nothing for it, since this client owns it already. It stays so
+  only while it is this client's: once its owner changes to another client or
+  to none, as when the device that dropped resumes and gets it back, this
+  client is only in line for it, as for a size it took, and the next showing
+  takes the size again. The Host session follows that change for a block no
+  attach has open. A block passed on because its owner let go of it or left
+  with a close frame is given back like any size this client took.
 - **The notice.** A live terminal whose block another client owns, at a grid
   other than the view's, shows a small notice once that has held for a second
   and no take of its own is out: "Sized for another device", with Fit to
@@ -220,7 +230,8 @@ captures, live tests and fakes, recorded with their sources in
   background and when it comes back.
 - An attach replaced while the screen stays shown, as after a possible
   suspension, gives the size back as the old attach stops and takes it again
-  as the new one opens.
+  as the new one opens, even when the old one's take was cut short by that
+  stop.
 - `RexTerminalConnection.deliver` takes a deadline of silence and a limit in
   all, so input and taking the size wait 10 seconds of silence and a minute in
   all, and giving back two and ten.
@@ -229,6 +240,8 @@ captures, live tests and fakes, recorded with their sources in
   attach ended is made by the next attach of the block on that client, or by
   the session once a link takes the client back. Until then the client stays
   in line, and if the owner lets go meanwhile the block can be passed to it.
+  A block the server handed over is kept as handed over until an owner change
+  the control link carries names another client or none.
 - A new control client claims nothing: the server forgot the old client and
   its claims. A terminal that opens again on one has nothing to give back, and
   takes the size as it opens if its showing still does.
