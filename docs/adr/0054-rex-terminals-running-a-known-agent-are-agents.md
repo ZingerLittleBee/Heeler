@@ -36,8 +36,25 @@ anything on the machine.
   program's. Either way the Agent reads Unknown, and so does an Agent with no
   record. Otherwise its state maps as on herdr-core: `idle` and `done` read
   Idle, `working` Working, `blocked` Blocked, `error` Error, and any other word
-  Unknown. Done stays per device on the other kinds, and Rex keeps no turn
-  count, so a Rex Agent never reads Done.
+  Unknown, but for Done, below.
+- **Done per device.** A Rex Agent reads Done as an Agent of the other kinds
+  does (ADRs 0033 and 0046): it finished a turn this device has not looked at
+  since, and its record says idle or done; opening its terminal looks at it.
+  Rex keeps no turn count and moves a record's `updated_at` on every report,
+  the same report made again included, so a finished turn is named by the
+  report that ended it: its owner and `updated_at`. Each control connection
+  counts, per terminal, the reports it hears that take the root record from
+  working or blocked to done for the same program, and starts a new count when
+  a read finds another record than it held. Within one count a turn ended when
+  the count moved, so the same done reported again ends nothing; across counts
+  (another connection, a relaunch) a record whose time has not moved is the
+  one known, and any other done ended a turn. A program not known to report
+  done ends a turn going from working to idle, as on herdr-core. At first
+  sight a done reads Done and an idle Idle, as nothing says it worked. A
+  report from another owner starts over, so another program's turn is never
+  the one this device looked at. Turns and seen marks stay on this device, in
+  the Host's memory with the server instance, and go with the terminals the
+  server stops listing, another instance and the Host.
 - **Kept current by events.** Each terminal's details read, once per control
   connection, now asks `program_status` after `title` and `process`, gated by
   the response's seq like the other two. Then `program_status_changed` replaces
@@ -52,7 +69,8 @@ anything on the machine.
 - **Fresh on each connection.** A new control connection carries a terminal's
   title, program and directory from the last one on the same server instance
   until it reads them again, as before, but not its status: an Agent reads
-  Unknown until this connection's own read of its terminal answers. A status
+  Unknown until this connection's own read of its terminal answers, and what
+  this device saw of its turns stays. A status
   publishes as soon as it is read or reported, without waiting for the other
   terminals' reads, which hold back their titles, programs and directories
   only. Another server instance
@@ -88,6 +106,12 @@ anything on the machine.
   an exited program's idle, done and error records, and a terminal may host
   another program since.
 - Events cost nothing between reports, and every report raised one in the lab.
+- Only a connection that hears every report can tell the same done made
+  again from a new turn, so the count is kept where each event arrives: one
+  published inventory may stand for several reports. Once reports went
+  unheard the two look alike, and a done whose time moved counts as a turn
+  rather than miss one that ended while the app was away: ADR 0046 counts a
+  turn that starts and ends between two looks too.
 - Opening a Rex Agent as its terminal reuses a detail that already does
   everything Rex supports, and offers nothing Rex cannot serve.
 
@@ -103,6 +127,9 @@ client on the local socket with inert stand-in agents in lab sessions
   connection with session events only received none.
 - Leaving the foreground removed working and blocked records and kept idle,
   done and error ones, whose owner still named the exited process.
+- The same report made again raised another event and moved the record's
+  `updated_at`, a done three times in a row included; a read moved nothing,
+  and matched the event before it.
 - The rule recognised every agent launch typed into a shell, a native Claude
   Code by its first argument (its executable is named for its version) and
   interpreted ones by their script, and read shells and background jobs as
@@ -112,7 +139,9 @@ client on the local socket with inert stand-in agents in lab sessions
   change that printed nothing raised none.
 - `RexProgramStatusLiveTests` carries a lab stand-in's reports through a
   `RexHostSession` into the inventory and the Agent the Console makes of it,
-  and its exit back to a terminal, with Heeler's session only reading.
+  and its exit back to a terminal, with Heeler's session only reading. Its
+  working-then-done moved the connection's count by one and read Done; the
+  same done again moved the time and not the count.
 
 ## Considered options
 
@@ -126,8 +155,13 @@ client on the local socket with inert stand-in agents in lab sessions
 - Opening a Rex Agent in the Agent detail with its Chat and Composer hidden:
   rejected. That detail asks its Host for the Agent's process, presence and
   Changes, which a Rex Host cannot serve, and lacks the size notice.
-- A per-device Done from counting reports while connected: left out. It would
-  miss turns that end while the app is away.
+- A Rex Agent that never reads Done, as first decided: superseded on
+  2026-11-16 by the maintainer's decision that it reads Done as the other
+  kinds' Agents do.
+- Counting reports while connected alone: it would miss turns that end while
+  the app is away, which the record's time covers.
+- The record's time alone: the same done reported again would read Done again
+  while the app watches.
 
 ## Consequences
 
@@ -141,7 +175,12 @@ client on the local socket with inert stand-in agents in lab sessions
 - Heeler's foreground can be stale until the terminal next prints, as
   `process_changed` follows output. An agent prints as it works, so this
   delays an Agent's arrival or departure rather than its status.
+- A program that reports the same done again while no connection hears it
+  reads Done again on this device. An idle Agent seen first, as on a Host
+  just added, reads Idle even if its last turn was never looked at.
 - `RexTerminalDetails` holds the foreground's process id, first argument and
-  script and the root Program Status; `RexAgentRule` reads them; the Rex
-  projection lists Agents and prunes Pins; `HostCapabilities.agentsOpenAsTerminals`
-  routes a Rex Agent's detail and its row's offers.
+  script and the root Program Status with its time and the connection's count
+  (`RexStatusFollow`); `RexAgentRule` reads them; `RexTurnState` keeps Done
+  per device; the Rex projection lists Agents and prunes Pins;
+  `HostCapabilities.agentsOpenAsTerminals` routes a Rex Agent's detail and its
+  row's offers, and that terminal screen reports the Agent as shown.
