@@ -13,12 +13,17 @@ import Foundation
 /// line breaks. A path alone on the line above the words loses the line
 /// break between them, and a path below them moves above them.
 enum ClaudeImagePaste {
-    /// The prompt Claude Code records for a paste of `text`, with each
-    /// `[Image #N]` back as the path it came from, as Chat restores a
-    /// record; nil when no line gives up an image. It assumes Claude Code
-    /// can read every image path, as it can a staged image; one it cannot
-    /// read stays text where it was.
-    static func recordedText(_ text: String) -> String? {
+    struct Paste: Equatable, Sendable {
+        var imagePaths: [String]
+        var recordedText: String
+    }
+
+    /// The image paths Claude Code extracts from a paste of `text` and the
+    /// prompt it records once each `[Image #N]` is put back as its path;
+    /// nil when no line gives up an image. It assumes Claude Code can read
+    /// every image path, as it can a staged image; one it cannot read stays
+    /// text where it was.
+    static func parse(_ text: String) -> Paste? {
         var images: [String] = []
         var lines: [Substring] = []
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -36,8 +41,16 @@ enum ClaudeImagePaste {
             }
         }
         guard !images.isEmpty else { return nil }
-        return (images.joined(separator: " ") + lines.joined(separator: "\n"))
+        let recordedText = (images.joined(separator: " ") + lines.joined(separator: "\n"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Paste(imagePaths: images, recordedText: recordedText)
+    }
+
+    /// The prompt Claude Code records for a paste of `text`, with each
+    /// `[Image #N]` back as the path it came from, as Chat restores a
+    /// record; nil when no line gives up an image.
+    static func recordedText(_ text: String) -> String? {
+        parse(text)?.recordedText
     }
 
     /// Whether a piece of a line reads as a path: quoted, or an absolute

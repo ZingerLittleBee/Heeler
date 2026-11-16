@@ -78,7 +78,7 @@ enum ClaudeTranscriptProjection {
         _ index: ClaudeTranscriptIndex, entryByRecord: [String: ChatEntryID],
         waiting: [UInt64: ChatEntryID] = [:], imageSources: [String: [String]]
     ) -> [ChatRecordedPrompt] {
-        var prompts: [(prompt: ChatRecordedPrompt, rawKey: String)] = []
+        var prompts: [(prompt: ChatRecordedPrompt, rawKey: String, hasImageSources: Bool)] = []
         var fires: [(offset: UInt64, key: String)] = []
         let byPosition = index.recordsByPosition
         for (position, record) in byPosition.enumerated() where !record.isSidechain && record.teamName == nil {
@@ -89,7 +89,8 @@ enum ClaudeTranscriptProjection {
                 prompts.append(
                     (
                         ChatRecordedPrompt(offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid]),
-                        ClaudeTranscriptReducer.echoKey(text)
+                        ClaudeTranscriptReducer.echoKey(text),
+                        false
                     ))
                 continue
             }
@@ -101,14 +102,20 @@ enum ClaudeTranscriptProjection {
                 continue
             }
             guard let raw = typedText(of: record, indexed: index.records) else { continue }
-            let sources = imageSources[record.uuid] ?? []
+            let sources = resolvedImagePaths(for: record, imageSources: imageSources)
             let text = sources.isEmpty ? raw : ChatRecordedPrompt.replacingImagePlaceholders(in: raw, with: sources)
+            let unresolvedPlaceholders =
+                record.kind == .attachment("queued_command")
+                && sources.isEmpty
+                && ChatRecordedPrompt.containsImagePlaceholder(raw)
             prompts.append(
                 (
                     ChatRecordedPrompt(
                         offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid],
-                        pastedImagePaths: ChatRecordedPrompt.isImagePlaceholder(raw) ? sources : nil),
-                    ClaudeTranscriptReducer.echoKey(raw)
+                        pastedImagePaths: ChatRecordedPrompt.isImagePlaceholder(raw) ? sources : nil,
+                        hasUnresolvedImagePlaceholders: unresolvedPlaceholders),
+                    ClaudeTranscriptReducer.echoKey(raw),
+                    !sources.isEmpty
                 ))
         }
         // A queued prompt is recorded first as an enqueue and later as the
@@ -119,53 +126,99 @@ enum ClaudeTranscriptProjection {
         for operation in index.queueOperations.values where operation.operation == "enqueue" {
             guard let content = operation.content, let text = promptText(content) else { continue }
             let key = ClaudeTranscriptReducer.echoKey(text)
-            let delivery = prompts.first { $0.prompt.offset > operation.offset && $0.rawKey == key }?.prompt
+            let deliveryMatch = prompts.first { $0.prompt.offset > operation.offset && $0.rawKey == key }
+            let delivery = deliveryMatch?.prompt
             // The task's own enqueue, which its fire delivers before any Send could.
             if let fire = fires.first(where: { $0.offset > operation.offset && $0.key == key }),
                 fire.offset < delivery?.offset ?? .max
             {
                 continue
             }
+            let hasSources = deliveryMatch?.hasImageSources ?? false
             enqueued.append(
                 ChatRecordedPrompt(
                     offset: operation.offset, text: text, entryID: delivery?.entryID ?? waiting[operation.offset],
                     pastedImagePaths: ChatRecordedPrompt.isImagePlaceholder(text)
-                        ? delivery?.pastedImagePaths ?? [] : nil))
+                        ? delivery?.pastedImagePaths ?? [] : nil,
+                    hasUnresolvedImagePlaceholders: !hasSources && ChatRecordedPrompt.containsImagePlaceholder(text)))
         }
         return (prompts.map(\.prompt) + enqueued).sorted { $0.offset < $1.offset }
+    }
+
+    static func resolvedImagePaths(for record: ClaudeRecord, imageSources: [String: [String]]) -> [String] {
+        if let sources = imageSources[record.uuid], !sources.isEmpty {
+            return sources
+        }
+        return record.attachment?.queuedCommand?.imagePaths ?? []
     }
 
     /// The files a prompt's pasted images came from, by the prompt's uuid, in
     /// file order. A paste that is only an image path is recorded as
     /// `[Image #N]` plus an image block; Claude Code then writes a meta
-    /// record of `[Image: source: <path>]` blocks, one per image, below it,
-    /// after however many attachments the prompt carried.
+    /// record of `[Image: source: <path>]` (or with resize coordinates, or
+    /// `[Image source: <path>]` without dimensions) blocks, one per image,
+    /// below it, after however many attachments the prompt carried.
     private static func imageSources(
         _ byPosition: [ClaudeRecord], indexed: [String: ClaudeRecord]
     ) -> [String: [String]] {
         var sources: [String: [String]] = [:]
         for record in byPosition where record.kind == .user && record.isMeta {
-            let paths = record.texts.compactMap { text -> String? in
-                guard text.hasPrefix(imageSourcePrefix), text.hasSuffix("]") else { return nil }
-                let path = String(text.dropFirst(imageSourcePrefix.count).dropLast())
-                return path.isEmpty ? nil : path
-            }
+            let paths = record.texts.compactMap(imageSourcePath(in:))
             guard !paths.isEmpty else { continue }
             var visited: Set<String> = [record.uuid]
             var parent = record.parentUUID.flatMap { indexed[$0] }
-            while let ancestor = parent, ancestor.isMeta || isAttachment(ancestor.kind),
+            while let ancestor = parent, skipsBeforeImagePrompt(ancestor, indexed: indexed),
                 visited.insert(ancestor.uuid).inserted
             {
                 parent = ancestor.parentUUID.flatMap { indexed[$0] }
             }
-            guard let prompt = parent, !visited.contains(prompt.uuid), prompt.kind == .user, prompt.imageCount > 0
+            guard let prompt = parent, !visited.contains(prompt.uuid),
+                carriesPastedImages(prompt, indexed: indexed)
             else { continue }
             sources[prompt.uuid, default: []].append(contentsOf: paths)
         }
         return sources
     }
 
-    private static let imageSourcePrefix = "[Image: source: "
+    private static let imageSourcePrefixes = ["[Image: source: ", "[Image source: "]
+
+    static func imageSourcePath(in text: String) -> String? {
+        guard text.hasSuffix("]"),
+            let prefix = imageSourcePrefixes.first(where: { text.hasPrefix($0) })
+        else { return nil }
+        var body = Substring(text.dropFirst(prefix.count).dropLast())
+        if let match = body.firstMatch(
+            of: #/, original [0-9]+x[0-9]+, displayed at [0-9]+x[0-9]+\. Multiply coordinates by [0-9.]+ to map to original image\.$/#
+        ) {
+            body = body[..<match.range.lowerBound]
+        }
+        return body.isEmpty ? nil : String(body)
+    }
+
+    private static func skipsBeforeImagePrompt(_ record: ClaudeRecord, indexed: [String: ClaudeRecord]) -> Bool {
+        if record.isMeta { return true }
+        if record.kind == .attachment("queued_command"),
+            let queued = record.attachment?.queuedCommand, !queued.isMeta,
+            queued.sourceUUID.flatMap({ indexed[$0] }) == nil
+        {
+            return false
+        }
+        return isAttachment(record.kind)
+    }
+
+    private static func carriesPastedImages(_ record: ClaudeRecord, indexed: [String: ClaudeRecord]) -> Bool {
+        switch record.kind {
+        case .user:
+            return !record.isMeta && record.imageCount > 0
+        case .attachment("queued_command"):
+            guard let queued = record.attachment?.queuedCommand, !queued.isMeta,
+                queued.sourceUUID.flatMap({ indexed[$0] }) == nil
+            else { return false }
+            return queued.imageCount > 0
+        default:
+            return false
+        }
+    }
 
     /// Claude Code 2.1.301 answers a `/command` it doesn't know, such as a
     /// skill added after it started, with only these `informational`
@@ -1008,6 +1061,7 @@ private struct Builder {
         // `fCe`).
         if let source = queued.sourceUUID, indexed[source] != nil { return }
         let entryID = "user:\(queued.sourceUUID ?? record.uuid)"
+        let imagePaths = ClaudeTranscriptProjection.resolvedImagePaths(for: record, imageSources: imageSources)
         switch ClaudeUserText.classify(queued.text) {
         case .prompt(let prompt):
             guard ClaudeTranscriptProjection.isHuman(queued.originKind) else {
@@ -1017,14 +1071,16 @@ private struct Builder {
             guard !prompt.isEmpty || queued.imageCount > 0 else { return }
             add(
                 entryID, at: record,
-                .user(ChatUserMessage(text: prompt, imageCount: queued.imageCount, delivery: .steered)))
+                .user(
+                    ChatUserMessage(
+                        text: prompt, imageCount: queued.imageCount, imagePaths: imagePaths, delivery: .steered)))
         case .command(let invocation):
             add(
                 entryID, at: record,
                 .user(
                     ChatUserMessage(
-                        text: invocation.displayText, imageCount: queued.imageCount, command: invocation,
-                        delivery: .steered)))
+                        text: invocation.displayText, imageCount: queued.imageCount, imagePaths: imagePaths,
+                        command: invocation, delivery: .steered)))
         case .taskNotification(let notification):
             guard !notificationKeys.contains(Self.key(of: notification)) else { return }
             add("notice:\(record.uuid)", at: record, .notice(Self.notice(for: notification)))

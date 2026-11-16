@@ -531,6 +531,22 @@ struct ClaudeTranscriptReducerTests {
         #expect(messages.map(\.imagePaths) == [["/tmp/one.png"], []])
     }
 
+    @Test("Resized and dimension-less image source notes keep only the file path")
+    func resizedAndDimensionlessImageSourcePaths() {
+        let staged = "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.0puL6rLo/stage-ab86ed77/image.jpg"
+        let transcript = ClaudeSample.transcript(
+            #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":[{"type":"text","text":"[Image #1] [Image #2]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            {"type":"user","uuid":"m1","parentUuid":"p1","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: source: \#(staged), original 1320x2868, displayed at 920x2000. Multiply coordinates by 1.43 to map to original image.]"},{"type":"text","text":"[Image source: /tmp/a, b.png]"}]}}
+            {"type":"user","uuid":"p2","parentUuid":"m1","message":{"role":"user","content":[{"type":"text","text":"[Image #3]"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            {"type":"user","uuid":"m2","parentUuid":"p2","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: original 1320x2868, displayed at 920x2000. Multiply coordinates by 1.43 to map to original image.]"}]}}
+            """#)
+        let messages = transcript.entries.compactMap { entry -> ChatUserMessage? in
+            if case .user(let message) = entry.content { message } else { nil }
+        }
+        #expect(messages.map(\.imagePaths) == [[staged, "/tmp/a, b.png"], []])
+    }
+
     // MARK: - Subagent and first probe
 
     private struct SubagentMeta: Decodable {

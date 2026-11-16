@@ -1022,18 +1022,32 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     /// not say (Claude Code's enqueue). Nil for any other prompt. A send of
     /// one path matches such a prompt when it names one of them.
     var pastedImagePaths: [String]?
+    /// Whether `text` still holds `[Image #N]` placeholders because the
+    /// record has not named their files yet (a Claude Code `enqueue`, or a
+    /// `queued_command` absorbed mid-turn without source notes).
+    var hasUnresolvedImagePlaceholders: Bool
 
-    init(offset: UInt64, text: String, entryID: ChatEntryID? = nil, pastedImagePaths: [String]? = nil) {
+    init(
+        offset: UInt64, text: String, entryID: ChatEntryID? = nil, pastedImagePaths: [String]? = nil,
+        hasUnresolvedImagePlaceholders: Bool = false
+    ) {
         self.offset = offset
         self.text = text
         self.entryID = entryID
         self.pastedImagePaths = pastedImagePaths
+        self.hasUnresolvedImagePlaceholders = hasUnresolvedImagePlaceholders
     }
 
     /// Whether `text` is one `[Image #N]` placeholder and nothing else.
     static func isImagePlaceholder(_ text: String) -> Bool {
         guard let pattern = try? Regex(#"\[Image #[0-9]+\]"#) else { return false }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).wholeMatch(of: pattern) != nil
+    }
+
+    /// Whether `text` contains at least one `[Image #N]` placeholder.
+    static func containsImagePlaceholder(_ text: String) -> Bool {
+        guard let pattern = try? Regex(#"\[Image #[0-9]+\]"#) else { return false }
+        return text.contains(pattern)
     }
 
     /// The path a sent text names when it is exactly one path, the way
