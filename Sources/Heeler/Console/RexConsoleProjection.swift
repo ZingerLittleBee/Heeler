@@ -66,6 +66,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// The Panes this device shows now, whose finished turns are seen as
     /// they are noted.
     private var shownAgents: Set<String> = []
+    /// What says a Chat check could answer differently now: every terminal
+    /// with each new list after none and with a newly known kernel, one
+    /// terminal with a change a check reads (`TerminalSessionSignature`) and
+    /// with a pick made or dropped here.
+    private var inventoryReplacements: UInt64 = 0
+    private var sessionEventCounts: [String: UInt64] = [:]
+    /// Picks a send guard dropped, which a check already under way may still
+    /// hold, by terminal.
+    private var droppedPicks: [String: Set<String>] = [:]
 
     init(
         host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
@@ -195,18 +204,22 @@ final class RexConsoleProjection: ConsoleHostProjection {
                     pins.removePins(hostID: host.id)
                     lastKnownAgentsByPane = [:]
                     shownAgents = []
+                    sessionEventCounts = [:]
+                    droppedPicks = [:]
                 }
             }
             self.server = server
             inventoryCore = server.instanceID
-            // Turns and seen marks this device kept of another instance, in
-            // this run or an earlier one, go with it.
+            // Turns, seen marks and picks this device kept of another
+            // instance, in this run or an earlier one, go with it.
             memory.noteCore(server.instanceID, for: host.id)
             learnKernel()
         case .inventory(let inventory):
             guard status == .connected, server != nil else { return }
+            noteSessionEvidence(in: inventory, previous: self.inventory)
             self.inventory = inventory
             noteTurns(in: inventory)
+            notePicks(in: inventory)
             rebuildRows()
         }
         onChange()
@@ -230,6 +243,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             guard !hasEnded, kernel == nil, let found else { return }
             kernel = found
             memory.noteKernel(found, for: host.id)
+            // A check made before could read a Mac's processes as another system's.
+            inventoryReplacements &+= 1
             onChange()
         }
     }
@@ -327,6 +342,245 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func paneExists(_ paneID: String) async throws -> Bool {
         terminalsByPane[paneID] != nil
+    }
+
+    // MARK: Process-bound Chat (ADRs 0034 and 0054)
+
+    let usesProcessBoundChat = true
+
+    /// Another instance's terminals are other Agents, whose Transcripts are
+    /// cached apart.
+    var chatCacheScope: String? {
+        memory.coreID(for: host.id).map(ChatCacheKey.rexScope(instanceID:))
+    }
+
+    func sessionEventRevision(of paneID: String) -> UInt64 {
+        inventoryReplacements &+ (sessionEventCounts[paneID] ?? 0)
+    }
+
+    func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
+        HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
+    }
+
+    /// One exec from the foreground Rex names, then the program's own files.
+    /// A program a Rex Host does not bind, or a terminal no longer listed,
+    /// cannot tell.
+    func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
+        guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
+        guard HostCapabilities.rexChatPrograms.contains(program), let address = RexPaneAddress(paneID: paneID),
+            let details = listedDetails(at: address), let activeServer = server
+        else { return .unavailable(chatCannotTell(program)) }
+        return try await chatBinder(at: address, details: details, program: program, server: activeServer)
+            .check(chatRecord(at: address, details: details))
+    }
+
+    func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
+        guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID),
+            let details = listedDetails(at: address), let activeServer = server
+        else { return nil }
+        let binder = chatBinder(at: address, details: details, program: .claude, server: activeServer)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(
+            namesOf: [ChatTranscriptOffVariable.childSession.rawValue],
+            arguments: ClaudePermissionMode.argumentWords, preservesArgumentOrder: true)
+        guard
+            let tree = try await binder.readTerminalProcesses(of: chatRecord(at: address, details: details), ask: ask),
+            let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid],
+            inventoryCore == activeServer.instanceID
+        else { return nil }
+        return ClaudePermissionMode.Launch(pid: pid, facts: facts)
+    }
+
+    func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer {
+        guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
+        guard HostCapabilities.rexChatPrograms.contains(program), let address = RexPaneAddress(paneID: paneID),
+            let details = listedDetails(at: address), let activeServer = server
+        else { return .noProcess }
+        let answer = try await chatBinder(at: address, details: details, program: program, server: activeServer)
+            .candidates(of: chatRecord(at: address, details: details))
+        guard case .listed(var list) = answer else { return answer }
+        list.core = activeServer.instanceID
+        return .listed(list)
+    }
+
+    /// Kept on this device for the terminal and its server instance, with
+    /// the foreground and Agent kind it was made on: nothing is written on
+    /// the Host or the server.
+    func writeChatPick(
+        _ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String
+    ) async throws {
+        guard
+            let value = HerdrCoreSessionHint.pickLabelValue(
+                session: candidate.sessionID, file: candidate.file, pid: list.pid, start: list.start)
+        else { throw TransportError.cancelled }
+        guard let activeServer = server, inventoryCore == activeServer.instanceID,
+            list.core == nil || list.core == activeServer.instanceID
+        else { throw TransportError.rexServerGone }
+        guard let address = RexPaneAddress(paneID: paneID), let details = listedDetails(at: address),
+            let kind = RexAgentRule.agentKind(in: details)
+        else { throw TransportError.cancelled }
+        droppedPicks[paneID]?.remove(value)
+        memory.setRexChatPick(
+            HerdrCoreHostMemory.RexChatPick(label: value, foregroundPID: details.processID, kind: kind),
+            of: paneID, for: host.id)
+        sessionEventCounts[paneID, default: 0] &+= 1
+        onChange()
+    }
+
+    /// A pick still kept is checked once more, which forgets it if it no
+    /// longer holds.
+    func settleChatPick(paneID: String, program: ChatProgram) {
+        guard memory.rexChatPicks(for: host.id)[paneID] != nil else { return }
+        Task { [weak self] in
+            _ = try? await self?.checkChatSession(paneID: paneID, program: program)
+        }
+    }
+
+    /// A send guard's word that the pick no longer holds: it goes from this
+    /// device at once, and a check already under way finds it dropped.
+    func dropChatPick(paneID: String, scope: String?, program _: ChatProgram) {
+        guard chatCacheScope == scope, let pick = memory.rexChatPicks(for: host.id)[paneID] else { return }
+        droppedPicks[paneID, default: []].insert(pick.label)
+        memory.setRexChatPick(nil, of: paneID, for: host.id)
+        sessionEventCounts[paneID, default: 0] &+= 1
+        // The guard is still on its way out; the Console hears of it after.
+        Task { [weak self] in self?.onChange() }
+    }
+
+    private func chatBinder(
+        at address: RexPaneAddress, details: RexTerminalDetails, program: ChatProgram,
+        server activeServer: RexServerStatus
+    ) -> HerdrCoreSessionBinder {
+        let session = session
+        let paneID = address.paneID
+        let instance = activeServer.instanceID
+        return HerdrCoreSessionBinder(
+            program: program,
+            processes: { request in try await Self.reads(session).readProcesses(request) },
+            files: chatHostFiles(),
+            clearLabels: { stale in await self.clearStalePick(stale, at: paneID, on: instance) },
+            currentLabels: { await self.pickLabels(at: paneID, on: instance) },
+            isDroppedPick: { value in await self.droppedPicks[paneID]?.contains(value) == true },
+            hostSystem: HerdrCoreHostSystem(kernel: kernel),
+            processScope: .rex(
+                sessionID: address.sessionID, blockID: address.blockID,
+                foregroundNames: Self.foregroundNames(details)))
+    }
+
+    /// What Rex named of a terminal's foreground: its name, and its first
+    /// argument's last path part.
+    private static func foregroundNames(_ details: RexTerminalDetails) -> Set<String> {
+        let firstArgument = details.argv0.flatMap { $0.split(separator: "/").last.map(String.init) }
+        return Set([details.program, firstArgument].compactMap { $0 }.filter { !$0.isEmpty })
+    }
+
+    private func chatRecord(at address: RexPaneAddress, details: RexTerminalDetails) -> HerdrCoreTerminalRecord {
+        HerdrCoreTerminalRecord(
+            rexTerminal: details, paneID: address.paneID,
+            chatPick: memory.rexChatPicks(for: host.id)[address.paneID]?.label)
+    }
+
+    private func listedDetails(at address: RexPaneAddress) -> RexTerminalDetails? {
+        inventory?.sessions.first { $0.id == address.sessionID }?.terminals
+            .first { $0.blockID == address.blockID }?.details
+    }
+
+    /// The terminal's pick as it stands now; nil once its server or the
+    /// terminal is gone, which says nothing newer.
+    private func pickLabels(at paneID: String, on instance: String) -> [String: String]? {
+        guard inventoryCore == instance, let address = RexPaneAddress(paneID: paneID),
+            listedDetails(at: address) != nil
+        else { return nil }
+        return memory.rexChatPicks(for: host.id)[paneID].map { [HerdrCoreSessionHint.pickLabel: $0.label] } ?? [:]
+    }
+
+    /// A pick the binder found stale goes, if it is still the one kept. The
+    /// check that found it already answers without it.
+    private func clearStalePick(_ stale: [String: String], at paneID: String, on instance: String) {
+        guard inventoryCore == instance, let value = stale[HerdrCoreSessionHint.pickLabel],
+            memory.rexChatPicks(for: host.id)[paneID]?.label == value
+        else { return }
+        memory.setRexChatPick(nil, of: paneID, for: host.id)
+    }
+
+    /// What a check reads of a terminal from the inventory: its foreground
+    /// and the Program Status its programs reported. A title, and when Rex
+    /// took a report, say nothing a check reads.
+    private struct TerminalSessionSignature: Equatable {
+        let processID: Int?
+        let program: String?
+        let argv0: String?
+        let script: String?
+        let directory: String?
+        let state: String?
+        let app: String?
+        let ownerProcessID: Int?
+        let ownerName: String?
+
+        init(_ details: RexTerminalDetails) {
+            processID = details.processID
+            program = details.program
+            argv0 = details.argv0
+            script = details.script
+            directory = details.directory
+            state = details.status?.state
+            app = details.status?.app
+            ownerProcessID = details.status?.ownerProcessID
+            ownerName = details.status?.ownerName
+        }
+    }
+
+    private static func signatures(in inventory: RexInventory) -> [String: TerminalSessionSignature] {
+        var signatures: [String: TerminalSessionSignature] = [:]
+        for session in inventory.sessions {
+            for terminal in session.terminals {
+                signatures[RexPaneAddress(sessionID: session.id, blockID: terminal.blockID).paneID] =
+                    TerminalSessionSignature(terminal.details)
+            }
+        }
+        return signatures
+    }
+
+    /// Rex says nothing of a process that took another's pid under the same
+    /// name, of one that ran another program in place, or of a new file, so
+    /// those wait for the next change it does say (rex-compatibility.md).
+    private func noteSessionEvidence(in inventory: RexInventory, previous: RexInventory?) {
+        let current = Self.signatures(in: inventory)
+        let picks = memory.rexChatPicks(for: host.id)
+        droppedPicks = droppedPicks.filter { current[$0.key] != nil }
+        for (paneID, dropped) in droppedPicks {
+            let kept = dropped.filter { $0 == picks[paneID]?.label }
+            droppedPicks[paneID] = kept.isEmpty ? nil : kept
+        }
+        guard let previous else {
+            inventoryReplacements &+= 1
+            return
+        }
+        let prior = Self.signatures(in: previous)
+        sessionEventCounts = sessionEventCounts.filter { current[$0.key] != nil }
+        for (paneID, signature) in current where prior[paneID] != signature {
+            sessionEventCounts[paneID, default: 0] &+= 1
+        }
+    }
+
+    /// A pick holds while its terminal runs what it was made on: one with
+    /// another foreground process, or another program, voids it, as a
+    /// relaunch ends a turn's Done. A terminal whose foreground this link
+    /// has yet to read says neither.
+    private func notePicks(in inventory: RexInventory) {
+        let picks = memory.rexChatPicks(for: host.id)
+        guard !picks.isEmpty else { return }
+        for session in inventory.sessions {
+            for terminal in session.terminals {
+                let paneID = RexPaneAddress(sessionID: session.id, blockID: terminal.blockID).paneID
+                guard let pick = picks[paneID] else { continue }
+                let details = terminal.details
+                let anotherProcess = details.processID.map { $0 != pick.foregroundPID } ?? false
+                let anotherProgram = details.program != nil && RexAgentRule.agentKind(in: details) != pick.kind
+                if anotherProcess || anotherProgram {
+                    memory.setRexChatPick(nil, of: paneID, for: host.id)
+                }
+            }
+        }
     }
 
     // MARK: Actions

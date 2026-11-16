@@ -12,9 +12,26 @@ import Foundation
 /// ids belong to one run of the server as addresses belong to one core, and so
 /// do its Panes' turns and seen marks (ADR 0046), which go with the instance.
 /// A Rex Host keeps its server instance and its terminals' turns and seen
-/// marks the same way (ADR 0054).
+/// marks the same way (ADR 0054), and the conversation the user picked for a
+/// terminal's Agent, which a tmux Host keeps on the Pane: nothing is written
+/// on a Rex Host, so the pick stays on this device.
 @MainActor
 final class HerdrCoreHostMemory {
+    /// A Rex terminal's pick (ADR 0034): the `heeler.chat` value, with the
+    /// foreground and the Agent kind it was made on, so another program in
+    /// the terminal voids it as the inventory says so.
+    struct RexChatPick: Codable, Equatable, Sendable {
+        let label: String
+        let foregroundPID: Int?
+        let kind: String
+
+        init(label: String, foregroundPID: Int?, kind: String) {
+            self.label = label
+            self.foregroundPID = foregroundPID
+            self.kind = kind
+        }
+    }
+
     private struct Entry: Codable, Equatable {
         var coreID: String?
         /// What the locator prints as `kernel` (`uname -s` on Unix, `Windows` on
@@ -26,6 +43,8 @@ final class HerdrCoreHostMemory {
         var tmuxTurns: [String: TmuxTurnState] = [:]
         /// A Rex Host's, by pane id.
         var rexTurns: [String: RexTurnState] = [:]
+        /// A Rex Host's picks, by pane id.
+        var rexChatPicks: [String: RexChatPick] = [:]
 
         init(coreID: String? = nil) {
             self.coreID = coreID
@@ -40,6 +59,7 @@ final class HerdrCoreHostMemory {
             turns = try fields.decodeIfPresent([String: HerdrCoreTurnState].self, forKey: .turns) ?? [:]
             tmuxTurns = try fields.decodeIfPresent([String: TmuxTurnState].self, forKey: .tmuxTurns) ?? [:]
             rexTurns = try fields.decodeIfPresent([String: RexTurnState].self, forKey: .rexTurns) ?? [:]
+            rexChatPicks = try fields.decodeIfPresent([String: RexChatPick].self, forKey: .rexChatPicks) ?? [:]
         }
     }
 
@@ -138,12 +158,28 @@ final class HerdrCoreHostMemory {
         save()
     }
 
-    /// The terminals a Rex server lists: any other's turns are forgotten.
+    /// The terminals a Rex server lists: any other's turns and pick are
+    /// forgotten.
     func retainRexPanes(_ paneIDs: Set<String>, for hostID: Host.ID) {
         guard var entry = entries[hostID] else { return }
         let retained = entry.rexTurns.filter { paneIDs.contains($0.key) }
-        guard retained != entry.rexTurns else { return }
+        let picks = entry.rexChatPicks.filter { paneIDs.contains($0.key) }
+        guard retained != entry.rexTurns || picks != entry.rexChatPicks else { return }
         entry.rexTurns = retained
+        entry.rexChatPicks = picks
+        entries[hostID] = entry
+        save()
+    }
+
+    func rexChatPicks(for hostID: Host.ID) -> [String: RexChatPick] {
+        entries[hostID]?.rexChatPicks ?? [:]
+    }
+
+    /// Keeps `pick` for the terminal, or forgets its pick when nil.
+    func setRexChatPick(_ pick: RexChatPick?, of paneID: String, for hostID: Host.ID) {
+        var entry = entries[hostID] ?? Entry()
+        guard entry.rexChatPicks[paneID] != pick else { return }
+        entry.rexChatPicks[paneID] = pick
         entries[hostID] = entry
         save()
     }

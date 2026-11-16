@@ -209,6 +209,14 @@ extension HostCapabilities {
     /// permissions and questions from cards, and the colored one followed `/clear`.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
+    /// The programs a Rex Host's Chat binds, where nothing is installed on the Host
+    /// (ADR 0034, rex-compatibility.md): Claude Code and Codex, each from its own
+    /// process and files. Rex 0.1.0-preview.14 on macOS confirmed nothing more for
+    /// Grok Build, Oh My Pi or agy, and Pi and OpenCode bind only with Heeler's
+    /// extension or plugin, so none of those is offered. Chat on a Rex Host stays
+    /// off while `init` says so.
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex]
+
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
     /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
