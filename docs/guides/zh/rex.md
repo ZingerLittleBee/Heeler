@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at 6e189266 -->
+<!-- Translated from docs/guides/rex.md at 16313004 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -61,11 +61,21 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 - **Workspaces、Tabs 与 Panes：** 按 Rex 自身的顺序，每个 Rex 会话（session）是一个 Workspace，每个窗口（window）是一个 Tab，每个终端是一个 Pane。会话中不属于任何窗口的终端共用一个名为 **Detached** 的 Tab。没有终端的会话不会列出。
-- **只有 Terminals：** Rex 的终端只出现在 **Terminals** 中，从不出现在 **Agents** 中，即使终端里运行着编程 Agent。标题、程序与目录会随 Rex 中的变化同步更新。
+- **Agents 与 Terminals：** 程序为 Claude Code、Codex 或 Heeler 认识的其他编程 Agent 的终端显示在 **Agents** 中，并带有该 Agent 向 Rex 上报的状态。Shell 和其他程序显示在 **Terminals** 中；Agent 退出后，终端会回到 **Terminals**。标题、程序与目录会随 Rex 中的变化同步更新。
+
+| 状态 | 含义 |
+| --- | --- |
+| **Working** | 正在运行一轮对话。 |
+| **Idle** | 在提示符处等待，或已完成一轮对话。Rex 的 Agent 不会显示 **Done**。 |
+| **Blocked** | 等待你的回答。 |
+| **Error** | 上报了错误，并与 **Blocked** 一起排序。 |
+| **Unknown** | Heeler 连接后尚未上报状态，或最近一次上报来自一个已经退出的程序。 |
+
+作为 Rex 终端自身命令（而不是从其 Shell）启动的 Agent，以及用 `exec` 启动的 Agent，会留在 **Terminals** 中。Heeler 要等终端下一次输出时才能看到其程序的变化，因此 Agent 出现在 **Agents** 中或从中离开可能会稍有延迟。
 
 ## 使用终端
 
-在 **Terminals** 中轻点一个终端即可打开。你操作期间，其他 Rex 客户端会继续显示它：
+在 **Terminals** 中轻点一个终端，或在 **Agents** 中轻点一个 Agent，即可打开。Agent 会以其终端打开，没有 Chat 和 Composer；如果打开期间 Agent 退出，会显示 **Agent Gone**，终端回到 **Terminals**。你操作期间，其他 Rex 客户端会继续显示它：
 
 - **打开：** 终端会在 Rex 重绘完屏幕和历史记录后显示，因此在较慢的连接上，较长的历史记录可能需要几秒钟。持续输出的程序（例如 spinner）在暂停之前，可能有几行重复或错位；暂停后 Heeler 会重新绘制。
 - **输入与粘贴：** 在 Text 或 Keys 模式下输入、轻点 **Paste**，或发送 Snippet。无论终端尺寸由哪台设备设定，你都可以输入。你输入的内容按顺序到达终端，Heeler 绝不会重复发送：如果连接在 Rex 回复前断开，终端会显示 **Connection dropped** 和 **Reattach**，此后输入的内容都没有发送。Heeler 重新连接期间输入的按键同样不会发送；终端会重新连接并重新绘制。过大、无法一次发送的粘贴会被阻止而不会拆分；请分几次粘贴。
@@ -91,7 +101,7 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。没有设备�
 
 ## 尚未支持的功能
 
-- **没有 Agent：** Rex 没有 Agent Status、Chat、Composer、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
+- **Agent 只显示状态：** Rex 没有 Chat、Composer、Stop、Changes、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
 - **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
 - **Rex 不支持上传、Worktrees、Host Helper、扫码配对与 Add by Name。**
 
