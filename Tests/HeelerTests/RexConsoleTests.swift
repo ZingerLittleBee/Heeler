@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Synchronization
 import Testing
 
@@ -324,6 +325,60 @@ struct RexConsoleTests {
         #expect(!store.pins.isPinned(hostID: rex.id, paneID: solo))
     }
 
+    /// A Rex terminal opened from Terminals whose shell starts a known agent
+    /// stays on its screen: that Agent opens as this same screen (ADR 0054),
+    /// so leaving for it would only drop the connection and give back a size
+    /// the user took.
+    @Test func aRexTerminalThatStartsAnAgentStaysOnItsScreen() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let servers = await served(world)
+        let console = store(servers: servers)
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals with their details") {
+            console.terminals.count == 5 && console.terminals.first?.title == "make test"
+        }
+        let shell = try #require(console.terminals.first)
+        #expect(!shell.isAgent)
+        let defaults = try #require(UserDefaults(suiteName: "rex-shell-\(UUID().uuidString)"))
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults), zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: SnippetStore(defaults: defaults))
+        let left = SelectedAgents()
+        let controller = UIHostingController(
+            rootView: RexLiveShell(
+                console: console, terminal: shell, corePin: console.corePin(on: rex.id), settings: settings,
+                activity: AppActivityCoordinator()
+            ) { left.ids.append($0) }
+            .defaultAppStorage(defaults))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        try await waitUntil("the screen's connection") {
+            window.layoutIfNeeded()
+            return console.terminalConnections.entries.count == 1
+        }
+
+        await servers[0].push(
+            "block_event",
+            blockEvent("process_changed", ["foreground": ["pid": 5150, "name": "codex", "argv0": "codex", "cwd": "/home/dev/app"]]),
+            session: "session:studio")
+        try await waitUntil("the shell listed as an Agent") {
+            console.agents.count == 1 && console.terminals.first { $0.id == shell.id }?.isAgent == true
+        }
+        // The frames in which a screen leaves for an Agent its shell started.
+        for _ in 0..<20 {
+            window.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(left.ids.isEmpty)
+        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [shell.paneID])
+        await hideTestWindowWhenSettled(window)
+        window.rootViewController = nil
+    }
+
     /// Another server instance on the socket leaves every detail open on the
     /// last one's terminals, as another tmux server does.
     @Test func anotherServerLeavesOpenDetails() async throws {
@@ -454,5 +509,38 @@ struct RexConsoleTests {
         #expect(issueHostIDs().contains(rex.id))
         #expect(issueHostIDs(filter: [rex.id]).contains(rex.id))
         #expect(!issueHostIDs(filter: [tmux.id]).contains(rex.id))
+    }
+}
+
+/// The Agents a terminal's screen left for, in order.
+@MainActor
+private final class SelectedAgents {
+    var ids: [ConsoleAgent.ID] = []
+}
+
+/// A Rex terminal's screen built as the Terminals list builds it, its row
+/// read live from the store.
+private struct RexLiveShell: View {
+    let console: ConsoleStore
+    let terminal: ConsoleTerminal
+    let corePin: TerminalCorePin
+    let settings: TerminalSettings
+    let activity: AppActivityCoordinator
+    let onSelectAgent: (ConsoleAgent.ID) -> Void
+
+    var body: some View {
+        NavigationStack {
+            WorkspaceTerminalDetailView(
+                terminal: console.terminals.first(where: { $0.id == terminal.id }) ?? terminal,
+                console: console,
+                corePin: corePin,
+                settings: settings,
+                activity: activity,
+                onSelectAgent: onSelectAgent,
+                onSelectTerminal: { _ in },
+                onBack: {})
+        }
+        // A hosting controller has no SwiftUI scene to say so.
+        .environment(\.scenePhase, .active)
     }
 }

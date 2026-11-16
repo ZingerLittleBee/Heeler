@@ -1715,7 +1715,6 @@ struct ConsoleView: View {
             },
             keyboardHandoff: keyboardHandoff,
             agentSurface: detailSurface,
-            leavesForStartedAgent: false,
             onBack: { clearSelection() })
             .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
     }

@@ -22,9 +22,6 @@ struct WorkspaceTerminalDetailView: View {
     var keyboardInset: TerminalKeyboardInset? = nil
     /// Where Back goes: the Console, or the Agent this was pushed over.
     var backTitle = String(localized: "Back to Console")
-    /// Whether a shell that starts an Agent leaves for that Agent's detail.
-    /// An Agent shown as its terminal is that detail already (ADR 0054).
-    var leavesForStartedAgent = true
     let onBack: () -> Void
 
     @State private var ownerID = UUID()
@@ -87,10 +84,14 @@ struct WorkspaceTerminalDetailView: View {
         return entry
     }
 
-    /// The Agent this shell has started. Another core's Agent at this
-    /// address is no Agent of this Terminal's.
+    /// The Agent this shell has started, which the screen leaves for. Another
+    /// core's Agent at this address is no Agent of this Terminal's. An Agent
+    /// that opens on its terminal, a Rex one, is this screen already
+    /// (ADR 0054), opened from either list: the screen stays, with its
+    /// connection and the size the user took for it.
     private var startedAgentID: ConsoleAgent.ID? {
-        guard leavesForStartedAgent, let agentID = terminal.agentID,
+        guard let agentID = terminal.agentID,
+            !console.capabilities(for: terminal.hostID).agentsOpenAsTerminals,
             !console.hasLeftCore(corePin, on: terminal.hostID)
         else { return nil }
         return agentID
