@@ -60,7 +60,7 @@ If the Host's page reads **Rex** with **Socket found, but this account cannot us
 Heeler shows your Rex layout as it is and changes nothing in it:
 
 - **Workspaces, Tabs, and Panes:** Each Rex session is a Workspace, each window is a Tab, and each terminal is a Pane, in Rex's order. A session's terminals that are in none of its windows share a Tab named **Detached**. A session with no terminal is not listed.
-- **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. Titles, programs, and directories follow Rex as they change.
+- **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. A session whose terminals are all Agents appears in **Agents** only. Titles, programs, and directories follow Rex as they change.
 
 | Status | What it means |
 | --- | --- |
