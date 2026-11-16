@@ -558,7 +558,7 @@ final class AttachTerminalStore {
     /// it as it opened: once per showing and session, while the showing
     /// still does.
     private func fitOpenSession() {
-        guard isShowing, sizeShowing.fitsOnItsOwn, let session, fittedSession !== session,
+        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested, let session, fittedSession !== session,
             let ownership = session.sizeOwnership
         else { return }
         let fit = beginFit(of: session)
@@ -608,10 +608,16 @@ final class AttachTerminalStore {
     }
 
     /// A take made on its own that did not go through is never made again on
-    /// its own in the same showing: the notice offers it instead.
+    /// its own in the same showing: the notice offers it instead. One that
+    /// this store's stop cut short, unsent or with its answer no longer
+    /// awaited, did not fail: the stop was Heeler's, as when the screen's
+    /// pipeline is replaced while shown, and the store that replaces this one
+    /// takes the size as its attach opens. A refusal is the server's answer,
+    /// whenever it comes.
     private func fitEnded(_ outcome: TerminalSizeTake, _ fit: Fit) {
         if fit.number == fitNumber { isFitting = false }
-        if outcome != .taken, fit.showing == showingNumber { sizeShowing.fitsOnItsOwn = false }
+        let cutShort = stopRequested && outcome != .refused
+        if outcome != .taken, fit.showing == showingNumber, !cutShort { sizeShowing.fitsOnItsOwn = false }
         updateSizeNotice()
     }
 

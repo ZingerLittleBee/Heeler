@@ -58,6 +58,23 @@ struct RexTerminalSizeOwnershipTests {
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
     }
 
+    /// A shell terminal's owner over the same runner, which replaces its
+    /// store as a screen's foreground recovery does.
+    private func shell(_ session: RexHostSession) -> ShellTerminalStore {
+        let host = Host(
+            name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: RexTerminalAttachTests.socket))
+        let runner = RexConsoleProjection(
+            host: host, session: session, pins: PinnedAgentsStore(), onChange: {}
+        ).terminalRunner()
+        let pin = TerminalCorePin()
+        let paneID = RexTerminalAttachTests.address.paneID
+        return ShellTerminalStore(
+            identity: ShellTerminalIdentity(paneID: paneID, tabID: paneID, terminalID: paneID),
+            transportGeneration: nil, isOnStage: { true },
+            runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
+    }
+
     /// A live 80x24 view that took the block's size as it opened: the
     /// stream starts at the view's grid, owned by this client.
     private func openShown(
@@ -217,6 +234,45 @@ struct RexTerminalSizeOwnershipTests {
         await store.stop()
         #expect(
             await ownership(control) == [Self.take, Self.giveBack, Self.take, Self.giveBack, Self.take, Self.giveBack])
+    }
+
+    /// A take of its own that the store's own stop cuts short did not fail:
+    /// here the scene comes back while the give back from going to the
+    /// background is still out, and a possible suspension replaces the
+    /// pipeline before the take behind it goes out. The new attach takes the
+    /// size as it opens, before its stream starts.
+    @Test func aPipelineReplacedWhileShownTakesTheSizeAsItOpens() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let shell = shell(session)
+        shell.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the opening take") { await ownership(control) == [Self.take] }
+        await rig.begin(columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the first paint") { shell.terminal.status == .live }
+
+        await control.stopAnswering(Self.giveBack)
+        shell.sceneDidEnterBackground()
+        try await waitUntil("the give back") { await ownership(control) == [Self.take, Self.giveBack] }
+        let first = shell.terminal
+        shell.sceneDidBecomeActive()
+        shell.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("the replacement") { shell.terminal !== first }
+        #expect(await requests(control, Self.take).count == 1)
+        #expect(shell.terminal.sizeShowing.fitsOnItsOwn)
+
+        shell.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the new attach's take") { await requests(control, Self.take).count == 2 }
+        await rig.begin(stream: 1, columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the new paint") { shell.terminal.status == .live }
+        let methods = await control.requests.map(\.method)
+        let taken = try #require(methods.lastIndex(of: Self.take))
+        let streamed = try #require(methods.lastIndex(of: "data.connect"))
+        #expect(taken < streamed)
+        #expect(shell.terminal.sizeReport?.owner == Self.thisClient)
+        await shell.leave().value
     }
 
     /// Another client's take while the view shows the terminal stands: the
