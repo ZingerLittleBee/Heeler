@@ -252,10 +252,19 @@ struct RexInventoryBookTests {
         #expect(structureReads(&book) == [])
     }
 
-    private func statusEvent(_ seq: UInt64, _ blockID: String, id: String = "", _ state: String) -> RexControlEvent {
+    private func statusEvent(
+        _ seq: UInt64, _ blockID: String, id: String = "", _ state: String, owner: Int = 77
+    ) -> RexControlEvent {
         event(seq, .blockEvent(
             blockID: blockID, creatorName: Self.terminal, name: "program_status_changed",
-            payload: ["id": .string(id), "record": ["state": .string(state), "app": "codex", "owner": ["pid": 77, "name": "codex"]], "reason": "report"]))
+            payload: [
+                "id": .string(id),
+                "record": [
+                    "state": .string(state), "app": "codex", "owner": ["pid": .number(Double(owner)), "name": "codex"],
+                    "updated_at": .string("2026-11-16T12:00:\(seq < 10 ? "0" : "")\(seq)+00:00"),
+                ],
+                "reason": "report",
+            ]))
     }
 
     private func statusRemoved(_ seq: UInt64, _ blockID: String, ids: [String], reason: String) -> RexControlEvent {
@@ -280,7 +289,10 @@ struct RexInventoryBookTests {
         }
         #expect(try left().processID == 77)
         #expect(try left().argv0 == "codex")
-        #expect(try left().status == RexProgramStatus(state: "working", app: "codex", ownerProcessID: 77, ownerName: "codex"))
+        let working = RexProgramStatus(
+            state: "working", app: "codex", ownerProcessID: 77, ownerName: "codex",
+            updatedAt: "2026-11-16T12:00:02+00:00")
+        #expect(try left().status?.isSameReport(as: working) == true)
 
         book.apply(statusEvent(3, "block:left", id: "build", "error"))
         book.apply(statusRemoved(4, "block:left", ids: ["build"], reason: "child_exited"))
@@ -324,16 +336,80 @@ struct RexInventoryBookTests {
         #expect(left.details.status == nil)
     }
 
+    /// The link counts the turns its events show ending, as ADR 0046 counts a
+    /// tmux Pane's: working or blocked to done for the same program. The same
+    /// done again, idle to done, another program's done and a removal count
+    /// nothing, and the stretch goes on through all of them. A read answering
+    /// the record the link holds keeps the stretch; one answering another
+    /// starts a new one, since what came between went unheard.
+    @Test func theLinkCountsTheTurnsItsEventsShowEnding() throws {
+        var book = settled([studio])
+        func status() throws -> RexProgramStatus {
+            try #require(book.inventory.sessions.first?.terminals.first?.details.status)
+        }
+        func follow() throws -> RexStatusFollow { try #require(try status().follow) }
+        book.apply(statusEvent(1, "block:left", "working"))
+        let stretch = try follow()
+        #expect(stretch.finishedTurns == 0)
+        book.apply(statusEvent(2, "block:left", "done"))
+        #expect(try follow() == RexStatusFollow(id: stretch.id, finishedTurns: 1))
+        book.apply(statusEvent(3, "block:left", "done"))
+        #expect(try follow() == RexStatusFollow(id: stretch.id, finishedTurns: 1))
+        #expect(try status().updatedAt == "2026-11-16T12:00:03+00:00")
+        book.apply(statusEvent(4, "block:left", "idle"))
+        book.apply(statusEvent(5, "block:left", "done"))
+        #expect(try follow().finishedTurns == 1)
+        book.apply(statusEvent(6, "block:left", "blocked"))
+        book.apply(statusEvent(7, "block:left", "done"))
+        #expect(try follow().finishedTurns == 2)
+        book.apply(statusEvent(8, "block:left", "working"))
+        book.apply(statusEvent(9, "block:left", "done", owner: 78))
+        #expect(try follow().finishedTurns == 2)
+        book.apply(statusRemoved(10, "block:left", ids: [""], reason: "clear"))
+        book.apply(statusEvent(11, "block:left", "working"))
+        book.apply(statusEvent(12, "block:left", "done"))
+        #expect(try follow() == RexStatusFollow(id: stretch.id, finishedTurns: 3))
+
+        func read(_ state: String, at seq: UInt64) {
+            book.listed([.init(id: studio.id, label: "studio")], seq: seq)
+            _ = book.takeReads(limit: 8)
+            let answer = RexProgramStatus(
+                state: state, app: "codex", ownerProcessID: 77, ownerName: "codex",
+                updatedAt: "2026-11-16T12:00:\(seq)+00:00")
+            book.detailsRead(address("block:left"), title: nil, process: nil, status: .init(value: answer, seq: seq))
+        }
+        read("done", at: 12)
+        #expect(try follow() == RexStatusFollow(id: stretch.id, finishedTurns: 3))
+        read("done", at: 13)
+        let next = try follow()
+        #expect(next.id != stretch.id)
+        #expect(next.finishedTurns == 0)
+
+        // A link's first read starts its first stretch.
+        var fresh = settled([studio])
+        _ = fresh.takeReads(limit: 8)
+        fresh.detailsRead(
+            address("block:left"), title: nil, process: nil,
+            status: .init(value: RexProgramStatus(state: "done", updatedAt: "2026-11-16T12:00:13+00:00"), seq: 1))
+        #expect(fresh.inventory.sessions.first?.terminals.first?.details.status?.follow?.finishedTurns == 0)
+    }
+
     /// The method's answer and the events read alike: only the root record,
-    /// its app or the app it takes from a parent, and its owner.
+    /// its app or the app it takes from a parent, its owner, and when Rex
+    /// took it.
     @Test func theRootRecordIsReadFromAnAnswer() {
         let answer: JSONValue = [
             "records": [
-                ["state": "done", "effective_app": "claude-code", "owner": ["pid": 9, "name": "9.9.9"]],
+                ["state": "done", "effective_app": "claude-code", "owner": ["pid": 9, "name": "9.9.9"],
+                 "updated_at": "2026-11-16T12:16:31.95597+08:00"],
                 ["id": "task", "state": "working", "app": "codex"],
             ]
         ]
-        #expect(RexInventoryWire.rootStatus(answer) == RexProgramStatus(state: "done", app: "claude-code", ownerProcessID: 9, ownerName: "9.9.9"))
+        #expect(
+            RexInventoryWire.rootStatus(answer)
+                == RexProgramStatus(
+                    state: "done", app: "claude-code", ownerProcessID: 9, ownerName: "9.9.9",
+                    updatedAt: "2026-11-16T12:16:31.95597+08:00"))
         #expect(RexInventoryWire.rootStatus(["records": [["id": "task", "state": "working"]]]) == nil)
         #expect(RexInventoryWire.rootStatus(["records": []]) == nil)
         #expect(RexInventoryWire.rootStatus(["records": [["state": "idle"]]]) == RexProgramStatus(state: "idle"))

@@ -11,7 +11,9 @@ import Foundation
 /// that changed it, one read in flight per session, so a burst of events costs
 /// one read and the one after it. No answer replaces what an event or answer
 /// newer than it already said. A terminal's details are read once per link and
-/// then follow its own events.
+/// then follow its own events, and its Program Status carries how the link
+/// followed it (`RexStatusFollow`), which counts the turns the events show
+/// ending, as no published inventory can: one may stand for several reports.
 struct RexInventoryBook {
     enum Read: Hashable, Sendable {
         /// A session's view, then its block listing.
@@ -67,6 +69,44 @@ struct RexInventoryBook {
         var statusSeq: UInt64 = 0
         var wanted = true
         var reading = false
+        /// How this link has followed the root record; nil until it first
+        /// read or heard it.
+        var follow: RexStatusFollow?
+
+        /// A report this link heard: its stretch goes on, and counts a
+        /// finished turn when the report takes the program's record from
+        /// working or blocked to done. A removal heard goes on with it too.
+        mutating func noteReport(_ status: RexProgramStatus?) {
+            var follow = follow ?? RexStatusFollow()
+            if let held = details.status, let status, status.state == "done",
+                held.state == "working" || held.state == "blocked", held.isSameProgram(as: status)
+            {
+                follow.finishedTurns += 1
+            }
+            hold(status, following: follow)
+        }
+
+        /// A read's answer. One that is not the record this link held may
+        /// follow reports it never heard, so it starts another stretch.
+        mutating func noteRead(_ status: RexProgramStatus?) {
+            let held = details.status
+            let isHeld =
+                switch (held, status) {
+                case (nil, nil): true
+                case (let held?, let status?): held.isSameReport(as: status)
+                default: false
+                }
+            hold(status, following: isHeld ? follow ?? RexStatusFollow() : RexStatusFollow())
+        }
+
+        private mutating func hold(_ status: RexProgramStatus?, following follow: RexStatusFollow) {
+            self.follow = follow
+            details.status = status.map { status in
+                var status = status
+                status.follow = follow
+                return status
+            }
+        }
     }
 
     private var order: [String] = []
@@ -228,13 +268,13 @@ struct RexInventoryBook {
             case "program_status_changed" where RexInventoryWire.changesRootStatus(payload):
                 updateDetails(of: address) { record in
                     guard seq > record.statusSeq else { return }
-                    record.details.status = RexInventoryWire.changedStatus(payload)
+                    record.noteReport(RexInventoryWire.changedStatus(payload))
                     record.statusSeq = seq
                 }
             case "program_status_removed" where RexInventoryWire.removesRootStatus(payload):
                 updateDetails(of: address) { record in
                     guard seq > record.statusSeq else { return }
-                    record.details.status = nil
+                    record.noteReport(nil)
                     record.statusSeq = seq
                 }
             default:
@@ -380,7 +420,7 @@ struct RexInventoryBook {
             record.processSeq = process.seq
         }
         if let status, status.seq >= record.statusSeq {
-            record.details.status = status.value
+            record.noteRead(status.value)
             record.statusSeq = status.seq
         }
         details[address] = record

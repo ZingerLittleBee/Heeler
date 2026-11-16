@@ -110,20 +110,60 @@ struct RexTerminalDetails: Sendable, Equatable {
 }
 
 /// A terminal's root Program Status as Rex keeps it (ADR 0054): OSC 7501's
-/// state and app as the program reported them, and the foreground process
-/// when the report arrived.
+/// state and app as the program reported them, the foreground process when
+/// the report arrived, and when Rex took it. The control link that holds it
+/// adds how it followed the record.
 struct RexProgramStatus: Sendable, Equatable {
     let state: String
     /// The record's app, else the app it takes from a parent.
     let app: String?
     let ownerProcessID: Int?
     let ownerName: String?
+    /// Rex's `updated_at`. Every report moves it, the same report made again
+    /// too, and a read leaves it.
+    let updatedAt: String?
+    /// How the link that read or heard this record followed it; nil for one
+    /// no link holds.
+    var follow: RexStatusFollow?
 
-    init(state: String, app: String? = nil, ownerProcessID: Int? = nil, ownerName: String? = nil) {
+    init(
+        state: String, app: String? = nil, ownerProcessID: Int? = nil, ownerName: String? = nil,
+        updatedAt: String? = nil, follow: RexStatusFollow? = nil
+    ) {
         self.state = state
         self.app = app
         self.ownerProcessID = ownerProcessID
         self.ownerName = ownerName
+        self.updatedAt = updatedAt
+        self.follow = follow
+    }
+
+    /// Whether `other` is this report, whichever link holds it.
+    func isSameReport(as other: RexProgramStatus) -> Bool {
+        state == other.state && app == other.app && ownerProcessID == other.ownerProcessID
+            && ownerName == other.ownerName && updatedAt == other.updatedAt
+    }
+
+    /// Whether `other` came from the program that made this one: the same
+    /// foreground and the same app.
+    func isSameProgram(as other: RexProgramStatus) -> Bool {
+        app == other.app && ownerProcessID == other.ownerProcessID && ownerName == other.ownerName
+    }
+}
+
+/// How one control link followed a terminal's root record (ADR 0054). `id`
+/// names a stretch in which the link heard every report, and `finishedTurns`
+/// counts the reports in it that took the record from working or blocked to
+/// done for the same program, as ADR 0046 counts a tmux Pane's turns. A read
+/// that finds another record than the link held starts a new stretch, since
+/// what came between is unknown. Rex keeps no such count.
+struct RexStatusFollow: Codable, Equatable, Sendable {
+    let id: UUID
+    var finishedTurns = 0
+
+    init(id: UUID = UUID(), finishedTurns: Int = 0) {
+        self.id = id
+        self.finishedTurns = finishedTurns
     }
 }
 
@@ -378,7 +418,8 @@ enum RexInventoryWire {
         let owner = record["owner"]
         return RexProgramStatus(
             state: state, app: text(record["app"]) ?? text(record["effective_app"]),
-            ownerProcessID: owner?["pid"]?.rexWholeNumber, ownerName: text(owner?["name"]))
+            ownerProcessID: owner?["pid"]?.rexWholeNumber, ownerName: text(owner?["name"]),
+            updatedAt: text(record["updated_at"]))
     }
 
     private static func window(_ value: JSONValue) -> ViewWindow? {
