@@ -49,9 +49,11 @@ connection. Another server instance on the socket is another server, as
 with tmux (ADR 0050). A Rex Host's terminals open from the server's own
 redraw, and their size is asked for (ADR 0051). They take input from their
 first paint, one request at a time on the control connection, never sent
-twice (ADR 0052). A terminal another device sized says so; its size is taken
-only when the user taps to fit it to the screen, and given back once the view
-stops showing it (ADR 0053).
+twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
+its own, once per showing, and gives it back once the view stops showing it;
+one whose size another device took meanwhile, or whose take did not go
+through, says so and fits only when the user taps to fit it to the screen
+(ADR 0053).
 _Avoid_: Rex session (for the Host), Rex app (for the server)
 
 **Detached Tab**:
@@ -568,10 +570,12 @@ and the last one to type, resize or come into focus sets the size. tmux has no
 Take Over either: while a device shows a Pane, its window takes the device's
 size, no larger than a terminal of the user's showing the same window, and once
 the device stops showing it tmux sizes the window by its other terminals
-again. Rex has no Take Over: any viewer may type, and a terminal no device has
-sized follows the view. One another device sized keeps that size, its lines
-wider than the view wrapping at the view's width, under a notice whose Fit to Screen takes the size until the view stops
-showing the terminal (ADR 0053). libghostty renders it, and direct keyboard
+again. Rex has no Take Over: any viewer may type, and a terminal the device
+shows takes the device's size, before its first paint as it opens and again
+each time it is shown, until the view stops showing it. One whose size another
+device takes while it is shown keeps that size, its lines wider than the view
+wrapping at the view's width, under a notice whose Fit to Screen takes the
+size back (ADR 0053). libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent

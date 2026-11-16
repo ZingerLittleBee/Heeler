@@ -49,8 +49,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   only: one WebSocket control link over direct-streamlocal carries inventory,
   events and terminal input, and each open terminal adds a data link on a
   channel of its own, painted from the server's redraw. Connecting never
-  starts a server or runs `rex`; a block's size is taken only at the user's
-  tap (ADRs 0049 to 0053).
+  starts a server or runs `rex`; a block's size is taken only for a terminal
+  on screen, before its first paint, and given back when it leaves (ADRs 0049
+  to 0053).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

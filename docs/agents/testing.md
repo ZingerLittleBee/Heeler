@@ -118,6 +118,12 @@ or print a configuration, key seed, session label or terminal contents. The
 Rex suites print counts and booleans only; record their Rex version in
 [rex-compatibility.md](rex-compatibility.md) when they inform an observation.
 
+A Rex terminal the app shows takes its size from every other client of that
+server ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md)),
+so opening one in the Simulator resizes it on the desktop too. Open only
+terminals of `heeler-lab-` sessions there, from Terminals and from Agents
+alike; reading the lists takes nothing.
+
 ## Lane selection
 
 | Change | Entry point | What it establishes |

@@ -90,8 +90,9 @@ anything on the machine.
   no card under Terminals: another kind's such card holds New Terminal, which
   a Rex Host does not offer.
 - **Opening one opens its terminal.** A Rex Agent's detail is the terminal
-  detail the Terminals list opens (ADRs 0051 to 0053): the server's redraw
-  first, typing, paste, Snippets, the size notice and Fit to Screen. It has no
+  detail the Terminals list opens (ADRs 0051 to 0053): the size taken for
+  this screen as it opens, the server's redraw first, typing, paste,
+  Snippets, the size notice and Fit to Screen. It has no
   Chat, Composer, Stop, Changes, rename, close, worktree, New Agent or Usage,
   and its row offers Pin alone: no window of its own, which the Terminals list
   does not offer either, and no Changes read. When its program leaves the

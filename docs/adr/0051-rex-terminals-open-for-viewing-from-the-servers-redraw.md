@@ -67,8 +67,9 @@ terminal for viewing; ADR 0052 adds its input.
   the terminal's `resize` method on arrival and once a change has held for
   150 ms, never twice the same, and again when the block's owner lets go,
   since a size asked for under another owner is not applied then. Opening a
-  terminal never calls `own_block`; only the user's tap takes the size, and
-  ADR 0053 sets out when it is taken and given back. The view shows the block
+  terminal here never called `own_block`; ADR 0053 later takes the size for
+  a view that shows the terminal, before its stream starts, and sets out when
+  it is taken and given back. The view shows the block
   at the server's size; the server's grid, the view's grid, the owner and this
   client reach the view as `TerminalSizeReport`, from which ADR 0053's notice
   says when another device set the size.
@@ -127,7 +128,8 @@ terminal for viewing; ADR 0052 adds its input.
   scheme reports are written later and need dropping anyway.
 - Taking ownership would resize the desktop's terminal under its user. A
   request is applied only when no one owns the block, which is the polite
-  default; an explicit take belongs to the user.
+  default; when to take it is ADR 0053's, which takes it only while a view
+  shows the terminal and gives it back when it stops.
 - A client the server does not know has no streams, so painting afresh is the
   only way back. A resumed one has them all, so tearing them down would cost a
   full redraw for nothing.
@@ -161,7 +163,9 @@ captures, live tests and fakes, recorded with their sources in
 
 - Decoding the snapshot: rejected; undocumented and version-bound.
 - Ghostty's replay mode for query answers: rejected for the reasons above.
-- Taking ownership on open: rejected; it resizes the desktop's terminal.
+- Taking ownership on open: rejected here; it resizes the desktop's
+  terminal. ADR 0053 later takes it as a shown terminal opens, and gives it
+  back once the view stops showing it.
 - Keeping a stream across a new control client: rejected; the server cancels
   a client's streams once that client is gone.
 - Clearing a stale data connection on a new SSH connection by resuming its
@@ -175,7 +179,8 @@ captures, live tests and fakes, recorded with their sources in
 - `RexTerminalAttach` turns one stream into one view's bytes, size requests
   and endings; `RexHostSession.withTerminal` holds the block, waits for the
   connection and hands out a `RexTerminalConnection` with the block's signals.
-- ADR 0052 sends the view's input; ADR 0053 shows `TerminalSizeReport`'s
-  mismatch and takes the size when the user asks.
+- ADR 0052 sends the view's input; ADR 0053 takes the size for the view that
+  shows the terminal, and shows `TerminalSizeReport`'s mismatch when another
+  device has it.
 - A first paint costs the snapshot and the redraw, each about the size of the
   scrollback; on a slow link a long history takes seconds to appear.

@@ -35,13 +35,16 @@ server has been observed yet.
   typed bytes as text through the terminal's `write`, read by
   `RexTerminalKeyReader`; pastes, focus changes and mouse reports text cannot
   carry through `block.event`.
-- A Rex terminal's size is taken only when the user taps the notice's Fit to
-  Screen ([ADR 0053](../adr/0053-rex-terminal-size-is-taken-only-when-the-user-asks.md)):
+- A Rex terminal's size is taken for the view that shows it
+  ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md)):
   `RexTerminalAttach` sends `session.own_block` with mode `take` for the one
-  block, then the view's grid, and gives the size back with
-  `session.disown_block` when the view stops showing the terminal or the
-  attach ends, unless the server passed the block to Heeler because its
-  owner's link dropped.
+  block, then the view's grid, as an attach for a shown view opens and before
+  its stream starts, when the view is shown again, and at the notice's Fit to
+  Screen. It takes nothing on its own once another client took the size in
+  the same showing or a take of its own did not go through, and gives the size
+  back with `session.disown_block` when the view stops showing the terminal
+  or the attach ends, unless the server passed the block to Heeler because
+  its owner's link dropped.
 - A terminal whose foreground is a known agent program is an Agent
   ([ADR 0054](../adr/0054-rex-terminals-running-a-known-agent-are-agents.md)):
   `RexAgentRule` reads the foreground with `HerdrCoreAgentRule.program` and
@@ -74,14 +77,15 @@ in users' words.
   program that never pauses for 250 ms keeps a best-effort first paint, and
   a redraw past 32 MiB ends the attach as too long to show
   ([ADR 0051](../adr/0051-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
-- **Another client's size is not fitted.** A block another client owns at
-  another grid shows at the server's grid until the user takes the size.
-  Lines wider than the view wrap at the view's width, in the first paint,
-  whose redraw rejoins soft-wrapped lines, and in output that runs past the
-  view's last column; a program that places its rows with cursor moves
-  mostly shows their left part. There is no view scaled to or cut at the
-  remote grid
-  ([ADR 0053](../adr/0053-rex-terminal-size-is-taken-only-when-the-user-asks.md),
+- **Another client's size, when it stands.** A block another client takes
+  while Heeler shows it, or one whose take of Heeler's did not go through,
+  shows at the server's grid until the user taps Fit to Screen or shows the
+  terminal again. Lines wider than the view wrap at the view's width, in the
+  first paint, whose redraw rejoins soft-wrapped lines, and in output that
+  runs past the view's last column; a program that places its rows with
+  cursor moves mostly shows their left part. There is no view scaled to or
+  cut at the remote grid
+  ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
 - **Existing terminals only.** Nothing is created, closed or renamed, and no
@@ -444,7 +448,7 @@ wanted size of 62x51; and a third.
   and the other device did not get it back when it resumed (`r6b_handover`).
   Heeler therefore leaves a block the server passed to it because its owner
   dropped as it is. One passed on with `disown` or `disconnect` has no owner
-  to come back for it, so Heeler gives it back like a size the user took.
+  to come back for it, so Heeler gives it back like a size it took.
 - A client that took ranked ahead in line of one that had only requested
   (`own_block`, mode `request`): the taker was passed the block
   (`r6b_handover`).
@@ -452,13 +456,39 @@ wanted size of 62x51; and a third.
   client attached to no session was refused with 409, and from one attached
   only with `session.attach_all` with 400; a `resize` from that client was
   accepted and noted as a wanted size.
-- Live suite `RexTerminalSizeLiveTests` (Heeler's runner and view store over a
-  local socket): the lab's own client created a shell block at 100x30, asked
-  for that size and took the block. Heeler's 80x24 view reported a size set
-  elsewhere and showed its notice; the take from the view made Heeler's client
-  the owner and the server's grid 80x24; the view going off screen passed the
-  block back to the lab's client at 100x30; and the view coming back took
-  nothing.
+- Live suite `RexTerminalSizeLiveTests`, as first written for a size taken
+  only at a tap (Heeler's runner and view store over a local socket): the
+  lab's own client created a shell block at 100x30, asked for that size and
+  took the block. Heeler's 80x24 view reported a size set elsewhere and
+  showed its notice; the take from the view made Heeler's client the owner
+  and the server's grid 80x24; the view going off screen passed the block
+  back to the lab's client at 100x30; and the view coming back took nothing.
+
+Lab capture `r8_fit_before_paint`, two lab clients on one lab block: one
+standing in for another device, which created it and owned it at 100x30, and
+one standing in for Heeler, attached to the session with no data connection
+and no size asked for yet.
+
+- The stand-in's take was answered in about a millisecond with the stand-in
+  as owner, and the grid stayed 100x30: it had asked for no size. Its resize
+  to 80x24 as the owner, sent after the answer, applied at once, answered in
+  about two milliseconds. A data connection opened after both answers began
+  with a resize message at 80x24 naming the stand-in as owner, before any
+  paint.
+- With the stand-in's stream already open, the other device took the block
+  back at 100x30 and the stand-in asked for 70x20 without owning it. The
+  stand-in's take then applied 70x20 at once, and its stream's resize message
+  naming it owner arrived before the take's answer.
+- Live suite `RexTerminalSizeLiveTests`, rewritten for a shown terminal that
+  takes its own size (Heeler's runner and view store over a local socket):
+  the lab's client created a shell block at 100x30, asked for that size and
+  took the block. Heeler's 80x24 view, opened shown, heard 80x24 with its own
+  client as owner as its first grid, and showed no notice; the server's grid
+  was 80x24 with Heeler's client as owner. The lab's client then took the
+  block back at 100x30 and kept it for the rest of the showing, while the
+  view offered its notice; the view going off screen left the block with the
+  lab's client, coming back took the size again, and going off screen once
+  more passed the block back to the lab's client at 100x30.
 
 ### Query answers
 
