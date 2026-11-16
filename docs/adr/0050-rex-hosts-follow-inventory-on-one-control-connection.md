@@ -24,7 +24,7 @@ restarted servers without showing a stale or half-read list.
 - The inventory is read, never assumed: the session list from
   `session.attach_all`, each session's structure from `session.view` and
   `session.list_blocks`, and each terminal's details once per connection from
-  its `title` and `process` methods. A response's seq says how far the
+  its `title` and `process` methods (and, since ADR 0054, `program_status`). A response's seq says how far the
   connection's event stream had got when the server took the request up, so an
   event numbered above it is newer than the response and one at or below it is
   already in it. An event that changes a session's layout reads its
@@ -82,7 +82,9 @@ restarted servers without showing a stale or half-read list.
   terminals are left out, and so is a session with no terminal. The labels Rex
   gives a new window and a new block read as unnamed. A Pane's id is an opaque
   string written from the session id and the block id. A Rex Host reports no
-  Agents.
+  Agents. (Amended by ADR 0054: a terminal running a known agent program is an
+  Agent, kept current by `program_status_changed` and `program_status_removed`
+  on this connection.)
 
 ## Why
 

@@ -11,6 +11,10 @@ shares no Agents with them, has no Heeler plugin or Host Helper, and reports no
 Program Status Heeler reads. Heeler adds Rex as a fourth Server Kind, first as
 an experiment that ships switched off.
 
+Amended by [ADR 0054](0054-rex-terminals-running-a-known-agent-are-agents.md):
+Rex keeps a Program Status per terminal, which Heeler now reads, and a Rex
+terminal running a known agent program is an Agent.
+
 Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
 is gone, and every build offers Rex.
 
@@ -86,7 +90,9 @@ detail.
   New Agent, New Terminal, Rename, Close or uploads, and no notifications,
   Live Activities, Usage, Accounts, plugin or Host Helper. A first version
   attaches only to Terminals that already exist and accepts one Rex API
-  revision.
+  revision. (Amended by ADR 0054: a terminal running a known agent program is
+  an Agent with its Agent Status, opened as its terminal; the rest of this
+  list stands.)
 
 ## Why
 
@@ -182,7 +188,7 @@ What every build now does, and what it means for people without Rex:
   shape.
 - Agents, Chat, Composer, New Agent and New Terminal, notifications, Live
   Activities, widgets, Usage and background refresh still leave Rex Hosts out
-  by Server Kind, as before.
+  by Server Kind, as before. (Agents no longer do since ADR 0054.)
 
 ## Update 2026-11-16: a Server of its Host
 
@@ -238,7 +244,7 @@ server did. Where Rex differs from tmux, this says how and why.
   none, rather than asking for a Host that Hosts already lists. Agents, Chat,
   Composer, New Agent and New Terminal, notifications, Live Activities,
   widgets, background refresh, the plugin, the Host Helper and Pairing Codes
-  still leave Rex out.
+  still leave Rex out. (Agents no longer do since ADR 0054.)
 
 For Rex this supersedes the confirmation in Host detail, "where none runs,
 Rex is not offered", and detection that offers Rex only for a usable socket.

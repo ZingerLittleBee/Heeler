@@ -39,8 +39,9 @@ Unix socket it listens on and stored with that socket's path. A look lists it
 running where the socket is there, and not running where Rex is installed
 without one; turned on then, it connects once the user starts Rex, since
 Heeler never starts the server and never runs the `rex` command-line tool to
-find it. It shows in the Console's Terminals list only:
-no Agent status, Chat, Composer, notifications, Live Activities or Usage.
+find it. A terminal running a known agent program is an Agent with its Agent
+Status, opened as its terminal, and the others are Terminals: no Chat,
+Composer, notifications, Live Activities or Usage (ADR 0054).
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
@@ -159,7 +160,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none. On Rex it is the foreground program of a terminal while that program is a known agent program, read by the same rule; a report alone never makes one (ADR 0054).
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -182,7 +183,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the process that reported it is still the foreground, and is Unknown otherwise; done reads Idle, as Rex keeps no turn count and Done stays per device (ADR 0054). Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -192,7 +193,9 @@ never reports has none. In a herdr-core Terminal it arrives through OSC 7501,
 and the core keeps a program's last report after that program exits, for as
 long as its Terminal runs on. On tmux, Heeler records it on the Pane in the
 same words, from its Claude Code hooks, its Pi and Oh My Pi extensions, or the
-OSC 7501 reports other programs make in their output.
+OSC 7501 reports other programs make in their output. A Rex server keeps it
+per terminal from OSC 7501 too, with the process that reported it, and keeps
+idle, done and error reports after their program exits.
 _Avoid_: detected status, agent state
 
 **Status Badge**:

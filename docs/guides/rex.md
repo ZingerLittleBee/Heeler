@@ -60,11 +60,21 @@ If the Host's page reads **Rex** with **Socket found, but this account cannot us
 Heeler shows your Rex layout as it is and changes nothing in it:
 
 - **Workspaces, Tabs, and Panes:** Each Rex session is a Workspace, each window is a Tab, and each terminal is a Pane, in Rex's order. A session's terminals that are in none of its windows share a Tab named **Detached**. A session with no terminal is not listed.
-- **Terminals only:** Rex terminals appear in **Terminals**, never in **Agents**, even when a terminal runs a coding Agent. Titles, programs, and directories follow Rex as they change.
+- **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. Titles, programs, and directories follow Rex as they change.
+
+| Status | What it means |
+| --- | --- |
+| **Working** | Running a turn. |
+| **Idle** | Waiting at its prompt, or finished a turn. Rex Agents never show **Done**. |
+| **Blocked** | Waiting for your answer. |
+| **Error** | Reported an error and sorts with **Blocked**. |
+| **Unknown** | No status reported since Heeler connected, or the last report came from a program that has since exited. |
+
+An Agent started as a Rex terminal's own command rather than from its shell, or started with `exec`, stays in **Terminals**. Heeler sees a terminal's program change when the terminal next prints, so an Agent can take a moment to arrive in **Agents** or to leave it.
 
 ## Working in a terminal
 
-Tap a terminal in **Terminals** to open it. Other Rex clients keep showing it while you work:
+Tap a terminal in **Terminals**, or an Agent in **Agents**, to open it. An Agent opens as its terminal, without Chat or the Composer; when the Agent exits while it is open, it reads **Agent Gone**, and the terminal is back in **Terminals**. Other Rex clients keep showing it while you work:
 
 - **Opening:** The terminal appears once Rex has redrawn its screen and history, so a long history can take a few seconds on a slow connection. A program that keeps writing, such as a spinner, can show a few lines twice or out of place until it pauses; Heeler then paints it again.
 - **Typing and pasting:** Type in Text or Keys mode, tap **Paste**, or send a Snippet. You can type whichever device set the terminal's size. What you type reaches the terminal in order, and Heeler never sends it twice: when the connection drops before Rex answers, the terminal shows **Connection dropped** with **Reattach**, and nothing typed after that point was sent. Keys typed while Heeler reconnects are not sent either; the terminal reconnects and paints again. A paste too large to send in one piece is blocked rather than split; paste less at a time.
@@ -90,7 +100,7 @@ A Rex terminal has one size, set by one device at a time. When no device has set
 
 ## What Heeler does not do yet
 
-- **No Agents:** no Agent Status, Chat, Composer, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
+- **Agents show their status only:** no Chat, Composer, Stop, Changes, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
 - **Nothing started, renamed, or closed:** New Agent, New Terminal, New Workspace, Rename, and Close are not offered. Do these in Rex; Heeler shows the result.
 - **No uploads, Worktrees, Host Helper, Pairing Code, or Add by Name** for Rex.
 
