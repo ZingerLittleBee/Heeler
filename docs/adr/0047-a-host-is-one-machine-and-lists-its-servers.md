@@ -61,21 +61,28 @@ tmux sockets on one machine, that is the common case, not the odd one.
 - A record that would read like another of its Host carries the Server's
   label beside the Host's name (`studio · tmux`) wherever one record is named
   on its own: a picker of Servers, its Server page, a notification, a problem
-  with that Server. The label is derived, not stored. The Console's Host
-  filter names the Host, not its records: it lists each Host once, and
-  choosing one shows every Server it has on.
+  with that Server outside the Agents and Terminals lists. The label is
+  derived, not stored. The Console's Host filter names the Host, not its
+  records: it lists each Host once, and choosing one shows every Server it
+  has on.
 - The Agents and Terminals lists name the Host alone, as the Hosts tab does,
   on every row, Workspace card and By Host heading. A record the user named
   apart before it was one Host with the others goes by the Host's name there,
   derived like the label. By Host has one section per Host, in the Hosts
-  tab's order, holding its Servers' Agents or Workspaces one Server after
-  another in catalog order, each in its own order, with the counts summed.
-  The heading reads as the Server that most needs the user, as the Hosts
-  tab's row does; the name stays at full strength while any Server is
-  reachable, and the heading opens a connection sheet only for a Host with
-  one Server on. Each Server's problem is a row under the heading, which names
-  the Server when the Host has more than one. A Workspace stays one Server's:
-  two of one name on two Servers are two cards, both under the Host's name.
+  tab's order, holding its Servers' Agents in the Agents list's own order,
+  Pins and priority first whichever Server lists them, or its Servers'
+  Workspaces one Server after another in catalog order, each Server's in its
+  own order, with the counts summed. The heading reads as the Server that
+  most needs the user, as the Hosts tab's row does; the name stays at full
+  strength while any Server is reachable, and the heading opens a connection
+  sheet only for a Host with one Server on. Each Server's problem is a row
+  under the heading, which names the Server alone (`Connecting to tmux…`)
+  when the Host has more than one. Above a flat list a problem names the
+  Host alone too, with that Server in its status (`tmux: Can't connect`),
+  and a summary of several problems counts Hosts, not Servers, and takes the
+  Host's name as its title when they are all one Host's. A Workspace stays
+  one Server's: two of one name on two Servers are two cards, both under the
+  Host's name.
   Folding a Host is stored by record id, as the filter is: a Host is folded
   while any of its records is, and folding or unfolding it sets or clears them
   all, so a Host folded while each Server had its own section stays folded.
@@ -135,7 +142,8 @@ whose update of 2026-11-16 says how) is a Server of its Host in the same way.
 - Searching the Agents and Terminals lists finds a row by the Host's name,
   no longer by a Server's label. By Workspace lists cards in the Hosts tab's
   order of Hosts, so two Hosts the catalog interleaved read apart.
-- With every Host connected and nothing to list, By Host shows the same empty
+- With every Host connected and each with nothing to list and nothing it
+  could start, which only a Rex Host can be, By Host shows the same empty
   state the flat list does, not a list of bare headings.
 - Opening Host detail and each look from the list open one more SSH
   connection for the detection exec, beside one connection for each Server
