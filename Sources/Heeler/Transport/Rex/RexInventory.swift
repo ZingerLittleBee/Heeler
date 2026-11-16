@@ -19,6 +19,21 @@ struct RexServerStatus: Sendable, Equatable {
     }
 }
 
+/// The machine a Rex server runs on, as `server.version` names it: its
+/// `platform` starts with the system, as `darwin_arm64` did on a Mac (Rex
+/// 0.1.0-preview.14, rex-compatibility.md). No Linux value was seen, so one
+/// that names `linux` anywhere reads as Linux, and anything else as unknown.
+enum RexServerPlatform {
+    /// The kernel as a probe's `uname -s` prints it, or nil.
+    static func kernel(reading result: JSONValue) -> String? {
+        guard let platform = result["platform"]?.stringValue else { return nil }
+        let words = platform.lowercased().split { !$0.isLetter }
+        if words.contains("darwin") { return HerdrCoreLocator.macOSKernel }
+        if words.contains("linux") { return HerdrCoreLocator.linuxKernel }
+        return nil
+    }
+}
+
 /// Where a Rex terminal lives: its session and its block. A Pane's id is this
 /// address written as one opaque string, so no other code reads Rex's ids
 /// apart (ADR 0050).

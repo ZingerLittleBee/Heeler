@@ -16,6 +16,10 @@ protocol RexTransport: Sendable {
     /// Host to keep. Nil when the stored one was used.
     nonisolated var foundSocket: RexSocket? { get }
 
+    /// The kernel the lookup for `foundSocket` printed, as `uname -s` names
+    /// it, for the Host to keep. Nil when the stored socket was used.
+    nonisolated var foundKernel: String? { get }
+
     /// Whether the SSH connection is up, whatever became of the server.
     var isConnected: Bool { get async }
 
@@ -73,6 +77,7 @@ actor RexSSHTransport: RexTransport {
     nonisolated let routeID: UUID?
     nonisolated let socket: RexSocket
     nonisolated let foundSocket: RexSocket?
+    nonisolated let foundKernel: String?
     private nonisolated let connection: any RexHostConnection
     private let options: RexControlLink.Options
     private let sleep: RexControlLink.Sleep
@@ -81,13 +86,15 @@ actor RexSSHTransport: RexTransport {
     private var reconnecting: Task<RexControlLink, any Error>?
 
     private init(
-        connection: any RexHostConnection, socket: RexSocket, foundSocket: RexSocket?, control: RexControlLink,
-        options: RexControlLink.Options, sleep: @escaping RexControlLink.Sleep, nonce: @escaping @Sendable () -> String
+        connection: any RexHostConnection, socket: RexSocket, found: (socket: RexSocket, kernel: String?)?,
+        control: RexControlLink, options: RexControlLink.Options, sleep: @escaping RexControlLink.Sleep,
+        nonce: @escaping @Sendable () -> String
     ) {
         routeID = connection.routeID
         self.connection = connection
         self.socket = socket
-        self.foundSocket = foundSocket
+        foundSocket = found?.socket
+        foundKernel = found?.kernel
         self.control = control
         self.options = options
         self.sleep = sleep
@@ -109,15 +116,18 @@ actor RexSSHTransport: RexTransport {
     ) async throws -> RexSSHTransport {
         do {
             let socket: RexSocket
+            var found: (socket: RexSocket, kernel: String?)?
             if let stored {
                 socket = stored
             } else {
-                socket = try await lookUp(over: connection, nonce: nonce())
+                let looked = try await lookUp(over: connection, nonce: nonce())
+                socket = looked.socket
+                found = looked
             }
             let control = try await openControl(
                 over: connection, socket: socket, resuming: previous, options: options, sleep: sleep, nonce: nonce)
             return RexSSHTransport(
-                connection: connection, socket: socket, foundSocket: stored == nil ? socket : nil, control: control,
+                connection: connection, socket: socket, found: found, control: control,
                 options: options, sleep: sleep, nonce: nonce)
         } catch {
             try? await connection.close()
@@ -170,11 +180,14 @@ actor RexSSHTransport: RexTransport {
     // MARK: Connecting
 
     /// A fresh look for the socket, as detection makes, for a Host that
-    /// stores none.
-    private static func lookUp(over connection: any RexHostConnection, nonce: String) async throws -> RexSocket {
+    /// stores none, and the kernel the same exec printed.
+    private static func lookUp(
+        over connection: any RexHostConnection, nonce: String
+    ) async throws -> (socket: RexSocket, kernel: String?) {
         let finding: ServerKindDetection.RexFinding
+        let kernel: String?
         do {
-            finding = try await RexProbe.run(over: connection, nonce: nonce)
+            (finding, kernel) = try await RexProbe.look(over: connection, nonce: nonce)
         } catch TransportError.malformedResponse {
             // The probe's exec failed: as unreadable as output it cannot parse.
             throw TransportError.rexLookupFailed(
@@ -186,7 +199,7 @@ actor RexSSHTransport: RexTransport {
                 throw TransportError.rexLookupFailed(
                     reason: String(localized: "The Rex socket found has a path Heeler cannot use."))
             }
-            return socket
+            return (socket, kernel)
         case .notInstalled:
             throw TransportError.rexNotInstalled
         case .notRunning:

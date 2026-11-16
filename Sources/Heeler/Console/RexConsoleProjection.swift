@@ -42,6 +42,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var sidebarRevision: UInt64 = 0
     /// The last inventory folded into rows.
     private(set) var inventory: RexInventory?
+    /// The Host's kernel as `uname -s` names it, kept in the Host memory as a
+    /// tmux Host's is. A Host whose memory holds none takes the one its socket
+    /// lookup printed, else the one `server.version` names: one read on the
+    /// control link, and no exec.
+    private(set) var kernel: String?
 
     let syncError: String? = nil
     let leakedEnvironmentNames: Set<String> = []
@@ -54,6 +59,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
+    private var kernelTask: Task<Void, Never>?
     private var hasEnded = false
     /// The Panes this device shows now, whose finished turns are seen as
     /// they are noted.
@@ -68,6 +74,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         self.memory = memory
         self.pins = pins
         self.onChange = onChange
+        kernel = memory.kernel(for: host.id)
     }
 
     // MARK: Lifecycle
@@ -128,8 +135,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
         hasEnded = true
         consumeTask?.cancel()
         latencyTask?.cancel()
+        kernelTask?.cancel()
         consumeTask = nil
         latencyTask = nil
+        kernelTask = nil
         Task { [session] in await session.end() }
     }
 
@@ -191,6 +200,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
             // Turns and seen marks this device kept of another instance, in
             // this run or an earlier one, go with it.
             memory.noteCore(server.instanceID, for: host.id)
+            learnKernel()
         case .inventory(let inventory):
             guard status == .connected, server != nil else { return }
             self.inventory = inventory
@@ -198,6 +208,28 @@ final class RexConsoleProjection: ConsoleHostProjection {
             rebuildRows()
         }
         onChange()
+    }
+
+    /// The kernel for a Host whose memory holds none, once a server answers:
+    /// the one the socket lookup printed, else `server.version`'s platform.
+    /// A server that cannot say leaves it unknown until the next connection,
+    /// and nothing waits for it.
+    private func learnKernel() {
+        guard kernel == nil, kernelTask == nil else { return }
+        let session = session
+        kernelTask = Task { [weak self] in
+            let found = try? await session.withConnection { connection -> String? in
+                if let found = connection.transport.foundKernel { return found }
+                let answer = try await connection.control.call("server.version")
+                return RexServerPlatform.kernel(reading: try answer.result(JSONValue.self))
+            }
+            guard let self else { return }
+            kernelTask = nil
+            guard !hasEnded, kernel == nil, let found else { return }
+            kernel = found
+            memory.noteKernel(found, for: host.id)
+            onChange()
+        }
     }
 
     // MARK: Inventory

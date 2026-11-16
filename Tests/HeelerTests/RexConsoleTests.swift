@@ -223,9 +223,10 @@ struct RexConsoleTests {
     }
 
     /// What the inventory may ask of a Rex server: reads, never a write, an
-    /// attach, a resize or a claim on a block (ADR 0054).
+    /// attach, a resize or a claim on a block (ADR 0054). `server.version`
+    /// names the Host's kernel when this device keeps none.
     private static let inventoryMethods: Set<String> = [
-        "server.status", "session.attach_all", "session.view", "session.list_blocks",
+        "server.status", "server.version", "session.attach_all", "session.view", "session.list_blocks",
         RexInventoryWire.terminalMethod("title"), RexInventoryWire.terminalMethod("process"),
         RexInventoryWire.terminalMethod("program_status"),
     ]

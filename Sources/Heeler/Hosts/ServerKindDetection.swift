@@ -217,13 +217,22 @@ extension RexProbe {
     static func run(
         over connection: any ServerKindDetectionConnection, nonce: String = UUID().uuidString
     ) async throws -> ServerKindDetection.RexFinding {
-        guard try await connection.corePlatform() == .posix else { return .unsupported }
+        try await look(over: connection, nonce: nonce).finding
+    }
+
+    /// As `run`, with the kernel the same exec printed, which a Rex Host
+    /// keeps once a socket is found.
+    static func look(
+        over connection: any ServerKindDetectionConnection, nonce: String = UUID().uuidString
+    ) async throws -> (finding: ServerKindDetection.RexFinding, kernel: String?) {
+        guard try await connection.corePlatform() == .posix else { return (.unsupported, nil) }
         let result = try await connection.runServerKindDetection(Data(script(nonce: nonce).utf8))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
                 String(localized: "Server Kind detection exited with status \(result.exitStatus)."))
         }
-        return ServerKindDetection.rex(try? parse(stdout: result.stdout, nonce: nonce))
+        let report = try? parse(stdout: result.stdout, nonce: nonce)
+        return (ServerKindDetection.rex(report), report?.kernel)
     }
 }
 

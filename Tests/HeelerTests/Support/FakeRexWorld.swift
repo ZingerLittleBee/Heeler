@@ -97,9 +97,13 @@ final class FakeRexWorld: Sendable {
     }
 
     private let state: Mutex<State>
+    /// What `server.version` names as the server's `platform`; nil answers
+    /// without one.
+    let platform: String?
 
-    init(instanceID: String = "instance-0001", sessions: [Session] = []) {
+    init(instanceID: String = "instance-0001", sessions: [Session] = [], platform: String? = "darwin_arm64") {
         state = Mutex(State(instanceID: instanceID, sessions: sessions))
+        self.platform = platform
     }
 
     var sessions: [Session] { state.withLock { $0.sessions } }
@@ -118,6 +122,9 @@ final class FakeRexWorld: Sendable {
     func install(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
         await server.answer("server.status") { [self] _ in
             .result(["instance_id": .string(state.withLock { $0.instanceID }), "session_count": 1])
+        }
+        await server.answer("server.version") { [platform] _ in
+            .result(.object(platform.map { ["platform": .string($0)] } ?? [:]))
         }
         await server.answer("session.attach_all") { [self] _ in .result(attachAll) }
         await server.answer("session.view") { [self] request in

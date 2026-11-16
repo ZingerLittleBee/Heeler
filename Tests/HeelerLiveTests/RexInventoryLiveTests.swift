@@ -85,6 +85,7 @@ actor LocalRexTransport: RexTransport {
     nonisolated let routeID: UUID? = nil
     nonisolated let socket: RexSocket
     nonisolated let foundSocket: RexSocket? = nil
+    nonisolated let foundKernel: String? = nil
     private let path: String
     private(set) var control: RexControlLink
     private var closed = false
