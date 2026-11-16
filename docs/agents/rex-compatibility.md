@@ -52,6 +52,13 @@ server has been observed yet.
   adds `program_status`, and the control connection's `program_status_changed`
   and `program_status_removed` events keep it current; a Rex Agent opens as
   its terminal.
+- Chat's reads and binding are built and stay closed: `HostCapabilities`
+  offers a Rex Host no Chat. `RexHostReads` reads files and processes over
+  the Host's SSH connection and can write nothing, `HerdrCoreSessionBinder`'s
+  `.rex` scope binds from the foreground Rex names, and
+  `RexConsoleProjection` keeps the Host's kernel and a terminal's pick in
+  `HerdrCoreHostMemory` on this device. See
+  [Processes and Chat evidence](#processes-and-chat-evidence).
 
 ## Known limits
 
@@ -282,6 +289,50 @@ repository), unless a bullet names `RexProgramStatusLiveTests`.
   run through the account's login shell. The terminals' processes are the
   server's children, so a new instance should mean new terminals with no
   records.
+
+### Processes and Chat evidence
+
+From a lab run on Rex 0.1.0-preview.14, API revision 12, macOS 27.0, over a
+disposable sshd, with inert stand-ins in `heeler-lab-` sessions (lab captures
+kept outside the repository). No real agent ran, so what each program writes
+is still ADR 0034's macOS evidence, not something seen inside Rex.
+
+- **The machine.** `server.version` names a `platform`, `darwin_arm64` on an
+  Apple silicon Mac. No Linux value was seen; `RexServerPlatform` reads one
+  that names `linux` as Linux and anything else as unknown, and Heeler keeps
+  the kernel it learns rather than running `uname` on the Host.
+- **The foreground.** The `process` method and `process_changed` name the
+  leader of the process group that holds the terminal, with its name, a first
+  argument and a working directory. A launcher (node under `npx`, a shell
+  script) is that leader, with the agent below it; nothing names the full
+  command line or the terminal's own first process.
+- **The terminal's variables.** Every program started in a terminal inherits
+  `REX_SESSION` and `REX_BLOCK`, naming that terminal's session and block, and
+  `REX_SERVER`, naming the server's socket. They match the terminal the
+  process runs in, so they place it as `HC_SCOPE` does on herdr-core. A tmux
+  started inside a terminal passes them on to its panes (inferred from how
+  tmux hands its server's environment on, not observed), so Heeler also
+  compares `TMUX`, `TMUX_PANE` and `HC_SCOPE` with the foreground's.
+- **What macOS withholds.** As on herdr-core, `ps` shows no environment for
+  Apple's own binaries, the login shell included, while SIP is on. A
+  foreground shell's `REX_*` then cannot be read; an agent installed
+  elsewhere shows its own.
+- **What raises no event.** The foreground is announced only once the
+  terminal prints, about 100 ms after the output. A process that took another
+  one's pid under the same name, a program that ran another in place under
+  the same pid, and a new file in a program's folders raised no event, so a
+  Chat check waits for the next change Rex announces.
+- **SSH channels.** The control and data links are direct-streamlocal
+  channels, which the disposable sshd did not count against `MaxSessions`;
+  exec and SFTP channels count as on any Host.
+- **Programs.** Chat on a Rex Host is offered for Claude Code and Codex only
+  (`HostCapabilities.rexChatPrograms`): each names its conversation in files
+  its own process leads to, with nothing installed. Grok Build, Oh My Pi and
+  agy were not confirmed, and Pi and OpenCode name theirs only through
+  Heeler's extension or plugin, which a Rex Host never gets. With no command
+  line from Rex, a check cannot tell how a Codex was started, so one on its
+  shared server holding no rollout reads as "can't tell", not as the shared
+  server's notice.
 
 ### Resume and close
 
