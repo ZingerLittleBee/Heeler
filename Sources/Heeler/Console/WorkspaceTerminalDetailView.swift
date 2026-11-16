@@ -38,8 +38,9 @@ struct WorkspaceTerminalDetailView: View {
     /// terminal, and the pool lets it go at the next inventory change, on a
     /// Herdr TUI Host often before UIKit reports the keyboard gone (#644).
     @State private var departureAwaitingKeyboardHide: ShellTerminalView.AgentDeparture?
-    /// This screen among the Agent viewers the Console counts.
-    @State private var presenceToken = UUID()
+    /// This screen among the Agent viewers the Console counts, until SwiftUI
+    /// drops its state.
+    @State private var presence = AgentViewerPresence()
     @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.scenePhase) private var scenePhase
@@ -211,26 +212,28 @@ struct WorkspaceTerminalDetailView: View {
                 await load()
         }
         .onChange(of: shownAgent, initial: true) { _, shown in
-            console.setAgentShown(shown, viewer: presenceToken, scene: sceneRouting?.sceneID)
+            presence.show(shown, on: console, scene: sceneRouting?.sceneID)
         }
         .onDisappear {
             let leavingIdentity = entry?.store.identity ?? identity
             let keepingKeyboard = keyboardHandoff?.isArmed ?? false
-            let viewer = presenceToken
+            let presence = presence
             let scene = sceneRouting?.sceneID
             if !isSelected() {
                 console.terminalConnections.release(
                     hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
                     keepingKeyboard: keepingKeyboard)
-                console.setAgentShown(nil, viewer: viewer, scene: scene)
+                presence.show(nil, on: console, scene: scene)
             } else {
+                // Still selected: a spurious disappear, which keeps showing
+                // the Agent, or a remount, whose old state lets go of it.
                 Task { @MainActor in
                     await Task.yield()
                     guard !isSelected() else { return }
                     console.terminalConnections.release(
                         hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
                         keepingKeyboard: keepingKeyboard)
-                    console.setAgentShown(nil, viewer: viewer, scene: scene)
+                    presence.show(nil, on: console, scene: scene)
                 }
             }
         }
@@ -406,5 +409,30 @@ struct WorkspaceTerminalDetailView: View {
                 closeFailure = ConsoleStore.tabCloseFailureMessage(for: error)
             }
         }
+    }
+}
+
+/// One screen's place among the Console's Agent viewers
+/// (`ConsoleStore.setAgentShown`). It lets go when SwiftUI drops the screen's
+/// state: a screen rebuilt while it stays selected gets an `onDisappear` it
+/// cannot tell from a spurious one, after which it keeps showing the Agent,
+/// so only its state going says the old screen is gone.
+final class AgentViewerPresence {
+    let token = UUID()
+    /// Where the Agent is shown from, while this screen shows one.
+    private var shown: (console: ConsoleStore, scene: UUID?)?
+
+    @MainActor
+    func show(_ agent: ConsoleAgent.ID?, on console: ConsoleStore, scene: UUID?) {
+        console.setAgentShown(agent, viewer: token, scene: scene)
+        shown = agent == nil ? nil : (console, scene)
+    }
+
+    deinit {
+        guard let shown else { return }
+        let token = token
+        let console = shown.console
+        let scene = shown.scene
+        Task { @MainActor in console.setAgentShown(nil, viewer: token, scene: scene) }
     }
 }

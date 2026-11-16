@@ -394,6 +394,69 @@ struct RexConsoleTests {
         try await waitUntil("a turn finished after the relaunch") { again.agents.first?.agent.status == .done }
     }
 
+    /// A Rex Agent's terminal screen is what looks at it: mounted, it marks
+    /// the finished turn seen. A screen SwiftUI rebuilds while it stays
+    /// selected lets go of the Agent with its old state, so once the user
+    /// has left, the next finished turn reads Done again.
+    @Test func aRexAgentsScreenLooksAtItUntilItGoesRebuiltOrNot() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world)
+        let console = store(servers: servers)
+        defer { console.setHosts([]) }
+        let rex = rex
+        let block = world.sessions[0].windows[0].layers[0].blocks[2]
+        func report(_ state: String, at second: Int) async {
+            let record = block.record(state, app: "codex", at: "2026-11-16T12:02:0\(second)+00:00")
+            world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
+            await servers[0].push(
+                "block_event", blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]),
+                session: "session:studio")
+        }
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent working") { console.agents.first?.agent.status == .working }
+        await report("done", at: 1)
+        try await waitUntil("the Agent Done") { console.agents.first?.agent.status == .done }
+        let row = try #require(console.terminals.first { $0.isAgent })
+        let defaults = try #require(UserDefaults(suiteName: "rex-seen-\(UUID().uuidString)"))
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults), zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: SnippetStore(defaults: defaults))
+        let screen = RexScreenDriver()
+        let controller = UIHostingController(
+            rootView: RexAgentScreen(
+                console: console, terminal: row, corePin: console.corePin(on: rex.id), settings: settings,
+                activity: AppActivityCoordinator(), driver: screen
+            )
+            .defaultAppStorage(defaults))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        func frames() async throws {
+            for _ in 0..<20 {
+                window.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try await waitUntil("the turn seen from its screen") {
+            window.layoutIfNeeded()
+            return console.agents.first?.agent.status == .idle
+        }
+
+        screen.generation += 1
+        try await frames()
+        screen.isShown = false
+        try await frames()
+        await report("working", at: 2)
+        try await waitUntil("the next turn") { console.agents.first?.agent.status == .working }
+        await report("done", at: 3)
+        try await waitUntil("the next turn Done, with no screen on it") {
+            console.agents.first?.agent.status == .done
+        }
+
+        await hideTestWindowWhenSettled(window)
+        window.rootViewController = nil
+    }
+
     /// A report from a program that has since left reads Unknown, and so does
     /// an Agent with no report: the status counts only while its owner is the
     /// foreground. A pinned Agent's Pin goes once the server stops listing it.
@@ -813,6 +876,45 @@ private struct RexLiveShell: View {
                 onBack: {})
         }
         // A hosting controller has no SwiftUI scene to say so.
+        .environment(\.scenePhase, .active)
+    }
+}
+
+/// What a test does to a Rex Agent's screen: rebuild it, or leave it.
+@MainActor
+@Observable
+private final class RexScreenDriver {
+    var generation = 0
+    var isShown = true
+}
+
+/// A Rex Agent's terminal screen, selected while it is shown, as a list
+/// opens an Agent that opens on its terminal.
+private struct RexAgentScreen: View {
+    let console: ConsoleStore
+    let terminal: ConsoleTerminal
+    let corePin: TerminalCorePin
+    let settings: TerminalSettings
+    let activity: AppActivityCoordinator
+    let driver: RexScreenDriver
+
+    var body: some View {
+        NavigationStack {
+            if driver.isShown {
+                WorkspaceTerminalDetailView(
+                    terminal: terminal,
+                    console: console,
+                    corePin: corePin,
+                    settings: settings,
+                    activity: activity,
+                    onSelectAgent: { _ in },
+                    onSelectTerminal: { _ in },
+                    isSelected: { driver.isShown },
+                    onBack: {}
+                )
+                .id(driver.generation)
+            }
+        }
         .environment(\.scenePhase, .active)
     }
 }
