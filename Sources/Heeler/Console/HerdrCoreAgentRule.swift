@@ -77,7 +77,8 @@ enum HerdrCoreAgentRule {
     }
 
     /// Done on herdr-core is per device (`HerdrCoreTurnState`), so a report of
-    /// done reads Idle here. A Rex Agent's report reads the same (`RexAgentRule`).
+    /// done reads Idle here. A Rex Agent's report reads the same (`RexAgentRule`),
+    /// its Done kept per device by `RexTurnState`.
     static func agentStatus(_ state: String) -> AgentStatus {
         switch state {
         case "idle", "done": .idle
