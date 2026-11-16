@@ -52,7 +52,10 @@ anything on the machine.
 - **Fresh on each connection.** A new control connection carries a terminal's
   title, program and directory from the last one on the same server instance
   until it reads them again, as before, but not its status: an Agent reads
-  Unknown until this connection's own read answers. Another server instance
+  Unknown until this connection's own read of its terminal answers. A status
+  publishes as soon as it is read or reported, without waiting for the other
+  terminals' reads, which hold back their titles, programs and directories
+  only. Another server instance
   carries nothing. The Console's rows still come back only with a connection's
   first settled inventory (ADR 0050).
 - **Listed as Agents.** A Rex Agent is in the Agents list in every mode, with

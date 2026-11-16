@@ -5,7 +5,9 @@ import Foundation
 /// in flight at most, applies the link's events, and publishes the inventory
 /// once every session's structure has settled, and again as it changes. A
 /// burst of changes publishes once it settles; a change to a terminal's
-/// details alone publishes once no details read is left. A session with
+/// details alone publishes once no details read is left, except a change to
+/// its Program Status, which publishes as soon as it is read or reported
+/// (ADR 0054). A session with
 /// detached terminals is read again on an interval, since no event says when
 /// one of their labels changes.
 ///
@@ -309,7 +311,10 @@ actor RexInventoryFollower {
         let inventory = book.inventory
         guard inventory != published else { return }
         let structureChanged = published.map { $0.withoutDetails != inventory.withoutDetails } ?? true
-        guard structureChanged || book.isDetailSettled else { return }
+        // A status does not wait for the other terminals' reads: on a new
+        // link each Agent reads Unknown only until its own read answers.
+        let statusChanged = published.map { $0.programStatuses != inventory.programStatuses } ?? true
+        guard structureChanged || statusChanged || book.isDetailSettled else { return }
         published = inventory
         publish(inventory)
     }

@@ -283,6 +283,64 @@ struct RexHostSessionTests {
         #expect(await following.value == .linkEnded(.closedHere))
     }
 
+    /// A link that carries the last one's details publishes them first, with
+    /// no Program Status. A terminal's status then publishes as soon as its
+    /// own read answers, while another terminal's read is still unanswered:
+    /// an Agent does not read Unknown until every terminal is read (ADR 0054).
+    @Test func aProgramStatusPublishesWithoutWaitingForEveryTerminal() async throws {
+        final class Published: Sendable {
+            let inventories = Mutex<[RexInventory]>([])
+            var all: [RexInventory] { inventories.withLock { $0 } }
+        }
+        var studio = FakeRexWorld.studio()
+        var codex = FakeRexWorld.Block.running("block:left", program: "codex")
+        codex.status = codex.record("blocked", app: "codex")
+        studio.windows[0].layers[0].blocks[2] = codex
+        let world = FakeRexWorld(sessions: [studio])
+        let (server, link) = try await FakeRexServer.open()
+        await world.install(on: server)
+        // Titles are answered by hand, so one terminal's read can wait.
+        await server.stopAnswering(RexInventoryWire.terminalMethod("title"))
+        let left = RexPaneAddress(sessionID: studio.id, blockID: "block:left")
+        let detached = RexPaneAddress(sessionID: studio.id, blockID: "block:detached")
+        let carried = RexTerminalDetails(
+            title: "codex", program: "codex", processID: 4242, argv0: "codex",
+            status: RexProgramStatus(state: "working", app: "codex", ownerProcessID: 4242, ownerName: "codex"))
+        let published = Published()
+        let follower = RexInventoryFollower(link: link, carrying: [left: carried], detachedRereadInterval: nil) {
+            inventory in published.inventories.withLock { $0.append(inventory) }
+        }
+        let following = Task { await follower.run() }
+        func waitUntil(_ what: String, _ condition: () -> Bool) async throws {
+            for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(condition(), "Timed out waiting for \(what)")
+        }
+
+        var held: FakeRexServer.Request?
+        while held == nil {
+            let request = await server.nextRequest()
+            if request.payload?["block_id"]?.stringValue == detached.blockID {
+                held = request
+            } else {
+                await server.respond(to: request, with: ["title": ""])
+            }
+        }
+        try await waitUntil("the Agent's status") { published.all.last?.details[left]?.status?.state == "blocked" }
+
+        let first = try #require(published.all.first)
+        #expect(first.details[left]?.program == "codex")
+        #expect(first.details[left]?.status == nil)
+        #expect(published.all.allSatisfy { $0.details[detached]?.title == nil })
+
+        let request = try #require(held)
+        await server.respond(to: request, with: ["title": "tail -f log"])
+        try await waitUntil("the last terminal's details") {
+            published.all.last?.details[detached]?.title == "tail -f log"
+        }
+        await link.close()
+        #expect(await following.value == .linkEnded(.closedHere))
+    }
+
     // MARK: Drops
 
     /// A link that drops without a close frame is resumed with its reconnect

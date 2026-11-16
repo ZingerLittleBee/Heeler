@@ -176,6 +176,11 @@ struct RexInventory: Sendable, Equatable {
         return details
     }
 
+    /// Each terminal's root Program Status by address; one with none is left out.
+    var programStatuses: [RexPaneAddress: RexProgramStatus] {
+        details.compactMapValues(\.status)
+    }
+
     /// The same sessions, windows and terminals with no details, so two
     /// inventories that differ only in titles, programs or directories compare equal.
     var withoutDetails: RexInventory {
