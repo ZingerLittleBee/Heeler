@@ -291,12 +291,14 @@ struct RexConsoleTests {
     /// A Rex Agent reads Done as the other kinds' do (ADR 0054): its program
     /// reported done and this device has not looked at it since. Opening its
     /// terminal looks at it; the same done reported again keeps it Idle; the
-    /// next finished turn reads Done again; and what this device saw survives
-    /// a relaunch. The Done count and the status filter take it as any Done,
-    /// and nothing of it reaches the server, a banner or a Host Helper.
+    /// next finished turn reads Done again; and both a turn left unseen and
+    /// what this device saw survive a relaunch, whose first inventory lists
+    /// the terminal before its details are read. The Done count and the
+    /// status filter take it as any Done, and nothing of it reaches the
+    /// server, a banner or a Host Helper.
     @Test func aRexAgentReadsDoneUntilThisDeviceLooksAtIt() async throws {
         let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
-        let servers = await served(world, count: 2)
+        let servers = await served(world, count: 3)
         let defaults = try #require(UserDefaults(suiteName: "rex-done-\(UUID().uuidString)"))
         let first = store(servers: [servers[0]], memory: HerdrCoreHostMemory(defaults: defaults))
         defer { first.setHosts([]) }
@@ -359,18 +361,37 @@ struct RexConsoleTests {
         #expect(first.coreSeenMarks(on: rex.id) == nil)
         #expect(Set(await servers[0].requests.map(\.method)).isSubset(of: Self.inventoryMethods))
 
-        // The app goes, sweeping nothing, and comes back to the same server.
+        // A turn finishes unseen, then the app goes, sweeping nothing, and
+        // comes back to the same server: the turn still reads Done.
+        await report("working", at: 6, on: servers[0])
+        try await waitUntil("a turn before the relaunch") { first.agents.first?.agent.status == .working }
+        await report("done", at: 7, on: servers[0])
+        try await waitUntil("the turn left unseen") { first.agents.first?.agent.status == .done }
         first.setHosts([], hostsOutOfSight: nil)
         let relaunched = store(servers: [servers[1]], memory: HerdrCoreHostMemory(defaults: defaults))
         defer { relaunched.setHosts([]) }
         relaunched.setHosts([rex])
         await relaunched.resume()
-        try await waitUntil("the Agent read again") { relaunched.agents.first?.agent.status == .idle }
+        try await waitUntil("the unseen turn read again") { relaunched.agents.first?.agent.status == .done }
         try await settle(relaunched, on: servers[1], title: "Back")
-        #expect(relaunched.agents.first?.agent.status == .idle)
-        await report("working", at: 6, on: servers[1])
-        await report("done", at: 7, on: servers[1])
-        try await waitUntil("a turn finished after the relaunch") { relaunched.agents.first?.agent.status == .done }
+        #expect(relaunched.agents.first?.agent.status == .done)
+        #expect(ConsoleHostAgentStatusCounts(agents: relaunched.agents).done == 1)
+        relaunched.setAgentShown(agent.id, viewer: viewer, scene: nil)
+        try await waitUntil("the turn seen after the relaunch") { relaunched.agents.first?.agent.status == .idle }
+        relaunched.setAgentShown(nil, viewer: viewer, scene: nil)
+
+        // What this device saw survives the next relaunch.
+        relaunched.setHosts([], hostsOutOfSight: nil)
+        let again = store(servers: [servers[2]], memory: HerdrCoreHostMemory(defaults: defaults))
+        defer { again.setHosts([]) }
+        again.setHosts([rex])
+        await again.resume()
+        try await waitUntil("the Agent read again") { again.agents.first?.agent.status == .idle }
+        try await settle(again, on: servers[2], title: "Again")
+        #expect(again.agents.first?.agent.status == .idle)
+        await report("working", at: 8, on: servers[2])
+        await report("done", at: 9, on: servers[2])
+        try await waitUntil("a turn finished after the relaunch") { again.agents.first?.agent.status == .done }
     }
 
     /// A report from a program that has since left reads Unknown, and so does

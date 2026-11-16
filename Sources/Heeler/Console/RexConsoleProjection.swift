@@ -242,8 +242,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// Each listed terminal's record, folded into this device's turns, and
     /// the turns of terminals the server no longer lists forgotten. A record
     /// this link has yet to read, or one removed, changes nothing; one that is
-    /// not its Agent's, or a terminal with no Agent, ends a finished turn's
-    /// Done. A terminal never known to host an Agent costs nothing.
+    /// not its Agent's, or a foreground read as no Agent, ends a finished
+    /// turn's Done. A terminal whose foreground this link has yet to read, as
+    /// on a new connection before its details answer, says neither, so a turn
+    /// left unseen before a relaunch still reads Done after it. A terminal
+    /// never known to host an Agent costs nothing.
     private func noteTurns(in inventory: RexInventory) {
         let known = memory.rexTurnStates(for: host.id)
         var listed: Set<String> = []
@@ -259,7 +262,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                         state.note(report, kind: kind)
                         if isShown { state.markSeen() }
                     }
-                } else if kind == nil || details.status != nil, known[paneID] != nil {
+                } else if known[paneID] != nil, kind == nil ? details.program != nil : details.status != nil {
                     memory.updateRexTurnState(of: paneID, for: host.id) { $0.noteNoAgent() }
                 }
             }
