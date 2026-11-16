@@ -724,6 +724,7 @@ final class ConsoleListPresentationStore {
             || !statusFilter.isEmpty
         let kept = searchedAgents(agents, searchQuery: searchQuery)
         let visible = hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
+        let mentions = statusPresentations == nil ? HostMachine.serverMentions(for: visible) : [:]
 
         return ConsoleHostSectionGroup.grouping(visible).compactMap { group in
             guard let first = group.servers.first else { return nil }
@@ -738,7 +739,8 @@ final class ConsoleListPresentationStore {
                             status: hostStatuses[host.id],
                             standingFailure: hostStandingFailures[host.id],
                             isAwaitingSnapshot: isAwaitingSnapshot,
-                            syncError: hostSyncErrors[host.id])
+                            syncError: hostSyncErrors[host.id],
+                            server: mentions[host.id])
                     }
                 return ConsoleHostServerState(
                     hostID: host.id, connectionStatus: hostStatuses[host.id],

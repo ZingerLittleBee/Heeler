@@ -268,7 +268,8 @@ struct ConsoleListPresentationStoreTests {
     }
 
     /// One Server failing reads on the Host's header and in a row under it
-    /// that names the Server; the Host still expands to the other's Agents.
+    /// that names the Server alone, never as "Host · Server"; the Host still
+    /// expands to the other's Agents.
     @Test func aFailingServerShowsOnItsHostsHeaderAndARowNamingIt() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -292,7 +293,10 @@ struct ConsoleListPresentationStoreTests {
         #expect(m3.issues.count == 1)
         #expect(issue.hostID == tmux.id)
         // What the row shows under a header naming only the Host.
-        #expect(issue.message.hasPrefix("m3 · tmux: "))
+        #expect(issue.sectionMessage.hasPrefix("tmux: "))
+        #expect(issue.hostName == "m3")
+        #expect(issue.status == "tmux: Can't connect")
+        #expect(![issue.message, issue.sectionMessage, issue.status].contains { $0.contains("m3 · ") })
     }
 
     /// A Host folded while the list showed a section for each Server stays

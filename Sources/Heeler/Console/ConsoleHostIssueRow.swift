@@ -2,23 +2,12 @@ import SwiftUI
 
 /// One Host condition as a row in its Host's section, shared by the Agents
 /// and Terminals lists so a Host reads the same in both. The header above
-/// names the Host, so the row does not repeat it; VoiceOver still hears the
-/// whole sentence. A row that navigates opens the Host in the Hosts tab.
+/// names the Host, so the row does not repeat it, and a Host with several
+/// Servers on has the row name its Server instead; VoiceOver still hears
+/// the whole sentence. A row that navigates opens the Host in the Hosts tab.
 struct ConsoleHostIssueRow: View {
     let issue: ConsoleHostStatusPresentation
-    /// The section lists several Servers of its Host and names only the Host,
-    /// so the row says the whole sentence, which names the Server too.
-    let namesServer: Bool
     let onOpenHost: (Host.ID) -> Void
-
-    init(
-        issue: ConsoleHostStatusPresentation, namesServer: Bool = false,
-        onOpenHost: @escaping (Host.ID) -> Void
-    ) {
-        self.issue = issue
-        self.namesServer = namesServer
-        self.onOpenHost = onOpenHost
-    }
 
     var body: some View {
         if issue.navigates {
@@ -35,7 +24,7 @@ struct ConsoleHostIssueRow: View {
         HStack(spacing: 8) {
             Image(systemName: issue.systemImage)
                 .foregroundStyle(tint)
-            Text(namesServer ? issue.message : issue.sectionMessage)
+            Text(issue.sectionMessage)
                 .font(.footnote)
                 .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
                 .lineLimit(2)
@@ -261,12 +250,13 @@ struct ConsoleHostIssuesSheet<Detail: View & SendableMetatype>: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(issue.message)
+        .accessibilityLabel(issue.spokenMessage)
     }
 }
 
 /// One Host condition on a single line: the Host's glyph and name, as on
-/// its section header, and a few words of status.
+/// its section header, and a few words of status, which name the Server of
+/// a Host with several on.
 struct ConsoleHostIssueCompactRow: View {
     let issue: ConsoleHostStatusPresentation
     let onOpenHost: (Host.ID) -> Void
@@ -304,7 +294,7 @@ struct ConsoleHostIssueCompactRow: View {
         .frame(maxHeight: .infinity)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(issue.message)
+        .accessibilityLabel(issue.spokenMessage)
     }
 }
 

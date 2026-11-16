@@ -2199,14 +2199,13 @@ struct ConsoleView: View {
                 // says: the others may have Agents to show, and each
                 // problem's row opens its own Server's sheet.
                 let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
-                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
                         // As in the Terminals tab: an expanded Host with a
                         // condition says what it is before any Agents it lists.
                         ForEach(section.issues) { @Sendable issue in
                             MainActorContent {
-                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
+                                ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
                                     .listRowSeparator(.hidden)
                             }
                         }

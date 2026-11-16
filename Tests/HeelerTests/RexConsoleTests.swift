@@ -845,6 +845,34 @@ struct RexConsoleTests {
         #expect(issueHostIDs(filter: [rex.id]).contains(rex.id))
         #expect(!issueHostIDs(filter: [tmux.id]).contains(rex.id))
     }
+
+    /// The lists name a Host alone (ADR 0047): a Host whose tmux and Rex
+    /// Servers both have a problem lists each by the Host's name with its
+    /// Server in the status, never as "Host · Server", and the summary of
+    /// the two is the Host's.
+    @Test func aHostsServersProblemsNameTheHostAlone() async throws {
+        let rexServer = Host(
+            name: "m3", address: "m3.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
+        let tmux = Host(
+            name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
+        let records = HostStore(volatileHosts: [tmux, rexServer]).consoleHosts
+        #expect(records.map(\.displayName) == ["m3 · tmux", "m3 · Rex"])
+        let console = store(rexConnect: { _, _ in throw TransportError.rexForwardingRefused(socketPath: "/run/rex.sock") })
+        defer { console.setHosts([]) }
+        console.setHosts(records)
+        await console.resume()
+        try await waitUntil("both Servers' problems") { console.hostIssues(for: records).count == 2 }
+
+        let issues = console.hostIssues(for: records)
+        #expect(issues.map(\.hostName) == ["m3", "m3"])
+        #expect(issues[0].status.hasPrefix("tmux: "))
+        #expect(issues[1].status.hasPrefix("Rex: "))
+        #expect(!issues.contains { issue in
+            [issue.message, issue.sectionMessage, issue.status, issue.spokenMessage].contains { $0.contains("m3 · ") }
+        })
+        #expect(ConsoleHostIssueSummary(issues: issues)?.title == "m3")
+    }
 }
 
 /// The Agents a terminal's screen left for, in order.

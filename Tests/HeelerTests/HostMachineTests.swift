@@ -90,6 +90,22 @@ struct HostMachineTests {
         #expect(decoded?.hostName == "Studio sockets")
     }
 
+    /// Where the lists name a Host alone, each Server of a Host with several
+    /// on is mentioned by its label, a record named apart included, under one
+    /// key for the Host; a Host with one Server mentions none.
+    @Test func eachServerOfAHostWithSeveralIsMentionedBesideItsName() {
+        let tui = record()
+        let namedApart = record(name: "Studio sockets", kind: .tmux, session: "second")
+        let alone = record(name: "Build", address: "build.example", kind: .herdrCore)
+
+        #expect(
+            HostMachine.serverMentions(for: [tui, alone, namedApart]) == [
+                tui.id: HostServerMention(label: "Herdr TUI", hostID: tui.id),
+                namedApart.id: HostServerMention(label: "tmux · second", hostID: tui.id),
+            ])
+        #expect(HostMachine.serverMentions(for: [tui, alone]).isEmpty)
+    }
+
     /// A Rex Server is one more Server of its Host: grouped by the connection,
     /// labelled by its kind where the records would read alike, and badged.
     @Test func aRexServerBesideAnotherIsOneHost() throws {

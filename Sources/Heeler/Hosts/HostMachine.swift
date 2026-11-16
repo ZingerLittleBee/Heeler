@@ -181,4 +181,29 @@ struct HostMachine: Identifiable, Hashable, Sendable {
         }
         return names
     }
+
+    /// Each record's Server as the Agents and Terminals lists mention it
+    /// beside the Host's name alone, for the records of a Host with more than
+    /// one Server on (ADR 0047). A Host with one mentions none.
+    static func serverMentions(for hosts: [Host]) -> [Host.ID: HostServerMention] {
+        var mentions: [Host.ID: HostServerMention] = [:]
+        for machine in grouped(hosts) {
+            let servers = machine.servers
+            guard let first = servers.first, Set(servers.compactMap(\.serverKey)).count > 1 else { continue }
+            for record in servers {
+                guard let label = record.serverKey?.label else { continue }
+                mentions[record.id] = HostServerMention(label: label, hostID: first.id)
+            }
+        }
+        return mentions
+    }
+}
+
+/// One Server of a Host with several on, as a list that names the Host alone
+/// mentions it: `tmux: Can't connect` beside the Host's name (ADR 0047).
+struct HostServerMention: Equatable, Sendable {
+    /// What tells the Server from its Host's others (`HostServerKey.label`).
+    let label: String
+    /// The Host's first record, the same for each of its Servers.
+    let hostID: Host.ID
 }

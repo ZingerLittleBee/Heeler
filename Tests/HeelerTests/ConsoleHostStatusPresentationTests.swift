@@ -315,6 +315,41 @@ struct ConsoleHostIssueSummaryTests {
         let summary = try #require(ConsoleHostIssueSummary(issues: issues))
         #expect(summary.title == "2 Hosts not ready")
     }
+
+    /// The lists name a Host alone (ADR 0047), so a row of a Host with
+    /// several Servers on names its Server in place of the Host, and the
+    /// Host counts once: a summary of only its rows takes its name and counts
+    /// its Servers, and beside another Host it is one of two.
+    @Test func aHostWithSeveralServersIsNamedAloneAndCountedOnce() throws {
+        let m3 = UUID()
+        func server(_ label: String, _ status: EventsSessionStatus) -> ConsoleHostStatusPresentation? {
+            ConsoleHostStatusPresentation(
+                host: Host.fixture(name: "m3"), status: status, syncError: nil,
+                server: HostServerMention(label: label, hostID: m3))
+        }
+        let tui = try #require(server("Herdr TUI", .failed(.timedOut)))
+        let tmux = try #require(server("tmux", .connecting))
+        #expect(tui.hostName == "m3")
+        #expect(tui.status == "Herdr TUI: Can't connect")
+        #expect(tui.sectionMessage == tui.message)
+        #expect(tui.message.hasPrefix("Herdr TUI: "))
+        #expect(tmux.message == "Connecting to tmux…")
+        #expect(tmux.spokenMessage == "m3, Connecting to tmux…")
+
+        let alone = try #require(ConsoleHostIssueSummary(issues: [tui, tmux]))
+        #expect(alone.title == "m3")
+        #expect(
+            alone.counts == [
+                .init(tone: .unavailable, text: "1 can't connect"), .init(tone: .pending, text: "1 connecting"),
+            ])
+        let other = try #require(issue("b", .connecting))
+        let beside = try #require(ConsoleHostIssueSummary(issues: [tui, tmux, other]))
+        #expect(beside.title == "2 Hosts not connected")
+        #expect(
+            beside.counts == [
+                .init(tone: .unavailable, text: "1 can't connect"), .init(tone: .pending, text: "2 connecting"),
+            ])
+    }
 }
 
 /// The list below must not move while Hosts connect, so the row is one height

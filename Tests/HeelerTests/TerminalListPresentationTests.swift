@@ -216,8 +216,9 @@ struct TerminalListProjectionTests {
     }
 
     /// One Server failing reads on the Host's header, and its row under the
-    /// header names it; a Host with several Servers expands rather than open
-    /// one Server's connection sheet.
+    /// header names it alone, as By Workspace's row above the cards does
+    /// beside the Host's name; a Host with several Servers expands rather
+    /// than open one Server's connection sheet.
     @MainActor @Test func aFailingServerShowsOnItsHostsGroup() throws {
         let (tui, tmux, _) = twoServerHosts()
         let alone = Host.fixture(name: "alone", address: "alone.example")
@@ -232,7 +233,14 @@ struct TerminalListProjectionTests {
         #expect(m3.readiness.text == "Unavailable")
         #expect(m3.readiness.nameEmphasis == .full)
         #expect(m3.issues.map(\.hostID) == [tmux.id])
-        #expect(m3.issues.first?.message.hasPrefix("m3 · tmux: ") == true)
+        #expect(m3.issues.first?.sectionMessage.hasPrefix("tmux: ") == true)
+        let flat = projection(
+            hosts: [tui, tmux, alone],
+            statuses: [tui.id: .connected, tmux.id: .failed(failure), alone.id: .failed(failure)]
+        ).issues()
+        #expect(flat.map(\.hostName) == ["m3", "alone"])
+        #expect(flat.map(\.status) == ["tmux: Can't connect", "Can't connect"])
+        #expect(!flat.contains { $0.message.contains("m3 · ") || $0.spokenMessage.contains("m3 · ") })
         #expect(m3.terminalCount == 1)
         #expect(groups.map(\.opensConnectionDetail) == [false, true])
     }

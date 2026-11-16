@@ -2603,16 +2603,7 @@ final class ConsoleStore {
     }
 
     private func rebuildHostIssues() {
-        let next = PerfTrace.span("console.host-issues") {
-            catalog.compactMap { host in
-                ConsoleHostStatusPresentation(
-                    host: host,
-                    status: hostStatuses[host.id],
-                    standingFailure: hostStandingFailures[host.id],
-                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-                    syncError: hostSyncErrors[host.id])
-            }
-        }
+        let next = PerfTrace.span("console.host-issues") { makeHostIssues(for: catalog) }
         if hostIssues != next {
             hostIssues = next
         }
@@ -2624,15 +2615,21 @@ final class ConsoleStore {
         if hosts == catalog {
             return hostIssues
         }
-        return PerfTrace.span("console.host-issues") {
-            hosts.compactMap { host in
-                ConsoleHostStatusPresentation(
-                    host: host,
-                    status: hostStatuses[host.id],
-                    standingFailure: hostStandingFailures[host.id],
-                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-                    syncError: hostSyncErrors[host.id])
-            }
+        return PerfTrace.span("console.host-issues") { makeHostIssues(for: hosts) }
+    }
+
+    /// Each record's condition, naming its Server where its Host has several
+    /// on, since the lists name the Host alone (ADR 0047).
+    private func makeHostIssues(for hosts: [Host]) -> [ConsoleHostStatusPresentation] {
+        let servers = HostMachine.serverMentions(for: hosts)
+        return hosts.compactMap { host in
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: hostStatuses[host.id],
+                standingFailure: hostStandingFailures[host.id],
+                isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
+                syncError: hostSyncErrors[host.id],
+                server: servers[host.id])
         }
     }
 

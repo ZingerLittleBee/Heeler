@@ -6,6 +6,10 @@ import Foundation
 /// do not navigate to Host settings. Failed and reconnecting rows still do.
 /// `inventoryNoun` names what the loading row waits for on its list: the
 /// token "Agents" or "Terminals", never shown as it is.
+///
+/// The lists name the Host alone (ADR 0047). A row of a Host with several
+/// Servers on names its Server in place of the Host: "Connecting to tmux…"
+/// under the Host's heading, "tmux: Can't connect" beside its name.
 struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     enum Severity: Equatable {
         case informational
@@ -52,10 +56,14 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     }
 
     let hostID: Host.ID
+    /// The Host's name alone, whichever of its Servers the row is about.
     let hostName: String
+    /// The Server the row is about, when its Host has several on.
+    let server: HostServerMention?
     let message: String
     /// `message` for a row under the Host's own section header, which
-    /// already names it: a failure without the "studio: " before it.
+    /// already names it: a failure without the "studio: " before it. A
+    /// Server's row keeps its name, which tells it from the Host's others.
     let sectionMessage: String
     let systemImage: String
     let severity: Severity
@@ -69,8 +77,20 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 
     var id: Host.ID { hostID }
     var isCritical: Bool { severity == .critical }
-    /// A few words for a compact row: "Reconnecting…", "Can't connect".
-    var status: String { condition.title }
+    /// A few words for a compact row: "Reconnecting…", "Can't connect", or
+    /// "tmux: Can't connect" for one of several Servers.
+    var status: String {
+        guard let server else { return condition.title }
+        return String(localized: "\(server.label): \(condition.title)")
+    }
+    /// The whole sentence where the row shows the Host's name beside it,
+    /// which a Server's `message` leaves out.
+    var spokenMessage: String {
+        guard server != nil else { return message }
+        return String(localized: "\(hostName), \(message)")
+    }
+    /// The Host the row belongs to: one id for all of its Servers' rows.
+    var hostKey: Host.ID { server?.hostID ?? hostID }
 
     init?(
         host: Host,
@@ -78,15 +98,17 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         standingFailure: TransportError? = nil,
         isAwaitingSnapshot: Bool = false,
         syncError: String?,
-        inventoryNoun: String = "Agents"
+        inventoryNoun: String = "Agents",
+        server: HostServerMention? = nil
     ) {
         hostID = host.id
-        hostName = host.displayName
+        hostName = host.hostName
+        self.server = server
         isConnected = if case .connected = status { true } else { false }
         let usesHerdrEndpoint = host.herdrEndpoint != nil
         // What follows a "studio: " prefix, where the message has one.
         var unprefixed: String?
-        let name = host.displayName
+        let name = server?.label ?? host.hostName
         switch status {
         case .suspended:
             message = String(localized: "Connection to \(name) is paused.")
@@ -149,7 +171,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
                 return nil
             }
         }
-        sectionMessage = unprefixed ?? message
+        sectionMessage = server == nil ? unprefixed ?? message : message
     }
 
     private static let cannotConnect: (HostConnectionTone, Condition) = (.unavailable, .cannotConnect)
@@ -181,7 +203,9 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 
 /// Several Host conditions folded into one row for the flat lists, so a
 /// handful of unreachable Hosts cannot push the inventory off screen.
-/// Absent for fewer than two: one condition shows as its own row.
+/// Absent for fewer than two: one condition shows as its own row. A Host
+/// with several Servers on counts once; when every condition is one Host's,
+/// the row takes its name and counts its Servers.
 struct ConsoleHostIssueSummary: Equatable {
     /// Hosts sharing one status, shown as a chip with its tone's dot.
     struct Count: Equatable {
@@ -200,22 +224,32 @@ struct ConsoleHostIssueSummary: Equatable {
 
     init?(issues: [ConsoleHostStatusPresentation]) {
         guard issues.count > 1 else { return nil }
-        // Loading or out of sync is not "not connected"; say less then.
-        title =
-            issues.contains(where: \.isConnected)
-            ? String(localized: "\(issues.count) Hosts not ready") : String(localized: "\(issues.count) Hosts not connected")
-        // One count per condition, in the order the worst first appears.
+        let hostCount = Set(issues.map(\.hostKey)).count
+        let isOneHost = hostCount == 1
+        if isOneHost, let hostName = issues.first?.hostName {
+            title = hostName
+        } else {
+            // Loading or out of sync is not "not connected"; say less then.
+            title =
+                issues.contains(where: \.isConnected)
+                ? String(localized: "\(hostCount) Hosts not ready") : String(localized: "\(hostCount) Hosts not connected")
+        }
+        // One count per condition, in the order the worst first appears:
+        // the Hosts that share it, or for one Host, its Servers.
         let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
-        var grouped: [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, count: Int)] = []
+        var grouped:
+            [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, members: Set<Host.ID>)] =
+                []
         for issue in ranked {
+            let member = isOneHost ? issue.hostID : issue.hostKey
             if let index = grouped.firstIndex(where: { $0.condition == issue.condition }) {
-                grouped[index].count += 1
+                grouped[index].members.insert(member)
             } else {
-                grouped.append((issue.tone, issue.condition, 1))
+                grouped.append((issue.tone, issue.condition, [member]))
             }
         }
         // "Reconnecting…" counts as "3 reconnecting".
-        counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.count)) }
+        counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.members.count)) }
         tone = ranked.first?.tone ?? .pending
     }
 
