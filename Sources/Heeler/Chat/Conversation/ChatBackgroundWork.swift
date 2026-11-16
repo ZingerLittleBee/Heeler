@@ -29,7 +29,7 @@ struct ChatWorkflowProgress: Equatable, Sendable {
 
 /// Live Host signs of one listed Background Work item outside the main
 /// transcript, such as Antigravity CLI's background-task strip, `/tasks`
-/// panel, task log, or subagent transcript.
+/// panel, task log, subagent transcript, or Claude Code's workflow run file.
 struct ChatBackgroundWorkEvidence: Equatable, Sendable {
     /// When the Host last showed the work still running or writing.
     var lastSeenAt: Date?
@@ -38,6 +38,9 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
     var endedState: ChatBackgroundWorkItem.State?
     /// When the Host observed `endedState`.
     var endedAt: Date?
+    /// `latestPromptOffset` when `endedState` was observed, so a subsequent
+    /// user prompt clears evidence-retired work just like `endOffset`.
+    var endPromptOffset: UInt64?
 
     /// Combines another live source's evidence with this one, keeping the
     /// newest activity timestamp and preserving an already-known terminal
@@ -48,6 +51,7 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
         if merged.endedState == nil, let otherEnded = other.endedState {
             merged.endedState = otherEnded
             merged.endedAt = other.endedAt
+            merged.endPromptOffset = other.endPromptOffset
         }
         return merged
     }
@@ -98,7 +102,8 @@ struct ChatBackgroundWork: Equatable, Sendable {
         staleness: Staleness = Staleness()
     ) {
         self.isLive = isLive
-        let rows = transcript.listedBackgroundWork.map { rawItem in
+        let prompt = transcript.latestPromptOffset ?? 0
+        let rows = transcript.listedBackgroundWork.compactMap { rawItem -> Row? in
             var item = rawItem
             let itemEvidence = evidence[item.id]
             if item.state == .running, let itemEvidence, let endedState = itemEvidence.endedState {
@@ -109,6 +114,12 @@ struct ChatBackgroundWork: Equatable, Sendable {
                     default: true
                     }
                 if postdatesStart {
+                    if let endPrompt = itemEvidence.endPromptOffset,
+                        prompt > endPrompt,
+                        prompt > rawItem.launchOffset
+                    {
+                        return nil
+                    }
                     item.state = endedState
                     item.endedAt = item.endedAt ?? itemEvidence.endedAt
                 }
@@ -125,6 +136,30 @@ struct ChatBackgroundWork: Equatable, Sendable {
         }
         // Running first; each part keeps launch order, so rows never jump.
         self.rows = rows.filter(\.isRunning) + rows.filter { !$0.isRunning }
+    }
+
+    /// Whether any listed item has not reached a terminal state yet.
+    var hasUnfinished: Bool {
+        rows.contains(where: \.isRunning)
+    }
+
+    /// Whether finished Background Work stays visible in the floating strip
+    /// over the Composer: while a live connected foreground turn is still
+    /// running, so items finishing mid-turn stay visible until the turn
+    /// concludes, then hiding once both the foreground turn and all
+    /// Background Work have ended.
+    func showsFinishedInStrip(
+        agentStatus: AgentStatus, isHostConnected: Bool, turns: [ChatTurn]
+    ) -> Bool {
+        guard isHostConnected, isLive else { return false }
+        switch agentStatus {
+        case .working, .blocked:
+            return true
+        case .idle, .done, .error:
+            return false
+        default:
+            return turns.last.map { $0.ending == nil } ?? false
+        }
     }
 
     /// Whether a live read shows work running, which keeps Chat reading at

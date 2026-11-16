@@ -2012,8 +2012,17 @@ private struct BackgroundWorkInset: View {
     let open: (String?) -> Void
 
     var body: some View {
+        let work = chat.backgroundWork
+        let showsFinished = work.showsFinishedInStrip(
+            agentStatus: chat.agent.status,
+            isHostConnected: isHostConnected,
+            turns: chat.conversation.transcript.turns)
         ChatBackgroundWorkStrip(
-            work: chat.backgroundWork, isHostConnected: isHostConnected, isCondensed: isCondensed, open: open)
+            work: work,
+            isHostConnected: isHostConnected,
+            isCondensed: isCondensed,
+            showsFinishedWork: showsFinished,
+            open: open)
     }
 }
 

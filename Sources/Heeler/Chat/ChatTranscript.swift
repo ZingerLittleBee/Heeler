@@ -1288,6 +1288,15 @@ struct ChatBackgroundWorkEnd: Equatable, Sendable {
     }
 }
 
+/// How many running Background Work items of `kind` launched above
+/// `windowStart` can still be running at `end.offset`, once in-window active
+/// items are counted against a turn-end record's pending count.
+struct ChatTurnPendingAllowance: Equatable, Sendable {
+    var kind: ChatBackgroundWorkItem.Kind
+    var carriedSlots: Int
+    var end: ChatBackgroundWorkEnd
+}
+
 /// A command Antigravity CLI sent to a background task, as the transcript
 /// shows it. agy delivers a task's end only with the next prompt once its
 /// turn was stopped, so a command can read running after it ended.
@@ -1373,6 +1382,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// The first record among the loaded lines that stopped all Background
     /// Work, which ends work launched above them with no end of its own.
     var backgroundWorkStop: ChatBackgroundWorkEnd?
+    /// Pending-count caps recorded at turn boundaries inside a tail window,
+    /// retiring excess running work carried from above `windowStart`.
+    var backgroundWorkTurnCaps: [ChatTurnPendingAllowance]
     /// The turns the loaded lines open, oldest first. Entries above the
     /// first belong to a turn opened above the loaded lines.
     var turns: [ChatTurn]
@@ -1396,6 +1408,7 @@ struct ChatTranscript: Equatable, Sendable {
         diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
         backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil,
         backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil,
+        backgroundWorkTurnCaps: [ChatTurnPendingAllowance] = [],
         turns: [ChatTurn] = [], precedingTurnEnd: ChatTurnEnd? = nil,
         unrecordedEntryIDs: Set<ChatEntryID> = []
     ) {
@@ -1410,6 +1423,7 @@ struct ChatTranscript: Equatable, Sendable {
         self.latestPromptOffset = latestPromptOffset
         self.backgroundWorkEnds = backgroundWorkEnds
         self.backgroundWorkStop = backgroundWorkStop
+        self.backgroundWorkTurnCaps = backgroundWorkTurnCaps
         self.turns = turns
         self.precedingTurnEnd = precedingTurnEnd
         self.unrecordedEntryIDs = unrecordedEntryIDs
@@ -1435,7 +1449,7 @@ struct ChatTranscript: Equatable, Sendable {
         _ earlier: [ChatBackgroundWorkItem], launchedBefore windowStart: UInt64, latestPromptOffset earlierPrompt: UInt64?
     ) {
         let loaded = Set(backgroundWork.map(\.id))
-        let carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
+        var carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
             var item = item
             if let end = backgroundWorkEnds[item.id], end.offset > (item.endOffset ?? item.launchOffset) {
                 item.apply(end)
@@ -1443,6 +1457,22 @@ struct ChatTranscript: Equatable, Sendable {
                 item.apply(stop)
             }
             return item
+        }
+        for cap in backgroundWorkTurnCaps {
+            let activeIndices = carried.indices.filter { index in
+                let item = carried[index]
+                guard item.kind == cap.kind else { return false }
+                if item.state == .running { return true }
+                return (item.endOffset ?? 0) > cap.end.offset
+            }
+            let excess = activeIndices.count - max(0, cap.carriedSlots)
+            guard excess > 0 else { continue }
+            var retired = 0
+            for index in activeIndices where carried[index].state == .running {
+                carried[index].apply(cap.end)
+                retired += 1
+                if retired == excess { break }
+            }
         }
         backgroundWork = carried + backgroundWork
         if latestPromptOffset == nil { latestPromptOffset = earlierPrompt }
