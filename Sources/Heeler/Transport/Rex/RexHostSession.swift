@@ -161,6 +161,25 @@ actor RexHostSession {
             }
         }
 
+        /// A block the server handed over stays this client's only while no
+        /// other client owns it: once its owner changes to another client or
+        /// to none, as when the one whose link dropped resumes, the claim is
+        /// a place in line, given back as a size this client took and no
+        /// longer kept from the next showing's take. An open attach of the
+        /// block hears the change itself; this keeps the claim right when
+        /// none is open.
+        func ownerChanged(_ update: RexControlUpdate, client: String?) {
+            guard case .event(let event) = update, let sessionID = event.sessionID,
+                case .blockOwnerChanged(let blockID, let owner, _, _) = event.body,
+                owner == nil || owner != client
+            else { return }
+            let address = RexPaneAddress(sessionID: sessionID, blockID: blockID)
+            claims.withLock { claims in
+                guard let held = claims[address], held.claim == .handed else { return }
+                claims[address] = (epoch: held.epoch, claim: .taken)
+            }
+        }
+
         func taken(epoch: UInt64) -> [RexPaneAddress] {
             claims.withLock { claims in
                 claims.compactMap { $0.value.epoch == epoch && $0.value.claim == .taken ? $0.key : nil }
@@ -406,10 +425,12 @@ actor RexHostSession {
             follows.lastInventory.withLock { last in
                 last.flatMap { $0.instanceID == server.instanceID ? $0.inventory.details : nil }
             } ?? [:]
+        let client = link.clientID
         let follower = RexInventoryFollower(
             link: link, carrying: carried, maxReadsInFlight: maxReadsInFlight,
-            observe: { [follows, terminals] update in
+            observe: { [follows, terminals, sizeClaims] update in
                 guard follows.run.withLock({ $0 == run }) else { return }
+                sizeClaims.ownerChanged(update, client: client)
                 terminals.observe(update)
             }
         ) { [updatesContinuation, follows] inventory in

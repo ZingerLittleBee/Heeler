@@ -749,6 +749,39 @@ struct RexTerminalSizeOwnershipTests {
         #expect(await ownership(control) == [Self.take])
     }
 
+    /// A block the server handed over stays as it is only while it is this
+    /// client's: once the device that dropped resumes and gets it back,
+    /// with no attach of the block open to hear it, the next showing takes
+    /// the size as it opens, and gives it back as it leaves.
+    @Test func aHandedOverBlockItsOwnerGotBackIsTakenByTheNextShowing() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let first = try await openShown(rig, session: session, on: control)
+        await pushOwner(control, Self.otherDevice, previous: Self.thisClient, reason: "take")
+        try await waitUntil("the other device's take") { first.sizeReport?.owner == Self.otherDevice }
+        await pushOwner(control, Self.thisClient, previous: Self.otherDevice, reason: "lost")
+        try await waitUntil("the hand-over") { first.sizeReport?.owner == Self.thisClient }
+        await first.stop()
+        #expect(await ownership(control) == [Self.take])
+
+        await pushOwner(control, Self.otherDevice, previous: Self.thisClient, reason: "restore")
+        try await Task.sleep(for: .milliseconds(100))
+        let second = store(session)
+        second.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the next showing's take") { await ownership(control) == [Self.take, Self.take] }
+        await rig.begin(stream: 1, columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the new paint") { second.status == .live }
+        let methods = await control.requests.map(\.method)
+        let taken = try #require(methods.lastIndex(of: Self.take))
+        let streamed = try #require(methods.lastIndex(of: "data.connect"))
+        #expect(taken < streamed)
+        await second.stop()
+        #expect(await ownership(control) == [Self.take, Self.take, Self.giveBack])
+    }
+
     /// A block passed to this client because the device that took it let go
     /// of it, or left with a close frame, has nobody to go back to: leaving
     /// gives it back like the size the view took.
