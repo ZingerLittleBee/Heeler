@@ -79,6 +79,94 @@ struct TerminalListProjectionTests {
         #expect(cards.first?.terminals.isEmpty == true)
     }
 
+    private var rex: Host {
+        Host(
+            name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
+    }
+
+    /// A card with no shell holds New Terminal alone. A Rex Host starts no
+    /// terminals, so its session running only Agents, or listing no terminal,
+    /// has nothing to show or offer and is left out of both presentations.
+    /// Another kind's stays, there to hold New Terminal, even while a
+    /// herdr-core Host is still connecting and cannot start one yet.
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore, .tmux])
+    func aWorkspaceWithNothingToShowOrOfferIsLeftOut(beside kind: ServerKind) throws {
+        let rex = rex
+        let other = Host(name: "other", address: "other.example", username: "dev", serverKind: kind)
+        let list = projection(
+            hosts: [rex, other],
+            terminals: [
+                terminal(host: rex, paneID: "codex", workspaceID: "agents", agent: "codex"),
+                terminal(host: rex, paneID: "shell", workspaceID: "mixed", order: 1),
+                terminal(host: rex, paneID: "claude", workspaceID: "mixed", order: 2, agent: "claude"),
+                terminal(host: other, paneID: "agent", workspaceID: "agents", agent: "claude"),
+            ],
+            workspaces: [
+                rex.id: [
+                    ConsoleWorkspace(id: "agents", label: "agents", order: 0),
+                    ConsoleWorkspace(id: "mixed", label: "mixed", order: 1),
+                    ConsoleWorkspace(id: "bare", label: "bare", order: 2),
+                ],
+                other.id: [ConsoleWorkspace(id: "agents", label: "agents", order: 0)],
+            ],
+            statuses: [rex.id: .connected, other.id: kind == .herdrCore ? .connecting : .connected])
+
+        let cards = list.workspaces()
+        #expect(
+            cards.map(\.id) == [
+                .init(hostID: rex.id, workspaceID: "mixed"), .init(hostID: other.id, workspaceID: "agents"),
+            ])
+        #expect(cards.map(\.terminals.count) == [1, 0])
+        #expect(!HostCapabilities(serverKind: .rex).startsTerminals)
+        #expect(HostCapabilities(serverKind: kind).startsTerminals)
+        let groups = list.hostGroups()
+        #expect(groups.map { $0.workspaces.map(\.workspaceID) } == [["mixed"], ["agents"]])
+        #expect(groups.map(\.terminalCount) == [1, 0])
+    }
+
+    /// A Rex Host whose sessions all run Agents lists no card, so both
+    /// presentations show their empty state, and its Host header reads No
+    /// Terminals with no count; a search or a filter finds nothing either.
+    /// The session's card comes back, collapsed as it was left, once it has a
+    /// shell: its Agent exits to the shell, or a new terminal appears.
+    @Test func aRexSessionRunningOnlyAgentsComesBackWithAShell() throws {
+        let rex = rex
+        let session = TerminalWorkspaceGroup.ID(hostID: rex.id, workspaceID: "agents")
+        func list(_ terminals: [ConsoleTerminal]) -> TerminalListProjection {
+            projection(
+                hosts: [rex], terminals: terminals,
+                workspaces: [rex.id: [ConsoleWorkspace(id: "agents", label: "agents", order: 0)]],
+                statuses: [rex.id: .connected], collapsedWorkspaces: [session])
+        }
+        let codex = terminal(host: rex, paneID: "codex", workspaceID: "agents", agent: "codex")
+        let agentsOnly = list([codex])
+        // What each presentation reads for its empty state.
+        #expect(agentsOnly.workspaces().isEmpty)
+        #expect(agentsOnly.issues().isEmpty)
+        let group = try #require(agentsOnly.hostGroups().first)
+        #expect(group.workspaces.isEmpty)
+        #expect(group.issue == nil)
+        #expect(group.readiness.text == "No Terminals")
+        #expect(group.terminalCount == 0)
+        #expect(agentsOnly.workspaces(filteredHostIDs: [rex.id]).isEmpty)
+        #expect(agentsOnly.workspaces(searchQuery: "agents").isEmpty)
+        #expect(agentsOnly.hostGroups(searchQuery: "agents").isEmpty)
+
+        let exited = terminal(host: rex, paneID: "codex", workspaceID: "agents")
+        let opened = terminal(host: rex, paneID: "zsh", workspaceID: "agents", tabPosition: 2)
+        for terminals in [[exited], [codex, opened]] {
+            let back = list(terminals)
+            let card = try #require(back.workspaces().first)
+            #expect(card.id == session)
+            #expect(card.headerAccessibilityValue == "1 terminal, Collapsed")
+            let group = try #require(back.hostGroups().first)
+            #expect(group.readiness.text == "Connected")
+            #expect(group.terminalCount == 1)
+            #expect(back.workspaces(searchQuery: "agents").first?.isCollapsed == false)
+        }
+    }
+
     @Test func shellWhoseWorkspaceIsNotYetKnownIsStillListed() {
         let host = Host.fixture()
         let cards = projection(

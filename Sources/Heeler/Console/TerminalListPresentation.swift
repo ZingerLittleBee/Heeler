@@ -55,8 +55,9 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
 }
 
 /// One Workspace card: its ordinary shell panes, in tab order, then New
-/// Terminal. Agent panes stay on the Agents tab, so a Workspace running only
-/// Agents holds New Terminal alone.
+/// Terminal where its Host starts terminals. Agent panes stay on the Agents
+/// tab, so a Workspace running only Agents holds New Terminal alone, and on a
+/// Host that starts none it would hold nothing and is not listed.
 struct TerminalWorkspaceGroup: Identifiable, Equatable {
     /// Workspace ids are opaque and scoped to their Host.
     struct ID: Hashable, Sendable {
@@ -197,7 +198,8 @@ struct TerminalListProjection {
 
     /// Every Workspace card, Host catalog order first, then herdr's
     /// Workspace order. A query keeps matching shells only and drops cards
-    /// left empty; without one, an empty Workspace stays listed.
+    /// left empty; without one, an empty Workspace stays listed where its
+    /// card offers New Terminal.
     func workspaces(filteredHostIDs: Set<Host.ID> = [], searchQuery: String = "")
         -> [TerminalWorkspaceGroup]
     {
@@ -256,8 +258,15 @@ struct TerminalListProjection {
         for shell in shells where !ordered.contains(where: { $0.id == shell.workspaceID }) {
             ordered.append((shell.workspaceID, nil))
         }
+        // A card with no shell holds New Terminal alone, so where the Host
+        // never starts terminals it has nothing to show or offer, as a Rex
+        // session whose terminals all run Agents (ADR 0054). Read from the
+        // Host's kind rather than its connection, so a herdr-core card keeps
+        // its place while the core is still being located.
+        let offersNewTerminal = host.capabilities.startsTerminals
         return ordered.compactMap { id, workspace in
             let all = shellsByWorkspace[id] ?? []
+            if all.isEmpty && !offersNewTerminal { return nil }
             let matching = needle.isEmpty ? all : all.filter { $0.matchesSearch(needle) }
             if !needle.isEmpty && matching.isEmpty { return nil }
             let label = (workspace?.label ?? all.first?.workspaceLabel)?

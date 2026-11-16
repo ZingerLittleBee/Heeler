@@ -429,6 +429,81 @@ struct RexConsoleTests {
         window.rootViewController = nil
     }
 
+    /// A session whose terminals all run Agents has no card under Terminals:
+    /// a Rex Host offers no New Terminal to fill it. When the only shell of
+    /// one starts an agent, its card leaves the list while the open screen
+    /// stays with its connection, and the card comes back when the agent
+    /// exits to the shell.
+    @Test func aRexSessionLeftWithOnlyAgentsLeavesTerminalsButNotItsOpenScreen() async throws {
+        let alone = FakeRexWorld.Block("block:alone")
+        let session = FakeRexWorld.Session(
+            id: "session:agent", label: "agent",
+            windows: [
+                .init(
+                    id: "window:0000-0000-0000-00000000c0c0", label: "main",
+                    layers: [.init(layout: .block(alone.id), blocks: [alone])])
+            ])
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio(), session])
+        let servers = await served(world)
+        let console = store(servers: servers)
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        let paneID = RexPaneAddress(sessionID: "session:agent", blockID: "block:alone").paneID
+        try await waitUntil("both sessions' terminals with their details") {
+            console.terminals.count == 6 && console.terminals.first?.title == "make test"
+                && console.terminals.contains { $0.paneID == paneID && $0.cwd == "/home/dev" }
+        }
+        func cards() -> [String] {
+            TerminalListProjection(hosts: [rex], console: console).workspaces().map(\.title)
+        }
+        #expect(cards() == ["studio", "agent"])
+        let shell = try #require(console.terminals.first { $0.paneID == paneID })
+        let defaults = try #require(UserDefaults(suiteName: "rex-alone-\(UUID().uuidString)"))
+        let settings = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults), zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: SnippetStore(defaults: defaults))
+        let left = SelectedAgents()
+        let controller = UIHostingController(
+            rootView: RexLiveShell(
+                console: console, terminal: shell, corePin: console.corePin(on: rex.id), settings: settings,
+                activity: AppActivityCoordinator()
+            ) { left.ids.append($0) }
+            .defaultAppStorage(defaults))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        try await waitUntil("the screen's connection") {
+            window.layoutIfNeeded()
+            return console.terminalConnections.entries.count == 1
+        }
+
+        func foreground(_ name: String, pid: Int) async {
+            let process: JSONValue = [
+                "pid": .number(Double(pid)), "name": .string(name), "argv0": .string(name), "cwd": "/home/dev",
+            ]
+            await servers[0].push(
+                "block_event", blockEvent("process_changed", ["foreground": process], block: "block:alone"),
+                session: "session:agent")
+        }
+        await foreground("codex", pid: 5150)
+        try await waitUntil("the shell listed as an Agent") { console.agents.count == 1 }
+        for _ in 0..<20 {
+            window.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(cards() == ["studio"])
+        #expect(left.ids.isEmpty)
+        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [paneID])
+
+        await foreground("zsh", pid: 4242)
+        try await waitUntil("the Agent back to a terminal") { console.agents.isEmpty }
+        #expect(cards() == ["studio", "agent"])
+        await hideTestWindowWhenSettled(window)
+        window.rootViewController = nil
+    }
+
     /// What an open Rex Agent's terminal keeps to is the server it opened on:
     /// another instance leaves it behind, and only a pick from the list opens
     /// the Agent anew there. While the Host recovers, its row stands in at the
