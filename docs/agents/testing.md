@@ -100,7 +100,7 @@ and fails rather than skips when selected without it.
 | `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
 | `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
 | `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing |
-| `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
+| `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests`, `RexProgramStatusLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
 | `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
 
 Set the gate, run one suite, then unset it:
