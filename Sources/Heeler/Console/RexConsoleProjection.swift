@@ -3,12 +3,14 @@ import Foundation
 /// A Rex Host's share of the Console (ADRs 0049 and 0050): its connection, the
 /// server that answers on its socket, and the terminals that server lists. A
 /// session is a Workspace, a window a Tab and a terminal block a Pane, as
-/// `RexOrganization` reads them, and a Rex Host lists Terminals only.
+/// `RexOrganization` reads them, and a terminal running a known agent program
+/// is an Agent with the status it reported to Rex (ADR 0054).
 ///
 /// A Pane keeps to its server instance, as a tmux Pane does: another instance
-/// leaves every detail open on the last one's terminals. A terminal opens
-/// from the server's redraw (ADR 0051) and takes input from its first paint
-/// (ADR 0052); every action a Host offers is unavailable on a Rex Host.
+/// leaves every detail open on the last one's terminals, and its Pins go. A
+/// terminal opens from the server's redraw (ADR 0051) and takes input from its
+/// first paint (ADR 0052), whether it is listed as an Agent or a Terminal;
+/// every action a Host offers is unavailable on a Rex Host.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var host: Host
@@ -29,6 +31,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var isAwaitingSnapshot = true
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
+    private(set) var agentsByPane: [String: ConsoleAgent] = [:]
+    /// The Agents as last listed, for a detail open on one while the Host
+    /// recovers. Another instance's are not these.
+    private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     private(set) var sidebarRevision: UInt64 = 0
     /// The last inventory folded into rows.
     private(set) var inventory: RexInventory?
@@ -36,18 +42,21 @@ final class RexConsoleProjection: ConsoleHostProjection {
     let syncError: String? = nil
     let leakedEnvironmentNames: Set<String> = []
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
-    let agentsByPane: [String: ConsoleAgent] = [:]
-    let lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     let terminalLabelKeys: [String] = []
 
+    private let pins: PinnedAgentsStore
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var hasEnded = false
 
-    init(host: Host, session: RexHostSession, onChange: @escaping @MainActor @Sendable () -> Void) {
+    init(
+        host: Host, session: RexHostSession, pins: PinnedAgentsStore,
+        onChange: @escaping @MainActor @Sendable () -> Void
+    ) {
         self.host = host
         self.session = session
+        self.pins = pins
         self.onChange = onChange
     }
 
@@ -157,8 +166,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 invalidateInventory()
             }
         case .server(let server):
-            // What was listed came from the server that answered before.
-            if inventoryCore != server.instanceID { invalidateInventory() }
+            // What was listed came from the server that answered before, and
+            // its Pane ids may repeat under this one.
+            if inventoryCore != server.instanceID {
+                invalidateInventory()
+                if inventoryCore != nil {
+                    pins.removePins(hostID: host.id)
+                    lastKnownAgentsByPane = [:]
+                }
+            }
             self.server = server
             inventoryCore = server.instanceID
         case .inventory(let inventory):
@@ -184,12 +200,19 @@ final class RexConsoleProjection: ConsoleHostProjection {
         inventory = nil
         workspaces = []
         terminalsByPane = [:]
+        agentsByPane = [:]
     }
 
+    /// Each inventory is the server's whole list, so Pins on Panes it no
+    /// longer lists go.
     private func rebuildRows() {
         guard let inventory else { return }
         let builder = ConsolePaneRowBuilder(host: host, inventory: RexOrganization.build(inventory))
-        terminalsByPane = builder.terminalRows(agents: [:], liveChange: { _ in nil })
+        let agents = builder.agentRows(liveChange: { _ in nil })
+        terminalsByPane = builder.terminalRows(agents: agents, liveChange: { _ in nil })
+        agentsByPane = agents
+        lastKnownAgentsByPane = agents
+        pins.retainPins(hostID: host.id, paneIDs: Set(terminalsByPane.keys))
         workspaces = builder.workspaceRows()
         isAwaitingSnapshot = false
         sidebarRevision &+= 1

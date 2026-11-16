@@ -104,13 +104,6 @@ struct HostMachine: Identifiable, Hashable, Sendable {
     /// A record with no Server yet: the next Server to be turned on takes it.
     var spareRecord: Host? { members.first { !$0.serverKind.isConfirmed } }
 
-    /// Whether the Servers that are on list Terminals only, as a Rex Server
-    /// does (ADR 0049). False while none is on.
-    var listsTerminalsOnly: Bool {
-        let servers = servers
-        return !servers.isEmpty && servers.allSatisfy { !$0.serverKind.reportsAgents }
-    }
-
     /// The record whose trust, password and connection settings stand for the
     /// Host's: every record of a Host holds the same.
     var representative: Host {

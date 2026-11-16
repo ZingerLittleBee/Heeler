@@ -45,7 +45,9 @@ struct RexTerminalSizeOwnershipTests {
         let host = Host(
             name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
             rexSocket: RexSocket(path: RexTerminalAttachTests.socket))
-        let runner = RexConsoleProjection(host: host, session: session, onChange: {}).terminalRunner()
+        let runner = RexConsoleProjection(
+            host: host, session: session, pins: PinnedAgentsStore(), onChange: {}
+        ).terminalRunner()
         let pin = TerminalCorePin()
         return AttachTerminalStore(
             target: .terminal(RexTerminalAttachTests.address.paneID), input: input,

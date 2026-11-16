@@ -115,7 +115,9 @@ struct RexTerminalAttachTests {
         _ session: RexHostSession, address: RexPaneAddress = Self.address, chunks: Chunks = Chunks(),
         input: TerminalInputController = TerminalInputController(), pin: TerminalCorePin = TerminalCorePin()
     ) -> AttachTerminalStore {
-        let runner = RexConsoleProjection(host: rexHost, session: session, onChange: {}).terminalRunner()
+        let runner = RexConsoleProjection(
+            host: rexHost, session: session, pins: PinnedAgentsStore(), onChange: {}
+        ).terminalRunner()
         return AttachTerminalStore(
             target: .terminal(address.paneID), input: input, observeOutput: { chunks.append($0) },
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })

@@ -38,6 +38,10 @@ struct HostCapabilities: Equatable, Sendable {
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
     var hostScripts = true
+    /// An Agent opens on its terminal, as the Terminals list opens one, with no
+    /// Chat, Composer or Changes: its row reads no Changes and offers no window
+    /// of its own, as a Terminals row does not. A Rex Host's Agents (ADR 0054).
+    var agentsOpenAsTerminals = false
 
     /// Whether an Agent in this directory offers Changes, wherever it does.
     func offersChanges(directory: String?) -> Bool {
@@ -104,13 +108,14 @@ extension HostCapabilities {
         // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
         // Composer, Chat, Host scripts or layout, and is never taken over. So it
         // stays out of New Agent and New Terminal. Its Terminals open and take
-        // input (ADRs 0051 and 0052).
+        // input (ADRs 0051 and 0052), and so do its Agents, as Terminals
+        // (ADR 0054).
         guard serverKind != .rex else {
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
                 worktrees: false, uploads: false, composerSend: false, chat: false,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
-                composerStop: false, chatPrograms: [], hostScripts: false)
+                composerStop: false, chatPrograms: [], hostScripts: false, agentsOpenAsTerminals: true)
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -232,7 +237,9 @@ struct ConsoleAgentRowOffers: Equatable, Sendable {
     }
 
     init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
-        self.init(opensInNewWindow: supportsMultipleWindows, closes: capabilities.closeTab)
+        self.init(
+            opensInNewWindow: supportsMultipleWindows && !capabilities.agentsOpenAsTerminals,
+            closes: capabilities.closeTab)
     }
 }
 

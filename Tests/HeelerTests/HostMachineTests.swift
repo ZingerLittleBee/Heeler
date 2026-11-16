@@ -83,18 +83,6 @@ struct HostMachineTests {
         #expect(row.servers.map(\.label) == ["Rex", "Tmux"])
     }
 
-    /// Host detail says what the Servers that are on show: Terminals where Rex
-    /// is on alone (ADR 0049), Agents with any other kind on or none at all.
-    @Test func aHostWithRexOnAloneListsTerminalsOnly() {
-        let rex = record(kind: .rex)
-        let tmux = record(kind: .tmux)
-
-        #expect(HostMachine.grouped([rex])[0].listsTerminalsOnly)
-        #expect(!HostMachine.grouped([rex, tmux])[0].listsTerminalsOnly)
-        #expect(!HostMachine.grouped([tmux])[0].listsTerminalsOnly)
-        #expect(!HostMachine.grouped([record(kind: .unconfirmed)])[0].listsTerminalsOnly)
-    }
-
     @Test func theCatalogNamesEachServerOfAHost() throws {
         let tui = record()
         let store = HostStore(volatileHosts: [tui])

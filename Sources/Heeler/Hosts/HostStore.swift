@@ -502,18 +502,11 @@ final class HostStore {
         return Set((catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID))
     }
 
-    /// The confirmed Hosts: those the Console lists Terminals for, and those
-    /// Usage and the pickers look Hosts up in. A Host waiting for its Server
-    /// Kind is only in the Hosts list. The Agents list narrows these to
-    /// `agentHosts`.
+    /// The confirmed Hosts: those the Console lists Agents and Terminals for,
+    /// and those Usage and the pickers look Hosts up in. A Host waiting for its
+    /// Server Kind is only in the Hosts list.
     var consoleHosts: [Host] {
         hosts.filter(\.serverKind.isConfirmed)
-    }
-
-    /// The Hosts the Agents list shows: confirmed ones of a kind that reports
-    /// Agents, so never a Rex Host.
-    var agentHosts: [Host] {
-        consoleHosts.filter(\.serverKind.reportsAgents)
     }
 
     /// The Hosts Usage and Settings' per-Host pages show: those of a kind
@@ -529,7 +522,7 @@ final class HostStore {
     }
 
     /// A Host waiting for its Server Kind stays out of Live Activities, and so
-    /// does a Rex Host, which reports no Agents. Whether a herdr-core or tmux
+    /// does a Rex Host, whose Agents notify nothing (ADR 0054). Whether a herdr-core or tmux
     /// Host may show one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
         switch hosts.first(where: { $0.id == id })?.serverKind {

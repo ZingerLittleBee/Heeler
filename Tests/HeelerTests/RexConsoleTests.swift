@@ -4,9 +4,10 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it (ADRs 0049 to 0052):
+/// What a Rex Host offers and how the Console shows it (ADRs 0049 to 0054):
 /// nothing to start, close or rename, no integrations, its terminals listed
-/// from the server, and opened to view and type into.
+/// from the server, those running a known agent as Agents, and opened to view
+/// and type into.
 @MainActor
 @Suite("Rex Console")
 struct RexConsoleTests {
@@ -43,12 +44,19 @@ struct RexConsoleTests {
             #expect(!offers.takeOver)
             #expect(!offers.hostScripts)
             #expect(!offers.isNativeWindowsCore)
+            // Its Agents open on their terminals, so a row offers only its pin.
+            #expect(offers.agentsOpenAsTerminals)
+            #expect(
+                ConsoleAgentRowOffers(capabilities: offers, supportsMultipleWindows: true)
+                    == ConsoleAgentRowOffers(opensInNewWindow: false, closes: false))
         }
         #expect(rex.capabilities == HostCapabilities(serverKind: .rex))
+        #expect(!HostCapabilities(serverKind: .tmux).agentsOpenAsTerminals)
     }
 
     /// The Notifications, Live Activities and Usage surfaces each pick their
-    /// Hosts by kind, and none of them picks a Rex Host.
+    /// Hosts by kind, and none of them picks a Rex Host, though it lists
+    /// Agents (ADR 0054): a banner and a Live Activity fail closed for it.
     @Test func noIntegrationTreatsARexHostAsItsOwn() {
         #expect(!ServerKind.rex.hasHostIntegrations)
         #expect(PreflightCheck.cases(for: .rex) == [.connection, .herdrInstalled, .serverRunning, .protocolCompatible])
@@ -62,6 +70,8 @@ struct RexConsoleTests {
                 keys: NotificationKeyStore(secrets: InMemorySecretStore())))
         notifications.setHosts([rex])
         #expect(notifications.hosts.isEmpty)
+        #expect(notifications.confirmedTriggers(for: rex.id) == nil)
+        #expect(!HostStore(volatileHosts: [rex]).supportsLiveActivities(for: rex.id))
 
         // Usage and Accounts then have no Host, and say why instead of asking
         // for one; a Host with nothing on, or any other kind on, keeps asking.
@@ -93,6 +103,9 @@ struct RexConsoleTests {
         let hosts = Mutex(servers.map { ScriptedRexHost(control: [.server($0)]) })
         return ConsoleStore(
             snapshotRetryDelay: .milliseconds(10),
+            // Its own suite, so a Pin never reaches the test host's defaults.
+            pins: PinnedAgentsStore(
+                defaults: UserDefaults(suiteName: "rex-console-pins-\(UUID().uuidString)") ?? .standard),
             makeSession: { _, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,
@@ -158,7 +171,7 @@ struct RexConsoleTests {
 
     /// A Rex Host's sessions, windows and terminal blocks list as Workspaces,
     /// Tabs and Terminals in Rex's order, its detached terminals under one Tab
-    /// after its windows, and no Agents.
+    /// after its windows. None of them runs an agent, so none is an Agent.
     @Test func aRexHostListsItsTerminals() async throws {
         let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
         let store = store(servers: await served(world))
@@ -187,6 +200,128 @@ struct RexConsoleTests {
         #expect(terminals.map(\.cwd) == ["/home/dev/app", "/home/dev", "/home/dev/app/src", "/home/dev", "/home/dev"])
         #expect(terminals.allSatisfy { !$0.isAgent })
         #expect(store.workspacesByHost[rex.id]?.map(\.label) == ["studio"])
+    }
+
+    /// The studio with Codex in its left terminal, reporting `state`.
+    private func studioRunningCodex(reporting state: String?) -> FakeRexWorld.Session {
+        var studio = FakeRexWorld.studio()
+        var codex = FakeRexWorld.Block.running("block:left", program: "codex")
+        codex.label = "left"
+        codex.directory = "/home/dev/app"
+        codex.processID = 5150
+        codex.status = state.map { codex.record($0, app: "codex") }
+        studio.windows[0].layers[0].blocks[2] = codex
+        return studio
+    }
+
+    private func blockEvent(_ name: String, _ payload: JSONValue, block: String = "block:left") -> JSONValue {
+        ["block_id": .string(block), "creator_name": .string(RexInventoryWire.terminalCreator), "name": .string(name),
+         "payload": payload]
+    }
+
+    /// What the inventory may ask of a Rex server: reads, never a write, an
+    /// attach, a resize or a claim on a block (ADR 0054).
+    private static let inventoryMethods: Set<String> = [
+        "server.status", "session.attach_all", "session.view", "session.list_blocks",
+        RexInventoryWire.terminalMethod("title"), RexInventoryWire.terminalMethod("process"),
+        RexInventoryWire.terminalMethod("program_status"),
+    ]
+
+    /// A terminal running a known agent lists as an Agent of its Host, in its
+    /// session's Workspace and its window's Tab, with the status its program
+    /// reported to Rex, and leaves the Terminals list. The control link's
+    /// events alone keep it current, and nothing is written to or attached on
+    /// the server for it. When its program leaves, it is a Terminal again.
+    @Test func aRexTerminalRunningAnAgentListsAsAnAgent() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world)
+        let store = store(servers: servers)
+        defer { store.setHosts([]) }
+        let rex = rex
+
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("the Agent with its status") { store.agents.first?.agent.status == .working }
+
+        let paneID = RexPaneAddress(sessionID: "session:studio", blockID: "block:left").paneID
+        let agent = try #require(store.agents.first)
+        #expect(store.agents.count == 1)
+        #expect(agent.agent.kind == "codex")
+        #expect(agent.agent.paneID == paneID)
+        #expect(agent.hostID == rex.id)
+        #expect(agent.hostName == rex.displayName)
+        #expect(agent.workspaceLabel == "studio")
+        #expect(agent.tabLabel == "editor")
+        #expect(agent.agent.name == "left")
+        #expect(agent.agent.displayName == "left")
+        #expect(agent.directory == "/home/dev/app")
+        // Its row reads no Changes, which a Rex Host cannot serve.
+        #expect(store.rowChanges.store(for: agent) == nil)
+        #expect(store.terminals.filter(\.isAgent).map(\.paneID) == [paneID])
+        #expect(store.terminals.filter { !$0.isAgent }.count == 4)
+
+        await servers[0].push(
+            "block_event",
+            blockEvent(
+                "program_status_changed",
+                ["id": "", "record": world.sessions[0].windows[0].layers[0].blocks[2].record("blocked", app: "codex"),
+                 "reason": "report"]),
+            session: "session:studio")
+        try await waitUntil("the new status") { store.agents.first?.agent.status == .blocked }
+
+        // Leaving, the program takes its record with it, then the shell is named.
+        await servers[0].push(
+            "block_event", blockEvent("program_status_removed", ["ids": [""], "reason": "foreground"]),
+            session: "session:studio")
+        await servers[0].push(
+            "block_event",
+            blockEvent("process_changed", ["foreground": ["pid": 4242, "name": "zsh", "argv0": "-zsh", "cwd": "/home/dev/app"]]),
+            session: "session:studio")
+        try await waitUntil("the Agent gone") { store.agents.isEmpty }
+        #expect(store.terminals.allSatisfy { !$0.isAgent })
+        #expect(store.terminals.count == 5)
+
+        let methods = Set(await servers[0].requests.map(\.method))
+        #expect(methods.isSubset(of: Self.inventoryMethods))
+    }
+
+    /// A report from a program that has since left reads Unknown, and so does
+    /// an Agent with no report: the status counts only while its owner is the
+    /// foreground. A pinned Agent's Pin goes once the server stops listing it.
+    @Test func aStaleReportReadsUnknownAndAPinGoesWithItsTerminal() async throws {
+        var studio = studioRunningCodex(reporting: nil)
+        var stale = studio.windows[0].layers[0].blocks[2]
+        stale.status = stale.record("done", app: "codex", owner: (4100, "codex"))
+        studio.windows[0].layers[0].blocks[2] = stale
+        var claude = FakeRexWorld.Block.running("block:solo", program: "2.1.316", argv0: "claude")
+        claude.title = "✳ Review the diff"
+        studio.windows[1].layers[0].blocks[0] = claude
+        let world = FakeRexWorld(sessions: [studio])
+        let servers = await served(world)
+        let store = store(servers: servers)
+        defer { store.setHosts([]) }
+        let rex = rex
+
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("both Agents with their details") {
+            store.agents.count == 2 && store.agents.contains { $0.agent.terminalTitleStripped == "Review the diff" }
+        }
+        #expect(store.agents.allSatisfy { $0.agent.status == .unknown })
+        #expect(Set(store.agents.map(\.agent.kind)) == ["codex", "claude"])
+
+        let solo = RexPaneAddress(sessionID: "session:studio", blockID: "block:solo").paneID
+        store.togglePin(hostID: rex.id, paneID: solo)
+        #expect(store.pins.isPinned(hostID: rex.id, paneID: solo))
+        world.update { sessions in
+            sessions[0].windows[1].layers[0].blocks.removeAll()
+            sessions[0].windows[1].layers[0].layout = nil
+            sessions[0].revision = 4
+        }
+        await servers[0].push("block_closed", ["block_id": "block:solo"], session: "session:studio")
+        await servers[0].push("session_view_changed", ["revision": 4], session: "session:studio")
+        try await waitUntil("the closed Agent gone") { store.agents.count == 1 }
+        #expect(!store.pins.isPinned(hostID: rex.id, paneID: solo))
     }
 
     /// Another server instance on the socket leaves every detail open on the
@@ -299,9 +434,9 @@ struct RexConsoleTests {
         await terminal.stop()
     }
 
-    /// A Rex Host lists Terminals only: the Agents list, its Host filter and
-    /// its issues leave it out, and the Terminals list keeps its problem.
-    @Test func onlyTheTerminalsListShowsARexHost() async throws {
+    /// A Rex Host lists Agents and Terminals (ADR 0054): both lists' Host
+    /// filter offers it, and both show its problem unless filtered out.
+    @Test func bothListsShowARexHost() async throws {
         let rex = rex
         let tmux = Host(
             name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
@@ -312,15 +447,12 @@ struct RexConsoleTests {
         await console.resume()
         try await waitUntil("the failure") { console.hostStatuses[rex.id] == .failed(.rexForwardingRefused(socketPath: "/run/rex.sock")) }
 
-        #expect(ConsoleView.listedHosts(on: .agents, in: catalog) == [tmux])
-        #expect(ConsoleView.listedHosts(on: .terminals, in: catalog) == [rex, tmux])
-        func issueHostIDs(on tab: ConsoleTab, filter: Set<Host.ID> = []) -> [Host.ID] {
-            ConsoleView.filteredHostIssues(on: tab, hosts: catalog, console: console, hostFilter: filter)
-                .map(\.hostID)
+        #expect(ConsoleView.hostFilterChoices(in: catalog).map(\.name) == ["Rex", "tmux"])
+        func issueHostIDs(filter: Set<Host.ID> = []) -> [Host.ID] {
+            ConsoleView.filteredHostIssues(hosts: catalog, console: console, hostFilter: filter).map(\.hostID)
         }
-        #expect(!issueHostIDs(on: .agents).contains(rex.id))
-        #expect(!issueHostIDs(on: .agents, filter: [rex.id]).contains(rex.id))
-        #expect(issueHostIDs(on: .terminals).contains(rex.id))
-        #expect(!issueHostIDs(on: .terminals, filter: [tmux.id]).contains(rex.id))
+        #expect(issueHostIDs().contains(rex.id))
+        #expect(issueHostIDs(filter: [rex.id]).contains(rex.id))
+        #expect(!issueHostIDs(filter: [tmux.id]).contains(rex.id))
     }
 }

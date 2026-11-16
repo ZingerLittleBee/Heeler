@@ -296,7 +296,6 @@ struct ConsoleView: View {
             hosts: hosts,
             console: console,
             hostFilter: hostFilter,
-            issuesTab: shownListTab,
             pendingSavedChatRemoval: $pendingSavedChatRemoval,
             hostIssuesLastFailures: $hostIssuesLastFailures,
             isShowingHostIssues: $isShowingHostIssues,
@@ -1090,7 +1089,7 @@ struct ConsoleView: View {
 
     /// A filter is meaningless with a single Host, however many Servers it
     /// has on.
-    private var filtersByHost: Bool { Self.hostFilterChoices(on: .terminals, in: hosts).count > 1 }
+    private var filtersByHost: Bool { Self.hostFilterChoices(in: hosts).count > 1 }
 
     private func offersFilters(for tab: ConsoleTab) -> Bool {
         !hosts.consoleHosts.isEmpty && (tab == .agents || filtersByHost)
@@ -1117,7 +1116,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: Self.hostFilterChoices(on: tab, in: hosts), hostFilter: hostFilterBinding,
+            hosts: Self.hostFilterChoices(in: hosts), hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -1570,6 +1569,10 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
+            } else if let agent = console.detailAgent(for: id),
+                console.capabilities(for: agent.hostID).agentsOpenAsTerminals
+            {
+                agentTerminalDetail(agent, in: tab)
             } else if let agent = console.detailAgent(for: id) {
                 let consoleHosts = hosts.consoleHosts
                 let repeatLandings = notificationRouter.repeatLandings
@@ -1689,6 +1692,32 @@ struct ConsoleView: View {
                 }
             }
         }
+    }
+
+    /// An Agent that opens on its terminal, a Rex Agent (ADR 0054): the detail
+    /// the Terminals list opens, with no Chat, Composer or Changes. While its
+    /// Host recovers and lists no Terminals, the Agent's last row stands in.
+    private func agentTerminalDetail(_ agent: ConsoleAgent, in tab: ConsoleTab) -> some View {
+        let id = agent.id
+        let row =
+            console.terminals.first { $0.hostID == id.hostID && $0.paneID == id.paneID }
+            ?? ConsoleTerminal(standingInFor: agent)
+        return WorkspaceTerminalDetailView(
+            terminal: row,
+            console: console,
+            corePin: detailCores.terminalPin(for: agent, console: console),
+            settings: terminal,
+            activity: activity,
+            onSelectAgent: { selectAgent($0) },
+            onSelectTerminal: { openTerminal($0, from: tab) },
+            isSelected: {
+                notificationRouter.path.last == id && console.detailAgent(for: id) != nil && currentTab == tab
+            },
+            keyboardHandoff: keyboardHandoff,
+            agentSurface: detailSurface,
+            leavesForStartedAgent: false,
+            onBack: { clearSelection() })
+            .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
     }
 
     /// A receipt is keyed by the Agent set captured at the authorized write.
@@ -2466,7 +2495,7 @@ struct ConsoleView: View {
     private var hostSections: [ConsoleHostSection] {
         PerfTrace.span("console.list.host-sections") {
             listPresentation.sections(
-                hosts: hosts.agentHosts,
+                hosts: hosts.consoleHosts,
                 console: console,
                 filteredHostIDs: hostFilter,
                 searchQuery: agentSearchText)
@@ -2477,7 +2506,7 @@ struct ConsoleView: View {
         PerfTrace.span("console.list.workspace-cards") {
             ConsoleWorkspaceCard.cards(
                 listPresentation.workspaceSections(
-                    hosts: hosts.agentHosts, console: console,
+                    hosts: hosts.consoleHosts, console: console,
                     filteredHostIDs: hostFilter, searchQuery: agentSearchText))
         }
     }
@@ -2575,37 +2604,30 @@ struct ConsoleView: View {
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
         }
-        return filteredHostIssues(on: .agents)
+        return filteredHostIssues
     }
 
-    /// Every problem of the Hosts `tab` lists, under the Host filter, as the
-    /// flat lists show them outside a search, and as their summary's sheet
-    /// lists them.
-    private func filteredHostIssues(on tab: ConsoleTab) -> [ConsoleHostStatusPresentation] {
-        Self.filteredHostIssues(on: tab, hosts: hosts, console: console, hostFilter: hostFilter)
+    /// Every Host problem under the Host filter, as the flat lists show
+    /// them outside a search, and as their summary's sheet lists them.
+    private var filteredHostIssues: [ConsoleHostStatusPresentation] {
+        Self.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
     }
 
     /// The same for a view that reads the stores in an observation scope of
     /// its own, as the sheet's reset does.
     static func filteredHostIssues(
-        on tab: ConsoleTab, hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
+        hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
     ) -> [ConsoleHostStatusPresentation] {
-        let issues = console.hostIssues(for: listedHosts(on: tab, in: hosts))
+        let issues = console.hostIssues(for: hosts.consoleHosts)
         guard !hostFilter.isEmpty else { return issues }
         return issues.filter { hostFilter.contains($0.hostID) }
     }
 
-    /// The Hosts `tab`'s list shows. The Agents list leaves out a Host whose
-    /// kind reports no Agents, such as a Rex Host, which only Terminals list.
-    static func listedHosts(on tab: ConsoleTab, in hosts: HostStore) -> [Host] {
-        tab == .agents ? hosts.agentHosts : hosts.consoleHosts
-    }
-
-    /// The Hosts `tab`'s filter offers: each Host once, in the Hosts tab's
-    /// order, when any of its Servers is in `tab`'s list. Choosing one shows
-    /// every Server it has on (ADR 0047).
-    static func hostFilterChoices(on tab: ConsoleTab, in hosts: HostStore) -> [HostMachine] {
-        let listed = Set(listedHosts(on: tab, in: hosts).map(\.id))
+    /// The Hosts the lists' filter offers: each Host once, in the Hosts tab's
+    /// order, when any of its Servers is on. Choosing one shows every Server
+    /// it has on (ADR 0047).
+    static func hostFilterChoices(in hosts: HostStore) -> [HostMachine] {
+        let listed = Set(hosts.consoleHosts.map(\.id))
         return hosts.machines.filter { $0.isSelected(by: listed) }
     }
 
@@ -2660,10 +2682,8 @@ struct ConsoleView: View {
     private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
         -> some View
     {
-        // The problems of the list the sheet opened from: a Rex Host's only
-        // from Terminals.
         ConsoleHostIssuesSheet(
-            issues: filteredHostIssues(on: shownListTab),
+            issues: filteredHostIssues,
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,
             onOpenHost: { id in
@@ -2691,9 +2711,7 @@ struct ConsoleView: View {
     }
 
     private var hostIssuesSheetExplained: Set<Host.ID> {
-        Set(
-            filteredHostIssues(on: shownListTab).map(\.hostID)
-                .filter { hostIssuesSheetDetail(for: $0) != nil })
+        Set(filteredHostIssues.map(\.hostID).filter { hostIssuesSheetDetail(for: $0) != nil })
     }
 
     private func hostIssuesSheetDetail(for id: Host.ID) -> HostConnectionDetailPresentation? {
@@ -3367,7 +3385,6 @@ private struct ConsoleNoticesAndResets: ViewModifier {
     let hosts: HostStore
     let console: ConsoleStore
     let hostFilter: Set<Host.ID>
-    let issuesTab: ConsoleTab
     @Binding var pendingSavedChatRemoval: ConsoleAgent?
     @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
     @Binding var isShowingHostIssues: Bool
@@ -3383,7 +3400,6 @@ private struct ConsoleNoticesAndResets: ViewModifier {
                 hosts: hosts,
                 console: console,
                 hostFilter: hostFilter,
-                issuesTab: issuesTab,
                 hostIssuesLastFailures: $hostIssuesLastFailures,
                 isShowingHostIssues: $isShowingHostIssues,
                 connectionDetailRequest: $connectionDetailRequest))
@@ -3401,8 +3417,6 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
     let hosts: HostStore
     let console: ConsoleStore
     let hostFilter: Set<Host.ID>
-    /// The list tab the issues sheet opens from, whose Hosts it lists.
-    let issuesTab: ConsoleTab
     @Binding var hostIssuesLastFailures: [Host.ID: TransportError]
     @Binding var isShowingHostIssues: Bool
     @Binding var connectionDetailRequest: ConsoleView.ConnectionDetailRequest?
@@ -3411,8 +3425,7 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
         let needsFilteredIssues = !hostIssuesLastFailures.isEmpty || isShowingHostIssues
         let filteredIssues: [ConsoleHostStatusPresentation] =
             if needsFilteredIssues {
-                ConsoleView.filteredHostIssues(
-                    on: issuesTab, hosts: hosts, console: console, hostFilter: hostFilter)
+                ConsoleView.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
             } else {
                 []
             }

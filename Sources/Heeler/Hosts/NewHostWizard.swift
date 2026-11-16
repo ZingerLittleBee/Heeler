@@ -88,14 +88,6 @@ final class NewHostWizard {
         scan?.servers.filter { checked.contains($0.key) && !isAlreadyOn($0.key) }.count ?? 0
     }
 
-    /// Whether the Servers in question list Terminals only, as a Rex Server
-    /// does (ADR 0049): those checked, or every one found while none is.
-    var bringsTerminalsOnly: Bool {
-        guard let servers = scan?.servers, !servers.isEmpty else { return false }
-        let checkedServers = servers.filter { checked.contains($0.key) }
-        return (checkedServers.isEmpty ? servers : checkedServers).allSatisfy { !$0.key.kind.reportsAgents }
-    }
-
     /// Connects and looks for Servers. The second step shows on its own when the
     /// transport asks about the key.
     func connect() async {

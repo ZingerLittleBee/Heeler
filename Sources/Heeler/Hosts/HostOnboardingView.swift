@@ -314,12 +314,13 @@ struct HostOnboardingView: View {
                 Toggle("Show in Heeler", isOn: Binding(get: { true }, set: { if !$0 { turnOff() } }))
                     .accessibilityIdentifier("hosts.detail.showInHeeler")
             } footer: {
-                // A Rex Server brings Terminals only (ADR 0049).
-                if store.host.serverKind.reportsAgents {
+                // A Rex Server's Agents notify nothing (ADR 0054).
+                if store.host.serverKind.hasHostIntegrations {
                     Text(
                         "Off removes its Agents, Terminals and notifications from this device. Whatever runs on \(machineName) keeps running.")
                 } else {
-                    Text("Off removes its Terminals from this device. Whatever runs on \(machineName) keeps running.")
+                    Text(
+                        "Off removes its Agents and Terminals from this device. Whatever runs on \(machineName) keeps running.")
                 }
             }
         }

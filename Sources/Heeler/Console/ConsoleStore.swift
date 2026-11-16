@@ -124,7 +124,9 @@ final class ConsoleStore {
     @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
-    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
+    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
+        reads: { [unowned self] agent in !capabilities(for: agent.hostID).agentsOpenAsTerminals }
+    ) { [unowned self] agent in
         let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
         store.onLoaded = { [weak self] changes in
@@ -2002,7 +2004,8 @@ final class ConsoleStore {
                         },
                         onChange: onChange)
                 case .rex:
-                    RexConsoleProjection(host: host, session: makeRexSession(host), onChange: onChange)
+                    RexConsoleProjection(
+                        host: host, session: makeRexSession(host), pins: pins, onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
@@ -2216,8 +2219,10 @@ final class ConsoleStore {
                 terminalSnapshotRevisions[hostID] != projection.sidebarRevision
             else { continue }
             terminalSnapshotRevisions[hostID] = projection.sidebarRevision
+            // A Rex Agent opens on its terminal (ADR 0054), which stays pooled too.
+            let agentsOpenAsTerminals = capabilities(for: hostID).agentsOpenAsTerminals
             let identities = Set(
-                projection.terminalsByPane.values.filter { !$0.isAgent }.map {
+                projection.terminalsByPane.values.filter { !$0.isAgent || agentsOpenAsTerminals }.map {
                     ShellTerminalIdentity(
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })

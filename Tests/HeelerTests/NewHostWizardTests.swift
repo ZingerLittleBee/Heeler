@@ -390,41 +390,6 @@ struct NewHostWizardTests {
         #expect(rig.serversOn == [Self.tui, Self.tmux, Self.workTmux])
     }
 
-    /// The Servers step says what checked Servers bring: Terminals where Rex is
-    /// all that is in question (ADR 0049), Agents wherever another kind is.
-    @Test func checkedServersBringTerminalsOnlyWhereRexStandsAlone() async throws {
-        let socket = "/Users/dev/Library/Application Support/rex/server.sock"
-        let rex = HostServerKey(kind: .rex, name: "")
-        let mixed = makeRig(machine: Self.machineWithRex(socket: socket))
-        fill(mixed.wizard)
-        await mixed.wizard.connect()
-        #expect(!mixed.wizard.bringsTerminalsOnly)
-        mixed.wizard.checked = [rex]
-        #expect(mixed.wizard.bringsTerminalsOnly)
-        mixed.wizard.checked = [rex, Self.tmux]
-        #expect(!mixed.wizard.bringsTerminalsOnly)
-        mixed.wizard.checked = []
-        #expect(!mixed.wizard.bringsTerminalsOnly)
-
-        let rexOnly = makeRig(
-            machine: ScriptedCoreHost(
-                locator: ScriptedCoreHost.locatorLines(executable: nil),
-                rexProbe: ScriptedCoreHost.rexLines(sockets: [(socket, true, true)]), channel: .refused))
-        fill(rexOnly.wizard)
-        await rexOnly.wizard.connect()
-        #expect(rexOnly.wizard.scan?.servers.map(\.key) == [rex])
-        #expect(rexOnly.wizard.bringsTerminalsOnly)
-        rexOnly.wizard.checked = []
-        #expect(rexOnly.wizard.bringsTerminalsOnly)
-
-        let withoutRex = makeRig()
-        fill(withoutRex.wizard)
-        await withoutRex.wizard.connect()
-        #expect(!withoutRex.wizard.bringsTerminalsOnly)
-        withoutRex.wizard.checked = []
-        #expect(!withoutRex.wizard.bringsTerminalsOnly)
-    }
-
     @Test func savingWithoutConnectingAddsAHostWithNoServer() async throws {
         let rig = makeRig()
         fill(rig.wizard)

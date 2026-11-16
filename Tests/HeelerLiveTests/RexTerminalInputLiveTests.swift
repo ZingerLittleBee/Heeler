@@ -58,7 +58,9 @@ struct RexTerminalInputLiveTests {
         let host = Host(
             name: "Rex", address: "localhost", username: "lab", serverKind: .rex,
             rexSocket: RexSocket(path: socketPath))
-        let runner = RexConsoleProjection(host: host, session: session, onChange: {}).terminalRunner()
+        let runner = RexConsoleProjection(
+            host: host, session: session, pins: PinnedAgentsStore(), onChange: {}
+        ).terminalRunner()
         let input = TerminalInputController()
         let pin = TerminalCorePin()
         let store = AttachTerminalStore(

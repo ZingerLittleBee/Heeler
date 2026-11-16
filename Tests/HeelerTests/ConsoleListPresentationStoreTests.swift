@@ -136,7 +136,7 @@ struct ConsoleListPresentationStoreTests {
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
     }
 
-    @Test func eachListOffersAHostOnceWhenAnyOfItsServersIsListed() throws {
+    @Test func theFilterOffersAHostOnceWhenAnyOfItsServersIsOn() throws {
         let (tui, tmux, build) = twoServerCatalog()
         let rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
         let lab = Host(name: "lab", address: "lab.example", username: "dev", serverKind: .rex)
@@ -144,12 +144,12 @@ struct ConsoleListPresentationStoreTests {
         let catalog = HostStore(volatileHosts: [lab, tui, held, build, tmux, rex])
         #expect(catalog.consoleHosts.first { $0.id == tui.id }?.displayName == "m3 · Herdr TUI")
 
-        // A Host with no Server on is in neither; a Rex-only one only under Terminals.
-        #expect(ConsoleView.hostFilterChoices(on: .terminals, in: catalog).map(\.name) == ["lab", "m3", "Build"])
-        let offered = ConsoleView.hostFilterChoices(on: .agents, in: catalog)
-        #expect(offered.map(\.name) == ["m3", "Build"])
-        // Chosen from Agents, a Host keeps every Server for Terminals too.
-        let m3 = try #require(offered.first)
+        // A Host with no Server on is not offered; a Rex-only one is, as both
+        // lists show its Agents and Terminals (ADR 0054).
+        let offered = ConsoleView.hostFilterChoices(in: catalog)
+        #expect(offered.map(\.name) == ["lab", "m3", "Build"])
+        // Chosen, a Host keeps every Server it has on.
+        let m3 = try #require(offered.dropFirst().first)
         #expect(m3.toggled(in: [build.id]) == [build.id, tui.id, tmux.id, rex.id])
         #expect(m3.toggled(in: [rex.id]).isEmpty)
     }
@@ -172,7 +172,7 @@ struct ConsoleListPresentationStoreTests {
         var selectedHosts: Set<Host.ID> = []
         func choices() -> ConsoleListFilterChoices {
             ConsoleListFilterChoices(
-                hosts: ConsoleView.hostFilterChoices(on: .terminals, in: catalog),
+                hosts: ConsoleView.hostFilterChoices(in: catalog),
                 hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
                 agentStatuses: nil, counts: [:])
         }

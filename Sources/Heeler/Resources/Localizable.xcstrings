@@ -13001,7 +13001,6 @@
       }
     },
     "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off." : {},
-    "Checked servers bring their Terminals into Heeler. The rest stay on this Host, switched off." : {},
     "Checking" : {
       "localizations" : {
         "ja" : {
@@ -27216,7 +27215,6 @@
       }
     },
     "Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off." : {},
-    "Heeler shows the Terminals of every server that is on. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
         "ja" : {
@@ -36898,8 +36896,8 @@
         }
       }
     },
+    "Off removes its Agents and Terminals from this device. Whatever runs on %@ keeps running." : {},
     "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
-    "Off removes its Terminals from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {

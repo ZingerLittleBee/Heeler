@@ -227,12 +227,7 @@ struct HostMachineDetailView: View {
         } header: {
             serversHeader
         } footer: {
-            if machine.listsTerminalsOnly {
-                Text(
-                    "Heeler shows the Terminals of every server that is on. Servers it finds later arrive switched off.")
-            } else {
-                Text("Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off.")
-            }
+            Text("Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off.")
         }
     }
 

@@ -11,6 +11,8 @@ import Foundation
 final class ConsoleDetailCores {
     private var sessions: [ConsoleAgent.ID: AgentComposerSession] = [:]
     private var pins: [ConsoleTerminal.ID: TerminalCorePin] = [:]
+    /// Agents shown as their terminal, which have no Composer (ADR 0054).
+    private var agentTerminalPins: [ConsoleAgent.ID: TerminalCorePin] = [:]
 
     /// The Composer session of the detail shown for `agent`, whose pin everything
     /// the detail does keeps to. A Herdr TUI Host has no core to keep to.
@@ -32,6 +34,15 @@ final class ConsoleDetailCores {
         return pin
     }
 
+    /// What the terminal shown for `agent` keeps to, for an Agent that opens on
+    /// its terminal (ADR 0054).
+    func terminalPin(for agent: ConsoleAgent, console: ConsoleStore) -> TerminalCorePin {
+        if let held = agentTerminalPins[agent.id] { return held }
+        let pin = console.corePin(on: agent.hostID)
+        agentTerminalPins[agent.id] = pin
+        return pin
+    }
+
     /// What the list beside `shown` marks as selected. The row at the address of a
     /// detail left on a gone core is another Terminal, so it is not marked, and a tap
     /// on it is a new pick rather than this selection again.
@@ -44,7 +55,9 @@ final class ConsoleDetailCores {
     func openAnew(_ selection: ConsoleSelection, console: ConsoleStore) -> Bool {
         guard hasLeftCore(selection, console: console) else { return false }
         switch selection {
-        case .agent(let id): sessions[id] = nil
+        case .agent(let id):
+            sessions[id] = nil
+            agentTerminalPins[id] = nil
         case .terminal(let id): pins[id] = nil
         case .leftBehind: break
         }
@@ -55,12 +68,14 @@ final class ConsoleDetailCores {
     /// Coming back to any other is opening it anew.
     func keep(only held: Set<ConsoleSelection>) {
         sessions = sessions.filter { held.contains(.agent($0.key)) }
+        agentTerminalPins = agentTerminalPins.filter { held.contains(.agent($0.key)) }
         pins = pins.filter { held.contains(.terminal($0.key)) }
     }
 
     private func hasLeftCore(_ selection: ConsoleSelection, console: ConsoleStore) -> Bool {
         switch selection {
-        case .agent(let id): console.hasLeftCore(sessions[id]?.corePin, on: id.hostID)
+        case .agent(let id):
+            console.hasLeftCore(sessions[id]?.corePin ?? agentTerminalPins[id], on: id.hostID)
         case .terminal(let id): console.hasLeftCore(pins[id], on: id.hostID)
         case .leftBehind: false
         }
