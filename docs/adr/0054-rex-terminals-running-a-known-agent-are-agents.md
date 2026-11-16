@@ -64,7 +64,9 @@ anything on the machine.
   terminal's title, else its kind's name, and its name the block's label; its
   directory is the foreground's. A session is its Workspace and a window its
   Tab. Pins work as on tmux: they keep to the panes the inventory lists and go
-  with another server instance.
+  with another server instance. A session whose terminals are all Agents has
+  no card under Terminals: another kind's such card holds New Terminal, which
+  a Rex Host does not offer.
 - **Opening one opens its terminal.** A Rex Agent's detail is the terminal
   detail the Terminals list opens (ADRs 0051 to 0053): the server's redraw
   first, typing, paste, Snippets, the size notice and Fit to Screen. It has no
