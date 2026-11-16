@@ -748,6 +748,42 @@ struct TerminalSizeNoticeTests {
         await store.stop()
     }
 
+    /// A showing that begins just as the screen replaces its pipeline, as a
+    /// possible suspension does when the scene comes back or the pool hands a
+    /// kept terminal back, asks nothing of the attach on its way out, which
+    /// would give the size straight back as it stops: the attach that
+    /// replaces it takes the size as it opens.
+    @Test(arguments: [false, true])
+    func aShowingAsItsPipelineIsReplacedTakesOnlyForTheNewAttach(backOnScreen: Bool) async throws {
+        let first = Remote()
+        let second = Remote()
+        first.openedTaking(.taken)
+        second.openedTaking(.taken)
+        let runs = Runs([first, second], asksOnOpen: true, opensAtOnce: true)
+        let shell = ShellTerminalStore(
+            identity: ShellTerminalIdentity(paneID: "block:left", tabID: "block:left", terminalID: "block:left"),
+            transportGeneration: nil, isOnStage: { true },
+            runTerminal: { _, handler in try await runs.run(handler, sizes: true) })
+        shell.viewDidResize(cols: 80, rows: 24)
+        first.outputSink.yield(Data("prompt$ ".utf8))
+        try await waitUntil("live") { shell.terminal.status == .live }
+
+        if backOnScreen { shell.setTerminalViewed(false) } else { shell.sceneDidEnterBackground() }
+        #expect(first.viewerLefts == 1)
+        let old = shell.terminal
+        if backOnScreen { shell.setTerminalViewed(true) } else { shell.sceneDidBecomeActive() }
+        shell.didBecomeActive(afterPossibleSuspension: true)
+        try await waitUntil("the replacement") { shell.terminal !== old }
+        shell.viewDidResize(cols: 80, rows: 24)
+        second.outputSink.yield(Data("prompt$ ".utf8))
+        try await waitUntil("live again") { shell.terminal.status == .live }
+        try await settleDown()
+        #expect(first.fits == 0 && first.takes == 0)
+        #expect(runs.heard == [true, true])
+        #expect(second.fits == 0 && shell.sizeNotice == nil)
+        await shell.leave().value
+    }
+
     /// A screen that appears in a scene in the background takes nothing,
     /// as it opens or after, until the scene comes back.
     @Test func aSceneInTheBackgroundTakesNothing() async throws {

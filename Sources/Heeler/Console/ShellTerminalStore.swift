@@ -487,6 +487,9 @@ final class ShellTerminalStore {
         replacementID &+= 1
         let replacementID = replacementID
         isReplacing = true
+        // Before the stop below gets its turn: a showing that began just
+        // now, as the screen came back, takes nothing for the old attach.
+        terminal.willBeReplaced()
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard self.replacementID == replacementID else { return }

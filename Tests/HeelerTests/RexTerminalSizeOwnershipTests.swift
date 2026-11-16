@@ -258,6 +258,9 @@ struct RexTerminalSizeOwnershipTests {
         try await waitUntil("the give back") { await ownership(control) == [Self.take, Self.giveBack] }
         let first = shell.terminal
         shell.sceneDidBecomeActive()
+        // The take of its own queues behind the give back before the
+        // replacement comes.
+        try await Task.sleep(for: .milliseconds(100))
         shell.didBecomeActive(afterPossibleSuspension: true)
         try await waitUntil("the replacement") { shell.terminal !== first }
         #expect(await requests(control, Self.take).count == 1)

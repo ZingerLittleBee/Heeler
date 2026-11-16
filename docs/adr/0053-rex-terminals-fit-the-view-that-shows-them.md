@@ -56,7 +56,11 @@ each can change without revisiting the rest.
   Heeler's own stop of the attach cuts short, before it goes out or while its
   answer is awaited, did not fail: the stop is Heeler's, as when the screen's
   pipeline is replaced while it shows, and the attach that replaces it takes
-  the size as it opens. A refusal counts whenever it comes.
+  the size as it opens. A refusal counts whenever it comes. A showing that
+  begins just as Heeler replaces the screen's pipeline, as when the scene
+  comes back or the retention pool hands a kept attach back after a possible
+  suspension, takes nothing for the attach on its way out, which would only
+  give the size back as it stops.
 - **No tug of war.** When another client takes the size while the screen
   shows the terminal, Heeler leaves it there: the notice offers Fit to Screen,
   and nothing takes the size back on its own for the rest of the showing, its
@@ -234,7 +238,11 @@ captures, live tests and fakes, recorded with their sources in
 - An attach replaced while the screen stays shown, as after a possible
   suspension, gives the size back as the old attach stops and takes it again
   as the new one opens, even when the old one's take was cut short by that
-  stop.
+  stop. `ShellTerminalStore` calls `AttachTerminalStore.willBeReplaced()`
+  before it stops the old store, so a showing that began in the same pass,
+  as the scene came back or the pool handed the attach back, asks the old
+  attach for nothing. A showing that began a pass earlier has its take out
+  already; that one goes and comes back as before.
 - `RexTerminalConnection.deliver` takes a deadline of silence and a limit in
   all, so input and taking the size wait 10 seconds of silence and a minute in
   all, and giving back two and ten.

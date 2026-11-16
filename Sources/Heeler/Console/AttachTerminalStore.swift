@@ -378,6 +378,8 @@ final class AttachTerminalStore {
     /// A take made on its own is out for the session: the notice waits for
     /// it, so one that goes through leaves none.
     private var isFitting = false
+    /// The screen's owner is replacing this store; see `willBeReplaced()`.
+    private var isBeingReplaced = false
     /// How many times the session's reports said another client took the
     /// size from this one.
     private var takenAwaySeen = 0
@@ -537,6 +539,16 @@ final class AttachTerminalStore {
         updateSizeNotice()
     }
 
+    /// The screen's owner is about to stop this store and open another in
+    /// its place, as after a possible suspension. A showing that begins now,
+    /// as the screen comes back, takes nothing for this store's attach, which
+    /// would only give the size back as it stops: the attach that replaces
+    /// it takes the size as it opens (ADR 0053).
+    func willBeReplaced() {
+        isBeingReplaced = true
+        updateSizeNotice()
+    }
+
     // MARK: Shown means fitted
 
     /// Someone sees the terminal: the surface is on screen, in a scene in
@@ -553,7 +565,7 @@ final class AttachTerminalStore {
     /// Asked by the runner as an attach opens: whether it takes the size
     /// before its first output, so the first paint comes at the view's grid.
     private func fitsAsItOpens() -> Bool {
-        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested else { return false }
+        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested, !isBeingReplaced else { return false }
         opensFitted = true
         return true
     }
@@ -562,15 +574,37 @@ final class AttachTerminalStore {
     /// it as it opened: once per showing and session, while the showing
     /// still does.
     private func fitOpenSession() {
-        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested, let session, fittedSession !== session,
-            let ownership = session.sizeOwnership
+        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested, !isBeingReplaced, let session,
+            fittedSession !== session, let ownership = session.sizeOwnership
         else { return }
         let fit = beginFit(of: session)
         updateSizeNotice()
         Task { [weak self] in
+            guard let self else { return }
+            // What began the showing can be followed at once by the screen
+            // replacing this pipeline, as on coming back after a possible
+            // suspension, or by the showing ending: the take then stays
+            // home, since the attach would give it back as it stops.
+            guard self.stillFits(fit, session) else {
+                self.fitDropped(fit)
+                return
+            }
             let outcome = await ownership.fit()
-            self?.fitEnded(outcome, fit)
+            self.fitEnded(outcome, fit)
         }
+    }
+
+    /// Whether a take made on its own, about to go out, still has a showing
+    /// to fit: the same showing and session, not stopping or being replaced.
+    private func stillFits(_ fit: Fit, _ session: TerminalAttachSession) -> Bool {
+        fit.showing == showingNumber && isShowing && !stopRequested && !isBeingReplaced && self.session === session
+    }
+
+    /// A take made on its own that never went out: it did not fail, so the
+    /// showing still takes the size on its own, as a replacement opens.
+    private func fitDropped(_ fit: Fit) {
+        if fit.number == fitNumber { isFitting = false }
+        updateSizeNotice()
     }
 
     /// A session that took the size as it opened: how that went counts as
@@ -692,11 +726,11 @@ final class AttachTerminalStore {
     }
 
     /// A live terminal at a size set elsewhere, with nothing of its own on
-    /// the way: no take out, and its scene in the foreground, where the next
-    /// showing would take the size anyway.
+    /// the way: no take out, no replacement coming, and its scene in the
+    /// foreground, where the next showing would take the size anyway.
     private var wantsSizeNotice: Bool {
         status == .live && session?.sizeOwnership != nil && sizeReport?.isSetElsewhere == true
-            && keptSizeOwner == nil && !isFitting && !sizeShowing.isSceneInBackground
+            && keptSizeOwner == nil && !isFitting && !isBeingReplaced && !sizeShowing.isSceneInBackground
     }
 
     private func hideSizeNotice() {
