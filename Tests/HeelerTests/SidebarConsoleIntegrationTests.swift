@@ -420,16 +420,17 @@ struct SidebarConsoleIntegrationTests {
                   tokens: ["note": note])
     }
 
+    /// Waits on whatever `ready` reads. A condition can turn true through a
+    /// Host's status or issues alone: a Host's empty first snapshot clears its
+    /// loading issue and changes neither the Agents nor a generation.
     private func waitForConsole(_ store: ConsoleStore, until ready: () -> Bool) async throws {
-        while !ready() {
+        while true {
             try Task.checkCancellation()
             let changes = AsyncStream<Void>.makeStream()
-            withObservationTracking {
-                _ = store.agents
-                _ = store.hostConnectionGenerations
-            } onChange: {
+            let isReady = withObservationTracking(ready) {
                 changes.continuation.yield(())
             }
+            guard !isReady else { return }
             var iterator = changes.stream.makeAsyncIterator()
             let change = await iterator.next()
             changes.continuation.finish()
