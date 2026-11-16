@@ -59,10 +59,31 @@ tmux sockets on one machine, that is the common case, not the odd one.
   that has none, and replacing a changed key replaces it for every record of
   the Host. A key is never replaced without the user.
 - A record that would read like another of its Host carries the Server's
-  label beside the Host's name (`studio · tmux`) wherever one record is named,
-  such as the Agents and Terminals lists. The label is derived, not stored.
-  The Console's Host filter names the Host, not its records: it lists each
-  Host once, and choosing one shows every Server it has on.
+  label beside the Host's name (`studio · tmux`) wherever one record is named
+  on its own: a picker of Servers, its Server page, a notification, a problem
+  with that Server. The label is derived, not stored. The Console's Host
+  filter names the Host, not its records: it lists each Host once, and
+  choosing one shows every Server it has on.
+- The Agents and Terminals lists name the Host alone, as the Hosts tab does,
+  on every row, Workspace card and By Host heading. A record the user named
+  apart before it was one Host with the others goes by the Host's name there,
+  derived like the label. By Host has one section per Host, in the Hosts
+  tab's order, holding its Servers' Agents or Workspaces one Server after
+  another in catalog order, each in its own order, with the counts summed.
+  The heading reads as the Server that most needs the user, as the Hosts
+  tab's row does; the name stays at full strength while any Server is
+  reachable, and the heading opens a connection sheet only for a Host with
+  one Server on. Each Server's problem is a row under the heading, which names
+  the Server when the Host has more than one. A Workspace stays one Server's:
+  two of one name on two Servers are two cards, both under the Host's name.
+  Folding a Host is stored by record id, as the filter is: a Host is folded
+  while any of its records is, and folding or unfolding it sets or clears them
+  all, so a Host folded while each Server had its own section stays folded.
+- A Host with nothing to list, nothing to say and nothing to offer has no
+  section in a list's By Host. It has something to say while a Server is not
+  connected, still loading or out of sync, and something to offer while a
+  Server's kind can start what the list shows, so only a connected Rex Host
+  can be left out ([ADR 0054](0054-rex-terminals-running-a-known-agent-are-agents.md)).
 - Usage counts a Host once. A Host's Servers read the same Transcripts under
   the same account, so the Usage tab, its widgets and Accounts in Settings
   list the Host, not its records, under the id of its first record that can
@@ -107,7 +128,15 @@ whose update of 2026-11-16 says how) is a Server of its Host in the same way.
   two Hosts until the user makes them match.
 - Edit changes every record of the Host at once.
 - A second Server appearing on a Host, or going, gives the other record its
-  label or takes it away, and that record reconnects once.
+  label or takes it away, and that record reconnects once. A Host whose
+  records were named apart goes by its first named record's name; turning that
+  Server off moves the Host to the next one's, and each record whose list name
+  that changes reconnects once in the same way.
+- Searching the Agents and Terminals lists finds a row by the Host's name,
+  no longer by a Server's label. By Workspace lists cards in the Hosts tab's
+  order of Hosts, so two Hosts the catalog interleaved read apart.
+- With every Host connected and nothing to list, By Host shows the same empty
+  state the flat list does, not a list of bare headings.
 - Opening Host detail and each look from the list open one more SSH
   connection for the detection exec, beside one connection for each Server
   that is on.
