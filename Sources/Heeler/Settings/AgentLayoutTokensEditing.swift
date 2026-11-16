@@ -213,6 +213,8 @@ enum AgentLayoutTokensEditing {
             String(localized: "Terminal title without the Agent prefix")
         case .host:
             String(localized: "Host name")
+        case .backend:
+            String(localized: "Server backend (core, tui, rex, tmux)")
         case .status:
             String(localized: "Agent Status as text")
         case .directory:

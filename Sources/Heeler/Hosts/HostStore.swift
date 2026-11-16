@@ -544,12 +544,16 @@ final class HostStore {
         }
     }
 
-    /// Words each record among its Host's Servers. Only a label that moved is
+    /// Words each record among its Host's Servers, and gives it its Host's
+    /// name where its own is not that. Only a label or name that moved is
     /// written, so a change elsewhere in the catalog leaves the rest as it was.
     private func labelServers() {
         let labels = HostMachine.serverLabels(for: hosts)
-        for index in hosts.indices where hosts[index].serverLabel != labels[hosts[index].id] {
-            hosts[index].serverLabel = labels[hosts[index].id]
+        let names = HostMachine.sharedNames(for: hosts)
+        for index in hosts.indices {
+            let id = hosts[index].id
+            if hosts[index].serverLabel != labels[id] { hosts[index].serverLabel = labels[id] }
+            if hosts[index].sharedHostName != names[id] { hosts[index].sharedHostName = names[id] }
         }
     }
 

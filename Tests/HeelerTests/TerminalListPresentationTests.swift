@@ -46,8 +46,8 @@ struct TerminalListProjectionTests {
     }
 
     @Test func cardsFollowHostThenWorkspaceOrderAndListShellsInTabOrder() throws {
-        let first = Host.fixture(name: "zeta")
-        let second = Host.fixture(name: "alpha")
+        let first = Host.fixture(name: "zeta", address: "zeta.example")
+        let second = Host.fixture(name: "alpha", address: "alpha.example")
         let cards = projection(
             hosts: [first, second],
             terminals: [
@@ -112,9 +112,9 @@ struct TerminalListProjectionTests {
     }
 
     @Test func hostFilterLimitsCardsAndIssues() {
-        let first = Host.fixture(name: "one")
-        let second = Host.fixture(name: "two")
-        let third = Host.fixture(name: "three")
+        let first = Host.fixture(name: "one", address: "one.example")
+        let second = Host.fixture(name: "two", address: "two.example")
+        let third = Host.fixture(name: "three", address: "three.example")
         let list = projection(
             hosts: [first, second, third],
             terminals: [
@@ -153,8 +153,8 @@ struct TerminalListProjectionTests {
     }
 
     @Test func hostGroupsCarryReadinessIssueAndCollapsedState() throws {
-        let connected = Host.fixture(name: "connected")
-        let paused = Host.fixture(name: "paused")
+        let connected = Host.fixture(name: "connected", address: "connected.example")
+        let paused = Host.fixture(name: "paused", address: "paused.example")
         let groups = projection(
             hosts: [connected, paused],
             terminals: [terminal(host: connected, paneID: "p1")],
@@ -165,20 +165,20 @@ struct TerminalListProjectionTests {
         #expect(groups.map(\.hostName) == ["connected", "paused"])
         let first = try #require(groups.first)
         #expect(first.readiness.text == "Connected")
-        #expect(first.issue == nil)
+        #expect(first.issues.isEmpty)
         #expect(first.terminalCount == 1)
         #expect(!first.isCollapsed)
         let last = try #require(groups.last)
         #expect(last.readiness.text == "Paused")
-        #expect(last.issue != nil)
+        #expect(last.issues.count == 1)
         #expect(last.isCollapsed)
     }
 
     @Test func hostSearchKeepsOnlyHostsWithMatchesOpen() throws {
-        let match = Host.fixture(name: "match")
-        let quiet = Host.fixture(name: "quiet")
-        let paused = Host.fixture(name: "paused")
-        let failed = Host.fixture(name: "failed")
+        let match = Host.fixture(name: "match", address: "match.example")
+        let quiet = Host.fixture(name: "quiet", address: "quiet.example")
+        let paused = Host.fixture(name: "paused", address: "paused.example")
+        let failed = Host.fixture(name: "failed", address: "failed.example")
         let groups = projection(
             hosts: [match, quiet, paused, failed],
             terminals: [
@@ -199,8 +199,8 @@ struct TerminalListProjectionTests {
     }
 
     @Test func onlyFailingHostsOpenTheConnectionSheet() {
-        let live = Host.fixture(name: "live")
-        let stopped = Host.fixture(name: "stopped")
+        let live = Host.fixture(name: "live", address: "live.example")
+        let stopped = Host.fixture(name: "stopped", address: "stopped.example")
         let groups = projection(
             hosts: [live, stopped],
             statuses: [live.id: .connected, stopped.id: .failed(.authenticationFailed)]
@@ -222,7 +222,7 @@ struct TerminalListProjectionTests {
                 syncErrors: [host.id: "Could not sync this Host. Retrying…"]
             ).hostGroups().first)
         #expect(group.readiness == HostReadiness(text: "Sync issue", tone: .warning))
-        let issue = try #require(group.issue)
+        let issue = try #require(group.issues.first)
         #expect(issue.tone == group.readiness.tone)
         #expect(issue.message == "mini: Could not sync this Host. Retrying…")
         #expect(issue.sectionMessage == "Could not sync this Host. Retrying…")
@@ -273,7 +273,7 @@ struct TerminalListPresentationStoreTests {
         let store = TerminalListPresentationStore(defaults: defaults)
         store.select(.byHost)
         store.toggleCollapsed(workspace)
-        store.toggleCollapsed(host.id)
+        store.toggleCollapsed([host.id])
 
         let restored = TerminalListPresentationStore(defaults: defaults)
         #expect(restored.mode == .byHost)
@@ -281,10 +281,24 @@ struct TerminalListPresentationStoreTests {
         #expect(restored.collapsedHosts == [host.id])
 
         restored.toggleCollapsed(workspace)
-        restored.toggleCollapsed(host.id)
+        restored.toggleCollapsed([host.id])
         let expanded = TerminalListPresentationStore(defaults: defaults)
         #expect(expanded.collapsedWorkspaces.isEmpty)
         #expect(expanded.collapsedHosts.isEmpty)
+    }
+
+    /// A Host is folded while any of its Servers' records is: unfolding drops
+    /// them all, and folding holds them all.
+    @Test func aHostFoldsAndUnfoldsWithEveryServer() throws {
+        let defaults = try defaults()
+        let tui = UUID()
+        let tmux = UUID()
+        let store = TerminalListPresentationStore(defaults: defaults)
+        store.toggleCollapsed([tmux])
+        store.toggleCollapsed([tui, tmux])
+        #expect(TerminalListPresentationStore(defaults: defaults).collapsedHosts.isEmpty)
+        store.toggleCollapsed([tui, tmux])
+        #expect(TerminalListPresentationStore(defaults: defaults).collapsedHosts == [tui, tmux])
     }
 }
 

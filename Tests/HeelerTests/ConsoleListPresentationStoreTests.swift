@@ -22,7 +22,7 @@ struct ConsoleListPresentationStoreTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let host = Host.fixture()
-        let quiet = Host.fixture(name: "Quiet")
+        let quiet = Host.fixture(name: "Quiet", address: "quiet.example")
         let agents = [
             consoleAgent(host: host, paneID: "p1", status: .working),
             consoleAgent(host: host, paneID: "p2", status: .error, workspaceID: "w2"),
@@ -54,15 +54,16 @@ struct ConsoleListPresentationStoreTests {
     @Test func hostFilterPersistsAndPrunesRemovedHosts() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let first = Host.fixture(name: "m3")
-        let second = Host.fixture(name: "m1 pro")
-        let removed = Host.fixture(name: "old")
+        let first = Host.fixture(name: "m3", address: "m3.example")
+        let second = Host.fixture(name: "m1 pro", address: "m1.example")
+        let removed = Host.fixture(name: "old", address: "old.example")
+        let machines = HostMachine.grouped([first, second, removed])
 
         let store = ConsoleListPresentationStore(defaults: defaults)
         #expect(store.hostFilter.isEmpty)
 
-        store.toggleHostFilter(first.id)
-        store.toggleHostFilter(removed.id)
+        store.toggleHostFilter(machines[0])
+        store.toggleHostFilter(machines[2])
         #expect(store.hostFilter == [first.id, removed.id])
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [first.id, removed.id])
 
@@ -70,7 +71,7 @@ struct ConsoleListPresentationStoreTests {
         #expect(store.hostFilter == [first.id])
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [first.id])
 
-        store.toggleHostFilter(first.id)
+        store.toggleHostFilter(machines[0])
         #expect(store.hostFilter.isEmpty)
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
 
@@ -80,6 +81,118 @@ struct ConsoleListPresentationStoreTests {
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
     }
 
+    private func twoServerCatalog() -> (tui: Host, tmux: Host, build: Host) {
+        (Host(name: "m3", address: "m3.example", username: "dev"),
+         Host(name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default"),
+         Host(name: "Build", address: "build.example", username: "dev", serverKind: .herdrCore))
+    }
+
+    @Test func aSavedServerSelectsItsHostWithEveryServerItHasOn() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (tui, tmux, build) = twoServerCatalog()
+        let core = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .herdrCore)
+        ConsoleListPresentationStore(defaults: defaults).setHostFilter([tui.id])
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.pruneHostFilter(keeping: [tui, tmux, build])
+        #expect(store.hostFilter == [tui.id, tmux.id])
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter == [tui.id, tmux.id])
+
+        let agents = [tui, tmux, build].map { consoleAgent(host: $0, paneID: "p1", status: .working) }
+        #expect(store.sections(hosts: [tui, tmux, build], agents: agents, filteredHostIDs: store.hostFilter)
+            .map(\.hostIDs) == [[tui.id, tmux.id]])
+        let terminals = TerminalListProjection(
+            hosts: [tui, tmux, build],
+            terminals: [tui, tmux, build].map { host in
+                ConsoleTerminal(
+                    hostID: host.id, hostName: host.hostName, hostUsername: host.username,
+                    pane: PaneInfo(
+                        agentStatus: .idle, focused: false, paneID: "shell", revision: 1, tabID: "w1:t1",
+                        terminalID: "terminal-shell", workspaceID: "w1", cwd: "/project",
+                        terminalTitleStripped: "zsh"),
+                    workspaceLabel: "api", tabLabel: "Tab 1", workspaceOrder: 0, tabPosition: 1,
+                    snapshotOrder: 0, snapshotAgentKind: nil)
+            },
+            workspacesByHost: [:], agents: [], hostStatuses: [:], hostStandingFailures: [:],
+            hostsAwaitingSnapshot: [], hostSyncErrors: [:], collapsedWorkspaces: [], collapsedHosts: [])
+        #expect(terminals.workspaces(filteredHostIDs: store.hostFilter).map(\.hostID) == [tui.id, tmux.id])
+
+        store.pruneHostFilter(keeping: [tui, tmux, build, core])
+        #expect(store.hostFilter == [tui.id, tmux.id, core.id])
+        store.pruneHostFilter(keeping: [core, build])
+        #expect(store.hostFilter == [core.id])
+
+        let m3 = try #require(HostMachine.grouped([core, build]).first)
+        store.toggleHostFilter(m3)
+        #expect(store.hostFilter.isEmpty)
+        store.toggleHostFilter(m3)
+        store.pruneHostFilter(keeping: [build])
+        #expect(store.hostFilter.isEmpty)
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+    }
+
+    @Test func aFilterWithOneHostLeftToListShowsAllHosts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (tui, tmux, build) = twoServerCatalog()
+        ConsoleListPresentationStore(defaults: defaults).setHostFilter([tmux.id])
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.pruneHostFilter(keeping: [tui, tmux])
+        #expect(store.hostFilter.isEmpty)
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+    }
+
+    @Test func rowsAndSectionsOfEachServerNameTheHostAloneAndCarryBackend() throws {
+        let (tui, tmux, build) = twoServerCatalog()
+        let catalog = HostStore(volatileHosts: [tui, build, tmux])
+        let record = try #require(catalog.consoleHosts.first { $0.id == tmux.id })
+        #expect(record.displayName == "m3 · tmux")
+        let snapshot = SessionSnapshot(
+            agents: [.fixture(paneID: "w1:p1")], layouts: [],
+            panes: [
+                PaneInfo(
+                    agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1, tabID: "w1:t1",
+                    terminalID: "terminal-shell", workspaceID: "w1", cwd: "/project",
+                    terminalTitleStripped: "zsh")
+            ],
+            protocolVersion: 17, tabs: [], version: "test",
+            workspaces: [.fixture(workspaceID: "w1", label: "api")])
+        let builder = ConsolePaneRowBuilder(host: record, inventory: snapshot)
+        let agent = try #require(builder.agentRows { _ in nil }["w1:p1"])
+        let shell = try #require(builder.terminalRows(agents: [:]) { _ in nil }["w1:p2"])
+        #expect(agent.hostName == "m3")
+        #expect(agent.backend == .tmux)
+        #expect(shell.hostName == "m3")
+        #expect(agent.matchesAgentSearch("M3"))
+        #expect(!agent.matchesAgentSearch("tmux"))
+        #expect(shell.matchesSearch("m3"))
+        #expect(!shell.matchesSearch("tmux"))
+        let saved = ChatCachedAgent(agent).consoleAgent(for: record)
+        #expect(saved.hostName == "m3")
+        #expect(saved.backend == .tmux)
+
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        let records = catalog.consoleHosts
+        let agents = [
+            consoleAgent(host: record, paneID: "p1", status: .working, label: "api"),
+            consoleAgent(host: try #require(records.first { $0.id == build.id }), paneID: "p1", status: .idle, label: "api"),
+            consoleAgent(host: try #require(records.first { $0.id == tui.id }), paneID: "p1", status: .done, label: "api"),
+        ]
+        let byHost = store.sections(hosts: records, agents: agents)
+        #expect(byHost.map(\.hostName) == ["m3", "Build"])
+        #expect(byHost.map(\.hostIDs) == [[tui.id, tmux.id], [build.id]])
+        #expect(byHost[0].agents.map(\.hostID) == [tui.id, tmux.id])
+        #expect(byHost[0].statusCounts == .init(working: 1, done: 1))
+
+        let cards = store.workspaceSections(hosts: records, agents: agents)
+        #expect(cards.map(\.hostName) == ["m3", "m3", "Build"])
+        #expect(cards.map(\.id.hostID) == [tui.id, tmux.id, build.id])
+    }
+
     @Test(.serialized, arguments: [DynamicTypeSize.large, .accessibility3])
     func filterChoicesKeepHostsBoundedAndSelectionsIndependent(textSize: DynamicTypeSize) async throws {
         let (defaults, cleanup) = try makeDefaults()
@@ -87,10 +200,11 @@ struct ConsoleListPresentationStoreTests {
         let store = ConsoleListPresentationStore(defaults: defaults)
         store.toggleStatusFilter(.blocked)
         store.toggleStatusFilter(.working)
-        let hosts = (1...20).map { Host.fixture(name: "Host \($0)") }
+        let hosts = (1...20).map { Host.fixture(name: "Host \($0)", address: "host-\($0).example") }
+        let machines = HostMachine.grouped(hosts)
         var selectedHosts: Set<Host.ID> = [hosts[0].id]
         let view = ConsoleListFilterChoices(
-            hosts: hosts, hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
+            hosts: machines, hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
             agentStatuses: store, counts: [.blocked: 1, .working: 2, .done: 3, .idle: 4])
             .environment(\.dynamicTypeSize, textSize)
         let controller = UIHostingController(rootView: view)
@@ -144,7 +258,7 @@ struct ConsoleListPresentationStoreTests {
 
             // A short inventory needs neither a hint nor extra footer space.
             controller.rootView = ConsoleListFilterChoices(
-                hosts: Array(hosts.prefix(2)),
+                hosts: Array(machines.prefix(2)),
                 hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
                 agentStatuses: store, counts: [:])
                 .environment(\.dynamicTypeSize, .large)
@@ -168,17 +282,18 @@ struct ConsoleListPresentationStoreTests {
     ) -> ConsoleAgent {
         ConsoleAgent(
             hostID: host.id,
-            hostName: host.displayName,
+            hostName: host.hostName,
             agent: Agent(.fixture(paneID: paneID, status: status, workspaceID: workspaceID)),
             workspaceLabel: label,
-            repositoryCheckout: nil)
+            repositoryCheckout: nil,
+            backend: host.serverKind.agentBackend)
     }
 
     @Test func workspaceGroupsUseHostAndOpaqueIDAndKeepIncomingOrder() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let first = Host.fixture(name: "Studio")
-        let second = Host.fixture(name: "Build")
+        let first = Host.fixture(name: "Studio", address: "studio.example")
+        let second = Host.fixture(name: "Build", address: "build.example")
         let agents = [
             consoleAgent(host: second, paneID: "p1", status: .blocked, label: "Shared"),
             consoleAgent(host: first, paneID: "p2", status: .done, workspaceID: "w2", label: "Shared"),
@@ -205,8 +320,8 @@ struct ConsoleListPresentationStoreTests {
     @Test func workspaceCollapsePersistsAcrossRenameAndReconnectButNotOtherHosts() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let first = Host.fixture(name: "Studio")
-        let second = Host.fixture(name: "Build")
+        let first = Host.fixture(name: "Studio", address: "studio.example")
+        let second = Host.fixture(name: "Build", address: "build.example")
         let opaqueID = "workspace:/with|separators"
         let id = ConsoleWorkspaceSection.ID(hostID: first.id, workspaceID: opaqueID)
         let agents = [first, second].map {
@@ -313,8 +428,8 @@ struct ConsoleListPresentationStoreTests {
     @Test func worktreesNeverNestAcrossHosts() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let first = Host.fixture(name: "Studio")
-        let second = Host.fixture(name: "Build")
+        let first = Host.fixture(name: "Studio", address: "studio.example")
+        let second = Host.fixture(name: "Build", address: "build.example")
         let agents = [
             checkoutAgent(host: first, paneID: "p1", status: .done, workspaceID: "wY", label: "plexus-Diagram", repo: "plexus-Diagram"),
             checkoutAgent(host: second, paneID: "p2", status: .working, workspaceID: "w1J", label: "PXD-5", repo: "plexus-Diagram", linked: true),
@@ -652,29 +767,29 @@ struct ConsoleListPresentationStoreTests {
     @Test func collapsedStatePersistsAndIsIsolatedPerHost() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let hostA = Host.fixture(name: "alpha")
-        let hostB = Host.fixture(name: "beta")
+        let hostA = Host.fixture(name: "alpha", address: "alpha.example")
+        let hostB = Host.fixture(name: "beta", address: "beta.example")
 
         let store = ConsoleListPresentationStore(defaults: defaults)
         store.setCollapsed(true, for: hostA.id)
 
         let reloaded = ConsoleListPresentationStore(defaults: defaults)
-        #expect(reloaded.isCollapsed(hostA.id))
-        #expect(!reloaded.isCollapsed(hostB.id))
+        #expect(reloaded.isCollapsed([hostA.id]))
+        #expect(!reloaded.isCollapsed([hostB.id]))
 
-        reloaded.toggleCollapsed(hostB.id)
-        reloaded.toggleCollapsed(hostA.id)
+        reloaded.toggleCollapsed([hostB.id])
+        reloaded.toggleCollapsed([hostA.id])
         let reloadedAgain = ConsoleListPresentationStore(defaults: defaults)
-        #expect(!reloadedAgain.isCollapsed(hostA.id))
-        #expect(reloadedAgain.isCollapsed(hostB.id))
+        #expect(!reloadedAgain.isCollapsed([hostA.id]))
+        #expect(reloadedAgain.isCollapsed([hostB.id]))
     }
 
     @Test func sectionsFollowCatalogOrderAndFilterToSelectedHosts() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let first = Host.fixture(name: "zeta")
-        let second = Host.fixture(name: "alpha")
-        let third = Host.fixture(name: "beta")
+        let first = Host.fixture(name: "zeta", address: "zeta.example")
+        let second = Host.fixture(name: "alpha", address: "alpha.example")
+        let third = Host.fixture(name: "beta", address: "beta.example")
         let hosts = [first, second, third]
         let agents = [
             consoleAgent(host: third, paneID: "p3", status: .working),
@@ -709,8 +824,8 @@ struct ConsoleListPresentationStoreTests {
     @Test func sectionsPreserveTheSuppliedAgentOrderWithinEachHost() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let hostA = Host.fixture(name: "alpha")
-        let hostB = Host.fixture(name: "beta")
+        let hostA = Host.fixture(name: "alpha", address: "alpha.example")
+        let hostB = Host.fixture(name: "beta", address: "beta.example")
         let aIdle = consoleAgent(host: hostA, paneID: "opaque-A", status: .idle)
         let bBlocked = consoleAgent(host: hostB, paneID: "%opaque-B", status: .blocked)
         let aDone = consoleAgent(host: hostA, paneID: "opaque-C", status: .done)
@@ -739,23 +854,23 @@ struct ConsoleListPresentationStoreTests {
             hostStatuses: [host.id: .connected],
             hostsAwaitingSnapshot: [host.id])
         #expect(loading[0].agents.map(\.id) == [working.id])
-        #expect(loading[0].isAwaitingSnapshot)
-        #expect(loading[0].statusPresentation?.message == "Loading Agents from studio…")
+        #expect(loading[0].servers.first?.isAwaitingSnapshot == true)
+        #expect(loading[0].issues.first?.message == "Loading Agents from studio…")
 
         let refreshed = store.sections(
             hosts: [host],
             agents: [done],
             hostStatuses: [host.id: .connected])
         #expect(refreshed[0].agents.map(\.id) == [done.id])
-        #expect(!refreshed[0].isAwaitingSnapshot)
-        #expect(refreshed[0].statusPresentation == nil)
+        #expect(refreshed[0].servers.first?.isAwaitingSnapshot == false)
+        #expect(refreshed[0].issues.isEmpty)
     }
 
     @Test func emptyAndDisconnectedHostsRemainSections() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
-        let empty = Host.fixture(name: "empty")
-        let disconnected = Host.fixture(name: "offline")
+        let empty = Host.fixture(name: "empty", address: "empty.example")
+        let disconnected = Host.fixture(name: "offline", address: "offline.example")
         let failure = TransportError.sshUnreachable(detail: "connection refused")
         let store = ConsoleListPresentationStore(defaults: defaults)
 
@@ -770,10 +885,10 @@ struct ConsoleListPresentationStoreTests {
         #expect(sections.count == 2)
         #expect(sections[0].agents.isEmpty)
         #expect(sections[1].agents.isEmpty)
-        #expect(sections[0].connectionStatus == .connected)
-        #expect(sections[0].statusPresentation == nil)
-        #expect(sections[1].connectionStatus == .failed(failure))
-        #expect(sections[1].statusPresentation?.hostID == disconnected.id)
+        #expect(sections[0].servers.first?.connectionStatus == .connected)
+        #expect(sections[0].issues.isEmpty)
+        #expect(sections[1].servers.first?.connectionStatus == .failed(failure))
+        #expect(sections[1].issues.first?.hostID == disconnected.id)
     }
 
     @Test func statusCountsMatchLiveActivityStatusesEvenWhenCollapsed() throws {

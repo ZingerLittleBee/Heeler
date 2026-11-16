@@ -8,6 +8,7 @@ import SwiftUI
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String
+    var backend: AgentBackend? = nil
     var followsPlugin = true
     /// The program the sample runs, whose mark decides whether the Agent
     /// field shows; see `kind(onHost:among:)`.
@@ -15,7 +16,8 @@ struct AgentListFieldsPreview: View {
 
     var body: some View {
         AgentCardView(
-            agent: Self.sampleAgent(hostName: hostName, layout: layout, followsPlugin: followsPlugin, kind: kind),
+            agent: Self.sampleAgent(
+                hostName: hostName, layout: layout, backend: backend, followsPlugin: followsPlugin, kind: kind),
             layout: layout,
             sampleChanges: Self.sampleChanges)
             .allowsHitTesting(false)
@@ -26,10 +28,10 @@ struct AgentListFieldsPreview: View {
 
     /// Same presentation the Console card uses for this sample.
     static func presentation(
-        layout: AgentRowLayout, hostName: String, kind: String = sampleKind
+        layout: AgentRowLayout, hostName: String, backend: AgentBackend? = nil, kind: String = sampleKind
     ) -> AgentCardPresentation {
         AgentCardPresentation(
-            agent: sampleAgent(hostName: hostName, layout: layout, kind: kind), layout: layout,
+            agent: sampleAgent(hostName: hostName, layout: layout, backend: backend, kind: kind), layout: layout,
             leadsWithMark: true)
     }
 
@@ -49,7 +51,8 @@ struct AgentListFieldsPreview: View {
     /// label `layout` names on either side, shown by its key; not a live
     /// Agent. Done, so the ring and any status field show a settled status.
     static func sampleAgent(
-        hostName: String, layout: AgentRowLayout? = nil, followsPlugin: Bool = true, kind: String = sampleKind
+        hostName: String, layout: AgentRowLayout? = nil, backend: AgentBackend? = nil,
+        followsPlugin: Bool = true, kind: String = sampleKind
     ) -> ConsoleAgent {
         let title = followsPlugin ? String(localized: "fix sidebar sync") : String(localized: "fix login redirect")
         var tokens = ["branch": "feat/sidebar"]
@@ -76,6 +79,7 @@ struct AgentListFieldsPreview: View {
                 tokens: tokens),
             workspaceLabel: "heeler",
             repositoryCheckout: nil,
+            backend: backend ?? (followsPlugin ? .tui : .core),
             tabLabel: "1",
             tabPosition: 1,
             workspaceTabCount: 2)

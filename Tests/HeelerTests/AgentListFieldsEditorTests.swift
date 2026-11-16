@@ -575,7 +575,7 @@ struct AgentListFieldsInlineEditingTests {
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(
                 in: editor.layout(for: hostID).rows[2], from: AgentRowToken.heelerBuiltins)
-                == [.host, .status])
+                == [.host, .backend, .status, .path])
         #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
     }
 

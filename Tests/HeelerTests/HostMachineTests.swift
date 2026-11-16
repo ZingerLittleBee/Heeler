@@ -161,6 +161,27 @@ struct HostMachineTests {
         #expect(decoded.displayName == "Studio")
     }
 
+    @Test func everyServerCarriesItsHostsNameWithoutStoringIt() throws {
+        let unnamed = record(name: "", kind: .tmux, session: "work")
+        let firstNamed = record(name: "Studio")
+        let namedApart = record(name: "Studio sockets", kind: .herdrCore)
+        let other = record(name: "Build", address: "build.example")
+        let store = HostStore(volatileHosts: [unnamed, firstNamed, namedApart, other])
+
+        #expect(store.hosts.map(\.hostName) == ["Studio", "Studio", "Studio", "Build"])
+        #expect(store.hosts[0].sharedHostName == "Studio")
+        #expect(store.hosts[1].sharedHostName == nil)
+        #expect(store.hosts[2].sharedHostName == "Studio")
+        #expect(store.hosts[3].sharedHostName == nil)
+
+        let decoded = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(store.hosts[2]))
+        #expect(decoded.sharedHostName == nil)
+        #expect(decoded.hostName == "Studio sockets")
+
+        try store.remove(firstNamed.id)
+        #expect(store.hosts.map(\.hostName) == ["Studio sockets", "Studio sockets", "Build"])
+    }
+
     // MARK: Holding a Host with no Server on
 
     @Test func theRecordHoldingAHostKeepsItsNameConnectionAndPassword() throws {

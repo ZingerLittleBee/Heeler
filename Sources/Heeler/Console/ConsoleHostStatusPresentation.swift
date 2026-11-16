@@ -239,7 +239,9 @@ struct ConsoleHostIssueSummary: Equatable {
 ///
 /// Grouped presentation always takes `.rows` when any Host section is
 /// projected: empty and disconnected Hosts remain visible as sections rather
-/// than collapsing into the flat-list empty claim.
+/// than collapsing into the flat-list empty claim. With none projected, as
+/// when every Host is connected and lists nothing it could start more of,
+/// it takes the flat list's empty claims.
 enum ConsoleAgentsSurface: Equatable {
     case noHosts
     case noAgents
@@ -259,17 +261,12 @@ enum ConsoleAgentsSurface: Equatable {
     ) {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || isStatusFiltered
+        let isEmpty =
+            presentationMode == .grouped
+            ? projectedSectionCount == 0 : filteredAgentCount == 0 && visibleIssueCount == 0
         if hostCount == 0 {
             self = .noHosts
-        } else if presentationMode == .grouped {
-            if projectedSectionCount > 0 {
-                self = .rows
-            } else if isSearching {
-                self = .noSearchResults
-            } else {
-                self = .noHosts
-            }
-        } else if filteredAgentCount == 0 && visibleIssueCount == 0 {
+        } else if isEmpty {
             if isSearching {
                 self = .noSearchResults
             } else if let filteredHostName {

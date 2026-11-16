@@ -1,5 +1,13 @@
 import Foundation
 
+/// The Server backend an Agent runs under, as the `backend` row field renders it.
+enum AgentBackend: String, Codable, Hashable, Sendable, CaseIterable {
+    case core
+    case tui
+    case rex
+    case tmux
+}
+
 /// One row of the Console (#8): an Agent joined with its Host identity and
 /// workspace context. The Console can group these rows by Host or Workspace.
 struct ConsoleAgent: Identifiable, Sendable, Equatable {
@@ -12,6 +20,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     let hostID: Host.ID
     let hostName: String
+    let backend: AgentBackend?
     /// SSH account name, used only for conservative presentation of standard
     /// macOS/Linux home paths as `~`. The actual remote path stays unchanged.
     let hostUsername: String?
@@ -66,6 +75,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         agent: Agent,
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
+        backend: AgentBackend? = nil,
         hostUsername: String? = nil,
         tabLabel: String? = nil,
         tabPosition: Int? = nil,
@@ -76,6 +86,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     ) {
         self.hostID = hostID
         self.hostName = hostName
+        self.backend = backend
         self.hostUsername = hostUsername
         self.agent = agent
         self.workspaceLabel = workspaceLabel

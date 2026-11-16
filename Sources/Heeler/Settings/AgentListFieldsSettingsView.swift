@@ -192,7 +192,8 @@ struct AgentListFieldsHostDetailView: View {
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
             AgentListFieldsPreview(
-                layout: layout, hostName: host.displayName, followsPlugin: followsPlugin,
+                layout: layout, hostName: host.hostName, backend: host.serverKind.agentBackend,
+                followsPlugin: followsPlugin,
                 kind: AgentListFieldsPreview.kind(onHost: host.id, among: console.agents))
         }
         .frame(maxWidth: .infinity, alignment: .leading)

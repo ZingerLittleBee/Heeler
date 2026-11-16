@@ -131,6 +131,7 @@ enum AgentRowRenderer {
         case .terminalTitle: row.agent.terminalTitle
         case .terminalTitleStripped: row.agent.terminalTitleStripped
         case .host: nonempty(row.hostName)
+        case .backend: row.backend?.rawValue
         case .status: row.agent.status.displayTitle.flatMap(nonempty)
         case .directory: nonempty(row.agent.cwd).map(RemoteHostPath.lastComponent(of:))
         case .path: nonempty(row.displayCwd)

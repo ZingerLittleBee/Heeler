@@ -6,7 +6,19 @@ import SwiftUI
 /// whole sentence. A row that navigates opens the Host in the Hosts tab.
 struct ConsoleHostIssueRow: View {
     let issue: ConsoleHostStatusPresentation
+    /// The section lists several Servers of its Host and names only the Host,
+    /// so the row says the whole sentence, which names the Server too.
+    let namesServer: Bool
     let onOpenHost: (Host.ID) -> Void
+
+    init(
+        issue: ConsoleHostStatusPresentation, namesServer: Bool = false,
+        onOpenHost: @escaping (Host.ID) -> Void
+    ) {
+        self.issue = issue
+        self.namesServer = namesServer
+        self.onOpenHost = onOpenHost
+    }
 
     var body: some View {
         if issue.navigates {
@@ -23,7 +35,7 @@ struct ConsoleHostIssueRow: View {
         HStack(spacing: 8) {
             Image(systemName: issue.systemImage)
                 .foregroundStyle(tint)
-            Text(issue.sectionMessage)
+            Text(namesServer ? issue.message : issue.sectionMessage)
                 .font(.footnote)
                 .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
                 .lineLimit(2)

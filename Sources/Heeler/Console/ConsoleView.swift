@@ -314,7 +314,7 @@ struct ConsoleView: View {
                     hosts: hosts.consoleHosts.offeringNewItem(
                         listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
                     console: console,
-                    initialHostID: hostFilter.count == 1 ? hostFilter.first : nil
+                    initialHostID: newTerminalHostID
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -419,10 +419,14 @@ struct ConsoleView: View {
                 isSettingsTabSelected = false
             }
         }
-        // Drop removed Hosts without losing remaining selections. Removing
-        // the last selected Host falls back to All Hosts.
+        // Drop removed Hosts without losing remaining selections, and give a
+        // selected Host every Server it has on. Removing the last selected
+        // Host, or all Hosts but one, falls back to All Hosts.
         .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
-            guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
+            guard hosts.catalogLoadError == nil,
+                hosts.coreCatalogLoadError == nil,
+                hosts.tmuxCatalogLoadError == nil
+            else { return }
             listPresentation.pruneHostFilter(keeping: consoleHosts)
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
@@ -1084,8 +1088,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// A filter is meaningless with a single Host.
-    private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
+    /// A filter is meaningless with a single Host, however many Servers it
+    /// has on.
+    private var filtersByHost: Bool { Self.hostFilterChoices(in: hosts).count > 1 }
 
     private func offersFilters(for tab: ConsoleTab) -> Bool {
         !hosts.consoleHosts.isEmpty && (tab == .agents || filtersByHost)
@@ -1112,7 +1117,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: hosts.consoleHosts, hostFilter: hostFilterBinding,
+            hosts: Self.hostFilterChoices(in: hosts), hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -2162,14 +2167,20 @@ struct ConsoleView: View {
         let pass = contentPass.number
         ForEach(sections) { @Sendable section in
             MainActorContent {
-                let opensDetail = connectionDetail(for: section.hostID) != nil
+                // A Host with several Servers expands whatever one of them
+                // says: the others may have Agents to show, and each
+                // problem's row opens its own Server's sheet.
+                let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
+                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
                         // As in the Terminals tab: an expanded Host with a
                         // condition says what it is before any Agents it lists.
-                        if let issue = section.statusPresentation {
-                            ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
-                                .listRowSeparator(.hidden)
+                        ForEach(section.issues) { @Sendable issue in
+                            MainActorContent {
+                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
+                                    .listRowSeparator(.hidden)
+                            }
                         }
                         let keys = makeAgentRowKeys(
                             for: section.agents, pass: pass,
@@ -2188,7 +2199,7 @@ struct ConsoleView: View {
                         if opensDetail {
                             openHostIssue(section.hostID)
                         } else {
-                            toggleHostSection(section.hostID)
+                            toggleHostSection(section.hostIDs)
                         }
                     }
                     .textCase(nil)
@@ -2492,17 +2503,18 @@ struct ConsoleView: View {
             set: { listPresentation.select($0) })
     }
 
-    private func toggleHostSection(_ hostID: Host.ID) {
+    /// Folds or unfolds a Host, given its Servers' records.
+    private func toggleHostSection(_ hostIDs: [Host.ID]) {
         // A search opens every Host holding a match, so a toggle then would
         // change nothing on screen, only what the list returns to after.
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
         if reduceMotion {
-            listPresentation.toggleCollapsed(hostID)
+            listPresentation.toggleCollapsed(hostIDs)
         } else {
             withAnimation(.snappy) {
-                listPresentation.toggleCollapsed(hostID)
+                listPresentation.toggleCollapsed(hostIDs)
             }
         }
     }
@@ -2576,15 +2588,54 @@ struct ConsoleView: View {
     /// Every Host problem under the Host filter, as the flat lists show
     /// them outside a search, and as their summary's sheet lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
-        guard !hostFilter.isEmpty else { return hostIssues }
-        return hostIssues.filter { hostFilter.contains($0.hostID) }
+        Self.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
+    }
+
+    static func filteredHostIssues(
+        hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
+    ) -> [ConsoleHostStatusPresentation] {
+        let issues = console.hostIssues(for: hosts.consoleHosts)
+        guard !hostFilter.isEmpty else { return issues }
+        return issues.filter { hostFilter.contains($0.hostID) }
+    }
+
+    /// The Hosts the lists' filter offers: each Host once, in the Hosts tab's
+    /// order, when any of its Servers is on. Choosing one shows every Server
+    /// it has on (ADR 0047).
+    static func hostFilterChoices(in hosts: HostStore) -> [HostMachine] {
+        let listed = Set(hosts.consoleHosts.map(\.id))
+        return hosts.machines.filter { $0.isSelected(by: listed) }
+    }
+
+    /// The Hosts the filter selects, each once.
+    private var filteredHosts: [HostMachine] {
+        let filter = hostFilter
+        guard !filter.isEmpty else { return [] }
+        return hosts.machines.filter { $0.isSelected(by: filter) }
     }
 
     /// The one selected Host's name, which the empty state names; empty for
     /// several Hosts, or one no longer listed.
     private var filteredHostName: String {
-        guard hostFilter.count == 1 else { return "" }
-        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""
+        let filtered = filteredHosts
+        guard filtered.count == 1 else { return "" }
+        return filtered.first?.name ?? ""
+    }
+
+    private var newTerminalHostID: Host.ID? {
+        Self.newTerminalHostID(
+            offered: hosts.consoleHosts.offeringNewItem(
+                listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
+            filteredTo: filteredHosts)
+    }
+
+    /// Where the New Terminal sheet starts with the filter on one Host: that
+    /// Host's Server in `offered`, when it has one only. With more, the
+    /// filter does not say which, so the sheet's picker asks.
+    static func newTerminalHostID(offered: [Host], filteredTo filtered: [HostMachine]) -> Host.ID? {
+        guard filtered.count == 1, let host = filtered.first else { return nil }
+        let servers = offered.filter { host.contains($0.id) }
+        return servers.count == 1 ? servers.first?.id : nil
     }
 
     private struct HostsTabRequest {
@@ -2597,12 +2648,6 @@ struct ConsoleView: View {
         /// The tab the Host was opened from; its back button returns there.
         /// Nil when opened from the Hosts tab itself.
         let origin: ConsoleTab?
-    }
-
-    /// One actionable status per Host. A disconnected session takes priority;
-    /// otherwise a connected Host can still have a failing snapshot RPC.
-    private var hostIssues: [ConsoleHostStatusPresentation] {
-        console.hostIssues(for: hosts.consoleHosts)
     }
 
     /// How the Console's sheets present, resolved against this view.
@@ -2759,7 +2804,8 @@ struct ConsoleListFilterChoices: View {
         case fits, moreBelow, atEnd
     }
 
-    let hosts: [Host]
+    /// Each Host once, by its own name: choosing it shows all of its Servers.
+    let hosts: [HostMachine]
     @Binding var hostFilter: Set<Host.ID>
     let agentStatuses: ConsoleListPresentationStore?
     let counts: [ConsoleAgentStatusFilter: Int]
@@ -2777,12 +2823,8 @@ struct ConsoleListFilterChoices: View {
                         choice(String(localized: "All Hosts"), selected: hostFilter.isEmpty) { hostFilter.removeAll() }
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
-                                choice(host.displayName, selected: hostFilter.contains(host.id)) {
-                                    if hostFilter.contains(host.id) {
-                                        hostFilter.remove(host.id)
-                                    } else {
-                                        hostFilter.insert(host.id)
-                                    }
+                                choice(host.name, selected: host.isSelected(by: hostFilter)) {
+                                    hostFilter = host.toggled(in: hostFilter)
                                 }
                             }
                         }
@@ -3359,13 +3401,7 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
         let needsFilteredIssues = !hostIssuesLastFailures.isEmpty || isShowingHostIssues
         let filteredIssues: [ConsoleHostStatusPresentation] =
             if needsFilteredIssues {
-                if hostFilter.isEmpty {
-                    console.hostIssues(for: hosts.consoleHosts)
-                } else {
-                    console.hostIssues(for: hosts.consoleHosts).filter {
-                        hostFilter.contains($0.hostID)
-                    }
-                }
+                ConsoleView.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
             } else {
                 []
             }
@@ -3459,7 +3495,7 @@ private struct ConsoleHostSectionHeaderView: View {
         Button(action: onToggle) {
             HStack(spacing: 8) {
                 HostStatusGlyph(tone: presentation.readiness.tone)
-                Text(presentation.hostDisplayName)
+                Text(presentation.hostName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(presentation.readiness.nameEmphasis.color)
                     .lineLimit(1)

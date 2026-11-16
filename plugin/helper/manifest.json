@@ -63,7 +63,7 @@
     },
     {
       "path": "notifications/activity.js",
-      "sha256": "69fe196cce9aba04199bca93257115afa684b6dee62eff07a7296887a83f858b"
+      "sha256": "aefd9a4c905ffe5dfa1055bfe3bb3def90ee85ad3ea76ca2a245547a8d76a9e5"
     },
     {
       "path": "notifications/notifier.js",
@@ -83,7 +83,7 @@
     },
     {
       "path": "shared/activity-rows.js",
-      "sha256": "c7cea0bdd16075754d47182a8811a2a7cd0f2e772535ba85777a3c672a7a0c5c"
+      "sha256": "42ac4ff404af9f59103d1cf14a47d99b2192bf6ab5306facb4864437b09fd4f4"
     },
     {
       "path": "shared/activity-state.js",
