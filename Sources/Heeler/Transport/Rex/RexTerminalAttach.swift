@@ -74,6 +74,8 @@ struct RexTerminalConnection: Sendable {
         -> RexDelivery
     /// The largest request the terminal's control link accepts, in bytes.
     let maxMessageBytes: Int
+    /// The block's input lane, which Chat's input to it shares (ADR 0055).
+    let lanes: RexBlockLanes
     /// What an earlier attach of the block on this control client claimed of
     /// its size and did not give back (ADR 0053), which this one gives back
     /// as if it had claimed it itself.
@@ -237,7 +239,8 @@ final class RexTerminalHub: Sendable {
 /// Input: one queue per view takes keys, pastes, scrolling, focus, the Keys
 /// panel and Stop alike, and sends one request at a time, each waiting for its
 /// answer, since Rex may apply requests out of order when several are out.
-/// Typed bytes go to the terminal's `write` as text, read by
+/// Its requests take turns with Chat's input to the same block in the block's
+/// lane (ADR 0055). Typed bytes go to the terminal's `write` as text, read by
 /// `RexTerminalKeyReader`; keystrokes that queued meanwhile join the next
 /// write, and pastes and events go as `block.event`. The gate opens with the
 /// first paint and closes for good when the block closes, the program ends or
@@ -539,7 +542,16 @@ actor RexTerminalAttach {
         return .notSent
     }
 
+    /// One write's pieces go together in the block's lane, so Chat's input to
+    /// the block never comes between them, nor theirs between Chat's.
     private func send(_ pieces: [RexTerminalInputPiece]) async throws {
+        guard !pieces.isEmpty else { return }
+        do {
+            try await connection.lanes.enter(connection.address)
+        } catch {
+            throw turnAway()
+        }
+        defer { connection.lanes.leave(connection.address) }
         for piece in pieces {
             guard inputIsOpen else { throw turnAway() }
             let request = Self.request(for: piece, at: connection.address)

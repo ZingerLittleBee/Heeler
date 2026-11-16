@@ -192,6 +192,9 @@ actor RexHostSession {
     }
 
     private nonisolated let sizeClaims = SizeClaims()
+    /// Each block's input lane, shared by its open terminal's input and
+    /// Chat's (ADR 0055).
+    private nonisolated let blockLanes = RexBlockLanes()
     /// Blocks a terminal holds a data stream for, and those waiting to.
     private var heldBlocks: Set<RexPaneAddress> = []
     private var blockWaiters: [RexPaneAddress: [(id: UUID, continuation: CheckedContinuation<Void, any Error>)]] =
@@ -651,6 +654,7 @@ actor RexHostSession {
                         generation: ready.generation, epoch: epoch)
                 },
                 maxMessageBytes: ready.control.maxMessageBytes,
+                lanes: blockLanes,
                 sizeClaim: sizeClaims.claim(at: address, epoch: epoch),
                 noteSizeClaim: { [sizeClaims] claim in sizeClaims.note(claim, at: address, epoch: epoch) },
                 isCurrent: { [weak self] in
@@ -661,8 +665,60 @@ actor RexHostSession {
         }
     }
 
+    /// Chat's requests to the block at `address` (ADR 0055), pinned to the
+    /// server, SSH connection and control client that answer now, as an open
+    /// terminal's are. Reads wait for their answer as long as `readDeadline`
+    /// allows; input waits as long as a terminal's. Throws while no server
+    /// answers: it never waits for one.
+    func blockRequests(at address: RexPaneAddress, readDeadline: RexDeliveryDeadline) throws -> RexBlockRequests {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        let server = ready.server
+        let generation = ready.generation
+        let epoch = clientEpoch
+        let inputDeadline = terminalOptions.inputDeadline
+        return RexBlockRequests(
+            address: address, server: server, maxMessageBytes: ready.control.maxMessageBytes, lanes: blockLanes,
+            ask: { [weak self] method, payload in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.askBlock(
+                    method, payload: payload, deadline: readDeadline, server: server, generation: generation,
+                    epoch: epoch)
+            },
+            deliver: { [weak self] method, payload in
+                guard let self else { return .notSent }
+                return await self.deliverTerminalRequest(
+                    method, payload: payload, deadline: inputDeadline, server: server, generation: generation,
+                    epoch: epoch)
+            })
+    }
+
+    /// One read of Chat's, on the live control link while it is still the
+    /// one the read was pinned to. Another server is gone for good; another
+    /// connection or client says the one it read on went.
+    private func askBlock(
+        _ method: String, payload: JSONValue, deadline: RexDeliveryDeadline, server: RexServerStatus,
+        generation: UInt64, epoch: UInt64
+    ) async throws -> JSONValue {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        guard ready.server == server else { throw TransportError.rexServerGone }
+        guard ready.generation == generation, clientEpoch == epoch else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        let response = try await ready.control.call(method, payload: payload, waiting: deadline)
+        return try response.result(JSONValue.self)
+    }
+
     /// Terminals open now, which tests wait on.
     var openTerminalCount: Int { terminals.openTerminalCount }
+
+    /// Input waiting for the block's lane, which tests wait on.
+    nonisolated func inputWaiting(at address: RexPaneAddress) -> Int {
+        blockLanes.waiting(at: address)
+    }
 
     /// Terminals waiting for a server, which tests wait on.
     var terminalWaiterCount: Int { connectionWaiters.count }
