@@ -183,7 +183,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the process that reported it is still the foreground, and is Unknown otherwise; done reads Idle, as Rex keeps no turn count and Done stays per device (ADR 0054). Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the foreground that held the terminal when it was reported still holds it, and is Unknown otherwise; done reads Idle, as Rex keeps no turn count and Done stays per device (ADR 0054). Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -194,8 +194,9 @@ and the core keeps a program's last report after that program exits, for as
 long as its Terminal runs on. On tmux, Heeler records it on the Pane in the
 same words, from its Claude Code hooks, its Pi and Oh My Pi extensions, or the
 OSC 7501 reports other programs make in their output. A Rex server keeps it
-per terminal from OSC 7501 too, with the process that reported it, and keeps
-idle, done and error reports after their program exits.
+per terminal from OSC 7501 too, with the terminal's foreground process at the
+time of the report, and keeps idle, done and error reports after their program
+exits.
 _Avoid_: detected status, agent state
 
 **Status Badge**:
