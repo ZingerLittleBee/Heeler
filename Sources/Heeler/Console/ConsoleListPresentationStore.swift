@@ -549,13 +549,18 @@ final class ConsoleListPresentationStore {
     /// A selected Host holds every one of its Servers, so a Server turned on
     /// later shows too, and a selection saved when the filter listed each
     /// Server selects that Server's Host. A Host with no Server left drops
-    /// out; the last one falls back to All Hosts.
+    /// out; the last one falls back to All Hosts. So does a filter with one
+    /// Host left to list, which the filter no longer offers: it would show
+    /// what All Hosts shows while reading as filtered, with nothing to clear
+    /// it, and would hide a Host added later.
     func pruneHostFilter(keeping hosts: [Host]) {
+        let machines = HostMachine.grouped(hosts)
+        guard machines.count > 1 else {
+            clearHostFilter()
+            return
+        }
         let filter = hostFilter
-        setHostFilter(Set(
-            HostMachine.grouped(hosts)
-                .filter { $0.isSelected(by: filter) }
-                .flatMap(\.servers).map(\.id)))
+        setHostFilter(Set(machines.filter { $0.isSelected(by: filter) }.flatMap(\.servers).map(\.id)))
     }
 
     private func persistHostFilter() {

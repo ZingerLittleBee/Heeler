@@ -136,6 +136,30 @@ struct ConsoleListPresentationStoreTests {
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
     }
 
+    /// With one Host left to list, the filter offers no Host to choose, so a
+    /// selection saved for one of its Servers, or kept from when another Host
+    /// was listed, falls back to All Hosts rather than stay on unseen.
+    @Test func aFilterWithOneHostLeftToListShowsAllHosts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (tui, tmux, build) = twoServerCatalog()
+        // As a build whose filter listed each Server saved "m3 · tmux".
+        ConsoleListPresentationStore(defaults: defaults).setHostFilter([tmux.id])
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        store.pruneHostFilter(keeping: [tui, tmux])
+        #expect(store.hostFilter.isEmpty)
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+
+        store.pruneHostFilter(keeping: [tui, tmux, build])
+        let m3 = try #require(HostMachine.grouped([tui, tmux, build]).first)
+        store.toggleHostFilter(m3)
+        #expect(store.hostFilter == [tui.id, tmux.id])
+        store.pruneHostFilter(keeping: [tui, tmux])
+        #expect(store.hostFilter.isEmpty)
+        #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
+    }
+
     @Test func theFilterOffersAHostOnceWhenAnyOfItsServersIsOn() throws {
         let (tui, tmux, build) = twoServerCatalog()
         let rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)

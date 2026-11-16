@@ -422,7 +422,7 @@ struct ConsoleView: View {
         }
         // Drop removed Hosts without losing remaining selections, and give a
         // selected Host every Server it has on. Removing the last selected
-        // Host falls back to All Hosts.
+        // Host, or all Hosts but one, falls back to All Hosts.
         .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
             guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
             listPresentation.pruneHostFilter(keeping: consoleHosts)
