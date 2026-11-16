@@ -334,3 +334,259 @@ extension EnvironmentValues {
     /// class is compact either way, so the split view's owner says which.
     @Entry var consoleListShowsDisclosure = true
 }
+
+/// Bottom-trailing floating Host status tile for the Agents list's `.flat` and
+/// `.byWorkspace` presentations: expands briefly when a Host enters an issue
+/// state (or escalates to a failure), then settles into a compact squircle
+/// tile with a linear bottom status bar so it never collides with circular
+/// Agent Status Rings or displaces list rows.
+struct ConsoleHostIssueCornerBadge: View {
+    let issues: [ConsoleHostStatusPresentation]
+    let onOpenHost: (Host.ID) -> Void
+    let onShowAll: () -> Void
+    var autoCollapseDelay: Duration = .seconds(3)
+    var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+
+    @State private var isExpanded: Bool
+    @State private var seenAttentionKeys: Set<ConsoleHostIssueCornerPresentation.AttentionKey> = []
+    @State private var collapseGeneration = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let cornerRadius: CGFloat = 12
+    private static let tileSide: CGFloat = 38
+    private static let hitTargetOutset: CGFloat = 3
+
+    init(
+        issues: [ConsoleHostStatusPresentation],
+        onOpenHost: @escaping (Host.ID) -> Void,
+        onShowAll: @escaping () -> Void,
+        autoCollapseDelay: Duration = .seconds(3),
+        sleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
+    ) {
+        self.issues = issues
+        self.onOpenHost = onOpenHost
+        self.onShowAll = onShowAll
+        self.autoCollapseDelay = autoCollapseDelay
+        self.sleep = sleep
+        _isExpanded = State(initialValue: !issues.isEmpty)
+    }
+
+    private var presentation: ConsoleHostIssueCornerPresentation? {
+        ConsoleHostIssueCornerPresentation(issues: issues)
+    }
+
+    var body: some View {
+        let current = presentation
+        let attentionKeys = current?.attentionKeys ?? []
+        Group {
+            if let current {
+                button(for: current)
+                    .transition(
+                        .scale(scale: 0.86, anchor: .bottomTrailing).combined(with: .opacity))
+            }
+        }
+        .onChange(of: attentionKeys, initial: true) { _, next in
+            guard !next.isEmpty else {
+                seenAttentionKeys = []
+                isExpanded = false
+                collapseGeneration += 1
+                return
+            }
+            let hasNewAttention = !next.subtracting(seenAttentionKeys).isEmpty
+            seenAttentionKeys = next
+            if hasNewAttention {
+                expandTemporarily()
+            }
+        }
+        .task(id: collapseGeneration) {
+            guard isExpanded, collapseGeneration > 0 else { return }
+            do {
+                try await sleep(autoCollapseDelay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+                isExpanded = false
+            }
+        }
+    }
+
+    private func button(for current: ConsoleHostIssueCornerPresentation) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        return Button {
+            handleTap(current.action)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(iconColor(for: current.tone))
+                    .frame(width: 18, height: 18)
+                if isExpanded {
+                    expandedLabel(for: current)
+                        .transition(.opacity)
+                }
+            }
+            .offset(y: -1)
+            .padding(.leading, 10)
+            .padding(.trailing, isExpanded ? 12 : 10)
+            .padding(.vertical, isExpanded ? 8 : 0)
+            .frame(minWidth: Self.tileSide, minHeight: Self.tileSide)
+            .frame(maxWidth: isExpanded ? 260 : nil)
+            .overlay(alignment: .bottom) {
+                ConsoleHostIssueBottomBar(tone: current.tone, animates: current.animatesBar)
+                    .padding(.horizontal, 5)
+                    .padding(.bottom, 3)
+            }
+            .background(.regularMaterial, in: shape)
+            .overlay {
+                shape.strokeBorder(.primary.opacity(0.14), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
+            .overlay(alignment: .topTrailing) {
+                if let badge = current.badgeText(isExpanded: isExpanded) {
+                    Text(verbatim: badge)
+                        .font(.system(size: 10, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(badgeColor(for: current.tone), in: Capsule())
+                        .offset(x: 5, y: -5)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(Self.hitTargetOutset)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ConsoleHostIssueCornerButtonStyle())
+        .hoverEffect(.highlight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(current.accessibilityLabel)
+        .accessibilityHint(current.accessibilityHint ?? "")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("agents.hostIssues.badge")
+    }
+
+    private func expandedLabel(for current: ConsoleHostIssueCornerPresentation) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(verbatim: current.expandedTitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if let status = current.expandedStatus {
+                Text(verbatim: "· \(status)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
+        }
+    }
+
+    private func handleTap(_ action: ConsoleHostIssueCornerPresentation.Action) {
+        switch action {
+        case .showAll:
+            onShowAll()
+        case .openHost(let hostID):
+            onOpenHost(hostID)
+        case .toggleExpanded:
+            if isExpanded {
+                collapseGeneration += 1
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                    isExpanded = false
+                }
+            } else {
+                expandTemporarily()
+            }
+        }
+    }
+
+    private func expandTemporarily() {
+        collapseGeneration += 1
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+            isExpanded = true
+        }
+    }
+
+    private func iconColor(for tone: HostConnectionTone) -> Color {
+        switch tone {
+        case .unavailable: .red
+        case .paused: .secondary
+        case .connected, .pending, .reconnecting, .warning: .primary
+        }
+    }
+
+    private func badgeColor(for tone: HostConnectionTone) -> Color {
+        switch tone {
+        case .unavailable: .red
+        case .paused: .secondary
+        case .connected, .pending, .reconnecting, .warning: .orange
+        }
+    }
+}
+
+private struct ConsoleHostIssueCornerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.65 : 1)
+    }
+}
+
+/// The linear bottom status strip on `ConsoleHostIssueCornerBadge`: slides
+/// back and forth from the clock while a Host is actively connecting or
+/// reconnecting (without leaking a repeating SwiftUI animation), and stays
+/// solid on a stationary failure or pause.
+private struct ConsoleHostIssueBottomBar: View {
+    let tone: HostConnectionTone
+    let animates: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let height: CGFloat = 2.5
+    private static let cycleSeconds: Double = 1.6
+
+    private var barColor: Color {
+        switch tone {
+        case .unavailable: .red.opacity(0.9)
+        case .paused, .connected: .secondary.opacity(0.55)
+        case .pending, .reconnecting, .warning: .orange.opacity(0.9)
+        }
+    }
+
+    var body: some View {
+        if animates && !reduceMotion {
+            TimelineView(.animation) { context in
+                GeometryReader { proxy in
+                    let width = proxy.size.width
+                    let thumbWidth = max(width * 0.52, min(width, 10))
+                    let travel = max(width - thumbWidth, 0)
+                    let phase =
+                        context.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: Self.cycleSeconds) / Self.cycleSeconds
+                    let progress = 0.5 * (1 - cos(2 * .pi * phase))
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(barColor.opacity(0.22))
+                        Capsule()
+                            .fill(barColor)
+                            .frame(width: thumbWidth)
+                            .offset(x: travel * progress)
+                    }
+                    .clipShape(Capsule())
+                }
+            }
+            .frame(height: Self.height)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        } else {
+            Capsule()
+                .fill(barColor)
+                .frame(height: Self.height)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}

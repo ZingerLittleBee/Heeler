@@ -280,21 +280,116 @@ enum ConsoleAgentsSurface: Equatable {
     }
 }
 
-/// Where Host connection/readiness issues appear for a presentation mode.
+/// Where Host connection/readiness issues appear for an Agents list
+/// presentation mode.
 ///
 /// Grouped mode moves those conditions into their Host's section, as the
-/// header's badge and, while expanded, a row, rather than listing them again
-/// at the top.
+/// header's badge and, while expanded, a row. Flat and By Workspace modes
+/// float a compact corner status tile so Host recovery never pushes Agent rows.
 enum ConsoleHostIssuePlacement: Equatable {
-    /// Flat list: global Host-issue rows above the Agent cards.
-    case flatIssueRows
+    /// Flat and By Workspace lists: floating bottom-trailing tile over the list.
+    case floatingCorner
     /// Grouped list: Host readiness lives in each Host's own section.
     case sectionHeaders
 
     init(mode: ConsoleListPresentationMode) {
         switch mode {
-        case .flat, .byWorkspace: self = .flatIssueRows
+        case .flat, .byWorkspace: self = .floatingCorner
         case .grouped: self = .sectionHeaders
         }
+    }
+}
+
+/// What the Agents list's bottom-trailing floating Host status tile shows in
+/// `.flat` and `.byWorkspace` presentations: expands briefly to name the Host
+/// or summary, then settles into a compact squircle tile with a bottom bar.
+struct ConsoleHostIssueCornerPresentation: Equatable, Sendable {
+    enum Action: Equatable, Sendable {
+        /// Several Hosts have conditions; opens `ConsoleHostIssuesSheet`.
+        case showAll
+        /// One Host has a navigable condition; opens its connection sheet or Host page.
+        case openHost(Host.ID)
+        /// One Host has a quiet informational condition; toggles the expanded label.
+        case toggleExpanded
+    }
+
+    struct AttentionKey: Hashable, Sendable {
+        let hostID: Host.ID
+        let isStationaryProblem: Bool
+    }
+
+    let issueCount: Int
+    let expandedTitle: String
+    let expandedStatus: String?
+    let tone: HostConnectionTone
+    /// True while at least one Host is actively connecting, reconnecting, or
+    /// loading inventory and none has stopped on a failure or sync warning.
+    let animatesBar: Bool
+    private let hasStationaryProblem: Bool
+    let action: Action
+    let accessibilityLabel: String
+    let accessibilityHint: String?
+    /// Keys whose additions trigger the brief auto-expansion: a Host newly
+    /// entering an issue state, or escalating to a failure or sync warning.
+    let attentionKeys: Set<AttentionKey>
+
+    init?(issues: [ConsoleHostStatusPresentation]) {
+        guard let first = issues.first else { return nil }
+        issueCount = issues.count
+        let stationary = issues.contains {
+            $0.condition == .cannotConnect || $0.condition == .syncIssue
+        }
+        hasStationaryProblem = stationary
+        let activeProgress = issues.contains {
+            switch $0.condition {
+            case .reconnecting, .connecting, .loadingAgents, .loadingTerminals: true
+            case .paused, .cannotConnect, .syncIssue: false
+            }
+        }
+        animatesBar = !stationary && activeProgress
+        attentionKeys = Set(
+            issues.map { issue in
+                AttentionKey(
+                    hostID: issue.hostID,
+                    isStationaryProblem: issue.condition == .cannotConnect
+                        || issue.condition == .syncIssue)
+            })
+
+        if let summary = ConsoleHostIssueSummary(issues: issues) {
+            expandedTitle = summary.title
+            expandedStatus = nil
+            tone = summary.tone
+            action = .showAll
+            accessibilityLabel = "\(summary.title), \(summary.detail)"
+            accessibilityHint = String(localized: "Lists these Hosts.")
+        } else {
+            expandedTitle = first.hostName
+            expandedStatus = first.status
+            tone = first.tone
+            accessibilityLabel = first.message
+            if first.navigates {
+                action = .openHost(first.hostID)
+                accessibilityHint =
+                    first.condition == .syncIssue
+                    ? String(localized: "Opens this Host's settings.")
+                    : String(localized: "Shows this Host's connection details.")
+            } else {
+                action = .toggleExpanded
+                accessibilityHint = nil
+            }
+        }
+    }
+
+    /// Corner pill text: the Host count when more than one Host has an issue,
+    /// or `"!"` when one Host is stopped on a failure or sync issue and the
+    /// tile is collapsed.
+    func badgeText(isExpanded: Bool) -> String? {
+        if issueCount > 1 {
+            return "\(issueCount)"
+        }
+        if hasStationaryProblem && !isExpanded {
+            return "!"
+        }
+        return nil
     }
 }
