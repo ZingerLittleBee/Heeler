@@ -304,6 +304,7 @@ struct ClaudeAttachmentDetails: Sendable, Equatable {
 struct ClaudeQueuedCommand: Sendable, Equatable {
     var text: String
     var imageCount: Int
+    var imagePaths: [String] = []
     var sourceUUID: String?
     /// `prompt` or `task-notification`.
     var commandMode: String?
@@ -425,6 +426,7 @@ extension ClaudeRecord {
                 details.queuedCommand = ClaudeQueuedCommand(
                     text: blocks.compactMap { $0.type == "text" ? $0.text : nil }.joined(separator: "\n"),
                     imageCount: blocks.filter { $0.type == "image" }.count,
+                    imagePaths: (rawAttachment.inlinedImagePaths ?? []).filter { !$0.isEmpty },
                     sourceUUID: rawAttachment.sourceUUID.flatMap { $0.isEmpty ? nil : $0 },
                     commandMode: rawAttachment.commandMode,
                     originKind: rawAttachment.origin?.kind, isMeta: rawAttachment.isMeta ?? false)
@@ -1039,6 +1041,7 @@ private struct RawCommandRun: Decodable {
 private struct RawAttachment: Decodable {
     var type: String?
     var prompt: [RawBlock]?
+    var inlinedImagePaths: [String]?
     var sourceUUID: String?
     var commandMode: String?
     var origin: RawOrigin?
@@ -1046,7 +1049,7 @@ private struct RawAttachment: Decodable {
     var planFilePath: String?
 
     private enum CodingKeys: String, CodingKey {
-        case type, prompt, commandMode, origin, isMeta, planFilePath
+        case type, prompt, inlinedImagePaths, commandMode, origin, isMeta, planFilePath
         case sourceUUID = "source_uuid"
     }
 
@@ -1054,6 +1057,7 @@ private struct RawAttachment: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         type = c.lenient(String.self, .type)
         prompt = RawBlock.blocks(in: c, .prompt)
+        inlinedImagePaths = c.lenient([String].self, .inlinedImagePaths)
         sourceUUID = c.lenient(String.self, .sourceUUID)
         commandMode = c.lenient(String.self, .commandMode)
         origin = c.lenient(RawOrigin.self, .origin)

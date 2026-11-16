@@ -63,6 +63,38 @@ struct ClaudeSyntheticTranscriptTests {
         ])
     }
 
+    @Test("A queued image delivered mid-turn keeps its image paths from meta source notes or inlined paths")
+    func queuedCommandWithImages() {
+        let withMeta = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            {"type":"queue-operation","operation":"enqueue","content":"[Image #1]","sessionId":"s1"}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+            {"type":"queue-operation","operation":"remove","content":"[Image #1]","sessionId":"s1"}
+            {"type":"attachment","uuid":"q1","parentUuid":"r1","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"[Image #1]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}}],"source_uuid":"src1","commandMode":"prompt","origin":{"kind":"human"}}}
+            {"type":"user","uuid":"m1","parentUuid":"q1","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: source: /tmp/queued.jpg]"}]}}
+            """#
+        let (transcript, _) = Self.read(withMeta, activity: .working)
+        #expect(
+            ClaudeSample.entry("user:src1", in: transcript)
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: ["/tmp/queued.jpg"], delivery: .steered)))
+
+        let withInlined = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+            {"type":"attachment","uuid":"q2","parentUuid":"r1","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"[Image #1]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}}],"inlinedImagePaths":["/tmp/inlined.jpg"],"source_uuid":"src2","commandMode":"prompt","origin":{"kind":"human"}}}
+            """#
+        let (inlinedTranscript, _) = Self.read(withInlined, activity: .working)
+        #expect(
+            ClaudeSample.entry("user:src2", in: inlinedTranscript)
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: ["/tmp/inlined.jpg"], delivery: .steered)))
+    }
+
     @Test("A prompt queued in the running turn shows Queued until Claude Code delivers it")
     func waitingQueuedPrompt() {
         // Claude Code 2.1.301 writes the enqueue at once and the delivery

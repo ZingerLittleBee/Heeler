@@ -243,6 +243,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// What the program records for a send it moves pasted image paths
     /// around in, each placeholder back as its path; nil when it moves none.
     var pastedImageEcho: @Sendable (String) -> String? = { _ in nil }
+    /// The image files a send gives up as `[Image #N]` placeholders, in
+    /// placeholder order; empty when the send gives up none.
+    var pastedImagePaths: @Sendable (String) -> [String] = { _ in [] }
     /// Names the conversation from the file's first bytes, for a program
     /// that rewrites them; nil compares the bytes.
     var identity: TranscriptFollower.Identity?
