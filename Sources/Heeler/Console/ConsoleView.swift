@@ -119,8 +119,9 @@ struct ConsoleView: View {
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
-    /// Narrows both lists to selected Hosts; an empty set shows every Host.
-    /// Filtering does not change grouping or catalog order.
+    /// Narrows both lists to selected Hosts, as the records of every Server
+    /// they have on; an empty set shows every Host. Filtering does not change
+    /// grouping or catalog order.
     private var hostFilter: Set<Host.ID> { listPresentation.hostFilter }
     private var hostFilterBinding: Binding<Set<Host.ID>> {
         Binding(
@@ -315,7 +316,7 @@ struct ConsoleView: View {
                     hosts: hosts.consoleHosts.offeringNewItem(
                         listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
                     console: console,
-                    initialHostID: hostFilter.count == 1 ? hostFilter.first : nil
+                    initialHostID: newTerminalHostID
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -420,8 +421,9 @@ struct ConsoleView: View {
                 isSettingsTabSelected = false
             }
         }
-        // Drop removed Hosts without losing remaining selections. Removing
-        // the last selected Host falls back to All Hosts.
+        // Drop removed Hosts without losing remaining selections, and give a
+        // selected Host every Server it has on. Removing the last selected
+        // Host falls back to All Hosts.
         .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
             guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
             listPresentation.pruneHostFilter(keeping: consoleHosts)
@@ -1086,8 +1088,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// A filter is meaningless with a single Host.
-    private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
+    /// A filter is meaningless with a single Host, however many Servers it
+    /// has on.
+    private var filtersByHost: Bool { Self.hostFilterChoices(on: .terminals, in: hosts).count > 1 }
 
     private func offersFilters(for tab: ConsoleTab) -> Bool {
         !hosts.consoleHosts.isEmpty && (tab == .agents || filtersByHost)
@@ -1114,7 +1117,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: Self.listedHosts(on: tab, in: hosts), hostFilter: hostFilterBinding,
+            hosts: Self.hostFilterChoices(on: tab, in: hosts), hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -1764,9 +1767,9 @@ struct ConsoleView: View {
                 Label(
                     !hostName.isEmpty
                         ? String(localized: "No Agents on \(hostName)")
-                        : hostFilter.count == 1
-                            ? String(localized: "No Agents on this Host")
-                            : String(localized: "No Agents on the Selected Hosts"),
+                        : filteredHosts.count > 1
+                            ? String(localized: "No Agents on the Selected Hosts")
+                            : String(localized: "No Agents on this Host"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
                 Button("Show All Hosts") { listPresentation.clearHostFilter() }
@@ -2592,18 +2595,49 @@ struct ConsoleView: View {
         return issues.filter { hostFilter.contains($0.hostID) }
     }
 
-    /// The Hosts `tab`'s list and filter show. The Agents list leaves out a
-    /// Host whose kind reports no Agents, such as a Rex Host, which only
-    /// Terminals list.
+    /// The Hosts `tab`'s list shows. The Agents list leaves out a Host whose
+    /// kind reports no Agents, such as a Rex Host, which only Terminals list.
     static func listedHosts(on tab: ConsoleTab, in hosts: HostStore) -> [Host] {
         tab == .agents ? hosts.agentHosts : hosts.consoleHosts
+    }
+
+    /// The Hosts `tab`'s filter offers: each Host once, in the Hosts tab's
+    /// order, when any of its Servers is in `tab`'s list. Choosing one shows
+    /// every Server it has on (ADR 0047).
+    static func hostFilterChoices(on tab: ConsoleTab, in hosts: HostStore) -> [HostMachine] {
+        let listed = Set(listedHosts(on: tab, in: hosts).map(\.id))
+        return hosts.machines.filter { $0.isSelected(by: listed) }
+    }
+
+    /// The Hosts the filter selects, each once.
+    private var filteredHosts: [HostMachine] {
+        let filter = hostFilter
+        guard !filter.isEmpty else { return [] }
+        return hosts.machines.filter { $0.isSelected(by: filter) }
     }
 
     /// The one selected Host's name, which the empty state names; empty for
     /// several Hosts, or one no longer listed.
     private var filteredHostName: String {
-        guard hostFilter.count == 1 else { return "" }
-        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""
+        let filtered = filteredHosts
+        guard filtered.count == 1 else { return "" }
+        return filtered.first?.name ?? ""
+    }
+
+    private var newTerminalHostID: Host.ID? {
+        Self.newTerminalHostID(
+            offered: hosts.consoleHosts.offeringNewItem(
+                listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
+            filteredTo: filteredHosts)
+    }
+
+    /// Where the New Terminal sheet starts with the filter on one Host: that
+    /// Host's Server in `offered`, when it has one only. With more, the
+    /// filter does not say which, so the sheet's picker asks.
+    static func newTerminalHostID(offered: [Host], filteredTo filtered: [HostMachine]) -> Host.ID? {
+        guard filtered.count == 1, let host = filtered.first else { return nil }
+        let servers = offered.filter { host.contains($0.id) }
+        return servers.count == 1 ? servers.first?.id : nil
     }
 
     private struct HostsTabRequest {
@@ -2776,7 +2810,8 @@ struct ConsoleListFilterChoices: View {
         case fits, moreBelow, atEnd
     }
 
-    let hosts: [Host]
+    /// Each Host once, by its own name: choosing it shows all of its Servers.
+    let hosts: [HostMachine]
     @Binding var hostFilter: Set<Host.ID>
     let agentStatuses: ConsoleListPresentationStore?
     let counts: [ConsoleAgentStatusFilter: Int]
@@ -2794,12 +2829,8 @@ struct ConsoleListFilterChoices: View {
                         choice(String(localized: "All Hosts"), selected: hostFilter.isEmpty) { hostFilter.removeAll() }
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
-                                choice(host.displayName, selected: hostFilter.contains(host.id)) {
-                                    if hostFilter.contains(host.id) {
-                                        hostFilter.remove(host.id)
-                                    } else {
-                                        hostFilter.insert(host.id)
-                                    }
+                                choice(host.name, selected: host.isSelected(by: hostFilter)) {
+                                    hostFilter = host.toggled(in: hostFilter)
                                 }
                             }
                         }

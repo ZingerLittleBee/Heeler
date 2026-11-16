@@ -523,7 +523,9 @@ final class ConsoleListPresentationStore {
     private static let hostFilterDefaultsKey = "console-list.host-filter"
     private static let statusFilterDefaultsKey = "console-list.status-filter"
 
-    /// The Hosts both lists show; empty shows every Host.
+    /// The Hosts both lists show, held as the records of their Servers: a
+    /// record's id outlasts an edit of its Host, and any one of them selects
+    /// the whole Host (ADR 0047). Empty shows every Host.
     private(set) var hostFilter: Set<Host.ID>
 
     func setHostFilter(_ hostIDs: Set<Host.ID>) {
@@ -532,9 +534,9 @@ final class ConsoleListPresentationStore {
         persistHostFilter()
     }
 
-    func toggleHostFilter(_ hostID: Host.ID) {
-        if !hostFilter.insert(hostID).inserted { hostFilter.remove(hostID) }
-        persistHostFilter()
+    /// Selects `host` with every Server it has on, or drops it.
+    func toggleHostFilter(_ host: HostMachine) {
+        setHostFilter(host.toggled(in: hostFilter))
     }
 
     func clearHostFilter() {
@@ -543,10 +545,17 @@ final class ConsoleListPresentationStore {
         defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
     }
 
-    /// Drops Hosts no longer in `hosts`, falling back to All Hosts when the
-    /// last selected Host leaves the catalog.
+    /// Settles the filter on `hosts`, the records of the Servers that are on.
+    /// A selected Host holds every one of its Servers, so a Server turned on
+    /// later shows too, and a selection saved when the filter listed each
+    /// Server selects that Server's Host. A Host with no Server left drops
+    /// out; the last one falls back to All Hosts.
     func pruneHostFilter(keeping hosts: [Host]) {
-        setHostFilter(hostFilter.intersection(hosts.map(\.id)))
+        let filter = hostFilter
+        setHostFilter(Set(
+            HostMachine.grouped(hosts)
+                .filter { $0.isSelected(by: filter) }
+                .flatMap(\.servers).map(\.id)))
     }
 
     private func persistHostFilter() {
@@ -722,5 +731,22 @@ final class ConsoleListPresentationStore {
         defaults.set(
             collapsedHostIDs.map(\.uuidString).sorted(),
             forKey: Self.collapsedHostsDefaultsKey)
+    }
+}
+
+/// How the Console's Host filter, a set of record ids, reads a Host: by the
+/// Host, never by one of its Servers (ADR 0047).
+extension HostMachine {
+    /// Whether `filter` holds a record of any of this Host's Servers.
+    func isSelected(by filter: Set<Host.ID>) -> Bool {
+        servers.contains { filter.contains($0.id) }
+    }
+
+    /// `filter` with this Host dropped when it is selected, or else added with
+    /// every Server it has on.
+    func toggled(in filter: Set<Host.ID>) -> Set<Host.ID> {
+        isSelected(by: filter)
+            ? filter.subtracting(members.map(\.id))
+            : filter.union(servers.map(\.id))
     }
 }
