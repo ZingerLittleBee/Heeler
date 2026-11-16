@@ -65,9 +65,10 @@ Heeler shows your Rex layout as it is and changes nothing in it:
 | Status | What it means |
 | --- | --- |
 | **Working** | Running a turn. |
-| **Idle** | Waiting at its prompt, or finished a turn. Rex Agents never show **Done**. |
+| **Idle** | Waiting at its prompt. |
 | **Blocked** | Waiting for your answer. |
 | **Error** | Reported an error and sorts with **Blocked**. |
+| **Done** | Finished a turn while closed here. Opening the Agent clears **Done** on this device only. |
 | **Unknown** | The Agent has not reported a status to Rex, or the last report came from another program, such as one that has since exited. |
 
 An Agent started as a Rex terminal's own command rather than from its shell, or started with `exec`, stays in **Terminals**. Heeler sees a terminal's program change when the terminal next prints, so an Agent can take a moment to arrive in **Agents** or to leave it.
