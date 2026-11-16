@@ -519,10 +519,13 @@ final class AttachTerminalStore {
     }
 
     /// The scene went to the background, the surface still on its screen: a
-    /// size the view took is given back, and the showing ends.
+    /// size the view took is given back, and the showing ends. The notice
+    /// goes with it: shown in the background, it would greet the user on the
+    /// way back, just before the next showing takes the size again.
     func sceneDidEnterBackground() {
         sizeShowing.isSceneInBackground = true
         session?.sizeOwnership?.viewerLeft()
+        updateSizeNotice()
     }
 
     /// The scene came back from the background: a surface still on its
@@ -531,6 +534,7 @@ final class AttachTerminalStore {
         guard sizeShowing.isSceneInBackground else { return }
         sizeShowing.isSceneInBackground = false
         if isShowing { beginShowing() }
+        updateSizeNotice()
     }
 
     // MARK: Shown means fitted
@@ -687,9 +691,12 @@ final class AttachTerminalStore {
         }
     }
 
+    /// A live terminal at a size set elsewhere, with nothing of its own on
+    /// the way: no take out, and its scene in the foreground, where the next
+    /// showing would take the size anyway.
     private var wantsSizeNotice: Bool {
         status == .live && session?.sizeOwnership != nil && sizeReport?.isSetElsewhere == true
-            && keptSizeOwner == nil && !isFitting
+            && keptSizeOwner == nil && !isFitting && !sizeShowing.isSceneInBackground
     }
 
     private func hideSizeNotice() {

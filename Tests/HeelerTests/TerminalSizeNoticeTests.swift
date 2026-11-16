@@ -717,6 +717,37 @@ struct TerminalSizeNoticeTests {
         await store.stop()
     }
 
+    /// The size given back as the scene goes to the background is another
+    /// device's, yet the scene says nothing about it while it is away: the
+    /// notice would greet the user on the way back, just before the showing
+    /// that begins then takes the size again.
+    @Test func aSceneInTheBackgroundShowsNoNotice() async throws {
+        let remote = Remote()
+        let settle = Gate()
+        settle.open()
+        let store = store(remote, settle: settle)
+        try await goLive(store, remote)
+        try await waitUntil("the showing's take") { remote.fits == 1 }
+        remote.report(server: Self.here, owner: Self.thisClient)
+        try await waitUntil("the report") { store.sizeReport?.owner == Self.thisClient }
+
+        store.sceneDidEnterBackground()
+        #expect(remote.viewerLefts == 1)
+        remote.report(server: Self.elsewhere, owner: Self.otherDevice)
+        try await waitUntil("the report") { store.sizeReport?.owner == Self.otherDevice }
+        try await settleDown()
+        #expect(store.sizeNotice == nil)
+
+        store.sceneDidBecomeActive()
+        #expect(store.sizeNotice == nil)
+        try await waitUntil("the take in the foreground") { remote.fits == 2 }
+        remote.report(server: Self.here, owner: Self.thisClient)
+        try await waitUntil("the report") { store.sizeReport?.owner == Self.thisClient }
+        try await settleDown()
+        #expect(store.sizeNotice == nil)
+        await store.stop()
+    }
+
     /// A screen that appears in a scene in the background takes nothing,
     /// as it opens or after, until the scene comes back.
     @Test func aSceneInTheBackgroundTakesNothing() async throws {
