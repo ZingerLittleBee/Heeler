@@ -60,8 +60,9 @@ tmux sockets on one machine, that is the common case, not the odd one.
   the Host. A key is never replaced without the user.
 - A record that would read like another of its Host carries the Server's
   label beside the Host's name (`studio · tmux`) wherever one record is named,
-  such as the Agents and Terminals lists and the Host filter. The label is
-  derived, not stored.
+  such as the Agents and Terminals lists. The label is derived, not stored.
+  The Console's Host filter names the Host, not its records: it lists each
+  Host once, and choosing one shows every Server it has on.
 - Usage counts a Host once. A Host's Servers read the same Transcripts under
   the same account, so the Usage tab, its widgets and Accounts in Settings
   list the Host, not its records, under the id of its first record that can
