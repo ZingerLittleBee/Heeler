@@ -2195,14 +2195,20 @@ struct ConsoleView: View {
         let pass = contentPass.number
         ForEach(sections) { @Sendable section in
             MainActorContent {
-                let opensDetail = connectionDetail(for: section.hostID) != nil
+                // A Host with several Servers expands whatever one of them
+                // says: the others may have Agents to show, and each
+                // problem's row opens its own Server's sheet.
+                let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
+                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
                         // As in the Terminals tab: an expanded Host with a
                         // condition says what it is before any Agents it lists.
-                        if let issue = section.statusPresentation {
-                            ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
-                                .listRowSeparator(.hidden)
+                        ForEach(section.issues) { @Sendable issue in
+                            MainActorContent {
+                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
+                                    .listRowSeparator(.hidden)
+                            }
                         }
                         let keys = makeAgentRowKeys(
                             for: section.agents, pass: pass,
@@ -2221,7 +2227,7 @@ struct ConsoleView: View {
                         if opensDetail {
                             openHostIssue(section.hostID)
                         } else {
-                            toggleHostSection(section.hostID)
+                            toggleHostSection(section.hostIDs)
                         }
                     }
                     .textCase(nil)
@@ -2525,17 +2531,18 @@ struct ConsoleView: View {
             set: { listPresentation.select($0) })
     }
 
-    private func toggleHostSection(_ hostID: Host.ID) {
+    /// Folds or unfolds a Host, given its Servers' records.
+    private func toggleHostSection(_ hostIDs: [Host.ID]) {
         // A search opens every Host holding a match, so a toggle then would
         // change nothing on screen, only what the list returns to after.
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
         if reduceMotion {
-            listPresentation.toggleCollapsed(hostID)
+            listPresentation.toggleCollapsed(hostIDs)
         } else {
             withAnimation(.snappy) {
-                listPresentation.toggleCollapsed(hostID)
+                listPresentation.toggleCollapsed(hostIDs)
             }
         }
     }
@@ -3518,7 +3525,7 @@ private struct ConsoleHostSectionHeaderView: View {
         Button(action: onToggle) {
             HStack(spacing: 8) {
                 HostStatusGlyph(tone: presentation.readiness.tone)
-                Text(presentation.hostDisplayName)
+                Text(presentation.hostName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(presentation.readiness.nameEmphasis.color)
                     .lineLimit(1)

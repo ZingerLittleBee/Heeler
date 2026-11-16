@@ -97,8 +97,8 @@ struct ConsoleAgentSearchTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
-        let hostA = Host.fixture(name: "studio")
-        let hostB = Host.fixture(name: "laptop")
+        let hostA = Host.fixture(name: "studio", address: "studio.example")
+        let hostB = Host.fixture(name: "laptop", address: "laptop.example")
         let agents = [
             makeAgent(host: hostA, paneID: "w1:p1", title: "Alpha work"),
             makeAgent(host: hostB, paneID: "w1:p2", title: "Beta work"),
@@ -125,8 +125,8 @@ struct ConsoleAgentSearchTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
-        let hostA = Host.fixture(name: "studio")
-        let hostB = Host.fixture(name: "laptop")
+        let hostA = Host.fixture(name: "studio", address: "studio.example")
+        let hostB = Host.fixture(name: "laptop", address: "laptop.example")
         let agents = [makeAgent(host: hostA, paneID: "w1:p1", title: "Alpha work")]
 
         let withoutQuery = store.sections(hosts: [hostA, hostB], agents: agents)
@@ -152,9 +152,9 @@ struct ConsoleAgentSearchTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
-        let hostA = Host.fixture(name: "studio")
-        let hostB = Host.fixture(name: "laptop")
-        let hostC = Host.fixture(name: "tablet")
+        let hostA = Host.fixture(name: "studio", address: "studio.example")
+        let hostB = Host.fixture(name: "laptop", address: "laptop.example")
+        let hostC = Host.fixture(name: "tablet", address: "tablet.example")
         let agents = [makeAgent(host: hostA, paneID: "w1:p1", title: "Alpha work")]
 
         let whileSearching = store.sections(
@@ -174,7 +174,7 @@ struct ConsoleAgentSearchTests {
         let store = ConsoleListPresentationStore(defaults: defaults)
         let host = Host.fixture(name: "studio")
         let agents = [makeAgent(host: host, paneID: "w1:p1", title: "Alpha work")]
-        store.toggleCollapsed(host.id)
+        store.toggleCollapsed([host.id])
 
         #expect(store.sections(hosts: [host], agents: agents).first?.isCollapsed == true)
         let whileSearching = store.sections(hosts: [host], agents: agents, searchQuery: "alpha")
@@ -189,9 +189,9 @@ struct ConsoleAgentSearchTests {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
-        let hostA = Host.fixture(name: "studio")
-        let hostB = Host.fixture(name: "laptop")
-        let hostC = Host.fixture(name: "tablet")
+        let hostA = Host.fixture(name: "studio", address: "studio.example")
+        let hostB = Host.fixture(name: "laptop", address: "laptop.example")
+        let hostC = Host.fixture(name: "tablet", address: "tablet.example")
         let agents = [makeAgent(host: hostA, paneID: "w1:p1", title: "Alpha work")]
 
         let whileSearching = store.sections(
@@ -236,7 +236,7 @@ struct ConsoleAgentSearchTests {
             hostCount: 2, filteredHostName: nil, filteredAgentCount: 0,
             visibleIssueCount: 0, presentationMode: .grouped,
             projectedSectionCount: 0)
-        #expect(idle == .noHosts)
+        #expect(idle == .noAgents)
 
         let withSections = ConsoleAgentsSurface(
             hostCount: 2, filteredHostName: nil, filteredAgentCount: 1,
