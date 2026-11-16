@@ -238,8 +238,8 @@ struct ConsoleListPresentationStoreTests {
     }
 
     /// By Host lists a Host once, by its name, holding the Agents of every
-    /// Server it has on, a Server after another in catalog order, with the
-    /// counts of them all.
+    /// Server it has on in the list's own order, so what leads the list
+    /// leads its Host whichever Server lists it, with the counts of them all.
     @Test func byHostListsAHostOnceWithEveryServersAgents() throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -259,7 +259,7 @@ struct ConsoleListPresentationStoreTests {
         #expect(sections.map(\.hostIDs) == [[tui.id, tmux.id], [build.id]])
         let m3 = try #require(sections.first)
         #expect(m3.hostID == tui.id)
-        #expect(m3.agents.map(\.id) == [tuiBlocked.id, tuiDone.id, tmuxWorking.id])
+        #expect(m3.agents.map(\.id) == [tmuxWorking.id, tuiBlocked.id, tuiDone.id])
         #expect(m3.statusCounts == .init(blocked: 1, working: 1, done: 1))
         let header = ConsoleHostSectionHeaderPresentation(section: m3)
         #expect(header.hostName == "m3")
