@@ -119,8 +119,8 @@ struct RexHostCatalogTests {
         Host(name: name, address: "rex.example", username: "dev", serverKind: .rex, rexSocket: socket)
     }
 
-    private func tmuxHost(name: String = "tmux") -> Host {
-        Host(name: name, address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
+    private func tmuxHost(name: String = "tmux", address: String = "tmux.example") -> Host {
+        Host(name: name, address: address, username: "dev", serverKind: .tmux, sessionName: "default")
     }
 
     private func coreHost(name: String = "Core") -> Host {
@@ -224,7 +224,8 @@ struct RexHostCatalogTests {
         let tmux = tmuxHost()
         let core = coreHost()
         let waiting = unconfirmedHost(name: "Waiting")
-        let last = Host.fixture(name: "Last")
+        // Its own machine: records at one address are one Host and share its name.
+        let last = Host.fixture(name: "Last", address: "last.example")
         for host in [first, rex, tmux, core, waiting, last] { try store.add(host) }
         #expect(makeStore(defaults, secrets: secrets).hosts == store.hosts)
 
@@ -250,7 +251,7 @@ struct RexHostCatalogTests {
         for host in [tui, rex, tmux] { try store.add(host) }
         let rexCatalog = defaults.data(forKey: Self.rexKey)
 
-        let added = tmuxHost(name: "Added by the older build")
+        let added = tmuxHost(name: "Added by the older build", address: "added.example")
         let entries = try [tmux, added].map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
         let order = [tui.id, tmux.id, added.id].map { "\"\($0.uuidString)\"" }.joined(separator: ",")
         defaults.set(
