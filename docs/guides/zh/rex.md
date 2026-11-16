@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at 16313004 -->
+<!-- Translated from docs/guides/rex.md at f5f0d02f -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -69,7 +69,7 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 | **Idle** | 在提示符处等待，或已完成一轮对话。Rex 的 Agent 不会显示 **Done**。 |
 | **Blocked** | 等待你的回答。 |
 | **Error** | 上报了错误，并与 **Blocked** 一起排序。 |
-| **Unknown** | Heeler 连接后尚未上报状态，或最近一次上报来自一个已经退出的程序。 |
+| **Unknown** | 该 Agent 尚未向 Rex 上报状态，或最近一次上报来自另一个程序，例如一个已经退出的程序。 |
 
 作为 Rex 终端自身命令（而不是从其 Shell）启动的 Agent，以及用 `exec` 启动的 Agent，会留在 **Terminals** 中。Heeler 要等终端下一次输出时才能看到其程序的变化，因此 Agent 出现在 **Agents** 中或从中离开可能会稍有延迟。
 
@@ -110,7 +110,7 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。没有设备�
 - **只支持 Rex API revision 12：** 不提供 revision 12 的 Rex 会被拒绝。Heeler 基于 Rex 0.1.0-preview.14 开发和测试。
 - **尚未在 Linux 上试用：** Heeler 会在 Linux 上 Rex 存放 socket 的位置查找，但还没有用 Linux 上的 Rex 服务端实际试过。
 - **首次绘制不包含的内容：** Rex 的重绘不包含光标形状和终端自身的默认颜色，因此在程序重新设置之前光标保持 Heeler 的形状，终端使用你的 Heeler 主题配色。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
-- **其他设备设定的尺寸不会适配屏幕：** 在你轻点 **Fit to Screen** 之前，如果其他设备设定的尺寸比你的屏幕宽，终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。Heeler 不会将其缩小显示，也不会截掉超出的部分。
+- **其他设备设定的尺寸不会适配屏幕：** 在你轻点 **Fit to Screen** 之前，如果其他设备设定的尺寸比你的屏幕宽，终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
 - **目前的测试范围：** Rex 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
 
 最后核对于 2026-11-16，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），在 iOS 模拟器中进行。
