@@ -16,9 +16,39 @@ final class FakeRexWorld: Sendable {
         var title = ""
         var program: String? = "zsh"
         var directory: String? = "/home/dev"
+        var processID = 4242
+        var argv0: String?
+        var script: String?
+        /// The root Program Status record `program_status` answers; nil for none.
+        var status: JSONValue?
 
         init(_ id: String) {
             self.id = id
+        }
+
+        /// A terminal whose foreground is `program` started as `argv0`, as an
+        /// agent typed into a shell is.
+        static func running(_ id: String, program: String, argv0: String? = nil) -> Block {
+            var block = Block(id)
+            block.program = program
+            block.argv0 = argv0 ?? program
+            return block
+        }
+
+        /// The root record a report of `state` from the foreground leaves, or
+        /// from `owner` when another process made it.
+        func record(_ state: String, app: String? = nil, owner: (pid: Int, name: String)? = nil) -> JSONValue {
+            var record: [String: JSONValue] = [
+                "state": .string(state), "updated_at": "2026-11-16T12:00:00+00:00",
+                "owner": [
+                    "pid": .number(Double(owner?.pid ?? processID)), "name": .string(owner?.name ?? program ?? ""),
+                ],
+            ]
+            if let app {
+                record["app"] = .string(app)
+                record["effective_app"] = .string(app)
+            }
+            return .object(record)
         }
 
         /// A block some other creator made, which is not a terminal.
@@ -101,6 +131,10 @@ final class FakeRexWorld: Sendable {
         await server.answer(RexInventoryWire.terminalMethod("process")) { [self] request in
             guard let block = block(request) else { return Self.blockNotFound }
             return .result(Self.process(block))
+        }
+        await server.answer(RexInventoryWire.terminalMethod("program_status")) { [self] request in
+            guard let block = block(request) else { return Self.blockNotFound }
+            return .result(["records": .array(block.status.map { [$0] } ?? [])])
         }
         // What an open terminal asks: its session attached, and its size.
         await server.answer("session.attach") { [self] request in
@@ -210,8 +244,10 @@ final class FakeRexWorld: Sendable {
 
     static func process(_ block: Block) -> JSONValue {
         guard let program = block.program else { return .object(["foreground": .null]) }
-        var foreground: [String: JSONValue] = ["pid": 4242, "name": .string(program)]
+        var foreground: [String: JSONValue] = ["pid": .number(Double(block.processID)), "name": .string(program)]
         if let directory = block.directory { foreground["cwd"] = .string(directory) }
+        if let argv0 = block.argv0 { foreground["argv0"] = .string(argv0) }
+        if let script = block.script { foreground["script"] = .string(script) }
         return .object(["foreground": .object(foreground)])
     }
 

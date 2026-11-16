@@ -25,7 +25,8 @@ actor RexInventoryFollower {
     }
 
     /// Which events to attach for: every session's structure and its blocks'
-    /// own events, so titles, programs and directories stay current.
+    /// own events, so titles, programs, directories and Program Statuses stay
+    /// current. Session events alone carry none of a block's (ADR 0054).
     static let eventScope = "all"
 
     typealias Sleep = @Sendable (Duration) async throws -> Void
@@ -255,12 +256,13 @@ actor RexInventoryFollower {
         advance()
     }
 
-    /// Each half that the server refuses or Heeler cannot read is left as it
+    /// Each part that the server refuses or Heeler cannot read is left as it
     /// was: a later event says it again.
     private func readDetails(of address: RexPaneAddress) async throws {
         let target = BlockTarget(sessionID: address.sessionID, blockID: address.blockID)
         var title: RexInventoryBook.Answer<String?>?
         var process: RexInventoryBook.Answer<RexInventoryWire.Process>?
+        var status: RexInventoryBook.Answer<RexProgramStatus?>?
         do {
             let response = try await link.call(
                 RexInventoryWire.terminalMethod("title"), payload: target, waiting: readDeadline)
@@ -275,8 +277,15 @@ actor RexInventoryFollower {
                 process = .init(value: RexInventoryWire.process(value), seq: response.seq)
             }
         } catch RexControlError.server {}
+        do {
+            let response = try await link.call(
+                RexInventoryWire.terminalMethod("program_status"), payload: target, waiting: readDeadline)
+            if let value = try? response.result(JSONValue.self) {
+                status = .init(value: RexInventoryWire.rootStatus(value), seq: response.seq)
+            }
+        } catch RexControlError.server {}
         guard ending == nil else { return }
-        book.detailsRead(address, title: title, process: process)
+        book.detailsRead(address, title: title, process: process, status: status)
     }
 
     /// A read that failed for the link's sake ends the follow.

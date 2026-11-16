@@ -252,6 +252,93 @@ struct RexInventoryBookTests {
         #expect(structureReads(&book) == [])
     }
 
+    private func statusEvent(_ seq: UInt64, _ blockID: String, id: String = "", _ state: String) -> RexControlEvent {
+        event(seq, .blockEvent(
+            blockID: blockID, creatorName: Self.terminal, name: "program_status_changed",
+            payload: ["id": .string(id), "record": ["state": .string(state), "app": "codex", "owner": ["pid": 77, "name": "codex"]], "reason": "report"]))
+    }
+
+    private func statusRemoved(_ seq: UInt64, _ blockID: String, ids: [String], reason: String) -> RexControlEvent {
+        event(seq, .blockEvent(
+            blockID: blockID, creatorName: Self.terminal, name: "program_status_removed",
+            payload: ["ids": .array(ids.map { .string($0) }), "reason": .string(reason)]))
+    }
+
+    /// A terminal's root Program Status follows its events: a report replaces
+    /// it, a removal that names the root drops it whatever the reason, and a
+    /// program's child records change nothing (ADR 0054). The foreground an
+    /// event names keeps its process id, first argument and script.
+    @Test func programStatusEventsKeepTheRootRecord() throws {
+        var book = settled([studio])
+        book.apply(
+            event(1, .blockEvent(
+                blockID: "block:left", creatorName: Self.terminal, name: "process_changed",
+                payload: ["foreground": ["pid": 77, "name": "codex", "argv0": "codex", "cwd": "/home/dev/app"]])))
+        book.apply(statusEvent(2, "block:left", "working"))
+        func left() throws -> RexTerminalDetails {
+            try #require(book.inventory.sessions.first?.terminals.first).details
+        }
+        #expect(try left().processID == 77)
+        #expect(try left().argv0 == "codex")
+        #expect(try left().status == RexProgramStatus(state: "working", app: "codex", ownerProcessID: 77, ownerName: "codex"))
+
+        book.apply(statusEvent(3, "block:left", id: "build", "error"))
+        book.apply(statusRemoved(4, "block:left", ids: ["build"], reason: "child_exited"))
+        #expect(try left().status?.state == "working")
+
+        book.apply(statusEvent(5, "block:left", "blocked"))
+        #expect(try left().status?.state == "blocked")
+        book.apply(statusRemoved(6, "block:left", ids: ["", "build"], reason: "foreground"))
+        #expect(try left().status == nil)
+        #expect(structureReads(&book) == [])
+    }
+
+    /// A status read answered before a report does not undo it; one answered
+    /// after it replaces it, and an answer with no root record clears it.
+    @Test func aStatusAnswerOlderThanAReportDoesNotUndoIt() throws {
+        var book = settled([studio])
+        _ = book.takeReads(limit: 8)
+        book.apply(statusEvent(5, "block:left", "working"))
+        book.detailsRead(
+            address("block:left"), title: nil, process: nil,
+            status: .init(value: RexProgramStatus(state: "idle"), seq: 4))
+        #expect(book.inventory.sessions.first?.terminals.first?.details.status?.state == "working")
+
+        book.listed([.init(id: studio.id, label: "studio")], seq: 6)
+        _ = book.takeReads(limit: 8)
+        book.detailsRead(address("block:left"), title: nil, process: nil, status: .init(value: nil, seq: 6))
+        #expect(book.inventory.sessions.first?.terminals.first?.details.status == nil)
+    }
+
+    /// A Program Status is a claim about now, so a new link does not carry the
+    /// last one's: an Agent reads Unknown until this link reads it. Its
+    /// foreground is carried, as its title is.
+    @Test func carriedDetailsLeaveTheStatusBehind() throws {
+        let carried = RexTerminalDetails(
+            title: "codex", program: "codex", directory: "/home/dev", processID: 77, argv0: "codex",
+            status: RexProgramStatus(state: "working", app: "codex", ownerProcessID: 77, ownerName: "codex"))
+        let book = settled([studio], carrying: [address("block:left"): carried])
+        let left = try #require(book.inventory.sessions.first?.terminals.first)
+        #expect(left.details.program == "codex")
+        #expect(left.details.processID == 77)
+        #expect(left.details.status == nil)
+    }
+
+    /// The method's answer and the events read alike: only the root record,
+    /// its app or the app it takes from a parent, and its owner.
+    @Test func theRootRecordIsReadFromAnAnswer() {
+        let answer: JSONValue = [
+            "records": [
+                ["state": "done", "effective_app": "claude-code", "owner": ["pid": 9, "name": "9.9.9"]],
+                ["id": "task", "state": "working", "app": "codex"],
+            ]
+        ]
+        #expect(RexInventoryWire.rootStatus(answer) == RexProgramStatus(state: "done", app: "claude-code", ownerProcessID: 9, ownerName: "9.9.9"))
+        #expect(RexInventoryWire.rootStatus(["records": [["id": "task", "state": "working"]]]) == nil)
+        #expect(RexInventoryWire.rootStatus(["records": []]) == nil)
+        #expect(RexInventoryWire.rootStatus(["records": [["state": "idle"]]]) == RexProgramStatus(state: "idle"))
+    }
+
     /// No event says a detached terminal's label changed, so a session with
     /// detached terminals can be read again on demand; one with none is not.
     @Test func onlySessionsWithDetachedTerminalsAreReadAgain() throws {

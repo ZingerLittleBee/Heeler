@@ -16,7 +16,7 @@ struct RexInventoryBook {
     enum Read: Hashable, Sendable {
         /// A session's view, then its block listing.
         case structure(sessionID: String)
-        /// A terminal's title, then its foreground process.
+        /// A terminal's title, its foreground process, then its Program Status.
         case details(RexPaneAddress)
     }
 
@@ -64,6 +64,7 @@ struct RexInventoryBook {
         var details: RexTerminalDetails
         var titleSeq: UInt64 = 0
         var processSeq: UInt64 = 0
+        var statusSeq: UInt64 = 0
         var wanted = true
         var reading = false
     }
@@ -72,7 +73,9 @@ struct RexInventoryBook {
     private var sessions: [String: SessionRecord] = [:]
     private var destroyed: Set<String> = []
     private var details: [RexPaneAddress: DetailRecord] = [:]
-    /// What the last link knew of each terminal, shown until this one reads it.
+    /// What the last link knew of each terminal, shown until this one reads
+    /// it. A Program Status is not carried: an Agent's status is this link's
+    /// own read, or Unknown until it answers (ADR 0054).
     private let carried: [RexPaneAddress: RexTerminalDetails]
     /// The seq the session list was read at; nil while it is being read, when
     /// events wait in `pending`.
@@ -90,7 +93,11 @@ struct RexInventoryBook {
     static let firstReadAttempts = 3
 
     init(carrying carried: [RexPaneAddress: RexTerminalDetails] = [:]) {
-        self.carried = carried
+        self.carried = carried.mapValues { details in
+            var details = details
+            details.status = nil
+            return details
+        }
     }
 
     // MARK: The session list
@@ -215,10 +222,20 @@ struct RexInventoryBook {
             case "process_changed":
                 updateDetails(of: address) { record in
                     guard seq > record.processSeq else { return }
-                    let process = RexInventoryWire.process(payload)
-                    record.details.program = process.program
-                    record.details.directory = process.directory
+                    record.details.noteForeground(RexInventoryWire.process(payload))
                     record.processSeq = seq
+                }
+            case "program_status_changed" where RexInventoryWire.changesRootStatus(payload):
+                updateDetails(of: address) { record in
+                    guard seq > record.statusSeq else { return }
+                    record.details.status = RexInventoryWire.changedStatus(payload)
+                    record.statusSeq = seq
+                }
+            case "program_status_removed" where RexInventoryWire.removesRootStatus(payload):
+                updateDetails(of: address) { record in
+                    guard seq > record.statusSeq else { return }
+                    record.details.status = nil
+                    record.statusSeq = seq
                 }
             default:
                 break
@@ -348,7 +365,8 @@ struct RexInventoryBook {
 
     /// A details read's answers; nil for one that failed.
     mutating func detailsRead(
-        _ address: RexPaneAddress, title: Answer<String?>?, process: Answer<RexInventoryWire.Process>?
+        _ address: RexPaneAddress, title: Answer<String?>?, process: Answer<RexInventoryWire.Process>?,
+        status: Answer<RexProgramStatus?>? = nil
     ) {
         readEnded()
         guard var record = details[address] else { return }
@@ -358,9 +376,12 @@ struct RexInventoryBook {
             record.titleSeq = title.seq
         }
         if let process, process.seq >= record.processSeq {
-            record.details.program = process.value.program
-            record.details.directory = process.value.directory
+            record.details.noteForeground(process.value)
             record.processSeq = process.seq
+        }
+        if let status, status.seq >= record.statusSeq {
+            record.details.status = status.value
+            record.statusSeq = status.seq
         }
         details[address] = record
     }

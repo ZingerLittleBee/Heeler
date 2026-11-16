@@ -76,11 +76,54 @@ struct RexTerminalDetails: Sendable, Equatable {
     var program: String?
     /// The foreground program's working directory.
     var directory: String?
+    /// The foreground process's id, its first argument and the script an
+    /// interpreter runs: what says which program it is, and whether a Program
+    /// Status is its own (ADR 0054).
+    var processID: Int?
+    var argv0: String?
+    var script: String?
+    /// The Program Status the terminal's programs last reported without an id,
+    /// whichever program it came from; nil for none.
+    var status: RexProgramStatus?
 
-    init(title: String? = nil, program: String? = nil, directory: String? = nil) {
+    init(
+        title: String? = nil, program: String? = nil, directory: String? = nil, processID: Int? = nil,
+        argv0: String? = nil, script: String? = nil, status: RexProgramStatus? = nil
+    ) {
         self.title = title
         self.program = program
         self.directory = directory
+        self.processID = processID
+        self.argv0 = argv0
+        self.script = script
+        self.status = status
+    }
+
+    /// The foreground a process read or event named.
+    mutating func noteForeground(_ process: RexInventoryWire.Process) {
+        program = process.program
+        directory = process.directory
+        processID = process.processID
+        argv0 = process.argv0
+        script = process.script
+    }
+}
+
+/// A terminal's root Program Status as Rex keeps it (ADR 0054): OSC 7501's
+/// state and app as the program reported them, and the foreground process
+/// when the report arrived.
+struct RexProgramStatus: Sendable, Equatable {
+    let state: String
+    /// The record's app, else the app it takes from a parent.
+    let app: String?
+    let ownerProcessID: Int?
+    let ownerName: String?
+
+    init(state: String, app: String? = nil, ownerProcessID: Int? = nil, ownerName: String? = nil) {
+        self.state = state
+        self.app = app
+        self.ownerProcessID = ownerProcessID
+        self.ownerName = ownerName
     }
 }
 
@@ -227,6 +270,20 @@ enum RexInventoryWire {
     struct Process: Sendable, Equatable {
         let program: String?
         let directory: String?
+        let processID: Int?
+        let argv0: String?
+        let script: String?
+
+        init(
+            program: String?, directory: String?, processID: Int? = nil, argv0: String? = nil,
+            script: String? = nil
+        ) {
+            self.program = program
+            self.directory = directory
+            self.processID = processID
+            self.argv0 = argv0
+            self.script = script
+        }
     }
 
     /// `session.attach_all`'s sessions, in the server's order.
@@ -274,7 +331,49 @@ enum RexInventoryWire {
         func text(_ key: String) -> String? {
             foreground?[key]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
         }
-        return Process(program: text("name"), directory: text("cwd"))
+        return Process(
+            program: text("name"), directory: text("cwd"), processID: foreground?["pid"]?.rexWholeNumber,
+            argv0: text("argv0"), script: text("script"))
+    }
+
+    /// The root record of a terminal's `program_status` answer, the one with
+    /// no id; nil when it has none. Child records are a program's subtasks.
+    static func rootStatus(_ result: JSONValue?) -> RexProgramStatus? {
+        guard case .array(let records)? = result?["records"] else { return nil }
+        return records.first { isRoot($0["id"]) }.flatMap(status)
+    }
+
+    /// Whether a `program_status_changed` event changed the root record.
+    static func changesRootStatus(_ payload: JSONValue?) -> Bool {
+        isRoot(payload?["id"])
+    }
+
+    /// The record a `program_status_changed` event carries.
+    static func changedStatus(_ payload: JSONValue?) -> RexProgramStatus? {
+        status(payload?["record"])
+    }
+
+    /// Whether a `program_status_removed` event removed the root record.
+    static func removesRootStatus(_ payload: JSONValue?) -> Bool {
+        guard case .array(let ids)? = payload?["ids"] else { return false }
+        return ids.contains { $0.stringValue == "" }
+    }
+
+    /// A record's id, absent or empty for the root.
+    private static func isRoot(_ id: JSONValue?) -> Bool {
+        guard let id, id != .null else { return true }
+        return id.stringValue == ""
+    }
+
+    private static func status(_ record: JSONValue?) -> RexProgramStatus? {
+        guard let record, let state = record["state"]?.stringValue, !state.isEmpty else { return nil }
+        func text(_ value: JSONValue?) -> String? {
+            value?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let owner = record["owner"]
+        return RexProgramStatus(
+            state: state, app: text(record["app"]) ?? text(record["effective_app"]),
+            ownerProcessID: owner?["pid"]?.rexWholeNumber, ownerName: text(owner?["name"]))
     }
 
     private static func window(_ value: JSONValue) -> ViewWindow? {
