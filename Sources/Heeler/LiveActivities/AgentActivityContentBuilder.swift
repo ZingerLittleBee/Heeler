@@ -42,7 +42,7 @@ enum AgentActivityContentBuilder {
             }
         }
         let details = Array(sorted(eligible, pinnedPaneIDs: pinnedPaneIDs).prefix(maxAgents))
-            .map { detail(from: $0, layout: layout) }
+            .map { detail(from: $0, hostName: hostName, layout: layout) }
         return AgentActivityDesire(
             counts: .init(working: working, blocked: blocked, done: done),
             hostName: prefixGraphemes(hostName, max: maxHostGraphemes),
@@ -143,7 +143,12 @@ enum AgentActivityContentBuilder {
         }
     }
 
-    private static func detail(from agent: ConsoleAgent, layout: AgentRowLayout?) -> AgentActivityDetails.AgentDetail {
+    /// A row's Host field reads `hostName`, the record the activity is for,
+    /// as its title does: the Console's rows name the Host alone (ADR 0047),
+    /// while an activity belongs to one of its Servers.
+    private static func detail(
+        from agent: ConsoleAgent, hostName: String, layout: AgentRowLayout?
+    ) -> AgentActivityDetails.AgentDetail {
         let kind = agent.agent.kind.isEmpty ? "unknown" : agent.agent.kind
         let trimmed = prefixGraphemes(agent.agent.title, max: maxTitleGraphemes)
         let name = agent.agent.name.map { prefixGraphemes($0, max: maxTitleGraphemes) }
@@ -158,7 +163,9 @@ enum AgentActivityContentBuilder {
             status: wireStatus(agent.agent.status),
             title: trimmed.isEmpty ? nil : trimmed,
             rows: layout.map { layout in
-                AgentRowRenderer.render(layout: layout.normalizedForConsole(), agent: agent).map { row in
+                var named = agent
+                named.hostName = hostName
+                return AgentRowRenderer.render(layout: layout.normalizedForConsole(), agent: named).map { row in
                     row.map { field in
                         AgentActivityDetails.Field(
                             text: prefixGraphemes(field.text, max: maxTitleGraphemes),

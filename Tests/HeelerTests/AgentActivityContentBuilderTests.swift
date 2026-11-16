@@ -35,6 +35,18 @@ struct AgentActivityContentBuilderTests {
         #expect(!wire.contains("/work/heeler") && !wire.contains("heeler") && !wire.contains("**literal**"))
     }
 
+    /// The Console's rows name a Host alone (ADR 0047), but an activity is one
+    /// record's: a row's Host field names that record, as the title does.
+    @Test func aRowsHostFieldNamesTheRecordTheActivityIsFor() throws {
+        let row = ConsoleAgent(
+            hostID: hostID, hostName: "m3", agent: Agent(.fixture(paneID: "w1:p1", status: .working)),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        let desired = try #require(AgentActivityContentBuilder.desire(
+            from: [row], hostName: "m3 · tmux", layout: AgentRowLayout(rows: [[.init(.host)]])))
+        #expect(desired.hostName == "m3 · tmux")
+        #expect(desired.agents.first?.rows == [[.init(text: "m3 · tmux")]])
+    }
+
     @Test func oversizedConfiguredRowsFallBackToIdentityBeforeDroppingAgents() throws {
         var desired = try #require(AgentActivityContentBuilder.desire(
             from: [agent("w1:p1", .working, workspace: "Heeler")], hostName: "mbp"))

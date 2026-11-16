@@ -11,7 +11,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 
     let hostID: Host.ID
-    let hostName: String
+    var hostName: String
     /// SSH account name, used only for conservative presentation of standard
     /// macOS/Linux home paths as `~`. The actual remote path stays unchanged.
     let hostUsername: String?
