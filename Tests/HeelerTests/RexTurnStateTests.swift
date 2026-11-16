@@ -69,6 +69,22 @@ struct RexTurnStateTests {
         }
     }
 
+    /// Rex drops a working or blocked record while its program is out of the
+    /// foreground, so a program back in it that reports done at once brings
+    /// the link no count: a done after the working or blocked known here still
+    /// finished that turn, and the same done again finishes none.
+    @Test(arguments: ["working", "blocked"])
+    func aDoneAfterARemovedRecordFinishesTheTurn(state word: String) {
+        let link = UUID()
+        var state = RexTurnState()
+        state.note(report(word, at: 1, on: link), kind: "codex")
+        state.note(report("done", at: 5, on: link), kind: "codex")
+        #expect(state.isDone)
+        state.markSeen()
+        state.note(report("done", at: 6, on: link), kind: "codex")
+        #expect(!state.isDone)
+    }
+
     /// First sight, as of a Host just added or a launch with nothing kept:
     /// a done finished a turn and reads Done, as on the other kinds, while an
     /// idle reads Idle, as Rex keeps no count that says it ever worked.

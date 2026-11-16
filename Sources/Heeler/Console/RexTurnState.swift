@@ -9,7 +9,9 @@ import Foundation
 /// ended it: the foreground that held the terminal then, and when Rex took it.
 /// Whether a turn ended between two reports known here is the link's to say.
 /// Within one stretch it followed whole (`RexStatusFollow`), its count does,
-/// so the same done reported again ends nothing. Across stretches (another
+/// so the same done reported again ends nothing; a done after the working or
+/// blocked known here ends one whatever the count, as the working record it
+/// would have counted from may have been removed. Across stretches (another
 /// connection, a relaunch, a gap in events), a report whose time has not moved
 /// is the one already known, and any other done ends a turn: once reports went
 /// unheard, a done made again and a new turn's look alike. A program not known
@@ -82,13 +84,16 @@ struct RexTurnState: Codable, Equatable, Sendable {
         }
         let reportsDone = hasReportedDone || HerdrCoreTurnState.doneReporterKinds.contains(kind)
         let idleEndsTurn = previous.state == "working" && report.state == "idle" && !reportsDone
-        let doneEndsTurn =
+        let countEndsTurn =
             if let follow = report.follow, let before = previous.follow, follow.id == before.id {
                 follow.finishedTurns > before.finishedTurns
             } else {
                 report.state == "done"
             }
-        if doneEndsTurn || idleEndsTurn { ended = report.mark }
+        // Rex drops a working record while its program is out of the
+        // foreground, and one back in it may report done straight away.
+        let doneEndsTurn = report.state == "done" && (previous.state == "working" || previous.state == "blocked")
+        if countEndsTurn || doneEndsTurn || idleEndsTurn { ended = report.mark }
     }
 
     /// The terminal hosts no Agent now, or its record is not the Agent's: a
