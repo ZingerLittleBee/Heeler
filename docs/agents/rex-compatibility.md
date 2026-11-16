@@ -238,6 +238,15 @@ repository), unless a bullet names `RexProgramStatusLiveTests`.
   200 reports written back to back raised 200 events, each under a
   millisecond after the write. With event scope `session` and no
   `session.attach`, none arrived. Reading `program_status` raised no event.
+- **The same report again.** A report identical to the record raised another
+  `program_status_changed` and moved the record's `updated_at`, which carries
+  microseconds; a done made three times in a row did so each time. Reading
+  `program_status` moved nothing, and each read matched the event before it.
+  Rex keeps no turn count,
+  so only a connection that hears every report can tell a done made again
+  from a new turn: Heeler counts the turns each connection hears end, and
+  across connections reads a done whose time moved as a finished turn
+  (ADR 0054).
 - **Order.** A program's first report at launch arrived about 100 ms before
   the `process_changed` that named it (15 of 15 launches), already owned by
   the program. A removal arrived before the `process_changed` that named the
@@ -259,10 +268,12 @@ repository), unless a bullet names `RexProgramStatusLiveTests`.
   what it reads, was a codex Agent in the inventory a `RexHostSession`
   followed and in the Console's organization of it: Working at launch with
   the record owned by the foreground, then Blocked and Error as it reported
-  them. A report with an unknown word left the record at error. Once it
-  reported idle and exited, the terminal was no Agent, and the idle record
-  stayed, owned by the stand-in. Heeler's session only read and received
-  events.
+  them. A report with an unknown word left the record at error. Working then
+  done moved the connection's turn count by one without starting a new count,
+  and read Done; the same done again moved the record's time but not the
+  count, so once marked as looked at it read Idle. Once it reported idle and
+  exited, the terminal was no Agent, and the idle record stayed, owned by the
+  stand-in. Heeler's session only read and received events.
 - **Not seen.** A Linux server, a server instance change, and a block command
   run through the account's login shell. The terminals' processes are the
   server's children, so a new instance should mean new terminals with no
