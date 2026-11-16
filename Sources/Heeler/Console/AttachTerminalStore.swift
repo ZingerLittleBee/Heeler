@@ -45,6 +45,7 @@ struct TerminalSessionHandler: Sendable {
     private let transportReady: @MainActor @Sendable (UInt64) -> Void
     private let programLost: @MainActor @Sendable () -> Void
     private var coreAdmission: @MainActor @Sendable (String) -> Bool = { _ in true }
+    private var sizeFitOnOpen: @MainActor @Sendable () -> Bool = { false }
     #if DEBUG
     private let traceEvents: AttachRestorationTraceEvents?
     #endif
@@ -92,6 +93,24 @@ struct TerminalSessionHandler: Sendable {
     func keeping(to pin: TerminalCorePin) -> TerminalSessionHandler {
         var handler = self
         handler.coreAdmission = { pin.admits($0) }
+        return handler
+    }
+
+    /// Whether the attach opening now takes its terminal's size for the view
+    /// before its first output, on a Server Kind whose terminals keep their
+    /// own size (ADR 0053): the view shows the terminal, and has not given
+    /// the size up while it does. Asked once per attach, just before it
+    /// opens; a yes is the attach's to carry out.
+    @MainActor
+    func takesSizeOnOpen() -> Bool {
+        sizeFitOnOpen()
+    }
+
+    /// This handler, for a pipeline whose view says by `decide` whether an
+    /// attach takes the size as it opens.
+    func fittingSize(when decide: @escaping @MainActor @Sendable () -> Bool) -> TerminalSessionHandler {
+        var handler = self
+        handler.sizeFitOnOpen = decide
         return handler
     }
 
@@ -268,10 +287,27 @@ final class AttachTerminalStore {
         case stopped
     }
 
+    /// Where a surface stands in showing its terminal, on a Server Kind whose
+    /// terminals keep their own size (ADR 0053): shown means fitted. A showing
+    /// begins when the surface comes on screen in a foreground scene, and
+    /// ends when it goes off screen or its scene goes to the background. A
+    /// store that replaces this one carries it on, as it does `isViewed`.
+    struct SizeShowing: Equatable, Sendable {
+        /// The surface's scene went to the background and has not come back.
+        var isSceneInBackground = false
+        /// This showing takes the terminal's size on its own: as each attach
+        /// opens, and for one it finds open. False once another client took
+        /// the size during the showing, a take made on its own did not go
+        /// through, or the user kept the other device's size; then only the
+        /// notice's tap takes it, until the next showing.
+        var fitsOnItsOwn = true
+    }
+
     private(set) var status: Status = .waitingForSize
     /// How the terminal's size stands with a server that keeps its own, from
     /// the last session that said; nil for a Server Kind that sizes to the view.
     private(set) var sizeReport: TerminalSizeReport?
+    private(set) var sizeShowing: SizeShowing
     /// What the view says while the live terminal shows at a size another
     /// device set, once that has held for a moment (ADR 0053); nil otherwise.
     private(set) var sizeNotice: TerminalSizeNotice?
@@ -332,6 +368,19 @@ final class AttachTerminalStore {
     /// The client whose size the user chose to keep: no notice for it until
     /// another client takes the size, or the sizes agree.
     private var keptSizeOwner: String?
+    /// Counts showings, so a take an earlier one made counts for nothing now.
+    private var showingNumber: UInt64 = 0
+    /// The attach opening now said it takes the size before its first output.
+    private var opensFitted = false
+    /// The session this showing took the size for on its own, or is taking
+    /// it for: once per showing and session.
+    private var fittedSession: TerminalAttachSession?
+    /// A take made on its own is out for the session: the notice waits for
+    /// it, so one that goes through leaves none.
+    private var isFitting = false
+    /// How many times the session's reports said another client took the
+    /// size from this one.
+    private var takenAwaySeen = 0
     private var runTask: Task<Void, Never>?
     #if DEBUG
     private(set) var restorationTrace = AttachRestorationTrace()
@@ -344,6 +393,7 @@ final class AttachTerminalStore {
     init(
         target: TerminalAttachTarget, takeover: Bool = false,
         viewer: TerminalViewerRole = .interactive, isViewed: Bool = true,
+        sizeShowing: SizeShowing = SizeShowing(),
         input: TerminalInputController = TerminalInputController(),
         transportGeneration: UInt64? = nil,
         observeOutput: @escaping @MainActor @Sendable (Data) -> Void = { _ in },
@@ -361,6 +411,7 @@ final class AttachTerminalStore {
         self.takeover = takeover
         nextViewer = viewer
         self.isViewed = isViewed
+        self.sizeShowing = sizeShowing
         self.input = input
         self.transportGeneration = transportGeneration
         self.observeOutput = observeOutput
@@ -456,18 +507,112 @@ final class AttachTerminalStore {
     }
 
     /// The surface came on or off screen while its session stays attached.
-    /// Going off gives back a size the user took; coming back takes nothing.
+    /// Going off gives back a size the view took; coming back in a foreground
+    /// scene begins a showing, which takes it again (ADR 0053).
     func setViewed(_ viewed: Bool) {
         guard viewed != isViewed else { return }
+        let wasShowing = isShowing
         isViewed = viewed
         session?.setPresence(viewed ? .viewed(feed.displayFacts) : .hidden)
         if !viewed { session?.sizeOwnership?.viewerLeft() }
+        if !wasShowing, isShowing { beginShowing() }
     }
 
     /// The scene went to the background, the surface still on its screen: a
-    /// size the user took is given back, and nothing takes it again on return.
+    /// size the view took is given back, and the showing ends.
     func sceneDidEnterBackground() {
+        sizeShowing.isSceneInBackground = true
         session?.sizeOwnership?.viewerLeft()
+    }
+
+    /// The scene came back from the background: a surface still on its
+    /// screen begins a new showing, which takes the size again.
+    func sceneDidBecomeActive() {
+        guard sizeShowing.isSceneInBackground else { return }
+        sizeShowing.isSceneInBackground = false
+        if isShowing { beginShowing() }
+    }
+
+    // MARK: Shown means fitted
+
+    /// Someone sees the terminal: the surface is on screen, in a scene in
+    /// the foreground. Nothing else ever takes the size on its own.
+    private var isShowing: Bool { isViewed && !sizeShowing.isSceneInBackground }
+
+    private func beginShowing() {
+        showingNumber &+= 1
+        sizeShowing.fitsOnItsOwn = true
+        fittedSession = nil
+        fitOpenSession()
+    }
+
+    /// Asked by the runner as an attach opens: whether it takes the size
+    /// before its first output, so the first paint comes at the view's grid.
+    private func fitsAsItOpens() -> Bool {
+        guard isShowing, sizeShowing.fitsOnItsOwn, !stopRequested else { return false }
+        opensFitted = true
+        return true
+    }
+
+    /// Takes the size on its own for the session in hand, which did not take
+    /// it as it opened: once per showing and session, while the showing
+    /// still does.
+    private func fitOpenSession() {
+        guard isShowing, sizeShowing.fitsOnItsOwn, let session, fittedSession !== session,
+            let ownership = session.sizeOwnership
+        else { return }
+        let fit = beginFit(of: session)
+        updateSizeNotice()
+        Task { [weak self] in
+            let outcome = await ownership.fit()
+            self?.fitEnded(outcome, fit)
+        }
+    }
+
+    /// A session that took the size as it opened: how that went counts as
+    /// this showing's take. A showing that ended while it opened gives back
+    /// what it took.
+    private func followOpeningFit(of session: TerminalAttachSession, _ ownership: TerminalSizeOwnership) {
+        let fit = beginFit(of: session)
+        Task { [weak self] in
+            let outcome = await ownership.opened()
+            guard let self else { return }
+            guard let outcome else {
+                // It took nothing after all: take it now, as for any open one.
+                guard self.fitNumber == fit.number else { return }
+                self.isFitting = false
+                self.fittedSession = nil
+                self.fitOpenSession()
+                self.updateSizeNotice()
+                return
+            }
+            self.fitEnded(outcome, fit)
+        }
+        if !isShowing { ownership.viewerLeft() }
+    }
+
+    /// One take made on its own: the showing it counts for, and its place
+    /// among them, since only the last one out holds the notice back.
+    private struct Fit {
+        let showing: UInt64
+        let number: UInt64
+    }
+
+    private var fitNumber: UInt64 = 0
+
+    private func beginFit(of session: TerminalAttachSession) -> Fit {
+        fittedSession = session
+        isFitting = true
+        fitNumber &+= 1
+        return Fit(showing: showingNumber, number: fitNumber)
+    }
+
+    /// A take made on its own that did not go through is never made again on
+    /// its own in the same showing: the notice offers it instead.
+    private func fitEnded(_ outcome: TerminalSizeTake, _ fit: Fit) {
+        if fit.number == fitNumber { isFitting = false }
+        if outcome != .taken, fit.showing == showingNumber { sizeShowing.fitsOnItsOwn = false }
+        updateSizeNotice()
     }
 
     // MARK: Size set elsewhere
@@ -490,14 +635,22 @@ final class AttachTerminalStore {
     }
 
     /// The user chose to keep the size the other device set: the notice
-    /// stays away until another client takes the size, or the sizes agree.
+    /// stays away until another client takes the size, or the sizes agree,
+    /// and this showing takes it on its own no more.
     func dismissSizeNotice() {
         guard sizeNotice != nil || sizeNoticeTask != nil else { return }
         keptSizeOwner = sizeReport?.owner
+        if isShowing { sizeShowing.fitsOnItsOwn = false }
         hideSizeNotice()
     }
 
-    private func receiveSizeReport(_ report: TerminalSizeReport) {
+    private func receiveSizeReport(_ report: TerminalSizeReport, from session: TerminalAttachSession) {
+        guard self.session === session else { return }
+        // Another client took the size while this showing had it, or was
+        // taking it: it stays theirs until the user taps, for the rest of the
+        // showing, a reattach included.
+        if report.takenAway > takenAwaySeen, isShowing { sizeShowing.fitsOnItsOwn = false }
+        takenAwaySeen = report.takenAway
         sizeReport = report
         updateSizeNotice()
     }
@@ -529,7 +682,7 @@ final class AttachTerminalStore {
 
     private var wantsSizeNotice: Bool {
         status == .live && session?.sizeOwnership != nil && sizeReport?.isSetElsewhere == true
-            && keptSizeOwner == nil
+            && keptSizeOwner == nil && !isFitting
     }
 
     private func hideSizeNotice() {
@@ -541,6 +694,12 @@ final class AttachTerminalStore {
     private func sizeTakeEnded(_ outcome: TerminalSizeTake, on session: TerminalAttachSession) {
         guard self.session === session, var notice = sizeNotice, notice.phase == .taking else { return }
         guard let failure = Self.sizeTakeFailure(outcome) else {
+            // The user took it back: this showing fits it on its own again,
+            // as a reattach opens.
+            if isShowing {
+                sizeShowing.fitsOnItsOwn = true
+                fittedSession = session
+            }
             hideSizeNotice()
             return
         }
@@ -688,7 +847,8 @@ final class AttachTerminalStore {
         let handler = TerminalSessionHandler(
             transportReady: transportReady, programLost: programLost, operation)
         #endif
-        try await runTerminal(request, handler)
+        opensFitted = false
+        try await runTerminal(request, handler.fittingSize { [weak self] in self?.fitsAsItOpens() ?? false })
     }
 
     /// Reattaches in a row that may fail before the remote paints: one for
@@ -719,13 +879,22 @@ final class AttachTerminalStore {
             return
         }
         self.session = session
+        takenAwaySeen = 0
         if let reports = session.sizeReports {
             sizeReportTask = Task { [weak self] in
                 for await report in reports {
-                    self?.receiveSizeReport(report)
+                    self?.receiveSizeReport(report, from: session)
                 }
             }
         }
+        if let ownership = session.sizeOwnership {
+            if opensFitted {
+                followOpeningFit(of: session, ownership)
+            } else {
+                fitOpenSession()
+            }
+        }
+        opensFitted = false
         // A new attach sets its own modes; the old attach's are not its.
         feed.modes.reset()
         func beginInput() -> TerminalInputController.SessionGeneration? {
@@ -798,6 +967,8 @@ final class AttachTerminalStore {
         self.session = nil
         sizeReportTask?.cancel()
         sizeReportTask = nil
+        fittedSession = nil
+        isFitting = false
         hideSizeNotice()
         guard let inputGeneration else { return }
         input.endSession(

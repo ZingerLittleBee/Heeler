@@ -92,7 +92,7 @@ struct WorkspaceTerminalDetailView: View {
     /// core's Agent at this address is no Agent of this Terminal's. An Agent
     /// that opens on its terminal, a Rex one, is this screen already
     /// (ADR 0054), opened from either list: the screen stays, with its
-    /// connection and the size the user took for it.
+    /// connection and the size it took for it.
     private var startedAgentID: ConsoleAgent.ID? {
         guard let agentID = terminal.agentID,
             !console.capabilities(for: terminal.hostID).agentsOpenAsTerminals,

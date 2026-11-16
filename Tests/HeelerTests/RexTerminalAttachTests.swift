@@ -7,9 +7,11 @@ import Testing
 
 /// A Rex terminal opened for viewing (ADR 0051), from the Console's runner to
 /// a fake server's block and data endpoint, through the store the view uses:
-/// the first paint, live output and repaints, the size asked for and never
-/// owned, and every way it ends or survives a drop. `RexTerminalInputTests`
-/// covers its input. Ids, nonces, tokens and the redraw are invented.
+/// the first paint, live output and repaints, the size an attach off screen
+/// asks for and never owns, and every way it ends or survives a drop.
+/// `RexTerminalInputTests` covers its input, and
+/// `RexTerminalSizeOwnershipTests` the size a shown one takes. Ids, nonces,
+/// tokens and the redraw are invented.
 @MainActor
 @Suite("Rex terminal attach", .timeLimit(.minutes(1)))
 struct RexTerminalAttachTests {
@@ -55,13 +57,17 @@ struct RexTerminalAttachTests {
         }
 
         /// Writes the start of stream `index`: a stand-in snapshot, then its
-        /// first resize, owned by another client.
-        func begin(stream index: Int = 0, columns: Int = 80, rows: Int = 24) async {
+        /// first resize, owned by `owner`, another client unless the test
+        /// says.
+        func begin(
+            stream index: Int = 0, columns: Int = 80, rows: Int = 24,
+            owner: String = RexTerminalAttachTests.ownerClient
+        ) async {
             await endpoint.waitForStreams(index + 1)
             let nonce = await endpoint.nonce(of: index)
             await endpoint.send(
                 FakeRexStream.snapshot(byteCount: 300) + FakeRexStream.resize(
-                    columns: columns, rows: rows, nonce: nonce, owner: RexTerminalAttachTests.ownerClient),
+                    columns: columns, rows: rows, nonce: nonce, owner: owner),
                 on: index)
         }
 
@@ -113,13 +119,14 @@ struct RexTerminalAttachTests {
     /// and keeping to `pin`'s server.
     private func store(
         _ session: RexHostSession, address: RexPaneAddress = Self.address, chunks: Chunks = Chunks(),
-        input: TerminalInputController = TerminalInputController(), pin: TerminalCorePin = TerminalCorePin()
+        input: TerminalInputController = TerminalInputController(), pin: TerminalCorePin = TerminalCorePin(),
+        viewed: Bool = true
     ) -> AttachTerminalStore {
         let runner = RexConsoleProjection(
             host: rexHost, session: session, pins: PinnedAgentsStore(), onChange: {}
         ).terminalRunner()
         return AttachTerminalStore(
-            target: .terminal(address.paneID), input: input, observeOutput: { chunks.append($0) },
+            target: .terminal(address.paneID), isViewed: viewed, input: input, observeOutput: { chunks.append($0) },
             runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) })
     }
 
@@ -237,15 +244,20 @@ struct RexTerminalAttachTests {
 
     // MARK: Size
 
-    /// The view's grid is asked for on arrival and once it settles after a
-    /// change, again when the owner lets go, and the block is never owned.
-    @Test func itAsksForItsSizeAndNeverOwnsTheBlock() async throws {
+    /// Kept off screen, as the pool keeps a terminal, the attach asks for
+    /// the view's grid on arrival and once it settles after a change, again
+    /// when the owner lets go, and never owns the block: only a terminal the
+    /// user looks at takes its size (ADR 0053).
+    @Test func offScreenItAsksForItsSizeAndNeverOwnsTheBlock() async throws {
         let rig = Rig()
         let control = await rig.server()
         let session = hostSession([await rig.host([.server(control)])])
         defer { Task { await session.end() } }
         await session.resume()
-        let store = try await openPainted(rig, session: session)
+        let store = store(session, viewed: false)
+        store.viewDidResize(cols: 80, rows: 24)
+        await rig.begin()
+        try await waitUntil("the first paint") { store.status == .live }
         func resizes() async -> [JSONValue?] {
             await control.requests.filter { $0.method == Self.resizeMethod }.map { $0.payload?["args"] }
         }

@@ -338,13 +338,14 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: The live connection
 
-    /// Opens a Rex terminal (ADRs 0051 and 0052): its session is attached,
-    /// its block's stream paints the view and follows its output, and the
-    /// view's grid is asked for, and the view's input goes out from the first
-    /// paint. A block that closed, a program that exited and another server
-    /// end the terminal; a connection that went or was replaced reattaches,
-    /// and the next attach paints afresh. Input that may have reached the
-    /// program unanswered ends it as a failed input write.
+    /// Opens a Rex terminal (ADRs 0051 to 0053): its session is attached,
+    /// the block's size is taken for a view that shows it, its block's
+    /// stream paints the view and follows its output, the view's grid is
+    /// asked for, and the view's input goes out from the first paint. A block
+    /// that closed, a program that exited and another server end the
+    /// terminal; a connection that went or was replaced reattaches, and the
+    /// next attach paints afresh. Input that may have reached the program
+    /// unanswered ends it as a failed input write.
     func terminalRunner() -> TerminalSessionRunner {
         let session = session
         return { request, handler in
@@ -358,8 +359,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
                     }
                     await handler.transportDidBecomeReady(connection.generation)
                     try await connection.attachSession()
+                    let fitting = await handler.takesSizeOnOpen()
                     let terminal = await RexTerminalAttach.session(
-                        on: connection, columns: request.cols, rows: request.rows)
+                        on: connection, columns: request.cols, rows: request.rows, fitting: fitting)
                     try await handler.runEndingSession(terminal)
                 }
             } catch let ending as RexTerminalEnding {

@@ -372,8 +372,12 @@ final class ShellTerminalStore {
     /// Keeps the size the other device set, and hides the notice.
     func dismissSizeNotice() { terminal.dismissSizeNotice() }
 
-    /// The scene went to the background: a size the user took is given back.
+    /// The scene went to the background: a size the view took is given back.
     func sceneDidEnterBackground() { terminal.sceneDidEnterBackground() }
+
+    /// The scene came back from the background: the terminal still on its
+    /// screen is shown again, and takes the size again (ADR 0053).
+    func sceneDidBecomeActive() { terminal.sceneDidBecomeActive() }
 
     /// Whether a password typed into the sheet can reach the pane now.
     var canInsertPassword: Bool { takesInput }
@@ -500,6 +504,7 @@ final class ShellTerminalStore {
                 takeover: self.takeover,
                 viewer: .resumed,
                 isViewed: previous.isViewed,
+                sizeShowing: previous.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -546,6 +551,7 @@ final class ShellTerminalStore {
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
                 isViewed: self.terminal.isViewed,
+                sizeShowing: self.terminal.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -617,6 +623,7 @@ final class ShellTerminalStore {
         takeover: Bool,
         viewer: TerminalViewerRole = .interactive,
         isViewed: Bool = true,
+        sizeShowing: AttachTerminalStore.SizeShowing = AttachTerminalStore.SizeShowing(),
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -630,6 +637,7 @@ final class ShellTerminalStore {
             takeover: takeover,
             viewer: viewer,
             isViewed: isViewed,
+            sizeShowing: sizeShowing,
             input: input,
             transportGeneration: transportGeneration,
             transportReady: transportReady,

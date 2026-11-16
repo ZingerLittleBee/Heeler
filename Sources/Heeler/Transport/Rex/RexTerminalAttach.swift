@@ -88,7 +88,7 @@ struct RexTerminalConnection: Sendable {
 
 /// What a control client claimed of a Rex block's size (ADR 0053).
 enum RexSizeClaim: Sendable, Equatable {
-    /// The user took it, or a take may have arrived: it is given back.
+    /// This client took it, or a take may have arrived: it is given back.
     case taken
     /// The server passed the block to the client because its owner's link
     /// dropped: it stays as the server made it.
@@ -216,14 +216,18 @@ final class RexTerminalHub: Sendable {
 /// the view's grid is asked for, and the ways it ends become
 /// `RexTerminalEnding`.
 ///
-/// Size (ADR 0053): the block is owned only once the user takes its size for
-/// the view, never on open, on a new link or client, or when its owner goes.
-/// The view gives back what the user took when it stops showing the terminal
-/// and when the attach ends, unless the server has since passed the block to
-/// this client because its owner's link dropped: that one stays as the server
-/// made it, so the owner gets it back when it resumes. Taking and
-/// giving back go out one at a time, each once, through the same gate as
-/// input.
+/// Size (ADR 0053): shown means fitted. An attach opened for a view that
+/// shows the terminal takes the block's size before its stream starts, so the
+/// first paint comes at the view's grid; the view takes it again when it is
+/// shown again, and at the user's tap. Nothing else owns the block: not a new
+/// link or client on its own, not its owner going. The view gives back what
+/// it took when it stops showing the terminal and when the attach ends,
+/// unless the server has since passed the block to this client because its
+/// owner's link dropped: that one stays as the server made it, so the owner
+/// gets it back when it resumes, and a take on its own leaves it alone.
+/// Taking and giving back go out one at a time, each once, through the same
+/// gate as input. Another client's take after this one's is counted in the
+/// size report, so the view leaves the size with it.
 ///
 /// Nothing reaches the view before the first paint, which starts with a full
 /// reset, as every later paint does; a paint arrives as one write, so the view
@@ -285,15 +289,15 @@ actor RexTerminalAttach {
     private var painted = false
     /// The block's stream ended, or input failed: nothing more is sent.
     private var inputClosed = false
-    /// The user took the size, so this client is in line for the block and
-    /// may own it: set once a take was answered or may have arrived, and
-    /// cleared once a give back was answered. An attach starts with what an
-    /// earlier one on the same control client left.
+    /// This client took the size, so it is in line for the block and may own
+    /// it: set once a take was answered or may have arrived, and cleared once
+    /// a give back was answered. An attach starts with what an earlier one on
+    /// the same control client left.
     private var claimed = false
     /// The server passed the block to this client because its owner's link
     /// dropped, as when the client that took it back from this one did: it
     /// stays as it is, for that owner to get back when it resumes. One its
-    /// owner let go of or left is given back like any size the user took.
+    /// owner let go of or left is given back like any size this client took.
     private var handed = false
     /// Counts what said who owns the block: owner events and the stream's
     /// grids. A take or give back whose answer comes after more of them
@@ -308,6 +312,19 @@ actor RexTerminalAttach {
     private var pendingTake: Task<TerminalSizeTake, Never>?
     /// The give back stopping started, which every stop waits for.
     private var finalGiveBack: Task<Void, Never>?
+    /// A take of this client's is out, so whether an owner change heard
+    /// meanwhile came before or after it is not known yet.
+    private var takeOut = false
+    /// Another client's take was heard while this client's was out, and no
+    /// owner change to this client after it: once this one's answer comes,
+    /// the other came last.
+    private var takenWhileOut = false
+    /// The take the attach made on its own as it opened, for a view that
+    /// shows it; nil when it made none.
+    private var openingFit: Task<TerminalSizeTake, Never>?
+    /// The stream waits for the opening take, so its snapshot, its first
+    /// grid and the redraw the first paint reads are at the size it took.
+    private var streamHeld = false
 
     private init(
         connection: RexTerminalConnection, input: TerminalAttachInputQueue, columns: Int, rows: Int,
@@ -327,14 +344,18 @@ actor RexTerminalAttach {
     }
 
     /// Opens the block's stream for a view of `columns` by `rows`, and asks
-    /// for that size. The session must be attached already.
-    static func session(on connection: RexTerminalConnection, columns: Int, rows: Int) async -> TerminalAttachSession {
+    /// for that size. `fitting` takes the block's size for the view first,
+    /// for a view that shows the terminal (ADR 0053), and the stream starts
+    /// once that take has ended. The session must be attached already.
+    static func session(
+        on connection: RexTerminalConnection, columns: Int, rows: Int, fitting: Bool = false
+    ) async -> TerminalAttachSession {
         let (reports, continuation) = AsyncStream.makeStream(
             of: TerminalSizeReport.self, bufferingPolicy: .bufferingNewest(1))
         let input = TerminalAttachInputQueue()
         let attach = RexTerminalAttach(
             connection: connection, input: input, columns: columns, rows: rows, reports: continuation)
-        await attach.start()
+        await attach.start(fitting: fitting)
         let pump = Task {
             try? await input.pump(
                 write: { bytes in try await attach.write(bytes) },
@@ -345,6 +366,8 @@ actor RexTerminalAttach {
             paste: { text in input.perform { await attach.paste(text) } })
         let ownership = TerminalSizeOwnership(
             take: { await attach.take() },
+            fit: { await attach.fit() },
+            opened: { await attach.openingFitOutcome() },
             viewerLeft: { Task { await attach.viewerLeft() } })
         return TerminalAttachSession(
             output: { AsyncThrowingStream { try await attach.read() } },
@@ -360,7 +383,7 @@ actor RexTerminalAttach {
         }
     }
 
-    private func start() async {
+    private func start(fitting: Bool) async {
         reports.yield(report)
         let signals = connection.signals
         signalTask = Task { [weak self] in
@@ -368,8 +391,16 @@ actor RexTerminalAttach {
                 await self?.receive(signal)
             }
         }
-        askForSize(afterSettling: false)
-        await stream.start()
+        if fitting {
+            // The server applies a take's size before it answers, so a stream
+            // that starts after the answer starts at the view's grid. A take
+            // that goes through asks for that grid as the block's owner.
+            openingFit = enqueueTake(automatic: true)
+            streamHeld = true
+        } else {
+            askForSize(afterSettling: false)
+            await stream.start()
+        }
     }
 
     // MARK: Output
@@ -377,6 +408,14 @@ actor RexTerminalAttach {
     /// The view's next bytes: a paint or the program's output. Nil once the
     /// view stopped the attach; throws how it ended otherwise.
     func read() async throws -> Data? {
+        if streamHeld, let openingFit {
+            _ = await openingFit.value
+            streamHeld = false
+            // A take that did not go through, or that found the block this
+            // client's already, asked for no grid: it is asked for now, as
+            // the stream starts.
+            if asked == nil { askForSize(afterSettling: false) }
+        }
         while true {
             guard let instruction = await stream.next() else {
                 if let ending { throw ending }
@@ -443,7 +482,7 @@ actor RexTerminalAttach {
         await stream.stop()
     }
 
-    /// The view let go: the stream closes with 1000, a size the user took is
+    /// The view let go: the stream closes with 1000, a size the view took is
     /// given back, and this returns once both are done, so the block is free
     /// for its next data link.
     func stop() async {
@@ -456,6 +495,7 @@ actor RexTerminalAttach {
             // A take still out is let go of; whether it may have arrived
             // decides whether there is anything to give back.
             pendingTake?.cancel()
+            openingFit?.cancel()
             finalGiveBack = enqueueGiveBack()
         }
         await stream.stop()
@@ -610,6 +650,7 @@ actor RexTerminalAttach {
                 // the block's owner changes meanwhile.
                 handed = true
             }
+            noteOwnerChange(to: owner, reason: reason)
             keepClaim()
             reports.yield(report)
             // A size asked for while another client owned the block is not
@@ -685,23 +726,41 @@ actor RexTerminalAttach {
     static let takeReason = "take"
     static let lostReason = "lost"
 
-    /// Takes the block's size for the view, at the user's request: this
-    /// client owns the block, and the view's grid is asked for as its owner.
-    /// Waits for a give back before it, and is never sent again.
+    /// Takes the block's size for the view, at the user's tap: this client
+    /// owns the block, and the view's grid is asked for as its owner. Waits
+    /// for a take or give back before it, and is never sent again.
     func take() async -> TerminalSizeTake {
         guard !stopped else { return .notSent }
+        return await enqueueTake(automatic: false).value
+    }
+
+    /// Takes the block's size for a view that shows the terminal again, on
+    /// its own: as `take`, through the same queue, gate and deadlines, but
+    /// nothing goes out while this client owns the block already.
+    func fit() async -> TerminalSizeTake {
+        guard !stopped else { return .notSent }
+        return await enqueueTake(automatic: true).value
+    }
+
+    /// How the take the attach made on its own as it opened ended, once it
+    /// has; nil when it made none.
+    func openingFitOutcome() async -> TerminalSizeTake? {
+        await openingFit?.value
+    }
+
+    private func enqueueTake(automatic: Bool) -> Task<TerminalSizeTake, Never> {
         let previous = ownershipTail
         let operation = Task { () -> TerminalSizeTake in
             await previous?.value
-            return await self.performTake()
+            return await self.performTake(automatic: automatic)
         }
         pendingTake = operation
         ownershipTail = Task { _ = await operation.value }
-        return await operation.value
+        return operation
     }
 
-    /// The view stopped showing the terminal: a size the user took is given
-    /// back once the take or give back before it is done.
+    /// The view stopped showing the terminal: a size it took is given back
+    /// once the take or give back before it is done.
     func viewerLeft() {
         guard !stopped else { return }
         enqueueGiveBack()
@@ -718,31 +777,70 @@ actor RexTerminalAttach {
         return operation
     }
 
-    private func performTake() async -> TerminalSizeTake {
+    private func performTake(automatic: Bool) async -> TerminalSizeTake {
         guard !stopped, ending == nil, !blockClosed, !Task.isCancelled else { return .notSent }
+        // A take on its own leaves a block this client owns as it is: one the
+        // server handed over after its owner's link dropped stays as the
+        // server made it, and one this client took needs nothing more.
+        if automatic, handed || (connection.clientID != nil && report.owner == connection.clientID) {
+            return .taken
+        }
         let news = ownerNews
+        takeOut = true
+        takenWhileOut = false
         let delivery = await connection.deliver(
             Self.takeMethod, Self.ownershipPayload(connection.address, take: true), connection.options.inputDeadline)
+        takeOut = false
         switch delivery {
         case .answered(let response):
             claimed = true
             handed = false
+            noteTakenWhileOut()
             noteOwner(in: response, unless: news)
             keepClaim()
             await sendTakenSize()
             return .taken
         case .refused:
+            takenWhileOut = false
             return .refused
         case .notSent:
+            takenWhileOut = false
             return .notSent
         case .unknown:
             // It may have arrived, so this client may own the block: what
-            // gives back a size the user took gives this one back too.
+            // gives back a size the view took gives this one back too.
             claimed = true
             handed = false
+            noteTakenWhileOut()
             keepClaim()
             return .unknown
         }
+    }
+
+    /// Counts another client's take of the block from this one (ADR 0053):
+    /// one heard while this client held the size, or after a take of its own
+    /// went out and before an owner change to it. Rex follows a take that
+    /// moves the block with its owner change before the answer, so one heard
+    /// while a take is out is settled once its answer comes.
+    private func noteOwnerChange(to owner: String?, reason: String?) {
+        guard let client = connection.clientID, let owner else { return }
+        if owner == client {
+            takenWhileOut = false
+        } else if reason == Self.takeReason {
+            if takeOut {
+                takenWhileOut = true
+            } else if claimed {
+                report.takenAway += 1
+            }
+        }
+    }
+
+    /// Another client's take came after this client's last one.
+    private func noteTakenWhileOut() {
+        guard takenWhileOut else { return }
+        takenWhileOut = false
+        report.takenAway += 1
+        if !stopped { reports.yield(report) }
     }
 
     /// Keeps what this client claims of the block with the Host session, so
@@ -771,7 +869,7 @@ actor RexTerminalAttach {
         if asked == wanted { asked = nil }
     }
 
-    /// Gives back a size the user took: the block passes to the next client
+    /// Gives back a size this client took: the block passes to the next client
     /// in line, or keeps its size with no owner; one this client no longer
     /// owns only takes it out of line. A block the server passed to this
     /// client because its owner's link dropped is left alone. Sent once; one

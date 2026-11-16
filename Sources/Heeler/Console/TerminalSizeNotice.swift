@@ -175,9 +175,9 @@ struct TerminalSizeNoticeView: View {
 }
 
 /// Lays a shell terminal's size notice over its screen at `edge`, `top` or
-/// `bottom` in from that edge, and gives back a size the user took when the
-/// scene goes to the background; coming back to the foreground takes
-/// nothing (ADR 0053).
+/// `bottom` in from that edge, and tells the store when its scene goes to
+/// the background, which gives back a size the view took, and when it comes
+/// back, which takes it again (ADR 0053).
 struct TerminalSizeNoticeOverlay: ViewModifier {
     let store: ShellTerminalStore
     let palette: TerminalThemePalette
@@ -210,8 +210,14 @@ struct TerminalSizeNoticeOverlay: ViewModifier {
                 }
                 .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: store.sizeNotice != nil)
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .background { store.sceneDidEnterBackground() }
+            // From the first frame too, so a screen that appears in a scene
+            // in the background takes nothing until the scene comes back.
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                switch phase {
+                case .background: store.sceneDidEnterBackground()
+                case .active: store.sceneDidBecomeActive()
+                default: break
+                }
             }
     }
 }

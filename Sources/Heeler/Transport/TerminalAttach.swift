@@ -910,7 +910,7 @@ final class TerminalAttachInputQueue: Sendable {
 /// How a terminal's size stands between one view and a server whose terminals
 /// keep their own size, as a Rex block does (ADR 0051). The view asks for its
 /// grid; the server applies it only while no other client owns the block, or
-/// once the user took the size for this view (ADR 0053).
+/// once this view took the size (ADR 0053).
 struct TerminalSizeReport: Sendable, Equatable {
     struct Grid: Sendable, Equatable {
         let columns: Int
@@ -925,6 +925,10 @@ struct TerminalSizeReport: Sendable, Equatable {
     var owner: String?
     /// This view's own client, so `owner == client` says the size is its own.
     var client: String?
+    /// How many times, in this attach, another client took the size from this
+    /// one: while this client held it, or after a take of this client's went
+    /// out. Only ever grows, so a view that missed a report still sees it.
+    var takenAway = 0
 
     /// The view shows the terminal at another size than it asked for.
     var isMismatched: Bool {
@@ -953,15 +957,23 @@ enum TerminalSizeTake: Sendable, Equatable {
 }
 
 /// Taking a terminal's size for one view, on a Server Kind whose terminals
-/// keep their own size and follow one client at a time (ADR 0053). Nothing
-/// here acts unless the user asked: the size is taken only by `take`, and
-/// only what the user took is given back.
+/// keep their own size and follow one client at a time (ADR 0053). Shown
+/// means fitted: the attach takes the size as it opens for a view that shows
+/// it, the view takes it when it is shown again and at the user's tap, and
+/// what was taken is given back once the view stops showing it. Every take is
+/// sent once, never again on its own.
 struct TerminalSizeOwnership: Sendable {
-    /// Takes the size for this view and asks for its grid. Sent once, never
-    /// again on its own, whatever became of it.
+    /// Takes the size for this view at the user's tap, and asks for its grid.
     let take: @Sendable () async -> TerminalSizeTake
+    /// Takes the size for a view that shows the terminal again, on its own: as
+    /// `take`, but nothing goes out while this client owns it already, as when
+    /// the server handed it over after its owner's link dropped.
+    let fit: @Sendable () async -> TerminalSizeTake
+    /// How the take the attach made on its own as it opened ended, once it
+    /// has; nil when it made none.
+    let opened: @Sendable () async -> TerminalSizeTake?
     /// The view stopped showing the terminal: it went off screen, or its
-    /// scene went to the background. A size the user took is given back.
+    /// scene went to the background. A size the view took is given back.
     let viewerLeft: @Sendable () -> Void
 }
 
@@ -1004,8 +1016,8 @@ final class TerminalAttachSession: Sendable {
     /// How the terminal's size stands with its server, for a Server Kind whose
     /// terminals keep a size of their own. One reader; nil for the others.
     let sizeReports: AsyncStream<TerminalSizeReport>?
-    /// Takes the terminal's size for this view at the user's request, and
-    /// gives it back; nil for a Server Kind that sizes to the view.
+    /// Takes the terminal's size for the view that shows it, and gives it
+    /// back; nil for a Server Kind that sizes to the view.
     let sizeOwnership: TerminalSizeOwnership?
     private let ender: @Sendable () async -> Void
 
