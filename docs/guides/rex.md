@@ -100,7 +100,7 @@ When another device, such as the Rex app, takes the size while you have the term
 
 - **Fit to Screen** takes the size back for your screen.
 - The **×** button dismisses the notice and keeps the other device's size while you stay. The notice returns when yet another device sets the size.
-- If fitting does not go through, the notice says why, and **Try Again** asks once more.
+- If tapping **Fit to Screen** does not go through, the notice says why, and **Try Again** asks once more.
 
 Leaving the terminal and coming back fits it to your screen again.
 
