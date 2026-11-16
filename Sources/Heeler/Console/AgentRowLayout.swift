@@ -346,7 +346,7 @@ enum AgentPanelSort: String, Codable, Sendable {
 /// Read-only normalized plugin snapshot. Unknown token names are removed
 /// individually (`AgentRowLayout.Lenient`); malformed structure or an
 /// unsupported version is absent.
-struct AgentRowLayoutSnapshot: Equatable, Sendable {
+struct AgentRowLayoutSnapshot: Codable, Equatable, Sendable {
     let layout: AgentRowLayout
     let agentPanelSort: AgentPanelSort
     let diagnostics: [String]
@@ -355,6 +355,19 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
         self.layout = layout
         self.agentPanelSort = agentPanelSort
         self.diagnostics = diagnostics
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case layout
+        case agentPanelSort
+        case diagnostics
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        layout = try container.decode(AgentRowLayout.Lenient.self, forKey: .layout).layout
+        agentPanelSort = try container.decodeIfPresent(AgentPanelSort.self, forKey: .agentPanelSort) ?? .spaces
+        diagnostics = try container.decodeIfPresent([String].self, forKey: .diagnostics) ?? []
     }
 
     static func decode(_ data: Data?) -> Self? {
