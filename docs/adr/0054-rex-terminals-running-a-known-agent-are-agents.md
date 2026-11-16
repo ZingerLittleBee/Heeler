@@ -105,6 +105,9 @@ client on the local socket with inert stand-in agents in lab sessions
 - A launch report reached Heeler about 100 ms before the `process_changed`
   that named its program. `process_changed` followed output only: a foreground
   change that printed nothing raised none.
+- `RexProgramStatusLiveTests` carries a lab stand-in's reports through a
+  `RexHostSession` into the inventory and the Agent the Console makes of it,
+  and its exit back to a terminal, with Heeler's session only reading.
 
 ## Considered options
 

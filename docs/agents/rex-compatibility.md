@@ -1,11 +1,11 @@
 # Rex compatibility observations
 
 Consult this reference for the Rex control connection, inventory reads and
-events, and resume and close behavior on Rex Hosts. These observations are
-historical evidence, not fresh tests on the installed server. Each names the
-Rex version it was seen on; check it before applying an observation to a newer
-server. All are written in Heeler's own words; no Linux server has been
-observed yet.
+events, Program Status, and resume and close behavior on Rex Hosts. These
+observations are historical evidence, not fresh tests on the installed server.
+Each names the Rex version it was seen on; check it before applying an
+observation to a newer server. All are written in Heeler's own words; no Linux
+server has been observed yet.
 
 ## Current routing
 
@@ -42,6 +42,13 @@ observed yet.
   `session.disown_block` when the view stops showing the terminal or the
   attach ends, unless the server passed the block to Heeler because its
   owner's link dropped.
+- A terminal whose foreground is a known agent program is an Agent
+  ([ADR 0054](../adr/0054-rex-terminals-running-a-known-agent-are-agents.md)):
+  `RexAgentRule` reads the foreground with `HerdrCoreAgentRule.program` and
+  the root Program Status while its owner is that foreground. The details read
+  adds `program_status`, and the control connection's `program_status_changed`
+  and `program_status_removed` events keep it current; a Rex Agent opens as
+  its terminal.
 
 ## Known limits
 
@@ -78,8 +85,13 @@ in users' words.
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
 - **Existing terminals only.** Nothing is created, closed or renamed, and no
-  layout changes; no Agents, Chat, Composer, notifications, Live Activities
-  or Usage.
+  layout changes; no Chat, Composer, notifications, Live Activities or Usage.
+- **Agents Heeler cannot see.** A program that is a block's own command
+  (behind `login`), one started with `exec` from the shell, and one under a
+  `sh -c` that does not exec it read as `login` or the shell, so they stay
+  Terminals although Rex keeps their reports. The foreground Heeler holds can
+  be behind until the terminal next prints. No real Claude Code, Pi, Oh My
+  Pi, OpenCode or Grok Build has reported inside Rex in a lab yet.
 - **Where it has run.** Only the Simulator and the opt-in live suites, on one
   Mac. No physical iPhone or iPad has opened a Rex terminal, and no Rex
   terminal has been opened while the Rex desktop app showed the same one:
@@ -183,7 +195,78 @@ All from `f_control`. Session events arrive wrapped with their session id;
   events arrive before the view change of the same operation.
 - A terminal raises `title_changed` with the new title, and `process_changed`
   with a generation and the foreground process (or none) whenever the
-  foreground changes, its directory included.
+  foreground changes, its directory included. (Seen again 2026-11-16: only
+  once the terminal prints; see [Program Status](#program-status).)
+
+### Program Status
+
+All from a lab run on Rex 0.1.0-preview.14, API revision 12, macOS 27.0,
+local socket, 2026-11-16, the server instance unchanged throughout, with inert
+stand-in agents in `heeler-lab-` sessions (lab captures kept outside the
+repository), unless a bullet names `RexProgramStatusLiveTests`.
+
+- **Reports.** A program in a Rex terminal reports with OSC 7501 in the words
+  Heeler's other kinds use: a `state` of idle, working, done, blocked or error,
+  and optionally `app`, `kind` (on blocked), `msg` and `title` (base64),
+  `progress` and an `id` for a child record. The server rejects a whole
+  report whose state is another word, upper case or missing, so it never
+  stores a word Heeler would read as Unknown. `state=clear` drops the root and
+  its children. A report replaces its record whole. Rex answers a program's
+  `ESC ] 7501 ; ?` query itself, listing the states and kinds, so a program
+  that asks before reporting should report inside Rex; no real agent was run
+  to see it.
+- **The record's owner.** Each record names an owner, the process id and name
+  of the terminal's foreground when the report arrived, not of the writer: a
+  background job's report names the shell, and a launcher's child's report
+  names the launcher. A first report from the next program replaces the root
+  record and its owner.
+- **When a program leaves.** Working and blocked records go when their program
+  leaves the foreground (reason `foreground`, or `prompt` under a shell that
+  marks its prompt with OSC 133, as fish does), Ctrl+C included. Idle, done
+  and error records stay, after later commands too, still naming the exited
+  process, which is why Heeler compares the owner with the current foreground.
+  A done record stayed for 90 seconds in the lab, and an existing Codex's
+  record had stayed for most of an hour while Codex held the foreground: no
+  expiry was seen. `terminal.reset` drops every record, the terminal's own
+  program exiting drops them with reason `child_exited`, and `block.close`
+  raises `block_closed` alone, after which `program_status` answers 404.
+- **Events.** On a connection attached with `session.attach_all` and event
+  scope `all`, every report raised a `block_event` named
+  `program_status_changed`, carrying the record's id (empty for the root),
+  the whole new record and a reason, and every removal a
+  `program_status_removed` listing the ids (the root as empty) and a reason.
+  200 reports written back to back raised 200 events, each under a
+  millisecond after the write. With event scope `session` and no
+  `session.attach`, none arrived. Reading `program_status` raised no event.
+- **Order.** A program's first report at launch arrived about 100 ms before
+  the `process_changed` that named it (15 of 15 launches), already owned by
+  the program. A removal arrived before the `process_changed` that named the
+  shell. A process group that took the terminal for six seconds without
+  printing raised no `process_changed`, going or coming back, though the
+  `process` method named it at once.
+- **Which foreground.** A program typed into a shell leads the foreground
+  under its own name, or its first argument where the executable is named for
+  a version (native Claude Code), or its script under an interpreter (Python,
+  node). `HerdrCoreAgentRule.program(arguments:name:)` given the first
+  argument (or the name) and the script recognised all twelve agent launches
+  of the run and none of the shells and background jobs. A block whose command
+  is the program itself, `exec` from the shell, and a `sh -c` that does not
+  exec its program showed `login` or the shell as the foreground. An existing
+  Codex under fish read as `codex` with one root record, done, whose owner was
+  the current foreground.
+- **Through Heeler.** In `RexProgramStatusLiveTests`, a stand-in typed into
+  a lab shell, a shell started under the first argument `codex` that reports
+  what it reads, was a codex Agent in the inventory a `RexHostSession`
+  followed and in the Console's organization of it: Working at launch with
+  the record owned by the foreground, then Blocked and Error as it reported
+  them. A report with an unknown word left the record at error. Once it
+  reported idle and exited, the terminal was no Agent, and the idle record
+  stayed, owned by the stand-in. Heeler's session only read and received
+  events.
+- **Not seen.** A Linux server, a server instance change, and a block command
+  run through the account's login shell. The terminals' processes are the
+  server's children, so a new instance should mean new terminals with no
+  records.
 
 ### Resume and close
 
