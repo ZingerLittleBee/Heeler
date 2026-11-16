@@ -66,7 +66,7 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
 - **Rex**（實驗性）——開啟 macOS 或 Linux 上已在執行的 Rex 伺服器中的終端機。
   工作階段、視窗與終端機會出現在控制台中，執行程式設計 Agent 的終端機會帶著它向
   Rex 回報的狀態出現在 Agents 中，即時終端機支援輸入、貼上與
-  Snippets，只有在你點選 Fit to Screen 時才會接管其他裝置設定的大小
+  Snippets，並在你開啟期間配合你的螢幕大小
   （[了解更多](https://docs.heeler.bybee.dev/rex)）。
 - **接入**——以 libghostty 繪製 Agent 的真實終端機：原生捲動回溯、
   同樣能操作全螢幕 TUI 的慣性觸控捲動、長按選取、接管已失效的

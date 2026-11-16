@@ -67,8 +67,8 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
 - **Rex** (experimental) — open the terminals of a Rex server already running
   on macOS or Linux. Sessions, windows, and terminals appear in the Console,
   a terminal running a coding Agent in Agents with the status it reports to
-  Rex, and live terminals take typing, pastes, and Snippets, taking over a size
-  another device set only when you tap Fit to Screen
+  Rex, and live terminals take typing, pastes, and Snippets, fitted to your
+  screen while you have them open
   ([Read more](https://docs.heeler.bybee.dev/rex)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,

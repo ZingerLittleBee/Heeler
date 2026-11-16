@@ -64,7 +64,7 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
 - **Rex**（实验性）—— 打开 macOS 或 Linux 上已在运行的 Rex 服务器中的终端。
   会话、窗口与终端呈现在控制台中，运行编程 Agent 的终端带着它向 Rex 上报的
   状态出现在 Agents 中，实时终端支持输入、粘贴与 Snippets，
-  只有在你轻点 Fit to Screen 时才会接管其他设备设定的尺寸
+  并在你打开期间适配你的屏幕
   （[了解更多](https://docs.heeler.bybee.dev/zh/rex)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
