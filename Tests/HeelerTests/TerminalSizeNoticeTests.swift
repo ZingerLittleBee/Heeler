@@ -663,8 +663,11 @@ struct TerminalSizeNoticeTests {
     }
 
     /// After a tap takes the size back, the showing takes it on its own
-    /// again: a reattach opens fitted.
-    @Test func aTapTakesItBackForTheShowing() async throws {
+    /// again, so a reattach opens fitted, though the take's owner change,
+    /// which Rex sends before its answer, hid the notice first. Another
+    /// client's take after the tap's keeps the size theirs for the showing.
+    @Test(arguments: [false, true])
+    func aTapTakesItBackForTheShowing(takenAfterTheTap: Bool) async throws {
         let first = Remote()
         let second = Remote()
         let runs = Runs([first, second], asksOnOpen: true, opensAtOnce: true)
@@ -675,11 +678,18 @@ struct TerminalSizeNoticeTests {
         first.report(server: Self.elsewhere, owner: Self.otherDevice, takenAway: 1)
         try await waitUntil("the notice") { store.sizeNotice?.phase == .offered }
 
-        first.takeGate.open()
         store.takeSize()
-        try await waitUntil("the tap's take") { store.sizeNotice == nil }
+        try await waitUntil("the tap's take") { first.takes == 1 }
+        first.report(server: Self.here, owner: Self.thisClient, takenAway: 1)
+        try await waitUntil("the notice to go") { store.sizeNotice == nil }
+        if takenAfterTheTap {
+            first.report(server: Self.elsewhere, owner: Self.otherDevice, takenAway: 2)
+            try await waitUntil("the other device's take") { store.sizeReport?.takenAway == 2 }
+        }
+        first.takeGate.open()
+        try await settleDown()
         try await reattach(store, from: first, to: second)
-        #expect(runs.heard == [true, true])
+        #expect(runs.heard == [true, !takenAfterTheTap])
         await store.stop()
     }
 

@@ -634,9 +634,10 @@ final class AttachTerminalStore {
         else { return }
         notice.phase = .taking
         sizeNotice = notice
+        let takenAway = takenAwaySeen
         Task { [weak self] in
             let outcome = await ownership.take()
-            self?.sizeTakeEnded(outcome, on: session)
+            self?.sizeTakeEnded(outcome, on: session, takenAwayAtTap: takenAway)
         }
     }
 
@@ -697,18 +698,23 @@ final class AttachTerminalStore {
         sizeNotice = nil
     }
 
-    private func sizeTakeEnded(_ outcome: TerminalSizeTake, on session: TerminalAttachSession) {
-        guard self.session === session, var notice = sizeNotice, notice.phase == .taking else { return }
+    private func sizeTakeEnded(
+        _ outcome: TerminalSizeTake, on session: TerminalAttachSession, takenAwayAtTap: Int
+    ) {
+        guard self.session === session else { return }
         guard let failure = Self.sizeTakeFailure(outcome) else {
             // The user took it back: this showing fits it on its own again,
-            // as a reattach opens.
-            if isShowing {
+            // as a reattach opens, unless another client took it after the
+            // tap. The take's own owner change usually hid the notice before
+            // its answer came.
+            if isShowing, takenAwaySeen == takenAwayAtTap {
                 sizeShowing.fitsOnItsOwn = true
                 fittedSession = session
             }
-            hideSizeNotice()
+            if sizeNotice?.phase == .taking { hideSizeNotice() }
             return
         }
+        guard var notice = sizeNotice, notice.phase == .taking else { return }
         notice.phase = .failed(failure)
         sizeNotice = notice
     }
