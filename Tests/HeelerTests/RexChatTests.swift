@@ -6,7 +6,8 @@ import Testing
 
 /// What a Rex Host's projection keeps and reads for process-bound Chat, as a
 /// tmux Host's does (ADRs 0034 and 0044): the Host's kernel, kept on this
-/// device and learned from the server, never from an exec of its own.
+/// device and learned from the server, never from an exec of its own, and
+/// Chat's reads over the Host's SSH connection, which write nothing.
 @MainActor
 @Suite("Rex Chat", .timeLimit(.minutes(1)))
 struct RexChatTests {
@@ -138,5 +139,96 @@ struct RexChatTests {
 
         #expect(rig.projection.kernel == nil)
         #expect(rig.memory.kernel(for: rig.host.id) == nil)
+    }
+
+    // MARK: The read surface
+
+    /// Chat reads a Rex Host's files and processes over the connection its
+    /// server's links use. What it is handed is no Host's services, Transport
+    /// or connection, so nothing can cast it back to write, and the Host's
+    /// services stay closed. Nothing on the Host or the server changes.
+    @Test func chatReadsTheHostAndCannotWriteToIt() async throws {
+        let server = await served(FakeRexWorld(sessions: [FakeRexWorld.studio()]))
+        let files = VirtualHostFiles(home: "/home/dev")
+        let folder = "/home/dev/.claude/projects/-home-dev-app"
+        let path = "\(folder)/e951205e-24af-4a5e-baa7-3ccbebd2de2c.jsonl"
+        let line = Data("{\"type\":\"user\"}\n".utf8)
+        await files.write(line, at: path)
+        let connection = ScriptedRexHost(
+            control: [.server(server)], files: files, processes: { _ in ["4242": HostProcessReader.Facts()] })
+        let rig = rig(connection)
+        defer { rig.projection.end() }
+        try await waitUntil("the terminals") { !rig.projection.isAwaitingSnapshot }
+
+        let chatFiles = rig.projection.chatHostFiles()
+        let range = RemoteFileRange(path: path, offset: 0, maxBytes: 64)
+        #expect(try await chatFiles.home() == "/home/dev")
+        #expect(try await chatFiles.status(path)?.size == UInt64(line.count))
+        #expect(try await chatFiles.list(RemoteFileListingRequest(directory: folder))?.entries.count == 1)
+        #expect(try await chatFiles.read(range).data == line)
+        #expect(try await rig.projection.sessionFileReader()(range).data == line)
+        #expect(chatFiles.queryOpenCode == nil)
+        #expect(try await rig.projection.modelContextWindowResolver()("gpt-5.5") == nil)
+
+        let reads = try await rig.projection.session.withConnection { $0.transport.reads }
+        #expect((reads as? any HostServices) == nil)
+        #expect((reads as? any Transport) == nil)
+        #expect((reads as? any RexHostConnection) == nil)
+        #expect(try await reads.readProcesses(HostProcessReader.Request(pids: ["4242"])).keys.sorted() == ["4242"])
+        await #expect(throws: TransportError.self) {
+            try await rig.projection.withHostServices { _ in 0 }
+        }
+
+        #expect(
+            await connection.log == [
+                "control \(Self.socket)", "home", "status \(path)", "list \(folder)", "read \(path)",
+                "session read \(path)", "processes 4242",
+            ])
+        #expect(await files.contents(of: path) == line)
+        #expect(Set(await server.requests.map(\.method)).isSubset(of: Self.serverReads))
+    }
+
+    /// What the projection asks of a Rex server for its rows and its Chat:
+    /// reads only (ADR 0054).
+    private static let serverReads: Set<String> = [
+        "server.status", "server.version", "session.attach_all", "session.view", "session.list_blocks",
+        RexInventoryWire.terminalMethod("title"), RexInventoryWire.terminalMethod("process"),
+        RexInventoryWire.terminalMethod("program_status"),
+    ]
+
+    /// Reads take ordinary session slots and never the control link's events
+    /// slot or a data link's attach slot, so reads that fill their slots hold
+    /// up only the next read: the control link still answers, and a terminal
+    /// still opens its data link.
+    @Test func readsThatFillTheirSlotsHoldUpNoLink() async throws {
+        let server = await served(FakeRexWorld(sessions: [FakeRexWorld.studio()]))
+        let admission = SSHChannelAdmission()
+        let gate = ScriptedTransportCallGate()
+        let connection = ScriptedRexHost(
+            control: [.server(server)], data: [.server(FakeRexServer(), welcome: nil)], admission: admission,
+            processes: { _ in
+                await gate.waitUntilOpen()
+                return [:]
+            })
+        let rig = rig(connection)
+        defer { rig.projection.end() }
+        try await waitUntil("the terminals") { !rig.projection.isAwaitingSnapshot }
+        let reads = try await rig.projection.session.withConnection { $0.transport.reads }
+
+        let limit = SSHChannelAdmission.Limits.production.ordinarySession
+        let held = (0...limit).map { index in
+            Task { try await reads.readProcesses(HostProcessReader.Request(pids: [String(4000 + index)])) }
+        }
+        await gate.waitForEntry(count: limit)
+        try await waitUntil("a read waiting for a slot") { await admission.waitingRequests() == 1 }
+
+        _ = try await rig.projection.session.withConnection { try await $0.control.call("server.status") }
+        let data = try await rig.projection.session.withConnection { try await $0.transport.openDataChannel() }
+        #expect(await admission.snapshot().ordinarySession == limit)
+        #expect(await admission.snapshot().attach == 1)
+
+        await gate.open()
+        for read in held { _ = try await read.value }
+        try await data.close(timeout: .zero)
     }
 }

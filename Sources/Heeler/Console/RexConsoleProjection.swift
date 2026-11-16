@@ -10,7 +10,9 @@ import Foundation
 /// leaves every detail open on the last one's terminals, and its Pins go. A
 /// terminal opens from the server's redraw (ADR 0051) and takes input from its
 /// first paint (ADR 0052), whether it is listed as an Agent or a Terminal;
-/// every action a Host offers is unavailable on a Rex Host.
+/// every action a Host offers is unavailable on a Rex Host. What Chat needs of
+/// the Host it reads over the same SSH connection, and writes nothing there
+/// (`RexHostReads`).
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
 /// device's seen marks (`RexTurnState`) are kept by server instance on this
@@ -415,20 +417,40 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
         { _, _ in throw Self.unavailable }
     }
-    func sessionFileReader() -> SessionFileReader { { _ in throw Self.unavailable } }
-    func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in throw Self.unavailable } }
-    func chatHostFiles() -> ChatHostFiles {
-        ChatHostFiles(
-            status: { _ in throw Self.unavailable },
-            list: { _ in throw Self.unavailable },
-            read: { _ in throw Self.unavailable },
-            home: { throw Self.unavailable })
+    // MARK: The Host's files, on the same SSH connection
+
+    /// Chat's reads of the Host, on the connection the server's links use:
+    /// `RexHostReads`, which writes nothing.
+    private nonisolated static func reads(_ session: RexHostSession) async throws -> any RexHostReads {
+        try await session.withConnection { $0.transport.reads }
     }
+
+    func sessionFileReader() -> SessionFileReader {
+        let session = session
+        return { range in try await Self.reads(session).readFileSlice(range) }
+    }
+
+    func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in nil } }
+
+    /// Chat's file reads. With no Host Helper there is no Usage account file,
+    /// so the Default Account's directories are the only ones.
+    func chatHostFiles() -> ChatHostFiles {
+        let session = session
+        return ChatHostFiles(
+            status: { path in try await Self.reads(session).fileStatus(atPath: path) },
+            list: { request in try await Self.reads(session).listFiles(request) },
+            read: { range in try await Self.reads(session).readHostFileRange(range) },
+            home: { try await Self.reads(session).hostHomeDirectory() })
+    }
+
+    /// New Agent and New Terminal browse with these, and a Rex Host offers
+    /// neither.
     func remoteHomeDirectory() async throws -> String { throw Self.unavailable }
     func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
 
-    /// A Rex Host is reached through its server's socket only: nothing runs on
-    /// it over SSH.
+    /// Chat reads the Host's files and processes through `RexHostReads`, and
+    /// nothing else runs on it over SSH: Changes, Skills, harness edits and
+    /// the platform probe stay out.
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {

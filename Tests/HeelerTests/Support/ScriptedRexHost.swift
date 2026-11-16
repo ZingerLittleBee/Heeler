@@ -4,9 +4,12 @@ import HeelerSSH
 @testable import Heeler
 
 /// A Rex Host's SSH connection, scripted for `RexSSHTransport`: what the Rex
-/// probe and the socket check print, and whether SSH opens each channel to the
-/// socket, with the fake server behind it when it does.
+/// probe and the socket check print, whether SSH opens each channel to the
+/// socket, with the fake server behind it when it does, and the files and
+/// processes Chat reads.
 final actor ScriptedRexHost: RexHostConnection {
+    typealias ProcessRead = @Sendable (HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
+
     enum Channel: Sendable {
         /// SSH opens it to this server. With a welcome, the server answers the
         /// upgrade and the hello by itself; without one, the test drives it.
@@ -37,10 +40,15 @@ final actor ScriptedRexHost: RexHostConnection {
     /// so nothing written on one afterwards reaches its server.
     private let closingClosesChannels: Bool
     private var opened: [any HeelerSSHAPIChannel] = []
+    /// The Host's files, and its process table, for Chat's reads; without
+    /// them a read fails.
+    private let files: VirtualHostFiles?
+    private let processes: ProcessRead?
 
     init(
         probe: [String]? = nil, socketCheck: String? = nil, control: [Channel] = [], data: [Channel] = [],
-        admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix, closingClosesChannels: Bool = false
+        admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix, closingClosesChannels: Bool = false,
+        files: VirtualHostFiles? = nil, processes: ProcessRead? = nil
     ) {
         self.probe = probe
         self.socketCheck = socketCheck
@@ -49,6 +57,8 @@ final actor ScriptedRexHost: RexHostConnection {
         self.admission = admission
         self.platform = platform
         self.closingClosesChannels = closingClosesChannels
+        self.files = files
+        self.processes = processes
     }
 
     /// Serves `endpoint` for every data channel from now on.
@@ -102,6 +112,46 @@ final actor ScriptedRexHost: RexHostConnection {
         }
         let lines = ["", "\(nonce) rex-socket begin"] + (socketCheck.map { [$0] } ?? []) + ["", "\(nonce) rex-socket end"]
         return GitExecResult(stdout: Data((lines.joined(separator: "\n") + "\n").utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    // MARK: Chat's reads, each logged by what it names
+
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        log.append("session read \(range.path)")
+        return try await scriptedFiles().readRange(range)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        log.append("read \(range.path)")
+        return try await scriptedFiles().readRange(range)
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        log.append("status \(path)")
+        return try await scriptedFiles().fileStatus(atPath: path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        log.append("list \(request.directory)")
+        return try await scriptedFiles().listFiles(request)
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        log.append("home")
+        return try await scriptedFiles().home()
+    }
+
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        log.append("processes \(request.pids.joined(separator: ","))")
+        guard let processes else { throw TransportError.hostFeatureUnavailable(feature: "unscripted processes") }
+        // One exec, under an ordinary session slot as `HeelerSSHTransport`'s are.
+        guard let admission else { return try await processes(request) }
+        return try await admission.withChannel(.ordinarySession) { try await processes(request) }
+    }
+
+    private func scriptedFiles() throws -> VirtualHostFiles {
+        guard let files else { throw TransportError.hostFeatureUnavailable(feature: "unscripted files") }
+        return files
     }
 
     func close() async throws {

@@ -40,6 +40,10 @@ protocol RexTransport: Sendable {
     /// of the connection's attach slots until it closes. Throws `TransportError`.
     func openDataChannel() async throws -> any HeelerSSHAPIChannel
 
+    /// What Chat reads of the Host on this same SSH connection, and nothing
+    /// else of it.
+    nonisolated var reads: any RexHostReads { get }
+
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
@@ -52,9 +56,32 @@ extension RexTransport {
     }
 }
 
+/// What Chat may read of a Rex Host over its SSH connection, as it reads a
+/// tmux Host's (ADR 0034): a file's status, a directory's listing, a range of
+/// a file, the home directory, and the facts of a terminal's processes. None
+/// of it writes, and no write, other exec or channel is reachable from it.
+///
+/// Every read takes one of the connection's ordinary session slots, as on any
+/// Host: a held SFTP channel for files, one exec for the home directory per
+/// connection, and one bounded exec for each process read (12 s, with an
+/// 8 s watchdog on the Host). The control link holds the events slot and
+/// each data link an attach slot, which reads never take, so a slow read
+/// waits on other reads only. Rex's links are direct-streamlocal channels,
+/// which sshd's `MaxSessions` does not count (rex-compatibility.md).
+protocol RexHostReads: Sendable {
+    /// A range of a session file, on the SFTP channel Chat keeps open.
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus?
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?
+    func hostHomeDirectory() async throws -> String
+    /// One bounded exec of `HostProcessReader`'s script.
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
+}
+
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
-protocol RexHostConnection: ServerKindDetectionConnection {
+protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads {
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -172,6 +199,10 @@ actor RexSSHTransport: RexTransport {
         }
     }
 
+    /// The connection's reads behind a type of their own, so nothing handed
+    /// them can be cast back to the connection and write.
+    nonisolated var reads: any RexHostReads { RexReadsOnly(connection: connection) }
+
     func close() async {
         await control.close()
         try? await connection.close()
@@ -250,6 +281,35 @@ actor RexSSHTransport: RexTransport {
         case is CancellationError: TransportError.cancelled
         default: error
         }
+    }
+}
+
+/// A Rex Host connection's reads, and nothing else of it.
+private struct RexReadsOnly: RexHostReads {
+    let connection: any RexHostReads
+
+    func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        try await connection.readFileSlice(range)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        try await connection.readHostFileRange(range)
+    }
+
+    func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+        try await connection.fileStatus(atPath: path)
+    }
+
+    func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+        try await connection.listFiles(request)
+    }
+
+    func hostHomeDirectory() async throws -> String {
+        try await connection.hostHomeDirectory()
+    }
+
+    func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        try await connection.readProcesses(request)
     }
 }
 

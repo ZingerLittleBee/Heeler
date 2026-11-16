@@ -122,8 +122,25 @@ actor LocalRexTransport: RexTransport {
         try UnixDomainSocketChannel(path: path)
     }
 
+    /// No SSH connection, so nothing of the Host to read.
+    nonisolated var reads: any RexHostReads { NoHostReads() }
+
     func close() async {
         closed = true
         await control.close()
+    }
+}
+
+/// The reads of a transport with no SSH connection: each one fails.
+private struct NoHostReads: RexHostReads {
+    private static var unavailable: TransportError { .hostFeatureUnavailable(feature: "Host reads") }
+
+    func readFileSlice(_: RemoteFileRange) async throws -> RemoteFileSlice { throw Self.unavailable }
+    func readHostFileRange(_: RemoteFileRange) async throws -> RemoteFileSlice { throw Self.unavailable }
+    func fileStatus(atPath _: String) async throws -> RemoteFileStatus? { throw Self.unavailable }
+    func listFiles(_: RemoteFileListingRequest) async throws -> RemoteFileListing? { throw Self.unavailable }
+    func hostHomeDirectory() async throws -> String { throw Self.unavailable }
+    func readProcesses(_: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        throw Self.unavailable
     }
 }
