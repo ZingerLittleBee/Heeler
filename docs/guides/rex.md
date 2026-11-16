@@ -68,7 +68,7 @@ Heeler shows your Rex layout as it is and changes nothing in it:
 | **Idle** | Waiting at its prompt, or finished a turn. Rex Agents never show **Done**. |
 | **Blocked** | Waiting for your answer. |
 | **Error** | Reported an error and sorts with **Blocked**. |
-| **Unknown** | No status reported since Heeler connected, or the last report came from a program that has since exited. |
+| **Unknown** | The Agent has not reported a status to Rex, or the last report came from another program, such as one that has since exited. |
 
 An Agent started as a Rex terminal's own command rather than from its shell, or started with `exec`, stays in **Terminals**. Heeler sees a terminal's program change when the terminal next prints, so an Agent can take a moment to arrive in **Agents** or to leave it.
 
@@ -109,7 +109,7 @@ A Rex terminal has one size, set by one device at a time. When no device has set
 - **Rex API revision 12 only:** A Rex that does not offer revision 12 is refused. Heeler was built and tested against Rex 0.1.0-preview.14.
 - **Linux not yet tried:** Heeler looks where Rex keeps its socket on Linux, but no Linux Rex server has been tried yet.
 - **What the first paint leaves out:** Rex's redraw does not carry the cursor shape or the terminal's own default colors, so the cursor keeps Heeler's shape until the program sets it again, and the terminal wears your Heeler theme. While a full-screen program is open, the history behind it appears only after the program closes.
-- **A size set elsewhere does not fit:** Until you tap **Fit to Screen**, a terminal another device sized wider than your screen wraps its lines at your screen's width, so a full-width program can look jumbled. Heeler does not scale it down or cut it off.
+- **A size set elsewhere does not fit:** Until you tap **Fit to Screen**, a terminal another device sized wider than your screen wraps its lines at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.
 - **What has been tested so far:** Rex has been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. They have not been tried on a physical iPhone or iPad, or with the Rex app showing the same terminal.
 
 Last checked on 2026-11-16 against Rex 0.1.0-preview.14 (API revision 12) on macOS, in the iOS Simulator.
