@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at f5f0d02f -->
+<!-- Translated from docs/guides/rex.md at fcc57cf7 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -61,7 +61,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 - **Workspaces、Tabs 与 Panes：** 按 Rex 自身的顺序，每个 Rex 会话（session）是一个 Workspace，每个窗口（window）是一个 Tab，每个终端是一个 Pane。会话中不属于任何窗口的终端共用一个名为 **Detached** 的 Tab。没有终端的会话不会列出。
-- **Agents 与 Terminals：** 程序为 Claude Code、Codex 或 Heeler 认识的其他编程 Agent 的终端显示在 **Agents** 中，并带有该 Agent 向 Rex 上报的状态。Shell 和其他程序显示在 **Terminals** 中；Agent 退出后，终端会回到 **Terminals**。标题、程序与目录会随 Rex 中的变化同步更新。
+- **Agents 与 Terminals：** 程序为 Claude Code、Codex 或 Heeler 认识的其他编程 Agent 的终端显示在 **Agents** 中，并带有该 Agent 向 Rex 上报的状态。Shell 和其他程序显示在 **Terminals** 中；Agent 退出后，终端会回到 **Terminals**。终端全是 Agent 的会话只显示在 **Agents** 中。标题、程序与目录会随 Rex 中的变化同步更新。
 
 | 状态 | 含义 |
 | --- | --- |
