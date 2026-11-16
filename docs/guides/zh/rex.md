@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at fcc57cf7 -->
+<!-- Translated from docs/guides/rex.md at 87f1f5b5 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -66,9 +66,10 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 | 状态 | 含义 |
 | --- | --- |
 | **Working** | 正在运行一轮对话。 |
-| **Idle** | 在提示符处等待，或已完成一轮对话。Rex 的 Agent 不会显示 **Done**。 |
+| **Idle** | 在提示符处等待。 |
 | **Blocked** | 等待你的回答。 |
 | **Error** | 上报了错误，并与 **Blocked** 一起排序。 |
+| **Done** | 在当前设备未打开该 Agent 时完成了一轮对话。打开该 Agent 仅会清除当前设备上的 **Done**。 |
 | **Unknown** | 该 Agent 尚未向 Rex 上报状态，或最近一次上报来自另一个程序，例如一个已经退出的程序。 |
 
 作为 Rex 终端自身命令（而不是从其 Shell）启动的 Agent，以及用 `exec` 启动的 Agent，会留在 **Terminals** 中。Heeler 要等终端下一次输出时才能看到其程序的变化，因此 Agent 出现在 **Agents** 中或从中离开可能会稍有延迟。
