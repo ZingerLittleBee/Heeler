@@ -121,7 +121,7 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 - **Send：** **Send** 会先确认仍是同一个 Agent 占据终端、它不处于 **Blocked**，并且接受粘贴，然后粘贴你的消息并按下 Enter。终端下方的 Composer 也以同样方式发送。如果 Rex 没有回应，Heeler 绝不会重新发送该消息；请先查看终端。
 - **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，先确认仍是同一个 Agent 占据终端，再按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。
 - **命令：** 在 Agent 上报空闲时，`/` 提供 `/compact`，不提供 Agent 的技能。其他操作请在终端中完成。
-- **图片和文件：** 在 Chat 或 Agent 的终端中轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Heeler 通过 Host 的 SSH 连接（而不是经由 Rex）把文件上传到你登录所用账户的临时目录下的一个新文件夹，并把路径加到你的消息里；**Send** 会把路径连同消息一起输入，且只输入一次。图片以不超过 16 MiB 的 JPEG 或 PNG 发送，文件最大 64 MiB。Heeler 从不删除已上传到 Host 的文件。如果上传期间 Rex 重启，上传会停止并显示 **This Terminal belongs to a Rex server that is gone**：请从列表中重新打开该 Agent。
+- **图片和文件：** 在 Chat 或 Agent 的终端中轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Heeler 通过 Host 的 SSH 连接（而不是经由 Rex）把文件上传到你登录所用账户的临时目录下的一个新文件夹，并把路径加到你的消息里；**Send** 会把路径连同消息一起输入，且只输入一次。图片以不超过 16 MiB 的 JPEG 或 PNG 发送，文件最大 64 MiB。Heeler 从不删除已上传到 Host 的文件。如果 Rex 重启，之后开始的上传会停止并显示 **This Terminal belongs to a Rex server that is gone**；已在进行的上传会完成，文件留在 Host 上，但 **Send** 随后会以同样的提示拒绝发送。请从列表中重新打开该 Agent。
 
 ## 尚未支持的功能
 

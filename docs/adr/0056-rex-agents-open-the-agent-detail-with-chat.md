@@ -254,7 +254,10 @@ Server Kinds have them. G2's one write is built this way:
   anything is staged and again once the connection is in hand, an Agent of a
   server that is gone fails with `rexServerGone`, in those words, not
   retryable, and nothing is staged. A staging begun while no server answers
-  fails as the Host not being connected, retryable.
+  fails as the Host not being connected, retryable. Nothing is checked after
+  the transfer, as on a herdr-core Host: an upload under way when Rex
+  restarts finishes and its file stays, and Send, which keeps to the same
+  pin, refuses its path with the same words.
 - **Delivery.** A staged path is part of the draft: a file's path where the
   cursor is, an image's at the end, each followed by a space, as on the other
   kinds. It reaches the program with the message's own typing, in Composer
