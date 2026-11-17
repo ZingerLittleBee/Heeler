@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 6
+    static let revision = 7
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -63,7 +63,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             // A result sent to the background tells the model how to follow
             // its task; it is no output (`AgyToolCall.activity`).
             guard step.status != .running else { return nil }
-            return .preview(AgyToolCall.preview(of: step, kind: tool.kind))
+            return .preview(AgyToolCall.preview(of: step, kind: tool.kind, name: tool.name))
         case .systemMessage:
             if let end = Self.taskEnd(in: step) {
                 return .preview(AgyToolCall.preview(ofTaskResult: end.result))
@@ -181,6 +181,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// A planner response without tool calls, or a `/compact` prompt's
         /// checkpoint, came last.
         var hasReply = false
+        /// A `swarm_wait` call finished with `DONE` in the latest batch,
+        /// parking the turn cleanly on the swarm board without a text reply.
+        var isParkedOnSwarmWait = false
         let isCompact: Bool
         /// The calls it made, by position in `calls`.
         var calls: [Int] = []
@@ -188,6 +191,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         var lastStep: AgyStep?
 
         var hasSteps: Bool { lastStep != nil }
+        var hasSettled: Bool { hasReply || isParkedOnSwarmWait }
     }
 
     private struct Projection {
@@ -255,7 +259,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         }
 
         mutating func finish() -> ChatTranscript {
-            if let open, open.hasReply {
+            if let open, open.hasSettled {
                 close(open, ending: .completed, interruptedNotice: false)
             } else if let open {
                 // agy writes nothing on Esc, so a turn Stop just ended reads
@@ -294,7 +298,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// completed; without one, Esc, Ctrl+C or a declined call ended it.
         private mutating func closeForNextPrompt() {
             guard let open else { return }
-            if open.hasReply {
+            if open.hasSettled {
                 close(open, ending: .completed, interruptedNotice: false)
             } else if open.hasSteps {
                 let declined = open.calls.last.map { calls[$0].isDeclined } ?? false
@@ -342,6 +346,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 place(.assistant(ChatAssistantMessage(text: text)), id: Self.id(step, "text"), step)
             }
             for (position, call) in step.calls.enumerated() {
+                if AgyToolCall.swarmTools.contains(call.name) {
+                    transcript.hasSwarmActivity = true
+                }
                 let entryID = Self.id(step, "tool:\(position)")
                 let index = calls.count
                 calls.append(AgyToolCall(entryID: entryID, call: call, offset: step.offset, createdAt: step.createdAt))
@@ -351,6 +358,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 place(.tool(placeholder), id: entryID, step)
             }
             open?.hasReply = step.calls.isEmpty
+            open?.isParkedOnSwarmWait = false
         }
 
         private mutating func readResult(_ step: AgyStep) {
@@ -420,6 +428,8 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 readManageSubagents(callIndex: index, result: step)
             case "manage_task":
                 readManageTask(callIndex: index, result: step)
+            case "swarm_wait":
+                open?.isParkedOnSwarmWait = true
             default:
                 break
             }
@@ -584,6 +594,17 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 }
             }
             guard let text = step.systemMessageText, text.hasPrefix(AgyTranscriptReducer.restartNotice) else {
+                if let text = step.systemMessageText,
+                    text.hasPrefix("[swarm] ") || text.hasPrefix("[board] ")
+                        || text.hasPrefix("You have just started. Your assignment")
+                {
+                    transcript.hasSwarmActivity = true
+                    if let open, open.hasSettled {
+                        close(open, ending: .completed, interruptedNotice: false)
+                        self.open = OpenTurn(
+                            turn: nil, isAboveWindow: false, startedAt: step.createdAt, isCompact: false)
+                    }
+                }
                 // Messages from other agents and reminders are the agent's
                 // context, not the conversation.
                 return

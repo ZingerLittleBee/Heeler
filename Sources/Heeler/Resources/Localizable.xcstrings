@@ -1768,6 +1768,7 @@
         }
       }
     },
+    "%@ signs in once per Host; Usage Limits are shown on the Default Account." : {},
     "%@ staged" : {
       "localizations" : {
         "ja" : {
@@ -3047,6 +3048,46 @@
         }
       }
     },
+    "%lld active" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld active"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld active"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 稼働中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個執行中"
+          }
+        }
+      }
+    },
     "%lld added, %lld removed" : {
       "localizations" : {
         "ja" : {
@@ -3738,6 +3779,24 @@
               }
             }
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件が入力待ち"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个待处理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個待處理"
+          }
         }
       }
     },
@@ -4206,6 +4265,46 @@
         }
       }
     },
+    "%lld posts" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld post"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld posts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 則訊息"
+          }
+        }
+      }
+    },
     "%lld pt" : {
       "shouldTranslate" : false
     },
@@ -4342,6 +4441,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 個執行中，%@，%lld / %lld 個 Agent 已完成"
+          }
+        }
+      }
+    },
+    "%lld steps" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld step"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld steps"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ステップ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 步"
           }
         }
       }
@@ -4541,6 +4680,46 @@
         }
       }
     },
+    "%lld waiting" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld waiting"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld waiting"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个等待中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個等待中"
+          }
+        }
+      }
+    },
     "%lld working" : {
       "comment" : "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.",
       "localizations" : {
@@ -4718,6 +4897,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "+%lld 個 · 可能不是最新"
+          }
+        }
+      }
+    },
+    "+%lld unread" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "+%lld unread"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "+%lld unread"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未讀"
           }
         }
       }
@@ -5339,6 +5558,84 @@
     "=" : {
       "shouldTranslate" : false
     },
+    "@%@ has shown no recent progress" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ はしばらく進捗がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ 近期没有新进展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ 近期沒有新進展"
+          }
+        }
+      }
+    },
+    "@%@ hit model limit · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "@%1$@ hit model limit · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ がモデル制限に達しました · %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 触发模型限额 · %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 觸發模型限額 · %2$@"
+          }
+        }
+      }
+    },
+    "@%@ step failed · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "@%1$@ step failed · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ のステップが失敗しました · %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 步骤执行失败 · %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 步驟執行失敗 · %2$@"
+          }
+        }
+      }
+    },
     "A Host already uses this machine" : {
       "localizations" : {
         "ja" : {
@@ -5361,28 +5658,7 @@
         }
       }
     },
-    "A Host’s Claude Code or Codex Usage Limits and when they reset." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストの Claude Code / Codex の使用量制限と、そのリセット時期を表示します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主机的 Claude Code 或 Codex 用量限额及其重置时间。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主機的 Claude Code 或 Codex 用量上限與重設時間。"
-          }
-        }
-      }
-    },
+    "A Host’s Claude Code, Codex, or Antigravity Usage Limits and when they reset." : {},
     "A Shell Terminal on this Host is open in another Heeler window, and input continues there. Close it to use the terminal here." : {
       "localizations" : {
         "ja" : {
@@ -6450,6 +6726,28 @@
         }
       }
     },
+    "Active" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稼働中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活跃"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活躍"
+          }
+        }
+      }
+    },
     "Activity recorded" : {
       "localizations" : {
         "ja" : {
@@ -7379,6 +7677,28 @@
         }
       }
     },
+    "Add swarm worker" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ワーカーを追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 Swarm 成员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 Swarm 成員"
+          }
+        }
+      }
+    },
     "Add the Host" : {
       "localizations" : {
         "ja" : {
@@ -7485,6 +7805,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加入第 %lld 列"
+          }
+        }
+      }
+    },
+    "Add worker @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカー @%@ を追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加成员 @%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增成員 @%@"
           }
         }
       }
@@ -9324,6 +9666,7 @@
         }
       }
     },
+    "Antigravity" : {},
     "Antigravity CLI has exited. Start it again in the terminal first." : {},
     "Antigravity CLI hit an error" : {},
     "Antigravity CLI is waiting for a second key press (“%@”). Finish it in the terminal first." : {
@@ -9365,6 +9708,29 @@
     },
     "Antigravity CLI's note field is open on another row. Finish it in the terminal." : {},
     "Antigravity CLI's note field is open, so a digit would be typed into it. Answer in the terminal." : {},
+    "Antigravity CLI's swarm board is open in the terminal. Press Esc there first." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルで Antigravity CLI の Swarm ボードが開いています。先にターミナルで Esc を押してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "终端中正打开着 Antigravity CLI 的 Swarm 面板，请先在终端按 Esc 退出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終端機中正開啟著 Antigravity CLI 的 Swarm 面板，請先在終端機按 Esc 退出。"
+          }
+        }
+      }
+    },
+    "Antigravity limits" : {},
     "Any local branch is kept." : {
       "localizations" : {
         "ja" : {
@@ -9717,6 +10083,50 @@
         }
       }
     },
+    "Archive channel #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル #%@ をアーカイブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档频道 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封存頻道 #%@"
+          }
+        }
+      }
+    },
+    "Archive swarm channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルをアーカイブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封存 Swarm 頻道"
+          }
+        }
+      }
+    },
     "Are you sure you want to also close this workspace? It is the workspace's last tab." : {
       "comment" : "Confirmation message for an unnamed Workspace's last tab.",
       "localizations" : {
@@ -9962,6 +10372,50 @@
         }
       }
     },
+    "Assignment (#%lld)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タスク指示 (#%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务简报 (#%lld)"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任務簡報 (#%lld)"
+          }
+        }
+      }
+    },
+    "Assignments and findings posted by swarm members appear here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm メンバーが投稿したタスク指示や調査結果がここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 成员发布的任务分配与进展会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 成員發佈的任務分配與進展會顯示在這裡。"
+          }
+        }
+      }
+    },
     "At least" : {
       "localizations" : {
         "ja" : {
@@ -10115,6 +10569,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %lld 次嘗試"
+          }
+        }
+      }
+    },
+    "Attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要注意"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需關注"
           }
         }
       }
@@ -11120,6 +11596,28 @@
         }
       }
     },
+    "Board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息板"
+          }
+        }
+      }
+    },
     "Both machines must accept the same password; separate passwords are not supported." : {
       "localizations" : {
         "ja" : {
@@ -11425,6 +11923,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "明細"
+          }
+        }
+      }
+    },
+    "Brief" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "简报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "簡報"
           }
         }
       }
@@ -11782,6 +12302,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法顯示此對話"
+          }
+        }
+      }
+    },
+    "Can't Show Worker Conversation" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカーの会話を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示成员对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法顯示成員對話"
           }
         }
       }
@@ -12187,6 +12729,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "變更 Heeler 外掛"
+          }
+        }
+      }
+    },
+    "Channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "頻道"
           }
         }
       }
@@ -12816,6 +13380,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請檢查它的版本。"
+          }
+        }
+      }
+    },
+    "Check swarm status" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm の状態を確認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Swarm 状态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Swarm 狀態"
           }
         }
       }
@@ -16428,6 +17014,28 @@
         }
       }
     },
+    "Coordinator" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コーディネーター"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "協調者"
+          }
+        }
+      }
+    },
     "Copied" : {
       "localizations" : {
         "ja" : {
@@ -18115,6 +18723,28 @@
     "Courier New" : {
       "shouldTranslate" : false
     },
+    "Create channel #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル #%@ を作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建频道 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立頻道 #%@"
+          }
+        }
+      }
+    },
     "Create one in the tailnet's admin console under Settings › Keys. Heeler keeps it in the Keychain and signs in with it again after a sign-out." : {
       "localizations" : {
         "ja" : {
@@ -18133,6 +18763,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 tailnet 的管理主控台中，前往 Settings › Keys 建立一組。Heeler 會將它存放在鑰匙圈，登出後會再用它重新登入。"
+          }
+        }
+      }
+    },
+    "Create swarm channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルを作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立 Swarm 頻道"
           }
         }
       }
@@ -18893,6 +19545,28 @@
         }
       }
     },
+    "Decisions & Blockers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "判断事項とブロッカー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待决策与阻塞项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待決策與阻礙項"
+          }
+        }
+      }
+    },
     "Decline with Note" : {
       "localizations" : {
         "ja" : {
@@ -19337,6 +20011,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拒絕"
+          }
+        }
+      }
+    },
+    "Describe what the swarm should work on after /swarm." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/swarm の後に Swarm に取り組ませる内容を入力してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 /swarm 后描述需要 Swarm 协作完成的任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 /swarm 後描述需要 Swarm 協作完成的任務。"
           }
         }
       }
@@ -30514,6 +31210,28 @@
       }
     },
     "Key Fingerprint" : {},
+    "Key Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主な更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵動態"
+          }
+        }
+      }
+    },
     "Keyboard" : {
       "comment" : "Agent input mode segment",
       "localizations" : {
@@ -31510,6 +32228,50 @@
         }
       }
     },
+    "List swarm channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネル一覧"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 頻道"
+          }
+        }
+      }
+    },
+    "List swarm models" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm モデル一覧"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 模型"
+          }
+        }
+      }
+    },
     "Listed %lld folder" : {
       "localizations" : {
         "ja" : {
@@ -32130,6 +32892,28 @@
         }
       }
     },
+    "Loading worker conversation…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカーの会話を読み込み中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载成员对话…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入成員對話…"
+          }
+        }
+      }
+    },
     "Loading…" : {
       "localizations" : {
         "ja" : {
@@ -32374,6 +33158,28 @@
         }
       }
     },
+    "Main Chat" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メインチャット"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主對話"
+          }
+        }
+      }
+    },
     "Manage Snippets" : {
       "localizations" : {
         "ja" : {
@@ -32392,6 +33198,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理片語"
+          }
+        }
+      }
+    },
+    "Manage swarm channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルを管理"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理 Swarm 頻道"
           }
         }
       }
@@ -32708,6 +33536,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "指標"
+          }
+        }
+      }
+    },
+    "Milestones" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイルストーン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里程碑"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里程碑"
           }
         }
       }
@@ -33380,6 +34230,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "原生 Windows 需要 herdr 0.9.3 以上版本與 OpenSSH Server。"
+          }
+        }
+      }
+    },
+    "Needs attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要確認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需關注"
           }
         }
       }
@@ -34129,6 +35001,28 @@
         }
       }
     },
+    "No Board Posts Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ投稿がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無訊息板動態"
+          }
+        }
+      }
+    },
     "No Conversations Found" : {
       "localizations" : {
         "ja" : {
@@ -34479,6 +35373,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚無片語"
+          }
+        }
+      }
+    },
+    "No Steps Recorded Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだステップがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无执行步骤"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無執行步驟"
           }
         }
       }
@@ -34990,6 +35906,28 @@
         }
       }
     },
+    "No new board messages." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいボード投稿はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无新的消息板动态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無新的訊息板動態。"
+          }
+        }
+      }
+    },
     "No newline at end of file" : {
       "localizations" : {
         "ja" : {
@@ -35214,6 +36152,28 @@
         }
       }
     },
+    "No progress" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進捗なし"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无进展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無進展"
+          }
+        }
+      }
+    },
     "No recent updates" : {
       "comment" : "Background Work row",
       "localizations" : {
@@ -35328,6 +36288,28 @@
         }
       }
     },
+    "No swarm activity is available for this conversation." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会話には表示できる Swarm アクティビティがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前对话暂无可显示的 Swarm 协作动态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前對話暫無可顯示的 Swarm 協作動態。"
+          }
+        }
+      }
+    },
     "No tmux server answers on the default socket" : {
       "localizations" : {
         "ja" : {
@@ -35390,6 +36372,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有 tmux 伺服器在執行"
+          }
+        }
+      }
+    },
+    "No transcript updates for over 10 minutes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 分以上トランスクリプトの更新がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已超过 10 分钟没有新的执行记录更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已超過 10 分鐘沒有新的執行記錄更新。"
           }
         }
       }
@@ -37836,6 +38840,28 @@
         }
       }
     },
+    "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットでボードを見るには入力欄の上にある Swarm バーを開いてください。/swarm board を使う場合はターミナルを開いてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请点击输入框上方的 Swarm 状态栏在聊天中查看消息板，或切换到终端运行 /swarm board。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請點選輸入框上方的 Swarm 狀態列在聊天中查看訊息板，或切換到終端機執行 /swarm board。"
+          }
+        }
+      }
+    },
     "Open the questions first." : {
       "localizations" : {
         "ja" : {
@@ -39038,6 +40064,28 @@
         }
       }
     },
+    "Opens the swarm board and member status." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードとメンバーの状態を開きます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Swarm 消息板与成员状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 Swarm 訊息板與成員狀態。"
+          }
+        }
+      }
+    },
     "Opens the tailnet's machines in the browser to approve this device" : {
       "localizations" : {
         "ja" : {
@@ -39815,6 +40863,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "覆蓋網路「%@」需要登入。請開啟登入連結，然後重新執行檢查。"
+          }
+        }
+      }
+    },
+    "Overview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總覽"
           }
         }
       }
@@ -41060,6 +42130,116 @@
         }
       }
     },
+    "Post to #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ に投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布到 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈到 #%@"
+          }
+        }
+      }
+    },
+    "Post to swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードに投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布到 Swarm 消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈到 Swarm 訊息板"
+          }
+        }
+      }
+    },
+    "Posted as #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld として投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发布为 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已發佈為 #%lld"
+          }
+        }
+      }
+    },
+    "Posting to the board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードに投稿中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发布到消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在發佈到訊息板"
+          }
+        }
+      }
+    },
+    "Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息"
+          }
+        }
+      }
+    },
     "Preflight" : {
       "localizations" : {
         "ja" : {
@@ -42055,6 +43235,28 @@
         }
       }
     },
+    "Quota" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上限"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "限额"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "限額"
+          }
+        }
+      }
+    },
     "Quotes and backslash escapes are supported.\ne.g. %@" : {
       "localizations" : {
         "ja" : {
@@ -42430,6 +43632,50 @@
         }
       }
     },
+    "Read swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードを読む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取 Swarm 消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取 Swarm 訊息板"
+          }
+        }
+      }
+    },
+    "Read swarm board since #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 以降の Swarm ボードを読む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取 #%lld 之后的消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取 #%lld 之後的訊息板"
+          }
+        }
+      }
+    },
     "Read the code" : {
       "localizations" : {
         "ja" : {
@@ -42470,6 +43716,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "閱讀隱私詳細資料"
+          }
+        }
+      }
+    },
+    "Read-only view of this worker's sub-conversation. Send messages in the main Chat to guide the coordinator." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このワーカーのサブ会話の読み取り専用ビューです。指示を送るにはメインチャットからコーディネーターに送信してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页面为该成员子对话的只读视图；如需引导协作，请在主对话中向协调者发送消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此頁面為該成員子對話的唯讀檢視；如需引導協作，請在主對話中向協調者傳送訊息。"
           }
         }
       }
@@ -42674,6 +43942,28 @@
       }
     },
     "Reading the Agent's screen" : {},
+    "Reading the board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードを読み込み中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取訊息板"
+          }
+        }
+      }
+    },
     "Reading the conversation timed out" : {
       "localizations" : {
         "ja" : {
@@ -45407,6 +46697,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "右側欄位，第 %lld 個，共 %lld 個：%@，次要樣式"
+          }
+        }
+      }
+    },
+    "Risks" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リスク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "风险项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "風險項"
           }
         }
       }
@@ -48280,6 +49592,28 @@
         }
       }
     },
+    "Show full brief" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示の全文を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开完整简报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展開完整簡報"
+          }
+        }
+      }
+    },
     "Show iOS keyboard" : {
       "localizations" : {
         "ja" : {
@@ -48321,6 +49655,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示鍵盤"
+          }
+        }
+      }
+    },
+    "Show less" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折りたたむ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起"
           }
         }
       }
@@ -49881,6 +51237,28 @@
         }
       }
     },
+    "Stall" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停滞"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受阻"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受阻"
+          }
+        }
+      }
+    },
     "Star on GitHub" : {
       "localizations" : {
         "ja" : {
@@ -50806,6 +52184,28 @@
         }
       }
     },
+    "Stop swarm worker" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ワーカーを停止"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 Swarm 成员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 Swarm 成員"
+          }
+        }
+      }
+    },
     "Stop went, but the Agent still shows Working." : {
       "localizations" : {
         "ja" : {
@@ -50846,6 +52246,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已送出停止，但主機沒有回報 Agent 是否仍在執行。請查看終端機。"
+          }
+        }
+      }
+    },
+    "Stop worker @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカー @%@ を停止"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止成员 @%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止成員 @%@"
           }
         }
       }
@@ -51188,6 +52610,28 @@
         }
       }
     },
+    "Stuck" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停滞"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡住"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡住"
+          }
+        }
+      }
+    },
     "Subagent" : {
       "localizations" : {
         "ja" : {
@@ -51324,6 +52768,50 @@
         }
       }
     },
+    "Subscribe to #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ を購読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱 #%@"
+          }
+        }
+      }
+    },
+    "Subscribe to channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネルを購読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱頻道"
+          }
+        }
+      }
+    },
     "Summarize the conversation to free up context" : {
       "localizations" : {
         "ja" : {
@@ -51368,6 +52856,94 @@
         }
       }
     },
+    "Swarm" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        }
+      }
+    },
+    "Swarm Section" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm セクション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 分栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 分欄"
+          }
+        }
+      }
+    },
+    "Swarm Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 無法使用"
+          }
+        }
+      }
+    },
+    "Swarm: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm：%@"
+          }
+        }
+      }
+    },
     "Swipe horizontally to switch keyboard pages" : {
       "localizations" : {
         "ja" : {
@@ -51386,6 +52962,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "左右滑動可切換鍵盤頁面"
+          }
+        }
+      }
+    },
+    "Switch model for @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ のモデルを切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换 @%@ 的模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換 @%@ 的模型"
+          }
+        }
+      }
+    },
+    "Switch swarm model" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm モデルを切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换 Swarm 模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換 Swarm 模型"
           }
         }
       }
@@ -54087,6 +55707,7 @@
         }
       }
     },
+    "The Host Helper asks Antigravity on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in." : {},
     "The Host Helper asks Claude Code on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in. This automated use is not officially supported." : {
       "localizations" : {
         "ja" : {
@@ -59149,6 +60770,7 @@
         }
       }
     },
+    "The plugin asks Antigravity on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in." : {},
     "The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported." : {
       "localizations" : {
         "ja" : {
@@ -61392,6 +63014,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這些欄位只存在於 Heeler。"
+          }
+        }
+      }
+    },
+    "Thinking" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考過程"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考过程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考過程"
           }
         }
       }
@@ -63906,6 +65550,28 @@
         }
       }
     },
+    "This worker hasn't written any steps to its transcript yet." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このワーカーはまだトランスクリプトにステップを記録していません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该成员尚未写入任何执行步骤记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該成員尚未寫入任何執行步驟記錄。"
+          }
+        }
+      }
+    },
     "This workspace is not inside a Git repository, so no worktree can be created from it." : {
       "localizations" : {
         "ja" : {
@@ -64036,6 +65702,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標題"
+          }
+        }
+      }
+    },
+    "Title swarm" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm に名前を設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm"
+          }
+        }
+      }
+    },
+    "Title swarm “%@”" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm を「%@」に設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm 为“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm 為「%@」"
           }
         }
       }
@@ -65408,6 +67118,50 @@
         }
       }
     },
+    "Unsubscribe from #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ の購読を解除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消订阅 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消訂閱 #%@"
+          }
+        }
+      }
+    },
+    "Unsubscribe from channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネルの購読を解除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消订阅频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消訂閱頻道"
+          }
+        }
+      }
+    },
     "Untracked" : {
       "comment" : "Changes list group title and file change kind",
       "localizations" : {
@@ -65998,6 +67752,28 @@
         }
       }
     },
+    "Updated at #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 時点で更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新至 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新至 #%lld"
+          }
+        }
+      }
+    },
     "Updated task #%@" : {
       "comment" : "A description of a task update. The argument is the task number.",
       "isCommentAutoGenerated" : true,
@@ -66535,6 +68311,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用量功能隨 Host Helper 提供，而 Host Helper 目前尚不支援原生 Windows。"
+          }
+        }
+      }
+    },
+    "Usage counts Antigravity from plugin %@; this Host has %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Usage counts Antigravity from plugin %1$@; this Host has %2$@."
           }
         }
       }
@@ -67672,6 +69458,50 @@
         }
       }
     },
+    "Wait on swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードの更新を待機"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Swarm 消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Swarm 訊息板動態"
+          }
+        }
+      }
+    },
+    "Wait on swarm board after #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 以降のボード更新を待機"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 #%lld 之后的消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 #%lld 之後的訊息板動態"
+          }
+        }
+      }
+    },
     "Wait until the Agent is idle before renaming." : {
       "localizations" : {
         "ja" : {
@@ -67919,6 +69749,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待圖片…"
+          }
+        }
+      }
+    },
+    "Waiting for posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿を待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待消息板新动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待訊息板新動態"
           }
         }
       }
@@ -68789,6 +70641,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "工作區終端機"
+          }
+        }
+      }
+    },
+    "Workstreams" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークストリーム"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流"
           }
         }
       }

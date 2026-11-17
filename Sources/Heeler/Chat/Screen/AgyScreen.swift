@@ -229,6 +229,8 @@ struct AgyScreen: Sendable {
     /// A permission, question or trust dialog in the box's place: no box,
     /// and a dialog's hint row or question near the bottom.
     let showsDialog: Bool
+    /// agy's full-screen `/swarm board` view (`alt+s`) in the box's place.
+    let showsSwarmBoard: Bool
     /// agy has exited: its last frame stays above `Resume with -c (or
     /// command below):` and the shell's prompt.
     let hasExited: Bool
@@ -282,14 +284,18 @@ struct AgyScreen: Sendable {
                     footerRunningTaskCount = count
                 }
             }
-            // The background-task panel: its task rows, then a rule.
-            if index < rows.count, Self.isTaskRow(rows[index]) {
-                showsRunningTasks = true
-                while index < rows.count, Self.isTaskRow(rows[index]) {
-                    if let stripRow = Self.runningTaskStripRow(
-                        inText: rows[index].trimmedText, requireRunningSuffix: false)
-                    {
-                        runningTaskStripRows.append(stripRow)
+            // The status strip under the box: background tasks (`● [hh:mm:ss] …`),
+            // a swarm summary (`● Swarm(…)`), or running subagents (`● Agent(…)`),
+            // closed by a full-width rule in the box's palette.
+            if index < rows.count, Self.isStatusStripRow(rows[index]) {
+                while index < rows.count, Self.isStatusStripRow(rows[index]) {
+                    if Self.isTaskRow(rows[index]) {
+                        showsRunningTasks = true
+                        if let stripRow = Self.runningTaskStripRow(
+                            inText: rows[index].trimmedText, requireRunningSuffix: false)
+                        {
+                            runningTaskStripRows.append(stripRow)
+                        }
                     }
                     index += 1
                 }
@@ -342,8 +348,10 @@ struct AgyScreen: Sendable {
         let tail = rows.dropFirst((composer?.bottomRule ?? -1) + 1).filter { !$0.isBlank }.suffix(Self.exitTailRows)
         let exited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
         let dialog = composer == nil && Self.showsDialog(rows)
+        let swarmBoard = composer == nil && !exited && Self.showsSwarmBoard(rows, from: live)
         hasExited = exited
         showsDialog = dialog
+        showsSwarmBoard = swarmBoard
         if footerRow == nil, dialog, live < rows.count {
             footerRow = rows[live...].last { !$0.isBlank }
         }
@@ -463,6 +471,14 @@ struct AgyScreen: Sendable {
         row.trimmedText.range(of: #"^(?:> )?\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
     }
 
+    /// Any status strip row agy draws between the input box's bottom rule and
+    /// a second full-width rule: background tasks, `● Swarm(<title>) …`, or
+    /// `● Agent(<role>: …)` (agy 1.5.9).
+    private static func isStatusStripRow(_ row: ScreenRow) -> Bool {
+        isTaskRow(row)
+            || row.trimmedText.range(of: #"^(?:> )?\S (?:Swarm|Agent)\("#, options: .regularExpression) != nil
+    }
+
     /// The footer's count of running background tasks (`· N task(s)`).
     private static func runningTaskCount(in row: ScreenRow) -> Int? {
         let text = ScreenRow.normalizedSpaces(row.text)
@@ -562,7 +578,7 @@ struct AgyScreen: Sendable {
         guard !right.isEmpty, !right.hasSuffix(cutMark),
             !footerNonModelPrefixes.contains(where: { right.hasPrefix($0) })
         else { return nil }
-        right = right.replacing(/\s*·\s*\d+\s+task\(s\)(?:\s*·\s*\/tasks)?$/, with: "")
+        right = right.replacing(/(?:\s*·\s*\d+\s+(?:task|subagent)\(s\)(?:\s*·\s*\/\S+)?)+$/, with: "")
         for prefix in footerModePrefixes where right.hasPrefix(prefix) {
             right = String(right.dropFirst(prefix.count))
             break
@@ -648,6 +664,18 @@ struct AgyScreen: Sendable {
     /// How many of the bottom rows a dialog's question is looked for in:
     /// the options, a wrapped option's rows, the hint row and the footer.
     private static let dialogRows = 16
+
+    /// Whether the full-screen `/swarm board` TUI view (`alt+s`) is open.
+    private static func showsSwarmBoard(_ rows: [ScreenRow], from start: Int) -> Bool {
+        guard start < rows.count else { return false }
+        let nonBlank = rows[start...].filter { !$0.isBlank }.map(\.trimmedText)
+        if nonBlank.prefix(4).contains(where: { $0.hasPrefix("Swarm board \"") }) {
+            return true
+        }
+        return nonBlank.suffix(3).contains {
+            $0.contains("tab switch pane") && $0.contains("esc back")
+        }
+    }
 
     // MARK: Background work evidence
 

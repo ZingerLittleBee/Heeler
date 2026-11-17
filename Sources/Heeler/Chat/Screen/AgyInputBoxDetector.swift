@@ -18,6 +18,11 @@ enum AgyInputBoxDetector {
         }
         if let below = agy.below { return .overlay(below) }
         guard let composer = agy.composer else {
+            if agy.showsSwarmBoard {
+                return .overlay(
+                    String(
+                        localized: "Antigravity CLI's swarm board is open in the terminal. Press Esc there first."))
+            }
             return agy.showsDialog
                 ? .dialog(title: nil)
                 : .unknown(String(localized: "Heeler can't find Antigravity CLI's input box on screen."))

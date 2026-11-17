@@ -101,6 +101,7 @@ struct AgentChatSurfaceView: View {
     /// it lists nothing.
     @State private var backgroundWorkHeight: CGFloat = 0
     @State private var isShowingBackgroundWork = false
+    @State private var isShowingSwarm = false
     @State private var isChoosingConversation = false
     /// The row the Background Work sheet opened from.
     @State private var backgroundWorkFocus: String?
@@ -215,7 +216,7 @@ struct AgentChatSurfaceView: View {
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
                 || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
-                || closeErrorMessage != nil || isShowingBackgroundWork,
+                || closeErrorMessage != nil || isShowingBackgroundWork || isShowingSwarm,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
             inputMode: .composer))
@@ -275,6 +276,14 @@ struct AgentChatSurfaceView: View {
                     ChatBackgroundWorkSheet(
                         chat: chat, isHostConnected: isHostConnected, focus: backgroundWorkFocus,
                         sheetPresentation: $0)
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingSwarm) {
+            if let chat {
+                ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) {
+                    ChatSwarmSheet(
+                        chat: chat, isHostConnected: isHostConnected, sheetPresentation: $0)
                 }
             }
         }
@@ -955,7 +964,8 @@ struct AgentChatSurfaceView: View {
         // while Antigravity CLI's Background Work promotes the Console row.
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(chat.agent.status),
-            isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
+            isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale }
+                || chat.agySwarm?.holdsActivePace == true,
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: ChatTurnSignals.isLive(hostStatus: console.hostStatuses[agent.hostID], conversation: conversation),
             olderAwaitsUser: conversation.olderAwaitsUser)
@@ -1796,7 +1806,10 @@ struct AgentChatSurfaceView: View {
         VStack(spacing: 0) {
             if let chat, presentation == .timeline {
                 BackgroundWorkInset(
-                    chat: chat, isHostConnected: isHostConnected, isCondensed: condensesBackgroundWork
+                    chat: chat,
+                    isHostConnected: isHostConnected,
+                    isCondensed: condensesBackgroundWork,
+                    openSwarm: { isShowingSwarm = true }
                 ) { focus in
                     backgroundWorkFocus = focus
                     isShowingBackgroundWork = true
@@ -2045,20 +2058,29 @@ private struct BackgroundWorkInset: View {
     let chat: AgentChatStore
     let isHostConnected: Bool
     let isCondensed: Bool
+    let openSwarm: () -> Void
     let open: (String?) -> Void
 
     var body: some View {
-        let work = chat.backgroundWork
-        let showsFinished = work.showsFinishedInStrip(
-            agentStatus: chat.agent.status,
-            isHostConnected: isHostConnected,
-            turns: chat.conversation.transcript.turns)
-        ChatBackgroundWorkStrip(
-            work: work,
-            isHostConnected: isHostConnected,
-            isCondensed: isCondensed,
-            showsFinishedWork: showsFinished,
-            open: open)
+        VStack(spacing: 0) {
+            if let swarm = chat.agySwarm {
+                ChatSwarmLiveBar(
+                    swarm: swarm,
+                    isCondensed: isCondensed,
+                    open: openSwarm)
+            }
+            let work = chat.backgroundWork
+            let showsFinished = work.showsFinishedInStrip(
+                agentStatus: chat.agent.status,
+                isHostConnected: isHostConnected,
+                turns: chat.conversation.transcript.turns)
+            ChatBackgroundWorkStrip(
+                work: work,
+                isHostConnected: isHostConnected,
+                isCondensed: isCondensed,
+                showsFinishedWork: showsFinished,
+                open: open)
+        }
     }
 }
 

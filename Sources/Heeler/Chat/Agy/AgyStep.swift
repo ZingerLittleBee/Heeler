@@ -192,10 +192,10 @@ struct AgyStep: Sendable {
     }
 
     /// A tool result's text without the `Created At` and `Completed At`
-    /// lines agy starts it with.
+    /// lines agy starts it with (swarm tools in 1.5.9 repeat the pair twice).
     var resultBody: String {
         var lines = (content ?? "")[...]
-        for prefix in ["Created At: ", "Completed At: "] where lines.hasPrefix(prefix) {
+        while lines.hasPrefix("Created At: ") || lines.hasPrefix("Completed At: ") {
             if let newline = lines.firstIndex(of: "\n") {
                 lines = lines[lines.index(after: newline)...]
             } else {

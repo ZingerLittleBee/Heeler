@@ -156,8 +156,25 @@ struct ChatSendProfile: Sendable {
             // holds `/btw` after its start, as typed; its help and code
             // search modes open only for a key on an empty box (1.5.3, live
             // through herdr 0.9.5's `agent prompt`). It trims the trailing
-            // space before it reads `/compact`.
-            ChatSendProfile(exitWords: [])
+            // space before it reads `/compact`. `/swarm board` opens an
+            // interactive TUI panel instead of sending a prompt (1.5.9).
+            ChatSendProfile(
+                exitWords: [],
+                refusal: { _, trimmed in
+                    let lower = trimmed.lowercased()
+                    if lower == "/swarm" {
+                        return .commandUnavailable(
+                            String(localized: "Describe what the swarm should work on after /swarm."))
+                    }
+                    if lower == "/swarm board" || lower.hasPrefix("/swarm board ") {
+                        return .commandUnavailable(
+                            String(
+                                localized:
+                                    "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board."
+                            ))
+                    }
+                    return nil
+                })
         case .grok:
             // Grok Build quits at once for these whole inputs, and reads
             // `/btw` and `/goal` anywhere in a message. It trims the

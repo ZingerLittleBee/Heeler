@@ -1400,6 +1400,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// ends after its Esc (ADR 0024). The next prompt closes the turn and
     /// empties it.
     var openTurnBackgroundCommands: [ChatBackgroundCommand] = []
+    /// Antigravity CLI: whether the loaded lines record native Swarm tools or
+    /// board wakeups, which prompts the engine to follow `.system_generated/swarm`.
+    var hasSwarmActivity = false
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,

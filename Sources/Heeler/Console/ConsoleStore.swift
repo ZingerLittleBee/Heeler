@@ -2693,10 +2693,10 @@ final class ConsoleStore {
     }
 
     /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
-    /// foreground turn finishes, even while its Subagents, Workflows, or
-    /// non-daemon background commands keep running. Present the Agent as
-    /// `Working` across Console and Composer surfaces while a live connected
-    /// transcript confirms running, non-stale Background Work.
+    /// foreground turn finishes, even while its Subagents, Workflows, Swarm
+    /// task workers, or non-daemon background commands keep running. Present
+    /// the Agent as `Working` across Console and Composer surfaces while a live
+    /// connected transcript confirms running, non-stale Background Work.
     private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
         guard row.agent.kind == ChatProgram.agy.rawValue,
             row.agent.status == .idle || row.agent.status == .done,
