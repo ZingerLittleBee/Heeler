@@ -649,6 +649,15 @@ against made-up lab programs in `heeler-lab-` sessions.
   a whole read took about half a second and held typing and events back behind
   it, while a tail read (a 1 KiB first page, then the last 16 KiB) every
   second took about a quarter of a second and left them at their usual pace.
+- Live suite `RexChatTypingLiveTests` (a `RexConsoleProjection` on its own
+  control connection over the local socket, 2026-11-17), on a lab block its
+  creating client owned, running a stand-in named `codex` that reported idle,
+  turned bracketed paste on and printed what it read with `cat -v`: the
+  screen read held the grid's 30 rows; keys, a paste, a two-line paste,
+  Composer Send's paste and Enter, and a Blocked Card answer over the screen
+  it read each arrived once, in order, pastes framed by the program's
+  markers; and the block's size answer, owner included, read the same before
+  and after.
 
 ### Documented for API revision 12, not observed
 

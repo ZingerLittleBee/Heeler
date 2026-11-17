@@ -819,6 +819,7 @@
 		A4693B8221D4D110809D1175 /* SnippetsKeyboardPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51EE6515A20AFA09762788C5 /* SnippetsKeyboardPane.swift */; };
 		A4808A99FD16CBC177DB010E /* ClaudeTranscriptIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF25743E0808461240B38A /* ClaudeTranscriptIndex.swift */; };
 		A4F4E69A83004B52C56C67A2 /* HerdrCoreAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6BF7D35D794A652042DED1 /* HerdrCoreAgentsTests.swift */; };
+		A53450D708FB706F6BF5DE55 /* RexChatTypingLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */; };
 		A555F2DD86EC81E37D3A9323 /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */; };
 		A596FBD3017D51653EC3B1E9 /* AgentTitleRenameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */; };
 		A5F3E97909953BBDBFF46777 /* TmuxChatTyping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5805AFD951C91BA4FBE46C36 /* TmuxChatTyping.swift */; };
@@ -1569,6 +1570,7 @@
 		2F323FC15B0188C5A8193093 /* OpenCodeScreenReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeScreenReader.swift; sourceTree = "<group>"; };
 		2F565A5BE8CC4ABA3FA10D57 /* EventsSessionLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsSessionLatencyTests.swift; sourceTree = "<group>"; };
 		2F6451A20326DC01EDBFE50D /* ConsoleCommandRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleCommandRegistry.swift; sourceTree = "<group>"; };
+		2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexChatTypingLiveTests.swift; sourceTree = "<group>"; };
 		305F2D656F34DF018809AD61 /* WebSocketHandshake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketHandshake.swift; sourceTree = "<group>"; };
 		3075C285D7AA76CE9D51A794 /* TmuxTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxTransport.swift; sourceTree = "<group>"; };
 		30773AA9AE9CD8B9488525D4 /* UsageWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWidgetSnapshot.swift; sourceTree = "<group>"; };
@@ -3208,6 +3210,7 @@
 			children = (
 				691F0B12B70ADF3F3D828304 /* AgentTitleRenameLiveTests.swift */,
 				E358F8FCF35FCD51358D1D06 /* AgyModelSwitchLiveTests.swift */,
+				2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */,
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
 				28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */,
 				09C9FB49251E6D882F895843 /* RexProgramStatusLiveTests.swift */,
@@ -4605,6 +4608,7 @@
 				44F8F862F448BCC8A52D54A1 /* AgentTitleRenameLiveTests.swift in Sources */,
 				AE316A55AC9A52A1D270128D /* AgyModelSwitchLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
+				A53450D708FB706F6BF5DE55 /* RexChatTypingLiveTests.swift in Sources */,
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
 				E37D12C65C1143ADB642AE00 /* RexInventoryLiveTests.swift in Sources */,
 				79AAD22C6A5BCD59DE6C0A46 /* RexProgramStatusLiveTests.swift in Sources */,
