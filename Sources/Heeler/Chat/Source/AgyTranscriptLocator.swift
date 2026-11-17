@@ -34,7 +34,7 @@ struct AgyTranscriptLocator: Sendable {
     /// The default directory, under the Host's home.
     static let defaultRoot = ".gemini/antigravity-cli"
 
-    private static let headBytes: UInt64 = 4 << 10
+    private static let headBytes: UInt64 = 16 << 10
     private static let maximumParentHops = 8
 
     let files: ChatHostFiles
@@ -95,26 +95,49 @@ struct AgyTranscriptLocator: Sendable {
     }
 
     /// The parent conversation's id when a transcript's opening steps are a
-    /// subagent's system message from that parent (`[Message] timestamp=…
+    /// subagent's or swarm worker's system messages (`[Message] timestamp=…
     /// sender=<id> …`). A subagent may start with a `SYSTEM_SDK` reminder
-    /// before that message; a top-level conversation starts with
-    /// `USER_INPUT` or a `/fork` checkpoint, before any subagent replies to
-    /// it.
+    /// before that message; a swarm worker (agy 1.5.9) can start with a
+    /// `[swarm] new board message` whose `sender` is a sibling worker before
+    /// step 1's `You have just started. Your assignment` from the spawner. A
+    /// top-level conversation starts with `USER_INPUT` or a `/fork`
+    /// checkpoint, before any subagent or worker replies to it.
     static func parentSessionID(inHead head: Data) -> String? {
         let text = String(decoding: head, as: UTF8.self)
+        var nonBoardSender: String?
+        var fallbackSender: String?
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             let header = line.range(of: #""content":"#).map { line[..<$0.lowerBound] } ?? line.prefix(256)
             guard header.contains(#""type":"SYSTEM_MESSAGE""#) || header.contains(#""type": "SYSTEM_MESSAGE""#) else {
-                return nil
+                break
             }
             guard let marker = line.range(of: #"<SYSTEM_MESSAGE>\n[Message] "#) else { continue }
             let rest = line[marker.upperBound...]
-            let envelope = rest.range(of: " content=").map { rest[..<$0.lowerBound] } ?? rest.prefix(128)
-            guard let sender = envelope.range(of: "sender=") else { return nil }
+            guard let contentRange = rest.range(of: " content=") else {
+                let envelope = rest.prefix(128)
+                if let sender = envelope.range(of: "sender=") {
+                    let raw = envelope[sender.upperBound...].prefix { $0 != " " }
+                    if let id = ConversationReference.canonicalUUID(String(raw)) {
+                        fallbackSender = fallbackSender ?? id
+                    }
+                }
+                continue
+            }
+            let envelope = rest[..<contentRange.lowerBound]
+            guard let sender = envelope.range(of: "sender=") else { continue }
             let raw = envelope[sender.upperBound...].prefix { $0 != " " }
-            return ConversationReference.canonicalUUID(String(raw))
+            guard let id = ConversationReference.canonicalUUID(String(raw)) else { continue }
+            let body = rest[contentRange.upperBound...]
+            if body.hasPrefix("You have just started.") {
+                return id
+            }
+            if !body.hasPrefix("[swarm] new board message") {
+                nonBoardSender = nonBoardSender ?? id
+            } else {
+                fallbackSender = fallbackSender ?? id
+            }
         }
-        return nil
+        return nonBoardSender ?? fallbackSender
     }
 
     /// `<root>/brain/<id>`.

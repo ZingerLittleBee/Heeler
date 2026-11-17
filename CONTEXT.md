@@ -152,7 +152,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs and Subagent transcripts, and screen task checks) confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs, Subagent transcripts, Swarm side files, and screen task checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -508,7 +508,9 @@ stays listed until the user's next prompt, and the strip over the Composer hides
 once both the foreground turn and all Background Work have ended. Chat only
 shows it and stops none of it. A Subagent is one background agent; a Workflow is
 a script that runs many and is listed as one row with its agents done when its
-journal records them.
+journal records them. An Antigravity CLI native **Swarm** (`brain/<id>/.system_generated/swarm`)
+shows in its own Swarm Live Bar above the Composer and opens a three-tab sheet
+(Board, Members and Overview) with read-only worker sub-conversation peeks.
 _Avoid_: background task, task list, jobs
 
 **Turn**:

@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Show Antigravity CLI (`agy`) Swarms in Chat on macOS and Linux Hosts with a live Swarm bar above the Composer, a 3-tab Swarm sheet (**Board**, **Members**, and **Overview**), read-only worker sub-conversation views, `/swarm` in the `/` skill menu, and Working status promotion while task workers actively run. (PR #763)
 - Add an optional `backend` field in Settings › Agent List Fields that renders the Server backend (`core`, `tui`, `rex`, or `tmux`) separately from the Host name in Agent rows and Live Activities. (PR #758)
 - Save a conversation title in Rename even while an Agent is running: Heeler confirms with an optional **Save and Don’t Show Again** choice, shows the new title on this device right away, and sends the native rename command automatically once the same Agent and conversation stop. (PR #752)
 - Clear the prefilled title or name in Rename, Rename Agent, and Rename Workspace in one tap with the trailing clear button, keeping focus in the field. (PR #752)
