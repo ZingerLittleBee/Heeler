@@ -46640,6 +46640,7 @@
     "Rex's answer could not be read." : {},
     "Rex's session list could not be read." : {},
     "Rex's status named no server instance." : {},
+    "Rex's terminal modes could not be read." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {

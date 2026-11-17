@@ -272,14 +272,17 @@ final class RexComposerSend: CheckedComposerSend {
         }
     }
 
-    /// A read that failed before anything left. A screen or modes answer that
-    /// shows nothing certain is Chat's unreadable screen, not a silent Host.
+    /// A read that failed before anything left. A kitty flags read that shows
+    /// nothing certain is Chat's unreadable screen, and a modes answer this
+    /// build cannot read is Rex's answer, neither a silent Host.
     private static func beforePaste(_ error: any Error) -> Outcome {
         switch error {
         case TransportError.rexServerGone: .refused(.inputNotReady(serverGone))
         case RexControlError.server(let failure) where failure.kind == .notFound:
             .refused(.inputNotReady(agentEnded))
         case is RexScreenProblem: .refused(.inputNotReady(screenUnreadable))
+        case TransportError.rexAnswerUnreadable(let detail):
+            .refused(.inputNotReady(TransportError.rexAnswerUnreadable(detail).presentation.message))
         default: .failed(noAnswerBeforePaste)
         }
     }

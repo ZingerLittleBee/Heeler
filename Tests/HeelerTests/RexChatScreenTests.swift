@@ -343,9 +343,13 @@ struct RexChatScreenTests {
         #expect(off.bracketedPasteSetting == false)
         #expect(off.kittyKeyboardFlags == 0)
 
-        #expect(throws: RexScreenProblem.unreadableAnswer) {
+        // An answer without them is Rex's answer this build cannot read, not
+        // an unreadable screen.
+        let unreadable = TransportError.rexAnswerUnreadable("Rex's terminal modes could not be read.")
+        #expect(throws: unreadable) {
             try RexChatScreen.modes(from: ["screen": "sideways", "modes": []], kittyKeyboardFlags: 0)
         }
+        #expect(throws: unreadable) { try RexChatScreen.modes(from: ["screen": "primary"], kittyKeyboardFlags: 0) }
     }
 
     // MARK: Reading on the control link

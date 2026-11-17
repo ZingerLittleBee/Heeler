@@ -150,10 +150,13 @@ enum RexChatScreen {
 
     /// The program's modes for typing: cursor keys, bracketed paste and the
     /// screen from `modes`, with the kitty keyboard flags read with the text.
+    /// An answer without them throws `TransportError.rexAnswerUnreadable`:
+    /// its shape is Rex's, unlike a screen's content, so it is no unreadable
+    /// screen.
     static func modes(from answer: JSONValue, kittyKeyboardFlags: UInt8) throws -> TerminalModeTracker {
         guard case .array(let modes)? = answer["modes"], let screen = answer["screen"]?.stringValue,
             screen == "primary" || screen == "alternate"
-        else { throw RexScreenProblem.unreadableAnswer }
+        else { throw TransportError.rexAnswerUnreadable(String(localized: "Rex's terminal modes could not be read.")) }
         // A DEC private mode; an ANSI mode with the same number is another one.
         func privateMode(_ number: Int) -> Bool? {
             let mode = modes.first { $0["number"] == .number(Double(number)) && $0["ansi"] != .bool(true) }

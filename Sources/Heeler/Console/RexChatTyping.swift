@@ -245,14 +245,16 @@ final class RexChatTyping: CheckedChatTyping {
     }
 
     /// What a read that failed says: another server than the terminal's, a
-    /// block that closed, an answer that shows nothing certain, or no answer
-    /// to go on.
+    /// block that closed, a screen that shows nothing certain, a modes answer
+    /// this build cannot read, or no answer to go on.
     private static func saying(_ error: any Error) -> String {
         switch error {
         case let refusal as Refusal: refusal.message
         case TransportError.rexServerGone: serverGone
         case RexControlError.server(let failure) where failure.kind == .notFound: agentLeft
         case is RexScreenProblem: unreadable
+        case TransportError.rexAnswerUnreadable(let detail):
+            TransportError.rexAnswerUnreadable(detail).presentation.message
         default: noAnswer
         }
     }

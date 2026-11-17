@@ -101,6 +101,24 @@ struct RexChatTypingTests {
         #expect(await rig.inputs().isEmpty)
     }
 
+    /// A modes answer this build cannot read presses nothing, and says Rex's
+    /// answer could not be read, not that the screen could not be.
+    @Test func anUnreadableModesAnswerPressesNothing() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        await rig.server.answer(RexInventoryWire.terminalMethod("modes")) { _ in
+            .result(["screen": "sideways", "modes": []])
+        }
+
+        let message = await refusal { try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID) }
+
+        #expect(
+            message
+                == "Rex sent an answer Heeler cannot read: Rex's terminal modes could not be read. Check the Rex version on the Host."
+        )
+        #expect(await rig.inputs().isEmpty)
+    }
+
     /// A write with no answer may have arrived: it is reported unknown, not
     /// as a key Heeler pressed nothing for, and never sent again.
     @Test func aWriteWithNoAnswerIsNotSentAgain() async throws {

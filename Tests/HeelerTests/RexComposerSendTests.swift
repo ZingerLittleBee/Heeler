@@ -98,6 +98,24 @@ struct RexComposerSendTests {
         #expect(await rig.inputs().isEmpty)
     }
 
+    /// A modes answer this build cannot read sends nothing, and says Rex's
+    /// answer could not be read, not the screen and not a silent Host.
+    @Test func anUnreadableModesAnswerSendsNothing() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.prompt), world: Self.world())
+        defer { rig.end() }
+        let send = try rig.composerSend()
+        await rig.server.answer(RexInventoryWire.terminalMethod("modes")) { _ in .result(["screen": "primary"]) }
+
+        let outcome = await send.send("hello", route: .chat, attach: nil)
+        #expect(
+            outcome
+                == .refused(
+                    .inputNotReady(
+                        "Rex sent an answer Heeler cannot read: Rex's terminal modes could not be read. Check the Rex version on the Host."
+                    )))
+        #expect(await rig.inputs().isEmpty)
+    }
+
     /// The program can turn bracketed paste off after the first read: the
     /// read in the lane, just before the paste, decides.
     @Test func bracketedPasteOffByTheLaneSendsNothing() async throws {
