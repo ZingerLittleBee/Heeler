@@ -1,0 +1,232 @@
+import Foundation
+import Testing
+
+@testable import Heeler
+
+/// Chat's reads and typing in a Rex terminal (ADR 0055), as the herdr-core and
+/// tmux suites pin theirs: on the control link only, to the Agent that holds
+/// the foreground when the lane is held, over the screen a Blocked Card
+/// answers, once each, and never on a screen Rex's answer does not show with
+/// certainty. Nothing takes a size or a block, and nothing is recorded on the
+/// Host. Ids, programs and screens are invented.
+@MainActor
+@Suite("Rex chat typing", .timeLimit(.minutes(1)))
+struct RexChatTypingTests {
+    private static let dialog = [
+        "\u{1B}[0m\u{1B}[1mAllow this command?\u{1B}[0m", "\u{1B}[0m\u{1B}[38;5;2m❯ 1. Yes\u{1B}[0m", "  2. No", "",
+    ]
+
+    private func typing(_ rig: RexChatRig) throws -> RexChatTyping {
+        try rig.projection.chatTyping(at: RexChatRig.paneID)
+    }
+
+    private func refusal(_ operation: () async throws -> Void) async -> String? {
+        do {
+            try await operation()
+            return nil
+        } catch let refusal as HerdrCoreChatTyping.Refusal {
+            return refusal.message
+        } catch {
+            Issue.record("Expected a refusal, got \(error)")
+            return nil
+        }
+    }
+
+    // MARK: Keys
+
+    /// A key is read for, checked and written on the control link: the
+    /// holder, the program's flags and modes, the holder again in the lane,
+    /// then one write.
+    @Test func aKeyGoesToTheAgentStillHoldingTheTerminal() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        let before = await rig.server.requests.count
+
+        try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID)
+
+        #expect(await rig.written() == ["\u{1B}"])
+        let terminal = RexInventoryWire.terminalMethod("")
+        let methods = await rig.server.requests.dropFirst(before).map(\.method).filter { $0.hasPrefix(terminal) }
+        #expect(methods == [
+            RexInventoryWire.terminalMethod("process"), RexInventoryWire.terminalMethod("format"),
+            RexInventoryWire.terminalMethod("blob_read"), RexInventoryWire.terminalMethod("modes"),
+            RexInventoryWire.terminalMethod("process"), RexChatRig.write,
+        ])
+        await rig.tookNothing()
+    }
+
+    /// Keys follow the modes and kitty flags Rex reports, and go in one write.
+    @Test func keysAreEncodedForTheProgramsModes() async throws {
+        let block = FakeRexChatBlock(lines: Self.dialog)
+        block.update {
+            $0.kittyFlags = 1
+            $0.cursorKeys = true
+        }
+        let rig = try await RexChatRig.start(block)
+        defer { rig.end() }
+
+        try await rig.projection.sendAgentKeys(["esc", "esc"], to: RexChatRig.paneID)
+        block.update { $0.kittyFlags = 0 }
+        try await rig.projection.sendAgentKeys(["up"], to: RexChatRig.paneID)
+
+        #expect(await rig.written() == ["\u{1B}[27u\u{1B}[27u", "\u{1B}OA"])
+    }
+
+    /// A shell left behind gets nothing meant for the Agent.
+    @Test func aTerminalTheAgentLeftGetsNothing() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        rig.block.update { $0.foregrounds = [FakeRexChatBlock.foreground("zsh", pid: 4300)] }
+
+        let message = await refusal { try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID) }
+
+        #expect(message == "The Agent no longer holds this terminal, so Heeler pressed nothing.")
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    /// The holder is read again once the block's lane is held: another
+    /// process by then gets nothing.
+    @Test func anotherProcessAsTheLaneOpensGetsNothing() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        rig.block.update {
+            $0.foregrounds = [
+                FakeRexChatBlock.foreground("claude", pid: 4242), FakeRexChatBlock.foreground("claude", pid: 5151),
+            ]
+        }
+
+        let message = await refusal { try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID) }
+
+        #expect(message == "Another process took over the terminal as Heeler reached it, so Heeler pressed nothing.")
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    /// A write with no answer may have arrived: it is reported unknown and
+    /// never sent again.
+    @Test func aWriteWithNoAnswerIsNotSentAgain() async throws {
+        let rig = try await RexChatRig.start(
+            FakeRexChatBlock(lines: Self.dialog),
+            inputDeadline: RexDeliveryDeadline(silence: .milliseconds(100), limit: .milliseconds(200)))
+        defer { rig.end() }
+        await rig.server.stopAnswering(RexChatRig.write)
+
+        await #expect(throws: TransportError.self) {
+            try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID)
+        }
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(await rig.written() == ["\u{1B}"])
+    }
+
+    // MARK: Pastes
+
+    /// A paste goes whole as a paste event; text with a line break waits for
+    /// bracketed paste, which would otherwise send each line.
+    @Test func linesNeedBracketedPaste() async throws {
+        let block = FakeRexChatBlock(lines: Self.dialog)
+        block.update { $0.bracketedPaste = false }
+        let rig = try await RexChatRig.start(block)
+        defer { rig.end() }
+
+        let message = await refusal { try await rig.projection.pasteIntoAgent("one\ntwo", paneID: RexChatRig.paneID) }
+        #expect(message == ComposerRefusal.programNotAcceptingPaste.message)
+        #expect(await rig.inputs().isEmpty)
+
+        try await rig.projection.pasteIntoAgent("one line", paneID: RexChatRig.paneID)
+        block.update { $0.bracketedPaste = true }
+        try await rig.projection.pasteIntoAgent("one\ntwo", paneID: RexChatRig.paneID)
+
+        #expect(await rig.pasted() == ["one line", "one\ntwo"])
+        await rig.tookNothing()
+    }
+
+    // MARK: The screen and the Blocked Card
+
+    @Test func theScreenIsReadOnTheControlLink() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+
+        let screen = try await rig.projection.readAgentScreen(RexChatRig.paneID)
+
+        #expect(screen.rows.map(\.text) == ["Allow this command?", "❯ 1. Yes", "  2. No", ""])
+        await rig.tookNothing()
+    }
+
+    /// A screen with a sequence Rex was never seen to write is no screen, and a
+    /// Blocked Card's answer over it does not go.
+    @Test func anUnreadableScreenIsNoScreen() async throws {
+        let block = FakeRexChatBlock(lines: Self.dialog)
+        let rig = try await RexChatRig.start(block)
+        defer { rig.end() }
+        let screen = try typing(rig).blockedScreen
+        _ = try await screen.readScreen()
+        block.update { $0.lines[0] = "\u{1B}[2J" + "Allow this command?" }
+
+        await #expect(throws: TransportError.self) { try await screen.readScreen() }
+        let message = await refusal {
+            try await screen.type(.keys(["1"])) { $0.rows.first?.text == "Allow this command?" }
+        }
+
+        #expect(message == "Rex's answer could not be read.")
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    /// The card's answer goes only while its screen still shows, read in the
+    /// lane just before the write.
+    @Test func aBlockedAnswerGoesOnlyOverItsScreen() async throws {
+        let block = FakeRexChatBlock(lines: Self.dialog)
+        let rig = try await RexChatRig.start(block)
+        defer { rig.end() }
+        let screen = try typing(rig).blockedScreen
+        let shows: @Sendable (ANSIScreen) -> Bool = { $0.rows.first?.text == "Allow this command?" }
+
+        _ = try await screen.readScreen()
+        try await screen.type(.keys(["1"]), whileShowing: shows)
+        #expect(await rig.written() == ["1"])
+
+        block.update { $0.lines[0] = "Another question?" }
+        let message = await refusal { try await screen.type(.keys(["1"]), whileShowing: shows) }
+
+        #expect(message == BlockedCardStore.changedMessage)
+        #expect(await rig.written() == ["1"])
+        #expect(screen.recordAnswer == nil)
+    }
+
+    /// Another process since the card's read: its dialog may not be the one
+    /// the user answers.
+    @Test func anotherHolderSinceTheScreenReadGetsNothing() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        let screen = try typing(rig).blockedScreen
+        _ = try await screen.readScreen()
+        rig.block.update { $0.foregrounds = [FakeRexChatBlock.foreground("claude", pid: 5151)] }
+
+        let message = await refusal { try await screen.type(.keys(["1"])) { _ in true } }
+
+        #expect(message == "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing.")
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    // MARK: Another server
+
+    /// Typing made on one server instance sends nothing once another answers.
+    @Test func anotherServerGetsNothing() async throws {
+        let world = FakeRexWorld(sessions: [RexChatRig.studio()])
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog), world: world, servers: 2)
+        defer { rig.end() }
+        let typing = try typing(rig)
+        let first = rig.projection.inventoryCore
+
+        world.restart(as: "instance-b")
+        await rig.server.close(.goingAway)
+        try await rig.waitUntil("the next instance") {
+            rig.projection.inventoryCore != first && !rig.projection.isAwaitingSnapshot
+        }
+
+        let message = await refusal { try await typing.press(["esc"]) }
+
+        #expect(message == TransportError.rexServerGone.presentation.message)
+        #expect(await rig.inputs().isEmpty)
+        #expect(try rig.projection.chatTyping(at: RexChatRig.paneID) !== typing)
+    }
+}

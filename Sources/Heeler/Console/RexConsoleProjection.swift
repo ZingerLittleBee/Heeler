@@ -12,7 +12,8 @@ import Foundation
 /// first paint (ADR 0052), whether it is listed as an Agent or a Terminal;
 /// every action a Host offers is unavailable on a Rex Host. What Chat needs of
 /// the Host it reads over the same SSH connection, and writes nothing there
-/// (`RexHostReads`).
+/// (`RexHostReads`). Chat reads a terminal's screen and types into it on the
+/// control link, one checked request at a time (`RexChatTyping`, ADR 0055).
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
 /// device's seen marks (`RexTurnState`) are kept by server instance on this
@@ -76,17 +77,29 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// hold, by terminal.
     private var droppedPicks: [String: Set<String>] = [:]
 
+    /// How long Chat's reads of a block wait on the control link.
+    private let chatReadDeadline: RexDeliveryDeadline
+    /// Chat's typing by Pane, kept so the screen it last read is the one its
+    /// keys are checked against. Another instance's Panes are other Panes.
+    private var chatTypings: [String: RexChatTyping] = [:]
+
     init(
         host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
-        pins: PinnedAgentsStore, onChange: @escaping @MainActor @Sendable () -> Void
+        pins: PinnedAgentsStore, chatReadDeadline: RexDeliveryDeadline = RexConsoleProjection.chatReadDeadline,
+        onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.memory = memory
         self.pins = pins
+        self.chatReadDeadline = chatReadDeadline
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
     }
+
+    /// A read the lab answered in milliseconds, with room for a redraw page
+    /// queued ahead of it on the link.
+    nonisolated static let chatReadDeadline = RexDeliveryDeadline(silence: .seconds(5), limit: .seconds(10))
 
     // MARK: Lifecycle
 
@@ -206,6 +219,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                     shownAgents = []
                     sessionEventCounts = [:]
                     droppedPicks = [:]
+                    chatTypings = [:]
                 }
             }
             self.server = server
@@ -278,6 +292,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         agentsByPane = agents
         lastKnownAgentsByPane = agents
         pins.retainPins(hostID: host.id, paneIDs: Set(terminalsByPane.keys))
+        chatTypings = chatTypings.filter { terminalsByPane[$0.key] != nil }
         workspaces = builder.workspaceRows()
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
@@ -620,9 +635,59 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func agentInfo(paneID _: String) async throws -> Agent { throw Self.unavailable }
     func processInfo(paneID _: String) async throws -> PaneProcessInfo { throw Self.unavailable }
     func promptAgent(_: AgentPromptParams) async throws -> Agent { throw Self.unavailable }
-    func readAgentScreen(_: String) async throws -> ANSIScreen { throw Self.unavailable }
-    func sendAgentKeys(_: [String], to _: String) async throws { throw Self.unavailable }
-    func pasteIntoAgent(_: String, paneID _: String) async throws { throw Self.unavailable }
+
+    // MARK: Chat's typing (ADR 0055)
+
+    /// The screen on the control link, decoded only where its shape is known.
+    func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
+        try await chatTyping(at: paneID).readScreen()
+    }
+
+    /// Keys checked against the Agent holding the terminal, on the control link.
+    func sendAgentKeys(_ keys: [String], to paneID: String) async throws {
+        try await chatTyping(at: paneID).press(keys)
+    }
+
+    func pasteIntoAgent(_ text: String, paneID: String) async throws {
+        try await chatTyping(at: paneID).paste(text)
+    }
+
+    /// Chat's checked typing for this Pane; nil for an id that names no block.
+    func checkedChatTyping(at paneID: String) -> (any CheckedChatTyping)? {
+        try? chatTyping(at: paneID)
+    }
+
+    func chatTyping(at paneID: String) throws -> RexChatTyping {
+        if let typing = chatTypings[paneID] { return typing }
+        guard let address = RexPaneAddress(paneID: paneID) else { throw Self.unavailable }
+        let typing = RexChatTyping(address: address, projection: self)
+        chatTypings[paneID] = typing
+        return typing
+    }
+
+    /// Whether what keeps to `pin` still means this inventory's terminals.
+    func admits(_ pin: TerminalCorePin) -> Bool {
+        inventoryCore.map(pin.admits) ?? true
+    }
+
+    /// Chat's requests to the block at `address`, on the server `pin` keeps
+    /// to: no other server's block gets them, nor one on a later connection.
+    /// Throws `TransportError.rexServerGone` for another server, and what the
+    /// session throws while no connection is up.
+    func blockRequests(at address: RexPaneAddress, keepingTo pin: TerminalCorePin) async throws -> RexBlockRequests {
+        guard admits(pin) else { throw TransportError.rexServerGone }
+        let requests = try await session.blockRequests(at: address, readDeadline: chatReadDeadline)
+        guard pin.admits(requests.server.instanceID) else { throw TransportError.rexServerGone }
+        return requests
+    }
+
+    /// The Agent Status of `holder`'s Agent: the record the inventory holds,
+    /// read against the foreground just read rather than the listed one.
+    func agentStatus(at address: RexPaneAddress, heldBy holder: RexAgentHolder) -> AgentStatus {
+        var details = listedDetails(at: address) ?? RexTerminalDetails()
+        details.noteForeground(holder.process)
+        return RexAgentRule.status(of: details, heldBy: holder.kind)
+    }
 
     // MARK: The live connection
 
