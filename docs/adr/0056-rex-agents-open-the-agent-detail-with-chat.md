@@ -91,9 +91,12 @@ the code follows them:
   the same `setAgentShown` every kind's detail reports. `focusAgent` tells the
   server nothing, since Done is kept on this device.
 - **Stop and the Blocked Card.** The Chat Composer's Stop runs Chat's stop
-  plan through `sendAgentKeys` (ADR 0055). The terminal Composer's Stop presses
-  Esc through the terminal's own input, in the block's lane. Both are offered
-  only while the Agent is Working; Stop while Blocked stays tmux's. A Blocked
+  plan through `sendAgentKeys` (ADR 0055). The terminal Composer's Stop
+  (`RexConsoleProjection.checkedTerminalStop`) presses one Esc the same way, on
+  the control connection in the block's lane, only while the Agent that leads
+  the foreground still does; a block with no Agent listed keeps Send, as a
+  herdr-core Terminal's shell does. Both are offered only while the Agent is
+  Working; Stop while Blocked stays tmux's. A Blocked
   Card reads the screen for Blocked, and for the idle cases every kind has;
   it never reads for an Unknown Claude Code or Codex.
 - **Attachments stay off.** ADR 0055 found no narrow way to write one file on
@@ -114,8 +117,10 @@ to the server's socket. Chat adds reads, and nothing that writes:
 - one exec per connection that prints the home directory, and only if it
   prints none, one that checks for native Windows;
 - one bounded exec per process read, which prints a process's start time,
-  selected environment variables and open files, and is cut off by an
-  8-second watchdog on the Host and a 12-second deadline here.
+  selected environment variables and open files, and for a Codex the words
+  of its command line that decide the shared server, every other word as a
+  placeholder; it picks its macOS or Linux reads with `uname -s`, and is cut
+  off by an 8-second watchdog on the Host and a 12-second deadline here.
 
 They run under the connection's ordinary session slots, so a slow read waits
 behind other reads, never behind the control or data links. `RexHostReads`
@@ -147,12 +152,16 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
   not at all for a same-name process replacing another without output, an
   `exec` in place or a new file in a program's folders. A read of the
   foreground was current within about 30 ms.
-- `server.version` named the platform, so no `uname` exec is needed.
+- `server.version` named the platform, so no exec runs only to ask for it;
+  a process read's own exec still runs `uname -s` to pick its reads.
   Direct-streamlocal channels did not count toward the lab sshd's
   `MaxSessions`; exec and SFTP channels did.
 - A real Codex already running in a terminal, read only through the process
   table and never typed into, showed the facts a check needs; it held no
-  rollout open at that moment, so a check would have said it can't tell.
+  rollout open at that moment. Rex names no command line, so the check now
+  reads the Codex's own launch words to tell the shared server's notice from
+  "can't tell"; that read was checked against an inert local stand-in, not
+  that Codex.
 - Live suite `RexChatTypingLiveTests` typed keys, pastes, Composer Send and a
   Blocked Card answer into a stand-in on the live server, each arriving once
   and in order, with the block's size and owner unchanged.
@@ -169,8 +178,8 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
 - Typing through the open terminal, herdr-core's way, or an Attach of Chat's
   own, tmux's way: dropped in ADR 0055, since either needs a data link and
   takes or paints at a size.
-- A platform probe through the Host services, or an exec of `uname`: dropped;
-  the server names its platform, and the Host services stay closed.
+- A platform probe through the Host services, or an exec only for `uname`:
+  dropped; the server names its platform, and the Host services stay closed.
 - A second window's own viewer of the same terminal, as core Terminals have:
   dropped. A Rex block has one stream per client, so that viewer would wait on
   the block until the first window's Attach let go, which a retained Attach

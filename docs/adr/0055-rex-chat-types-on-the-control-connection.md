@@ -44,8 +44,10 @@ terminal Composer offers Stop.
 - **Each request once.** A request that got no answer may have reached the
   program and is never sent again. A failure before the first request of a
   step left means nothing was sent; one after it is reported as an unknown
-  outcome. A Composer Send whose last request went unanswered warns once that
-  the message may still be in the Agent's input, as on herdr-core.
+  outcome, which for Chat's keys and pastes is the Host not confirming the
+  action, never that nothing was pressed. A Composer Send whose last request
+  went unanswered warns once that the message may still be in the Agent's
+  input, as on herdr-core.
 - **The holder.** Typing goes only to the known Agent that leads the
   foreground (`RexAgentHolder`, read with `RexAgentRule`): read before
   anything is encoded, and again once the lane is held. A Blocked Card's
@@ -71,28 +73,35 @@ terminal Composer offers Stop.
   delays typing, and gives up after 5 seconds of silence or 10 seconds in all.
   In the lab, over a link of about 50 ms each way and 10 Mbit/s, a tail read
   each second left typing and events at their usual pace, where whole reads
-  held both back.
+  held both back. Each read leaves the rest of the answer on the server
+  behind an id, as does the short read for a key's kitty flags; Rex
+  0.1.0-preview.14 kept only the latest few, and a watch of a 10,000-line
+  history once a second for five and a half minutes held the server's
+  footprint at most 15 MB up, flat, until it ended.
 - **Keys and pastes.** Heeler encodes the keys for the modes and kitty
   keyboard flags Rex reports, with the encoder herdr-core Chat uses, and sends
   them in one `write`, so keys that must arrive together do. A paste goes whole
   as Rex's paste event and must fit in one message. Text with a line break is
-  pasted only while the program has bracketed paste on, since otherwise the
-  server would turn each line break into a carriage return that submits.
+  pasted only while the program has bracketed paste on, read in the lane just
+  before the paste, since otherwise the server would turn each line break
+  into a carriage return that submits.
 - **Composer Send in tmux's order of checks** (ADRs 0035 and 0045), from the
   terminal and from Chat alike: a known Agent holds the foreground, its status
   is not Blocked, bracketed paste is on (for any draft, as on tmux), and the
-  draft fits; the paste, after the holder is read again in the lane; then
-  Enter, after the holder and status are read again in the lane, within the
-  two-second submit window. A shell that took over after the paste gets one
-  `0x03`, which drops the pasted text unrun. A Send from an open terminal
+  draft fits; the paste, after the holder and bracketed paste are read again
+  in the lane; then Enter, after the holder and status are read again in the
+  lane, within the two-second submit window. A shell that took over after the
+  paste gets one `0x03`, which drops the pasted text unrun, only while that
+  shell still leads the foreground, read again in the lane; the Agent back by
+  then, or another process, gets nothing. A Send from an open terminal
   view adds what it submitted to that view's message index, as on the other
   Server Kinds.
 - **Stop.** Chat's Stop presses the keys of the program's Stop plan through
   these key presses, screen checks included, as on herdr-core Hosts (ADR
   0024). The terminal Composer offers no Stop on a Rex Host. (Amended by ADR
   0056: the Agent detail's terminal Composer offers Stop while the Agent is
-  Working, and presses Esc through the terminal's own input, in the block's
-  lane.)
+  Working, and presses one Esc as these key presses do, holder check
+  included.)
 - **Status decides Stop and the Blocked Card.** Both follow the Agent Status
   read from Rex's Program Status (ADR 0054). An Agent whose status is Unknown,
   because its program reported none, gets no Stop and no Blocked Card.

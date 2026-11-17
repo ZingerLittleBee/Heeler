@@ -70,7 +70,9 @@ server has been observed yet.
   into one block on the control connection, in the lane an open view's input
   shares (`RexBlockLanes`), with no `session.attach`, data connection, size or
   take. `RexChatScreen` reads the screen, `RexChatTyping` checks the holder
-  and types, and `RexComposerSend` pastes and submits. See
+  and types, Chat's Stop and the terminal Composer's
+  (`RexConsoleProjection.checkedTerminalStop`) press keys through it, and
+  `RexComposerSend` pastes and submits. See
   [Chat's reads and input](#chats-reads-and-input).
 
 ## Known limits
@@ -321,7 +323,8 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
 - **The machine.** `server.version` names a `platform`, `darwin_arm64` on an
   Apple silicon Mac. No Linux value was seen; `RexServerPlatform` reads one
   that names `linux` as Linux and anything else as unknown, and Heeler keeps
-  the kernel it learns rather than running `uname` on the Host.
+  the kernel it learns, so no exec runs only to ask for it. Each process read
+  still picks its macOS or Linux reads with `uname -s` inside its own exec.
 - **The foreground.** The `process` method and `process_changed` name the
   leader of the process group that holds the terminal, with its name, a first
   argument and a working directory. A launcher (node under `npx`, a shell
@@ -350,10 +353,19 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
   (`HostCapabilities.rexChatPrograms`): each names its conversation in files
   its own process leads to, with nothing installed. Grok Build, Oh My Pi and
   agy were not confirmed, and Pi and OpenCode name theirs only through
-  Heeler's extension or plugin, which a Rex Host never gets. With no command
-  line from Rex, a check cannot tell how a Codex was started, so one on its
-  shared server holding no rollout reads as "can't tell", not as the shared
-  server's notice.
+  Heeler's extension or plugin, which a Rex Host never gets. Rex names no
+  command line, so for a Codex the process read prints the words of its own
+  argument vector that decide the shared server (`CodexLaunch.launchWords`),
+  in order, and a placeholder for every other word, which never leaves the
+  Host. A Codex there that holds no rollout, while the shared server's
+  control socket exists, gets the shared server's notice and no list to
+  choose from, as on the other Server Kinds. The read was checked against the
+  macOS process table with an inert local stand-in named `codex`, not with a
+  Codex inside Rex.
+- **Deep process trees.** Past its 64-process cap the descendant walk names
+  no process, the foreground included, so a foreground the walk leaves
+  unnamed is still the one Rex named and binds; one the walk answered
+  without is gone.
 
 ### Resume and close
 
@@ -626,8 +638,9 @@ recorded the bytes it read, under a set of modes.
 
 Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-17: lab captures
 `k1_typing` for input without a view, `k2_screen` and `k3_modes_keys` for the
-screen and modes, and `k2b_cost` and `k2c_slowlink` for what reads cost,
-against made-up lab programs in `heeler-lab-` sessions.
+screen and modes, `k2b_cost` and `k2c_slowlink` for what reads cost, and
+`k9_blob_memory`, `k9b_blob_lifetime` and `k9c_blob_bound` for what reads
+leave on the server, against made-up lab programs in `heeler-lab-` sessions.
 
 - A control client that had only called `session.attach_all`, never
   `session.attach`, could `write` to a block and send it a paste event, and
@@ -656,6 +669,16 @@ against made-up lab programs in `heeler-lab-` sessions.
   a page can stop short of what was asked.
 - No argument limits the text to the visible screen; arguments `format` does
   not know were accepted and ignored.
+- A `format` answer longer than its first page left the rest on the server
+  behind an id, the 32-byte read for the kitty flags included. The server
+  kept only the latest few: of 60 reads of a 10,000-line history
+  (459,059 bytes an answer) sent back to back, only the last 4 ids could
+  still be read. With no newer read, an id was still readable after 40
+  seconds, and a read on another client did not end it. A screen read like
+  Chat's (a 1 KiB first page, then a 16 KiB tail) once a second for 330
+  reads over five and a half minutes raised the server's footprint from 49
+  MB to between 57 and 64 MB, flat throughout, and it was back to 53 MB
+  within 15 seconds of the last read; the server's RSS did not grow.
 - On the local socket, whole reads of a 10,000-line history every second, then
   every 150 ms, left another block's typing and the connection's events at
   their usual pace. Through a lab proxy of about 50 ms each way and 10 Mbit/s,
