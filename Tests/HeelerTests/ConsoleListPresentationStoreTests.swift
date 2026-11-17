@@ -177,11 +177,12 @@ struct ConsoleListPresentationStoreTests {
         defer { cleanup() }
         let store = ConsoleListPresentationStore(defaults: defaults)
         let records = catalog.consoleHosts
+        let serverOrder = Dictionary(uniqueKeysWithValues: records.enumerated().map { ($0.element.id, $0.offset) })
         let agents = [
             consoleAgent(host: record, paneID: "p1", status: .working, label: "api"),
             consoleAgent(host: try #require(records.first { $0.id == build.id }), paneID: "p1", status: .idle, label: "api"),
             consoleAgent(host: try #require(records.first { $0.id == tui.id }), paneID: "p1", status: .done, label: "api"),
-        ]
+        ].consoleSorted(serverOrder: serverOrder)
         let byHost = store.sections(hosts: records, agents: agents)
         #expect(byHost.map(\.hostName) == ["m3", "Build"])
         #expect(byHost.map(\.hostIDs) == [[tui.id, tmux.id], [build.id]])
@@ -191,6 +192,24 @@ struct ConsoleListPresentationStoreTests {
         let cards = store.workspaceSections(hosts: records, agents: agents)
         #expect(cards.map(\.hostName) == ["m3", "m3", "Build"])
         #expect(cards.map(\.id.hostID) == [tui.id, tmux.id, build.id])
+
+        // When a later Server of m3 has a higher-priority Agent, both By Host
+        // and By Workspace match All Agents filtered to m3 instead of burying
+        // the urgent Agent behind the first Server's Idle rows.
+        let tuiRecord = try #require(records.first { $0.id == tui.id })
+        let mixed = [
+            consoleAgent(host: tuiRecord, paneID: "tui-idle", status: .idle, workspaceID: "w-idle", label: "idle-space"),
+            consoleAgent(host: tuiRecord, paneID: "tui-working", status: .working, workspaceID: "w-work", label: "tui-work"),
+            consoleAgent(host: record, paneID: "tmux-working", status: .working, workspaceID: "$1", label: "tmux-work"),
+            consoleAgent(host: record, paneID: "tmux-blocked", status: .blocked, workspaceID: "$2", label: "tmux-blocked"),
+        ].consoleSorted(serverOrder: serverOrder)
+        let m3Filter: Set<Host.ID> = [tui.id, tmux.id]
+        #expect(mixed.filter { m3Filter.contains($0.hostID) }.map(\.agent.paneID)
+            == ["tmux-blocked", "tui-working", "tmux-working", "tui-idle"])
+        #expect(store.sections(hosts: records, agents: mixed)[0].agents.map(\.agent.paneID)
+            == ["tmux-blocked", "tui-working", "tmux-working", "tui-idle"])
+        #expect(store.workspaceSections(hosts: records, agents: mixed).map(\.title)
+            == ["tmux-blocked", "tui-work", "tmux-work", "idle-space"])
     }
 
     @Test(.serialized, arguments: [DynamicTypeSize.large, .accessibility3])
