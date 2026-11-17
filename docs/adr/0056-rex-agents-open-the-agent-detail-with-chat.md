@@ -276,7 +276,8 @@ Server Kinds have them. G2's one write is built this way:
 Evidence: `RexStagingTests` stages through a scripted Rex Host, checks the
 seam's type and the pin across a server restart, holds an upload while the
 control link, a data link and a Chat process read go on, and types the staged
-paths once with a message from the Terminal surface and from Chat, for an
-idle and an Unknown Agent. The live path rests on the SSH staging every POSIX
-Host shares (`ImageStagingE2ETests`); no upload has yet been tried against a
-live Rex server.
+paths once with a message through Composer Send on either route, for an idle
+and an Unknown Agent; Chat's own send policy (its send rules and screen
+checks) is not run with a staged path there. The live path rests on the SSH
+staging every POSIX Host shares (`ImageStagingE2ETests`); no upload has yet
+been tried against a live Rex server.

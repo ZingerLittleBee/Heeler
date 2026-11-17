@@ -314,8 +314,9 @@ struct RexStagingTests {
     /// An image and a file staged from a Rex Agent's Composer land on the
     /// Host, the file's path in the draft and the image's beside it, and Send
     /// types them with the message as one paste and one Enter in the block's
-    /// lane, from Chat or the terminal. An Agent at Unknown attaches and sends
-    /// as one at Idle does: its status limits Stop and the Blocked Card only.
+    /// lane, through Composer Send on either route (Chat's own send policy is
+    /// not run here). An Agent at Unknown attaches and sends as one at Idle
+    /// does: its status limits Stop and the Blocked Card only.
     @Test(arguments: ["idle", nil] as [String?], [ComposerRoute.terminal, .chat])
     func stagedPathsAreTypedWithTheMessageOnce(state: String?, route: ComposerRoute) async throws {
         let rig = try await rig(reporting: state)
