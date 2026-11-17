@@ -384,6 +384,11 @@ struct HerdrCoreSessionBinder: Sendable {
     /// foreground's environment, a walk that answered still says which
     /// processes are there, and only one carrying none of those variables
     /// is in scope (rex-compatibility.md).
+    ///
+    /// The walk names processes, the foreground included, only when it answers:
+    /// past its cap it names none. The foreground then counts only by carrying
+    /// the terminal's own variables, and nothing under it is in sight, as on the
+    /// other kinds.
     private func readRexTerminalProcesses(
         of record: HerdrCoreTerminalRecord, ask: ProcessAsk, from root: Int?,
         sessionID: String, blockID: String, foregroundNames: Set<String>
@@ -402,7 +407,11 @@ struct HerdrCoreSessionBinder: Sendable {
             preservesArgumentOrder: ask.preservesArgumentOrder,
             descendantsOf: root)
         let facts = try await processes(request)
-        guard let name = facts[root]?.name, HerdrCoreTerminalProcesses.isNamed(name, oneOf: foregroundNames) else {
+        guard let rootFacts = facts[root] else { return nil }
+        if let name = rootFacts.name {
+            guard HerdrCoreTerminalProcesses.isNamed(name, oneOf: foregroundNames) else { return nil }
+        } else if case .value = rootFacts.descendants {
+            // A walk that answered without it: the process is gone.
             return nil
         }
         var outer: [String: String] = [:]

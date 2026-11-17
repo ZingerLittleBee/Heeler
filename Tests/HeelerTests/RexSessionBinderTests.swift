@@ -207,6 +207,43 @@ struct RexSessionBinderTests {
         #expect(await cleared.batches.isEmpty)
     }
 
+    /// Past the walk's cap the read names no process, the foreground included.
+    /// One carrying the terminal's own variables still binds by its registry
+    /// entry, as on the other kinds. A walk that answered without it says it is
+    /// gone, and one in another terminal is not this one's.
+    @Test(arguments: [
+        ("past the cap", false, Self.sessionID, true),
+        ("gone", true, Self.sessionID, false),
+        ("another terminal", false, "session:other", false),
+    ] as [(String, Bool, String, Bool)])
+    func aForegroundTheWalkNamesNoneOf(_ label: String, walked: Bool, session: String, binds: Bool) async throws {
+        let files = VirtualHostFiles(home: Self.home)
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/4000.json")
+        let environment = Self.rexEnvironment(session: session)
+        let binder = HerdrCoreSessionBinder(
+            program: .claude,
+            processes: { request in
+                var fact = HostProcessReader.Facts()
+                fact.start = .value(Self.start)
+                for name in request.valuesOf {
+                    fact.variables[name] = environment[name].map(HostProcessReader.Variable.value) ?? .unset
+                }
+                fact.nonEmptyNames = .value([])
+                if walked { fact.descendants = .value([]) }
+                return ["4000": fact]
+            },
+            files: Self.chatFiles(files), clearLabels: { _ in }, hostSystem: .macOS, processScope: Self.scope())
+
+        let evidence = try await binder.check(Self.record())
+
+        #expect(
+            evidence
+                == (binds
+                    ? .bound(sessionID: Self.first, transcriptRoot: "\(Self.home)/.claude", directory: "/work/app")
+                    : .unavailable(.cannotTellSession(.claude))),
+            "\(label)")
+    }
+
     /// Rex's name for a native install is the versioned binary's, the read's
     /// is argv[0]'s on a Mac and the kernel's on Linux, cut to 15 bytes.
     @Test func aForegroundIsReadUnderAnyNameRexGaveIt() {
