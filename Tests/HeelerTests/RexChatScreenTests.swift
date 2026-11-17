@@ -137,35 +137,46 @@ struct RexChatScreenTests {
     }
 
     /// The screen that failed for the maintainer on an iPhone (codex-cli
-    /// 0.169.0 in Rex 0.1.0-preview.14, 2026-11-18): an answer whose last
-    /// lines drew two version numbers as links, a few rows above Codex's
-    /// empty composer, on rows that also hold SGR, `CSI n C` and a background
-    /// blanked with `CSI n X`. The second link stays open over an empty row,
-    /// to the next cell Codex wrote. The texts and URIs are invented.
+    /// 0.169.0 in Rex 0.1.0-preview.14, 2026-11-18), in the sequences a
+    /// read of it showed: an answer whose last two rows each drew a version
+    /// number as a link, opened after a whole style of bold, underline and a
+    /// 24-bit color and closed right after the reset that ends that style,
+    /// with `CSI n C` between words, above Codex's empty composer in rows
+    /// blanked in a background with `CSI n X`. The texts, URIs, colors,
+    /// widths and the rows' count are invented. A link left open into the
+    /// next row is `aHyperlinkChangesNothingARowReads`'s.
     @Test func codexsAnswerWithLinksAboveItsEmptyComposer() throws {
-        let link = "\(Self.esc)[0m\(Self.esc)[4m\(Self.esc)[38;5;2m"
         let reset = "\(Self.esc)[0m"
-        let dim = "\(reset)\(Self.esc)[2m"
+        let gap = "\(Self.esc)[1C"
         let box = "\(Self.esc)[48;2;40;40;40m"
+        func bump(_ tool: String, to version: String) -> String {
+            "\(Self.esc)[2C•\(gap)\(reset)\(Self.esc)[1m\(Self.esc)[38;2;200;80;120m\(tool) "
+                + "\(reset)\(Self.esc)[1m\(Self.esc)[4m\(Self.esc)[38;2;120;200;80m"
+                + Self.link("https://example.test/releases/\(version)") + version + reset + Self.close + " is\(gap)out"
+        }
         let lines = [
-            "\(dim)•\(reset) Bumped the lab tool to the new versions:",
+            "\(reset)\(Self.esc)[2m• \(reset)Bumped\(gap)the tools:",
             "",
-            "  - " + link + Self.link("https://example.test/releases/1.2.3") + "1.2.3" + reset + Self.close + " and "
-                + link + Self.link("https://example.test/releases/4.5.6") + "4.5.6" + reset,
+            bump("lab", to: "1.2.3"),
+            bump("kit", to: "4.5.6"),
             "",
-            dim + Self.close + "─\(Self.esc)[3CWorked for 12s\(reset)",
+            "\(reset)\(Self.esc)[2m" + String(repeating: "─", count: 60) + reset,
             "",
-            "\(reset)\(box)\(Self.esc)[60X\(Self.esc)[60C\(reset)",
+            "\(reset)\(box) \(Self.esc)[59X\(Self.esc)[59C\(reset)",
             "\(reset)\(Self.esc)[1m\(box)›\(reset)\(box) \(reset)\(Self.esc)[2m\(box)Ask Codex to do anything"
                 + "\(reset)\(box)\(Self.esc)[34X\(Self.esc)[34C\(reset)",
-            "\(reset)\(box)\(Self.esc)[60X\(Self.esc)[60C\(reset)",
-            "",
-            "  \(reset)\(Self.esc)[2m? for shortcuts\(reset)",
+            "\(reset)\(box) \(Self.esc)[59X\(Self.esc)[59C\(reset)",
+            "\(Self.esc)[2C\(reset)\(Self.esc)[38;2;140;140;140m? for shortcuts\(reset)",
             "",
         ]
         let reading = try RexChatScreen.decode(
             Self.vt(lines) + "\(Self.esc)[=7;1u", startsAnswer: true, grid: RexChatScreen.Grid(columns: 60, rows: 12))
-        #expect(reading.screen.rows[2].text == "  - 1.2.3 and 4.5.6")
+        let rows = reading.screen.rows
+        #expect(rows[2].text == "  • lab 1.2.3 is out")
+        #expect(rows[3].text == "  • kit 4.5.6 is out")
+        let version = try #require(rows[2].run(at: 8))
+        #expect(version.text == "1.2.3")
+        #expect(version.style == ScreenStyle(foreground: .rgb(120, 200, 80), isBold: true))
         #expect(reading.kittyKeyboardFlags == 7)
         #expect(InputBoxStateDetector.detect(reading.screen, program: .codex) == .empty(placeholder: "Ask Codex to do anything"))
     }
