@@ -139,7 +139,9 @@ covers the seam, the server-instance pin, the slots and the typing against
 `ScriptedRexHost`, with a clipboard that writes nothing. In the Simulator,
 Add Image takes a picture added with `simctl addmedia`; Paste Image reads the
 Simulator's pasteboard, which Simulator.app syncs with the Mac's clipboard, so
-use it only with an image copied inside the Simulator.
+use it only with an image copied inside the Simulator. Every finished upload
+also copies its Host path to that pasteboard (`SystemAttachmentClipboard`),
+so with that sync on the path reaches the Mac's clipboard too.
 
 ## Lane selection
 
