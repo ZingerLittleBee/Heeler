@@ -279,5 +279,13 @@ control link, a data link and a Chat process read go on, and types the staged
 paths once with a message through Composer Send on either route, for an idle
 and an Unknown Agent; Chat's own send policy (its send rules and screen
 checks) is not run with a staged path there. The live path rests on the SSH
-staging every POSIX Host shares (`ImageStagingE2ETests`); no upload has yet
-been tried against a live Rex server.
+staging every POSIX Host shares (`ImageStagingE2ETests`). On 2026-11-17 the
+iOS Simulator staged images and a file for stand-in Agents on a running Rex
+0.1.0-preview.14 server on macOS, from Chat and from the Composer under the
+terminal, an Unknown Agent's included, and each path was typed once with its
+message; removing an attachment or cancelling an upload typed nothing, and an
+upload that failed while the link was down was retried and sent once. A
+cancel while the link was stalled left its `.part`: the app had moved to a
+new SSH connection, and the removal, tried on the old one, did not run.
+Uploads have not been tried from an iPhone or iPad, or with a real Claude
+Code or Codex.
