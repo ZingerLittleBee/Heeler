@@ -37567,6 +37567,7 @@
         }
       }
     },
+    "Nothing was typed" : {},
     "Nothing was written." : {
       "localizations" : {
         "ja" : {
@@ -62446,6 +62447,7 @@
         }
       }
     },
+    "The terminal's screen couldn't be read through Rex" : {},
     "The top of Oh My Pi's panel is off screen." : {
       "localizations" : {
         "ja" : {

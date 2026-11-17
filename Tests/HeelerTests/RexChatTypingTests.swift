@@ -207,12 +207,40 @@ struct RexChatTypingTests {
         _ = try await screen.readScreen()
         block.update { $0.lines[0] = "\u{1B}[2J" + "Allow this command?" }
 
-        await #expect(throws: TransportError.self) { try await screen.readScreen() }
+        await #expect(throws: TransportError.rexScreenUnreadable) { try await screen.readScreen() }
         let message = await refusal {
             try await screen.type(.keys(["1"])) { $0.rows.first?.text == "Allow this command?" }
         }
 
-        #expect(message == "Rex's answer could not be read.")
+        #expect(message == "The terminal's screen couldn't be read through Rex: Nothing was typed.")
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    /// Chat's Send over such a screen says Heeler could not read it through
+    /// Rex and typed nothing: it names no herdr, and no version to check.
+    @Test func chatsSendOverAnUnreadableScreenNamesRex() async throws {
+        let block = FakeRexChatBlock(lines: Self.dialog)
+        block.update { $0.lines[0] = "\u{1B}[2J" + "Allow this command?" }
+        let rig = try await RexChatRig.start(block)
+        defer { rig.end() }
+        let projection = rig.projection
+        let policy = ComposerDeliveryPolicy.chat(
+            rules: ChatSendRules(
+                program: .codex,
+                commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .codex)),
+            activity: { .idle },
+            readScreen: { try await projection.readAgentScreen(RexChatRig.paneID) },
+            pause: { _ in })
+
+        let refused = try #require(await policy.preflight?("hello"))
+
+        #expect(
+            refused
+                == .inputNotReady(
+                    "Heeler couldn't check the Agent's input box. The terminal's screen couldn't be read through Rex: Nothing was typed."
+                ))
+        #expect(!refused.message.localizedCaseInsensitiveContains("herdr"))
+        #expect(!refused.message.localizedCaseInsensitiveContains("version"))
         #expect(await rig.inputs().isEmpty)
     }
 

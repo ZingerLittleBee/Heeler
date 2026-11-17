@@ -317,6 +317,11 @@ extension TransportError {
                 summary: String(localized: "Rex sent an answer Heeler cannot read"),
                 detail: Self.droppingTrailingPeriods(detail),
                 recoverySuggestion: String(localized: "Check the Rex version on the Host."))
+        case .rexScreenUnreadable:
+            TransportErrorPresentation(
+                summary: String(localized: "The terminal's screen couldn't be read through Rex"),
+                detail: String(localized: "Nothing was typed"),
+                recoverySuggestion: nil)
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),

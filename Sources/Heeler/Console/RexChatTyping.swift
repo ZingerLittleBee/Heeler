@@ -95,6 +95,9 @@ final class RexChatTyping: CheckedChatTyping {
     // MARK: Reading
 
     /// The screen now, colors kept, with the holder read just before it.
+    /// A screen Rex's answer does not show with certainty throws
+    /// `TransportError.rexScreenUnreadable`, which names Rex and no version
+    /// to check.
     func readScreen() async throws -> ANSIScreen {
         guard let projection else { throw TransportError.cancelled }
         do {
@@ -110,7 +113,7 @@ final class RexChatTyping: CheckedChatTyping {
             screenHolder = holder
             return screen
         } catch is RexScreenProblem {
-            throw TransportError.malformedResponse(Self.unreadable)
+            throw TransportError.rexScreenUnreadable
         } catch let error as RexControlError {
             throw TransportError(rexControl: error)
         }
@@ -257,7 +260,7 @@ final class RexChatTyping: CheckedChatTyping {
     // MARK: What Chat says
 
     private static let serverGone = TransportError.rexServerGone.presentation.message
-    private static let unreadable = String(localized: "Rex's answer could not be read.")
+    private static let unreadable = TransportError.rexScreenUnreadable.presentation.message
     private static let agentLeft = String(localized: "The Agent no longer holds this terminal, so Heeler pressed nothing.")
     private static let holderChanged =
         String(localized: "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing.")
