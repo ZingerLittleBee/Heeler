@@ -128,7 +128,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager
     func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager
     /// Whether staging shows `TransportError`s in their own words, as a Host
-    /// whose uploads ride its own RPC link does.
+    /// whose uploads ride its own RPC link does, and a Rex Host, whose uploads
+    /// keep to a server instance.
     var stagingSaysTransportFailures: Bool { get }
     func sessionFileReader() -> SessionFileReader
     func modelContextWindowResolver() -> ModelContextWindowResolver

@@ -4094,6 +4094,8 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
 }
 
 // MARK: - What a Rex Host uses of this connection
+/// Chat's reads are the Chat Host files above, and a staging is the one
+/// under Attachment staging, as on every other Server Kind.
 extension HeelerSSHTransport: RexHostConnection {
     /// The control link holds the events slot, as a core link does.
     func openRexControlChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

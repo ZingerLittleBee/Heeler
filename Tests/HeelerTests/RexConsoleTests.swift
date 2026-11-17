@@ -24,9 +24,9 @@ struct RexConsoleTests {
     }
 
     /// A Rex Host starts, closes and renames nothing and runs nothing on the
-    /// machine for Changes, Skills or uploads (ADRs 0049 and 0056). Its
-    /// Agents offer Composer Send and Stop, and Chat for Claude Code and
-    /// Codex once the server has named a Linux or macOS kernel, whatever a
+    /// machine for Changes or Skills (ADRs 0049 and 0056). Its Agents offer
+    /// Composer Send and Stop, and Chat for Claude Code and Codex and uploads
+    /// once the server has named a Linux or macOS kernel, whatever a
     /// platform probe would say, since none runs. A terminal shows in one
     /// window at a time, so a row offers no window of its own and the windows
     /// take turns, as with a Herdr TUI Host's channel.
@@ -43,7 +43,7 @@ struct RexConsoleTests {
             #expect(!offers.renamesWorkspaces)
             #expect(!offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
-            #expect(!offers.uploads)
+            #expect(offers.uploads == opensChat)
             #expect(!offers.tabNames)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
@@ -83,23 +83,22 @@ struct RexConsoleTests {
     }
 
     /// The Agent detail's menus offer only what the Host serves, alike on
-    /// Chat and the terminal: on a Rex Host no New Agent, attachments,
-    /// rename or Close; a saved Chat is still removed on any Host. The other
-    /// kinds offer what they did.
+    /// Chat and the terminal: on a Rex Host no New Agent, rename or Close,
+    /// and attachments once the server has named Linux or macOS; a saved
+    /// Chat is still removed on any Host. The other kinds offer what they did.
     @Test func aRexAgentsDetailMenusOfferNothingTheHostCannotServe() {
         let rex = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel),
             workspaceID: "session:studio", removesSavedChat: false)
         #expect(!rex.newAgent)
-        #expect(!rex.attachments)
+        #expect(rex.attachments)
         #expect(!rex.renameAgent)
         #expect(!rex.renameWorkspace)
         #expect(!rex.close)
-        #expect(
-            AgentDetailMenuOffers(
-                capabilities: HostCapabilities(serverKind: .rex), workspaceID: "session:studio",
-                removesSavedChat: true
-            ).close)
+        let unnamed = AgentDetailMenuOffers(
+            capabilities: HostCapabilities(serverKind: .rex), workspaceID: "session:studio", removesSavedChat: true)
+        #expect(unnamed.close)
+        #expect(!unnamed.attachments)
 
         let tui = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .herdrTUI), workspaceID: "w1", removesSavedChat: false)

@@ -125,6 +125,9 @@ actor LocalRexTransport: RexTransport {
     /// No SSH connection, so nothing of the Host to read.
     nonisolated var reads: any RexHostReads { NoHostReads() }
 
+    /// Nor anywhere to stage a file.
+    nonisolated var staging: any RexHostStaging { NoHostStaging() }
+
     func close() async {
         closed = true
         await control.close()
@@ -142,5 +145,20 @@ private struct NoHostReads: RexHostReads {
     func hostHomeDirectory() async throws -> String { throw Self.unavailable }
     func readProcesses(_: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         throw Self.unavailable
+    }
+}
+
+/// The staging of a transport with no SSH connection: each one fails.
+private struct NoHostStaging: RexHostStaging {
+    func stageImage(
+        _: PreparedImage, progress _: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        throw AttachmentStagingError.sftpUnavailable
+    }
+
+    func stageFile(
+        _: PreparedFile, progress _: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        throw AttachmentStagingError.sftpUnavailable
     }
 }

@@ -11,11 +11,13 @@ import Foundation
 /// terminal opens from the server's redraw (ADR 0051) and takes input from its
 /// first paint (ADR 0052), whether it is a Terminal or the Terminal surface of
 /// an Agent's detail. Nothing is started, closed or renamed on a Rex Host, and
-/// nothing runs on it but Chat's reads: what Chat needs of the Host it reads
-/// over the same SSH connection, and writes nothing there (`RexHostReads`,
-/// ADR 0056). Chat and the Composer read a terminal's screen and type into it
-/// on the control link, one checked request at a time (`RexChatTyping`,
-/// `RexComposerSend`, ADR 0055).
+/// nothing runs on it but Chat's reads and the staging of what the user
+/// attaches: what Chat needs of the Host it reads over the same SSH
+/// connection (`RexHostReads`), and the one thing written there is a file or
+/// image staged for a message (`RexHostStaging`, ADR 0056). Chat and the
+/// Composer read a terminal's screen and type into it on the control link,
+/// one checked request at a time (`RexChatTyping`, `RexComposerSend`, ADR
+/// 0055), the staged paths with the message.
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
 /// device's seen marks (`RexTurnState`) are kept by server instance on this
@@ -779,12 +781,40 @@ final class RexConsoleProjection: ConsoleHostProjection {
             }
         }
     }
-    func imageStager(beside _: String, keepingTo _: TerminalCorePin) -> ImageStager {
-        { _, _ in throw Self.unavailable }
+    // MARK: Staging what the user attaches (ADR 0056)
+
+    /// Stages the image over the Host's SSH connection (`RexHostStaging`), as
+    /// a tmux Host stages one, for the Agent on the server `corePin` keeps
+    /// to. The path goes into the draft; Send types it with the message.
+    func imageStager(beside _: String, keepingTo corePin: TerminalCorePin) -> ImageStager {
+        { image, reporter in
+            let staging = try await self.staging(keepingTo: corePin)
+            return try await staging.stageImage(image) { await reporter.report($0) }
+        }
     }
-    func fileStager(beside _: String, keepingTo _: TerminalCorePin) -> FileStager {
-        { _, _ in throw Self.unavailable }
+
+    func fileStager(beside _: String, keepingTo corePin: TerminalCorePin) -> FileStager {
+        { file, reporter in
+            let staging = try await self.staging(keepingTo: corePin)
+            return try await staging.stageFile(file) { await reporter.report($0) }
+        }
     }
+
+    /// Says `rexServerGone` in its own words: an upload begun for an Agent of
+    /// a server that is gone stages nothing.
+    var stagingSaysTransportFailures: Bool { true }
+
+    /// The live connection's staging, while its server is the instance `pin`
+    /// keeps to; another instance throws `TransportError.rexServerGone`
+    /// before anything is staged, as Chat's block requests do. What the
+    /// session throws while no server answers passes through.
+    private func staging(keepingTo pin: TerminalCorePin) async throws -> any RexHostStaging {
+        guard admits(pin) else { throw TransportError.rexServerGone }
+        let (staging, instanceID) = try await session.withConnection { ($0.transport.staging, $0.server.instanceID) }
+        guard admits(pin), pin.admits(instanceID) else { throw TransportError.rexServerGone }
+        return staging
+    }
+
     // MARK: The Host's files, on the same SSH connection
 
     /// Chat's reads of the Host, on the connection the server's links use:
@@ -817,9 +847,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
 
     /// Chat reads the Host's files and processes through `RexHostReads`, and
-    /// nothing else runs on it over SSH: Changes, Skills, harness edits, the
-    /// agy model list and the platform probe stay out, and the Host is POSIX
-    /// without asking it (ADR 0056).
+    /// an attachment is staged through `RexHostStaging`; nothing else runs on
+    /// it over SSH: Changes, Skills, harness edits, the agy model list and the
+    /// platform probe stay out, and the Host is POSIX without asking it (ADR
+    /// 0056).
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {

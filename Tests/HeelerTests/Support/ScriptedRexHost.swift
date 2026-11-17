@@ -154,6 +154,70 @@ final actor ScriptedRexHost: RexHostConnection {
         return files
     }
 
+    // MARK: Staging, each logged by the name it lands as
+
+    /// Every file staged, oldest first, where it landed and what it holds.
+    private(set) var stagedFiles: [(path: String, contents: Data)] = []
+    private var stagingFailures: [AttachmentStagingError] = []
+    private var holdsStages = false
+    /// Stagings inside their slot, held or not.
+    private(set) var stagesEntered = 0
+
+    /// The next stagings fail with these, in order, before any byte lands.
+    func failStages(with failures: [AttachmentStagingError]) {
+        stagingFailures = failures
+    }
+
+    /// Holds each staging inside its slot, before any byte lands, until let go.
+    /// A held one that is cancelled ends as cancelled, as `HeelerSSHTransport`'s does.
+    func holdStages(_ holds: Bool) {
+        holdsStages = holds
+    }
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        try StagedImage(
+            path: try await stage(image.fileURL, named: "image.\(image.format.fileExtension)", progress: progress))
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        try StagedFile(path: try await stage(file.fileURL, named: file.remoteFilename, progress: progress))
+    }
+
+    /// One staging, under an ordinary session slot as `HeelerSSHTransport`'s is.
+    private func stage(
+        _ source: URL, named name: String, progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> String {
+        log.append("stage \(name)")
+        guard let admission else { return try await write(source, named: name, progress: progress) }
+        return try await admission.withChannel(.ordinarySession) {
+            try await self.write(source, named: name, progress: progress)
+        }
+    }
+
+    private func write(
+        _ source: URL, named name: String, progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> String {
+        stagesEntered += 1
+        do {
+            while holdsStages { try await Task.sleep(for: .milliseconds(5)) }
+        } catch {
+            throw AttachmentStagingError.cancelled
+        }
+        if !stagingFailures.isEmpty { throw stagingFailures.removeFirst() }
+        let contents = try Data(contentsOf: source)
+        await progress(AttachmentStageProgress(transferredBytes: 0, totalBytes: Int64(contents.count)))
+        let path = "/tmp/heeler.lab\(stagedFiles.count)/stage-\(stagedFiles.count)/\(name)"
+        stagedFiles.append((path, contents))
+        await progress(AttachmentStageProgress(transferredBytes: Int64(contents.count), totalBytes: Int64(contents.count)))
+        return path
+    }
+
     func close() async throws {
         log.append("close")
         isConnected = false

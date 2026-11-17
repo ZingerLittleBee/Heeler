@@ -44,6 +44,10 @@ protocol RexTransport: Sendable {
     /// else of it.
     nonisolated var reads: any RexHostReads { get }
 
+    /// The staging of a file or image the user attaches, on this same SSH
+    /// connection, and nothing else of it.
+    nonisolated var staging: any RexHostStaging { get }
+
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
@@ -66,8 +70,9 @@ extension RexTransport {
 /// connection, and one bounded exec for each process read (12 s, with an
 /// 8 s watchdog on the Host). The control link holds the events slot and
 /// each data link an attach slot, which reads never take, so a slow read
-/// waits on other reads only. Rex's links are direct-streamlocal channels,
-/// which sshd's `MaxSessions` does not count (rex-compatibility.md).
+/// waits on other reads and on stagings (`RexHostStaging`) only. Rex's links
+/// are direct-streamlocal channels, which sshd's `MaxSessions` does not
+/// count (rex-compatibility.md).
 protocol RexHostReads: Sendable {
     /// A range of a session file, on the SFTP channel Chat keeps open.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
@@ -79,9 +84,37 @@ protocol RexHostReads: Sendable {
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
 }
 
+/// The one write Heeler makes on a Rex Host (ADR 0056): a file or image the
+/// user attaches to a message, staged as on every other Server Kind (ADRs 0005
+/// and 0006). One exec makes a private directory under the account's
+/// temporary directory, and one SFTP channel writes the file into it as a
+/// part file it renames, with progress, cancellation and the removal of a
+/// part file left by a failed transfer. Nothing else is reachable from it:
+/// no read of the Host's files, no other exec, and no path but the ones it
+/// makes.
+///
+/// The exec and then the SFTP channel each take one of the connection's
+/// ordinary session slots, one at a time, at normal priority, so Chat's file
+/// and process reads, which ask at interactive priority, take the next free
+/// slot ahead of a waiting staging, and a slow upload holds one slot of four
+/// while its bytes go. The control link's events slot and the data links' attach
+/// slots are never asked for, so no staging holds up inventory, events,
+/// typing or an open terminal.
+protocol RexHostStaging: Sendable {
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile
+}
+
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
-protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads {
+protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads, RexHostStaging {
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -203,6 +236,9 @@ actor RexSSHTransport: RexTransport {
     /// them can be cast back to the connection and write.
     nonisolated var reads: any RexHostReads { RexReadsOnly(connection: connection) }
 
+    /// The connection's staging behind a type of its own, for the same reason.
+    nonisolated var staging: any RexHostStaging { RexStagingOnly(connection: connection) }
+
     func close() async {
         await control.close()
         try? await connection.close()
@@ -310,6 +346,25 @@ private struct RexReadsOnly: RexHostReads {
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         try await connection.readProcesses(request)
+    }
+}
+
+/// A Rex Host connection's staging, and nothing else of it.
+private struct RexStagingOnly: RexHostStaging {
+    let connection: any RexHostStaging
+
+    func stageImage(
+        _ image: PreparedImage,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedImage {
+        try await connection.stageImage(image, progress: progress)
+    }
+
+    func stageFile(
+        _ file: PreparedFile,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> StagedFile {
+        try await connection.stageFile(file, progress: progress)
     }
 }
 

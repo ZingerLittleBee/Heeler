@@ -112,12 +112,14 @@ extension HostCapabilities {
         isLocatingCore: Bool = false
     ) {
         // A Rex Host starts and closes no Agent, Terminal or Tab, renames
-        // nothing, has no Worktrees, uploads, Host scripts or layout, and is
-        // never taken over (ADR 0049), so it stays out of New Agent and New
+        // nothing, has no Worktrees, Host scripts or layout, and is never
+        // taken over (ADR 0049), so it stays out of New Agent and New
         // Terminal. Its Terminals and Agents open and take input (ADRs 0051 to
         // 0054). Its Agents offer Composer Send and Stop, and Chat for
         // `rexChatPrograms` once the server has named Linux or macOS, read and
-        // typed over the Host's own connection (ADRs 0055 and 0056).
+        // typed over the Host's own connection (ADRs 0055 and 0056). Named
+        // so, it also stages images and files over SFTP for both, as a tmux
+        // Host does.
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
@@ -126,7 +128,7 @@ extension HostCapabilities {
                 }
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
-                worktrees: false, uploads: false, composerSend: true, chat: rexChatPrograms != nil,
+                worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true)
@@ -267,7 +269,8 @@ struct ConsoleAgentRowOffers: Equatable, Sendable {
 /// What an Agent detail's menus offer by what its Host can do, alike on Chat
 /// and the terminal: an item the Host cannot serve is not offered, rather
 /// than failing once picked. A Rex Host's detail keeps its surfaces,
-/// Snippets and Back to Console (ADR 0056).
+/// Snippets and Back to Console, and its attachments once the server has
+/// named Linux or macOS (ADR 0056).
 struct AgentDetailMenuOffers: Equatable, Sendable {
     let newAgent: Bool
     let attachments: Bool

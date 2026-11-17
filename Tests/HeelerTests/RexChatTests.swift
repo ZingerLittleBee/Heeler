@@ -174,6 +174,7 @@ struct RexChatTests {
         #expect((reads as? any HostServices) == nil)
         #expect((reads as? any Transport) == nil)
         #expect((reads as? any RexHostConnection) == nil)
+        #expect((reads as? any RexHostStaging) == nil)
         #expect(try await reads.readProcesses(HostProcessReader.Request(pids: ["4242"])).keys.sorted() == ["4242"])
         await #expect(throws: TransportError.self) {
             try await rig.projection.withHostServices { _ in 0 }
