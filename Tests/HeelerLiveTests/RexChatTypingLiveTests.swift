@@ -12,10 +12,12 @@ import Testing
 /// It creates one session labeled `heeler-lab-r9-…` with one shell under a
 /// scrubbed environment, which the lab's own client owns, and starts in it an
 /// inert stand-in: a shell started under the first argument `codex` that turns
-/// bracketed paste on, reports itself idle, and prints back with `cat -v`
+/// bracketed paste on, reports itself idle, draws made-up rows of hyperlinks
+/// and of the SGR forms Chat does not keep, and prints back with `cat -v`
 /// whatever reaches it. It starts no agent. Heeler reads that terminal's screen
 /// and types into it on the control connection only, then the test checks
-/// that each input arrived once and in order and that the block's size and
+/// that the screen read takes the links and styles Rex wrote for those rows,
+/// that each input arrived once and in order, and that the block's size and
 /// owner did not move. It types into no other terminal, and the lab destroys
 /// its session at the end. It prints only counts and booleans, never labels,
 /// titles or terminal text. `/tmp/heeler-lab-home` must exist.
@@ -32,12 +34,26 @@ import Testing
 @Suite("Rex chat typing over a local socket", .serialized, .timeLimit(.minutes(2)))
 struct RexChatTypingLiveTests {
     /// The stand-in: a shell named `codex` by its first argument that echoes
-    /// nothing itself, turns bracketed paste on, reports idle and prints each
-    /// line it reads with `cat -v`. The trailing `:` keeps the shell, not
-    /// `cat`, at the head of the foreground.
+    /// nothing itself, turns bracketed paste on, reports idle, draws
+    /// `linksAndStyles` and prints each line it reads with `cat -v`. The
+    /// trailing `:` keeps the shell, not `cat`, at the head of the foreground.
     static let standIn =
-        #"(exec -a codex /bin/sh -c 'stty -echo; printf "\033[?2004h\033]7501;state=idle:app=codex\007"; printf "ready\n"; cat -v; :')"#
-        + "\r"
+        #"(exec -a codex /bin/sh -c 'stty -echo; printf "\033[?2004h\033]7501;state=idle:app=codex\007"; printf ""#
+        + linksAndStyles + #""; printf "ready\n"; cat -v; :')"# + "\r"
+
+    /// Rows a coding Agent draws, with made-up URIs: links with and without an
+    /// id, one styled as a version number, one left open past a row's end;
+    /// then underline shapes and their color, blink, overline, conceal, and
+    /// `21`, which Rex writes as `4:2`. `\134` is the backslash of each `ST`.
+    static let linksAndStyles =
+        #"see \033]8;;https://example.test/notes\033\134notes\033]8;;\033\134 "#
+        + #"\033[4;38;5;6m\033]8;id=lab-v1;https://example.test/v/1\033\134v1.2.3\033]8;;\033\134\033[0m end\n"#
+        + #"\033[4:3m\033[58;5;1mcurly\033[0m \033[5mblink\033[0m \033[53mover\033[0m \033[8mhid\033[0m "#
+        + #"\033[21mdouble\033[0m\n"#
+        + #"\033]8;;https://example.test/wrap\033\134wrap-\nped\033]8;;\033\134 t\n"#
+
+    /// What the screen read takes of `linksAndStyles`, row by row.
+    static let linksAndStylesRows = ["see notes v1.2.3 end", "curly blink over hid double", "wrap-", "ped t"]
 
     @Test func chatTypesIntoALabAgentAndTakesNothing() async throws {
         let socketPath = try #require(
@@ -102,6 +118,16 @@ struct RexChatTypingLiveTests {
         print("Rex lab: the screen read has \(screen.rows.count) rows, shows the stand-in: \(shows(screen))")
         #expect(screen.rows.count == grid.rows)
         #expect(shows(screen))
+        // Links and the styles Chat does not keep read as their text, as a
+        // Rex that wrote them otherwise would not.
+        let texts = screen.rows.map(\.text)
+        let takesLinksAndStyles = Self.linksAndStylesRows.allSatisfy(texts.contains)
+        let version = screen.rows.first { $0.text == Self.linksAndStylesRows[0] }?.runs.first { $0.text == "v1.2.3" }
+        print(
+            "Rex lab: the screen read takes the drawn links and styles: \(takesLinksAndStyles), "
+                + "the version keeps its color: \(version?.style == ScreenStyle(foreground: .indexed(6)))")
+        #expect(takesLinksAndStyles)
+        #expect(version?.style == ScreenStyle(foreground: .indexed(6)))
 
         // Keys, a paste, a paste of two lines, Composer Send, and a Blocked
         // Card's answer over the screen it read.
