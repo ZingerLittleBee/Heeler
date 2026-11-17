@@ -23,9 +23,10 @@ enum InputBoxState: Equatable, Sendable {
     /// hold.
     case dialog(title: String?)
     /// No input box for this conversation is on screen: a home screen, a
-    /// dashboard or a picker stands in its place, where a message would
-    /// start a new conversation, reach another one, or pick an entry. The
-    /// program's reason, shown as the hold as is.
+    /// dashboard, a picker or a panel of single-key actions stands in its
+    /// place, where a message would start a new conversation, reach another
+    /// one, pick an entry, or press keys. The program's reason, shown as the
+    /// hold as is.
     case noComposer(String)
     /// The screen does not show a box Heeler recognizes; why.
     case unknown(String)
@@ -118,6 +119,7 @@ enum InputBoxStateDetector {
     private static func codex(_ screen: ANSIScreen) -> InputBoxState {
         guard let composer = CodexComposer.locate(in: screen) else {
             if let reason = codexDisabledReason(in: screen) { return .disabled(reason) }
+            if codexShowsConversationOpenElsewhere(in: screen) { return .noComposer(codexConversationOpenElsewhere) }
             return .unknown(String(localized: "Codex's composer is not on screen."))
         }
         let rows = screen.rows
@@ -171,6 +173,39 @@ enum InputBoxStateDetector {
             index -= 1
         }
         return nil
+    }
+
+    /// Codex's panel in the composer's place when another app holds the
+    /// conversation: "This conversation is open in another app", "r to
+    /// retry" and "Close it there and press R to continue here.", over key
+    /// hints from "r retry f fork" (codex-cli 0.169.0, 2026-11-18). Single
+    /// keys act there, so Chat holds, as for any screen without the
+    /// composer, with what to do instead.
+    ///
+    /// Read only where the composer was not found, from the drawn rows
+    /// nearest the bottom joined into one text, so neither the width nor
+    /// where a row breaks matters, and colors and the panel's emoji count
+    /// for nothing. The sentence takes another marker of the panel after
+    /// it, so a conversation that quotes the sentence does not read as it.
+    private static func codexShowsConversationOpenElsewhere(in screen: ANSIScreen) -> Bool {
+        let rows = screen.rows
+        guard let last = rows.lastIndex(where: { !$0.isBlank }) else { return false }
+        let bottom = rows[...last].suffix(codexPanelRows).map(\.trimmedText).joined(separator: " ")
+        let text = bottom.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard let sentence = text.range(of: "This conversation is open in another app") else { return false }
+        let after = text[sentence.upperBound...]
+        return [#"\bClose it there and press R to continue here\b"#, #"\br to retry\b"#, #"\br retry f fork\b"#]
+            .contains { after.range(of: $0, options: .regularExpression) != nil }
+    }
+
+    /// The rows, up to the last drawn one, that the panel and its hints may
+    /// take once a narrow screen wraps them.
+    private static let codexPanelRows = 14
+
+    /// What to do about the panel, in `ChatLaunchNotice.stopSharedServer`'s
+    /// terms for the shared server, short enough for the Composer's notice.
+    private static var codexConversationOpenElsewhere: String {
+        String(localized: "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app\u{2011}server daemon stop frees it, ending any other Codex on that server.")
     }
 
     /// A dim `›` with Codex's disabled-input text in place of the

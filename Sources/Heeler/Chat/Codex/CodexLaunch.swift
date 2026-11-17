@@ -18,6 +18,9 @@ enum ChatLaunchNotice: Equatable, Sendable {
     /// conversation loaded, and Codex then won't resume it without the
     /// server ("This conversation is open in another app", codex-cli
     /// 0.165.0 on a 0.166.0 daemon, until `codex app-server daemon stop`).
+    /// Also seen with codex-cli 0.169.0 and a 0.169.0 daemon on 2026-11-18,
+    /// from a `codex --no-daemon resume`. The Composer's hold over that
+    /// screen says the same in fewer words (`InputBoxStateDetector`).
     static let stopSharedServer =
         String(localized: "If Codex says the conversation is open in another app, run codex app\u{2011}server daemon stop, which also ends any other Codex on that server, then resume again.")
 

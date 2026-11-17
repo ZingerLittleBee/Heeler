@@ -15414,6 +15414,7 @@
         }
       }
     },
+    "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app‑server daemon stop frees it, ending any other Codex on that server." : {},
     "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume %@, and pick the conversation in Codex's list. %@" : {
       "localizations" : {
         "ja" : {

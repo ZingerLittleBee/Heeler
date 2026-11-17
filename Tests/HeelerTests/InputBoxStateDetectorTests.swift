@@ -205,4 +205,47 @@ struct InputBoxStateDetectorTests {
         ])
         #expect(InputBoxStateDetector.detect(screen, program: .codex) == .unknown("Codex's composer is not on screen."))
     }
+
+    /// Codex's panel in the composer's place while another app holds the
+    /// conversation (codex-cli 0.169.0, 2026-11-18, seen at 62 columns):
+    /// Send holds with what to do there. The panel's rows are as seen; its
+    /// emoji's glyph, its background and where the key hints wrap are
+    /// assumed, and the conversation above is invented.
+    @Test("Codex: a conversation open in another app holds with what to do (synthetic)")
+    func codexConversationOpenElsewhere() {
+        let reason =
+            "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app\u{2011}server daemon stop frees it, ending any other Codex on that server."
+        let conversation = ["• Renamed the parser token kinds and updated every call site.", "  The lexer tests pass.", ""]
+        func panel(_ text: String, width: Int) -> String {
+            SGR.bg(52, 52, 52) + text.padding(toLength: width, withPad: " ", startingAt: 0) + SGR.reset
+        }
+        let narrow = ScreenFixture.synthetic(
+            conversation + [
+                panel("⚠ This conversation is open in another app", width: 62), panel("  r to retry", width: 62),
+                panel("  Close it there and press R to continue here.", width: 62), "",
+                "  r retry   f fork   ←/esc command center   ^c/q exit", "  ^t transcript",
+            ])
+        #expect(narrow.columns == 62)
+        #expect(InputBoxStateDetector.detect(narrow, program: .codex) == .noComposer(reason))
+
+        // A wider screen with nothing wrapped: this layout is assumed.
+        let wide = ScreenFixture.synthetic(
+            conversation + [
+                panel("⚠ This conversation is open in another app, r to retry", width: 100),
+                panel("  Close it there and press R to continue here.", width: 100), "",
+                "  r retry   f fork   ←/esc command center   ^c/q exit   ^t transcript",
+            ])
+        #expect(InputBoxStateDetector.detect(wide, program: .codex) == .noComposer(reason))
+
+        // Quoted in the conversation, it is no panel: above an empty composer,
+        // and without another line of the panel where the composer is missing
+        // for another reason.
+        let empty = Self.prompt + SGR.dim + "Ask Codex to do anything" + SGR.reset
+        let quotedPanel = "  It said: This conversation is open in another app, r to retry."
+        #expect(codex([empty], above: [quotedPanel, ""]) == .empty(placeholder: "Ask Codex to do anything"))
+        let working = ScreenFixture.synthetic([
+            "• Working (3s • esc to interrupt)", "", "  It said: This conversation is open in another app.",
+        ])
+        #expect(InputBoxStateDetector.detect(working, program: .codex) == .unknown("Codex's composer is not on screen."))
+    }
 }
