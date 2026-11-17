@@ -245,10 +245,12 @@ struct RexChatScreenTests {
         let first = RexChatScreen.tailBytes[0]
         let second = RexChatScreen.tailBytes[1]
         #expect(block.args(2) == [
-            "id": 7, "offset": .number(Double(total - first)), "max_bytes": .number(Double(first)),
+            "id": 7, "offset": .number(Double(total - first)),
+            "max_bytes": .number(Double(RexChatScreen.pageBytes(remaining: first))),
         ])
         #expect(block.args(3) == [
-            "id": 7, "offset": .number(Double(total - second)), "max_bytes": .number(Double(second)),
+            "id": 7, "offset": .number(Double(total - second)),
+            "max_bytes": .number(Double(RexChatScreen.pageBytes(remaining: second))),
         ])
     }
 
@@ -271,11 +273,42 @@ struct RexChatScreenTests {
         await #expect(throws: RexScreenProblem.resized) { try await RexChatScreen.read(on: block.requests) }
     }
 
-    @Test func aPageThatStopsShortIsNoScreen() async {
+    /// `max_bytes` counts the escaped text, so a tail can come in more than
+    /// one page, each from where the last one's text ended.
+    @Test func aTailComesInPages() async throws {
+        let tail = "ut off\r\n" + Self.vt(["above"] + Self.screenLines)
+        let cut = tail.index(tail.startIndex, offsetBy: 20)
+        let (head, rest) = (String(tail[..<cut]), String(tail[cut...]))
+        let total = 900_000
+        let block = Block([
+            "size": [Self.size],
+            "format": [["content": "history", "id": 7, "total": .number(Double(total))]],
+            "blob_read": [
+                ["data": .string(head), "eof": false, "id": 7, "total": .number(Double(total))],
+                ["data": .string(rest), "eof": true, "id": 7, "total": .number(Double(total))],
+            ],
+        ])
+        let reading = try await RexChatScreen.read(on: block.requests)
+        #expect(reading.screen.rows.map(\.text) == ["red bold", "tab     stop", "blue      ", ""])
+        let start = total - RexChatScreen.tailBytes[0]
+        #expect(block.args(3)?["offset"] == .number(Double(start + head.utf8.count)))
+    }
+
+    /// A page that brings nothing, or cuts a character between two pages, is
+    /// no answer.
+    @Test(arguments: [
+        ["", "more"],
+        ["ut off\r\nab\u{FFFD}", "\u{FFFD}ove"],
+        ["ut off\r\nab", "\u{FFFD}ove"],
+    ])
+    func aPageThatStopsWrongIsNoScreen(_ pages: [String]) async {
         let block = Block([
             "size": [Self.size],
             "format": [["content": "history", "id": 7, "total": 900_000]],
-            "blob_read": [["data": .string(Self.vt(["above"] + Self.screenLines)), "eof": false, "id": 7, "total": 900_000]],
+            "blob_read": [
+                ["data": .string(pages[0]), "eof": false, "id": 7, "total": 900_000],
+                ["data": .string(pages[1] + "\r\n" + Self.vt(Self.screenLines)), "eof": true, "id": 7, "total": 900_000],
+            ],
         ])
         await #expect(throws: RexScreenProblem.unreadableAnswer) { try await RexChatScreen.read(on: block.requests) }
     }
@@ -289,7 +322,7 @@ struct RexChatScreenTests {
         #expect(try await RexChatScreen.kittyKeyboardFlags(on: block.requests) == 31)
         #expect(block.args(1) == [
             "id": 3, "offset": .number(Double(5_000 - RexChatScreen.flagsTailBytes)),
-            "max_bytes": .number(Double(RexChatScreen.flagsTailBytes)),
+            "max_bytes": .number(Double(RexChatScreen.pageBytes(remaining: RexChatScreen.flagsTailBytes))),
         ])
 
         let none = Block(["format": [["content": "a short screen", "eof": true]]])

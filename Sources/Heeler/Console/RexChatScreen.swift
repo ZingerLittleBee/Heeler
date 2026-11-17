@@ -55,6 +55,17 @@ enum RexChatScreen {
     static let tailBytes = [16 * 1024, 64 * 1024, 128 * 1024]
     /// Enough of the answer's end for the kitty keyboard flags.
     static let flagsTailBytes = 32
+    /// The most pages one tail is read in.
+    static let pageLimit = 8
+    /// The largest `max_bytes` a page asks for, the cap Rex documents.
+    static let largestPage = 983_040
+
+    /// What a page asks for to reach the end of `remaining` bytes: `max_bytes`
+    /// counts the text as JSON escapes it, and one byte takes at most six
+    /// escaped, so a tail usually comes in one page.
+    static func pageBytes(remaining: Int) -> Int {
+        min(remaining * 6, largestPage)
+    }
 
     // MARK: Reading
 
@@ -138,15 +149,30 @@ enum RexChatScreen {
         throw RexScreenProblem.tooLong
     }
 
-    /// The answer from `offset` to its end, in one page.
+    /// The answer from `offset` to its end, page by page, each from where the
+    /// last one's text ended. A page that brings nothing short of the end, or
+    /// more pages than `pageLimit`, reads as no answer. A character cut at a
+    /// page's edge comes as U+FFFD, whose bytes are not the answer's, so only
+    /// the first page may start with one and only the last may end with one.
     private static func page(
         of id: Int, offset: Int, total: Int, on requests: RexBlockRequests
     ) async throws -> String {
-        let page = try await requests.read(.blobRead(id: id, offset: offset, maxBytes: total - offset))
-        guard let data = page["data"]?.stringValue, page["eof"] == .bool(true),
-            page["total"]?.screenWholeNumber == total
-        else { throw RexScreenProblem.unreadableAnswer }
-        return data
+        var text = ""
+        var at = offset
+        for _ in 0..<pageLimit {
+            let page = try await requests.read(
+                .blobRead(id: id, offset: at, maxBytes: pageBytes(remaining: total - at)))
+            guard let data = page["data"]?.stringValue, page["total"]?.screenWholeNumber == total,
+                at == offset || data.unicodeScalars.first != "\u{FFFD}"
+            else { throw RexScreenProblem.unreadableAnswer }
+            text += data
+            at += data.utf8.count
+            if page["eof"] == .bool(true) { return text }
+            guard !data.isEmpty, at < total, data.unicodeScalars.last != "\u{FFFD}" else {
+                throw RexScreenProblem.unreadableAnswer
+            }
+        }
+        throw RexScreenProblem.tooLong
     }
 
     // MARK: Decoding
