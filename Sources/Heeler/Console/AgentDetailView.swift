@@ -547,8 +547,9 @@ struct AgentDetailView: View {
             awaitingHide: $departureAwaitingKeyboardHide,
             notificationCenter: keyboardInset.notificationCenter,
             complete: completeDeparture))
+        .background(AgentDetailWindowProbe(mount: mount))
         .onAppear {
-            mount.hasAppeared = true
+            mount.didAppear()
             // A detail mounted afresh covers nothing, whatever the last one
             // in this window left behind.
             sceneRouting?.agentCoverDidChange(agent: shellRoute == nil ? nil : agent.id)
@@ -558,9 +559,14 @@ struct AgentDetailView: View {
         }
         .modifier(AgentFocusFeed(state: { focusViewingState }, update: { updateFocus() }))
         .onDisappear {
-            mount.hasAppeared = false
-            focus.leave()
-            console.setAgentShown(nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
+            // Its Agent stays shown through a disappear nobody caused; see
+            // `AgentDetailMount`.
+            let viewer = presenceToken
+            let sceneID = sceneRouting?.sceneID
+            mount.didDisappear(isOnStage: { isVisible() && showsAgentSurface }) { [focus] in
+                focus.leave()
+                console.setAgentShown(nil, viewer: viewer, scene: sceneID)
+            }
             // The router's truth, not SwiftUI's: a spurious disappear, or
             // Changes pushed over the detail, keeps the upload going.
             let key = presenceKey
@@ -934,10 +940,81 @@ private final class AgentDetailRetentionHolder {}
 /// frame. As the detail's own state, each flip re-evaluated the detail's
 /// body and the surface it builds. Here only what reads it follows it
 /// (`AgentFocusFeed`).
+///
+/// A disappear alone does not take the detail down. SwiftUI also hands out
+/// disappears nobody caused, with no appear after them: a detail pushed from
+/// the Agents list can get one while it stays on screen, and its Agent's
+/// turns would then end as Done in front of the user. The detail leaves
+/// once the router says it left, or once UIKit takes it out of its window
+/// (`isInWindow`): a detail SwiftUI rebuilds in its own place leaves the
+/// router as it was.
 @MainActor
 @Observable
-private final class AgentDetailMount {
-    var hasAppeared = false
+final class AgentDetailMount {
+    private(set) var hasAppeared = false
+    /// Set from `didMoveToWindow`, which SwiftUI's callbacks cannot stand in
+    /// for; nothing observes it, so setting it during layout is safe.
+    @ObservationIgnored var isInWindow = false
+    @ObservationIgnored private var exit: Task<Void, Never>?
+
+    func didAppear() {
+        exit?.cancel()
+        exit = nil
+        if !hasAppeared { hasAppeared = true }
+    }
+
+    /// Calls `leave` once the detail is off stage or out of its window,
+    /// unless it appears again first.
+    @discardableResult
+    func didDisappear(
+        isOnStage: @escaping () -> Bool,
+        interval: Duration = .seconds(1),
+        leave: @escaping () -> Void
+    ) -> Task<Void, Never> {
+        exit?.cancel()
+        let exit = ChatStageExit.watch(
+            isOnStage: { [weak self] in (self?.isInWindow ?? false) && isOnStage() },
+            interval: interval
+        ) { [weak self] in
+            self?.hasAppeared = false
+            self?.exit = nil
+            leave()
+        }
+        self.exit = exit
+        return exit
+    }
+}
+
+/// Tells `AgentDetailMount` whether the detail's view is in a window.
+private struct AgentDetailWindowProbe: UIViewRepresentable {
+    let mount: AgentDetailMount
+
+    func makeUIView(context: Context) -> ProbeView {
+        ProbeView(mount: mount)
+    }
+
+    func updateUIView(_ view: ProbeView, context: Context) {}
+
+    final class ProbeView: UIView {
+        private weak var mount: AgentDetailMount?
+
+        init(mount: AgentDetailMount) {
+            self.mount = mount
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            isAccessibilityElement = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is unavailable")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            mount?.isInWindow = window != nil
+        }
+    }
 }
 
 @MainActor

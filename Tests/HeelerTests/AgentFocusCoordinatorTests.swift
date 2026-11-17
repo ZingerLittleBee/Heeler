@@ -203,3 +203,54 @@ struct AgentFocusCoordinatorTests {
         #expect(condition(), "Focus lifecycle did not settle before the deadline")
     }
 }
+
+@MainActor
+@Suite("Agent detail mount")
+struct AgentDetailMountTests {
+    /// A detail pushed from the Agents list can get a disappear while it
+    /// stays on screen, and no appear after it.
+    @Test func aDisappearWhileTheDetailStaysOnScreenKeepsItsAgentShown() async throws {
+        let mount = AgentDetailMount()
+        mount.isInWindow = true
+        mount.didAppear()
+        var onStage = true
+        var leaves = 0
+        let exit = mount.didDisappear(isOnStage: { onStage }, interval: .milliseconds(5)) { leaves += 1 }
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(leaves == 0)
+        #expect(mount.hasAppeared)
+
+        onStage = false
+        await exit.value
+        #expect(leaves == 1)
+        #expect(!mount.hasAppeared)
+    }
+
+    /// SwiftUI rebuilding the detail in its own place leaves the router as
+    /// it was; the old detail's window says it went.
+    @Test func aDetailTakenOutOfItsWindowLeavesWhileTheRouterStillShowsIt() async {
+        let mount = AgentDetailMount()
+        mount.isInWindow = true
+        mount.didAppear()
+        var leaves = 0
+        let exit = mount.didDisappear(isOnStage: { true }, interval: .milliseconds(5)) { leaves += 1 }
+        mount.isInWindow = false
+        await exit.value
+        #expect(leaves == 1)
+        #expect(!mount.hasAppeared)
+    }
+
+    @Test func appearingAgainKeepsItsAgentShown() async throws {
+        let mount = AgentDetailMount()
+        mount.isInWindow = true
+        mount.didAppear()
+        var onStage = true
+        var leaves = 0
+        let exit = mount.didDisappear(isOnStage: { onStage }, interval: .milliseconds(5)) { leaves += 1 }
+        mount.didAppear()
+        onStage = false
+        await exit.value
+        #expect(leaves == 0)
+        #expect(mount.hasAppeared)
+    }
+}
