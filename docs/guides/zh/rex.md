@@ -1,10 +1,10 @@
-<!-- Translated from docs/guides/rex.md at 48b93793 -->
+<!-- Translated from docs/guides/rex.md at 36d63d52 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
 
 > [!IMPORTANT]
-> Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，只能打开 Rex 中已有的终端：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
+> Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，只能打开 Rex 中已有的终端和 Agent：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
 
 ## 开始之前
 
@@ -76,7 +76,7 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 ## 使用终端
 
-在 **Terminals** 中轻点一个终端，或在 **Agents** 中轻点一个 Agent，即可打开。Agent 会以其终端打开，没有 Chat 和 Composer；如果打开期间 Agent 退出，会显示 **Agent Gone**，终端回到 **Terminals**。你操作期间，其他 Rex 客户端会继续显示它：
+在 **Terminals** 中轻点一个终端即可打开。在 **Agents** 中轻点的 Agent 会像其他 Host 上的 Agent 一样打开，带有 [Chat](#chat) 和它的终端；如果打开期间 Agent 退出，会显示 **Agent Gone**，终端回到 **Terminals**。你操作期间，其他 Rex 客户端会继续显示它：
 
 - **打开：** 终端会在 Rex 重绘完屏幕和历史记录后显示，因此在较慢的连接上，较长的历史记录可能需要几秒钟。持续输出的程序（例如 spinner）在暂停之前，可能有几行重复或错位；暂停后 Heeler 会重新绘制。
 - **输入与粘贴：** 在 Text 或 Keys 模式下输入、轻点 **Paste**，或发送 Snippet。无论终端尺寸由哪台设备设定，你都可以输入。你输入的内容按顺序到达终端，Heeler 绝不会重复发送：如果连接在 Rex 回复前断开，终端会显示 **Connection dropped** 和 **Reattach**，此后输入的内容都没有发送。Heeler 重新连接期间输入的按键同样不会发送；终端会重新连接并重新绘制。过大、无法一次发送的粘贴会被阻止而不会拆分；请分几次粘贴。
@@ -93,7 +93,7 @@ Heeler 按原样显示你的 Rex 结构，不做任何改动：
 
 ### 适配你的屏幕
 
-Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Terminals** 或 **Agents** 打开 Rex 终端时，Heeler 会在显示之前先把它适配到你的屏幕。Rex 调整的是终端本身而不只是你看到的视图，因此在你在这里打开它期间，所有显示它的设备（包括 Mac 上的 Rex 应用）都会变成你屏幕的尺寸。当你离开该终端、Heeler 进入后台或终端结束时，Heeler 会交还尺寸，原先设定尺寸的设备会重新拿回。再次回来时会重新适配。
+Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Terminals** 打开 Rex 终端，或显示 Agent 的终端时，Heeler 会在显示之前先把它适配到你的屏幕。Chat 从不调整终端尺寸。Rex 调整的是终端本身而不只是你看到的视图，因此在你在这里打开它期间，所有显示它的设备（包括 Mac 上的 Rex 应用）都会变成你屏幕的尺寸。当你离开该终端、Heeler 进入后台或终端结束时，Heeler 会交还尺寸，原先设定尺寸的设备会重新拿回。再次回来时会重新适配。
 
 ### Sized for another device
 
@@ -105,9 +105,26 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 
 离开该终端再回来，会重新适配你的屏幕。
 
+在 iPad 上，同一 Host 的 Rex Agent 终端同一时间只在一个窗口中显示。另一个窗口打开它时会显示 **Live in Another Window**；轻点 **Take Over Here** 即可移到该窗口。
+
+## Chat
+
+在 macOS 和 Linux 上，Rex 中的 Claude Code 和 Codex 可以使用 **Chat**，无需在 Host 上安装任何东西。Heeler 通过 Host 的 SSH 连接读取对话，并经由 Rex 向终端输入，不会调整终端尺寸。你可以阅读对话、**Send** 消息、**Stop** 一轮对话，以及在 **Blocked** 提示上轻点按钮作答：
+
+| 程序 | 会话说明 |
+| --- | --- |
+| Claude Code | 根据正在运行的 Claude Code 本身绑定。执行 `/clear` 或 `/resume` 后，Chat 会在发送你的下一条消息前重新检查。 |
+| Codex | 在它持有对话文件后（首条消息之后）绑定。请用 `--no-daemon` 启动它（[原因](chat.md#配置-host)）；否则请使用 **Choose a Conversation**。 |
+| 其他 Agent | Rex Host 上暂不提供 Chat，会以其终端打开。 |
+
+- **Can't Tell the Conversation：** 当 Chat 无法证实 Agent 显示的是哪个对话时，会这样提示并提供 **Check Again**。轻点 **Choose a Conversation**，预览一个对话后轻点 **Use This Conversation**。Heeler 会在当前设备上为这个终端记住这个选择，直到该 Agent 退出或 Rex 重启。Host 上不会写入任何内容。
+- **Send：** **Send** 会先确认仍是同一个 Agent 占据终端、它不处于 **Blocked**，并且接受粘贴，然后粘贴你的消息并按下 Enter。终端下方的 Composer 也以同样方式发送。如果 Rex 没有回应，Heeler 绝不会重新发送该消息；请先查看终端。
+- **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。
+- **命令：** 在 Agent 上报空闲时，`/` 提供 `/compact`，不提供 Agent 的技能。其他操作请在终端中完成。
+
 ## 尚未支持的功能
 
-- **Agent 只显示状态：** Rex 没有 Chat、Composer、Stop、Changes、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
+- **只有状态和 Chat：** Rex 没有 Changes、Skills、消息中的图片或文件、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
 - **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
 - **Rex 不支持上传、Worktrees、Host Helper、扫码配对与 Add by Name。**
 
@@ -118,5 +135,6 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 - **首次绘制不包含的内容：** Rex 的重绘不包含光标形状和终端自身的默认颜色，因此在程序重新设置之前光标保持 Heeler 的形状，终端使用你的 Heeler 主题配色。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
 - **其他设备的尺寸不会适配屏幕：** 当终端保持着其他设备设定的、比你的屏幕更宽的尺寸时（见 [Sized for another device](#sized-for-another-device)），终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，光标、新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
 - **目前的测试范围：** Rex 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
+- **Chat 尚未搭配 Rex 中真实的 Agent 试用：** Chat 的输入是用替身程序测试的，绑定是用保存下来的 Claude Code 和 Codex 文件测试的，还没有在 Rex 中运行真实的 Claude Code 或 Codex 试过。
 
-最后核对于 2026-11-16，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），在 iOS 模拟器中进行。
+最后核对于 2026-11-17，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），使用测试程序进行。
