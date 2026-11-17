@@ -84,6 +84,20 @@ struct RexComposerSendTests {
         #expect(await rig.inputs().isEmpty)
     }
 
+    /// A kitty flags read whose answer shows nothing certain sends nothing,
+    /// and says the screen could not be read, not that the Host is silent.
+    @Test func anUnreadableFlagsReadSendsNothing() async throws {
+        let block = FakeRexChatBlock(lines: Self.prompt)
+        block.update { $0.kittyFlags = 64 }
+        let rig = try await RexChatRig.start(block, world: Self.world())
+        defer { rig.end() }
+        let send = try rig.composerSend()
+
+        let outcome = await send.send("hello", route: .chat, attach: nil)
+        #expect(outcome == .refused(.inputNotReady(TransportError.rexScreenUnreadable.presentation.message)))
+        #expect(await rig.inputs().isEmpty)
+    }
+
     /// The program can turn bracketed paste off after the first read: the
     /// read in the lane, just before the paste, decides.
     @Test func bracketedPasteOffByTheLaneSendsNothing() async throws {
