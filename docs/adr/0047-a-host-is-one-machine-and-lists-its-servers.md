@@ -68,8 +68,9 @@ tmux sockets on one machine, that is the common case, not the odd one.
   on every row, Workspace card and By Host heading. A record the user named
   apart before it was one Host with the others goes by the Host's name there,
   derived like the label. By Host has one section per Host, in the Hosts
-  tab's order, holding its Servers' Agents or Workspaces one Server after
-  another in catalog order, each in its own order, with the counts summed.
+  tab's order, holding its Servers' Agents in the Console's status-priority
+  order (catalog Server order breaking ties) and its Servers' Terminal
+  Workspaces one Server after another in catalog order, with the counts summed.
   The heading reads as the Server that most needs the user, as the Hosts
   tab's row does; the name stays at full strength while any Server is
   reachable, and the heading opens a connection sheet only for a Host with

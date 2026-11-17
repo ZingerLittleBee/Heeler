@@ -250,7 +250,7 @@ struct ConsoleChatCacheTests {
         let liveCards = firstLaunch.agents.map {
             AgentCardPresentation(agent: $0, layout: liveLayout, leadsWithMark: true)
         }
-        firstLaunch.setHosts([])
+        await firstLaunch.suspend()
 
         let reachability = HostReachability()
         let secondTransport = ScriptedTransport(snapshot: snapshot)
@@ -271,19 +271,37 @@ struct ConsoleChatCacheTests {
         await relaunched.resume()
         await relaunched.cachedChats.settled()
 
-        // Offline / connecting: layout, rowGap, spaces order, and every rendered field match live.
+        // Live inventory sorts by status priority (working before idle), ignoring
+        // `agent_panel_sort = "spaces"`; offline saved entries carry no live status
+        // (`status == .unknown`) so they keep `snapshotOrder` while preserving the
+        // cached layout, rowGap, and every rendered field.
+        #expect(
+            liveOrder == [
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2"),
+            ])
         let cachedLayout = relaunched.rowLayout(for: host.id)
         #expect(cachedLayout == liveLayout)
         #expect(cachedLayout.rowGap == 1)
-        #expect(relaunched.chatDisplayAgents.map(\.id) == liveOrder)
+        #expect(
+            relaunched.chatDisplayAgents.map(\.id) == [
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2"),
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            ])
         let cachedCards = relaunched.chatDisplayAgents.map {
             AgentCardPresentation(agent: $0, layout: cachedLayout, leadsWithMark: true)
         }
-        #expect(cachedCards == liveCards)
+        #expect(cachedCards == Array(liveCards.reversed()))
         #expect(cachedCards.first?.headline == "Cache row layout fields")
         #expect(
             cachedCards.first?.additionalRows == [
                 "feat/cache-fields · ◑ Cache row layout fields · Main pane",
+                "heeler",
+            ])
+        #expect(cachedCards.last?.headline == "Audit sidebar snapshot")
+        #expect(
+            cachedCards.last?.additionalRows == [
+                "feat/sidebar · ◐ Audit sidebar snapshot · Review pane",
                 "heeler",
             ])
 

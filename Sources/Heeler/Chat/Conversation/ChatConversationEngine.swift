@@ -393,6 +393,8 @@ actor ChatConversationEngine {
     private var workflowRunEndCalls = 0
     private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
     private var agyBackgroundWork = AgyBackgroundWorkFollower()
+    private let agySwarmLimits: AgySwarmFollower.Limits
+    private var agySwarm = AgySwarmFollower()
     /// Where the Agent's own program keeps Transcripts, from a check of its process
     /// (ADR 0034): Claude Code's config dir, or Pi's or Oh My Pi's sessions folder.
     /// Nil looks in the Host's default place.
@@ -412,6 +414,7 @@ actor ChatConversationEngine {
         saveInterval: TimeInterval = 10,
         workflowLimits: WorkflowLimits = WorkflowLimits(),
         agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits = AgyBackgroundWorkFollower.Limits(),
+        agySwarmLimits: AgySwarmFollower.Limits = AgySwarmFollower.Limits(),
         transcriptRoot: String? = nil,
         sessionMayPrecedeItsStore: Bool = false,
         localization: String = ChatCacheDocument.currentLocalization,
@@ -428,6 +431,7 @@ actor ChatConversationEngine {
         self.saveInterval = saveInterval
         self.workflowLimits = workflowLimits
         self.agyBackgroundWorkLimits = agyBackgroundWorkLimits
+        self.agySwarmLimits = agySwarmLimits
         self.now = now
     }
 
@@ -998,6 +1002,70 @@ actor ChatConversationEngine {
             return evidence
         }
         return agyBackgroundWork.snapshotEvidence(at: date, limits: agyBackgroundWorkLimits)
+    }
+
+    /// Reads SFTP side files of an Antigravity CLI conversation's native Swarm
+    /// (`members.json`, `board.jsonl`, `view.json`, and member compact
+    /// transcripts) within bounded per-call budgets, never throwing and never
+    /// changing the snapshot.
+    func followAgySwarm() async -> AgySwarmSnapshot? {
+        guard reference.program == .agy else { return nil }
+        let date = now()
+        guard case .following(let path) = snapshot.phase,
+            !snapshot.isFromCache,
+            snapshot.readFailure == nil,
+            let coordinatorID = AgyTranscriptLocator.sessionID(ofTranscript: path)
+        else {
+            return agySwarm.snapshot(isLive: false, at: date)
+        }
+        var follower = agySwarm
+        let result = await follower.poll(
+            root: AgyTranscriptLocator.root(ofTranscript: path),
+            coordinatorID: coordinatorID,
+            hasSwarmHint: snapshot.transcript.hasSwarmActivity,
+            files: files,
+            limits: agySwarmLimits,
+            at: date,
+            isCancellation: Self.isCancellation)
+        if case .following(let currentPath) = snapshot.phase, currentPath == path {
+            agySwarm = follower
+            return result
+        }
+        return agySwarm.snapshot(isLive: false, at: date)
+    }
+
+    /// Reads the tail window of one Swarm member's `transcript_full.jsonl` on
+    /// demand for the Swarm sheet's read-only worker conversation peek.
+    func agySwarmTranscript(
+        of conversationID: String, isWorking: Bool
+    ) async -> Result<ChatTranscript, ChatToolOutputFailure> {
+        guard reference.program == .agy,
+            case .following(let path) = snapshot.phase
+        else {
+            return .failure(.notFollowing)
+        }
+        guard let workerID = ConversationReference.canonicalUUID(conversationID) else {
+            return .failure(.gone)
+        }
+        let root = AgyTranscriptLocator.root(ofTranscript: path)
+        let workerPath = AgyTranscriptLocator.transcriptPath(
+            inFolder: AgyTranscriptLocator.folder(in: root, id: workerID))
+        guard RemoteFilePath.isAcceptable(workerPath) else { return .failure(.gone) }
+        do {
+            var follower = TranscriptFollower(
+                path: workerPath, limits: adapter.limits, identity: adapter.identity)
+            guard let lines = try await follower.open(files) else { return .failure(.gone) }
+            var workerReducer = AgyTranscriptReducer()
+            workerReducer.append(lines)
+            var projectionContext = ChatProjectionContext(activity: isWorking ? .working : .idle)
+            projectionContext.windowStart = follower.windowStart ?? 0
+            return .success(workerReducer.transcript(projectionContext))
+        } catch {
+            return .failure(
+                .unreadable(
+                    (error as? TransportError)?.presentation.summary
+                        ?? String(localized: "The Host could not be read.")))
+        }
     }
 
     // MARK: Output

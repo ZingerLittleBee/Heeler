@@ -80,6 +80,7 @@ struct AgyToolCall: Sendable {
         "search_web": .web, "read_url_content": .web, "read_url": .web,
         "invoke_subagent": .agent, "manage_subagents": .agent, "send_message": .agent, "browser_subagent": .agent,
         "run_workflow": .agent,
+        "swarm": .agent, "post_message": .agent, "read_board": .agent, "swarm_wait": .agent,
         "ask_question": .question,
         "generate_image": .image,
     ]
@@ -100,6 +101,9 @@ struct AgyToolCall: Sendable {
     /// asking still writes its call first, but herdr reports it working.
     /// The tools that need no answer are written with their results.
     static let userGatedTools: Set<String> = editTools.union(writeTools).union(["run_command", "ask_question"])
+
+    /// Native Swarm coordination tools (agy 1.5.9).
+    static let swarmTools: Set<String> = ["swarm", "post_message", "read_board", "swarm_wait"]
 
     /// The tools that wait in the background without a task of their own
     /// to follow: a `schedule` wait's result reads as sent to the
@@ -257,7 +261,7 @@ struct AgyToolCall: Sendable {
         if let subagentEnd { return subagentEnd.text.flatMap(Self.preview(ofSubagentMessage:)) }
         if killedByManageTask || subagentID != nil { return nil }
         guard let result, result.status != .running else { return nil }
-        return Self.preview(of: result, kind: kind)
+        return Self.preview(of: result, kind: kind, name: name)
     }
 
     /// A subagent's reply or system error message as its row shows it.
@@ -267,18 +271,76 @@ struct AgyToolCall: Sendable {
     }
 
     /// A result's text as a row shows it: an error's message, a command's
-    /// output without its exit line, anything else as written.
-    static func preview(of result: AgyStep, kind: ChatToolActivity.Kind) -> ChatToolPreview? {
+    /// output without its exit line, a swarm tool's readable summary, or
+    /// anything else as written.
+    static func preview(of result: AgyStep, kind: ChatToolActivity.Kind, name: String? = nil) -> ChatToolPreview? {
         let text: String
         if result.status == .error {
             text = result.error ?? Self.dropping("Encountered error in step execution: ", from: result.resultBody)
         } else if kind == .command {
             text = commandOutput(result.resultBody)
+        } else if let name, swarmTools.contains(name), let formatted = swarmResultText(result.resultBody, name: name) {
+            text = formatted
         } else {
             text = normalized(result.resultBody)
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : ChatToolPreview(capping: trimmed)
+    }
+
+    /// Readable summary of a native Swarm JSON result (`swarm`, `post_message`, `read_board`).
+    private static func swarmResultText(_ raw: String, name: String) -> String? {
+        let trimmed = normalized(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+            let data = trimmed.data(using: .utf8),
+            let json = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return nil }
+        switch name {
+        case "post_message":
+            if let seq = json["seq"].flatMap({ if case .number(let n) = $0 { Int(exactly: n) } else { nil } }) {
+                return String(localized: "Posted as #\(seq)")
+            }
+        case "read_board":
+            if case .array(let messages)? = json["messages"] {
+                if messages.isEmpty {
+                    return String(localized: "No new board messages.")
+                }
+                let lines = messages.compactMap { item -> String? in
+                    let seq = item["seq"].flatMap { if case .number(let n) = $0 { Int(exactly: n) } else { nil } }
+                    let agent = item["agent"]?.stringValue ?? ""
+                    let body = firstLine(of: item["text"]?.stringValue) ?? ""
+                    guard !agent.isEmpty || !body.isEmpty else { return nil }
+                    let prefix = seq.map { "#\($0) " } ?? ""
+                    return "\(prefix)\(agent): \(body)"
+                }
+                if !lines.isEmpty { return lines.joined(separator: "\n") }
+            }
+        case "swarm":
+            if case .array(let members)? = json["members"], !members.isEmpty {
+                let lines = members.compactMap { member -> String? in
+                    guard let memberName = member["name"]?.stringValue, !memberName.isEmpty else { return nil }
+                    let state = member["state"]?.stringValue ?? "unknown"
+                    let model = member["model_display_name"]?.stringValue ?? member["model"]?.stringValue
+                    return model.map { "@\(memberName) · \(state) (\($0))" } ?? "@\(memberName) · \(state)"
+                }
+                if !lines.isEmpty { return lines.joined(separator: "\n") }
+            }
+            if let status = json["status"]?.stringValue {
+                if status == "added", let worker = json["name"]?.stringValue {
+                    let model = json["model_display_name"]?.stringValue ?? json["model"]?.stringValue
+                    return model.map { "@\(worker) (\($0))" } ?? "@\(worker)"
+                }
+                if status == "titled", let title = json["title"]?.stringValue {
+                    return title
+                }
+                if status == "killed", let worker = json["name"]?.stringValue {
+                    return "@\(worker)"
+                }
+            }
+        default:
+            break
+        }
+        return nil
     }
 
     /// A task's result as a row shows it, without the `Log:` line agy ends
@@ -397,6 +459,24 @@ struct AgyToolCall: Sendable {
             }
         case "manage_subagents", "manage_task":
             title = [string("Action"), string("TaskId")].compactMap { $0 }.joined(separator: " ")
+        case "swarm":
+            let swarmTitles = swarmCallTitles
+            title = swarmTitles.title
+            subtitle = summary ?? swarmTitles.subtitle
+        case "post_message":
+            let channel = string("channel").flatMap { $0 == "main" ? nil : $0 }
+            title = channel.map { String(localized: "Post to #\($0)") } ?? String(localized: "Post to swarm board")
+            subtitle = summary ?? Self.firstLine(of: string("text"))
+        case "read_board":
+            title =
+                integer("since").map { String(localized: "Read swarm board since #\($0)") }
+                ?? String(localized: "Read swarm board")
+            let channel = string("channel").flatMap { $0 == "*" || $0 == "main" ? nil : "#\($0)" }
+            subtitle = summary ?? channel
+        case "swarm_wait":
+            title =
+                integer("since").map { String(localized: "Wait on swarm board after #\($0)") }
+                ?? String(localized: "Wait on swarm board")
         case "schedule":
             title = integer("DurationSeconds").map { seconds in
                 let duration = Duration.seconds(seconds).formatted(.units(allowed: [.seconds], width: .narrow))
@@ -426,6 +506,86 @@ struct AgyToolCall: Sendable {
             }
         }
         return nil
+    }
+
+    private static func firstLine(of text: String?, maxLength: Int = 140) -> String? {
+        guard let text else { return nil }
+        let line = text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        guard let line else { return nil }
+        return line.count > maxLength ? String(line.prefix(maxLength - 1)) + "…" : line
+    }
+
+    private var swarmCallTitles: (title: String?, subtitle: String?) {
+        switch string("action") {
+        case "title":
+            let swarmTitle = string("title")
+            return (
+                swarmTitle.map { String(localized: "Title swarm \u{201C}\($0)\u{201D}") }
+                    ?? String(localized: "Title swarm"),
+                nil
+            )
+        case "add":
+            let worker = string("name")
+            return (
+                worker.map { String(localized: "Add worker @\($0)") } ?? String(localized: "Add swarm worker"),
+                Self.firstLine(of: string("brief"))
+            )
+        case "kill":
+            let worker = string("name")
+            return (
+                worker.map { String(localized: "Stop worker @\($0)") } ?? String(localized: "Stop swarm worker"),
+                nil
+            )
+        case "status":
+            return (String(localized: "Check swarm status"), nil)
+        case "model":
+            let worker = string("name")
+            return (
+                worker.map { String(localized: "Switch model for @\($0)") } ?? String(localized: "Switch swarm model"),
+                string("model")
+            )
+        case "models":
+            return (String(localized: "List swarm models"), nil)
+        case "channel":
+            let channel = string("channel")
+            switch string("op") {
+            case "create":
+                return (
+                    channel.map { String(localized: "Create channel #\($0)") } ?? String(localized: "Create swarm channel"),
+                    string("topic")
+                )
+            case "archive":
+                return (
+                    channel.map { String(localized: "Archive channel #\($0)") }
+                        ?? String(localized: "Archive swarm channel"),
+                    nil
+                )
+            case "subscribe":
+                return (
+                    channel.map { String(localized: "Subscribe to #\($0)") }
+                        ?? String(localized: "Subscribe to channel"),
+                    string("name").map { "@\($0)" }
+                )
+            case "unsubscribe":
+                return (
+                    channel.map { String(localized: "Unsubscribe from #\($0)") }
+                        ?? String(localized: "Unsubscribe from channel"),
+                    string("name").map { "@\($0)" }
+                )
+            case "list":
+                return (String(localized: "List swarm channels"), nil)
+            default:
+                let raw = [string("op"), channel].compactMap { $0 }.joined(separator: " ")
+                return (raw.isEmpty ? String(localized: "Manage swarm channels") : raw, nil)
+            }
+        case let other?:
+            return ("swarm \(other)", string("name"))
+        case nil:
+            return (nil, nil)
+        }
     }
 
     // MARK: Questions

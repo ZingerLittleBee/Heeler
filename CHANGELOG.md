@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Show Antigravity CLI (`agy`) Swarms in Chat on macOS and Linux Hosts with a live Swarm bar above the Composer, a 3-tab Swarm sheet (**Board**, **Members**, and **Overview**), read-only worker sub-conversation views, `/swarm` in the `/` skill menu, and Working status promotion while task workers actively run. (PR #763)
 - Add an optional `backend` field in Settings › Agent List Fields that renders the Server backend (`core`, `tui`, `rex`, or `tmux`) separately from the Host name in Agent rows and Live Activities. (PR #758)
 - Save a conversation title in Rename even while an Agent is running: Heeler confirms with an optional **Save and Don’t Show Again** choice, shows the new title on this device right away, and sends the native rename command automatically once the same Agent and conversation stop. (PR #752)
 - Clear the prefilled title or name in Rename, Rename Agent, and Rename Workspace in one tap with the trailing clear button, keeping focus in the field. (PR #752)
@@ -51,6 +52,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Sort the Agents list by Pin and Agent Status priority (`Blocked` / `Error`, `Done`, `Working`, `Idle`) across every Server Kind, ignoring Herdr TUI's `agent_panel_sort = "spaces"` plugin setting and keeping equal-status rows in stable Server and Workspace order across `All Agents`, `By Host`, `By Workspace`, and Host or Status filters. (PR #762)
 - Float Host connection and recovery status as a compact corner tile in the Agents list (`All Agents` and `By Workspace`) instead of placing a row above the inventory: the rounded-square tile expands briefly to name the Host or summary when a condition begins or escalates to a failure, settles into a `server.rack` tile with a linear bottom progress bar (or a static red bar and `!` badge when stopped, and a count badge when multiple Hosts have issues) so it never shifts Agent rows or resembles circular Agent Status Rings, and opens the Host's connection details or issue summary on tap. (PR #760)
 - Show the Host's own name without its Server Kind in the Agents and Terminals lists, Workspace cards, By Host headings, and the Host filter: choosing a Host in the filter shows every Server it has on, and By Host lists each Host once with all of its Servers' Agents or Workspaces and a Server-named status row under the heading for each Server with a problem. (PR #758)
 - Keep loading earlier Chat messages while holding Jump to Top (`↑`): reaching the top of loaded history pauses 500 ms, gives haptic feedback, loads the next earlier page, and continues scrolling upward as updates arrive until you let go or reach the start of the conversation. (PR #750)

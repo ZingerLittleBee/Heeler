@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The Console aggregate: reconciles the Host catalog and publishes one
-/// Agent list with independent Pin and per-Host sidebar ordering. Each ConsoleHostProjection
+/// Agent list with Pin and status-priority ordering across every Server Kind. Each ConsoleHostProjection
 /// owns its own convergence, retry, snippets and Host-scoped RPC behavior.
 /// How a close or a removal ended, for the Console to say with its screen gone.
 struct ConsoleOutcomeNotice: Identifiable, Equatable {
@@ -2453,13 +2453,14 @@ final class ConsoleStore {
         if let snapshot = sidebarSnapshots.snapshot(for: hostID) {
             return snapshot
         }
+        guard let host = projections[hostID]?.host,
+            let cached = cachedChats.sidebarSnapshot(on: host),
+            isActive || !cachedChats.agents(on: host).isEmpty
+        else { return nil }
         if case .loaded(nil) = sidebarSnapshots.states[hostID] {
             return nil
         }
-        guard let host = projections[hostID]?.host,
-            isActive || !cachedChats.agents(on: host).isEmpty
-        else { return nil }
-        return cachedChats.sidebarSnapshot(on: host)
+        return cached
     }
 
     /// A core or Rex Host follows no plugin, and starts from
@@ -2723,10 +2724,10 @@ final class ConsoleStore {
     }
 
     /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
-    /// foreground turn finishes, even while its Subagents, Workflows, or
-    /// non-daemon background commands keep running. Present the Agent as
-    /// `Working` across Console and Composer surfaces while a live connected
-    /// transcript confirms running, non-stale Background Work.
+    /// foreground turn finishes, even while its Subagents, Workflows, Swarm
+    /// task workers, or non-daemon background commands keep running. Present
+    /// the Agent as `Working` across Console and Composer surfaces while a live
+    /// connected transcript confirms running, non-stale Background Work.
     private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
         guard row.agent.kind == ChatProgram.agy.rawValue,
             row.agent.status == .idle || row.agent.status == .done,
@@ -2747,14 +2748,8 @@ final class ConsoleStore {
         return copy
     }
 
-    private func agentPanelSorts() -> [Host.ID: AgentPanelSort] {
-        // A Host with no plugin has no snapshot to say: it keeps status priority,
-        // and within a status the order its projection lists, the desktop app's.
-        Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
-            projection.host.capabilities.syncLayoutFromPlugin
-                ? effectiveSidebarSnapshot(for: id).map { (id, $0.agentPanelSort) }
-                : (id, AgentPanelSort.priority)
-        })
+    private func catalogServerOrder() -> [Host.ID: Int] {
+        Dictionary(catalog.enumerated().map { ($0.element.id, $0.offset) }) { first, _ in first }
     }
 
     private func rebuildAgentOrder() {
@@ -2762,12 +2757,12 @@ final class ConsoleStore {
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
             .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
-        let sorts = agentPanelSorts()
+        let serverOrder = catalogServerOrder()
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
                 .map { (agent.id, $0) }
         })
-        let nextAgents = unsorted.consoleSorted(sortByHost: sorts) { pinRanks[$0.id] }
+        let nextAgents = unsorted.consoleSorted(serverOrder: serverOrder) { pinRanks[$0.id] }
         if agents != nextAgents { agents = nextAgents }
         let listed = Set(unsorted.map(\.id))
         if listedAgentIDs != listed { listedAgentIDs = listed }
@@ -2847,10 +2842,10 @@ final class ConsoleStore {
             nextDisplay = agents
             nextSavedEntries = [:]
         } else {
-            let sorts = agentPanelSorts()
+            let serverOrder = catalogServerOrder()
             nextDisplay =
                 agents
-                + savedPairs.map(\.agent).consoleSorted(sortByHost: sorts) { [pins] in
+                + savedPairs.map(\.agent).consoleSorted(serverOrder: serverOrder) { [pins] in
                     pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
                 }
             nextSavedEntries = Dictionary(savedPairs.map { ($0.agent.id, $0.readiness) }) {

@@ -221,6 +221,9 @@ final class AgentChatStore {
     /// The Subagents, Workflows, and background commands the conversation's
     /// program runs beside it, as last read.
     private(set) var backgroundWork = ChatBackgroundWork()
+    /// Antigravity CLI's native Swarm (`members.json`, `board.jsonl`, member
+    /// transcripts, and narrator `view.json`), as last read.
+    private(set) var agySwarm: AgySwarmSnapshot?
 
     /// Whether a visible Chat is still confirming its initial transcript open
     /// or filling its initial screen, so background prefetches and secondary
@@ -233,9 +236,10 @@ final class AgentChatStore {
         return false
     }
 
-    /// Whether a live read on a connected Host shows non-stale Background Work still running.
+    /// Whether a live read on a connected Host shows non-stale Background Work
+    /// or Swarm task workers still running.
     var hasRunningBackgroundWork: Bool {
-        isHostConnected && backgroundWork.holdsActivePace
+        isHostConnected && (backgroundWork.holdsActivePace || agySwarm?.holdsActivePace == true)
     }
     /// Codex's visible model catalog (`models_cache.json` on the Host, or
     /// built-in presets before a cache file exists).
@@ -463,6 +467,7 @@ final class AgentChatStore {
     /// Live SFTP and screen evidence for Antigravity CLI Background Work.
     @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    @ObservationIgnored private var rawAgySwarm: AgySwarmSnapshot?
     @ObservationIgnored private var needsAgyScreenCheck = true
     @ObservationIgnored private var lastAgyScreenCheck: Date?
     @ObservationIgnored private var agyScreenCheckUnavailable = false
@@ -614,6 +619,8 @@ final class AgentChatStore {
         timeline.reset()
         blocked.end()
         backgroundWork = ChatBackgroundWork()
+        rawAgySwarm = nil
+        agySwarm = nil
         notifyRunningBackgroundWorkIfNeeded()
     }
 
@@ -627,7 +634,8 @@ final class AgentChatStore {
         if case .locating = conversation.phase {} else { isReady = true }
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(agent.status),
-            isBackgroundWorkRunning: backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
+            isBackgroundWorkRunning: backgroundWork.rows.contains { $0.isRunning && !$0.isStale }
+                || agySwarm?.holdsActivePace == true,
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: isHostConnected && !conversation.isFromCache,
             olderAwaitsUser: conversation.olderAwaitsUser)
@@ -753,13 +761,24 @@ final class AgentChatStore {
         }
     }
 
+    /// Reads the tail window of one Antigravity CLI Swarm member's full
+    /// transcript for the Swarm sheet's read-only worker conversation peek.
+    func loadSwarmWorkerTranscript(
+        conversationID: String, isWorking: Bool
+    ) async -> Result<ChatTranscript, ChatToolOutputFailure> {
+        guard program == .agy, case .following = conversation.phase, isHostConnected, let engine else {
+            return .failure(.notFollowing)
+        }
+        return await engine.agySwarmTranscript(of: conversationID, isWorking: isWorking)
+    }
+
     /// The Console's Host status changed. Rows expanded while it was not
     /// connected are read once it is.
     func hostConnectionChanged(_ isConnected: Bool) {
         thumbnails.hostConnectionChanged(isConnected)
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
-        notifyRunningBackgroundWorkIfNeeded()
+        refreshBackgroundWork()
         guard isConnected else {
             if isWatchingWhileHidden { stopLoop() }
             return
@@ -1174,6 +1193,10 @@ final class AgentChatStore {
             if engine === self.engine {
                 agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
             }
+            let swarm = await engine.followAgySwarm()
+            if engine === self.engine {
+                rawAgySwarm = swarm
+            }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         if olderRequest == nil {
@@ -1324,7 +1347,7 @@ final class AgentChatStore {
         }
         // herdr can report the Agent idle while its program still runs
         // work in the background.
-        if backgroundWork.holdsActivePace { return active }
+        if backgroundWork.holdsActivePace || agySwarm?.holdsActivePace == true { return active }
         return timing.idleInterval
     }
 
@@ -1755,6 +1778,8 @@ final class AgentChatStore {
         claudeWorkflowEvidence = [:]
         agyFileEvidence = [:]
         agyScreenEvidence = [:]
+        rawAgySwarm = nil
+        agySwarm = nil
         needsAgyScreenCheck = true
         lastAgyScreenCheck = nil
         backgroundWork = ChatBackgroundWork()
@@ -2262,6 +2287,24 @@ final class AgentChatStore {
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
+        let nextSwarm: AgySwarmSnapshot?
+        if hasReadLive, var raw = rawAgySwarm {
+            let effectiveLive = isLive && isHostConnected
+            if !effectiveLive {
+                raw.isLive = false
+                raw.systemAlerts = []
+                for index in raw.members.indices where !raw.members[index].isKilled {
+                    raw.members[index].status = .waiting
+                    raw.members[index].isStuck = false
+                    raw.members[index].activity = nil
+                    raw.members[index].failure = nil
+                }
+            }
+            nextSwarm = raw
+        } else {
+            nextSwarm = nil
+        }
+        if nextSwarm != agySwarm { agySwarm = nextSwarm }
         notifyRunningBackgroundWorkIfNeeded()
     }
 
