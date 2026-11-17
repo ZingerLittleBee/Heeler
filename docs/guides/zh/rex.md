@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at 36d63d52 -->
+<!-- Translated from docs/guides/rex.md at a299eadd -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -114,12 +114,12 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 | 程序 | 会话说明 |
 | --- | --- |
 | Claude Code | 根据正在运行的 Claude Code 本身绑定。执行 `/clear` 或 `/resume` 后，Chat 会在发送你的下一条消息前重新检查。 |
-| Codex | 在它持有对话文件后（首条消息之后）绑定。请用 `--no-daemon` 启动它（[原因](chat.md#配置-host)）；否则请使用 **Choose a Conversation**。 |
+| Codex | 在它持有对话文件后（首条消息之后）绑定。请用 `--no-daemon` 启动它（[原因](chat.md#配置-host)）；否则 Chat 会显示 [**Codex Started Without --no-daemon**](chat-troubleshooting.md#codex-started-without---no-daemon)，而不显示对话。 |
 | 其他 Agent | Rex Host 上暂不提供 Chat，会以其终端打开。 |
 
 - **Can't Tell the Conversation：** 当 Chat 无法证实 Agent 显示的是哪个对话时，会这样提示并提供 **Check Again**。轻点 **Choose a Conversation**，预览一个对话后轻点 **Use This Conversation**。Heeler 会在当前设备上为这个终端记住这个选择，直到该 Agent 退出或 Rex 重启。Host 上不会写入任何内容。
 - **Send：** **Send** 会先确认仍是同一个 Agent 占据终端、它不处于 **Blocked**，并且接受粘贴，然后粘贴你的消息并按下 Enter。终端下方的 Composer 也以同样方式发送。如果 Rex 没有回应，Heeler 绝不会重新发送该消息；请先查看终端。
-- **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。
+- **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，先确认仍是同一个 Agent 占据终端，再按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。
 - **命令：** 在 Agent 上报空闲时，`/` 提供 `/compact`，不提供 Agent 的技能。其他操作请在终端中完成。
 
 ## 尚未支持的功能
