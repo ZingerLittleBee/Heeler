@@ -1,0 +1,24 @@
+---
+// The closing call to action above an iPad and an iPhone that rise with the
+// scroll. Behaviour: `closing()` in `src/scripts/home/sections.ts`.
+import consolePad from '../../assets/screens/console-ipad.png';
+import consolePhone from '../../assets/screens/console-iphone.png';
+import Pad from './Pad.astro';
+import Phone from './Phone.astro';
+import StoreBadges from './StoreBadges.astro';
+---
+
+<section class="cl">
+  <div class="wrap">
+    <h2 class="cl-h" data-rv><span>Go on.</span> <span class="dim">Leave the desk.</span></h2>
+    <div data-rv data-rv-delay="120"><StoreBadges /></div>
+  </div>
+  <div class="cl-s">
+    <div class="cl-pad">
+      <Pad image={consolePad} alt="Heeler on iPad: the Agents sidebar beside a Chat with a permission prompt" sizes="min(940px, 150vw)" />
+    </div>
+    <div class="cl-ph">
+      <Phone screens={[{ name: 'console', image: consolePhone }]} alt="Heeler on iPhone: the Agents list" sizes="(max-width: 899px) 44vw, min(330px, 25vw)" />
+    </div>
+  </div>
+</section>

@@ -1,0 +1,14 @@
+---
+import appStoreBadge from '../../assets/badges/app-store-badge.svg';
+import testFlightBadge from '../../assets/badges/testflight-badge.svg';
+import { links } from '../../data/links';
+---
+
+<div class="bdg">
+  <a href={links.appStore} target="_blank" rel="noopener">
+    <img src={appStoreBadge.src} alt="Download on the App Store" width="144" height="48" />
+  </a>
+  <a href={links.testFlight} target="_blank" rel="noopener">
+    <img src={testFlightBadge.src} alt="Available on TestFlight" width="130" height="48" />
+  </a>
+</div>

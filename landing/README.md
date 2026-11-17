@@ -1,8 +1,8 @@
 # Heeler landing page
 
 The marketing site at <https://heeler.bybee.dev>. Astro, static output with
-one small inline script on the homepage, deployed as a static asset bundle on
-Cloudflare Workers — the same Cloudflare account that serves `relay/`.
+two small script bundles, deployed as a static asset bundle on Cloudflare
+Workers, the same Cloudflare account that serves `relay/`.
 
 It is self-contained on purpose: nothing outside this directory imports from
 it, and no other workflow in the repo depends on it. `ci.yml` (iOS) and
@@ -26,84 +26,87 @@ npm run deploy       # wrangler deploy (needs Cloudflare credentials)
 
 | Path | What it holds |
 | --- | --- |
-| `src/pages/index.astro` | The homepage: hero, seven chapters beside a sticky contents list, Security, numbers, FAQ, close and source. Holds the page's inline script and the chapter steps. |
+| `src/pages/index.astro` | The homepage: the sections in order, its metadata and JSON-LD. |
 | `src/pages/404.astro` | Not-found page, served by Workers for unmatched paths. |
 | `src/pages/ipad.astro` | Full iPad screenshot gallery, linked from the FAQ. |
-| `src/layouts/Layout.astro` | `<head>` metadata, header, footer, global CSS imports. |
-| `src/components/home/` | The homepage's parts (hero wall, chapter head, step figure, FAQ list, and so on), its copy in `content.ts`, figure sizes in `figures.ts`, and the shared `home-*` type roles in `home.css`. |
-| `src/components/*.astro` | Header, footer, and the pieces the other pages use. |
-| `src/styles/substrate/` | Vendored design system (see below). |
-| `src/styles/landing.css` | Page skeleton: gutters, section rhythm, shared text roles. |
-| `src/assets/` | Logo, thirteen iPhone screenshots, and seven iPad screenshots, optimised at build time. |
-| `src/data/ipad-screens.ts` | Shared iPad screenshot order and captions. |
-| `public/figures/*.html` | One interactive figure per chapter except Usage, which shows screenshots; embedded with lazy iframes (see below). |
+| `src/layouts/Layout.astro` | `<head>` metadata, header, footer, the shared stylesheet and the header script. |
+| `src/components/home/` | One component per homepage section (`Stage`, `Backends`, `Reach`, `Box`, `Setup`, `Faq`, `Closing`), the device frames, and the copy in `content.ts`. |
+| `src/components/*.astro` | Header, footer, logo, and the pieces the other pages use. |
+| `src/scripts/` | Client behaviour: `motion.ts` (frame loop, scrub, reveal, pointer helpers), `header.ts` (every page), and `home/` (the pinned stage and the sections below it). |
+| `src/styles/site.css` | Design tokens, the header and the footer, shared by every page. |
+| `src/styles/home/` | The homepage: `base.css` (page box, reveal, device frames), `stage.css`, `sections.css`. |
+| `src/styles/substrate/` | Vendored design system used by `/ipad` and `/404` (see below). |
+| `src/styles/landing.css` | Page skeleton for `/ipad` and `/404`: gutters, section rhythm, shared text roles. |
+| `src/data/` | Outbound links, and the iPad screenshot order and captions. |
+| `src/assets/` | Logo, store badges, five iPhone screenshots and seven iPad screenshots, optimised at build time. |
 
-Breakpoints live with the component that needs them. Below 960px the contents
-list becomes a strip of chips under the header and each chapter's figure pins
-above its steps.
+### Homepage
+
+The homepage opens on a pinned stage: the hero hands one phone over to a
+five-step story (Console, Chat, Terminal, Away, Usage) that the scroll scrubs
+through, with small fragments floating above the screenshot at each step.
+Below it come the backends, voice and reach, privacy, the smaller features,
+setup, the FAQ and the close.
+
+The markup is static and server-rendered, so the page reads without scripts:
+the hero is one static screen, every section is visible, both ways to add a
+machine are listed, and the FAQ opens and closes natively; the looping demos
+rest. An inline script in the layout adds `js` to `<html>` before first paint
+(and `is-still` under reduced motion); styles that hide something for an
+entrance are gated on it, and the few no-script fallbacks on its absence.
+
+Class names are short and scoped by nesting: every homepage rule sits under
+`.lp.home`, and the header and footer under `.lp`, which also carries the
+tokens. Breakpoints live with the rules they change. Below 900px the header
+folds into a menu; the stage stacks the phone under the copy below 560px, and
+below 900px in portrait.
 
 ### Motion
 
-The homepage's motion is CSS scroll-driven animation where the browser has it,
-with an IntersectionObserver fallback, and none of it runs under reduced
-motion. The inline script in `index.astro` marks the current chapter, steps
-each chapter's figure with the scroll, counts the stats up, copies the pair
-command, and scrolls in-page links itself (Chrome ignores a fragment link
-clicked while an earlier smooth scroll is still running). The FAQ animates its
-answers open and closed from `FaqList.astro`.
+`src/scripts/motion.ts` runs one `requestAnimationFrame` loop for every
+scroll-linked value and sleeps when settled. `scrub()` maps an element's
+scroll progress to 0..1, `reveal()` adds `.is-in` to `[data-rv]` elements as
+they enter, and `visible()` runs a looping demo only while it is on screen.
+The stage derives all of its state from one scrub, so nothing can be skipped
+or fall out of sync. Under reduced motion every value lands in its finished
+state with nothing in flight.
+
+In-page links scroll by hand from `header.ts` (Chrome drops a fragment link
+clicked while an earlier smooth scroll is still running) and land clear of the
+sticky header.
 
 ## Design source
 
-The homepage layout comes from `Heeler Landing Redesign.dc.html` in the Claude
-Design project `e4156ac4-d37e-42fa-bcda-0bcb77e2d0a7` (option 1c, reworked as
-an interactive draft with scroll-driven chapters). Copy changes should stay in
-sync with `README.md` at the repo root, which is where most of the content
-came from.
+The homepage comes from `1a Pocket.dc.html` in the Claude Design project
+"Heeler Landing v2" (`8463d693-85b2-4ff4-859a-6b8dde9e8421`). The design is a
+script-rendered prototype; this site keeps its class names, styles and timing,
+and renders the markup at build time instead. Copy changes should stay in
+sync with `README.md` at the repo root.
 
-`src/styles/substrate/` is the Substrate design system from that project
-(`substrate-design-system-4f544429-9771-4068-8ef1-7d18a69e56c0`), vendored
-verbatim but trimmed to what this page renders: every token file plus the
-Button and Badge rules from `components/core/core.css`. Re-sync those files from
-the design project rather than editing them; page-specific CSS belongs in
-`landing.css` or a component's `<style>` block.
+`src/styles/substrate/` is the Substrate design system from the earlier
+design project (`substrate-design-system-4f544429-9771-4068-8ef1-7d18a69e56c0`),
+vendored verbatim but trimmed to its token files plus the Button and Badge
+rules from `components/core/core.css`. Only `/ipad` and `/404` load it; the
+homepage takes just its font faces. Re-sync those files from the design
+project rather than editing them.
 
 The Geist and Geist Mono variable fonts in
 `src/styles/substrate/assets/fonts/` come from the `geist` npm package (SIL
 Open Font License 1.1, `LICENSE.txt` alongside them).
 
-The iPhone screenshots are copies of `docs/images/*-iphone.png` at the repo root,
-except `widgets-limits-iphone.png`, which only the Usage chapter shows.
-The iPad screenshots are copies of `docs/images/*-ipad.png`.
-They are not symlinks — refresh them here when the app screenshots change.
-The homepage hero shows the iPhone screenshots as a decorative wall; the FAQ's
+The screenshots are copies of `docs/images/*-iphone.png` and
+`docs/images/*-ipad.png` at the repo root. They are not symlinks: refresh
+them here when the app screenshots change. The stage draws each iPhone
+screenshot larger than the phone's screen and pads it in the screenshot's own
+edge colour, so a light screenshot never shows black around it mid-swap; a
+new stage screenshot needs its edge colour added in `stage.css`. The FAQ's
 iPad answer links to `/ipad` for the full gallery.
-
-## Figures
-
-Each chapter's figure is a generated, self-contained page (inline SVG and
-script, dark theme, `noindex`) in `public/figures/`, so it is replaced whole
-rather than edited. The pages come from the anatomy figure sources, through a
-build script that lives with them (`landing-embeds.py`, outside this repo). It
-takes each figure's dark page and lets the card fill its iframe, hides the
-legend, numbers the corner in chapter order (Fig 1 to Fig 6), moves the first
-tour beat to 0.8 s, and inserts the scroll hook.
-
-The hook is the contract between a figure and the homepage:
-`window.heelerFigure.go(beat)` stops the figure's idle tour and plays to that
-beat at the tour's own pace, without blanking the drawing on a step back.
-Until the page calls it, the figure runs its tour. Each `StepFigure` step names
-a beat (`data-beat`), and the page script calls `go()` for the step on the
-reading line. A new figure needs a hook whose beats match its steps.
-
-Each card fills its iframe, and `src/components/home/figures.ts` sizes the frame
-from the figure's viewBox ratio and card padding, wide and below 560px. A figure
-whose drawing or padding changes needs its numbers there updated too.
 
 ## Search and sharing
 
 `@astrojs/sitemap` emits `sitemap-index.xml` and `sitemap-0.xml`, linked from
 `robots.txt` and the layout. Only `/` and `/ipad` are indexable; the 404 page
-and embedded figures are `noindex`. Canonical URLs match Workers' clean paths.
+is `noindex`. Canonical URLs match Workers' clean paths.
 The homepage's JSON-LD uses the same FAQ answers as its visible content, with
 no invented ratings, price, company identity, or macOS app support.
 

@@ -1,0 +1,95 @@
+---
+// "Also in the box": eight smaller features, each with a drawing that replays
+// on hover. Behaviour: `box()` in `src/scripts/home/sections.ts`. Drawing sizes
+// are in em of `.bx-i`.
+import BoxCard from './BoxCard.astro';
+
+// A QR-shaped pattern (three finders, pseudo-random modules). It decodes to nothing.
+let qr = '';
+for (let y = 0; y < 17; y++) {
+  for (let x = 0; x < 17; x++) {
+    const fx = x < 8 ? x : x > 8 ? x - 10 : -9;
+    const fy = y < 8 ? y : y > 8 ? y - 10 : -9;
+    let on: boolean;
+    if (fx > -9 && fy > -9 && !(x > 8 && y > 8)) {
+      const ring = Math.max(Math.abs(fx - 3), Math.abs(fy - 3));
+      on = ring === 3 || ring < 2;
+    } else on = (x * 7 + y * 11 + x * y * 3 + ((x ^ y) & 3)) % 5 < 2;
+    if (on) qr += `M${x} ${y}h1v1h-1z`;
+  }
+}
+---
+
+<section class="sec">
+  <div class="wrap">
+    <h2 class="h2" data-rv>Also in the box.</h2>
+    <ul class="bx-g">
+      <BoxCard title="Changes" index={0}>
+        <ul class="x-ch" slot="art">
+          <li style="--i:0"><i class="w">M</i><b>retry.js</b><em>+12</em><em>−3</em></li>
+          <li style="--i:1"><i class="d">A</i><b>queue.ts</b><em>+48</em></li>
+          <li style="--i:2"><i class="w">M</i><b>README.md</b><em>+2</em><em>−2</em></li>
+        </ul>
+        Every uncommitted file in the checkout, with diffs. git runs on the Host.
+      </BoxCard>
+      <BoxCard title="Attachments" index={1}>
+        <ul class="x-at" slot="art">
+          <li><i class="x-ph"></i><b>IMG_4312.jpeg</b><span>4.2 MiB</span><em></em></li>
+          <li class="x-up"><i class="x-fl">zip</i><b>trace.zip</b><span class="x-pg"><u></u></span><em></em></li>
+        </ul>
+        Photos and files up to 64 MiB, sent over SFTP.
+      </BoxCard>
+      <BoxCard title="Skills and Snippets" index={2}>
+        <div class="x-sk" slot="art">
+          <p>/<i></i></p>
+          <div><i class="x-hl"></i><span>/review</span><span>/tdd</span><span>/release-notes</span></div>
+        </div>
+        Your Agent's skills in a <code>/</code> menu, plus reusable snippets.
+      </BoxCard>
+      <BoxCard title="Worktrees" index={3}>
+        <svg class="x-wt" slot="art" viewBox="0 0 168 72" fill="none">
+          <path d="M8 20H128"></path>
+          <path class="ds" d="M128 20H162"></path>
+          <path class="br" pathLength="1" d="M46 20C46 44 56 58 74 58H81"></path>
+          <circle cx="8" cy="20" r="3.5"></circle>
+          <circle cx="46" cy="20" r="3.5"></circle>
+          <circle cx="84" cy="20" r="3.5"></circle>
+          <circle cx="122" cy="20" r="3.5"></circle>
+          <circle class="ag" cx="88" cy="58" r="6.5"></circle>
+          <text x="4" y="9">main</text>
+          <text class="bl" x="101" y="62">fix/retry</text>
+        </svg>
+        Start an Agent on a clean checkout.
+      </BoxCard>
+      <BoxCard title="Themes" index={4}>
+        <div class="x-th" slot="art">
+          <div class="lt"><i></i><i></i><i></i><i></i></div>
+          <div class="dk"><i></i><i></i><i></i><i></i></div>
+        </div>
+        30 themes, separate picks for light and dark.
+      </BoxCard>
+      <BoxCard title="iPad" index={5}>
+        <div class="x-pd" slot="art">
+          <div class="x-fr"><i class="sb"><u></u><u></u><u></u></i><i class="w1"><u></u><u></u></i></div>
+          <i class="w2"><u></u><u></u><u></u></i>
+          <span class="x-k"><kbd style="--i:0">⌘</kbd><kbd style="--i:1">⌃</kbd></span>
+        </div>
+        Magic Keyboard shortcuts, multiple windows, drag and drop.
+      </BoxCard>
+      <BoxCard title="Shell terminals" index={6}>
+        <div class="x-sh" slot="art" set:html={'<p><span>~/api $</span> <b>make test</b></p><p class="o">ok  42 passed</p><p class="n"><span>~/api $</span> <i></i></p>'} />
+        A plain shell in the Agent's directory.
+      </BoxCard>
+      <BoxCard title="QR pairing" index={7}>
+        <div class="x-qr" slot="art">
+          <div class="x-q">
+            <svg viewBox="0 0 17 17" shape-rendering="crispEdges"><path d={qr}></path></svg>
+            <i></i>
+          </div>
+          <span class="x-ok"><i></i>Host added</span>
+        </div>
+        Scan once, the machine is a Host.
+      </BoxCard>
+    </ul>
+  </div>
+</section>

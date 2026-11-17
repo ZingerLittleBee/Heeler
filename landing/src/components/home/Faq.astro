@@ -1,0 +1,28 @@
+---
+// The first answer starts open. `faq()` in `src/scripts/home/sections.ts`
+// slides the answers open and shut; without it the browser toggles them.
+import { faq } from './content';
+---
+
+<section class="sec" id="faq">
+  <div class="wrap fq-g">
+    <h2 class="h2" data-rv>Questions, <span class="dim">answered.</span></h2>
+    <div class="fq" data-rv data-rv-delay="100">
+      {
+        faq.map((item, i) => (
+          <details class:list={['fq-i', { 'is-open': !i }]} open={!i}>
+            <summary class="fq-q">
+              <h3>{item.q}</h3>
+              <i />
+            </summary>
+            <div class="fq-a">
+              <div>
+                <p set:html={item.a} />
+              </div>
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>
