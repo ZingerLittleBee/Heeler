@@ -255,7 +255,10 @@ server did. Where Rex differs from tmux, this says how and why.
   Usage, so a Rex record is never what a Host is read through or named by, and
   a Host whose only Server is Rex has no Usage entry. Where Rex Servers are
   all that is on, Usage and the Accounts in Settings say that Rex reports
-  none, rather than asking for a Host that Hosts already lists. Agents, Chat,
+  none, rather than asking for a Host that Hosts already lists. Agent List
+  Fields is kept on this device and asks nothing of the Host, so it lists a
+  Rex record beside the others (`HostStore.rowLayoutHosts`), and its rows can
+  show the `backend` field as `rex`. Agents, Chat,
   Composer, New Agent and New Terminal, notifications, Live Activities,
   widgets, background refresh, the plugin, the Host Helper and Pairing Codes
   still leave Rex out. (Agents no longer do since ADR 0054, and Chat and the

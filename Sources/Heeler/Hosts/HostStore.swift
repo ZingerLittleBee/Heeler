@@ -509,14 +509,21 @@ final class HostStore {
         hosts.filter(\.serverKind.isConfirmed)
     }
 
-    /// The Hosts Usage and Settings' per-Host pages show: those of a kind
+    /// The Hosts Usage and Settings' Agents & Accounts show: those of a kind
     /// Heeler has a plugin or a Host Helper for.
     var integratedHosts: [Host] {
         hosts.filter(\.serverKind.hasHostIntegrations)
     }
 
+    /// The Hosts Settings › Agent List Fields lays out: every Host whose
+    /// Agent rows the Console lists, a Rex Host's too, since a row layout is
+    /// kept on this device and asks nothing of the Host (ADR 0049).
+    var rowLayoutHosts: [Host] {
+        consoleHosts
+    }
+
     /// Whether Rex Servers are all that is on: Hosts lists them, and Usage and
-    /// Settings' per-Host pages have no Host to read (ADR 0049).
+    /// Settings' Agents & Accounts have no Host to read (ADR 0049).
     var hasOnlyRexServersOn: Bool {
         integratedHosts.isEmpty && hosts.contains { $0.serverKind == .rex }
     }

@@ -439,5 +439,9 @@ struct RexHostCatalogTests {
         #expect(store.consoleHosts == [rex, tmux])
         #expect(store.integratedHosts == [tmux])
         #expect(!store.supportsLiveActivities(for: rex.id))
+        // Agent List Fields is kept on this device, so it lays out a Rex
+        // Host's rows beside the others, `backend` among its fields.
+        #expect(store.rowLayoutHosts == [rex, tmux])
+        #expect(HostStore(volatileHosts: [rex]).rowLayoutHosts == [rex])
     }
 }

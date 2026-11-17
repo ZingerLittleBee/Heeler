@@ -72,7 +72,10 @@ struct SettingsView: View {
     let relaySettings: NotificationRelaySettings
     let liveActivities: HostLiveActivityCoordinator
     let console: ConsoleStore
+    /// The Hosts Agents & Accounts reads (`HostStore.integratedHosts`).
     let hosts: [Host]
+    /// The Hosts Agent List Fields lays out (`HostStore.rowLayoutHosts`).
+    let rowLayoutHosts: [Host]
     /// Hosts has Hosts, and only Rex Servers are on (`HostStore.hasOnlyRexServersOn`).
     var hasOnlyRexServersOn = false
     let onHostAdded: (Host.ID) -> Void
@@ -162,7 +165,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     NavigationLink {
-                        Self.agentListDestination.destinationView(console: console, hosts: hosts)
+                        Self.agentListDestination.destinationView(console: console, hosts: rowLayoutHosts)
                     } label: {
                         Label("Agent List Fields", systemImage: "list.bullet.rectangle")
                     }

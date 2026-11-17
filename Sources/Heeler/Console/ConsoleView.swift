@@ -523,6 +523,7 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.integratedHosts,
+            rowLayoutHosts: hosts.rowLayoutHosts,
             hasOnlyRexServersOn: hosts.hasOnlyRexServersOn,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
