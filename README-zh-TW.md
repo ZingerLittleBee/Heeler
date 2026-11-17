@@ -7,7 +7,9 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="從 App Store 下載" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="可在 TestFlight 取得" height="40" /></a>
 
-**[herdr](https://herdr.dev)（以 Agent 為優先的終端機執行環境）與 tmux 的原生 iOS 配套 App。**
+**在 iPhone 和 iPad 上掌控你自己機器上執行的寫程式 Agent。**
+
+支援 [Herdr TUI](https://herdr.dev)、Herdr 桌面應用程式（herdr-core）與 tmux，Rex 即將支援。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,7 +26,7 @@
 
 ---
 
-Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 上管理 Claude Code、Codex 及其他寫程式 Agent 的 Agent 主控台。Agent 在你自己的主機上執行，運行於 Herdr TUI、Herdr 桌面應用程式（herdr-core）或 tmux 中；Heeler 透過 SSH 連線。你可以跨機器監控多個 Agent，並依誰需要你處理來排序，接著開啟即時終端機或支援的對話來傳送指令。
+Heeler 是 iPhone 和 iPad 上獨立、開源的 Agent 主控台，也是一款 **herdr 行動裝置用戶端**，用來管理 Claude Code、Codex 及其他寫程式 Agent。Agent 繼續在你自己的主機上執行，運行於 Herdr TUI、Herdr 桌面應用程式（herdr-core）或 tmux 中；Heeler 透過 SSH 直接連線，程式碼不會經過我們的伺服器。你可以跨機器一眼看出哪個 Agent 在等你，用原生對話或真實終端機回覆；Agent 受阻或完成時會收到端對端加密的通知，用量上限用了多少也隨時看得到。
 
 ## 螢幕截圖
 
@@ -52,6 +54,32 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
 
 - **主控台**——所有機器上的所有 Agent 集中在一份依狀態排序的清單中
   （受阻者優先），可依主機篩選，即時更新。
+- **對話**——以原生訊息閱讀 Agent 的對話，而不是看終端機畫面；從
+  輸入框回覆，並用按鈕回應受阻的 Agent；支援 Claude Code、Codex、
+  Pi、Oh My Pi、Grok Build 與 OpenCode
+  （[了解更多](https://docs.heeler.bybee.dev/chat)）。
+- **接入**——以 libghostty 繪製 Agent 的真實終端機：原生捲動回溯、
+  同樣能操作全螢幕 TUI 的慣性觸控捲動、長按選取、接管已失效的
+  終端機擁有者，以及默默收集、稍後再開啟的網頁連結。
+- **通知與即時動態**——Agent 受阻或完成時發送端對端加密的推播，並以
+  鎖定畫面／動態島橫幅即時追蹤 Agent；中繼伺服器永遠無法讀取內容
+  （[PRIVACY.md](PRIVACY.md)）。
+- **用量**——顯示 Claude Code 與 Codex 的用量上限及重設時間，以及最多
+  30 天的 Token 用量與預估 API 費用，可彙整所有主機或只看單一主機；
+  主畫面與鎖定畫面小工具讓你隨時一覽
+  （[了解更多](https://docs.heeler.bybee.dev/usage)）。
+- **輸入框**——用完整的 iOS 鍵盤（自動修正、輸入法、聽寫）在本機撰寫
+  草稿，再一次傳送；工具鍵盤另外提供 Agent 控制鍵、Agent 技能、
+  可重複使用的片語與終端機外觀。
+- **語音輸入**——不想打字就直接說：語音會轉成文字放進輸入框，可在
+  裝置上辨識（iOS 26 起），也可使用你自己的語音服務 API 金鑰
+  （[了解更多](https://docs.heeler.bybee.dev/voice-input)）。
+- **覆蓋網路**——內建 Tailscale、ZeroTier 與 EasyTier，手機不必安裝
+  VPN App，也不需要 iOS 的 VPN 設定。一台主機可以有多條路由，Heeler
+  會同時嘗試並採用最先連上的那一條
+  （[了解更多](docs/guides/overlay-networks.md)）。
+- **跳板主機**——透過 SSH 跳板連到無法直接連通的機器，兩段跳轉的
+  金鑰都會驗證。
 - **Herdr 桌面應用程式與 herdr-core**——可連線到 macOS、Linux 與原生
   Windows 上的 Herdr 桌面應用程式或無介面的 herdr-core。主控台會跟隨
   桌面應用程式的空間與分頁，即時終端機、對話、輸入框、新增 Agent
@@ -63,37 +91,16 @@ Heeler 是獨立的 **herdr 行動裝置用戶端**，也是在 iPhone 和 iPad 
   與工作樹同樣可用，並透過 Claude Code hooks 與選用的 Host Helper 加入
   Agent 狀態、通知、即時動態與用量
   （[了解更多](https://docs.heeler.bybee.dev/tmux)）。
-- **接入**——以 libghostty 繪製 Agent 的真實終端機：原生捲動回溯、
-  同樣能操作全螢幕 TUI 的慣性觸控捲動、長按選取、接管已失效的
-  終端機擁有者，以及默默收集、稍後再開啟的網頁連結。
-- **對話**——以原生訊息閱讀 Agent 的對話，而不是看終端機畫面；從
-  輸入框回覆，並用按鈕回應受阻的 Agent；支援 Claude Code、Codex、
-  Pi、Oh My Pi、Grok Build 與 OpenCode
-  （[了解更多](https://docs.heeler.bybee.dev/chat)）。
-- **輸入框**——用完整的 iOS 鍵盤（自動修正、輸入法、聽寫）在本機撰寫
-  草稿，再一次傳送；工具鍵盤另外提供 Agent 控制鍵、Agent 技能、
-  可重複使用的片語與終端機外觀。語音輸入讓你能使用自己的語音
-  服務 API 金鑰對輸入框說話
-  （[了解更多](https://docs.heeler.bybee.dev/voice-input)）。
 - **終端機**——在 Agent 所在的資料夾開啟一般 Shell，提供文字與按鍵
   模式，每個 Workspace 重複使用同一個分頁。
 - **附件**——透過 SFTP 將照片或最大 64 MiB 的檔案暫存到主機，並把
   檔案路徑插入草稿。
 - **QR 配對**——掃描配對碼即可新增機器；金鑰在裝置上產生，私密金鑰
   只存放在鑰匙圈，配對碼還會固定主機金鑰指紋。
-- **通知與即時動態**——Agent 受阻或完成時發送端對端加密的推播，並以
-  鎖定畫面／動態島橫幅即時追蹤 Agent；中繼伺服器永遠無法讀取內容
-  （[PRIVACY.md](PRIVACY.md)）。
-- **用量**——顯示 Claude Code 與 Codex 的用量上限及重設時間，以及最多
-  30 天的 Token 用量與預估 API 費用，可彙整所有主機或只看單一主機；
-  主畫面與鎖定畫面小工具讓你隨時一覽
-  （[了解更多](https://docs.heeler.bybee.dev/usage)）。
 - **工作樹**——在 Workspace 存放庫的乾淨 checkout 上啟動 Agent。
 - **外觀**——跟隨系統、淺色或深色；30 種佈景主題，淺色與深色可分別指定，
   終端機、對話與整個 App 都會套用；內建 JetBrains Mono 與 IBM Plex Mono
   字體；可雙指縮放。
-- **跳板主機**——透過 SSH 跳板連到無法直接連通的機器，兩段跳轉的
-  金鑰都會驗證。
 
 ## 連線方式
 

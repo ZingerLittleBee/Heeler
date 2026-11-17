@@ -7,7 +7,9 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="App Store でダウンロード" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="TestFlight で入手可能" height="40" /></a>
 
-**[herdr](https://herdr.dev)（エージェントファーストのターミナルランタイム）および tmux のための、ネイティブ iOS コンパニオンアプリです。**
+**ご自身のマシンで動くコーディングエージェントのための、iPhone と iPad のコンソールです。**
+
+[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux に対応しています。Rex にもまもなく対応します。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,7 +26,7 @@
 
 ---
 
-Heeler は、iPhone と iPad で使える独立した **herdr モバイルクライアント**であり、Claude Code、Codex などのコーディング Agent のためのエージェントコンソールです。Agent はご自身の Host 上で Herdr TUI、Herdr デスクトップアプリ（herdr-core）、または tmux とともに動作し、Heeler は SSH で接続します。複数のマシンにまたがる複数の Agent を、対応が必要なものから順に並べて監視し、ライブターミナルや対応している Chat の会話を開いて指示を送れます。
+Heeler は、iPhone と iPad で使える独立したオープンソースのエージェントコンソールであり、Claude Code、Codex などのコーディング Agent のための **herdr モバイルクライアント**です。Agent はご自身の Host 上の Herdr TUI、Herdr デスクトップアプリ（herdr-core）、または tmux でそのまま動き続け、Heeler は SSH で直接接続するため、コードが私たちのサーバーを通ることはありません。どの Agent が対応を待っているかをすべてのマシンにまたがって確認し、ネイティブの Chat または実際のターミナルで応答できます。Agent が Blocked または Done になるとエンドツーエンド暗号化された通知が届き、Usage Limits の消費状況もいつでも確認できます。
 
 ## スクリーンショット
 
@@ -51,19 +53,21 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 ## 機能
 
 - **Console** — すべてのマシン上のすべての Agent を、ステータス順（Blocked が先頭）の 1 つのリストにまとめます。Host で絞り込むことができ、リアルタイムで更新されます。
+- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
+- **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
+- **通知 + ライブアクティビティ** — Agent が Blocked または Done になったときのエンドツーエンド暗号化されたプッシュ通知と、Agent をリアルタイムで追跡するロック画面 / Dynamic Island のバナーです。リレーが内容を読むことは決してできません（[PRIVACY.md](PRIVACY.md)）。
+- **Usage** — Claude Code と Codex の Usage Limits とそのリセット時刻、および最大 30 日分の Token Usage とその推定 API コストを、すべての Host の合計または 1 台ごとに表示します。ホーム画面とロック画面のウィジェットで、いつでも確認できます（[詳しくはこちら](https://docs.heeler.bybee.dev/usage)）。
+- **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。
+- **Voice Input** — 入力する代わりに話して下書きを作れます。音声は Composer 内でテキストになり、デバイス上での認識（iOS 26 以降）またはご自身の音声サービスの API キーを利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
+- **Overlay Networks** — Tailscale、ZeroTier、EasyTier をアプリに内蔵しているため、VPN アプリも iOS の VPN 構成も必要ありません。1 つの Host に複数のルートを設定でき、Heeler はそれらを同時に試して、最初に到達したルートを使います（[詳しくはこちら](docs/guides/overlay-networks.md)）。
+- **Jump Host** — SSH のジャンプを経由して直接到達できないマシンにアクセスし、両方のホップで鍵を検証します。
 - **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
 - **tmux** — macOS または Linux で動作する tmux 3.3+ サーバーに接続します。セッション、ウィンドウ、ペインが Console に表示され、ライブターミナルは画面に合わせてサイズ調整されつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Chat、Composer、New Agent、New Workspace、Worktrees も利用でき、Claude Code のフックとオプションの Host Helper によって Agent のステータス、通知、ライブアクティビティ、Usage を追加できます（[詳しくはこちら](https://docs.heeler.bybee.dev/tmux)）。
-- **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
-- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
-- **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
 - **Terminal** — Agent のディレクトリで通常のシェルを開きます。Text と Keys の 2 つのモードがあり、Workspace ごとに 1 つのタブを再利用します。
 - **添付ファイル** — 写真や 64 MiB までのファイルを SFTP で Host に置き、そのパスを下書きに挿入します。
 - **QR ペアリング** — Pairing Code をスキャンしてマシンを追加します。鍵はデバイス上で生成され、秘密鍵は Keychain から出ることはなく、コードによってホスト鍵のフィンガープリントが固定されます。
-- **通知 + ライブアクティビティ** — Agent が Blocked または Done になったときのエンドツーエンド暗号化されたプッシュ通知と、Agent をリアルタイムで追跡するロック画面 / Dynamic Island のバナーです。リレーが内容を読むことは決してできません（[PRIVACY.md](PRIVACY.md)）。
-- **Usage** — Claude Code と Codex の Usage Limits とそのリセット時刻、および最大 30 日分の Token Usage とその推定 API コストを、すべての Host の合計または 1 台ごとに表示します。ホーム画面とロック画面のウィジェットで、いつでも確認できます（[詳しくはこちら](https://docs.heeler.bybee.dev/usage)）。
 - **Worktrees** — Workspace のリポジトリのクリーンなチェックアウトで Agent を起動します。
 - **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定でき、ターミナル、Chat、アプリ全体に適用される 30 種類のテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
-- **Jump Host** — SSH のジャンプを経由して直接到達できないマシンにアクセスし、両方のホップで鍵を検証します。
 
 ## 接続のしくみ
 

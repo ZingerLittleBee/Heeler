@@ -7,7 +7,9 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge-zh.svg" alt="在 TestFlight 下载" height="40" /></a>
 
-**[herdr](https://herdr.dev)（agent 优先的终端运行时）与 tmux 的原生 iOS 伴侣应用。**
+**在 iPhone 和 iPad 上掌控你自己机器上运行的编程 Agent。**
+
+支持 [Herdr TUI](https://herdr.dev)、Herdr 桌面端（herdr-core）和 tmux，Rex 即将支持。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,7 +26,7 @@
 
 ---
 
-Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控制台，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 在你自己的 Host 上通过 Herdr TUI、Herdr 桌面端（herdr-core）或 tmux 运行，Heeler 通过 SSH 连接。跨机器查看多个 Agent，按「谁需要你」排序，再打开实时终端或支持的 Chat 对话发送指令。
+Heeler 是 iPhone 和 iPad 上独立、开源的 Agent 控制台，也是一款 **herdr 移动客户端**，用于远程操作 Claude Code、Codex 和其他编程 Agent。Agent 继续在你自己的 Host 上通过 Herdr TUI、Herdr 桌面端（herdr-core）或 tmux 运行，Heeler 通过 SSH 直连，代码不经过我们的服务器。跨机器一眼看出哪个 Agent 在等你，用原生 Chat 或真实终端回复；Agent 进入 Blocked 或 Done 时收到端到端加密的通知，Usage Limits 用了多少也随时可见。
 
 ## 截图
 
@@ -52,6 +54,29 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
 
 - **Console** —— 所有机器上的 Agent 汇成一个按状态排序的列表（Blocked
   排最前），可按 Host 过滤，实时更新。
+- **Chat** —— 以原生消息而不是终端画面阅读 Agent 的对话，在 Composer 里
+  回复，并用按钮回答 Blocked 的 Agent；支持 Claude Code、Codex、Pi、
+  Oh My Pi、Grok Build、OpenCode 和 Antigravity CLI（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
+- **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
+  TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
+  供稍后打开。
+- **通知 + 实时活动** —— Agent 进入 Blocked 或 Done 时的端到端加密推送，
+  以及锁屏 / 灵动岛上实时跟踪 Agent 的横幅；中继永远读不到内容
+  （[PRIVACY.md](PRIVACY.md)）。
+- **Usage** —— Claude Code 与 Codex 的 Usage Limits 及重置时间，以及最多
+  30 天的 Token Usage 和估算 API 费用，可汇总所有 Host 或只看一台；主屏和
+  锁屏小组件随时可见（[了解更多](https://docs.heeler.bybee.dev/zh/usage)）。
+- **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
+  一次 Send 投递；工具键盘另有 Agent 控制键、Agent Skills、可复用的
+  Snippets 和终端外观。
+- **Voice Input** —— 不想打字就直接说：语音转成文字落进 Composer，可在
+  设备端识别（iOS 26 起），也可使用你自己的语音服务 API key
+  （[了解更多](https://docs.heeler.bybee.dev/zh/voice-input)）。
+- **Overlay Networks** —— 内置 Tailscale、ZeroTier 和 EasyTier，手机无需
+  安装 VPN 应用，也不用配置 iOS 系统 VPN。一台 Host 可以有多条路由，Heeler
+  同时尝试并采用最先连通的那条
+  （[了解更多](docs/guides/zh/overlay-networks.md)）。
+- **跳板机** —— 经 SSH 跳板访问不可直连的机器，两跳各自校验密钥。
 - **Herdr 桌面端与 herdr-core** —— 连接 macOS、Linux 与 Windows 原生环境上的
   Herdr 桌面端或无界面 herdr-core。Console 跟随桌面端的空间与标签页，实时终端、
   Chat、Composer、New Agent 和 New Workspace 同样可用
@@ -61,32 +86,16 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
   桌面终端范围内，Chat、Composer、New Agent、New Workspace 和 Worktrees
   同样可用，配合 Claude Code 钩子与可选的 Host Helper 提供 Agent 状态、
   通知、实时活动与 Usage（[了解更多](https://docs.heeler.bybee.dev/zh/tmux)）。
-- **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
-  TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
-  供稍后打开。
-- **Chat** —— 以原生消息而不是终端画面阅读 Agent 的对话，在 Composer 里
-  回复，并用按钮回答 Blocked 的 Agent；支持 Claude Code、Codex、Pi、
-  Oh My Pi、Grok Build、OpenCode 和 Antigravity CLI（[了解更多](https://docs.heeler.bybee.dev/zh/chat)）。
-- **Composer** —— 在本地用完整的 iOS 键盘起草（自动纠错、输入法、听写），
-  一次 Send 投递；工具键盘另有 Agent 控制键、Agent Skills、可复用的
-  Snippets 和终端外观。
 - **Terminal** —— 在 Agent 的目录打开普通 shell，带 Text / Keys 两种模式，
   每个工作区复用同一个 tab。
 - **附件** —— 把照片或最大 64 MiB 的文件经 SFTP 暂存到 Host，并把路径
   插入草稿。
 - **扫码配对** —— 扫描 Pairing Code 即可添加机器；密钥在设备上生成，私钥
   不离开 Keychain，配对码同时固定 host key 指纹。
-- **通知 + 实时活动** —— Agent 进入 Blocked 或 Done 时的端到端加密推送，
-  以及锁屏 / 灵动岛上实时跟踪 Agent 的横幅；中继永远读不到内容
-  （[PRIVACY.md](PRIVACY.md)）。
-- **Usage** —— Claude Code 与 Codex 的 Usage Limits 及重置时间，以及最多
-  30 天的 Token Usage 和估算 API 费用，可汇总所有 Host 或只看一台；主屏和
-  锁屏小组件随时可见（[了解更多](https://docs.heeler.bybee.dev/zh/usage)）。
 - **Worktrees** —— 让 Agent 从工作区仓库的干净检出上启动。
 - **外观** —— 跟随系统 / 浅色 / 深色；30 个主题，浅色深色各有独立槽位，
   终端、Chat 和整个 App 都使用它；内置 JetBrains Mono 与 IBM Plex Mono；
   双指缩放字号。
-- **跳板机** —— 经 SSH 跳板访问不可直连的机器，两跳各自校验密钥。
 
 ## 连接原理
 
