@@ -38,12 +38,8 @@ struct WorkspaceTerminalDetailView: View {
     /// terminal, and the pool lets it go at the next inventory change, on a
     /// Herdr TUI Host often before UIKit reports the keyboard gone (#644).
     @State private var departureAwaitingKeyboardHide: ShellTerminalView.AgentDeparture?
-    /// This screen among the Agent viewers the Console counts, until SwiftUI
-    /// drops its state.
-    @State private var presence = AgentViewerPresence()
     @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
-    @Environment(\.scenePhase) private var scenePhase
     /// This window, so a remount of this screen takes its terminal over.
     @Environment(\.agentSceneRouting) private var sceneRouting
 
@@ -88,30 +84,12 @@ struct WorkspaceTerminalDetailView: View {
         return entry
     }
 
-    /// The Agent this shell has started, which the screen leaves for. Another
-    /// core's Agent at this address is no Agent of this Terminal's. An Agent
-    /// that opens on its terminal, a Rex one, is this screen already
-    /// (ADR 0054), opened from either list: the screen stays, with its
-    /// connection and the size it took for it.
+    /// The Agent this shell has started. Another core's Agent at this
+    /// address is no Agent of this Terminal's.
     private var startedAgentID: ConsoleAgent.ID? {
-        guard let agentID = terminal.agentID,
-            !console.capabilities(for: terminal.hostID).agentsOpenAsTerminals,
-            !console.hasLeftCore(corePin, on: terminal.hostID)
+        guard let agentID = terminal.agentID, !console.hasLeftCore(corePin, on: terminal.hostID)
         else { return nil }
         return agentID
-    }
-
-    /// The Agent in front of the user, on a Host whose Agents open on their
-    /// terminals: there this screen is the Agent's detail, from either list,
-    /// and showing it is looking at its finished turn (ADR 0054). It names
-    /// its Pane before an Agent starts there too, so a turn that ends while
-    /// it is shown is seen. The router says whether it is shown, as it does
-    /// for the connection.
-    private var shownAgent: ConsoleAgent.ID? {
-        guard console.capabilities(for: terminal.hostID).agentsOpenAsTerminals,
-            scenePhase == .active, isSelected(), !windowHasEnded
-        else { return nil }
-        return .init(hostID: terminal.hostID, paneID: terminal.paneID)
     }
 
     /// Whether `id`'s detail opens on Chat rather than its terminal. The
@@ -211,29 +189,20 @@ struct WorkspaceTerminalDetailView: View {
             retry: retryID)) {
                 await load()
         }
-        .onChange(of: shownAgent, initial: true) { _, shown in
-            presence.show(shown, on: console, scene: sceneRouting?.sceneID)
-        }
         .onDisappear {
             let leavingIdentity = entry?.store.identity ?? identity
             let keepingKeyboard = keyboardHandoff?.isArmed ?? false
-            let presence = presence
-            let scene = sceneRouting?.sceneID
             if !isSelected() {
                 console.terminalConnections.release(
                     hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
                     keepingKeyboard: keepingKeyboard)
-                presence.show(nil, on: console, scene: scene)
             } else {
-                // Still selected: a spurious disappear, which keeps showing
-                // the Agent, or a remount, whose old state lets go of it.
                 Task { @MainActor in
                     await Task.yield()
                     guard !isSelected() else { return }
                     console.terminalConnections.release(
                         hostID: terminal.hostID, identity: leavingIdentity, ownerID: ownerID,
                         keepingKeyboard: keepingKeyboard)
-                    presence.show(nil, on: console, scene: scene)
                 }
             }
         }
@@ -409,30 +378,5 @@ struct WorkspaceTerminalDetailView: View {
                 closeFailure = ConsoleStore.tabCloseFailureMessage(for: error)
             }
         }
-    }
-}
-
-/// One screen's place among the Console's Agent viewers
-/// (`ConsoleStore.setAgentShown`). It lets go when SwiftUI drops the screen's
-/// state: a screen rebuilt while it stays selected gets an `onDisappear` it
-/// cannot tell from a spurious one, after which it keeps showing the Agent,
-/// so only its state going says the old screen is gone.
-final class AgentViewerPresence {
-    let token = UUID()
-    /// Where the Agent is shown from, while this screen shows one.
-    private var shown: (console: ConsoleStore, scene: UUID?)?
-
-    @MainActor
-    func show(_ agent: ConsoleAgent.ID?, on console: ConsoleStore, scene: UUID?) {
-        console.setAgentShown(agent, viewer: token, scene: scene)
-        shown = agent == nil ? nil : (console, scene)
-    }
-
-    deinit {
-        guard let shown else { return }
-        let token = token
-        let console = shown.console
-        let scene = shown.scene
-        Task { @MainActor in console.setAgentShown(nil, viewer: token, scene: scene) }
     }
 }

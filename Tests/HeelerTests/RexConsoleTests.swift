@@ -5,10 +5,11 @@ import Testing
 
 @testable import Heeler
 
-/// What a Rex Host offers and how the Console shows it (ADRs 0049 to 0054):
+/// What a Rex Host offers and how the Console shows it (ADRs 0049 to 0056):
 /// nothing to start, close or rename, no integrations, its terminals listed
-/// from the server, those running a known agent as Agents, and opened to view
-/// and type into.
+/// from the server, those running a known agent as Agents, each opened in
+/// the Agent detail with its Chat and Terminal surfaces, and every terminal
+/// opened to view and type into.
 @MainActor
 @Suite("Rex Console")
 struct RexConsoleTests {
@@ -22,8 +23,16 @@ struct RexConsoleTests {
             rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
     }
 
+    /// A Rex Host starts, closes and renames nothing and runs nothing on the
+    /// machine for Changes, Skills or uploads (ADRs 0049 and 0056). Its
+    /// Agents offer Composer Send and Stop, and Chat for Claude Code and
+    /// Codex once the server has named a Linux or macOS kernel, whatever a
+    /// platform probe would say, since none runs. A terminal shows in one
+    /// window at a time, so a row offers no window of its own and the windows
+    /// take turns, as with a Herdr TUI Host's channel.
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
-    func aRexHostOffersNoAction(platform: HostPlatform?, kernel: String?) {
+    func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
+        let opensChat = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         for isLocatingCore in [false, true] {
             let offers = HostCapabilities(
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore)
@@ -35,24 +44,75 @@ struct RexConsoleTests {
             #expect(!offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
             #expect(!offers.uploads)
-            #expect(!offers.composerSend)
-            #expect(!offers.composerStop)
-            #expect(!offers.chat)
-            #expect(offers.chatPrograms == [])
             #expect(!offers.tabNames)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
             #expect(!offers.takeOver)
             #expect(!offers.hostScripts)
+            #expect(!offers.offersChanges(directory: "/home/dev/app"))
             #expect(!offers.isNativeWindowsCore)
-            // Its Agents open on their terminals, so a row offers only its pin.
-            #expect(offers.agentsOpenAsTerminals)
+            #expect(!offers.rowsReadChanges)
+            #expect(offers.composerSend)
+            #expect(offers.composerStop)
+            #expect(offers.chat == opensChat)
+            #expect(offers.chatPrograms == (opensChat ? [.claude, .codex] : []))
+            for program in ChatProgram.allCases {
+                #expect(offers.offersChat(for: program) == (opensChat && [.claude, .codex].contains(program)))
+            }
+            #expect(offers.terminalsShowInOneWindow)
             #expect(
                 ConsoleAgentRowOffers(capabilities: offers, supportsMultipleWindows: true)
                     == ConsoleAgentRowOffers(opensInNewWindow: false, closes: false))
+            #expect(offers.terminalAccess(nil) == .holds)
+            #expect(
+                offers.terminalAccess(.liveInAnotherWindow(canTakeOver: true))
+                    == .liveInAnotherWindow(canTakeOver: true))
         }
+        // The Host as the catalog has it knows no kernel, so nothing reads
+        // Chat ahead for it.
         #expect(rex.capabilities == HostCapabilities(serverKind: .rex))
-        #expect(!HostCapabilities(serverKind: .tmux).agentsOpenAsTerminals)
+        #expect(!rex.capabilities.chat)
+        // The other kinds keep their rows, viewers and windows.
+        for kind in [ServerKind.herdrTUI, .herdrCore, .tmux] {
+            let other = HostCapabilities(serverKind: kind)
+            #expect(other.rowsReadChanges)
+            #expect(!other.terminalsShowInOneWindow)
+        }
+        #expect(
+            HostCapabilities(serverKind: .tmux).terminalAccess(.liveInAnotherWindow(canTakeOver: true)) == .holds)
+    }
+
+    /// The Agent detail's menus offer only what the Host serves, alike on
+    /// Chat and the terminal: on a Rex Host no New Agent, attachments,
+    /// rename or Close; a saved Chat is still removed on any Host. The other
+    /// kinds offer what they did.
+    @Test func aRexAgentsDetailMenusOfferNothingTheHostCannotServe() {
+        let rex = AgentDetailMenuOffers(
+            capabilities: HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel),
+            workspaceID: "session:studio", removesSavedChat: false)
+        #expect(!rex.newAgent)
+        #expect(!rex.attachments)
+        #expect(!rex.renameAgent)
+        #expect(!rex.renameWorkspace)
+        #expect(!rex.close)
+        #expect(
+            AgentDetailMenuOffers(
+                capabilities: HostCapabilities(serverKind: .rex), workspaceID: "session:studio",
+                removesSavedChat: true
+            ).close)
+
+        let tui = AgentDetailMenuOffers(
+            capabilities: HostCapabilities(serverKind: .herdrTUI), workspaceID: "w1", removesSavedChat: false)
+        #expect(tui.newAgent && tui.attachments && tui.renameAgent && tui.renameWorkspace && tui.close)
+        let tmux = AgentDetailMenuOffers(
+            capabilities: HostCapabilities(serverKind: .tmux, coreKernel: HerdrCoreLocator.linuxKernel),
+            workspaceID: "$1", removesSavedChat: false)
+        #expect(tmux.newAgent && tmux.attachments && !tmux.renameAgent && tmux.renameWorkspace && tmux.close)
+        let core = AgentDetailMenuOffers(
+            capabilities: HostCapabilities(
+                serverKind: .herdrCore, platform: .posix, coreKernel: HerdrCoreLocator.linuxKernel),
+            workspaceID: "w1", removesSavedChat: false)
+        #expect(core.newAgent && core.attachments && !core.renameAgent && core.close)
     }
 
     /// The Notifications, Live Activities and Usage surfaces each pick their
@@ -395,67 +455,107 @@ struct RexConsoleTests {
         try await waitUntil("a turn finished after the relaunch") { again.agents.first?.agent.status == .done }
     }
 
-    /// A Rex Agent's terminal screen is what looks at it: mounted, it marks
-    /// the finished turn seen. A screen SwiftUI rebuilds while it stays
-    /// selected lets go of the Agent with its old state, so once the user
-    /// has left, the next finished turn reads Done again.
-    @Test func aRexAgentsScreenLooksAtItUntilItGoesRebuiltOrNot() async throws {
-        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
-        let servers = await served(world)
-        let console = store(servers: servers)
+    /// A Rex Agent opens its detail (ADR 0056). On Chat, which Codex has
+    /// once the server named a macOS kernel and the Host reads as POSIX
+    /// without a probe, it opens no data link and takes no size, and still
+    /// looks at the Agent: a finished turn reads seen. Its Terminal surface
+    /// is the block's one holder, the pool holding nothing for it, takes the
+    /// size as it opens, looks at the Agent too, and gives the size back as
+    /// it goes (ADR 0053).
+    @Test func aRexAgentsDetailLooksAtItFromEitherSurfaceAndSizesOnlyItsTerminal() async throws {
+        let rig = RexTerminalAttachTests.Rig()
+        let studio = studioRunningCodex(reporting: "working")
+        rig.world.update { $0[0] = studio }
+        let server = await rig.server()
+        let host = await rig.host([.server(server)])
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
         defer { console.setHosts([]) }
         let rex = rex
-        let block = world.sessions[0].windows[0].layers[0].blocks[2]
+        let block = studio.windows[0].layers[0].blocks[2]
         func report(_ state: String, at second: Int) async {
             let record = block.record(state, app: "codex", at: "2026-11-16T12:02:0\(second)+00:00")
-            world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
-            await servers[0].push(
+            rig.world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
+            await server.push(
                 "block_event", blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]),
                 session: "session:studio")
         }
+        func methods() async -> [String] { await server.requests.map(\.method) }
         console.setHosts([rex])
         await console.resume()
-        try await waitUntil("the Agent working") { console.agents.first?.agent.status == .working }
+        try await waitUntil("the Agent working, with Chat") {
+            console.agents.first?.agent.status == .working && console.capabilities(for: rex.id).chat
+        }
+        let agent = try #require(console.agents.first)
+        #expect(console.chatProgram(for: agent) == .codex)
+        #expect(console.hostPlatforms[rex.id] == nil)
         await report("done", at: 1)
         try await waitUntil("the Agent Done") { console.agents.first?.agent.status == .done }
-        let row = try #require(console.terminals.first { $0.isAgent })
-        let defaults = try #require(UserDefaults(suiteName: "rex-seen-\(UUID().uuidString)"))
-        let settings = TerminalSettings(
-            themes: TerminalThemeSettings(defaults: defaults), zoom: TerminalZoomSettings(defaults: defaults),
-            fonts: TerminalFontSettings(defaults: defaults), snippets: SnippetStore(defaults: defaults))
-        let screen = RexScreenDriver()
-        let controller = UIHostingController(
-            rootView: RexAgentScreen(
-                console: console, terminal: row, corePin: console.corePin(on: rex.id), settings: settings,
-                activity: AppActivityCoordinator(), driver: screen
-            )
-            .defaultAppStorage(defaults))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        func frames() async throws {
-            for _ in 0..<20 {
-                window.layoutIfNeeded()
-                try await Task.sleep(for: .milliseconds(10))
-            }
-        }
-        try await waitUntil("the turn seen from its screen") {
-            window.layoutIfNeeded()
+        let suite = "rex-detail-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let chat = RexDetailDriver()
+        let chatWindow = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: UIHostingController(
+                rootView: RexAgentDetail(agent: agent, console: console, defaults: defaults, surface: .chat, driver: chat)
+                    .defaultAppStorage(defaults)))
+        try await waitUntil("the turn seen from Chat") {
+            chatWindow.layoutIfNeeded()
             return console.agents.first?.agent.status == .idle
         }
+        for _ in 0..<20 {
+            chatWindow.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(console.agentTerminals.entries.isEmpty)
+        let onChat = await methods()
+        #expect(!onChat.contains("data.connect"))
+        #expect(!onChat.contains("session.attach"))
+        #expect(!onChat.contains(RexTerminalSizeOwnershipTests.take))
+        chat.isShown = false
+        await hideTestWindowWhenSettled(chatWindow)
+        chatWindow.rootViewController = nil
 
-        screen.generation += 1
-        try await frames()
-        screen.isShown = false
-        try await frames()
         await report("working", at: 2)
         try await waitUntil("the next turn") { console.agents.first?.agent.status == .working }
         await report("done", at: 3)
-        try await waitUntil("the next turn Done, with no screen on it") {
+        try await waitUntil("the next turn Done, with no detail on it") {
             console.agents.first?.agent.status == .done
         }
+        let terminal = RexDetailDriver()
+        let terminalWindow = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: UIHostingController(
+                rootView: RexAgentDetail(
+                    agent: agent, console: console, defaults: defaults, surface: .terminal, driver: terminal
+                )
+                .defaultAppStorage(defaults)))
+        try await waitUntil("the size taken as the terminal opens") {
+            terminalWindow.layoutIfNeeded()
+            let sent = await methods()
+            return sent.contains(RexTerminalSizeOwnershipTests.take) && sent.contains("data.connect")
+        }
+        let opened = await methods()
+        let take = try #require(opened.firstIndex(of: RexTerminalSizeOwnershipTests.take))
+        #expect(take < (opened.firstIndex(of: "data.connect") ?? 0))
+        #expect(console.agentTerminals.entries[agent.id] != nil)
+        #expect(console.terminalConnections.entries.isEmpty)
+        try await waitUntil("the turn seen from the terminal") {
+            terminalWindow.layoutIfNeeded()
+            return console.agents.first?.agent.status == .idle
+        }
 
-        await hideTestWindowWhenSettled(window)
-        window.rootViewController = nil
+        terminal.isShown = false
+        try await waitUntil("the size given back as the detail goes") {
+            terminalWindow.layoutIfNeeded()
+            return await methods().last { $0.hasPrefix("session.") && $0.hasSuffix("own_block") }
+                == RexTerminalSizeOwnershipTests.giveBack
+        }
+        await hideTestWindowWhenSettled(terminalWindow)
+        terminalWindow.rootViewController = nil
     }
 
     /// A report from a program that has since left reads Unknown, and so does
@@ -497,10 +597,11 @@ struct RexConsoleTests {
         #expect(!store.pins.isPinned(hostID: rex.id, paneID: solo))
     }
 
-    /// An open Rex Agent is its terminal's screen (ADR 0054), so its pooled
-    /// connection stays through every inventory change, as a Terminal's does,
-    /// while a closed terminal's goes.
-    @Test func anOpenRexAgentsTerminalStaysPooled() async throws {
+    /// A Rex Agent's terminal is its detail's (ADR 0056), so the terminal
+    /// pool lets a connection to it go at the next inventory, as on the other
+    /// kinds, and each block has one holder. A Terminal's stays, until its
+    /// block closes.
+    @Test func theTerminalPoolHoldsNoRexAgentsTerminal() async throws {
         let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
         let servers = await served(world)
         let console = store(servers: servers)
@@ -512,8 +613,8 @@ struct RexConsoleTests {
         let agentRow = try #require(console.terminals.first { $0.isAgent })
         let soloPane = RexPaneAddress(sessionID: "session:studio", blockID: "block:solo").paneID
         let soloRow = try #require(console.terminals.first { $0.paneID == soloPane })
-        // Selected as each detail selects its terminal; neither is sized, so
-        // neither opens a data link.
+        // Selected as a Terminals screen selects its terminal; neither is
+        // sized, so neither opens a data link.
         for row in [agentRow, soloRow] {
             let pin = console.corePin(on: rex.id)
             _ = try await console.terminalConnections.select(
@@ -532,6 +633,10 @@ struct RexConsoleTests {
                  "reason": "report"]),
             session: "session:studio")
         try await waitUntil("the new status") { console.agents.first?.agent.status == .blocked }
+        try await waitUntil("the Agent's pooled connection gone") {
+            console.terminalConnections.entries.keys.map(\.identity.paneID) == [soloPane]
+        }
+
         world.update { sessions in
             sessions[0].windows[1].layers[0].blocks.removeAll()
             sessions[0].windows[1].layers[0].layout = nil
@@ -539,19 +644,14 @@ struct RexConsoleTests {
         }
         await servers[0].push("block_closed", ["block_id": "block:solo"], session: "session:studio")
         await servers[0].push("session_view_changed", ["revision": 4], session: "session:studio")
-        try await waitUntil("the closed terminal's connection gone") {
-            !console.terminalConnections.entries.keys.contains { $0.identity.paneID == soloPane }
-        }
-
-        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [agentRow.paneID])
+        try await waitUntil("the closed terminal's connection gone") { console.terminalConnections.entries.isEmpty }
         #expect(console.agents.count == 1)
     }
 
     /// A Rex terminal opened from Terminals whose shell starts a known agent
-    /// stays on its screen: that Agent opens as this same screen (ADR 0054),
-    /// so leaving for it would only drop the connection and give back the
-    /// size the screen took.
-    @Test func aRexTerminalThatStartsAnAgentStaysOnItsScreen() async throws {
+    /// leaves for that Agent's detail, as on the other kinds (ADR 0056), and
+    /// the pool lets its connection go: the detail is the block's holder now.
+    @Test func aRexTerminalThatStartsAnAgentLeavesForItsDetail() async throws {
         let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
         let servers = await served(world)
         let console = store(servers: servers)
@@ -589,24 +689,24 @@ struct RexConsoleTests {
         try await waitUntil("the shell listed as an Agent") {
             console.agents.count == 1 && console.terminals.first { $0.id == shell.id }?.isAgent == true
         }
-        // The frames in which a screen leaves for an Agent its shell started.
-        for _ in 0..<20 {
+        try await waitUntil("the screen left for the Agent") {
             window.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(10))
+            return left.ids == [ConsoleAgent.ID(hostID: rex.id, paneID: shell.paneID)]
         }
-
-        #expect(left.ids.isEmpty)
-        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [shell.paneID])
+        try await waitUntil("the pooled connection gone") {
+            window.layoutIfNeeded()
+            return console.terminalConnections.entries.isEmpty
+        }
         await hideTestWindowWhenSettled(window)
         window.rootViewController = nil
     }
 
     /// A session whose terminals all run Agents has no card under Terminals:
     /// a Rex Host offers no New Terminal to fill it. When the only shell of
-    /// one starts an agent, its card leaves the list while the open screen
-    /// stays with its connection, and the card comes back when the agent
+    /// one starts an agent, its card leaves the list and the open screen
+    /// leaves for the Agent's detail, and the card comes back when the agent
     /// exits to the shell.
-    @Test func aRexSessionLeftWithOnlyAgentsLeavesTerminalsButNotItsOpenScreen() async throws {
+    @Test func aRexSessionLeftWithOnlyAgentsLeavesTerminals() async throws {
         let alone = FakeRexWorld.Block("block:alone")
         let session = FakeRexWorld.Session(
             id: "session:agent", label: "agent",
@@ -660,14 +760,12 @@ struct RexConsoleTests {
         }
         await foreground("codex", pid: 5150)
         try await waitUntil("the shell listed as an Agent") { console.agents.count == 1 }
-        for _ in 0..<20 {
+        try await waitUntil("the screen left for the Agent") {
             window.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(10))
+            return left.ids == [ConsoleAgent.ID(hostID: rex.id, paneID: paneID)]
         }
 
         #expect(cards() == ["studio"])
-        #expect(left.ids.isEmpty)
-        #expect(console.terminalConnections.entries.keys.map(\.identity.paneID) == [paneID])
 
         await foreground("zsh", pid: 4242)
         try await waitUntil("the Agent back to a terminal") { console.agents.isEmpty }
@@ -676,10 +774,9 @@ struct RexConsoleTests {
         window.rootViewController = nil
     }
 
-    /// What an open Rex Agent's terminal keeps to is the server it opened on:
-    /// another instance leaves it behind, and only a pick from the list opens
-    /// the Agent anew there. While the Host recovers, its row stands in at the
-    /// same address, so the pooled connection is found again.
+    /// What an open Rex Agent's detail keeps to is the server it opened on,
+    /// as its Composer session holds it: another instance leaves it behind,
+    /// and only a pick from the list opens the Agent anew there.
     @Test func anOpenRexAgentKeepsToItsServerUntilPickedAnew() async throws {
         let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
         let servers = await served(world, count: 2)
@@ -693,26 +790,110 @@ struct RexConsoleTests {
         await console.resume()
         try await waitUntil("the Agent") { console.agents.first?.agent.status == .working }
         let agent = try #require(console.agents.first)
-        let row = try #require(console.terminals.first { $0.isAgent })
-        let standIn = ConsoleTerminal(standingInFor: agent)
-        #expect(standIn.id == row.id)
-        #expect(standIn.terminalID == row.terminalID)
-        #expect(standIn.tabID == row.tabID)
         let cores = ConsoleDetailCores()
-        let pin = cores.terminalPin(for: agent, console: console)
-        #expect(cores.terminalPin(for: agent, console: console) === pin)
+        let session = cores.session(for: agent, console: console)
+        #expect(cores.session(for: agent, console: console) === session)
         #expect(!cores.openAnew(.agent(agent.id), console: console))
 
         world.restart(as: "instance-0002")
         await servers[0].close(.goingAway, reason: "shutting down")
-        try await waitUntil("the new server") { console.hasLeftCore(pin, on: rex.id) }
+        try await waitUntil("the new server") { console.hasLeftCore(session.corePin, on: rex.id) }
 
-        #expect(cores.terminalPin(for: agent, console: console) === pin)
+        #expect(cores.session(for: agent, console: console) === session)
         #expect(cores.listSelection(for: .agent(agent.id), console: console) == .leftBehind(.agent(agent.id)))
         #expect(cores.openAnew(.agent(agent.id), console: console))
-        let fresh = cores.terminalPin(for: agent, console: console)
-        #expect(fresh !== pin)
-        #expect(!console.hasLeftCore(fresh, on: rex.id))
+        let fresh = cores.session(for: agent, console: console)
+        #expect(fresh !== session)
+        #expect(!console.hasLeftCore(fresh.corePin, on: rex.id))
+    }
+
+    /// What a Rex Agent's detail leaves closed stays closed with the Host
+    /// connected (ADR 0056): no platform probe, which Chat does without, no
+    /// Host script for Skills or the agy model list, no Changes totals for
+    /// its row, and Done never told to the server, since it is kept on this
+    /// device. None of it reaches the Host's SSH connection.
+    @Test func aRexAgentsDetailRunsNothingOnTheHost() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let server = await served(world)[0]
+        let host = ScriptedRexHost(control: [.server(server)])
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent, with Chat") {
+            console.agents.first?.agent.status == .working && console.capabilities(for: rex.id).chat
+        }
+        let agent = try #require(console.agents.first)
+        let logged = await host.log
+
+        await #expect(throws: TransportError.self) {
+            try await console.fetchSkills(kind: .codex, projectRoot: "/home/dev/app", on: rex.id, forceRefresh: true)
+        }
+        await #expect(throws: TransportError.self) { try await console.fetchAgyModels(on: rex.id) }
+        try await console.focusAgent(agent.agent.paneID, on: rex.id)
+        console.rowChanges.rowAppeared(agent)
+        #expect(console.rowChanges.store(for: agent) == nil)
+        console.rowChanges.rowDisappeared(agent.id)
+
+        #expect(console.hostPlatforms[rex.id] == nil)
+        #expect(console.chatProgram(for: agent) == .codex)
+        #expect(await host.log == logged)
+        #expect(!logged.contains("probe"))
+        #expect(!logged.contains("windows"))
+    }
+
+    /// Stop and the Blocked card follow the Agent Status (ADR 0056). A Rex
+    /// Agent whose program reported nothing reads Unknown: the Composer
+    /// offers Send there, never Stop, and a card reads no screen for Claude
+    /// Code or Codex, awaiting a session or not. Working offers Stop, and
+    /// Blocked reads for a card without offering it.
+    @Test(arguments: [ChatProgram.claude, .codex])
+    func anUnknownRexAgentOffersNoStopAndNoBlockedCard(program: ChatProgram) async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: nil)])
+        let console = store(servers: await served(world))
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent") { !console.agents.isEmpty && console.capabilities(for: rex.id).chat }
+        let agent = try #require(console.agents.first)
+        #expect(agent.agent.status == .unknown)
+        let composer = console.composerStore(for: agent)
+        #expect(!composer.offersStopWhileBlocked)
+        let canStop = console.terminalInterrupt(for: agent, pressEsc: { .sent }) != nil
+        #expect(canStop)
+        func control(_ status: AgentStatus) -> AgentComposerPrimaryControl {
+            AgentComposerPrimaryControl(
+                status: status, draft: "", canStop: canStop, alsoWhileBlocked: composer.offersStopWhileBlocked)
+        }
+        #expect(control(.unknown) == .send)
+        #expect(control(.idle) == .send)
+        #expect(control(.blocked) == .send)
+        #expect(control(.working) == .stop)
+
+        let reads = RexScreenReads()
+        let card = BlockedCardStore(
+            program: program,
+            io: BlockedScreenIO(
+                readScreen: {
+                    await reads.note()
+                    throw TransportError.cancelled
+                },
+                sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        card.update(activity: .unknown)
+        for awaitingSession in [false, true] {
+            card.update(awaitingSession: awaitingSession)
+            await card.refresh()
+        }
+        #expect(await reads.count == 0)
+        card.update(activity: .blocked)
+        await card.refresh()
+        #expect(await reads.count == 1)
+        card.end()
     }
 
     /// Another server instance on the socket leaves every detail open on the
@@ -909,41 +1090,66 @@ private struct RexLiveShell: View {
     }
 }
 
-/// What a test does to a Rex Agent's screen: rebuild it, or leave it.
+/// The screen reads a Blocked card made.
+private actor RexScreenReads {
+    private(set) var count = 0
+    func note() { count += 1 }
+}
+
+/// Whether a test still shows a Rex Agent's detail.
 @MainActor
 @Observable
-private final class RexScreenDriver {
-    var generation = 0
+private final class RexDetailDriver {
     var isShown = true
 }
 
-/// A Rex Agent's terminal screen, selected while it is shown, as a list
-/// opens an Agent that opens on its terminal.
-private struct RexAgentScreen: View {
+/// A Rex Agent's detail on `surface`, as the Console builds it, selected
+/// while it is shown, in an active scene.
+private struct RexAgentDetail: View {
+    let agent: ConsoleAgent
     let console: ConsoleStore
-    let terminal: ConsoleTerminal
-    let corePin: TerminalCorePin
-    let settings: TerminalSettings
-    let activity: AppActivityCoordinator
-    let driver: RexScreenDriver
+    let detailSurface: AgentDetailSurfaceSettings
+    let terminal: TerminalSettings
+    let driver: RexDetailDriver
+    let keyboardHandoff = TerminalKeyboardHandoff()
+    let keyboardInset = TerminalKeyboardInset()
+    let activity = AppActivityCoordinator()
+    let inputMode: AgentInputModeSettings
+
+    init(
+        agent: ConsoleAgent, console: ConsoleStore, defaults: UserDefaults, surface: AgentDetailSurface,
+        driver: RexDetailDriver
+    ) {
+        self.agent = agent
+        self.console = console
+        self.driver = driver
+        detailSurface = AgentDetailSurfaceSettings(defaults: defaults)
+        detailSurface.select(surface)
+        terminal = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults), zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults), snippets: SnippetStore(defaults: defaults))
+        inputMode = AgentInputModeSettings(defaults: defaults)
+    }
 
     var body: some View {
         NavigationStack {
             if driver.isShown {
-                WorkspaceTerminalDetailView(
-                    terminal: terminal,
+                AgentDetailView(
+                    agent: agent,
                     console: console,
-                    corePin: corePin,
-                    settings: settings,
+                    terminal: terminal,
+                    inputMode: inputMode,
+                    detailSurface: detailSurface,
+                    hosts: [],
                     activity: activity,
-                    onSelectAgent: { _ in },
-                    onSelectTerminal: { _ in },
-                    isSelected: { driver.isShown },
-                    onBack: {}
-                )
-                .id(driver.generation)
+                    keyboardHandoff: keyboardHandoff,
+                    keyboardInset: keyboardInset,
+                    stage: AgentDetailStage(isVisible: { [driver] in driver.isShown }, terminalAccess: { .holds }),
+                    onSwitch: { _ in },
+                    onClosed: {})
             }
         }
+        // A hosting controller has no SwiftUI scene to say so.
         .environment(\.scenePhase, .active)
     }
 }

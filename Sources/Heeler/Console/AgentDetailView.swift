@@ -351,8 +351,12 @@ struct AgentDetailView: View {
         }
         // A core Terminal takes any number of viewers, so another window's
         // detail keeps the one it retains, and this one is a viewer of its own.
-        let takesViewers = !console.capabilities(for: agent.hostID).takeOver
-        let sceneID = takesViewers ? sceneRouting?.sceneID : nil
+        // A Rex terminal shows in one window at a time, which the windows
+        // take turns with (ADR 0056); its replacement in the same window
+        // takes its entry over, as a core Terminal's does.
+        let capabilities = console.capabilities(for: agent.hostID)
+        let takesViewers = !capabilities.takeOver && !capabilities.terminalsShowInOneWindow
+        let sceneID = capabilities.takeOver ? nil : sceneRouting?.sceneID
         if takesViewers,
             console.agentTerminals.isHeldByAnotherDetail(
                 agent, ownerID: retentionOwnerID, sceneID: sceneID)

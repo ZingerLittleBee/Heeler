@@ -81,22 +81,3 @@ struct ConsoleTerminal: Identifiable, Equatable, Sendable {
         value.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
-
-extension ConsoleTerminal {
-    /// The terminal of an Agent that opens on its terminal (ADR 0054), as its
-    /// row last listed it: what its detail shows while the Host recovers and
-    /// lists no Terminals.
-    init(standingInFor agent: ConsoleAgent) {
-        let info = agent.agent
-        self.init(
-            hostID: agent.hostID, hostName: agent.hostName, hostUsername: agent.hostUsername,
-            pane: PaneInfo(
-                agentStatus: info.status, focused: false, paneID: info.paneID, revision: info.revision,
-                tabID: info.tabID, terminalID: info.terminalID, workspaceID: info.workspaceID, agent: info.kind,
-                cwd: info.cwd, foregroundCwd: info.foregroundCwd, label: agent.paneLabel,
-                terminalTitle: info.terminalTitle, terminalTitleStripped: info.terminalTitleStripped,
-                title: info.paneTitle),
-            workspaceLabel: agent.workspaceLabel, tabLabel: agent.tabLabel, workspaceOrder: .max,
-            tabPosition: agent.tabPosition, snapshotOrder: agent.snapshotOrder ?? 0, snapshotAgentKind: info.kind)
-    }
-}

@@ -1008,13 +1008,16 @@ struct AgentTerminalView: View {
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
         let capabilities = console.capabilities(for: agent.hostID)
+        let removesSavedChat = console.isSavedChat(agent.id)
+        let offers = AgentDetailMenuOffers(
+            capabilities: capabilities, workspaceID: agent.agent.workspaceID, removesSavedChat: removesSavedChat)
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
-            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
-            pasteImage: capabilities.uploads
+            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments
                 ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
-            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
                 ? {
@@ -1023,7 +1026,7 @@ struct AgentTerminalView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: capabilities.startsAgents ? { isStartingAgent = true } : nil,
+            startAgent: offers.newAgent ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: agent.isLinkedWorktree && capabilities.worktrees
@@ -1033,11 +1036,9 @@ struct AgentTerminalView: View {
                         isShowingWorktree = true
                     }
                 } : nil,
-            renameAgent: capabilities.renameAgent
-                ? { isRenamingAgent = true } : nil,
-            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
-                ? { isRenamingWorkspace = true } : nil,
-            closeAgent: capabilities.closeTab
+            renameAgent: offers.renameAgent ? { isRenamingAgent = true } : nil,
+            renameWorkspace: offers.renameWorkspace ? { isRenamingWorkspace = true } : nil,
+            closeAgent: offers.close
                 ? {
                     closeRequest = console.closeRequest(for: agent.id)
                     isConfirmingClose = true
@@ -1051,7 +1052,7 @@ struct AgentTerminalView: View {
                     showChat()
                 }
             },
-            closeConfirmation: anchorsClose && capabilities.closeTab
+            closeConfirmation: anchorsClose && offers.close
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
@@ -1059,7 +1060,7 @@ struct AgentTerminalView: View {
                     removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
                     closeAgent: { Task { await performClose() } })
                 : nil,
-            removesSavedChat: console.isSavedChat(agent.id))
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

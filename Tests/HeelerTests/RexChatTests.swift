@@ -295,8 +295,9 @@ struct RexChatTests {
         try await waitUntil("the title \(title)") { details(rig)?.title == title }
     }
 
-    /// A Rex Host's Chat is process-bound and keyed to its server instance,
-    /// and stays closed until the stage that types into it opens it.
+    /// A Rex Host's Chat is process-bound and keyed to its server instance.
+    /// The Host as the catalog has it knows no kernel, so its Chat opens only
+    /// once a connection has learned one (ADR 0056).
     @Test func aRexHostsChatIsKeyedToItsServerInstance() async throws {
         let world = FakeRexWorld(sessions: [Self.studioRunningClaude()])
         let servers = [await served(world), await served(world)]

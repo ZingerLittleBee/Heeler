@@ -45,7 +45,8 @@ final class AgentRowChanges {
 
     /// `makeStore` reads the Checkout the Agent is in at the time of each
     /// read, following its status. `reads` says whether an Agent's row reads
-    /// at all: a Rex Agent's, whose detail has no Changes, does not (ADR 0054).
+    /// at all: a Rex Agent's, whose Host runs nothing for them, does not
+    /// (ADR 0056).
     init(
         reads: @escaping @MainActor (ConsoleAgent) -> Bool = { _ in true },
         makeStore: @escaping @MainActor (ConsoleAgent) -> ChangesStore

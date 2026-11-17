@@ -1148,8 +1148,11 @@ struct AgentChatSurfaceView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Runs a Host script, so only where the Host runs them.
     private func loadAgyModels() async {
-        guard program == .agy, console.isHostReadyForInput(agent.hostID) else { return }
+        guard program == .agy, console.capabilities(for: agent.hostID).hostScripts,
+            console.isHostReadyForInput(agent.hostID)
+        else { return }
         if let models = try? await console.fetchAgyModels(on: agent.hostID), !models.isEmpty {
             agyModels = models
         }
@@ -1800,14 +1803,17 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerActions: AgentComposerActions {
-        let capabilities = console.capabilities(for: agent.hostID)
+        let removesSavedChat = console.isSavedChat(agent.id)
+        let offers = AgentDetailMenuOffers(
+            capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
+            removesSavedChat: removesSavedChat)
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
-            pasteImage: capabilities.uploads
+            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments
                 ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
-            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {
@@ -1816,26 +1822,28 @@ struct AgentChatSurfaceView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: { isStartingAgent = true },
+            startAgent: offers.newAgent ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: nil,
-            renameAgent: capabilities.renameAgent ? { isRenamingAgent = true } : nil,
-            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
-                ? { isRenamingWorkspace = true } : nil,
-            closeAgent: {
-                closeRequest = console.closeRequest(for: agent.id)
-                isConfirmingClose = true
-            },
+            renameAgent: offers.renameAgent ? { isRenamingAgent = true } : nil,
+            renameWorkspace: offers.renameWorkspace ? { isRenamingWorkspace = true } : nil,
+            closeAgent: offers.close
+                ? {
+                    closeRequest = console.closeRequest(for: agent.id)
+                    isConfirmingClose = true
+                } : nil,
             backToConsole: { backToConsole() },
             showAgentTerminal: { showAgentTerminal() },
-            closeConfirmation: AgentCloseConfirmation(
-                title: title,
-                isPresented: $isConfirmingClose,
-                request: closeRequest,
-                removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
-                closeAgent: { Task { await performClose() } }),
-            removesSavedChat: console.isSavedChat(agent.id))
+            closeConfirmation: offers.close
+                ? AgentCloseConfirmation(
+                    title: title,
+                    isPresented: $isConfirmingClose,
+                    request: closeRequest,
+                    removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                    closeAgent: { Task { await performClose() } })
+                : nil,
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that

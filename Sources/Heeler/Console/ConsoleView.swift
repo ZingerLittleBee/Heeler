@@ -1569,10 +1569,6 @@ struct ConsoleView: View {
         if let id = notificationRouter.path.last {
             if let receipt = matchingRemovedWorktreeReceipt(for: id) {
                 removedWorktreeSurface(receipt)
-            } else if let agent = console.detailAgent(for: id),
-                console.capabilities(for: agent.hostID).agentsOpenAsTerminals
-            {
-                agentTerminalDetail(agent, in: tab)
             } else if let agent = console.detailAgent(for: id) {
                 let consoleHosts = hosts.consoleHosts
                 let repeatLandings = notificationRouter.repeatLandings
@@ -1692,31 +1688,6 @@ struct ConsoleView: View {
                 }
             }
         }
-    }
-
-    /// An Agent that opens on its terminal, a Rex Agent (ADR 0054): the detail
-    /// the Terminals list opens, with no Chat, Composer or Changes. While its
-    /// Host recovers and lists no Terminals, the Agent's last row stands in.
-    private func agentTerminalDetail(_ agent: ConsoleAgent, in tab: ConsoleTab) -> some View {
-        let id = agent.id
-        let row =
-            console.terminals.first { $0.hostID == id.hostID && $0.paneID == id.paneID }
-            ?? ConsoleTerminal(standingInFor: agent)
-        return WorkspaceTerminalDetailView(
-            terminal: row,
-            console: console,
-            corePin: detailCores.terminalPin(for: agent, console: console),
-            settings: terminal,
-            activity: activity,
-            onSelectAgent: { selectAgent($0) },
-            onSelectTerminal: { openTerminal($0, from: tab) },
-            isSelected: {
-                notificationRouter.path.last == id && console.detailAgent(for: id) != nil && currentTab == tab
-            },
-            keyboardHandoff: keyboardHandoff,
-            agentSurface: detailSurface,
-            onBack: { clearSelection() })
-            .id(ConsoleDetailIdentity(shown: .agent(id), opening: detailOpening))
     }
 
     /// A receipt is keyed by the Agent set captured at the authorized write.

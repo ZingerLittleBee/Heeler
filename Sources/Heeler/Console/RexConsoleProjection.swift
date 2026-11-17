@@ -9,15 +9,17 @@ import Foundation
 /// A Pane keeps to its server instance, as a tmux Pane does: another instance
 /// leaves every detail open on the last one's terminals, and its Pins go. A
 /// terminal opens from the server's redraw (ADR 0051) and takes input from its
-/// first paint (ADR 0052), whether it is listed as an Agent or a Terminal;
-/// every action a Host offers is unavailable on a Rex Host. What Chat needs of
-/// the Host it reads over the same SSH connection, and writes nothing there
-/// (`RexHostReads`). Chat reads a terminal's screen and types into it on the
-/// control link, one checked request at a time (`RexChatTyping`, ADR 0055).
+/// first paint (ADR 0052), whether it is a Terminal or the Terminal surface of
+/// an Agent's detail. Nothing is started, closed or renamed on a Rex Host, and
+/// nothing runs on it but Chat's reads: what Chat needs of the Host it reads
+/// over the same SSH connection, and writes nothing there (`RexHostReads`,
+/// ADR 0056). Chat and the Composer read a terminal's screen and type into it
+/// on the control link, one checked request at a time (`RexChatTyping`,
+/// `RexComposerSend`, ADR 0055).
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
 /// device's seen marks (`RexTurnState`) are kept by server instance on this
-/// device only, and opening an Agent's terminal is looking at it.
+/// device only, and an Agent's detail on either surface is looking at it.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var host: Host
@@ -629,7 +631,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func worktreeRemovalRisk(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
         throw Self.unavailable
     }
-    func focusAgent(_: String) async throws { throw Self.unavailable }
+    /// Done is per device, as `setAgentShown` reads it: nothing to tell the
+    /// server.
+    func focusAgent(_: String) async throws {}
     func renameAgent(_: String, name _: String?) async throws { throw Self.unavailable }
     func renameWorkspace(_: String, label _: String) async throws { throw Self.unavailable }
 
@@ -785,8 +789,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
 
     /// Chat reads the Host's files and processes through `RexHostReads`, and
-    /// nothing else runs on it over SSH: Changes, Skills, harness edits and
-    /// the platform probe stay out.
+    /// nothing else runs on it over SSH: Changes, Skills, harness edits, the
+    /// agy model list and the platform probe stay out, and the Host is POSIX
+    /// without asking it (ADR 0056).
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {

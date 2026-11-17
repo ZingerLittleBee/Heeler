@@ -125,7 +125,7 @@ final class ConsoleStore {
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
     @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
-        reads: { [unowned self] agent in !capabilities(for: agent.hostID).agentsOpenAsTerminals }
+        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges }
     ) { [unowned self] agent in
         let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
@@ -1560,10 +1560,10 @@ final class ConsoleStore {
         try await projection(for: hostID).focusAgent(paneID)
     }
 
-    /// Which Agent one Agent detail shows now, nil once it shows none; a Rex
-    /// Agent's detail is its terminal's screen. On a core, tmux or Rex Host
-    /// this is what Done per device reads: a shown Agent's turns are seen as
-    /// they end, whichever window shows it.
+    /// Which Agent one Agent detail shows now, on either surface, nil once it
+    /// shows none. On a core, tmux or Rex Host this is what Done per device
+    /// reads: a shown Agent's turns are seen as they end, whichever window
+    /// shows it.
     func setAgentShown(_ agent: ConsoleAgent.ID?, viewer: UUID, scene: UUID?) {
         // A window that ended may still run a late update.
         let shown = scene.map(endedScenes.contains) == true ? nil : agent
@@ -2222,10 +2222,10 @@ final class ConsoleStore {
                 terminalSnapshotRevisions[hostID] != projection.sidebarRevision
             else { continue }
             terminalSnapshotRevisions[hostID] = projection.sidebarRevision
-            // A Rex Agent opens on its terminal (ADR 0054), which stays pooled too.
-            let agentsOpenAsTerminals = capabilities(for: hostID).agentsOpenAsTerminals
+            // An Agent's terminal is its detail's, on a Rex Host too (ADR 0056):
+            // each block has one holder.
             let identities = Set(
-                projection.terminalsByPane.values.filter { !$0.isAgent || agentsOpenAsTerminals }.map {
+                projection.terminalsByPane.values.filter { !$0.isAgent }.map {
                     ShellTerminalIdentity(
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
@@ -2263,7 +2263,9 @@ final class ConsoleStore {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
-            guard hostPlatformGenerations[hostID] != projection.transportGeneration,
+            // A Rex Host is POSIX without a probe (ADR 0056).
+            guard projection.host.serverKind != .rex,
+                hostPlatformGenerations[hostID] != projection.transportGeneration,
                 mayOfferChat(on: projection)
                     || (projection.host.serverKind == .herdrCore
                         && (herdrAppRename || composerSessions.keys.contains { $0.hostID == hostID }))
@@ -3060,9 +3062,9 @@ final class ConsoleStore {
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
-        let platform =
-            hostPlatforms[agent.hostID]
-            ?? (catalog.first(where: { $0.id == agent.hostID })?.serverKind == .tmux ? .posix : nil)
+        // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056).
+        let kind = catalog.first(where: { $0.id == agent.hostID })?.serverKind
+        let platform = hostPlatforms[agent.hostID] ?? (kind == .tmux || kind == .rex ? .posix : nil)
         if let platform {
             return AgentChatAvailability.program(
                 for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,

@@ -38,10 +38,17 @@ struct HostCapabilities: Equatable, Sendable {
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
     var hostScripts = true
-    /// An Agent opens on its terminal, as the Terminals list opens one, with no
-    /// Chat, Composer or Changes: its row reads no Changes and offers no window
-    /// of its own, as a Terminals row does not. A Rex Host's Agents (ADR 0054).
-    var agentsOpenAsTerminals = false
+    /// An Agent's row reads its Changes totals. A Rex Host runs nothing on the
+    /// machine for them (ADR 0056); every other kind's rows read them, offered
+    /// in the detail or not.
+    var rowsReadChanges = true
+    /// A terminal has one stream per client, so it shows in one window at a
+    /// time: its Agent's row offers no window of its own, as a Terminals row
+    /// does not, and the windows take turns with the Host's Agent terminals
+    /// as they do with a Herdr TUI Host's channel, rather than a second
+    /// window attaching a viewer of its own. A Rex Host's (ADRs 0053 and
+    /// 0056).
+    var terminalsShowInOneWindow = false
 
     /// Whether an Agent in this directory offers Changes, wherever it does.
     func offersChanges(directory: String?) -> Bool {
@@ -78,7 +85,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// What a window may do with this Host's terminals. Windows only take
     /// turns where a terminal has one holder.
     func terminalAccess(_ sceneAccess: HostTerminalAccess?) -> HostTerminalAccess {
-        takeOver ? sceneAccess ?? .holds : .holds
+        takeOver || terminalsShowInOneWindow ? sceneAccess ?? .holds : .holds
     }
 }
 
@@ -104,18 +111,25 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A Rex Host offers nothing yet (ADR 0049): it starts and closes no
-        // Agent, Terminal or Tab, renames nothing, has no Worktrees, uploads,
-        // Composer, Chat, Host scripts or layout, and is never taken over. So it
-        // stays out of New Agent and New Terminal. Its Terminals open and take
-        // input (ADRs 0051 and 0052), and so do its Agents, as Terminals
-        // (ADR 0054).
+        // A Rex Host starts and closes no Agent, Terminal or Tab, renames
+        // nothing, has no Worktrees, uploads, Host scripts or layout, and is
+        // never taken over (ADR 0049), so it stays out of New Agent and New
+        // Terminal. Its Terminals and Agents open and take input (ADRs 0051 to
+        // 0054). Its Agents offer Composer Send and Stop, and Chat for
+        // `rexChatPrograms` once the server has named Linux or macOS, read and
+        // typed over the Host's own connection (ADRs 0055 and 0056).
         guard serverKind != .rex else {
+            let rexChatPrograms: Set<ChatProgram>? =
+                switch coreKernel {
+                case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
+                default: nil
+                }
             self.init(
                 startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
-                worktrees: false, uploads: false, composerSend: false, chat: false,
+                worktrees: false, uploads: false, composerSend: true, chat: rexChatPrograms != nil,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
-                composerStop: false, chatPrograms: [], hostScripts: false, agentsOpenAsTerminals: true)
+                composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
+                rowsReadChanges: false, terminalsShowInOneWindow: true)
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -209,12 +223,11 @@ extension HostCapabilities {
     /// permissions and questions from cards, and the colored one followed `/clear`.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
-    /// The programs a Rex Host's Chat binds, where nothing is installed on the Host
-    /// (ADR 0034, rex-compatibility.md): Claude Code and Codex, each from its own
-    /// process and files. Rex 0.1.0-preview.14 on macOS confirmed nothing more for
-    /// Grok Build, Oh My Pi or agy, and Pi and OpenCode bind only with Heeler's
-    /// extension or plugin, so none of those is offered. Chat on a Rex Host stays
-    /// off while `init` says so.
+    /// The programs a Rex Host's Chat opens for, where nothing is installed on the
+    /// Host (ADRs 0034 and 0056, rex-compatibility.md): Claude Code and Codex, each
+    /// bound from its own process and files. Rex 0.1.0-preview.14 on macOS
+    /// confirmed nothing more for Grok Build, Oh My Pi or agy, and Pi and OpenCode
+    /// bind only with Heeler's extension or plugin, so none of those is offered.
     static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
@@ -246,8 +259,29 @@ struct ConsoleAgentRowOffers: Equatable, Sendable {
 
     init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
         self.init(
-            opensInNewWindow: supportsMultipleWindows && !capabilities.agentsOpenAsTerminals,
+            opensInNewWindow: supportsMultipleWindows && !capabilities.terminalsShowInOneWindow,
             closes: capabilities.closeTab)
+    }
+}
+
+/// What an Agent detail's menus offer by what its Host can do, alike on Chat
+/// and the terminal: an item the Host cannot serve is not offered, rather
+/// than failing once picked. A Rex Host's detail keeps its surfaces,
+/// Snippets and Back to Console (ADR 0056).
+struct AgentDetailMenuOffers: Equatable, Sendable {
+    let newAgent: Bool
+    let attachments: Bool
+    let renameAgent: Bool
+    let renameWorkspace: Bool
+    /// Close Agent, or Remove Saved Chat, which any Host's saved Chat offers.
+    let close: Bool
+
+    init(capabilities: HostCapabilities, workspaceID: String, removesSavedChat: Bool) {
+        newAgent = capabilities.startsAgents
+        attachments = capabilities.uploads
+        renameAgent = capabilities.renameAgent
+        renameWorkspace = capabilities.renameWorkspace(id: workspaceID)
+        close = capabilities.closeTab || removesSavedChat
     }
 }
 
