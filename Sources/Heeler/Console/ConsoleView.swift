@@ -119,9 +119,8 @@ struct ConsoleView: View {
     /// 1.2 s visual-feedback hold after `retryHost` returns. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     @State private var manualReconnectInFlightHostIDs: Set<Host.ID> = []
-    /// Narrows both lists to selected Hosts, as the records of every Server
-    /// they have on; an empty set shows every Host. Filtering does not change
-    /// grouping or catalog order.
+    /// Narrows both lists to selected Hosts; an empty set shows every Host.
+    /// Filtering does not change grouping or catalog order.
     private var hostFilter: Set<Host.ID> { listPresentation.hostFilter }
     private var hostFilterBinding: Binding<Set<Host.ID>> {
         Binding(
@@ -424,7 +423,10 @@ struct ConsoleView: View {
         // selected Host every Server it has on. Removing the last selected
         // Host, or all Hosts but one, falls back to All Hosts.
         .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
-            guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
+            guard hosts.catalogLoadError == nil,
+                hosts.coreCatalogLoadError == nil,
+                hosts.tmuxCatalogLoadError == nil
+            else { return }
             listPresentation.pruneHostFilter(keeping: consoleHosts)
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
@@ -1055,6 +1057,10 @@ struct ConsoleView: View {
             // the split view's it would rebuild both columns with each
             // status change.
             MainActorContent { content }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { agentHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
                     focus: $focusedSearch, tab: .agents,
@@ -1766,9 +1772,9 @@ struct ConsoleView: View {
                 Label(
                     !hostName.isEmpty
                         ? String(localized: "No Agents on \(hostName)")
-                        : filteredHosts.count > 1
-                            ? String(localized: "No Agents on the Selected Hosts")
-                            : String(localized: "No Agents on this Host"),
+                        : hostFilter.count == 1
+                            ? String(localized: "No Agents on this Host")
+                            : String(localized: "No Agents on the Selected Hosts"),
                     systemImage: "line.3.horizontal.decrease.circle")
             } actions: {
                 Button("Show All Hosts") { listPresentation.clearHostFilter() }
@@ -1826,15 +1832,19 @@ struct ConsoleView: View {
     }
 
     @ViewBuilder
-    private func agentHostIssueRows(_ issues: [ConsoleHostStatusPresentation]) -> some View {
-        if !issues.isEmpty {
-            // On the Agent rows' edges and, as they are, without rules.
-            ConsoleHostIssueList(
-                issues: issues, onOpenHost: { openHostIssue($0) },
-                onShowAll: { isShowingHostIssues = true })
-                .modifier(ListRowVerticalInsets(0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+    private var agentHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: listPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true }
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
         }
     }
 
@@ -1879,9 +1889,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private func flatAgentListRows(filtered: [ConsoleAgent]) -> some View {
-        MainActorContent {
-            agentHostIssueRows(visibleHostIssues)
-        }
         let keys = makeAgentRowKeys(
             for: filtered, pass: contentPass.number,
             qualifiers: agentTitleQualifiers, saved: console.savedChatEntries)
@@ -1894,20 +1901,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var workspaceAgentListRows: some View {
-        MainActorContent {
-            let issues = visibleHostIssues
-            if !issues.isEmpty {
-                Section {
-                    // Off the cards, on the page: out to the cards' edges, as
-                    // in the Terminals list's By Workspace.
-                    ConsoleHostIssueList(
-                        issues: issues, onOpenHost: { openHostIssue($0) },
-                        onShowAll: { isShowingHostIssues = true })
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                }
-            }
-        }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         let pass = contentPass.number
@@ -2170,13 +2163,14 @@ struct ConsoleView: View {
                 // says: the others may have Agents to show, and each
                 // problem's row opens its own Server's sheet.
                 let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
+                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
                         // As in the Terminals tab: an expanded Host with a
                         // condition says what it is before any Agents it lists.
                         ForEach(section.issues) { @Sendable issue in
                             MainActorContent {
-                                ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
+                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
                                     .listRowSeparator(.hidden)
                             }
                         }
@@ -2589,8 +2583,6 @@ struct ConsoleView: View {
         Self.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
     }
 
-    /// The same for a view that reads the stores in an observation scope of
-    /// its own, as the sheet's reset does.
     static func filteredHostIssues(
         hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
     ) -> [ConsoleHostStatusPresentation] {

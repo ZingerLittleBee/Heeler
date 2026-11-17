@@ -286,8 +286,6 @@ struct ConsoleListPresentationRoutingTests {
                 visibleIssueCount: 0,
                 presentationMode: .grouped,
                 projectedSectionCount: 1) == .rows)
-        // With no section left, as when each Host would be a bare header,
-        // By Host says what the flat list says.
         #expect(
             ConsoleAgentsSurface(
                 hostCount: 1, filteredHostName: nil, filteredAgentCount: 0, visibleIssueCount: 0,
@@ -299,9 +297,9 @@ struct ConsoleListPresentationRoutingTests {
     }
 
     @Test func hostIssuePlacementFollowsPresentationMode() {
-        #expect(ConsoleHostIssuePlacement(mode: .flat) == .flatIssueRows)
+        #expect(ConsoleHostIssuePlacement(mode: .flat) == .floatingCorner)
         #expect(ConsoleHostIssuePlacement(mode: .grouped) == .sectionHeaders)
-        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .flatIssueRows)
+        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .floatingCorner)
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {

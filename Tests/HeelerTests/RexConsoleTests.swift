@@ -1028,11 +1028,11 @@ struct RexConsoleTests {
         #expect(!issueHostIDs(filter: [tmux.id]).contains(rex.id))
     }
 
-    /// The lists name a Host alone (ADR 0047): a Host whose tmux and Rex
-    /// Servers both have a problem lists each by the Host's name with its
-    /// Server in the status, never as "Host · Server", and the summary of
-    /// the two is the Host's.
-    @Test func aHostsServersProblemsNameTheHostAlone() async throws {
+    /// A Rex Server's problem reads as any Server's (ADR 0047): beside the
+    /// Host's tmux Server, each problem names its own record, By Host lists
+    /// both under the one Host's heading, and the flat lists' corner tile
+    /// opens a lone Rex problem's connection details.
+    @Test func aRexServersProblemReadsAsAnyServersBesideTheHostsOthers() async throws {
         let rexServer = Host(
             name: "m3", address: "m3.example", username: "dev", serverKind: .rex,
             rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
@@ -1047,13 +1047,20 @@ struct RexConsoleTests {
         try await waitUntil("both Servers' problems") { console.hostIssues(for: records).count == 2 }
 
         let issues = console.hostIssues(for: records)
-        #expect(issues.map(\.hostName) == ["m3", "m3"])
-        #expect(issues[0].status.hasPrefix("tmux: "))
-        #expect(issues[1].status.hasPrefix("Rex: "))
-        #expect(!issues.contains { issue in
-            [issue.message, issue.sectionMessage, issue.status, issue.spokenMessage].contains { $0.contains("m3 · ") }
-        })
-        #expect(ConsoleHostIssueSummary(issues: issues)?.title == "m3")
+        #expect(issues.map(\.hostID) == [tmux.id, rexServer.id])
+        #expect(issues.map(\.hostName) == ["m3 · tmux", "m3 · Rex"])
+        #expect(issues[1].message.hasPrefix("m3 · Rex: "))
+
+        let suite = "rex-console-host-issues-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let byHost = ConsoleListPresentationStore(defaults: defaults).sections(hosts: records, console: console)
+        #expect(byHost.map(\.hostName) == ["m3"])
+        #expect(byHost.first?.issues.map(\.hostID) == [tmux.id, rexServer.id])
+
+        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: [issues[1]]))
+        #expect(corner.expandedTitle == "m3 · Rex")
+        #expect(corner.action == .openHost(rexServer.id))
     }
 }
 

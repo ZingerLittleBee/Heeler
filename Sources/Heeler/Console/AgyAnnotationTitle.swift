@@ -457,25 +457,52 @@ final class AgyAnnotationTitleStore {
     }
 
     func applying(to agent: Agent, id: ConsoleAgent.ID) -> Agent {
+        knownTitle(for: agent, id: id).map(agent.applyingConversationTitle) ?? agent
+    }
+
+    func knownTitle(for agent: Agent, id: ConsoleAgent.ID) -> String? {
         guard agent.kind == ChatProgram.agy.rawValue,
             let entry = entries[id],
             entry.identity == PaneIdentity(agent),
             case .titled(_, let rootID, let title) = entry.known
-        else { return agent }
+        else { return nil }
         if agent.agentSession == nil && entry.boundByChat == nil {
-            return agent
+            return nil
         }
         if let rawSession = agent.agentSession?.value {
             guard let reportedID = ConversationReference.canonicalUUID(rawSession) else {
-                return agent
+                return nil
             }
             let matchesKnownConversation = entry.sessionFamily.contains(reportedID)
                 || resolvedSessionsByHost[id.hostID]?.map[reportedID]?.rootID == rootID
             guard matchesKnownConversation else {
-                return agent
+                return nil
             }
         }
-        return agent.applyingConversationTitle(title)
+        return title
+    }
+
+    func hasResolvedState(for row: ConsoleAgent) -> Bool {
+        guard row.agent.kind == ChatProgram.agy.rawValue,
+            let entry = entries[row.id],
+            entry.identity == PaneIdentity(row.agent)
+        else { return false }
+        switch entry.known {
+        case .unknown:
+            return false
+        case .untitled(_, let rootID), .titled(_, let rootID, _):
+            if row.agent.agentSession == nil && entry.boundByChat == nil {
+                return false
+            }
+            if let rawSession = row.agent.agentSession?.value {
+                guard let reportedID = ConversationReference.canonicalUUID(rawSession) else {
+                    return false
+                }
+                return entry.sessionFamily.contains(reportedID)
+                    || resolvedSessionsByHost[row.id.hostID]?.map[reportedID]?.rootID == rootID
+            }
+            return true
+        }
     }
 
     func isKnownUntitled(for row: ConsoleAgent) -> Bool {
@@ -500,6 +527,14 @@ final class AgyAnnotationTitleStore {
         if let root, RemoteFilePath.isAcceptable(root),
             let rawID = rootID, let canonical = ConversationReference.canonicalUUID(rawID)
         {
+            storeResolution(
+                ResolvedSession(root: root, rootID: canonical),
+                for: canonical, on: id.hostID, generation: generation)
+            if let reportedID = agent.agentSession.flatMap({ ConversationReference.canonicalUUID($0.value) }) {
+                storeResolution(
+                    ResolvedSession(root: root, rootID: canonical),
+                    for: reportedID, on: id.hostID, generation: generation)
+            }
             let nextBound = BoundConversation(root: root, rootID: canonical)
             let changedBound = entry.boundByChat != nextBound
             entry.boundByChat = nextBound
@@ -558,6 +593,23 @@ final class AgyAnnotationTitleStore {
     func suspendAll() {
         for running in tasks.values { running.task.cancel() }
         tasks.removeAll()
+    }
+
+    @discardableResult
+    func cancelInFlight(on hostID: Host.ID) -> Bool {
+        guard let running = tasks[hostID] else { return false }
+        running.task.cancel()
+        tasks[hostID] = nil
+        return true
+    }
+
+    func hasCachedResolution(for agent: Agent, paneID: String, on hostID: Host.ID, generation: UInt64) -> Bool {
+        if let reportedID = agent.agentSession.flatMap({ ConversationReference.canonicalUUID($0.value) }) {
+            return cachedResolution(for: reportedID, on: hostID, generation: generation) != nil
+        }
+        let id = ConsoleAgent.ID(hostID: hostID, paneID: paneID)
+        guard let entry = entries[id], entry.identity == PaneIdentity(agent) else { return false }
+        return entry.boundByChat != nil
     }
 
     func readLive(
@@ -642,6 +694,7 @@ final class AgyAnnotationTitleStore {
         isProjectionCurrent: @escaping @MainActor (
             _ hostID: Host.ID, _ expected: any ConsoleHostProjection, _ generation: UInt64
         ) -> Bool,
+        awaitForegroundReady: (@MainActor (Host.ID) async -> Void)? = nil,
         onReconcileNeeded: @escaping @MainActor () -> Void
     ) {
         for projection in projections.values {
@@ -723,12 +776,12 @@ final class AgyAnnotationTitleStore {
                 guard let self, let projection else { return }
                 var needsRetry = false
                 for candidate in candidates {
+                    await awaitForegroundReady?(hostID)
                     guard !Task.isCancelled, isProjectionCurrent(hostID, projection, generation)
                     else { break }
 
                     let agentID = candidate.agent.id
                     let key = candidate.key
-                    self.entries[agentID]?.lastReadKey = key
                     let priorRetries = self.entries[agentID]?.retries.flatMap {
                         $0.key == key ? $0.count : nil
                     } ?? 0
@@ -748,6 +801,7 @@ final class AgyAnnotationTitleStore {
                     guard !Task.isCancelled, isProjectionCurrent(hostID, projection, generation) else {
                         break
                     }
+                    self.entries[agentID]?.lastReadKey = key
 
                     switch outcome {
                     case .titled:

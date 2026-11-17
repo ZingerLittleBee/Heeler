@@ -120,11 +120,15 @@ struct TerminalListView: View {
             List(selection: $selection) {
                 ForEach(groups) { @Sendable group in
                     MainActorContent {
+                        // The header names only the Host: a row for one of
+                        // several Servers says which.
+                        let namesServer = group.servers.count > 1
                         Section {
                             if !isFolded(group) {
                                 ForEach(group.issues) { @Sendable issue in
                                     MainActorContent {
-                                        ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
+                                        ConsoleHostIssueRow(
+                                            issue: issue, namesServer: namesServer, onOpenHost: onOpenHost)
                                             .modifier(TerminalCardRow(isFirst: true, isLast: true))
                                     }
                                 }

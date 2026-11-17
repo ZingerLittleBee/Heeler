@@ -180,6 +180,73 @@ struct SSHChannelAdmissionTests {
         await forwarding.release()
         #expect(await admission.snapshot().connection == 0)
     }
+
+    @Test func interactiveWaitersWakeAheadOfNormalWaitersWithinCategoryBudget() async throws {
+        let admission = SSHChannelAdmission(
+            limits: .init(
+                ordinaryForwarding: 1,
+                events: 1,
+                ordinarySession: 1,
+                attach: 1,
+                connection: 4))
+        let heldSession = try await admission.acquire(.ordinarySession)
+        let heldForwarding = try await admission.acquire(.ordinaryForwarding)
+        let order = WakeOrderRecorder()
+
+        let normal1 = Task {
+            let lease = try await admission.acquire(.ordinarySession, priority: .normal)
+            await order.record("normal-1")
+            await lease.release()
+        }
+        while await admission.waitingRequests() < 1 { await Task.yield() }
+
+        let normalForwarding = Task {
+            let lease = try await admission.acquire(.ordinaryForwarding, priority: .normal)
+            await order.record("normal-forwarding")
+            await lease.release()
+        }
+        while await admission.waitingRequests() < 2 { await Task.yield() }
+
+        let interactive1 = Task {
+            let lease = try await admission.acquire(.ordinarySession, priority: .interactive)
+            await order.record("interactive-1")
+            await lease.release()
+        }
+        while await admission.waitingRequests() < 3 { await Task.yield() }
+
+        let interactive2 = Task {
+            let lease = try await admission.acquire(.ordinarySession, priority: .interactive)
+            await order.record("interactive-2")
+            await lease.release()
+        }
+        while await admission.waitingRequests() < 4 { await Task.yield() }
+
+        // Releasing a forwarding slot wakes the normal forwarding waiter even
+        // while interactive session waiters remain blocked on `.ordinarySession`.
+        await heldForwarding.release()
+        try await normalForwarding.value
+        #expect(await order.entries() == ["normal-forwarding"])
+
+        // Releasing the session slot wakes interactive waiters in FIFO order
+        // before normal session waiters.
+        await heldSession.release()
+        try await interactive1.value
+        try await interactive2.value
+        try await normal1.value
+        #expect(await order.entries() == [
+            "normal-forwarding",
+            "interactive-1",
+            "interactive-2",
+            "normal-1",
+        ])
+        #expect(await admission.snapshot().connection == 0)
+    }
+}
+
+private actor WakeOrderRecorder {
+    private var items: [String] = []
+    func record(_ item: String) { items.append(item) }
+    func entries() -> [String] { items }
 }
 
 private actor ChannelAdmissionGate {

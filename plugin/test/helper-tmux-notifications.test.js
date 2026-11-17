@@ -414,7 +414,7 @@ suite("tmux Live Activity and desktop declines", () => {
     const server = startPrivateServer("work", "payments-service", [fakeClaude, "--ide"]);
     server.run("set-option", "-p", "-t", "%0", "@heeler-status", "state=working:app=claude-code:turn=0:blocked=0");
 
-    const layout = { rows: [[{ token: "workspace" }, { token: "agent" }, { token: "status" }]] };
+    const layout = { rows: [[{ token: "workspace" }, { token: "agent" }, { token: "backend" }, { token: "status" }]] };
     register(
       entry(KEY_A, ALERT_A, { session: "tmux/work", activity: ACTIVITY_A, live: { row_layout: layout } }),
       entry(KEY_B, ALERT_B, { session: "tmux/work", activity: ACTIVITY_B }),
@@ -442,7 +442,7 @@ suite("tmux Live Activity and desktop declines", () => {
     assert.equal(openedFirst.agents[0].kind, "claude");
     assert.equal(openedFirst.agents[0].status, "working");
     assert.deepEqual(openedFirst.agents[0].rows, [
-      [{ text: "payments-service" }, { text: " · " }, { text: "claude" }, { text: " · " }, { text: "Working" }],
+      [{ text: "payments-service" }, { text: " · " }, { text: "claude" }, { text: " · " }, { text: "tmux" }, { text: " · " }, { text: "Working" }],
     ]);
 
     // Enter blocked=1 -> priority 10.

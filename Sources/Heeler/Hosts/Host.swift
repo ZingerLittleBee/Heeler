@@ -142,6 +142,17 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .unconfirmed: String(localized: "Not confirmed")
         }
     }
+
+    /// Short backend identifier rendered by the `backend` Agent List Field.
+    var agentBackend: AgentBackend? {
+        switch self {
+        case .herdrCore: .core
+        case .herdrTUI: .tui
+        case .tmux: .tmux
+        case .rex: .rex
+        case .unconfirmed: nil
+        }
+    }
 }
 
 /// A user-added Host (CONTEXT.md): who the machine is, how to authenticate,

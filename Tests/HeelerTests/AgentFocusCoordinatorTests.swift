@@ -195,6 +195,80 @@ struct AgentFocusCoordinatorTests {
         }
     }
 
+    @Test func spuriousDisappearWhileVisibleKeepsMountAliveAndContinuesObservingFocusState() async throws {
+        let model = FocusMountObservationModel()
+        let mount = AgentDetailMount()
+        let activity = AppActivityCoordinator()
+        var updates = 0
+        var exits = 0
+
+        mount.bind(
+            activity: activity,
+            state: {
+                AgentFocusCoordinator.ViewingState(
+                    agentID: id,
+                    terminalID: "terminal-A",
+                    transportGeneration: 1,
+                    status: model.status,
+                    isHostReady: model.isHostReady,
+                    isSceneActive: true,
+                    isOnStage: mount.hasAppeared && model.isVisible,
+                    showsShellTerminal: false)
+            },
+            onUpdate: { updates += 1 })
+        mount.appear()
+        #expect(mount.hasAppeared)
+
+        // Simulate iPhone's unpaired spurious onDisappear while the router still shows the detail.
+        mount.scheduleExit(isVisible: { model.isVisible }) { exits += 1 }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+
+        // Even with SwiftUI's .onChange frozen after the unpaired disappear,
+        // observable store changes (such as a Host snapshot arriving with Done) still drive focus.
+        model.status = .done
+        model.isHostReady = true
+        try await waitUntil { updates >= 1 }
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+
+        // Real Back navigation updates router visibility without a second SwiftUI onDisappear.
+        model.isVisible = false
+        try await waitUntil { !mount.hasAppeared && exits == 1 }
+    }
+
+    @Test func reappearingAfterSpuriousDisappearCancelsPendingExit() async throws {
+        let model = FocusMountObservationModel()
+        let mount = AgentDetailMount()
+        let activity = AppActivityCoordinator()
+        var exits = 0
+
+        mount.bind(
+            activity: activity,
+            state: {
+                AgentFocusCoordinator.ViewingState(
+                    agentID: id,
+                    terminalID: "terminal-A",
+                    transportGeneration: 1,
+                    status: .done,
+                    isHostReady: true,
+                    isSceneActive: true,
+                    isOnStage: mount.hasAppeared && model.isVisible,
+                    showsShellTerminal: false)
+            },
+            onUpdate: {})
+        mount.appear()
+        mount.scheduleExit(isVisible: { model.isVisible }) { exits += 1 }
+        mount.appear()
+        model.isVisible = false
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+        mount.scheduleExit(isVisible: { false }) {}
+        #expect(!mount.hasAppeared)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(2)
         while !condition(), ContinuousClock.now < deadline {
@@ -205,52 +279,9 @@ struct AgentFocusCoordinatorTests {
 }
 
 @MainActor
-@Suite("Agent detail mount")
-struct AgentDetailMountTests {
-    /// A detail pushed from the Agents list can get a disappear while it
-    /// stays on screen, and no appear after it.
-    @Test func aDisappearWhileTheDetailStaysOnScreenKeepsItsAgentShown() async throws {
-        let mount = AgentDetailMount()
-        mount.isInWindow = true
-        mount.didAppear()
-        var onStage = true
-        var leaves = 0
-        let exit = mount.didDisappear(isOnStage: { onStage }, interval: .milliseconds(5)) { leaves += 1 }
-        try await Task.sleep(for: .milliseconds(40))
-        #expect(leaves == 0)
-        #expect(mount.hasAppeared)
-
-        onStage = false
-        await exit.value
-        #expect(leaves == 1)
-        #expect(!mount.hasAppeared)
-    }
-
-    /// SwiftUI rebuilding the detail in its own place leaves the router as
-    /// it was; the old detail's window says it went.
-    @Test func aDetailTakenOutOfItsWindowLeavesWhileTheRouterStillShowsIt() async {
-        let mount = AgentDetailMount()
-        mount.isInWindow = true
-        mount.didAppear()
-        var leaves = 0
-        let exit = mount.didDisappear(isOnStage: { true }, interval: .milliseconds(5)) { leaves += 1 }
-        mount.isInWindow = false
-        await exit.value
-        #expect(leaves == 1)
-        #expect(!mount.hasAppeared)
-    }
-
-    @Test func appearingAgainKeepsItsAgentShown() async throws {
-        let mount = AgentDetailMount()
-        mount.isInWindow = true
-        mount.didAppear()
-        var onStage = true
-        var leaves = 0
-        let exit = mount.didDisappear(isOnStage: { onStage }, interval: .milliseconds(5)) { leaves += 1 }
-        mount.didAppear()
-        onStage = false
-        await exit.value
-        #expect(leaves == 0)
-        #expect(mount.hasAppeared)
-    }
+@Observable
+fileprivate final class FocusMountObservationModel {
+    var status: AgentStatus?
+    var isHostReady = false
+    var isVisible = true
 }

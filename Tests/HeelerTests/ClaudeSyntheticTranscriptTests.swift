@@ -63,6 +63,38 @@ struct ClaudeSyntheticTranscriptTests {
         ])
     }
 
+    @Test("A queued image delivered mid-turn keeps its image paths from meta source notes or inlined paths")
+    func queuedCommandWithImages() {
+        let withMeta = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            {"type":"queue-operation","operation":"enqueue","content":"[Image #1]","sessionId":"s1"}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+            {"type":"queue-operation","operation":"remove","content":"[Image #1]","sessionId":"s1"}
+            {"type":"attachment","uuid":"q1","parentUuid":"r1","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"[Image #1]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}}],"source_uuid":"src1","commandMode":"prompt","origin":{"kind":"human"}}}
+            {"type":"user","uuid":"m1","parentUuid":"q1","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: source: /tmp/queued.jpg]"}]}}
+            """#
+        let (transcript, _) = Self.read(withMeta, activity: .working)
+        #expect(
+            ClaudeSample.entry("user:src1", in: transcript)
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: ["/tmp/queued.jpg"], delivery: .steered)))
+
+        let withInlined = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+            {"type":"attachment","uuid":"q2","parentUuid":"r1","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"[Image #1]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}}],"inlinedImagePaths":["/tmp/inlined.jpg"],"source_uuid":"src2","commandMode":"prompt","origin":{"kind":"human"}}}
+            """#
+        let (inlinedTranscript, _) = Self.read(withInlined, activity: .working)
+        #expect(
+            ClaudeSample.entry("user:src2", in: inlinedTranscript)
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: ["/tmp/inlined.jpg"], delivery: .steered)))
+    }
+
     @Test("A prompt queued in the running turn shows Queued until Claude Code delivers it")
     func waitingQueuedPrompt() {
         // Claude Code 2.1.301 writes the enqueue at once and the delivery
@@ -371,6 +403,51 @@ struct ClaudeSyntheticTranscriptTests {
         let (transcript, _) = Self.readWorkflow([Self.workflowTurn, queued].joined(separator: "\n"))
         #expect(Self.tool("tool:toolu_wf", in: transcript)?.status == .interrupted)
         #expect(transcript.backgroundWork.map(\.state) == [.stopped])
+    }
+
+    @Test("TaskStop and turn_duration pending counts retire Workflows that ended without a notification")
+    func taskStopAndTurnDurationRetireUnnotifiedWorkflows() throws {
+        // 1. `TaskStop` with snake_case `task_id` stops the running Workflow and its tool row.
+        let taskStop = #"""
+            {"type":"assistant","uuid":"a_stop","parentUuid":"t1","timestamp":"2026-10-07T10:15:00.000Z","message":{"id":"m_stop","role":"assistant","content":[{"type":"tool_use","id":"toolu_stop","name":"TaskStop","input":{"task_id":"w1abcdefg"}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r_stop","parentUuid":"a_stop","timestamp":"2026-10-07T10:15:00.100Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_stop","content":"Successfully stopped task: w1abcdefg"}]},"toolUseResult":{"message":"Successfully stopped task: w1abcdefg","task_id":"w1abcdefg","task_type":"local_workflow"}}
+            """#
+        let (stoppedByTool, stopLines) = Self.readWorkflow([Self.workflowTurn, taskStop].joined(separator: "\n"))
+        #expect(Self.tool("tool:toolu_wf", in: stoppedByTool)?.status == .interrupted)
+        #expect(stoppedByTool.backgroundWork.map(\.state) == [.stopped])
+        #expect(stoppedByTool.backgroundWork.first?.endOffset == stopLines[6].offset)
+
+        // 2. Multi-Workflow single turn (`rex` scenario): first Workflow aborts mid-run without
+        // a notification, second Workflow completes via `queued_command`, and the final real
+        // `turn_duration` (`messageCount`, no `pendingWorkflowCount`) retires the first to `.stopped`.
+        let secondDoneNotification =
+            #"<task-notification>\n<task-id>w2bcdefgh</task-id>\n<tool-use-id>toolu_wf2</tool-use-id>\n<status>completed</status>\n<summary>Slice 4 continued completed</summary>\n<result>All checks green.</result>\n<usage><agent_count>4</agent_count><agents_done>4</agents_done><agents_error>0</agents_error><subagent_tokens>80000</subagent_tokens><tool_uses>20</tool_uses><duration_ms>16980000</duration_ms></usage>\n</task-notification>"#
+        let singleLongTurn = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"timestamp":"2026-10-07T13:26:00.000Z","message":{"role":"user","content":"Finish slice 4"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","timestamp":"2026-10-07T13:26:05.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_wf1","name":"Workflow","input":{"script":"export const meta = { name: 'rex-size-wrap-682' }"}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-07T13:26:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_wf1","content":"Workflow launched"}]},"toolUseResult":{"status":"async_launched","taskId":"w1abcdefg","taskType":"local_workflow","workflowName":"rex-size-wrap-682","runId":"wf_0a1b2c3d-4e5","summary":"Slice 4"}}
+            {"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-10-08T01:20:00.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_wf2","name":"Workflow","input":{"script":"export const meta = { name: 'rex-size-wrap-continued' }"}}]},"apiBlockIndex":0}
+            {"type":"user","uuid":"r2","parentUuid":"a2","timestamp":"2026-10-08T01:20:00.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_wf2","content":"Workflow launched"}]},"toolUseResult":{"status":"async_launched","taskId":"w2bcdefgh","taskType":"local_workflow","workflowName":"rex-size-wrap-continued","runId":"wf_1b2c3d4e-5f6","summary":"Slice 4 continued"}}
+            {"type":"attachment","uuid":"q2","parentUuid":"r2","timestamp":"2026-10-08T06:03:00.000Z","attachment":{"type":"queued_command","prompt":"\#(secondDoneNotification)","commandMode":"task-notification","origin":{"kind":"task-notification"}}}
+            {"type":"assistant","uuid":"a3","parentUuid":"q2","timestamp":"2026-10-08T06:07:00.000Z","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"All done."}]},"apiBlockIndex":0}
+            {"type":"system","subtype":"turn_duration","uuid":"t_end","parentUuid":"a3","timestamp":"2026-10-08T06:07:09.000Z","durationMs":60069000,"messageCount":140}
+            """#
+        let (settled, settledLines) = Self.readWorkflow(singleLongTurn)
+        #expect(settled.backgroundWork.map(\.id) == ["toolu_wf1", "toolu_wf2"])
+        #expect(settled.backgroundWork.map(\.state) == [.stopped, .completed])
+        #expect(settled.backgroundWork[0].endOffset == settledLines[7].offset)
+        #expect(settled.backgroundWork[1].usage?.agents == 4)
+        #expect(Self.tool("tool:toolu_wf1", in: settled)?.status == .interrupted)
+        #expect(Self.tool("tool:toolu_wf2", in: settled)?.status == .succeeded)
+
+        // 3. Notifications carrying `<task-id>` without `<tool-use-id>` and block-array `enqueue`s match too.
+        let taskIDOnlyNotification =
+            #"<task-notification>\n<task-id>w1abcdefg</task-id>\n<status>failed</status>\n<summary>Workflow failed</summary>\n<result>Agent crashed.</result>\n</task-notification>"#
+        let blockEnqueue =
+            #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-07T10:20:00.000Z","content":[{"type":"text","text":"\#(taskIDOnlyNotification)"}],"sessionId":"s1"}"#
+        let (matchedByTaskID, _) = Self.readWorkflow([Self.workflowTurn, blockEnqueue].joined(separator: "\n"))
+        #expect(matchedByTaskID.backgroundWork.map(\.state) == [.failed])
+        #expect(Self.tool("tool:toolu_wf", in: matchedByTaskID)?.status == .failed)
     }
 
     @Test("A run id that could leave the session's directory names no journal", arguments: [

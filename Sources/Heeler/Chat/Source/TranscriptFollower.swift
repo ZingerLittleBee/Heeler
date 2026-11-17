@@ -115,10 +115,24 @@ struct TranscriptFollower: Sendable {
 
     /// Reads the file's last `tailWindow` bytes. Nil when the file is gone.
     mutating func open(_ files: ChatHostFiles) async throws -> [ChatLine]? {
+        try await open(files, preloadedStatus: nil, preloadedHead: nil)
+    }
+
+    /// Opens the file's tail, reusing `preloadedStatus` or `preloadedHead`
+    /// when locating already read them.
+    mutating func open(
+        _ files: ChatHostFiles, preloadedStatus: RemoteFileStatus?, preloadedHead: Data?
+    ) async throws -> [ChatLine]? {
         // Any failure below leaves the follower closed, so the next poll
         // reopens instead of continuing from a half-reset position.
         isOpen = false
-        guard let status = try await files.status(path) else { return nil }
+        let resolvedStatus: RemoteFileStatus?
+        if let preloadedStatus {
+            resolvedStatus = preloadedStatus
+        } else {
+            resolvedStatus = try await files.status(path)
+        }
+        guard let status = resolvedStatus else { return nil }
         let size = status.size ?? 0
         let start = size > UInt64(limits.tailWindow) ? size - UInt64(limits.tailWindow) : 0
         framer = JSONLLineFramer(
@@ -129,13 +143,47 @@ struct TranscriptFollower: Sendable {
         tailAnchor = Data()
         modificationTime = status.modificationTime
         knownSize = size
-        guard let lines = try await readForward(files, until: size, budget: limits.tailWindow),
-            let head = try await files.read(
+        guard let lines = try await readForward(files, until: size, budget: limits.tailWindow) else {
+            return nil
+        }
+        let resolvedHead: Data?
+        if let preloadedHead {
+            resolvedHead = preloadedHead
+        } else {
+            resolvedHead = try await files.read(
                 path: path, from: 0, to: UInt64(limits.headLength), chunk: limits.readChunk)
-        else { return nil }
+        }
+        guard let head = resolvedHead else { return nil }
         self.head = head
         isOpen = true
         return lines
+    }
+
+    /// Resumes following at `readOffset` after confirming `head`, `tailAnchor`,
+    /// and file size match a saved cache document, without re-reading the tail
+    /// window body.
+    static func confirmedFromCache(
+        path: String,
+        limits: Limits,
+        identity: Identity?,
+        status: RemoteFileStatus,
+        head: Data,
+        windowStart: UInt64,
+        readOffset: UInt64,
+        tailAnchor: Data
+    ) -> TranscriptFollower {
+        var follower = TranscriptFollower(path: path, limits: limits, identity: identity)
+        follower.framer = JSONLLineFramer(
+            startOffset: readOffset, dropsLeadingFragment: false,
+            lineCap: limits.lineCap, prefixCap: limits.prefixCap)
+        follower.readOffset = readOffset
+        follower.windowStart = windowStart
+        follower.knownSize = status.size ?? readOffset
+        follower.modificationTime = status.modificationTime
+        follower.head = head
+        follower.tailAnchor = tailAnchor
+        follower.isOpen = true
+        return follower
     }
 
     /// One look at the file: a stat, then a read only when it changed.
@@ -218,6 +266,7 @@ struct TranscriptFollower: Sendable {
         var lines: [ChatLine] = []
         var remaining = budget
         while readOffset < end, remaining > 0 {
+            try Task.checkCancellation()
             let length = Int(min(UInt64(min(limits.readChunk, remaining)), end - readOffset))
             let slice = try await files.read(
                 RemoteFileRange(path: path, offset: readOffset, maxBytes: length))
@@ -317,6 +366,10 @@ struct TranscriptFollower: Sendable {
 }
 
 extension TranscriptFollower: ChatTranscriptSource {
+    var savedTailAnchor: Data? {
+        isOpen && !tailAnchor.isEmpty ? tailAnchor : nil
+    }
+
     var olderPageLengths: (first: Int, maximum: Int) {
         (limits.olderPage, limits.olderSearchPage)
     }

@@ -60,6 +60,7 @@ function coreSnapshotView(inventory, turns, marks) {
       terminal_title_stripped: strippedSidebarTitle(title),
       workspace_id: liveDirectory(record),
       cwd: record.cwd,
+      backend: "core",
       tokens: record.labels,
     });
   }
@@ -129,6 +130,7 @@ function tmuxSnapshotView(inventory, turns, marks) {
       workspace_id: pane.sessionID,
       tab_id: pane.windowID,
       cwd: pane.path,
+      backend: "tmux",
       tokens: {},
     });
   }

@@ -1916,6 +1916,127 @@ struct AgentChatStoreTests {
         #expect(fixture.store.sendStatuses[inline] == .awaiting)
     }
 
+    @Test func aQueuedClaudeImagePromptKeepsItsPreviewableImagePathWhileQueuedAndMidTurnSteered() async throws {
+        let adapter = try #require(ChatTranscriptAdapter.standard(for: .claude))
+        let fixture = Fixture(session: Self.first, adapter: adapter)
+        let running = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            """# + "\n"
+        await fixture.files.write(running, at: Self.path(Self.first))
+        let workingAgent = Self.agent(session: Self.first, status: .working, program: .claude)
+        await fixture.server.set(workingAgent)
+        fixture.store.agentDidChange(workingAgent)
+        await fixture.store.step()
+
+        let stagedPath =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.0puL6rLo/stage-ab86ed77-43f7-4afe-b3b5-24857b45cb20/image.jpg"
+        let sendID = UUID()
+        fixture.store.updateSends([Self.sent(sendID, "\(stagedPath) ", delivered: false)])
+        fixture.store.updateSends([Self.sent(sendID, "\(stagedPath) ")])
+
+        await fixture.files.append(
+            #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-11-16T02:41:00.000Z","content":"[Image #1]","sessionId":"\#(Self.first)"}"#
+                + "\n",
+            to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(fixture.store.sendStatuses[sendID] == .recorded)
+        let queuedEntry = try #require(fixture.store.conversation.transcript.entries.last)
+        #expect(
+            queuedEntry.content
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: [stagedPath], delivery: .queued)))
+
+        let queuedRows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [queuedEntry]))
+        #expect(
+            queuedRows.first?.messageImages
+                == [ChatImageLink.Reference(path: stagedPath, title: ChatImageLink.stagedImageLabel(number: 1))])
+        let marked = ChatImageLink.marking("[Image #1]", imagePaths: [stagedPath])
+        #expect(ChatImageLink.paths(in: marked) == [stagedPath])
+
+        // Subsequent polls while still queued preserve the image path.
+        await fixture.files.append(
+            #"{"type":"progress","uuid":"pr1","parentUuid":"a1","data":{"type":"bash_progress"}}"# + "\n",
+            to: Self.path(Self.first))
+        await fixture.store.step()
+        #expect(
+            fixture.store.conversation.transcript.entries.last?.content
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: [stagedPath], delivery: .queued)))
+
+        // Mid-turn absorption writes `queued_command` without `[Image: source: ...]`;
+        // the steered bubble keeps the matched path.
+        await fixture.files.append(
+            #"""
+            {"type":"queue-operation","operation":"remove","timestamp":"2026-11-16T02:41:10.000Z","content":"[Image #1]","sessionId":"\#(Self.first)"}
+            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_test","content":"ok"}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false}}
+            {"type":"attachment","uuid":"q1","parentUuid":"r1","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"[Image #1]"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AA"}}],"imagePasteIds":[1],"source_uuid":"src1","commandMode":"prompt","origin":{"kind":"human"}}}
+            """# + "\n",
+            to: Self.path(Self.first))
+        await fixture.store.step()
+
+        #expect(
+            fixture.store.conversation.transcript.entries.last?.content
+                == .user(
+                    ChatUserMessage(
+                        text: "[Image #1]", imageCount: 1, imagePaths: [stagedPath], delivery: .steered)))
+    }
+
+    @Test func multipleStagedImagesAndMultilineImagePromptsMatchAndPreviewWhileQueuedInClaude() async throws {
+        let adapter = try #require(ChatTranscriptAdapter.standard(for: .claude))
+        let fixture = Fixture(session: Self.first, adapter: adapter)
+        let running = #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Run the tests"},"promptSource":"typed","origin":{"kind":"human"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_test","name":"Bash","input":{"command":"make test","description":"Run the tests"}}]},"apiBlockIndex":0}
+            """# + "\n"
+        await fixture.files.write(running, at: Self.path(Self.first))
+        let workingAgent = Self.agent(session: Self.first, status: .working, program: .claude)
+        await fixture.server.set(workingAgent)
+        fixture.store.agentDidChange(workingAgent)
+        await fixture.store.step()
+
+        let first = "/tmp/heeler.abc/stage-11111111/image1.jpg"
+        let second = "/tmp/heeler.abc/stage-22222222/image2.jpg"
+        let third = "/tmp/heeler.abc/stage-33333333/image3.jpg"
+        let pairSend = UUID()
+        let proseSend = UUID()
+        let sends = [
+            Self.sent(pairSend, "\(first) \(second) "),
+            Self.sent(proseSend, "看看这个报错\n\(third) "),
+        ]
+        fixture.store.updateSends(sends.map { Self.sent($0.id, $0.text, delivered: false) })
+
+        // Even when the transcript's enqueue arrives before `isDelivered` flips,
+        // confirming delivery enriches the queued bubbles and bumps revision.
+        await fixture.files.append(
+            #"""
+            {"type":"queue-operation","operation":"enqueue","content":"[Image #1] [Image #2]","sessionId":"\#(Self.first)"}
+            {"type":"queue-operation","operation":"enqueue","content":"[Image #3]看看这个报错","sessionId":"\#(Self.first)"}
+            """# + "\n",
+            to: Self.path(Self.first))
+        await fixture.store.step()
+        let revisionBeforeDeliveryAck = fixture.store.conversation.revision
+
+        fixture.store.updateSends(sends)
+
+        #expect(fixture.store.sendStatuses[pairSend] == .recorded)
+        #expect(fixture.store.sendStatuses[proseSend] == .recorded)
+        #expect(fixture.store.conversation.revision > revisionBeforeDeliveryAck)
+        let entries = Array(fixture.store.conversation.transcript.entries.suffix(2))
+        #expect(
+            entries.map(\.content) == [
+                .user(
+                    ChatUserMessage(
+                        text: "[Image #1] [Image #2]", imageCount: 2, imagePaths: [first, second], delivery: .queued)),
+                .user(
+                    ChatUserMessage(
+                        text: "[Image #3]看看这个报错", imageCount: 1, imagePaths: [third], delivery: .queued)),
+            ])
+    }
+
     @Test func aCodexUndoIsFollowedOnAStatusChangeAndOnAnOverdueSend() async throws {
         let thread = "01a10f87-e025-7fb1-8974-8dd09937767a"
         let directory = "/home/dev/.codex/sessions/2026/10/06"
@@ -4531,6 +4652,75 @@ struct AgentChatStoreTests {
         await fixture.store.step()
         #expect(fixture.store.hasRunningBackgroundWork)
         #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
+    }
+
+    @Test func claudeWorkflowRunFileSettlesUnnotifiedWorkflowAndClearsOnNextPrompt() async throws {
+        let session = Self.first
+        let transcriptPath = Self.path(session)
+        let journalPath = "/home/dev/.claude/projects/-home-dev-proj/\(session)/subagents/workflows/wf_1/journal.jsonl"
+        let runFilePath = "/home/dev/.claude/projects/-home-dev-proj/\(session)/workflows/wf_1.json"
+
+        let fixture = Self.paced()
+        let launch = NumberedChatReducer.launch("w1", journal: journalPath, at: fixture.clock.now)
+        await fixture.files.write(NumberedChatReducer.prompt("Run workflow") + launch, at: transcriptPath)
+        await fixture.files.write(
+            #"{"type":"launched"}"# + "\n"
+                + #"{"type":"started","key":"r6","agentId":"a1","label":"r6:size","phase":"Size"}"# + "\n"
+                + #"{"type":"result","key":"r6","agentId":"a1","result":"Done"}"# + "\n"
+                + #"{"type":"started","key":"r7b","agentId":"a2","label":"r7b:docs","phase":"Docs"}"# + "\n",
+            at: journalPath)
+        await fixture.files.write(#"{"runId":"wf_1"}"#, at: runFilePath)
+
+        await fixture.store.step()
+        // First poll after open reads the journal and notices `wf_1.json`, waiting for settle.
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
+
+        // Past the 5s settle window without a `<task-notification>`, `wf_1.json` + unfinished
+        // `r7b` agent settle the Workflow to `.stopped`.
+        fixture.advance(6)
+        await fixture.store.step()
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .stopped)
+
+        // Sending a subsequent user prompt clears the evidence-retired Workflow.
+        await fixture.files.append(NumberedChatReducer.prompt("Next task"), to: transcriptPath)
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.isEmpty)
+    }
+
+    @Test func prefetchPrewarmsTimelineAndEndResetsIt() async throws {
+        let fixture = Fixture(session: Self.first)
+        await fixture.files.write(NumberedChatReducer.lines(0..<4), at: Self.path(Self.first))
+
+        let prefetched = await fixture.store.prefetch()
+
+        #expect(prefetched)
+        #expect(fixture.store.timeline.state.isReady)
+        #expect(fixture.store.timeline.state.rows.count == 4)
+
+        fixture.store.end()
+
+        #expect(fixture.store.timeline.state.rows.isEmpty)
+        #expect(!fixture.store.timeline.state.isReady)
+    }
+
+    @Test func reconnectingClearsOfflineOpenBackoffImmediately() async throws {
+        let fixture = Fixture(session: Self.first)
+        fixture.store.hostConnectionChanged(false)
+        await fixture.files.failNext(.home, with: TransportError.sshUnreachable(detail: "offline"))
+
+        await fixture.store.step()
+        #expect(fixture.store.conversation.phase == .locating)
+
+        // Once the Host connects, the next step opens right away without
+        // waiting out `locateBackoff`.
+        await fixture.files.write(NumberedChatReducer.lines(0..<2), at: Self.path(Self.first))
+        fixture.store.hostConnectionChanged(true)
+        await fixture.store.step()
+
+        #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(fixture.store.conversation.transcript.entries.count == 2)
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {

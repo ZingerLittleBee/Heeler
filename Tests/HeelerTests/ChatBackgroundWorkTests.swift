@@ -298,18 +298,86 @@ struct ChatBackgroundWorkTests {
 
         let stoppedAt = Self.now.addingTimeInterval(-2)
         let retired = ChatBackgroundWork(
-            transcript: ChatTranscript(backgroundWork: [longCommand]),
+            transcript: ChatTranscript(
+                backgroundWork: [longCommand], latestPromptOffset: 5),
             progress: [:],
             evidence: [
                 longCommand.id: ChatBackgroundWorkEvidence(
                     lastSeenAt: Self.now.addingTimeInterval(-5),
                     endedState: .stopped,
-                    endedAt: stoppedAt)
+                    endedAt: stoppedAt,
+                    endPromptOffset: 5)
             ],
             isLive: true, now: Self.now, staleness: staleness)
         #expect(retired.rows.map(\.isRunning) == [false])
+        #expect(!retired.hasUnfinished)
         #expect(retired.rows.first?.item.state == .stopped)
         #expect(retired.rows.first?.item.endedAt == stoppedAt)
         #expect(!retired.holdsActivePace)
+
+        // A later user prompt clears evidence-retired work just like `endOffset <= prompt`.
+        let afterNextPrompt = ChatBackgroundWork(
+            transcript: ChatTranscript(
+                backgroundWork: [longCommand], latestPromptOffset: 50),
+            progress: [:],
+            evidence: [
+                longCommand.id: ChatBackgroundWorkEvidence(
+                    lastSeenAt: Self.now.addingTimeInterval(-5),
+                    endedState: .stopped,
+                    endedAt: stoppedAt,
+                    endPromptOffset: 5)
+            ],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(afterNextPrompt.rows.isEmpty)
+    }
+
+    @Test func turnPendingAllowancesRetireExcessCarriedWorkInLaunchOrder() {
+        let capEnd = ChatBackgroundWorkEnd(state: .stopped, offset: 80, endedAt: Self.now)
+        var transcript = ChatTranscript(
+            backgroundWorkEnds: ["notifiedLater": ChatBackgroundWorkEnd(state: .completed, offset: 95, endedAt: Self.now)],
+            backgroundWorkTurnCaps: [
+                ChatTurnPendingAllowance(kind: .workflow, carriedSlots: 2, end: capEnd)
+            ])
+        transcript.carryBackgroundWork(
+            [
+                Self.item("oldestDead", kind: .workflow, at: 10),
+                Self.item("notifiedLater", kind: .workflow, at: 20),
+                Self.item("stillRunning", kind: .workflow, at: 30),
+                Self.item("subagentUntouched", kind: .subagent, at: 15),
+            ],
+            launchedBefore: 60, latestPromptOffset: 5)
+
+        // `notifiedLater` was still running at 80 (notified at 95), taking 1 of the 2 slots;
+        // `stillRunning` (newest unended) takes the remaining slot, and `oldestDead` retires at 80.
+        #expect(
+            transcript.backgroundWork.map { ($0.id, $0.state, $0.endOffset) }
+                .map { "\($0.0):\($0.1):\($0.2.map(String.init) ?? "nil")" }
+                == [
+                    "oldestDead:stopped:80",
+                    "notifiedLater:completed:95",
+                    "stillRunning:running:nil",
+                    "subagentUntouched:running:nil",
+                ])
+    }
+
+    @Test func finishedWorkShowsInStripOnlyWhileForegroundTurnStillRuns() {
+        let finishedWork = ChatBackgroundWork(
+            transcript: ChatTranscript(
+                backgroundWork: [Self.item("done-wf", kind: .workflow, state: .completed, at: 10, endedAt: 40)],
+                latestPromptOffset: 5),
+            progress: [:], isLive: true, now: Self.now)
+        #expect(!finishedWork.hasUnfinished)
+
+        let openTurn = [ChatTurn(firstEntryID: ChatEntryID("u1"), ending: nil)]
+        let closedTurn = [ChatTurn(firstEntryID: ChatEntryID("u1"), ending: .completed)]
+
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .working, isHostConnected: true, turns: closedTurn))
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .blocked, isHostConnected: true, turns: closedTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .idle, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .done, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .error, isHostConnected: true, turns: openTurn))
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .unknown, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .unknown, isHostConnected: true, turns: closedTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .working, isHostConnected: false, turns: openTurn))
     }
 }

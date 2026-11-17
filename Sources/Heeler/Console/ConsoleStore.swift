@@ -114,7 +114,19 @@ final class ConsoleStore {
     /// so a reconnect naturally invalidates, and evicted per Host on insert
     /// so stale generations cannot accumulate.
     @ObservationIgnored private var skillsCache: [SkillsCacheKey: [AgentSkill]] = [:]
+    private struct AccountDirectoriesCacheKey: Hashable {
+        let hostID: Host.ID
+        let generation: UInt64
+        let revision: UInt64
+        let kind: SupportedAgentKind
+    }
+
     @ObservationIgnored private var agyModelsCache: [Host.ID: (generation: UInt64, models: [AgyModelCatalog.Choice])] = [:]
+    @ObservationIgnored private var accountDirectoriesRevisions: [Host.ID: UInt64] = [:]
+    @ObservationIgnored private var accountDirectoriesCache:
+        [AccountDirectoriesCacheKey: (directories: [String], loadedAt: ContinuousClock.Instant)] = [:]
+    @ObservationIgnored private var accountDirectoriesInFlight:
+        [AccountDirectoriesCacheKey: Task<[String], any Error>] = [:]
     /// Status events already converge through each Host's one pane-scoped
     /// subscription. Composers consume this fan-out instead of opening a
     /// second events channel that could outlive the connection snapshot.
@@ -222,6 +234,7 @@ final class ConsoleStore {
     @ObservationIgnored let chatCache: any ChatTranscriptCache
     let cachedChats: ConsoleChatCache
     @ObservationIgnored private var chatPrefetchTasks: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var chatPrefetchActiveAgent: [Host.ID: ConsoleAgent.ID] = [:]
     @ObservationIgnored private var chatPrefetched: [ConsoleAgent.ID: String] = [:]
     /// Prefetches that found no conversation yet, by the key they ran for.
     @ObservationIgnored private var chatPrefetchRetries: [ConsoleAgent.ID: (key: String, count: Int)] = [:]
@@ -325,7 +338,11 @@ final class ConsoleStore {
         self.connectCore = connectCore
         self.connectTmux = connectTmux
         cachedChats.onChange = { [weak self] in
-            self?.rebuildChatDisplayAgents()
+            self?.rebuildAgentOrder()
+        }
+        sidebarSnapshots.onLoaded = { [weak self] hostID, snapshot in
+            guard let self, let host = projections[hostID]?.host else { return }
+            cachedChats.record(sidebarSnapshot: snapshot, on: host)
         }
     }
 
@@ -1039,7 +1056,7 @@ final class ConsoleStore {
         let paneID = agent.agent.paneID
         var source = AgentChatSource(
             hostID: hostID, socketLocation: host.socketLocation,
-            files: chatHostFiles(for: hostID),
+            files: chatHostFiles(for: hostID, agentID: agent.id),
             agentInfo: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
@@ -1097,8 +1114,11 @@ final class ConsoleStore {
                 self.rebuild()
             }
         }
+        source.onDidBecomeVisible = { [weak self] in
+            self?.preemptBackgroundPrefetchForVisibleChat(agent.id)
+        }
         let rawAgent =
-            projections[hostID]?.agentsByPane[paneID].map { agyTitles.applying(to: $0).agent }
+            projections[hostID]?.agentsByPane[paneID].map { applyingAgyAnnotationTitle(to: $0).agent }
             ?? agent.agent
         let store = AgentChatStore(
             agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
@@ -1181,21 +1201,40 @@ final class ConsoleStore {
         return try await projection.checkChatSession(paneID: paneID, program: program)
     }
 
+    nonisolated private static let backgroundPrefetchReadChunk = 32 << 10
+
+    private func isBackgroundPrefetchRead(for agentID: ConsoleAgent.ID, on hostID: Host.ID) -> Bool {
+        chatPrefetchActiveAgent[hostID] == agentID && chatStores[agentID]?.isVisible != true
+    }
+
     /// Chat's transcript reads and store queries on the Host's live
     /// connection, resolved on every call like `sessionFileReader(for:)`.
-    func chatHostFiles(for hostID: Host.ID) -> ChatHostFiles {
+    func chatHostFiles(for hostID: Host.ID, agentID: ConsoleAgent.ID? = nil) -> ChatHostFiles {
         ChatHostFiles(
             status: { [weak self] path in
+                try Task.checkCancellation()
                 guard let self else { throw TransportError.cancelled }
                 return try await liveChatHostFiles(for: hostID).status(path)
             },
             list: { [weak self] request in
+                try Task.checkCancellation()
                 guard let self else { throw TransportError.cancelled }
                 return try await liveChatHostFiles(for: hostID).list(request)
             },
             read: { [weak self] range in
+                try Task.checkCancellation()
                 guard let self else { throw TransportError.cancelled }
-                return try await liveChatHostFiles(for: hostID).read(range)
+                var boundedRange = range
+                if let agentID,
+                    boundedRange.maxBytes > Self.backgroundPrefetchReadChunk,
+                    await self.isBackgroundPrefetchRead(for: agentID, on: hostID)
+                {
+                    boundedRange = RemoteFileRange(
+                        path: range.path,
+                        offset: range.offset,
+                        maxBytes: Self.backgroundPrefetchReadChunk)
+                }
+                return try await liveChatHostFiles(for: hostID).read(boundedRange)
             },
             home: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
@@ -1210,12 +1249,102 @@ final class ConsoleStore {
             },
             accountDirectories: { [weak self] kind in
                 guard let self else { throw TransportError.cancelled }
-                return try await liveChatHostFiles(for: hostID).accountDirectories(kind)
+                return try await self.cachedAccountDirectories(for: kind, on: hostID)
             })
     }
 
     private func liveChatHostFiles(for hostID: Host.ID) throws -> ChatHostFiles {
         try projection(for: hostID).chatHostFiles()
+    }
+
+    private static let accountDirectoriesCacheTTL: Duration = .seconds(60)
+
+    private func invalidateCachedAccountDirectories(on hostID: Host.ID) {
+        accountDirectoriesRevisions[hostID, default: 0] &+= 1
+        accountDirectoriesCache = accountDirectoriesCache.filter { $0.key.hostID != hostID }
+        accountDirectoriesInFlight = accountDirectoriesInFlight.filter { $0.key.hostID != hostID }
+    }
+
+    private func cachedAccountDirectories(
+        for kind: SupportedAgentKind, on hostID: Host.ID
+    ) async throws -> [String] {
+        let generation = try projection(for: hostID).transportGeneration
+        let revision = accountDirectoriesRevisions[hostID, default: 0]
+        let key = AccountDirectoriesCacheKey(
+            hostID: hostID, generation: generation, revision: revision, kind: kind)
+        accountDirectoriesCache = accountDirectoriesCache.filter {
+            $0.key.hostID != hostID || ($0.key.generation == generation && $0.key.revision == revision)
+        }
+        if let hit = accountDirectoriesCache[key],
+            ContinuousClock.now - hit.loadedAt < Self.accountDirectoriesCacheTTL
+        {
+            return hit.directories
+        }
+        if let inFlight = accountDirectoriesInFlight[key] {
+            let directories = try await inFlight.value
+            try Task.checkCancellation()
+            return directories
+        }
+        let task = Task<[String], any Error> { [weak self] in
+            guard let self else { throw TransportError.cancelled }
+            return try await self.liveChatHostFiles(for: hostID).accountDirectories(kind)
+        }
+        accountDirectoriesInFlight[key] = task
+        defer {
+            if accountDirectoriesInFlight[key] != nil {
+                accountDirectoriesInFlight[key] = nil
+            }
+        }
+        let directories = try await task.value
+        try Task.checkCancellation()
+        if projections[hostID]?.transportGeneration == generation,
+            accountDirectoriesRevisions[hostID, default: 0] == revision
+        {
+            accountDirectoriesCache[key] = (directories, ContinuousClock.now)
+        }
+        return directories
+    }
+
+    func hasForegroundChatInitialLoad(on hostID: Host.ID) -> Bool {
+        chatStores.contains { $0.key.hostID == hostID && $0.value.isPerformingForegroundInitialLoad }
+    }
+
+    func yieldToForegroundChatLoad(on hostID: Host.ID) async {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !Task.isCancelled, isActive, ContinuousClock.now < deadline,
+            hasForegroundChatInitialLoad(on: hostID)
+        {
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    /// Cancels an in-flight background `prefetch()` of another Agent on the
+    /// same Host when a Chat opens on screen and needs the SFTP channel for its
+    /// initial open, resuming background prefetches once foreground loading
+    /// settles.
+    private func preemptBackgroundPrefetchForVisibleChat(_ visibleAgentID: ConsoleAgent.ID) {
+        let hostID = visibleAgentID.hostID
+        guard let chat = chatStores[visibleAgentID], chat.isPerformingForegroundInitialLoad else { return }
+        var preemptedPrefetch = false
+        if let runningTask = chatPrefetchTasks[hostID],
+            let activePrefetch = chatPrefetchActiveAgent[hostID],
+            activePrefetch != visibleAgentID
+        {
+            runningTask.cancel()
+            chatPrefetchTasks[hostID] = nil
+            chatPrefetchActiveAgent[hostID] = nil
+            chatPrefetched[activePrefetch] = nil
+            preemptedPrefetch = true
+        }
+        let preemptedAgyTitles = agyTitles.cancelInFlight(on: hostID)
+        guard preemptedPrefetch || preemptedAgyTitles else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.yieldToForegroundChatLoad(on: hostID)
+            guard self.isActive else { return }
+            if preemptedPrefetch { self.reconcileChatCache() }
+            if preemptedAgyTitles { self.reconcileAgyAnnotationTitles() }
+        }
     }
 
     private func liveChatAgentInfo(hostID: Host.ID, paneID: String) async throws -> Agent {
@@ -1225,8 +1354,15 @@ final class ConsoleStore {
         let fresh = try await origin.agentInfo(paneID: paneID)
         guard projections[hostID] === origin, origin.transportGeneration == generation,
             !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
-        let enriched = await readAgyTitleForRename(
-            fresh: fresh, paneID: paneID, hostID: hostID, generation: generation)
+        let agentID = ConsoleAgent.ID(hostID: hostID, paneID: paneID)
+        let defersUncachedAgyLocate =
+            chatStores[agentID]?.isPerformingForegroundInitialLoad == true
+            && !agyTitles.hasCachedResolution(for: fresh, paneID: paneID, on: hostID, generation: generation)
+        let enriched =
+            defersUncachedAgyLocate
+            ? fresh
+            : await readAgyTitleForRename(
+                fresh: fresh, paneID: paneID, hostID: hostID, generation: generation)
         guard projections[hostID] === origin, origin.transportGeneration == generation,
             !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
         if hostPlatforms[hostID] == .posix, let snapshot,
@@ -1234,7 +1370,19 @@ final class ConsoleStore {
             origin.agentsByPane[paneID]?.agent.terminalID == snapshot.agent.terminalID,
             origin.agentsByPane[paneID]?.agent.workspaceID == snapshot.agent.workspaceID,
             origin.agentsByPane[paneID]?.agent.tabID == snapshot.agent.tabID {
-            cachedChats.confirm(enriched, for: snapshot, on: origin.host)
+            var freshRow = snapshot
+            freshRow.agent = fresh
+            let resolvedTitle =
+                agyTitles.knownTitle(for: fresh, id: agentID)
+                ?? (agyTitles.hasResolvedState(for: freshRow)
+                    ? nil
+                    : cachedChats.cachedConversationTitle(for: fresh, on: origin.host))
+            let cachedFresh = resolvedTitle.map(fresh.applyingConversationTitle) ?? fresh
+            cachedChats.confirm(
+                cachedFresh, for: snapshot, conversationTitle: resolvedTitle, on: origin.host)
+            if defersUncachedAgyLocate {
+                return cachedFresh
+            }
         }
         return enriched
     }
@@ -1687,8 +1835,23 @@ final class ConsoleStore {
                 sleep: pendingTitleRenameSleep))
     }
 
+    private func applyingAgyAnnotationTitle(to row: ConsoleAgent) -> ConsoleAgent {
+        let resolved = agyTitles.applying(to: row)
+        if resolved != row || row.agent.kind != ChatProgram.agy.rawValue
+            || agyTitles.hasResolvedState(for: row)
+        {
+            return resolved
+        }
+        guard let host = projections[row.hostID]?.host,
+            let saved = cachedChats.cachedConversationTitle(for: row.agent, on: host)
+        else { return row }
+        var copy = row
+        copy.agent = copy.agent.applyingConversationTitle(saved)
+        return copy
+    }
+
     private func applyingClientTitles(to row: ConsoleAgent) -> ConsoleAgent {
-        pendingTitleRenames.applying(to: agyTitles.applying(to: row))
+        pendingTitleRenames.applying(to: applyingAgyAnnotationTitle(to: row))
     }
 
     private func isAgentBusyInConsole(_ id: ConsoleAgent.ID) -> Bool {
@@ -2286,9 +2449,22 @@ final class ConsoleStore {
         terminals.filter { $0.hostID == hostID && $0.workspaceID == workspaceID }
     }
 
+    private func effectiveSidebarSnapshot(for hostID: Host.ID) -> AgentRowLayoutSnapshot? {
+        if let snapshot = sidebarSnapshots.snapshot(for: hostID) {
+            return snapshot
+        }
+        if case .loaded(nil) = sidebarSnapshots.states[hostID] {
+            return nil
+        }
+        guard let host = projections[hostID]?.host,
+            isActive || !cachedChats.agents(on: host).isEmpty
+        else { return nil }
+        return cachedChats.sidebarSnapshot(on: host)
+    }
+
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         rowLayouts.resolvedLayout(
-            for: hostID, pluginSnapshot: sidebarSnapshots.snapshot(for: hostID),
+            for: hostID, pluginSnapshot: effectiveSidebarSnapshot(for: hostID),
             followsPlugin: coreHost(hostID) == nil)
     }
 
@@ -2562,18 +2738,22 @@ final class ConsoleStore {
         return copy
     }
 
+    private func agentPanelSorts() -> [Host.ID: AgentPanelSort] {
+        // A Host with no plugin has no snapshot to say: it keeps status priority,
+        // and within a status the order its projection lists, the desktop app's.
+        Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
+            projection.host.capabilities.syncLayoutFromPlugin
+                ? effectiveSidebarSnapshot(for: id).map { (id, $0.agentPanelSort) }
+                : (id, AgentPanelSort.priority)
+        })
+    }
+
     private func rebuildAgentOrder() {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
             .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
-        // A Host with no plugin has no snapshot to say: it keeps status priority,
-        // and within a status the order its projection lists, the desktop app's.
-        let sorts = Dictionary(uniqueKeysWithValues: projections.compactMap { id, projection in
-            projection.host.capabilities.syncLayoutFromPlugin
-                ? sidebarSnapshots.snapshot(for: id).map { (id, $0.agentPanelSort) }
-                : (id, AgentPanelSort.priority)
-        })
+        let sorts = agentPanelSorts()
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
                 .map { (agent.id, $0) }
@@ -2605,7 +2785,16 @@ final class ConsoleStore {
     }
 
     private func rebuildHostIssues() {
-        let next = PerfTrace.span("console.host-issues") { makeHostIssues(for: catalog) }
+        let next = PerfTrace.span("console.host-issues") {
+            catalog.compactMap { host in
+                ConsoleHostStatusPresentation(
+                    host: host,
+                    status: hostStatuses[host.id],
+                    standingFailure: hostStandingFailures[host.id],
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
+                    syncError: hostSyncErrors[host.id])
+            }
+        }
         if hostIssues != next {
             hostIssues = next
         }
@@ -2617,21 +2806,15 @@ final class ConsoleStore {
         if hosts == catalog {
             return hostIssues
         }
-        return PerfTrace.span("console.host-issues") { makeHostIssues(for: hosts) }
-    }
-
-    /// Each record's condition, naming its Server where its Host has several
-    /// on, since the lists name the Host alone (ADR 0047).
-    private func makeHostIssues(for hosts: [Host]) -> [ConsoleHostStatusPresentation] {
-        let servers = HostMachine.serverMentions(for: hosts)
-        return hosts.compactMap { host in
-            ConsoleHostStatusPresentation(
-                host: host,
-                status: hostStatuses[host.id],
-                standingFailure: hostStandingFailures[host.id],
-                isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-                syncError: hostSyncErrors[host.id],
-                server: servers[host.id])
+        return PerfTrace.span("console.host-issues") {
+            hosts.compactMap { host in
+                ConsoleHostStatusPresentation(
+                    host: host,
+                    status: hostStatuses[host.id],
+                    standingFailure: hostStandingFailures[host.id],
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
+                    syncError: hostSyncErrors[host.id])
+            }
         }
     }
 
@@ -2642,7 +2825,9 @@ final class ConsoleStore {
         let savedPairs = projections.values.flatMap {
             projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
             guard projection.showsSavedChats else { return [] }
-            let saved = cachedChats.agents(on: projection.host).filter { !live.contains($0.id) }
+            let saved = cachedChats.agents(on: projection.host)
+                .filter { !live.contains($0.id) }
+                .map { pendingTitleRenames.applying(to: $0) }
             guard !saved.isEmpty else { return [] }
             let hostReadiness = readiness(of: projection.host)
             return saved.map { ($0, hostReadiness) }
@@ -2653,9 +2838,10 @@ final class ConsoleStore {
             nextDisplay = agents
             nextSavedEntries = [:]
         } else {
+            let sorts = agentPanelSorts()
             nextDisplay =
                 agents
-                + savedPairs.map(\.agent).consoleSorted(sortByHost: [:]) { [pins] in
+                + savedPairs.map(\.agent).consoleSorted(sortByHost: sorts) { [pins] in
                     pins.pinRank(hostID: $0.id.hostID, paneID: $0.id.paneID)
                 }
             nextSavedEntries = Dictionary(savedPairs.map { ($0.agent.id, $0.readiness) }) {
@@ -2948,6 +3134,9 @@ final class ConsoleStore {
                     && !expected.isAwaitingSnapshot
                     && expected.transportGeneration == generation
             },
+            awaitForegroundReady: { [weak self] hostID in
+                await self?.yieldToForegroundChatLoad(on: hostID)
+            },
             onReconcileNeeded: { [weak self] in
                 self?.reconcileAgyAnnotationTitles()
             })
@@ -3094,9 +3283,25 @@ final class ConsoleStore {
                 chatCacheValidatedGenerations[host.id] = projection.transportGeneration
                 cachedChats.revalidate(on: host)
             }
-            cachedChats.observe(
-                projection.agentsByPane.values.map { agyTitles.applying(to: $0) },
-                on: host)
+            var conversationTitles: [ConsoleAgent.ID: String] = [:]
+            let observed = projection.agentsByPane.values.map { row -> ConsoleAgent in
+                if let title = agyTitles.knownTitle(for: row.agent, id: row.id) {
+                    conversationTitles[row.id] = title
+                    var copy = row
+                    copy.agent = copy.agent.applyingConversationTitle(title)
+                    return copy
+                }
+                if row.agent.kind == ChatProgram.agy.rawValue, !agyTitles.hasResolvedState(for: row),
+                    let saved = cachedChats.cachedConversationTitle(for: row.agent, on: host)
+                {
+                    conversationTitles[row.id] = saved
+                    var copy = row
+                    copy.agent = copy.agent.applyingConversationTitle(saved)
+                    return copy
+                }
+                return row
+            }
+            cachedChats.observe(observed, conversationTitles: conversationTitles, on: host)
             guard chatPrefetchTasks[host.id] == nil else { continue }
             let generation = projection.transportGeneration
             let candidates = projection.agentsByPane.values.filter { agent in
@@ -3119,12 +3324,22 @@ final class ConsoleStore {
                         projection.transportGeneration == generation else { break }
                     guard let program = ChatProgram(rawValue: agent.agent.kind),
                         let chat = chatStore(for: agent, program: program) else { continue }
+                    if !chat.isVisible {
+                        await yieldToForegroundChatLoad(on: host.id)
+                        guard !Task.isCancelled, isActive, projections[host.id] === projection,
+                            projection.status == .connected, !projection.isAwaitingSnapshot,
+                            projection.transportGeneration == generation else { break }
+                    }
                     let key = chatPrefetchKey(agent, generation: generation)
                     chatPrefetched[agent.id] = key
+                    chatPrefetchActiveAgent[host.id] = agent.id
                     let read = PerfTrace.beginInterval("chat.prefetch", "pane=\(agent.agent.paneID)")
                     let prefetched = await chat.prefetch()
                     PerfTrace.endInterval(
                         read, "ok=\(prefetched) entries=\(chat.conversation.transcript.entries.count)")
+                    if chatPrefetchActiveAgent[host.id] == agent.id {
+                        chatPrefetchActiveAgent[host.id] = nil
+                    }
                     guard !Task.isCancelled else { return }
                     let snapshot = chat.conversation
                     let retries = chatPrefetchRetries[agent.id].flatMap { $0.key == key ? $0.count : nil } ?? 0
@@ -3182,7 +3397,7 @@ final class ConsoleStore {
         let current = Dictionary(
             projections.values.flatMap { $0.agentsByPane.values }
                 .map { row in
-                    let titled = agyTitles.applying(to: row)
+                    let titled = applyingAgyAnnotationTitle(to: row)
                     return (titled.id, titled)
                 }
         ) { first, _ in first }
@@ -3294,6 +3509,7 @@ extension ConsoleStore: NotificationTransportProvider {
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
     ) async throws {
+        defer { invalidateCachedAccountDirectories(on: hostID) }
         if let host = coreHost(hostID) {
             try await withCoreConnection(host) { transport in
                 try await operation(HostHelperUsageHost(

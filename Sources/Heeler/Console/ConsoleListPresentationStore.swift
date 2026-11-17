@@ -421,7 +421,7 @@ final class ConsoleListPresentationStore {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
-        let agentsByHost = Dictionary(grouping: searchedAgents(agents, searchQuery: searchQuery), by: \.hostID)
+        let agentsByHost = searchedAgentsByHost(agents, searchQuery: searchQuery)
         let records = ConsoleHostSectionGroup.grouping(
             hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
         ).flatMap(\.servers)
@@ -706,8 +706,8 @@ final class ConsoleListPresentationStore {
     /// Projects one section per Host, by its name, in the Hosts tab's order,
     /// holding the Servers it has on that `hosts` lists (ADR 0047). `agents`
     /// is already sorted by ConsoleStore; filtering it in-place keeps that
-    /// exact relative order across a Host's Servers, so a pinned or blocked
-    /// Agent leads its Host's section whichever Server lists it.
+    /// exact relative order within each Server, and a Host lists its Servers'
+    /// Agents one Server after another, in catalog order.
     func sections(
         hosts: [Host],
         agents: [ConsoleAgent],
@@ -722,9 +722,8 @@ final class ConsoleListPresentationStore {
         // A status filter narrows like a query: only matches, never folded away.
         let isNarrowed = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !statusFilter.isEmpty
-        let kept = searchedAgents(agents, searchQuery: searchQuery)
+        let agentsByHost = searchedAgentsByHost(agents, searchQuery: searchQuery)
         let visible = hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
-        let mentions = statusPresentations == nil ? HostMachine.serverMentions(for: visible) : [:]
 
         return ConsoleHostSectionGroup.grouping(visible).compactMap { group in
             guard let first = group.servers.first else { return nil }
@@ -739,15 +738,13 @@ final class ConsoleListPresentationStore {
                             status: hostStatuses[host.id],
                             standingFailure: hostStandingFailures[host.id],
                             isAwaitingSnapshot: isAwaitingSnapshot,
-                            syncError: hostSyncErrors[host.id],
-                            server: mentions[host.id])
+                            syncError: hostSyncErrors[host.id])
                     }
                 return ConsoleHostServerState(
                     hostID: host.id, connectionStatus: hostStatuses[host.id],
                     isAwaitingSnapshot: isAwaitingSnapshot, issue: issue)
             }
-            let records = Set(group.servers.map(\.id))
-            let hostAgents = kept.filter { records.contains($0.hostID) }
+            let hostAgents = group.servers.flatMap { agentsByHost[$0.id] ?? [] }
             // While searching, a section without a match leaves the list
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a
@@ -770,12 +767,13 @@ final class ConsoleListPresentationStore {
         }
     }
 
-    /// `agents` that the search and the status filter keep, in their order.
-    private func searchedAgents(_ agents: [ConsoleAgent], searchQuery: String) -> [ConsoleAgent] {
+    /// `agents` that the search and the status filter keep, by record.
+    private func searchedAgentsByHost(_ agents: [ConsoleAgent], searchQuery: String) -> [Host.ID: [ConsoleAgent]] {
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        return agents.filter {
+        let searchedAgents = agents.filter {
             (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
         }
+        return Dictionary(grouping: searchedAgents, by: \.hostID)
     }
 
     private func persistCollapsedHostIDs() {

@@ -26,6 +26,23 @@ struct ClaudeTranscriptLocation: Hashable, Sendable {
         return RemoteFilePath.isAcceptable(path) ? path : nil
     }
 
+    /// Where Claude Code writes a Workflow's per-agent state once the run
+    /// ends (`<session>/workflows/<runId>.json`), derived from its validated
+    /// `journalPath`.
+    static func workflowRunFile(forJournalPath journalPath: String) -> String? {
+        let suffix = "/journal.jsonl"
+        let middle = "/subagents/workflows/"
+        guard journalPath.hasSuffix(suffix),
+            let range = journalPath.range(of: middle, options: .backwards)
+        else { return nil }
+        let session = String(journalPath[..<range.lowerBound])
+        let runEnd = journalPath.index(journalPath.endIndex, offsetBy: -suffix.count)
+        let runID = String(journalPath[range.upperBound..<runEnd])
+        guard !session.isEmpty, isWorkflowRunID(runID) else { return nil }
+        let path = RemoteFilePath.join(session, "workflows", "\(runID).json")
+        return RemoteFilePath.isAcceptable(path) ? path : nil
+    }
+
     /// `wf_` and up to 61 ASCII letters, digits or hyphens. Claude Code
     /// writes twelve (`wf_2d6c7df2-dc3`); a longer id still reads.
     static func isWorkflowRunID(_ id: String) -> Bool {

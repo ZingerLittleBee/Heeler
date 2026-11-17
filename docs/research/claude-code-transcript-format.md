@@ -498,7 +498,10 @@ How the 2.1.291 CLI turns a submitted prompt into a record
    for prompts with more text around the placeholder), and a meta
    user record follows it, after however many attachments the prompt
    carried (one in the live capture, nine or more on a session's first
-   prompt in local transcripts), with one `[Image: source: <path>]`
+   prompt in local transcripts), with one `[Image: source: <path>]` (or
+   `[Image: source: <path>, original <W>x<H>, displayed at <w>x<h>. Multiply
+   coordinates by <f> to map to original image.]` when resized, or
+   `[Image source: <path>]` when dimensions are absent; 2.1.325)
    text block per image. A sent path compares with the record once each
    placeholder is replaced by its source. The paste is read a line at a
    time (2.1.319, its paste handler and live pastes on 2026-11-10): a line
@@ -508,9 +511,11 @@ How the 2.1.291 CLI turns a submitted prompt into a record
    come first, followed at once by the remaining lines that are not blank,
    joined by line breaks: `/tmp/a.png \nwhat` and `what\n/tmp/a.png` both
    become `[Image #1]what`. A queued paste's enqueue `content` is the submitted
-   text, so it keeps the bare placeholder; Chat matches a send of one path
-   to a placeholder-only prompt that names no source, or to the one whose
-   delivery names that path (not observed live). Flag
+   text, so it keeps the bare placeholder, as does a mid-turn `queued_command`
+   attachment (`getQueuedCommandAttachments` in 2.1.325 writes no source meta
+   record); Chat matches a send's pasted image paths to its queued or mid-turn
+   placeholder prompt and carries those paths onto the bubble so `[Image #N]`
+   remains previewable. Flag
    `tengu_virtual_pancake` (off by default) wraps pastes in
    `<pasted_content id="abcd">…</pasted_content id="abcd">`.
 4. While the agent is busy, the prompt is queued after `trim()`: a

@@ -6,10 +6,6 @@ import Foundation
 /// do not navigate to Host settings. Failed and reconnecting rows still do.
 /// `inventoryNoun` names what the loading row waits for on its list: the
 /// token "Agents" or "Terminals", never shown as it is.
-///
-/// The lists name the Host alone (ADR 0047). A row of a Host with several
-/// Servers on names its Server in place of the Host: "Connecting to tmux…"
-/// under the Host's heading, "tmux: Can't connect" beside its name.
 struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     enum Severity: Equatable {
         case informational
@@ -56,14 +52,10 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     }
 
     let hostID: Host.ID
-    /// The Host's name alone, whichever of its Servers the row is about.
     let hostName: String
-    /// The Server the row is about, when its Host has several on.
-    let server: HostServerMention?
     let message: String
     /// `message` for a row under the Host's own section header, which
-    /// already names it: a failure without the "studio: " before it. A
-    /// Server's row keeps its name, which tells it from the Host's others.
+    /// already names it: a failure without the "studio: " before it.
     let sectionMessage: String
     let systemImage: String
     let severity: Severity
@@ -77,20 +69,8 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 
     var id: Host.ID { hostID }
     var isCritical: Bool { severity == .critical }
-    /// A few words for a compact row: "Reconnecting…", "Can't connect", or
-    /// "tmux: Can't connect" for one of several Servers.
-    var status: String {
-        guard let server else { return condition.title }
-        return String(localized: "\(server.label): \(condition.title)")
-    }
-    /// The whole sentence where the row shows the Host's name beside it,
-    /// which a Server's `message` leaves out.
-    var spokenMessage: String {
-        guard server != nil else { return message }
-        return String(localized: "\(hostName), \(message)")
-    }
-    /// The Host the row belongs to: one id for all of its Servers' rows.
-    var hostKey: Host.ID { server?.hostID ?? hostID }
+    /// A few words for a compact row: "Reconnecting…", "Can't connect".
+    var status: String { condition.title }
 
     init?(
         host: Host,
@@ -98,17 +78,15 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         standingFailure: TransportError? = nil,
         isAwaitingSnapshot: Bool = false,
         syncError: String?,
-        inventoryNoun: String = "Agents",
-        server: HostServerMention? = nil
+        inventoryNoun: String = "Agents"
     ) {
         hostID = host.id
-        hostName = host.hostName
-        self.server = server
+        hostName = host.displayName
         isConnected = if case .connected = status { true } else { false }
         let usesHerdrEndpoint = host.herdrEndpoint != nil
         // What follows a "studio: " prefix, where the message has one.
         var unprefixed: String?
-        let name = server?.label ?? host.hostName
+        let name = host.displayName
         switch status {
         case .suspended:
             message = String(localized: "Connection to \(name) is paused.")
@@ -171,7 +149,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
                 return nil
             }
         }
-        sectionMessage = server == nil ? unprefixed ?? message : message
+        sectionMessage = unprefixed ?? message
     }
 
     private static let cannotConnect: (HostConnectionTone, Condition) = (.unavailable, .cannotConnect)
@@ -203,9 +181,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
 
 /// Several Host conditions folded into one row for the flat lists, so a
 /// handful of unreachable Hosts cannot push the inventory off screen.
-/// Absent for fewer than two: one condition shows as its own row. A Host
-/// with several Servers on counts once; when every condition is one Host's,
-/// the row takes its name and counts its Servers.
+/// Absent for fewer than two: one condition shows as its own row.
 struct ConsoleHostIssueSummary: Equatable {
     /// Hosts sharing one status, shown as a chip with its tone's dot.
     struct Count: Equatable {
@@ -224,32 +200,22 @@ struct ConsoleHostIssueSummary: Equatable {
 
     init?(issues: [ConsoleHostStatusPresentation]) {
         guard issues.count > 1 else { return nil }
-        let hostCount = Set(issues.map(\.hostKey)).count
-        let isOneHost = hostCount == 1
-        if isOneHost, let hostName = issues.first?.hostName {
-            title = hostName
-        } else {
-            // Loading or out of sync is not "not connected"; say less then.
-            title =
-                issues.contains(where: \.isConnected)
-                ? String(localized: "\(hostCount) Hosts not ready") : String(localized: "\(hostCount) Hosts not connected")
-        }
-        // One count per condition, in the order the worst first appears:
-        // the Hosts that share it, or for one Host, its Servers.
+        // Loading or out of sync is not "not connected"; say less then.
+        title =
+            issues.contains(where: \.isConnected)
+            ? String(localized: "\(issues.count) Hosts not ready") : String(localized: "\(issues.count) Hosts not connected")
+        // One count per condition, in the order the worst first appears.
         let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
-        var grouped:
-            [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, members: Set<Host.ID>)] =
-                []
+        var grouped: [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, count: Int)] = []
         for issue in ranked {
-            let member = isOneHost ? issue.hostID : issue.hostKey
             if let index = grouped.firstIndex(where: { $0.condition == issue.condition }) {
-                grouped[index].members.insert(member)
+                grouped[index].count += 1
             } else {
-                grouped.append((issue.tone, issue.condition, [member]))
+                grouped.append((issue.tone, issue.condition, 1))
             }
         }
         // "Reconnecting…" counts as "3 reconnecting".
-        counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.members.count)) }
+        counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.count)) }
         tone = ranked.first?.tone ?? .pending
     }
 
@@ -314,21 +280,116 @@ enum ConsoleAgentsSurface: Equatable {
     }
 }
 
-/// Where Host connection/readiness issues appear for a presentation mode.
+/// Where Host connection/readiness issues appear for an Agents list
+/// presentation mode.
 ///
 /// Grouped mode moves those conditions into their Host's section, as the
-/// header's badge and, while expanded, a row, rather than listing them again
-/// at the top.
+/// header's badge and, while expanded, a row. Flat and By Workspace modes
+/// float a compact corner status tile so Host recovery never pushes Agent rows.
 enum ConsoleHostIssuePlacement: Equatable {
-    /// Flat list: global Host-issue rows above the Agent cards.
-    case flatIssueRows
+    /// Flat and By Workspace lists: floating bottom-trailing tile over the list.
+    case floatingCorner
     /// Grouped list: Host readiness lives in each Host's own section.
     case sectionHeaders
 
     init(mode: ConsoleListPresentationMode) {
         switch mode {
-        case .flat, .byWorkspace: self = .flatIssueRows
+        case .flat, .byWorkspace: self = .floatingCorner
         case .grouped: self = .sectionHeaders
         }
+    }
+}
+
+/// What the Agents list's bottom-trailing floating Host status tile shows in
+/// `.flat` and `.byWorkspace` presentations: expands briefly to name the Host
+/// or summary, then settles into a compact squircle tile with a bottom bar.
+struct ConsoleHostIssueCornerPresentation: Equatable, Sendable {
+    enum Action: Equatable, Sendable {
+        /// Several Hosts have conditions; opens `ConsoleHostIssuesSheet`.
+        case showAll
+        /// One Host has a navigable condition; opens its connection sheet or Host page.
+        case openHost(Host.ID)
+        /// One Host has a quiet informational condition; toggles the expanded label.
+        case toggleExpanded
+    }
+
+    struct AttentionKey: Hashable, Sendable {
+        let hostID: Host.ID
+        let isStationaryProblem: Bool
+    }
+
+    let issueCount: Int
+    let expandedTitle: String
+    let expandedStatus: String?
+    let tone: HostConnectionTone
+    /// True while at least one Host is actively connecting, reconnecting, or
+    /// loading inventory and none has stopped on a failure or sync warning.
+    let animatesBar: Bool
+    private let hasStationaryProblem: Bool
+    let action: Action
+    let accessibilityLabel: String
+    let accessibilityHint: String?
+    /// Keys whose additions trigger the brief auto-expansion: a Host newly
+    /// entering an issue state, or escalating to a failure or sync warning.
+    let attentionKeys: Set<AttentionKey>
+
+    init?(issues: [ConsoleHostStatusPresentation]) {
+        guard let first = issues.first else { return nil }
+        issueCount = issues.count
+        let stationary = issues.contains {
+            $0.condition == .cannotConnect || $0.condition == .syncIssue
+        }
+        hasStationaryProblem = stationary
+        let activeProgress = issues.contains {
+            switch $0.condition {
+            case .reconnecting, .connecting, .loadingAgents, .loadingTerminals: true
+            case .paused, .cannotConnect, .syncIssue: false
+            }
+        }
+        animatesBar = !stationary && activeProgress
+        attentionKeys = Set(
+            issues.map { issue in
+                AttentionKey(
+                    hostID: issue.hostID,
+                    isStationaryProblem: issue.condition == .cannotConnect
+                        || issue.condition == .syncIssue)
+            })
+
+        if let summary = ConsoleHostIssueSummary(issues: issues) {
+            expandedTitle = summary.title
+            expandedStatus = nil
+            tone = summary.tone
+            action = .showAll
+            accessibilityLabel = "\(summary.title), \(summary.detail)"
+            accessibilityHint = String(localized: "Lists these Hosts.")
+        } else {
+            expandedTitle = first.hostName
+            expandedStatus = first.status
+            tone = first.tone
+            accessibilityLabel = first.message
+            if first.navigates {
+                action = .openHost(first.hostID)
+                accessibilityHint =
+                    first.condition == .syncIssue
+                    ? String(localized: "Opens this Host's settings.")
+                    : String(localized: "Shows this Host's connection details.")
+            } else {
+                action = .toggleExpanded
+                accessibilityHint = nil
+            }
+        }
+    }
+
+    /// Corner pill text: the Host count when more than one Host has an issue,
+    /// or `"!"` when one Host is stopped on a failure or sync issue and the
+    /// tile is collapsed.
+    func badgeText(isExpanded: Bool) -> String? {
+        if issueCount > 1 {
+            return "\(issueCount)"
+        }
+        if hasStationaryProblem && !isExpanded {
+            return "!"
+        }
+        return nil
     }
 }

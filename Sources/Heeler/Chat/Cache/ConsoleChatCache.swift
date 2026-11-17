@@ -11,6 +11,9 @@ final class ConsoleChatCache {
     /// The Workspace structure of each Host's last snapshot, saved with its
     /// entries.
     private(set) var structures: [Host.ID: [ChatCachedWorkspace]] = [:]
+    /// Each Host's last loaded plugin sidebar snapshot, saved with its
+    /// entries so layout fields and sort order do not jump while connecting.
+    private(set) var sidebarSnapshots: [Host.ID: AgentRowLayoutSnapshot] = [:]
     @ObservationIgnored var onChange: (@MainActor () -> Void)?
     @ObservationIgnored private let cache: any ChatTranscriptCache
     @ObservationIgnored private var hosts: [Host.ID: Host] = [:]
@@ -23,10 +26,11 @@ final class ConsoleChatCache {
     @ObservationIgnored private var pendingUpdates: [Host.ID: [Update]] = [:]
 
     private enum Update {
-        case snapshot([ConsoleAgent])
-        case confirmation(Agent, ConsoleAgent)
+        case snapshot([ConsoleAgent], conversationTitles: [ConsoleAgent.ID: String])
+        case confirmation(Agent, ConsoleAgent, conversationTitle: String?)
         case removal(paneID: String)
         case branch(CheckoutHead.Branch, checkoutPath: String)
+        case sidebarSnapshot(AgentRowLayoutSnapshot?)
     }
 
     private struct ConfirmedSession {
@@ -46,9 +50,10 @@ final class ConsoleChatCache {
         for id in hosts.keys where hosts[id] != incoming[id] {
             loads[id]?.cancel()
             loads[id] = nil
-            if records[id] != nil || structures[id] != nil {
+            if records[id] != nil || structures[id] != nil || sidebarSnapshots[id] != nil {
                 records[id] = nil
                 structures[id] = nil
+                sidebarSnapshots[id] = nil
                 removedAny = true
             }
             pendingUpdates[id] = nil
@@ -68,8 +73,10 @@ final class ConsoleChatCache {
                     revisions[host.id, default: 0] == revision else { return }
                 let changedLoaded =
                     records[host.id] != saved.agents || structures[host.id] != saved.workspaces
+                    || sidebarSnapshots[host.id] != saved.sidebarSnapshot
                 records[host.id] = saved.agents
                 structures[host.id] = saved.workspaces
+                sidebarSnapshots[host.id] = saved.sidebarSnapshot
                 loads[host.id] = nil
                 applyPendingUpdates(on: host)
                 if changedLoaded {
@@ -95,9 +102,12 @@ final class ConsoleChatCache {
             loads[host.id] = nil
             var cleared = false
             if !belongs {
-                cleared = records[host.id] != nil || structures[host.id] != nil
+                cleared =
+                    records[host.id] != nil || structures[host.id] != nil
+                    || sidebarSnapshots[host.id] != nil
                 records[host.id] = nil
                 structures[host.id] = nil
+                sidebarSnapshots[host.id] = nil
                 confirmed = confirmed.filter { $0.key.hostID != host.id }
             }
             applyPendingUpdates(on: host)
@@ -112,27 +122,38 @@ final class ConsoleChatCache {
     private func applyPendingUpdates(on host: Host) {
         for update in pendingUpdates.removeValue(forKey: host.id) ?? [] {
             switch update {
-            case .snapshot(let agents): observe(agents, on: host)
-            case .confirmation(let fresh, let snapshot): confirm(fresh, for: snapshot, on: host)
-            case .removal(let paneID): remove(paneID: paneID, on: host)
-            case .branch(let branch, let path): record(branch, atCheckoutPath: path, on: host)
+            case .snapshot(let agents, let titles):
+                observe(agents, conversationTitles: titles, on: host)
+            case .confirmation(let fresh, let snapshot, let title):
+                confirm(fresh, for: snapshot, conversationTitle: title, on: host)
+            case .removal(let paneID):
+                remove(paneID: paneID, on: host)
+            case .branch(let branch, let path):
+                record(branch, atCheckoutPath: path, on: host)
+            case .sidebarSnapshot(let snapshot):
+                record(sidebarSnapshot: snapshot, on: host)
             }
         }
     }
 
     /// A completed live snapshot supersedes the saved directory, including an
     /// empty one. An unchanged older session field must not undo agent.get.
-    func observe(_ agents: [ConsoleAgent], on host: Host) {
+    func observe(
+        _ agents: [ConsoleAgent],
+        conversationTitles: [ConsoleAgent.ID: String] = [:],
+        on host: Host
+    ) {
         guard hosts[host.id] == host else { return }
         if loads[host.id] != nil {
-            pendingUpdates[host.id, default: []].append(.snapshot(agents))
+            pendingUpdates[host.id, default: []].append(
+                .snapshot(agents, conversationTitles: conversationTitles))
             return
         }
         let ids = Set(agents.map(\.id))
         confirmed = confirmed.filter { $0.key.hostID != host.id || ids.contains($0.key) }
         let next = agents.compactMap { agent -> ChatCachedAgent? in
             guard AgentChatAvailability.mayOfferChat(for: agent.agent) else { return nil }
-            var entry = ChatCachedAgent(agent)
+            var entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
             if let known = confirmed[agent.id], known.snapshot == agent.agent.agentSession,
                 known.terminalID == agent.agent.terminalID, known.workspaceID == agent.agent.workspaceID,
                 known.tabID == agent.agent.tabID, known.kind == agent.agent.kind {
@@ -147,17 +168,20 @@ final class ConsoleChatCache {
             return entry
         }.sorted { $0.paneID < $1.paneID }
         let structure = ChatCachedWorkspace.structure(of: agents, keeping: structures[host.id] ?? [])
-        replace(next, structure: structure, on: host)
+        replace(next, structure: structure, sidebarSnapshot: sidebarSnapshots[host.id], on: host)
     }
 
     /// Persist the exact binding that Chat actually queried, which can be
     /// newer than the Console snapshot's session field.
-    func confirm(_ fresh: Agent, for snapshot: ConsoleAgent, on host: Host) {
+    func confirm(
+        _ fresh: Agent, for snapshot: ConsoleAgent, conversationTitle: String? = nil, on host: Host
+    ) {
         guard hosts[host.id] == host, fresh.paneID == snapshot.agent.paneID,
             fresh.terminalID == snapshot.agent.terminalID, fresh.workspaceID == snapshot.agent.workspaceID,
             fresh.tabID == snapshot.agent.tabID, fresh.kind == snapshot.agent.kind else { return }
         if loads[host.id] != nil {
-            pendingUpdates[host.id, default: []].append(.confirmation(fresh, snapshot))
+            pendingUpdates[host.id, default: []].append(
+                .confirmation(fresh, snapshot, conversationTitle: conversationTitle))
             return
         }
         confirmed[snapshot.id] = ConfirmedSession(
@@ -165,7 +189,7 @@ final class ConsoleChatCache {
             snapshot: snapshot.agent.agentSession, current: fresh.agentSession)
         var source = snapshot
         source.agent = fresh
-        var entry = ChatCachedAgent(source)
+        var entry = ChatCachedAgent(source, conversationTitle: conversationTitle)
         if fresh.agentSession == nil {
             entry.agentSession = savedBinding(for: source, on: host)
         }
@@ -173,7 +197,11 @@ final class ConsoleChatCache {
         if entry.isValid(for: host), AgentChatAvailability.mayOfferChat(for: fresh) {
             next.append(entry)
         }
-        replace(next.sorted { $0.paneID < $1.paneID }, structure: structures[host.id] ?? [], on: host)
+        replace(
+            next.sorted { $0.paneID < $1.paneID },
+            structure: structures[host.id] ?? [],
+            sidebarSnapshot: sidebarSnapshots[host.id],
+            on: host)
     }
 
     /// A Changes read found the checkout at `path` on `branch`. Only a
@@ -192,7 +220,24 @@ final class ConsoleChatCache {
             return updated
         }
         guard next != current else { return }
-        replace(records[host.id] ?? [], structure: next, on: host)
+        replace(
+            records[host.id] ?? [], structure: next,
+            sidebarSnapshot: sidebarSnapshots[host.id], on: host)
+    }
+
+    /// The Host's plugin sidebar snapshot loaded on a connection (`nil` when
+    /// the plugin file was absent).
+    func record(sidebarSnapshot: AgentRowLayoutSnapshot?, on host: Host) {
+        guard hosts[host.id] == host else { return }
+        if loads[host.id] != nil {
+            pendingUpdates[host.id, default: []].append(.sidebarSnapshot(sidebarSnapshot))
+            return
+        }
+        replace(
+            records[host.id] ?? [],
+            structure: structures[host.id] ?? [],
+            sidebarSnapshot: sidebarSnapshot,
+            on: host)
     }
 
     /// The user's removal of a saved entry: it and its saved messages leave
@@ -208,7 +253,9 @@ final class ConsoleChatCache {
         guard let removed = entries.first(where: { $0.paneID == paneID }) else { return }
         let remaining = entries.filter { $0.paneID != paneID }
         confirmed[ConsoleAgent.ID(hostID: host.id, paneID: paneID)] = nil
-        replace(remaining, structure: structures[host.id] ?? [], on: host)
+        replace(
+            remaining, structure: structures[host.id] ?? [],
+            sidebarSnapshot: sidebarSnapshots[host.id], on: host)
         guard case .bound(let reference) = ConversationReference.resolve(removed.agentSession),
             !remaining.contains(where: { ConversationReference.resolve($0.agentSession) == .bound(reference) })
         else { return }
@@ -227,6 +274,22 @@ final class ConsoleChatCache {
     func structure(on host: Host) -> [ChatCachedWorkspace] {
         guard hosts[host.id] == host else { return [] }
         return structures[host.id] ?? []
+    }
+
+    func sidebarSnapshot(on host: Host) -> AgentRowLayoutSnapshot? {
+        guard hosts[host.id] == host else { return nil }
+        return sidebarSnapshots[host.id]
+    }
+
+    /// Synchronous lookup of a cached client-resolved conversation title for
+    /// the exact same pane and bound session while SFTP has not resolved it yet.
+    func cachedConversationTitle(for agent: Agent, on host: Host) -> String? {
+        guard hosts[host.id] == host, let session = agent.agentSession else { return nil }
+        return records[host.id]?.first {
+            $0.paneID == agent.paneID && $0.terminalID == agent.terminalID
+                && $0.workspaceID == agent.workspaceID && $0.tabID == agent.tabID
+                && $0.kind == agent.kind && $0.agentSession == session
+        }?.conversationTitle
     }
 
     /// Local-only binding lookup for a live Agent that has not reported its
@@ -256,17 +319,27 @@ final class ConsoleChatCache {
         }?.agentSession
     }
 
-    private func replace(_ next: [ChatCachedAgent], structure: [ChatCachedWorkspace], on host: Host) {
+    private func replace(
+        _ next: [ChatCachedAgent],
+        structure: [ChatCachedWorkspace],
+        sidebarSnapshot: AgentRowLayoutSnapshot?,
+        on host: Host
+    ) {
         // Invalidate a cold restore even when a fresh empty snapshot matches
         // the initial empty in-memory value.
         revisions[host.id, default: 0] += 1
         loads[host.id]?.cancel()
         loads[host.id] = nil
-        guard records[host.id] != next || structures[host.id] != structure else { return }
+        guard
+            records[host.id] != next || structures[host.id] != structure
+                || sidebarSnapshots[host.id] != sidebarSnapshot
+        else { return }
         records[host.id] = next
         structures[host.id] = structure
+        sidebarSnapshots[host.id] = sidebarSnapshot
         onChange?()
-        let contents = ChatAgentDirectory.Contents(agents: next, workspaces: structure)
+        let contents = ChatAgentDirectory.Contents(
+            agents: next, workspaces: structure, sidebarSnapshot: sidebarSnapshot)
         writes[host.id] = Task { [previous = writes[host.id], cache] in
             await previous?.value
             await cache.saveAgentDirectory(contents, for: host)

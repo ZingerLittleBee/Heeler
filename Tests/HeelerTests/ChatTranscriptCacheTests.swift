@@ -342,9 +342,12 @@ struct ChatTranscriptCacheTests {
                 terminalID: "terminal-1", kind: "codex", title: "Implement caching",
                 status: .working, workspaceID: "workspace-1", tabID: "tab-1",
                 paneID: "pane-1", cwd: "/home/dev/project", revision: 42, name: "Worker",
+                terminalTitle: "◑ Implement caching",
+                terminalTitleStripped: "Implement caching",
                 paneTitle: "Chat", agentSession: AgentSessionInfo(
                     agent: "codex", kind: .id, source: "herdr:codex", value: sessionID),
-                tokens: ["context": "1000"], stateLabels: ["working": "Busy"], stateChangeSeq: 42,
+                tokens: ["context": "1000", "branch": "feat/cache"],
+                stateLabels: ["working": "Busy"], stateChangeSeq: 42,
                 foregroundCwd: "/home/dev/project/src"),
             workspaceLabel: "Project", repositoryCheckout: nil, hostUsername: host.username,
             tabLabel: "Work", tabPosition: 2, workspaceTabCount: 3, snapshotOrder: 1,
@@ -365,16 +368,56 @@ struct ChatTranscriptCacheTests {
         #expect(restored.id == ConsoleAgent.ID(hostID: host.id, paneID: "pane-1"))
         #expect(restored.agent.agentSession == cached.agentSession)
         #expect(restored.agent.status == .unknown)
-        #expect(restored.agent.tokens.isEmpty)
+        #expect(restored.agent.tokens == ["context": "1000", "branch": "feat/cache"])
         #expect(restored.agent.stateLabels.isEmpty)
         #expect(restored.agent.stateChangeSeq == nil)
         #expect(restored.agent.name == "Worker")
         #expect(restored.agent.title == "Implement caching")
+        #expect(restored.agent.terminalTitle == "◑ Implement caching")
+        #expect(restored.agent.terminalTitleStripped == "Implement caching")
         #expect(restored.directory == "/home/dev/project/src")
         #expect(restored.workspaceLabel == "Project")
         #expect(restored.tabLabel == "Work")
         #expect(restored.paneLabel == "Worker pane")
         #expect(restored.tabPosition == 2)
+    }
+
+    @Test func agentDirectoryKeepsSidebarSnapshotsAndReadsOlderEntriesWithoutLayoutFields() async throws {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        let host = Host(id: Self.hostA, address: "host.example", username: "dev")
+        let cached = Self.cachedAgent(for: host)
+        let sidebar = AgentRowLayoutSnapshot(
+            layout: AgentRowLayout(
+                rows: [[.init(.terminalTitleStripped)], [.init(.custom("branch"), dim: true)]],
+                rowGap: 1),
+            agentPanelSort: .priority)
+        await fixture.cache.saveAgentDirectory(
+            .init(agents: [cached], sidebarSnapshot: sidebar), for: host)
+
+        let reopened = FileChatTranscriptCache(root: fixture.root, knownHosts: fixture.knownHosts)
+        #expect(
+            await reopened.loadAgentDirectory(for: host)
+                == .init(agents: [cached], sidebarSnapshot: sidebar))
+        await fixture.cache.saveAgentDirectory(.init(sidebarSnapshot: sidebar), for: host)
+        #expect(await reopened.loadAgentDirectory(for: host) == .init(sidebarSnapshot: sidebar))
+
+        await fixture.cache.saveAgentDirectory([cached], for: host)
+        let url = fixture.root.appending(path: "v1/\(host.id.uuidString.lowercased())/agents.json")
+        var saved = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var agents = try #require(saved["agents"] as? [[String: Any]])
+        agents[0].removeValue(forKey: "terminalTitle")
+        agents[0].removeValue(forKey: "terminalTitleStripped")
+        agents[0].removeValue(forKey: "tokens")
+        saved["agents"] = agents
+        try JSONSerialization.data(withJSONObject: saved).write(to: url)
+
+        let migrated = try #require(await reopened.loadAgentDirectory(for: host).agents.first)
+        #expect(migrated.terminalTitle == nil)
+        #expect(migrated.terminalTitleStripped == nil)
+        #expect(migrated.tokens.isEmpty)
+        #expect(migrated.title == "Implement caching")
     }
 
     @Test func agentDirectoryKeepsItsWorkspaceStructureAndReadsOneSavedWithout() async throws {

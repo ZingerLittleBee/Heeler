@@ -272,6 +272,12 @@ struct ClaudeSystemDetails: Sendable, Equatable {
     var commandRun: ChatCommandInvocation?
     /// `prompt` on a `scheduled_task_fire`: what the scheduled task asks.
     var scheduledPrompt: String?
+    /// Whether `turn_duration` carried `messageCount`, as real CLI records do.
+    var hasTurnMessageCount = false
+    /// `turn_duration`'s `pendingWorkflowCount`, omitted when zero.
+    var pendingWorkflowCount: Int?
+    /// `turn_duration`'s `pendingBackgroundAgentCount`, omitted when zero.
+    var pendingBackgroundAgentCount: Int?
 }
 
 /// `compactMetadata` of a `compact_boundary`.
@@ -304,6 +310,7 @@ struct ClaudeAttachmentDetails: Sendable, Equatable {
 struct ClaudeQueuedCommand: Sendable, Equatable {
     var text: String
     var imageCount: Int
+    var imagePaths: [String] = []
     var sourceUUID: String?
     /// `prompt` or `task-notification`.
     var commandMode: String?
@@ -416,7 +423,10 @@ extension ClaudeRecord {
                             name: $0.hasPrefix("/") ? String($0.dropFirst()) : $0, arguments: run.args ?? "")
                     }
                 },
-                scheduledPrompt: raw.prompt.map { String($0.prefix(Self.systemContentCap)) })
+                scheduledPrompt: raw.prompt.map { String($0.prefix(Self.systemContentCap)) },
+                hasTurnMessageCount: raw.hasTurnMessageCount,
+                pendingWorkflowCount: raw.pendingWorkflowCount,
+                pendingBackgroundAgentCount: raw.pendingBackgroundAgentCount)
         case .attachment(let attachmentType):
             guard let rawAttachment = raw.attachment else { break }
             var details = ClaudeAttachmentDetails(planFilePath: rawAttachment.planFilePath)
@@ -425,6 +435,7 @@ extension ClaudeRecord {
                 details.queuedCommand = ClaudeQueuedCommand(
                     text: blocks.compactMap { $0.type == "text" ? $0.text : nil }.joined(separator: "\n"),
                     imageCount: blocks.filter { $0.type == "image" }.count,
+                    imagePaths: (rawAttachment.inlinedImagePaths ?? []).filter { !$0.isEmpty },
                     sourceUUID: rawAttachment.sourceUUID.flatMap { $0.isEmpty ? nil : $0 },
                     commandMode: rawAttachment.commandMode,
                     originKind: rawAttachment.origin?.kind, isMeta: rawAttachment.isMeta ?? false)
@@ -631,6 +642,9 @@ private struct RawLine: Decodable {
     var operation: String?
     var cwd: String?
     var timestamp: String?
+    var hasTurnMessageCount = false
+    var pendingWorkflowCount: Int?
+    var pendingBackgroundAgentCount: Int?
 
     private enum CodingKeys: String, CodingKey {
         case type, subtype, uuid, parentUuid, logicalParentUuid, isSidechain, isMeta, teamName
@@ -641,6 +655,7 @@ private struct RawLine: Decodable {
         case compactMetadata, retractedMessageUuids, originalModel, fallbackModel, commandRun, prompt
         case attachment, customTitle, aiTitle, summary, permissionMode, relocatedCwd
         case continuedInSessionId, operation, cwd, timestamp
+        case messageCount, pendingWorkflowCount, pendingBackgroundAgentCount
     }
 
     init(from decoder: any Decoder) throws {
@@ -674,7 +689,12 @@ private struct RawLine: Decodable {
         toolDenialUnanswered =
             c.lenient(Bool.self, .toolDenialUnanswered)
             ?? c.lenient(String.self, .toolDenialUnanswered).map { !$0.isEmpty } ?? false
-        content = c.lenient(String.self, .content)
+        if let stringContent = c.lenient(String.self, .content) {
+            content = stringContent
+        } else if type == "queue-operation", let blocks = RawBlock.blocks(in: c, .content) {
+            let joined = blocks.compactMap { $0.type == "text" ? $0.text : nil }.joined(separator: "\n")
+            content = joined.isEmpty ? nil : joined
+        }
         compactMetadata = c.lenient(RawCompactMetadata.self, .compactMetadata)
         retractedMessageUuids = c.lenient([String].self, .retractedMessageUuids)
         originalModel = c.lenient(String.self, .originalModel)
@@ -691,6 +711,9 @@ private struct RawLine: Decodable {
         operation = c.lenient(String.self, .operation)
         cwd = c.lenient(String.self, .cwd)
         timestamp = c.lenient(String.self, .timestamp)
+        hasTurnMessageCount = c.lenient(Int.self, .messageCount) != nil
+        pendingWorkflowCount = c.lenient(Int.self, .pendingWorkflowCount)
+        pendingBackgroundAgentCount = c.lenient(Int.self, .pendingBackgroundAgentCount)
     }
 }
 
@@ -837,6 +860,8 @@ private struct RawToolInput: Decodable {
         case filePath = "file_path"
         case notebookPath = "notebook_path"
         case subagentType = "subagent_type"
+        case taskSnakeID = "task_id"
+        case shellID = "shell_id"
     }
 
     init(from decoder: any Decoder) throws {
@@ -859,7 +884,11 @@ private struct RawToolInput: Decodable {
         args = c.lenient(String.self, .args)
         name = c.lenient(String.self, .name)
         subject = c.lenient(String.self, .subject)
-        taskId = c.lenient(String.self, .taskId) ?? c.lenient(Int.self, .taskId).map(String.init)
+        taskId =
+            c.lenient(String.self, .taskId)
+            ?? c.lenient(Int.self, .taskId).map(String.init)
+            ?? c.lenient(String.self, .taskSnakeID)
+            ?? c.lenient(String.self, .shellID)
         status = c.lenient(String.self, .status)
         if filePath?.contains("/.claude/plans/") == true {
             planContent = c.lenient(String.self, .content)
@@ -917,6 +946,8 @@ private struct RawToolUseResult: Decodable {
         case stdout, stderr, interrupted, backgroundTaskId, persistedOutputPath, type, filePath
         case content, structuredPatch, bashEditDiff, status, agentId, answers, plan, newTodos
         case taskId, taskType, workflowName, runId, summary, name
+        case taskSnakeID = "task_id"
+        case taskSnakeType = "task_type"
     }
 
     init(from decoder: any Decoder) throws {
@@ -937,8 +968,8 @@ private struct RawToolUseResult: Decodable {
         status = c.lenient(String.self, .status)
         agentId = c.lenient(String.self, .agentId)
         name = c.lenient(String.self, .name)
-        taskId = c.lenient(String.self, .taskId)
-        taskType = c.lenient(String.self, .taskType)
+        taskId = c.lenient(String.self, .taskId) ?? c.lenient(String.self, .taskSnakeID)
+        taskType = c.lenient(String.self, .taskType) ?? c.lenient(String.self, .taskSnakeType)
         workflowName = c.lenient(String.self, .workflowName)
         runId = c.lenient(String.self, .runId)
         summary = c.lenient(String.self, .summary)
@@ -1039,6 +1070,7 @@ private struct RawCommandRun: Decodable {
 private struct RawAttachment: Decodable {
     var type: String?
     var prompt: [RawBlock]?
+    var inlinedImagePaths: [String]?
     var sourceUUID: String?
     var commandMode: String?
     var origin: RawOrigin?
@@ -1046,7 +1078,7 @@ private struct RawAttachment: Decodable {
     var planFilePath: String?
 
     private enum CodingKeys: String, CodingKey {
-        case type, prompt, commandMode, origin, isMeta, planFilePath
+        case type, prompt, inlinedImagePaths, commandMode, origin, isMeta, planFilePath
         case sourceUUID = "source_uuid"
     }
 
@@ -1054,6 +1086,7 @@ private struct RawAttachment: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         type = c.lenient(String.self, .type)
         prompt = RawBlock.blocks(in: c, .prompt)
+        inlinedImagePaths = c.lenient([String].self, .inlinedImagePaths)
         sourceUUID = c.lenient(String.self, .sourceUUID)
         commandMode = c.lenient(String.self, .commandMode)
         origin = c.lenient(RawOrigin.self, .origin)

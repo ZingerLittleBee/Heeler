@@ -18,33 +18,21 @@ struct AgentActivityContentBuilderTests {
             agent: Agent(terminalID: "terminal", kind: "claude", title: "task", status: .working,
                          workspaceID: "workspace", tabID: "tab", paneID: "w1:p1", cwd: "/work/heeler",
                          revision: 1, tokens: ["branch": "**literal**"]),
-            workspaceLabel: "Heeler", repositoryCheckout: nil)
+            workspaceLabel: "Heeler", repositoryCheckout: nil, backend: .core)
         let layout = AgentRowLayout(rows: [
             [.init(.workspace, bold: true), .init(.custom("branch"), fg: HexColor("#abc"))],
-            [.init(.host, dim: true)], [.init(.directory), .init(.path)],
+            [.init(.host, dim: true), .init(.backend)], [.init(.directory), .init(.path)],
         ])
         let content = try #require(AgentActivityContentBuilder.make(
             agents: [row], hostName: "Studio Mac", key: key, layout: layout))
         let details = try opened(content)
         #expect(details.agents.first?.rows == [
             [.init(text: "Heeler", bold: true), .init(text: " · "), .init(text: "**literal**", fg: "#abc")],
-            [.init(text: "Studio Mac", dim: true)],
+            [.init(text: "Studio Mac", dim: true), .init(text: " · "), .init(text: "core")],
             [.init(text: "heeler"), .init(text: " · "), .init(text: "/work/heeler")],
         ])
         let wire = String(decoding: try JSONEncoder().encode(content), as: UTF8.self)
         #expect(!wire.contains("/work/heeler") && !wire.contains("heeler") && !wire.contains("**literal**"))
-    }
-
-    /// The Console's rows name a Host alone (ADR 0047), but an activity is one
-    /// record's: a row's Host field names that record, as the title does.
-    @Test func aRowsHostFieldNamesTheRecordTheActivityIsFor() throws {
-        let row = ConsoleAgent(
-            hostID: hostID, hostName: "m3", agent: Agent(.fixture(paneID: "w1:p1", status: .working)),
-            workspaceLabel: nil, repositoryCheckout: nil)
-        let desired = try #require(AgentActivityContentBuilder.desire(
-            from: [row], hostName: "m3 · tmux", layout: AgentRowLayout(rows: [[.init(.host)]])))
-        #expect(desired.hostName == "m3 · tmux")
-        #expect(desired.agents.first?.rows == [[.init(text: "m3 · tmux")]])
     }
 
     @Test func oversizedConfiguredRowsFallBackToIdentityBeforeDroppingAgents() throws {

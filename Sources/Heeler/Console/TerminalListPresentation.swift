@@ -249,15 +249,13 @@ struct TerminalListProjection {
         -> [TerminalHostGroup]
     {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let mentions = HostMachine.serverMentions(for: hosts)
         return visibleGroups(filteredHostIDs).compactMap { group in
             guard let first = group.servers.first else { return nil }
             let cards = group.servers.flatMap { workspaces(on: $0, searchQuery: searchQuery) }
             let servers = group.servers.map { host in
                 ConsoleHostServerState(
                     hostID: host.id, connectionStatus: hostStatuses[host.id],
-                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-                    issue: issue(for: host, server: mentions[host.id]))
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id), issue: issue(for: host))
             }
             if cards.isEmpty
                 && (isSearching || !group.keepsEmptySection(servers, listsTerminals: true))
@@ -283,10 +281,7 @@ struct TerminalListProjection {
     /// Host problems, one per Server, in the order of the cards, for the By
     /// Workspace presentation, which has no Host headers to carry them.
     func issues(filteredHostIDs: Set<Host.ID> = []) -> [ConsoleHostStatusPresentation] {
-        let mentions = HostMachine.serverMentions(for: hosts)
-        return visibleGroups(filteredHostIDs).flatMap(\.servers).compactMap {
-            issue(for: $0, server: mentions[$0.id])
-        }
+        visibleGroups(filteredHostIDs).flatMap(\.servers).compactMap(issue(for:))
     }
 
     private func visibleGroups(_ filteredHostIDs: Set<Host.ID>) -> [ConsoleHostSectionGroup] {
@@ -348,16 +343,14 @@ struct TerminalListProjection {
         return candidates.lazy.compactMap { $0 }.first(where: host.reportedDirectoryStartsTerminals)
     }
 
-    /// `server` names the record's Server where its Host has several on.
-    private func issue(for host: Host, server: HostServerMention?) -> ConsoleHostStatusPresentation? {
+    private func issue(for host: Host) -> ConsoleHostStatusPresentation? {
         ConsoleHostStatusPresentation(
             host: host,
             status: hostStatuses[host.id],
             standingFailure: hostStandingFailures[host.id],
             isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
             syncError: hostSyncErrors[host.id],
-            inventoryNoun: "Terminals",
-            server: server)
+            inventoryNoun: "Terminals")
     }
 }
 

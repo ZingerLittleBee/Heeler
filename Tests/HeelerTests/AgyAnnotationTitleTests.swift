@@ -160,9 +160,11 @@ struct AgyAnnotationTitleTests {
         let transport = ScriptedTransport(snapshot: .fixture(agents: [firstInfo]))
         await transport.scriptChat(files: files.hostFiles(), agent: Agent(firstInfo))
 
+        let cache = VolatileChatTranscriptCache()
         let store = ConsoleStore(
             snapshotRetryDelay: .milliseconds(10),
             chatPrefetchRetryDelay: .milliseconds(20),
+            chatCache: cache,
             makeSession: { _, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions, connect: { transport },
@@ -218,10 +220,30 @@ struct AgyAnnotationTitleTests {
         try await waitUntil("Saved Chats records titled session") {
             store.cachedChats.agents(on: host).first?.agent.title == "Second Topic"
         }
+        await store.cachedChats.settled()
         await store.suspend()
         #expect(store.agents.isEmpty)
         #expect(store.cachedChats.agents(on: host).first?.agent.title == "Second Topic")
         #expect(store.chatDisplayAgents.first?.agent.title == "Second Topic")
+        #expect(store.chatDisplayAgents.first?.agent.terminalTitle == "Second Topic")
+        #expect(store.chatDisplayAgents.first?.agent.terminalTitleStripped == "Second Topic")
+
+        // On cold relaunch, the live snapshot does not flash "~/h/d/proj" before hostPlatform / SFTP resolve.
+        let relaunchTransport = ScriptedTransport(snapshot: .fixture(agents: [secondInfo]))
+        let relaunched = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(20),
+            chatCache: cache,
+            makeSession: { _, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: { relaunchTransport }, keepalive: nil)
+            })
+        defer { relaunched.setHosts([]) }
+        relaunched.setHosts([host])
+        await relaunched.cachedChats.settled()
+        #expect(relaunched.chatDisplayAgents.first?.agent.terminalTitleStripped == "Second Topic")
+        await relaunched.resume()
+        try await waitUntil("live snapshot arrived on cold relaunch") { !relaunched.agents.isEmpty }
+        #expect(relaunched.agents.first?.agent.terminalTitleStripped == "Second Topic")
     }
 
     // MARK: - POSIX herdr-core Integration
@@ -335,9 +357,11 @@ struct AgyAnnotationTitleTests {
         await transport.scriptChat(files: files.hostFiles(), agent: Agent(initialInfo))
         await files.write(Self.rootTranscript(), at: Self.transcriptPath(id: Self.firstID))
 
+        let cache = VolatileChatTranscriptCache()
         let store = ConsoleStore(
             snapshotRetryDelay: .milliseconds(10),
             chatPrefetchRetryDelay: .milliseconds(20),
+            chatCache: cache,
             makeSession: { _, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions, connect: { transport },

@@ -55,6 +55,7 @@ struct ConsolePaneRowBuilder {
                 agent: agent,
                 workspaceLabel: workspace?.label,
                 repositoryCheckout: workspace?.worktree.map(RepositoryCheckout.init),
+                backend: host.serverKind.agentBackend,
                 hostUsername: host.username,
                 tabLabel: tab?.label,
                 tabPosition: tab.flatMap { tabPositions[$0.tabID] },

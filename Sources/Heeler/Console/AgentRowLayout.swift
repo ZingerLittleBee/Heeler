@@ -1,9 +1,9 @@
 import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
-/// Heeler-only names (`host`, `status`, `directory`, `path`, and the right
-/// side's `status_badge` and `changes`) that exist in the app layout, not as
-/// authored plugin fields. A herdr-core Terminal's labels are fields too, as
+/// Heeler-only names (`host`, `backend`, `status`, `directory`, `path`, and the
+/// right side's `status_badge` and `changes`) that exist in the app layout, not
+/// as authored plugin fields. A herdr-core Terminal's labels are fields too, as
 /// `label:<key>`.
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
@@ -13,7 +13,7 @@ import Foundation
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
-    case host, status, directory, path, statusBadge, changes
+    case host, backend, status, directory, path, statusBadge, changes
     case custom(String)
     case label(String)
 
@@ -24,7 +24,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     ]
 
     static let heelerBuiltins: [Self] = [
-        .host, .status, .directory, .path,
+        .host, .backend, .status, .directory, .path,
     ]
 
     static let builtins: [Self] = herdrBuiltins + heelerBuiltins
@@ -55,6 +55,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "terminal_title": self = .terminalTitle
         case "terminal_title_stripped": self = .terminalTitleStripped
         case "host": self = .host
+        case "backend": self = .backend
         case "status": self = .status
         case "directory": self = .directory
         case "path": self = .path
@@ -89,6 +90,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .terminalTitle: "terminal_title"
         case .terminalTitleStripped: "terminal_title_stripped"
         case .host: "host"
+        case .backend: "backend"
         case .status: "status"
         case .directory: "directory"
         case .path: "path"
@@ -344,7 +346,7 @@ enum AgentPanelSort: String, Codable, Sendable {
 /// Read-only normalized plugin snapshot. Unknown token names are removed
 /// individually (`AgentRowLayout.Lenient`); malformed structure or an
 /// unsupported version is absent.
-struct AgentRowLayoutSnapshot: Equatable, Sendable {
+struct AgentRowLayoutSnapshot: Codable, Equatable, Sendable {
     let layout: AgentRowLayout
     let agentPanelSort: AgentPanelSort
     let diagnostics: [String]
@@ -353,6 +355,19 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
         self.layout = layout
         self.agentPanelSort = agentPanelSort
         self.diagnostics = diagnostics
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case layout
+        case agentPanelSort
+        case diagnostics
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        layout = try container.decode(AgentRowLayout.Lenient.self, forKey: .layout).layout
+        agentPanelSort = try container.decodeIfPresent(AgentPanelSort.self, forKey: .agentPanelSort) ?? .spaces
+        diagnostics = try container.decodeIfPresent([String].self, forKey: .diagnostics) ?? []
     }
 
     static func decode(_ data: Data?) -> Self? {
