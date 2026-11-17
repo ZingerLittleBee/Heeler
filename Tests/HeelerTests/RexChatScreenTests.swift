@@ -16,6 +16,13 @@ struct RexChatScreenTests {
 
     private static func vt(_ lines: [String]) -> String { lines.joined(separator: "\r\n") }
 
+    /// A hyperlink's opening as Rex writes it, ended by `ESC \`.
+    private static func link(_ uri: String, id: String? = nil) -> String {
+        "\(esc)]8;\(id.map { "id=\($0)" } ?? "");\(uri)\(esc)\\"
+    }
+
+    private static let close = "\(esc)]8;;\(esc)\\"
+
     /// A screen whose rows say every shape the decoder takes.
     private static let screenLines = [
         "\(esc)[0m\(esc)[38;5;1mred\(esc)[0m \(esc)[0m\(esc)[1mbold\(esc)[0m",
@@ -84,14 +91,173 @@ struct RexChatScreenTests {
         #expect(Self.problem("cut\r\n\(Self.esc)[1mabove\r\n" + Self.vt(Self.screenLines), startsAnswer: false) == .openStyle)
     }
 
+    // MARK: Hyperlinks and the styles Chat does not keep
+
+    /// A link changes no cell's text or style: a plain one, one styled as a
+    /// version number, one left open at a row's end and closed on the next
+    /// row, and one Rex closes after the last cell it wrote.
+    @Test func aHyperlinkChangesNothingARowReads() throws {
+        let versionStyle = "\(Self.esc)[0m\(Self.esc)[4m\(Self.esc)[38;5;6m"
+        let reading = try Self.decode(Self.vt([
+            "see " + Self.link("https://example.test/notes") + "notes" + Self.close + " here",
+            versionStyle + Self.link("https://example.test/v/1", id: "lab-a1") + "v1.2.3" + "\(Self.esc)[0m"
+                + Self.close + " ok",
+            "wrap " + Self.link("https://example.test/wrapped") + "start-",
+            "ed" + Self.close + " and " + Self.link("https://example.test/open") + "left open" + Self.close,
+        ]))
+        let rows = reading.screen.rows
+        #expect(rows.map(\.text) == ["see notes here", "v1.2.3 ok", "wrap start-", "ed and left open"])
+        #expect(rows[0].runs == [ScreenRun(text: "see notes here", style: .plain, column: 0, width: 14)])
+        #expect(rows[1].runs == [
+            ScreenRun(text: "v1.2.3", style: ScreenStyle(foreground: .indexed(6)), column: 0, width: 6),
+            ScreenRun(text: " ok", style: .plain, column: 6, width: 3),
+        ])
+    }
+
+    /// What Rex keeps in a link's parameters and URI, up to the longest link
+    /// it keeps. Each row stands in for the screen's first.
+    @Test(arguments: [
+        ("a URI with a query, `;` and a fragment", link("https://example.test/p?a=1&b=two;c=3#frag")),
+        ("a URI in other scripts", link("https://例え.test/路/😀é")),
+        ("DEL and C1 controls in a URI", link("https://example.test/a\u{7F}b\u{85}c\u{9B}d\u{9C}e")),
+        ("U+FFFD in a URI", link("https://example.test/a\u{FFFD}b")),
+        ("a URI of one space", link(" ")),
+        ("an id with `=`, a space, `\\`, `]` and other scripts", link("https://example.test/a", id: "a=b c\\d]宽😀")),
+        ("DEL, C1 controls and U+FFFD in an id", link("https://example.test/a", id: "a\u{7F}\u{80}\u{9C}\u{FFFD}b")),
+        ("the longest link", link(String(repeating: "x", count: RexChatScreen.hyperlinkBytes))),
+        (
+            "the longest link with an id",
+            link(String(repeating: "x", count: RexChatScreen.hyperlinkBytes - "id=lab".utf8.count), id: "lab")
+        ),
+    ])
+    func aHyperlinkRexWritesIsPassedOver(_ shape: String, _ opening: String) throws {
+        _ = shape
+        let reading = try Self.decode(Self.vt(["s " + opening + "w" + Self.close + " t"] + Self.screenLines.dropFirst()))
+        #expect(reading.screen.rows[0].runs == [ScreenRun(text: "s w t", style: .plain, column: 0, width: 5)])
+    }
+
+    /// The screen that failed for the maintainer on an iPhone (codex-cli
+    /// 0.169.0 in Rex 0.1.0-preview.14, 2026-11-18): an answer whose last
+    /// lines drew two version numbers as links, a few rows above Codex's
+    /// empty composer, on rows that also hold SGR, `CSI n C` and a background
+    /// blanked with `CSI n X`. The second link stays open over an empty row,
+    /// to the next cell Codex wrote. The texts and URIs are invented.
+    @Test func codexsAnswerWithLinksAboveItsEmptyComposer() throws {
+        let link = "\(Self.esc)[0m\(Self.esc)[4m\(Self.esc)[38;5;2m"
+        let reset = "\(Self.esc)[0m"
+        let dim = "\(reset)\(Self.esc)[2m"
+        let box = "\(Self.esc)[48;2;40;40;40m"
+        let lines = [
+            "\(dim)•\(reset) Bumped the lab tool to the new versions:",
+            "",
+            "  - " + link + Self.link("https://example.test/releases/1.2.3") + "1.2.3" + reset + Self.close + " and "
+                + link + Self.link("https://example.test/releases/4.5.6") + "4.5.6" + reset,
+            "",
+            dim + Self.close + "─\(Self.esc)[3CWorked for 12s\(reset)",
+            "",
+            "\(reset)\(box)\(Self.esc)[60X\(Self.esc)[60C\(reset)",
+            "\(reset)\(Self.esc)[1m\(box)›\(reset)\(box) \(reset)\(Self.esc)[2m\(box)Ask Codex to do anything"
+                + "\(reset)\(box)\(Self.esc)[34X\(Self.esc)[34C\(reset)",
+            "\(reset)\(box)\(Self.esc)[60X\(Self.esc)[60C\(reset)",
+            "",
+            "  \(reset)\(Self.esc)[2m? for shortcuts\(reset)",
+            "",
+        ]
+        let reading = try RexChatScreen.decode(
+            Self.vt(lines) + "\(Self.esc)[=7;1u", startsAnswer: true, grid: RexChatScreen.Grid(columns: 60, rows: 12))
+        #expect(reading.screen.rows[2].text == "  - 1.2.3 and 4.5.6")
+        #expect(reading.kittyKeyboardFlags == 7)
+        #expect(InputBoxStateDetector.detect(reading.screen, program: .codex) == .empty(placeholder: "Ask Codex to do anything"))
+    }
+
+    /// Underline in each shape, blink, conceal, overline and the underline
+    /// color change no style Chat keeps, and a row must close them.
+    @Test(arguments: ["4:2", "4:3", "4:4", "4:5", "5", "8", "53", "58;5;1", "58;2;255;0;0"])
+    func aStyleChatDoesNotKeepIsTracked(_ code: String) throws {
+        let row = "\(Self.esc)[0m\(Self.esc)[\(code)mx\(Self.esc)[0m y"
+        let reading = try Self.decode(Self.vt([row] + Self.screenLines.dropFirst()))
+        #expect(reading.screen.rows[0].runs == [ScreenRun(text: "x y", style: .plain, column: 0, width: 3)])
+        let leftOpen = "\(Self.esc)[0m\(Self.esc)[\(code)mx"
+        #expect(Self.problem(Self.vt([leftOpen] + Self.screenLines.dropFirst())) == .openStyle)
+    }
+
+    /// Rex restates a cell's whole style, one attribute a sequence, in its
+    /// order; concealed text reads as its text.
+    @Test func aWholeStyleAsRexWritesIt() throws {
+        let group = ["0", "1", "3", "8", "9", "53", "4:2", "38;5;208", "48;2;4;5;6", "58;2;9;8;7"]
+            .map { "\(Self.esc)[\($0)m" }.joined()
+        let reading = try Self.decode(Self.vt([group + "x\(Self.esc)[0m"] + Self.screenLines.dropFirst()))
+        #expect(reading.screen.rows[0].runs == [
+            ScreenRun(
+                text: "x", style: ScreenStyle(foreground: .indexed(208), background: .rgb(4, 5, 6), isBold: true, isItalic: true),
+                column: 0, width: 1)
+        ])
+        let turnedOff = "\(Self.esc)[5m\(Self.esc)[8mx\(Self.esc)[25m\(Self.esc)[28m"
+        #expect(Self.problem(Self.vt([turnedOff] + Self.screenLines.dropFirst())) == nil)
+    }
+
+    /// A tail can start inside a link's sequence, or inside a link left open
+    /// above the screen: the cut line goes, and no sequence holds a line end.
+    @Test func aTailThatStartsInsideAHyperlink() throws {
+        let screen = ["inside" + Self.close + " out", "", "", ""]
+        for cut in ["ample.test/a\(Self.esc)\\", "\\", "8;;https://example.test/a\(Self.esc)\\"] {
+            let text = cut + "linked\r\n" + Self.vt(["still linked"] + screen)
+            let reading = try Self.decode(text, startsAnswer: false)
+            #expect(reading.screen.rows.map(\.text) == ["inside out", "", "", ""])
+        }
+    }
+
+    /// A page can end inside a link's sequence: pages are joined before
+    /// anything is read.
+    @Test func aPageEdgeInsideAHyperlink() async throws {
+        let tail = "ut off\r\n" + Self.vt(["above", "a " + Self.link("https://example.test/a") + "link" + Self.close, "", "", ""])
+        let edge = try #require(tail.range(of: "]8;;https://"))
+        let (head, rest) = (String(tail[..<edge.upperBound]), String(tail[edge.upperBound...]))
+        let block = Block([
+            "size": [Self.size],
+            "format": [["content": "history", "id": 7, "total": 900_000]],
+            "blob_read": [
+                ["data": .string(head), "eof": false, "id": 7, "total": 900_000],
+                ["data": .string(rest), "eof": true, "id": 7, "total": 900_000],
+            ],
+        ])
+        let reading = try await RexChatScreen.read(on: block.requests)
+        #expect(reading.screen.rows.map(\.text) == ["a link", "", "", ""])
+    }
+
+    /// The flags are the answer's last sequence: a link's end, or text that
+    /// looks like the flags after it, is not.
+    @Test func theKittyKeyboardFlagsBesideAHyperlink() async throws {
+        let lookAlike = try Self.decode(Self.vt(["", "", "", Self.link("https://example.test/a") + "w" + Self.close + "[=5;1u"]))
+        #expect(lookAlike.kittyKeyboardFlags == 0)
+        #expect(lookAlike.screen.rows[3].text == "w[=5;1u")
+        let flags = try Self.decode(
+            Self.vt(["", "", "", Self.link("https://example.test/[=3;1u") + "open" + Self.close]) + "\(Self.esc)[=7;1u")
+        #expect(flags.kittyKeyboardFlags == 7)
+
+        let ends: [(String, UInt8)] = [
+            (Self.link("https://example.test/[=5;1u") + "w" + Self.close, 0),
+            ("w" + Self.close + "\(Self.esc)[=7;1u", 7),
+        ]
+        for (end, expected) in ends {
+            let block = Block([
+                "format": [["content": "history", "id": 3, "total": 5_000]],
+                "blob_read": [["data": .string(String(end.suffix(RexChatScreen.flagsTailBytes))), "eof": true, "id": 3, "total": 5_000]],
+            ])
+            #expect(try await RexChatScreen.kittyKeyboardFlags(on: block.requests) == expected)
+        }
+    }
+
     // MARK: What is no screen
 
     /// Each row stands in for the screen's first row.
     @Test(arguments: [
         ("a cursor position", "\(esc)[2;3Hmoved"),
         ("an erase in line", "text\(esc)[K"),
+        ("an erase in display", "\(esc)[2J"),
         ("a mode change", "\(esc)[?25l"),
         ("a title", "\(esc)]0;made up\u{07}"),
+        ("a title ended by ST", "\(esc)]2;made up\(esc)\\"),
         ("a charset", "\(esc)(0q"),
         ("a lone escape", "\(esc)"),
         ("a bare line feed", "one\ntwo"),
@@ -100,13 +266,27 @@ struct RexChatScreenTests {
         ("a bell", "one\u{07}"),
         ("a C1 control", "one\u{85}"),
         ("a cut character", "one\u{FFFD}"),
-        ("blink", "\(esc)[5mblink\(esc)[0m"),
+        ("rapid blink", "\(esc)[6mx\(esc)[0m"),
+        ("double underline as 21", "\(esc)[21mx\(esc)[0m"),
         ("a colon color", "\(esc)[38:5:1mx\(esc)[0m"),
+        ("a colon underline color", "\(esc)[58:2::1:2:3mx\(esc)[0m"),
+        ("a colon underline Rex does not write", "\(esc)[4:1mx\(esc)[0m"),
+        ("an underline shape among other codes", "\(esc)[1;4:3mx\(esc)[0m"),
         ("an empty SGR field", "\(esc)[1;;31mx\(esc)[0m"),
         ("a color past 255", "\(esc)[38;5;256mx\(esc)[0m"),
         ("an erase not moved over", "\(esc)[3Xabc"),
         ("an erase moved over less", "\(esc)[3X\(esc)[2C"),
         ("kitty flags inside a row", "\(esc)[=5;1u"),
+        ("a hyperlink ended by BEL", "\(esc)]8;;https://example.test/a\u{07}w"),
+        ("a hyperlink ended by C1 ST", "\(esc)]8;;https://example.test/a\u{9C}w\(esc)]8;;\(esc)\\"),
+        ("a hyperlink the row ends in", "\(esc)]8;;https://example.test/a"),
+        ("a C0 control in a hyperlink", "\(esc)]8;;https://example.test/a\tb\(esc)\\w"),
+        ("a hyperlink without its URI field", "\(esc)]8;https://example.test/a\(esc)\\w"),
+        ("a hyperlink parameter other than id", "\(esc)]8;foo=bar;https://example.test/a\(esc)\\w"),
+        ("two hyperlink parameters", "\(esc)]8;id=a:foo=b;https://example.test/a\(esc)\\w"),
+        ("an empty id", "\(esc)]8;id=;https://example.test/a\(esc)\\w"),
+        ("a close with an id", "w\(esc)]8;id=a;\(esc)\\"),
+        ("a hyperlink longer than Rex keeps", link(String(repeating: "x", count: RexChatScreen.hyperlinkBytes + 1)) + "w"),
     ])
     func anUnexpectedRowIsNoScreen(_ shape: String, _ row: String) {
         _ = shape
@@ -263,6 +443,44 @@ struct RexChatScreenTests {
         ])
         await #expect(throws: RexScreenProblem.tooLong) { try await RexChatScreen.read(on: block.requests) }
         #expect(block.names.filter { $0 == "blob_read" }.count == RexChatScreen.tailBytes.count)
+    }
+
+    /// A block answering from `answer` as Rex does: the first page up to
+    /// `max_bytes`, and the rest from a byte offset.
+    private static func serving(_ answer: String) -> Block {
+        let bytes = Data(answer.utf8)
+        let total = JSONValue.number(Double(bytes.count))
+        func text(from offset: Int) -> JSONValue { .string(String(decoding: bytes[offset...], as: UTF8.self)) }
+        var pages: [JSONValue] = []
+        for tail in RexChatScreen.tailBytes {
+            pages.append(["data": text(from: max(0, bytes.count - tail)), "eof": true, "id": 7, "total": total])
+        }
+        return Block([
+            "size": [Self.size],
+            "format": [["content": text(from: bytes.count - 8), "id": 7, "total": total]],
+            "blob_read": pages,
+        ])
+    }
+
+    /// A row of long links holds few rows in a tail: one that starts inside
+    /// a URI reads the screen below it, and a screen longer than the longest
+    /// tail is too long, never a shorter one.
+    @Test func longHyperlinksAndTheTails() async throws {
+        func row(_ name: String, links: Int, uriBytes: Int) -> String {
+            let uri = "https://example.test/" + String(repeating: "x", count: uriBytes - 21)
+            return name + String(repeating: Self.link(uri) + "w", count: links) + Self.close
+        }
+        let history = (0..<30).map { row("h\($0) ", links: 1, uriBytes: 1_500) }
+        let screen = ["s0 ", "s1 ", "s2 ", "s3 "].map { row($0, links: 1, uriBytes: 1_500) }
+        let block = Self.serving(Self.vt(history + screen))
+        let reading = try await RexChatScreen.read(on: block.requests)
+        #expect(reading.screen.rows.map(\.text) == ["s0 w", "s1 w", "s2 w", "s3 w"])
+        #expect(block.names.filter { $0 == "blob_read" }.count == 1)
+
+        let wide = ["s0 ", "s1 ", "s2 ", "s3 "].map { row($0, links: 30, uriBytes: RexChatScreen.hyperlinkBytes) }
+        let tooLong = Self.serving(Self.vt(history + wide))
+        await #expect(throws: RexScreenProblem.tooLong) { try await RexChatScreen.read(on: tooLong.requests) }
+        #expect(tooLong.names.filter { $0 == "blob_read" }.count == RexChatScreen.tailBytes.count)
     }
 
     @Test func aGridThatChangedIsNoScreen() async {
