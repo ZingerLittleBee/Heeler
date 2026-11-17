@@ -176,26 +176,47 @@ enum InputBoxStateDetector {
     }
 
     /// Codex's panel in the composer's place when another app holds the
-    /// conversation: "This conversation is open in another app", "r to
-    /// retry" and "Close it there and press R to continue here.", over key
-    /// hints from "r retry f fork" (codex-cli 0.169.0, 2026-11-18). Single
-    /// keys act there, so Chat holds, as for any screen without the
-    /// composer, with what to do instead.
+    /// conversation (`CX/tui/src/chatwidget/rendering.rs`
+    /// `ExternalWriterNotice`, and codex-cli 0.169.0 as seen on 2026-11-18):
+    /// a row that starts with its emoji and "This conversation is open in
+    /// another app", "r to retry" at that row's end or, where the row is too
+    /// narrow, on the next, then "Close it there and press R to continue
+    /// here.", over key hints from "r retry f fork". Single keys act there,
+    /// so Chat holds, as for any screen without the composer, with what to
+    /// do instead.
     ///
-    /// Read only where the composer was not found, from the drawn rows
-    /// nearest the bottom joined into one text, so neither the width nor
-    /// where a row breaks matters, and colors and the panel's emoji count
-    /// for nothing. The sentence takes another marker of the panel after
-    /// it, so a conversation that quotes the sentence does not read as it.
+    /// Read only where the composer was not found, among the drawn rows
+    /// nearest the bottom: the sentence must start a row, after one emoji at
+    /// most, with "r to retry" or the line after it straight after the
+    /// sentence, read on across row breaks. Neither the width nor where a
+    /// row breaks matters, and colors count for nothing, while a
+    /// conversation that quotes the sentence within a line, after a bullet,
+    /// or with other words after it does not read as the panel.
     private static func codexShowsConversationOpenElsewhere(in screen: ANSIScreen) -> Bool {
         let rows = screen.rows
         guard let last = rows.lastIndex(where: { !$0.isBlank }) else { return false }
-        let bottom = rows[...last].suffix(codexPanelRows).map(\.trimmedText).joined(separator: " ")
-        let text = bottom.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard let sentence = text.range(of: "This conversation is open in another app") else { return false }
-        let after = text[sentence.upperBound...]
-        return [#"\bClose it there and press R to continue here\b"#, #"\br to retry\b"#, #"\br retry f fork\b"#]
-            .contains { after.range(of: $0, options: .regularExpression) != nil }
+        let bottom = rows[...last].suffix(codexPanelRows).map(\.trimmedText)
+        return bottom.indices.contains { start in
+            let joined = bottom[start...].joined(separator: " ").split(whereSeparator: \.isWhitespace)
+                .joined(separator: " ")
+            var text = Substring(joined)
+            if let first = text.first, isCodexPanelEmoji(first) {
+                text = text.dropFirst().drop(while: \.isWhitespace)
+            }
+            guard text.hasPrefix(codexPanelSentence) else { return false }
+            let after = String(text.dropFirst(codexPanelSentence.count))
+            return after.range(
+                of: #"^ (r to retry|Close it there and press R to continue here)\b"#, options: .regularExpression) != nil
+        }
+    }
+
+    private static let codexPanelSentence = "This conversation is open in another app"
+
+    /// The panel's emoji (🔒 in Codex's source): a pictograph, never a
+    /// bullet, a quote mark or another mark a conversation starts a row with.
+    private static func isCodexPanelEmoji(_ character: Character) -> Bool {
+        guard let scalar = character.unicodeScalars.first else { return false }
+        return !scalar.isASCII && scalar.properties.isEmoji
     }
 
     /// The rows, up to the last drawn one, that the panel and its hints may
