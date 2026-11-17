@@ -380,7 +380,7 @@ struct ConsoleHostIssueListHeightTests {
 struct ConsoleHostIssueCornerPresentationTests {
     @MainActor
     @Observable
-    private final class Harness {
+    fileprivate final class Harness {
         var issues: [ConsoleHostStatusPresentation]
         init(_ issues: [ConsoleHostStatusPresentation]) { self.issues = issues }
     }
@@ -394,7 +394,7 @@ struct ConsoleHostIssueCornerPresentationTests {
                 onShowAll: {},
                 autoCollapseDelay: .milliseconds(60)
             )
-            .environment(\.accessibilityReduceMotion, true)
+            .transaction { $0.disablesAnimations = true }
             .environment(\.locale, Locale(identifier: "en_US"))
         }
     }

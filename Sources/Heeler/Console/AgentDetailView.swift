@@ -407,7 +407,7 @@ struct AgentDetailView: View {
             isSceneActive: scenePhase == .active,
             isOnStage: mount.hasAppeared && isOnStage(),
             showsShellTerminal: openTerminal.shell != nil || openTerminal.isOpening
-                || shellRoute != nil)
+                || shellRoute != nil || changes.store != nil)
     }
 
     private func updateFocus() {
@@ -544,7 +544,7 @@ struct AgentDetailView: View {
             notificationCenter: keyboardInset.notificationCenter,
             complete: completeDeparture))
         .onAppear {
-            mount.hasAppeared = true
+            mount.appear()
             // A detail mounted afresh covers nothing, whatever the last one
             // in this window left behind.
             sceneRouting?.agentCoverDidChange(agent: shellRoute == nil ? nil : agent.id)
@@ -552,18 +552,24 @@ struct AgentDetailView: View {
             prepareRetainedAgent()
             updateFocus()
         }
-        .modifier(AgentFocusFeed(state: { focusViewingState }, update: { updateFocus() }))
+        .modifier(AgentFocusFeed(
+            mount: mount,
+            activity: activity,
+            state: { focusViewingState },
+            update: { updateFocus() }))
         .onDisappear {
-            mount.hasAppeared = false
-            focus.leave()
-            console.setAgentShown(nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
-            // The router's truth, not SwiftUI's: a spurious disappear, or
-            // Changes pushed over the detail, keeps the upload going.
+            // The router's truth, not SwiftUI's: iPhone can send a spurious
+            // disappear while the detail stays on stage, and then none when
+            // Back really leaves, or push Changes/Shell over the detail.
             let key = presenceKey
             let session = session
-            Task { @MainActor in
-                await Task.yield()
-                guard !isVisible() else { return }
+            let focus = focus
+            let console = console
+            let viewer = presenceToken
+            let sceneID = sceneRouting?.sceneID
+            mount.scheduleExit(isVisible: isVisible) {
+                focus.leave()
+                console.setAgentShown(nil, viewer: viewer, scene: sceneID)
                 session.detailDidDisappear(key)
             }
         }
@@ -822,10 +828,13 @@ struct AgentDetailView: View {
 /// body it re-evaluated the detail, and the surface the detail builds, with
 /// every Agent's status change.
 private struct AgentFocusFeed: ViewModifier {
+    let mount: AgentDetailMount
+    let activity: AppActivityCoordinator
     let state: @MainActor () -> AgentFocusCoordinator.ViewingState
     let update: @MainActor () -> Void
 
     func body(content: Content) -> some View {
+        let _ = mount.bind(activity: activity, state: state, onUpdate: update)
         content.onChange(of: state()) { update() }
     }
 }
@@ -924,16 +933,98 @@ struct AgentShellRoute: Equatable {
 
 private final class AgentDetailRetentionHolder {}
 
-/// Whether SwiftUI has the detail mounted, for the focus state.
+/// Whether the detail is mounted on stage, for the focus state.
 ///
-/// A push appears the detail, disappears it and appears it again within one
-/// frame. As the detail's own state, each flip re-evaluated the detail's
-/// body and the surface it builds. Here only what reads it follows it
-/// (`AgentFocusFeed`).
+/// A push can appear the detail, disappear it and appear it again within one
+/// frame, or on iPhone send a spurious `onDisappear` ~70 ms after appearing
+/// with no matching `onAppear` (freezing SwiftUI's `.onChange`) and none on
+/// the real Back. Tracking the router's `isVisible()` and `@Observable` focus
+/// inputs here keeps focus and viewer state alive until the detail really leaves.
 @MainActor
 @Observable
-private final class AgentDetailMount {
-    var hasAppeared = false
+final class AgentDetailMount {
+    private struct PendingExit {
+        let isVisible: () -> Bool
+        let onExit: () -> Void
+    }
+
+    private(set) var hasAppeared = false
+    @ObservationIgnored private var stageExit: Task<Void, Never>?
+    @ObservationIgnored private var pendingExit: PendingExit?
+    @ObservationIgnored private var observationGeneration: UInt64 = 0
+    @ObservationIgnored private var activity: AppActivityCoordinator?
+    @ObservationIgnored private var currentState: (() -> AgentFocusCoordinator.ViewingState)?
+    @ObservationIgnored private var currentOnUpdate: (() -> Void)?
+
+    func bind(
+        activity: AppActivityCoordinator,
+        state: @escaping () -> AgentFocusCoordinator.ViewingState,
+        onUpdate: @escaping () -> Void
+    ) {
+        self.activity = activity
+        currentState = state
+        currentOnUpdate = onUpdate
+    }
+
+    func appear() {
+        stageExit?.cancel()
+        stageExit = nil
+        pendingExit = nil
+        hasAppeared = true
+        observationGeneration &+= 1
+        track(generation: observationGeneration)
+    }
+
+    func scheduleExit(
+        isVisible: @escaping () -> Bool,
+        onExit: @escaping () -> Void
+    ) {
+        stageExit?.cancel()
+        stageExit = nil
+        if !isVisible() {
+            pendingExit = nil
+            disappear()
+            onExit()
+            return
+        }
+        pendingExit = PendingExit(isVisible: isVisible, onExit: onExit)
+        stageExit = ChatStageExit.watch(isOnStage: isVisible) { [weak self] in
+            self?.completeExit()
+        }
+    }
+
+    private func completeExit() {
+        guard let exit = pendingExit else { return }
+        pendingExit = nil
+        disappear()
+        exit.onExit()
+    }
+
+    private func disappear() {
+        stageExit?.cancel()
+        stageExit = nil
+        observationGeneration &+= 1
+        hasAppeared = false
+    }
+
+    private func track(generation: UInt64) {
+        guard hasAppeared, observationGeneration == generation, let currentState else { return }
+        _ = withObservationTracking {
+            _ = activity?.activationCount
+            _ = pendingExit?.isVisible()
+            return currentState()
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.hasAppeared, self.observationGeneration == generation else { return }
+                if let pendingExit = self.pendingExit, !pendingExit.isVisible() {
+                    self.completeExit()
+                    return
+                }
+                self.currentOnUpdate?()
+                self.track(generation: generation)
+            }
+        }
+    }
 }
 
 @MainActor

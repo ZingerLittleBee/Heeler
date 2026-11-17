@@ -98,6 +98,7 @@ final actor ScriptedTransport: Transport {
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
     private(set) var agentFocuses: [AgentTarget] = []
     private var focusFailure: TransportError?
+    private var nextFocusGate: ScriptedTransportCallGate?
     /// Every `agent.rename` / `workspace.rename` received, in order; the
     /// rename flows (#98) assert on the params they forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
@@ -323,6 +324,10 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent rename (agent or workspace) throw `failure`.
     func setFocusFailure(_ failure: TransportError?) {
         focusFailure = failure
+    }
+
+    func gateNextFocus(using gate: ScriptedTransportCallGate) {
+        nextFocusGate = gate
     }
 
     func setRenameFailure(_ failure: TransportError?) {
@@ -759,6 +764,11 @@ final actor ScriptedTransport: Transport {
     }
 
     func focusAgent(_ target: AgentTarget) async throws {
+        if let gate = nextFocusGate {
+            nextFocusGate = nil
+            await gate.waitUntilOpen()
+            try Task.checkCancellation()
+        }
         agentFocuses.append(target)
         if let focusFailure { throw focusFailure }
     }

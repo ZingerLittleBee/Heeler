@@ -1378,7 +1378,8 @@ actor HeelerSSHTransport: Transport {
         _ = try await request(
             method: "agent.focus",
             params: target,
-            decoding: AgentInfoResponse.self)
+            decoding: AgentInfoResponse.self,
+            priority: .interactive)
     }
 
     func renameAgent(_ params: AgentRenameParams) async throws {
@@ -2487,7 +2488,8 @@ actor HeelerSSHTransport: Transport {
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
         onDispatched: (@Sendable () async -> Void)? = nil,
-        timeout: Duration? = nil
+        timeout: Duration? = nil,
+        priority: SSHChannelAdmission.Priority = .normal
     ) async throws -> R {
         try await withColdStartWake {
             try await self.performRequest(
@@ -2496,7 +2498,8 @@ actor HeelerSSHTransport: Transport {
                 decoding: type,
                 beforeDispatch: beforeDispatch,
                 onDispatched: onDispatched,
-                timeout: timeout)
+                timeout: timeout,
+                priority: priority)
         }
     }
 
@@ -2506,7 +2509,8 @@ actor HeelerSSHTransport: Transport {
         decoding type: R.Type,
         beforeDispatch: (@Sendable () async throws -> Void)? = nil,
         onDispatched: (@Sendable () async -> Void)? = nil,
-        timeout: Duration? = nil
+        timeout: Duration? = nil,
+        priority: SSHChannelAdmission.Priority = .normal
     ) async throws -> R {
         guard connected else {
             throw TransportError.sshUnreachable(
@@ -2523,7 +2527,7 @@ actor HeelerSSHTransport: Transport {
             let socketPath = try await self.resolvedSocketPath()
             if environment.isWindows {
                 try await self.checkWindowsBridge()
-                return try await self.channelAdmission.withChannel(.ordinarySession) {
+                return try await self.channelAdmission.withChannel(.ordinarySession, priority: priority) {
                     let exec: SSHExecChannel
                     do {
                         exec = try await self.connection.openExec(
@@ -2562,7 +2566,7 @@ actor HeelerSSHTransport: Transport {
                     }
                 }
             }
-            return try await self.channelAdmission.withChannel(.ordinaryForwarding) {
+            return try await self.channelAdmission.withChannel(.ordinaryForwarding, priority: priority) {
                 do {
                     return try await self.connection.exchangeStreamLocal(
                         socketPath: socketPath,
