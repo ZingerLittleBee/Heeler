@@ -128,7 +128,8 @@ Terminal surface takes the size like any shown terminal, and its Chat surface
 takes none but types into the block and lists the Host's conversations in its
 picker, so keep both to lab Agents with stand-in programs. `RexConsoleTests`
 hosts that detail against `FakeRexServer` and checks what each surface sends;
-`RexChatTypingLiveTests` is the live check of Chat's typing.
+`RexChatTypingLiveTests` is the live check of Chat's typing, and of its
+screen read over hyperlinks and the styles Chat does not keep.
 
 An attachment on a Rex Agent writes the file into a new
 `${TMPDIR:-/tmp}/heeler.XXXXXXXX` directory on the Host and types its path

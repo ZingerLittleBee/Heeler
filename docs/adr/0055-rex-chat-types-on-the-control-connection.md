@@ -63,11 +63,13 @@ paths typed with the message.
   16 KiB, then 64 KiB, then 128 KiB, each in at most eight pages, so a long
   history never costs more than that. The screen is the answer's last `rows`
   lines. Each line may hold only the SGR codes the lab saw, `CSI n C` for
-  blank cells, and `CSI n X` followed by the same `CSI n C` for cells blanked
-  in a background color, and must close its style. Any other sequence or
-  control character, a cut character, a style left open, too few lines or a
-  row wider than the grid makes the read fail as "Rex's answer could not be
-  read.", and nothing is answered over it.
+  blank cells, `CSI n X` followed by the same `CSI n C` for cells blanked in
+  a background color, and hyperlinks in the forms Rex writes, which change no
+  cell and are passed over; it must close its style, though a link may stay
+  open into the next line. Any other sequence or control character, a cut
+  character, a style left open, too few lines or a row wider than the grid
+  makes the read fail, which Chat shows as the terminal's screen not being
+  readable through Rex, and nothing is answered over it.
 - **The read rhythm.** The Blocked Card keeps the watch every Server Kind
   uses: a read each second, and reads every 150 ms only in the short windows
   after the user answers. Each read is serial, bounded as above and usually
@@ -155,7 +157,8 @@ paths typed with the message.
   user turns to its Terminal surface (ADR 0056).
 - A program with bracketed paste off gets no Composer Send.
 - A screen the decoder does not know, as after a Rex update that writes
-  another sequence, stops Blocked Card answers with "Rex's answer could not
-  be read." until the decoder learns it.
+  another sequence, stops Blocked Card answers, Stop and Send until the
+  decoder learns it. A real Codex's hyperlinks did so before the decoder
+  took them.
 - A process that replaced the Agent under the same process id and program is
   not told apart.

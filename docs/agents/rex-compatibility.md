@@ -706,6 +706,50 @@ leave on the server, against made-up lab programs in `heeler-lab-` sessions.
   markers; and the block's size answer, owner included, read the same before
   and after.
 
+Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18: lab captures
+`m1_vt_grammar` (410 answers), `m2_holes` (82) and `m3_reader_holes` (39),
+each from a 40 by 8 lab block whose program wrote made-up bytes to its
+terminal unchanged, and one read-only read of a real Codex screen.
+
+- A real Codex (codex-cli 0.169.0) first showed the gap: its answer's last
+  lines drew two version numbers as hyperlinks, which the reader of
+  2026-11-17 refused, so every check of its input box failed while the
+  composer was empty.
+- Hyperlinks came as OSC 8 ended by `ESC \`, also where the program ended
+  them with BEL: `ESC ] 8 ; ; URI ESC \` to open, or with `id=` and a value
+  in place of the empty parameters, and `ESC ] 8 ; ; ESC \` to close. Of the
+  program's parameters Rex kept at most one `id=` with a value, and wrote
+  nothing for any other. URIs and id values held no C0 control, which Rex
+  dropped. In URIs DEL, every C1 control (U+009C included) and U+FFFD came
+  through as written, and in id values DEL, the C1 controls tried and U+FFFD
+  did. A link whose parameters and URI the program wrote in more than 2,046
+  bytes was dropped whole, its text kept.
+- A link stayed open past a row's end and was not opened again on the next
+  row. Rex closed it just before the next cell written outside it, which
+  could be rows later, or after the answer's last written cell. A link of one
+  URI written cell by cell without an id came back opened at each cell.
+- SGR came one attribute a sequence, each change restating the cell's whole
+  style after a reset, and each styled row still ended with a reset: `0`,
+  `1`, `2`, `3`, `4`, `4:2` to `4:5`, `5`, `7`, `8`, `9`, `53`, and `38`,
+  `48` and `58` followed by `5;n` or `2;r;g;b`. The colon came only in `4:2`
+  to `4:5`. What a program set with other codes came in these forms (30 to 37
+  and 90 to 97 as indexed colors, 21 as `4:2`, 6 as `5`, colon colors with
+  semicolons), and no code that turns one attribute off came at all.
+- With a URI holding a byte that is not UTF-8, `format` counted the answer's
+  total in the program's bytes and `blob_read` in the text after
+  replacement, so the totals differed and a paged read stops there.
+- A tail read starting anywhere inside a link's sequence lost only its cut
+  line, since no sequence held a line end, and pages that ended inside one
+  joined into the whole answer.
+- For 25 of 138 marked strings, the cells Rex gave differed from Heeler's
+  cell width: some Devanagari and Thai clusters, U+4DC0, a skin tone
+  modifier after a letter, U+3248 and its neighbors, and unassigned code
+  points in wide blocks.
+- `RexChatScreen` takes these forms beside the SGR it took before, and still
+  fails a read on anything else (`RexChatScreenTests`). Read through it, the
+  real Codex screen gave its 53 rows, and Codex's input box on it read as
+  empty.
+
 ### The Agent detail
 
 Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket, 2026-11-17,
