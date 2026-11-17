@@ -40,8 +40,12 @@ running where the socket is there, and not running where Rex is installed
 without one; turned on then, it connects once the user starts Rex, since
 Heeler never starts the server and never runs the `rex` command-line tool to
 find it. A terminal running a known agent program is an Agent with its Agent
-Status, opened as its terminal, and the others are Terminals: no Chat,
-Composer, notifications, Live Activities or Usage (ADR 0054).
+Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
+detail, with Chat for Claude Code and Codex, the Composer and the terminal,
+and nothing installed on the machine; an Agent whose program reports nothing
+to Rex reads Unknown and has no Stop and no Blocked Card. A Rex Host offers
+no notifications, Live Activities, Usage, attachments, Changes or New Agent
+(ADR 0056).
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
@@ -396,7 +400,9 @@ accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
 stop key. On native Windows Send pastes nothing into a Terminal whose shell can
 outlive its Agent, because its foreground would not show the Agent leaving
-(ADR 0035).
+(ADR 0035). On Rex, Send keeps those checks, in tmux's order, as requests to
+the terminal's block on the control connection, one at a time with the open
+terminal's input, and Stop is one Esc (ADRs 0055 and 0056).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
@@ -463,6 +469,13 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
+On Rex, for Claude Code and Codex only, Chat binds the conversation as on
+herdr-core, from what the Host's SSH connection reads about the foreground
+process Rex names, and keeps a choice on this device. Its Send, Stop and
+Blocked Card answers are requests to the terminal's block on the control
+connection, never a terminal of Chat's own, and it reads the screen from the
+server's text of it, treating one whose shape is not certain as no screen
+(ADRs 0055 and 0056).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
 offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,
 only for the programs tested there.
@@ -533,8 +546,9 @@ _Avoid_: spend, cost (alone), usage (unqualified), credits
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details
 from the Transcript; answers go through `agent.send_keys` and
-`pane.send_input`, never Attach, and on herdr-core through Chat's own
-attach. A card sends nothing once the dialog has
+`pane.send_input`, never Attach, on herdr-core through Chat's own
+attach, and on Rex through requests on the control connection (ADR 0055).
+A card sends nothing once the dialog has
 changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
 says why instead, since its prompt would act on those keys.

@@ -50,16 +50,21 @@ server has been observed yet.
   `RexAgentRule` reads the foreground with `HerdrCoreAgentRule.program` and
   the root Program Status while its owner is that foreground. The details read
   adds `program_status`, and the control connection's `program_status_changed`
-  and `program_status_removed` events keep it current; a Rex Agent opens as
-  its terminal.
-- Chat's reads and binding are built and stay closed: `HostCapabilities`
-  offers a Rex Host no Chat. `RexHostReads` reads files and processes over
+  and `program_status_removed` events keep it current.
+- A Rex Agent opens the Agent detail, with its Chat and Terminal surfaces
+  ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)):
+  `HostCapabilities` offers Composer Send and Stop, and Chat for Claude Code
+  and Codex once `server.version` named a Linux or macOS kernel; the Terminal
+  surface takes the size under ADR 0053's rule and Chat takes none; the
+  terminal pool holds no Agent's block, and windows take turns with a Rex
+  Host's Agent terminals (`terminalsShowInOneWindow`).
+- Chat's reads and binding: `RexHostReads` reads files and processes over
   the Host's SSH connection and can write nothing, `HerdrCoreSessionBinder`'s
   `.rex` scope binds from the foreground Rex names, and
   `RexConsoleProjection` keeps the Host's kernel and a terminal's pick in
   `HerdrCoreHostMemory` on this device. See
   [Processes and Chat evidence](#processes-and-chat-evidence).
-- Chat's typing and Composer Send are built and stay closed the same way
+- Chat's typing and Composer Send
   ([ADR 0055](../adr/0055-rex-chat-types-on-the-control-connection.md)):
   `RexBlockRequests`, from `RexHostSession.blockRequests`, reads and types
   into one block on the control connection, in the lane an open view's input
@@ -104,7 +109,15 @@ in users' words.
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
 - **Existing terminals only.** Nothing is created, closed or renamed, and no
-  layout changes; no Chat, Composer, notifications, Live Activities or Usage.
+  layout changes; no notifications, Live Activities, Usage, Changes, New
+  Agent or attachments.
+- **Chat for two programs.** Chat is offered for Claude Code and Codex only.
+  An Agent whose program reports nothing to Rex reads Unknown, and then has
+  no Stop and no Blocked Card; the user acts on its Terminal surface
+  ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)).
+  No real Claude Code or Codex has been bound or typed into inside Rex in a
+  lab; binding rests on ADR 0034's macOS evidence and fixtures, and typing on
+  stand-ins.
 - **Agents Heeler cannot see.** A program that is a block's own command
   (behind `login`), one started with `exec` from the shell, and one under a
   `sh -c` that does not exec it read as `login` or the shell, so they stay
@@ -658,6 +671,22 @@ against made-up lab programs in `heeler-lab-` sessions.
   it read each arrived once, in order, pastes framed by the program's
   markers; and the block's size answer, owner included, read the same before
   and after.
+
+### The Agent detail
+
+Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket, 2026-11-17,
+with Rex Agents opening the Agent detail
+([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)).
+
+- `RexChatTypingLiveTests`, `RexTerminalSizeLiveTests` and
+  `RexProgramStatusLiveTests` passed again in one run, 3 of 3. A read-only
+  lab client compared the server before and after: the same server
+  instance, no `heeler-lab-` session left, and every other terminal's size
+  and owner unchanged.
+- What each surface of the detail sends is checked against `FakeRexServer`,
+  not a live server: on Chat no `session.attach`, `data.connect` or
+  `own_block`; on the Terminal surface the take before `data.connect`, and a
+  give back on leaving (`RexConsoleTests`).
 
 ### Documented for API revision 12, not observed
 

@@ -122,7 +122,13 @@ A Rex terminal the app shows takes its size from every other client of that
 server ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md)),
 so opening one in the Simulator resizes it on the desktop too. Open only
 terminals of `heeler-lab-` sessions there, from Terminals and from Agents
-alike; reading the lists takes nothing.
+alike; reading the lists takes nothing. A Rex Agent opens the Agent detail
+([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)): its
+Terminal surface takes the size like any shown terminal, and its Chat surface
+takes none but types into the block and lists the Host's conversations in its
+picker, so keep both to lab Agents with stand-in programs. `RexConsoleTests`
+hosts that detail against `FakeRexServer` and checks what each surface sends;
+`RexChatTypingLiveTests` is the live check of Chat's typing.
 
 ## Lane selection
 

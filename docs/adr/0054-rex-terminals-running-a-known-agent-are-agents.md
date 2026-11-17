@@ -14,6 +14,11 @@ report as an event of its terminal. That is enough to list such a terminal as
 an Agent with its Agent Status without installing, configuring or running
 anything on the machine.
 
+Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
+a Rex Agent opens the Agent detail, with Chat for Claude Code and Codex, its
+Terminal surface and the Composer, not the Terminals list's terminal detail.
+`agentsOpenAsTerminals` is gone.
+
 ## Decision
 
 - **Which terminal is an Agent.** A Rex terminal is an Agent while a known
@@ -97,7 +102,12 @@ anything on the machine.
   and its row offers Pin alone: no window of its own, which the Terminals list
   does not offer either, and no Changes read. When its program leaves the
   foreground the detail reads Agent Gone, as a tmux Agent's does, and the
-  terminal is back under Terminals.
+  terminal is back under Terminals. (Superseded by ADR 0056: a Rex Agent
+  opens the Agent detail, whose Terminal surface keeps ADR 0053's size rule
+  and notice, with Chat for Claude Code and Codex, Composer Send and Stop.
+  Its menus offer only what the Host serves, so Changes, rename, close,
+  worktrees, New Agent and attachments stay out, and its row still offers
+  Pin alone.)
 - **Still left out.** Notifications, Live Activities, widgets, Usage, Accounts,
   background refresh, the plugin, the Host Helper and Pairing Codes still pick
   their Hosts by kind and leave Rex out, so no code that walks every Agent acts
@@ -118,7 +128,9 @@ anything on the machine.
   rather than miss one that ended while the app was away: ADR 0046 counts a
   turn that starts and ends between two looks too.
 - Opening a Rex Agent as its terminal reuses a detail that already does
-  everything Rex supports, and offers nothing Rex cannot serve.
+  everything Rex supports, and offers nothing Rex cannot serve. (ADR 0056
+  gated the Agent detail's Host asks by capability instead, once Chat was to
+  ship.)
 
 ## Evidence
 
@@ -160,6 +172,8 @@ client on the local socket with inert stand-in agents in lab sessions
 - Opening a Rex Agent in the Agent detail with its Chat and Composer hidden:
   rejected. That detail asks its Host for the Agent's process, presence and
   Changes, which a Rex Host cannot serve, and lacks the size notice.
+  (Reversed by ADR 0056: the detail now asks only what a capability allows,
+  its terminal carries the size notice, and Chat and the Composer show.)
 - A Rex Agent that never reads Done, as first decided: superseded on
   2026-11-16 by the maintainer's decision that it reads Done as the other
   kinds' Agents do.
@@ -189,3 +203,6 @@ client on the local socket with inert stand-in agents in lab sessions
   per device; the Rex projection lists Agents and prunes Pins;
   `HostCapabilities.agentsOpenAsTerminals` routes a Rex Agent's detail and its
   row's offers, and that terminal screen reports the Agent as shown.
+  (Replaced by ADR 0056: Rex Agents route as every kind's do, and
+  `rowsReadChanges` and `terminalsShowInOneWindow` decide the row's offers;
+  the Agent detail reports the Agent as shown from either surface.)

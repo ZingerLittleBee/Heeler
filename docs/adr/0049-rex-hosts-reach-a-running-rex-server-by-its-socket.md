@@ -15,6 +15,11 @@ Amended by [ADR 0054](0054-rex-terminals-running-a-known-agent-are-agents.md):
 Rex keeps a Program Status per terminal, which Heeler now reads, and a Rex
 terminal running a known agent program is an Agent.
 
+Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
+a Rex Agent opens the Agent detail, with Chat for Claude Code and Codex and
+the Composer, read over the Host's SSH connection and typed on the control
+connection.
+
 Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
 is gone, and every build offers Rex.
 
@@ -91,8 +96,9 @@ detail.
   Live Activities, Usage, Accounts, plugin or Host Helper. A first version
   attaches only to Terminals that already exist and accepts one Rex API
   revision. (Amended by ADR 0054: a terminal running a known agent program is
-  an Agent with its Agent Status, opened as its terminal; the rest of this
-  list stands.)
+  an Agent with its Agent Status. Amended by ADR 0056: that Agent opens the
+  Agent detail, with Chat for Claude Code and Codex, Composer Send and Stop;
+  the rest of this list stands.)
 
 ## Why
 
@@ -188,7 +194,8 @@ What every build now does, and what it means for people without Rex:
   shape.
 - Agents, Chat, Composer, New Agent and New Terminal, notifications, Live
   Activities, widgets, Usage and background refresh still leave Rex Hosts out
-  by Server Kind, as before. (Agents no longer do since ADR 0054.)
+  by Server Kind, as before. (Agents no longer do since ADR 0054, and Chat
+  and the Composer no longer do since ADR 0056.)
 
 ## Update 2026-11-16: a Server of its Host
 
@@ -244,7 +251,8 @@ server did. Where Rex differs from tmux, this says how and why.
   none, rather than asking for a Host that Hosts already lists. Agents, Chat,
   Composer, New Agent and New Terminal, notifications, Live Activities,
   widgets, background refresh, the plugin, the Host Helper and Pairing Codes
-  still leave Rex out. (Agents no longer do since ADR 0054.)
+  still leave Rex out. (Agents no longer do since ADR 0054, and Chat and the
+  Composer no longer do since ADR 0056.)
 
 For Rex this supersedes the confirmation in Host detail, "where none runs,
 Rex is not offered", and detection that offers Rex only for a usable socket.

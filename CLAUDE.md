@@ -51,7 +51,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   channel of its own, painted from the server's redraw. Connecting never
   starts a server or runs `rex`; a block's size is taken only for a terminal
   on screen, before its first paint, and given back when it leaves (ADRs 0049
-  to 0053).
+  to 0053). Rex Agents open the Agent detail: Chat (Claude Code and Codex)
+  reads over SSH (SFTP and bounded read-only execs, nothing installed) and
+  types as block requests on the control link (ADRs 0054 to 0056).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

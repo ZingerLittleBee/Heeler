@@ -20,20 +20,27 @@ another client's take, on a take that fails, on which terminals take, and on
 having no setting were set as defaults with that change, not asked for in it;
 each can change without revisiting the rest.
 
+Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
+a Rex Agent's terminal shows on the Agent detail's Terminal surface, which is
+a showing under these rules, and never while its Chat surface is on screen.
+
 ## Decision
 
 - **Shown means fitted.** When Heeler shows a live Rex terminal, it takes the
   block's size for this screen with no tap, once per showing. A showing
   begins when the terminal's screen is on screen in a scene in the
-  foreground: when it opens, from Terminals or as a Rex Agent from Agents
-  (ADR 0054); when the retention pool brings a kept attach back on screen;
-  and when its scene comes back from the background. It ends when the screen
-  goes off screen, its scene goes to the background, or the attach is
-  stopped. A reattach while the screen stays shown, after a drop, over a new
-  SSH connection, or on a fresh control client after a longer drop, belongs to
-  the same showing, and each new attach takes the size as it opens. On iPad a
-  terminal shows in one scene at a time, since the retention pool refuses it a
-  second window, so two scenes never take it from each other.
+  foreground: when it opens from Terminals, or as a Rex Agent's Terminal
+  surface in the Agent detail (ADR 0056); when the retention pool or the
+  Agent detail brings a kept attach back on screen; and when its scene comes
+  back from the background. It ends when the screen goes off screen (for an
+  Agent, also when its detail turns to Chat), its scene goes to the
+  background, or the attach is stopped. A reattach while the screen stays
+  shown, after a drop, over a new SSH connection, or on a fresh control client
+  after a longer drop, belongs to the same showing, and each new attach takes
+  the size as it opens. On iPad a terminal shows in one scene at a time, since
+  the retention pool refuses it a second window and windows take turns with a
+  Rex Host's Agent terminals (ADR 0056), so two scenes never take it from each
+  other.
 - **Before the first paint.** An attach that opens for a showing takes the
   block before its stream starts: `own_block` with mode `take`, then the
   view's grid asked for as the owner, then `data.connect`. Rex applies an
@@ -75,8 +82,8 @@ each can change without revisiting the rest.
   answer was on its way, since those may be newer.
 - **Only a terminal the user looks at.** Nothing else takes a size: not an
   attach the retention pool keeps off screen, not a prefetch, not the lists, a
-  row, Agent Status or a "looked at" mark (ADR 0054), and not a screen whose
-  scene is in the background.
+  row, Agent Status or a "looked at" mark (ADR 0054), not Chat's reads or
+  typing (ADR 0055), and not a screen whose scene is in the background.
 - **The tap stays.** The notice and its Fit to Screen stay as they were, as
   the fallback and the way to take the size back within a showing; there is
   no setting and no new control. A tap that goes through lets the showing take
@@ -240,7 +247,9 @@ captures, live tests and fakes, recorded with their sources in
   background and whether the showing still takes the size on its own; a store
   that replaces another carries it, as it carries `isViewed`.
   `TerminalSizeNoticeOverlay` tells the store when its scene goes to the
-  background and when it comes back.
+  background and when it comes back. `AgentAttachStore` forwards the same
+  rule for the Agent detail's terminal (ADR 0056), and the overlay reads
+  either through `TerminalSizeNoticeSource`.
 - An attach replaced while the screen stays shown, as after a possible
   suspension, gives the size back as the old attach stops and takes it again
   as the new one opens, even when the old one's take was cut short by that

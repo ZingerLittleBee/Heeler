@@ -3,7 +3,7 @@
 Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
 > [!IMPORTANT]
-> Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals Rex already has: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
+> Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals and Agents Rex already has: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
 
 ## Before you start
 
@@ -75,7 +75,7 @@ An Agent started as a Rex terminal's own command rather than from its shell, or 
 
 ## Working in a terminal
 
-Tap a terminal in **Terminals**, or an Agent in **Agents**, to open it. An Agent opens as its terminal, without Chat or the Composer; when the Agent exits while it is open, it reads **Agent Gone**, and the terminal is back in **Terminals**. Other Rex clients keep showing it while you work:
+Tap a terminal in **Terminals** to open it. An Agent in **Agents** opens like an Agent on any other Host, with [Chat](#chat) and its terminal; when the Agent exits while it is open, it reads **Agent Gone**, and the terminal is back in **Terminals**. Other Rex clients keep showing it while you work:
 
 - **Opening:** The terminal appears once Rex has redrawn its screen and history, so a long history can take a few seconds on a slow connection. A program that keeps writing, such as a spinner, can show a few lines twice or out of place until it pauses; Heeler then paints it again.
 - **Typing and pasting:** Type in Text or Keys mode, tap **Paste**, or send a Snippet. You can type whichever device set the terminal's size. What you type reaches the terminal in order, and Heeler never sends it twice: when the connection drops before Rex answers, the terminal shows **Connection dropped** with **Reattach**, and nothing typed after that point was sent. Keys typed while Heeler reconnects are not sent either; the terminal reconnects and paints again. A paste too large to send in one piece is blocked rather than split; paste less at a time.
@@ -92,7 +92,7 @@ When a terminal stops, it says why:
 
 ### Fitted to your screen
 
-A Rex terminal has one size, set by one device at a time. When you open a Rex terminal, from **Terminals** or **Agents**, Heeler fits it to your screen before it appears. Rex resizes the terminal itself, not only your view of it, so every device showing it, the Rex app on your Mac included, gets your screen's size while you have it open here. Heeler gives the size back when you leave the terminal, when Heeler goes to the background, or when the terminal ends, and the device that had it gets it back. Coming back fits it again.
+A Rex terminal has one size, set by one device at a time. When you open a Rex terminal from **Terminals**, or show an Agent's terminal, Heeler fits it to your screen before it appears. Chat never resizes the terminal. Rex resizes the terminal itself, not only your view of it, so every device showing it, the Rex app on your Mac included, gets your screen's size while you have it open here. Heeler gives the size back when you leave the terminal, when Heeler goes to the background, or when the terminal ends, and the device that had it gets it back. Coming back fits it again.
 
 ### Sized for another device
 
@@ -104,9 +104,26 @@ When another device, such as the Rex app, takes the size while you have the term
 
 Leaving the terminal and coming back fits it to your screen again.
 
+On iPad, one window at a time shows a Rex Host's Agent terminals. Another window that opens one reads **Live in Another Window**; tap **Take Over Here** to move it there.
+
+## Chat
+
+**Chat** works for Claude Code and Codex in Rex on macOS and Linux, with nothing installed on the Host. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
+
+| Program | Session notes |
+| --- | --- |
+| Claude Code | Binds from the running Claude Code itself. After `/clear` or `/resume`, Chat checks again before it sends your next message. |
+| Codex | Binds once it holds its conversation file, after the first message. Start it with `--no-daemon` ([why](chat.md#set-up-the-host)); otherwise use **Choose a Conversation**. |
+| Other Agents | No Chat on Rex Hosts yet. They open on their terminal. |
+
+- **Can't Tell the Conversation:** When Chat cannot prove which conversation the Agent shows, it says so with **Check Again**. Tap **Choose a Conversation**, preview one, and tap **Use This Conversation**. Heeler keeps that choice on this device, for this terminal, until the Agent exits or Rex restarts. Nothing is written on the Host.
+- **Send:** **Send** pastes your message and presses Enter once it checks that the same Agent still holds the terminal, is not **Blocked**, and accepts a paste. The Composer under the terminal sends the same way. If Rex does not answer, Heeler never sends the message again; check the terminal first.
+- **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Send** becomes **Stop**, which presses Esc. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal.
+- **Commands:** `/` offers `/compact` while the Agent reports it is idle, and not the Agent's skills. Use the terminal for the rest.
+
 ## What Heeler does not do yet
 
-- **Agents show their status only:** no Chat, Composer, Stop, Changes, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
+- **Status and Chat only:** no Changes, Skills, images or files in messages, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
 - **Nothing started, renamed, or closed:** New Agent, New Terminal, New Workspace, Rename, and Close are not offered. Do these in Rex; Heeler shows the result.
 - **No uploads, Worktrees, Host Helper, Pairing Code, or Add by Name** for Rex.
 
@@ -117,5 +134,6 @@ Leaving the terminal and coming back fits it to your screen again.
 - **What the first paint leaves out:** Rex's redraw does not carry the cursor shape or the terminal's own default colors, so the cursor keeps Heeler's shape until the program sets it again, and the terminal wears your Heeler theme. While a full-screen program is open, the history behind it appears only after the program closes.
 - **Another device's size does not fit:** While a terminal stays at a size another device set wider than your screen (see [Sized for another device](#sized-for-another-device)), its lines wrap at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, the cursor, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.
 - **What has been tested so far:** Rex has been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. They have not been tried on a physical iPhone or iPad, or with the Rex app showing the same terminal.
+- **Chat not yet tried with a real Agent in Rex:** Chat's typing was tested with stand-in programs, and its binding with saved Claude Code and Codex files, not with a real Claude Code or Codex running in Rex.
 
-Last checked on 2026-11-16 against Rex 0.1.0-preview.14 (API revision 12) on macOS, in the iOS Simulator.
+Last checked on 2026-11-17 against Rex 0.1.0-preview.14 (API revision 12) on macOS, with test programs.

@@ -21,6 +21,10 @@ and text, and could write and paste into it, without the block's size or
 owner moving. Rex answers those reads and takes that input on the control
 connection Heeler already holds (ADR 0050).
 
+Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
+Chat and the Composer are offered on Rex Hosts, in the Agent detail, and the
+terminal Composer offers Stop.
+
 ## Decision
 
 - **Requests to one block on the control connection.** Chat's reads and input
@@ -85,7 +89,10 @@ connection Heeler already holds (ADR 0050).
   Server Kinds.
 - **Stop.** Chat's Stop presses the keys of the program's Stop plan through
   these key presses, screen checks included, as on herdr-core Hosts (ADR
-  0024). The terminal Composer offers no Stop on a Rex Host.
+  0024). The terminal Composer offers no Stop on a Rex Host. (Amended by ADR
+  0056: the Agent detail's terminal Composer offers Stop while the Agent is
+  Working, and presses Esc through the terminal's own input, in the block's
+  lane.)
 - **Status decides Stop and the Blocked Card.** Both follow the Agent Status
   read from Rex's Program Status (ADR 0054). An Agent whose status is Unknown,
   because its program reported none, gets no Stop and no Blocked Card.
@@ -102,7 +109,10 @@ connection Heeler already holds (ADR 0050).
 - **Built, not offered.** `RexConsoleProjection` answers `readAgentScreen`,
   `sendAgentKeys`, `pasteIntoAgent`, `checkedChatTyping` and
   `checkedComposerSend` this way, while `HostCapabilities` still offers a Rex
-  Host no Chat and no Composer. Opening them is a separate change.
+  Host no Chat and no Composer. Opening them is a separate change. (Opened by
+  ADR 0056: a Rex Host whose server named a Linux or macOS kernel offers Chat
+  for Claude Code and Codex, and every Rex Host offers Composer Send and
+  Stop.)
 
 ## Why
 
@@ -126,7 +136,7 @@ connection Heeler already holds (ADR 0050).
 ## Consequences
 
 - An Agent with Unknown status cannot be stopped or answered from Chat; the
-  user opens its terminal.
+  user turns to its Terminal surface (ADR 0056).
 - A program with bracketed paste off gets no Composer Send.
 - A screen the decoder does not know, as after a Rex update that writes
   another sequence, stops Blocked Card answers with "Rex's answer could not

@@ -68,7 +68,8 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   on macOS or Linux. Sessions, windows, and terminals appear in the Console,
   a terminal running a coding Agent in Agents with the status it reports to
   Rex, and live terminals take typing, pastes, and Snippets, fitted to your
-  screen while you have them open
+  screen while you have them open. Claude Code and Codex open in Chat, with
+  nothing installed on the machine
   ([Read more](https://docs.heeler.bybee.dev/rex)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
@@ -123,7 +124,7 @@ herdr-core Hosts, including machines running the Herdr desktop app, are added ma
 
 tmux Hosts (tmux >= 3.3 on macOS and Linux) are added manually with their Server Kind and socket name confirmed. Connecting never starts a tmux server; on Linux, New Workspace can start one when you ask. Live terminals attach per Pane in tmux control mode alongside desktop clients, sizing to fit your screen and staying within an open desktop terminal on the same window. Claude Code hooks report Blocked, Done, and conversation ids, and the optional Host Helper adds status readers, Pi and Oh My Pi extensions, notifications, Live Activities, and Usage ([Connect tmux](https://docs.heeler.bybee.dev/tmux)).
 
-A Rex server (experimental; macOS and Linux, built against Rex 0.1.0-preview.14) is a Server of the Host it runs on: Heeler lists it when it looks at the machine, and you turn it on. Heeler reaches the running Rex server's Unix socket over a direct-streamlocal channel, never starts it, and works with Rex API revision 12 only. A Rex Server lists a terminal running a coding Agent under Agents with the status the Agent reports to Rex, and its other terminals under Terminals: no Chat, notifications, or Usage, and nothing is started, renamed, or closed from Heeler ([Connect Rex](https://docs.heeler.bybee.dev/rex)).
+A Rex server (experimental; macOS and Linux, built against Rex 0.1.0-preview.14) is a Server of the Host it runs on: Heeler lists it when it looks at the machine, and you turn it on. Heeler reaches the running Rex server's Unix socket over a direct-streamlocal channel, never starts it, and works with Rex API revision 12 only. A Rex Server lists a terminal running a coding Agent under Agents with the status the Agent reports to Rex, and its other terminals under Terminals. Its Agents open with Chat for Claude Code and Codex, read over SSH and typed through Rex, with nothing installed on the machine; there are no notifications, Usage, or attachments, and nothing is started, renamed, or closed from Heeler ([Connect Rex](https://docs.heeler.bybee.dev/rex)).
 
 For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
 
