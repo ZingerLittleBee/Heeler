@@ -240,8 +240,10 @@ Server Kinds have them. G2's one write is built this way:
   is whole. An image lands as `image.jpg` or `image.png`; a file keeps its
   name, with characters other than ASCII letters, digits, `.`, `-` and `_`
   turned into `_` and the stem cut to 64 characters. A failed or cancelled
-  transfer removes its `.part`; a staged file stays, as on every kind (ADR
-  0005). Nothing of Rex's runs, and no server is started.
+  transfer tries once, on its own SFTP client, to remove its `.part`; a link
+  that stalls until the app moves to a new connection leaves it (see the
+  evidence below). A staged file stays, as on every kind (ADR 0005). Nothing
+  of Rex's runs, and no server is started.
 - **Slots.** The exec, and then the SFTP channel for the transfer, each take
   one of the connection's four ordinary session slots, one at a time, at
   normal priority. Chat's file and process reads ask at interactive priority,
