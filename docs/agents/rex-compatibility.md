@@ -738,6 +738,9 @@ terminal unchanged, and one read-only read of a real Codex screen.
 - With a URI holding a byte that is not UTF-8, `format` counted the answer's
   total in the program's bytes and `blob_read` in the text after
   replacement, so the totals differed and a paged read stops there.
+  `RexChatScreen` takes a page only with the first answer's total, so on
+  that terminal every screen or kitty flags read longer than its first page
+  fails while the link stays in the answer (ADR 0055's consequences).
 - A tail read starting anywhere inside a link's sequence lost only its cut
   line, since no sequence held a line end, and pages that ended inside one
   joined into the whole answer.

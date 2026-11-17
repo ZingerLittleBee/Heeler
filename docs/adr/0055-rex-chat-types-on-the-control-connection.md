@@ -160,5 +160,10 @@ paths typed with the message.
   another sequence, stops Blocked Card answers, Stop and Send until the
   decoder learns it. A real Codex's hyperlinks did so before the decoder
   took them.
+- A hyperlink whose URI holds a byte that is not UTF-8 makes Rex count the
+  answer's length two ways, so every read of that terminal that takes more
+  than one page fails, the short kitty flags read included. While the link
+  stays in the answer, its history included, that terminal gets no Blocked
+  Card answers, Stop or Send, from Chat or the Composer.
 - A process that replaced the Agent under the same process id and program is
   not told apart.
