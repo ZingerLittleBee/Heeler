@@ -195,6 +195,80 @@ struct AgentFocusCoordinatorTests {
         }
     }
 
+    @Test func spuriousDisappearWhileVisibleKeepsMountAliveAndContinuesObservingFocusState() async throws {
+        let model = FocusMountObservationModel()
+        let mount = AgentDetailMount()
+        let activity = AppActivityCoordinator()
+        var updates = 0
+        var exits = 0
+
+        mount.bind(
+            activity: activity,
+            state: {
+                AgentFocusCoordinator.ViewingState(
+                    agentID: id,
+                    terminalID: "terminal-A",
+                    transportGeneration: 1,
+                    status: model.status,
+                    isHostReady: model.isHostReady,
+                    isSceneActive: true,
+                    isOnStage: mount.hasAppeared && model.isVisible,
+                    showsShellTerminal: false)
+            },
+            onUpdate: { updates += 1 })
+        mount.appear()
+        #expect(mount.hasAppeared)
+
+        // Simulate iPhone's unpaired spurious onDisappear while the router still shows the detail.
+        mount.scheduleExit(isVisible: { model.isVisible }) { exits += 1 }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+
+        // Even with SwiftUI's .onChange frozen after the unpaired disappear,
+        // observable store changes (such as a Host snapshot arriving with Done) still drive focus.
+        model.status = .done
+        model.isHostReady = true
+        try await waitUntil { updates >= 1 }
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+
+        // Real Back navigation updates router visibility without a second SwiftUI onDisappear.
+        model.isVisible = false
+        try await waitUntil { !mount.hasAppeared && exits == 1 }
+    }
+
+    @Test func reappearingAfterSpuriousDisappearCancelsPendingExit() async throws {
+        let model = FocusMountObservationModel()
+        let mount = AgentDetailMount()
+        let activity = AppActivityCoordinator()
+        var exits = 0
+
+        mount.bind(
+            activity: activity,
+            state: {
+                AgentFocusCoordinator.ViewingState(
+                    agentID: id,
+                    terminalID: "terminal-A",
+                    transportGeneration: 1,
+                    status: .done,
+                    isHostReady: true,
+                    isSceneActive: true,
+                    isOnStage: mount.hasAppeared && model.isVisible,
+                    showsShellTerminal: false)
+            },
+            onUpdate: {})
+        mount.appear()
+        mount.scheduleExit(isVisible: { model.isVisible }) { exits += 1 }
+        mount.appear()
+        model.isVisible = false
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(mount.hasAppeared)
+        #expect(exits == 0)
+        mount.scheduleExit(isVisible: { false }) {}
+        #expect(!mount.hasAppeared)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(2)
         while !condition(), ContinuousClock.now < deadline {
@@ -202,4 +276,12 @@ struct AgentFocusCoordinatorTests {
         }
         #expect(condition(), "Focus lifecycle did not settle before the deadline")
     }
+}
+
+@MainActor
+@Observable
+fileprivate final class FocusMountObservationModel {
+    var status: AgentStatus?
+    var isHostReady = false
+    var isVisible = true
 }
