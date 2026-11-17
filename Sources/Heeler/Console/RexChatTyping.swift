@@ -213,7 +213,8 @@ final class RexChatTyping: CheckedChatTyping {
         case .notSent(let failure):
             throw Refusal(message: failure?.kind == .notFound ? Self.agentLeft : Self.noAnswer)
         case .unknown:
-            throw TransportError.sshUnreachable(detail: Self.noAnswer)
+            // The bytes may have reached the program: never "pressed nothing".
+            throw TransportError.coreMutationOutcomeUnknown
         }
     }
 

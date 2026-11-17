@@ -1066,7 +1066,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// link health and must not trigger a redial or an automatic retry: the
     /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
-    /// A core mutation may already have run. Never automatically replay it.
+    /// A core mutation, or input written to a Rex block, may already have
+    /// run. Never automatically replay it.
     case coreMutationOutcomeUnknown
     /// No program on the exec's PATH or at the installer's path identifies
     /// itself as herdr-core.

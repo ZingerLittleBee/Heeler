@@ -101,8 +101,8 @@ struct RexChatTypingTests {
         #expect(await rig.inputs().isEmpty)
     }
 
-    /// A write with no answer may have arrived: it is reported unknown and
-    /// never sent again.
+    /// A write with no answer may have arrived: it is reported unknown, not
+    /// as a key Heeler pressed nothing for, and never sent again.
     @Test func aWriteWithNoAnswerIsNotSentAgain() async throws {
         let rig = try await RexChatRig.start(
             FakeRexChatBlock(lines: Self.dialog),
@@ -110,9 +110,12 @@ struct RexChatTypingTests {
         defer { rig.end() }
         await rig.server.stopAnswering(RexChatRig.write)
 
-        await #expect(throws: TransportError.self) {
+        let error = await #expect(throws: TransportError.self) {
             try await rig.projection.sendAgentKeys(["esc"], to: RexChatRig.paneID)
         }
+        #expect(error == .coreMutationOutcomeUnknown)
+        #expect(error?.isRetryable == false)
+        #expect(error?.presentation.message.contains("pressed nothing") == false)
         try await Task.sleep(for: .milliseconds(300))
 
         #expect(await rig.written() == ["\u{1B}"])
