@@ -8,7 +8,8 @@ import Testing
 /// the foreground Rex names, which counts only under a name Rex gave it. A
 /// process in a multiplexer run inside the terminal is in another terminal.
 /// Rex gives no argv past the first argument and no process of the
-/// terminal's own, so what needs either cannot tell or leaves it to a pick.
+/// terminal's own, so a Codex's launch is read from its own process, and
+/// what needs the rest cannot tell or leaves it to a pick.
 @Suite("Rex session binder", .timeLimit(.minutes(1)))
 struct RexSessionBinderTests {
     private static let first = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
@@ -268,20 +269,72 @@ struct RexSessionBinderTests {
         }
     }
 
-    /// A Codex holding no rollout cannot tell, even beside a shared server's
-    /// socket: Rex gives no argv to say how it was launched.
-    @Test func aCodexHoldingNoRolloutCannotTell() async throws {
+    /// Rex names no command line, so a Codex's launch is read from its own
+    /// process, keeping only the words that decide it. One on the shared
+    /// server, holding no rollout beside that server's socket, gets the
+    /// server's notice and no candidate list, as on the other kinds: every
+    /// window there looks alike. A launch that keeps its own server, or a
+    /// subcommand without the terminal UI, cannot tell and lists. A `--remote`
+    /// address never leaves the Host, so any `--remote` counts as the shared
+    /// server.
+    @Test(arguments: [
+        ("default", ["codex"], true),
+        ("resume", ["/opt/homebrew/bin/codex", "resume", "--last"], true),
+        ("a model", ["codex", "-m", "o3"], true),
+        ("remote", ["codex", "--remote", "unix://"], true),
+        ("remote elsewhere", ["codex", "--remote=ws://example.invalid:4500"], true),
+        ("no daemon after --", ["codex", "--", "--no-daemon"], true),
+        ("no daemon", ["codex", "--no-daemon"], false),
+        ("a config", ["codex", "-c", "model=o3"], false),
+        ("a profile", ["codex", "--profile=work"], false),
+        ("exec", ["codex", "exec", "--no-daemon"], false),
+    ] as [(String, [String], Bool)])
+    func aCodexOnTheSharedServerGetsItsNoticeAndNoList(
+        _ label: String, argv: [String], onSharedServer: Bool
+    ) async throws {
         let table = ScriptedProcessTable()
         let files = VirtualHostFiles(home: "/home/dev")
         await files.write(Data(), at: "/home/dev/.codex/app-server-control/app-server-control.sock")
         await table.add(
-            .init(pid: 4100, name: "codex", start: Self.linuxStart, environment: Self.rexEnvironment(home: "/home/dev")))
+            .init(
+                pid: 4100, name: "codex", start: Self.linuxStart, environment: Self.rexEnvironment(home: "/home/dev"),
+                argv: argv))
+        let binder = Self.binder(
+            .codex, table: table, files: files, hostSystem: .other, scope: Self.scope(names: ["codex"]))
+        let record = Self.record(pid: 4100, program: "codex")
 
-        let evidence = try await Self.binder(
-            .codex, table: table, files: files, hostSystem: .other, scope: Self.scope(names: ["codex"])
-        ).check(Self.record(pid: 4100, program: "codex"))
+        let evidence = try await binder.check(record)
+        let candidates = try await binder.candidates(of: record)
 
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+        if onSharedServer {
+            #expect(evidence == .unavailable(.codexSharedDaemon), "\(label)")
+            #expect(candidates == .sharedDaemon, "\(label)")
+        } else {
+            #expect(evidence == .unavailable(.cannotTellSession(.codex)), "\(label)")
+            guard case .listed(let listed) = candidates else {
+                Issue.record("Expected listed candidates: \(label)")
+                return
+            }
+            #expect(listed.pid == 4100, "\(label)")
+        }
+        let request = try #require(await table.requests.first)
+        #expect(request.preservesArgumentOrder)
+        #expect(Set(CodexLaunch.launchWords).isSubset(of: Set(request.argumentsAmong)))
+    }
+
+    /// Without its socket no shared server runs, so a Codex holding nothing
+    /// cannot tell, and a pick stays possible.
+    @Test func aCodexWithNoSharedServerRunningCannotTell() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: "/home/dev")
+        await table.add(
+            .init(
+                pid: 4100, name: "codex", start: Self.linuxStart, environment: Self.rexEnvironment(home: "/home/dev"),
+                argv: ["codex"]))
+        let binder = Self.binder(
+            .codex, table: table, files: files, hostSystem: .other, scope: Self.scope(names: ["codex"]))
+
+        #expect(try await binder.check(Self.record(pid: 4100, program: "codex")) == .unavailable(.cannotTellSession(.codex)))
     }
 
     // MARK: Candidates and picks

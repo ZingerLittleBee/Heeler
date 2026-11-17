@@ -47,21 +47,37 @@ extension HerdrCoreSessionBinder {
     /// a thread of its own, which a window on the daemon never holds (Codex CLI
     /// 0.165.0, `host-evidence/codex/no-daemon.json` and `default-daemon.json`), and
     /// which a script under Codex's name can hide `--no-daemon` from the arguments of.
+    /// Rex names no command line, so there the launch is read from the Codex's own
+    /// arguments (`codexProcessAsk`).
     func isCodexOnSharedDaemon(
         _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, process: HostProcessReader.Facts
     ) async throws -> Bool {
         if tree.descendants.contains(where: { Self.isManagedDaemon(tree.facts[$0]) }) { return true }
+        let launchesOnSharedServer: Bool? =
+            switch processScope {
+            case .rex:
+                process.name == "codex"
+                    ? CodexLaunch.launchesOnSharedServer(orderedArguments: process.argumentVector) : nil
+            case .herdrCore, .tmux: CodexLaunch.launchesOnSharedServer(foreground: record.foreground)
+            }
         guard Self.rollouts(heldBy: process).isEmpty, !Self.holdsAThreadLock(process),
-            let codexHome = codexHome(of: process),
-            CodexLaunch.launchesOnSharedServer(foreground: record.foreground) == true
+            let codexHome = codexHome(of: process), launchesOnSharedServer == true
         else { return false }
         return try await files.status(CodexLaunch.controlSocketPath(codexHome: codexHome)) != nil
     }
 
+    /// On a Rex terminal, also the words of each process's own command line that
+    /// say how a Codex was launched, in order, with every other word left out.
     var codexProcessAsk: ProcessAsk {
-        ProcessAsk(
-            values: [Self.homeVariable, Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
-            readsOpenFiles: true)
+        guard case .rex = processScope else {
+            return ProcessAsk(
+                values: [Self.homeVariable, Self.codexHomeVariable], arguments: Self.codexDaemonArguments,
+                readsOpenFiles: true)
+        }
+        return ProcessAsk(
+            values: [Self.homeVariable, Self.codexHomeVariable],
+            arguments: Array(Set(Self.codexDaemonArguments + CodexLaunch.launchWords)).sorted(),
+            preservesArgumentOrder: true, readsOpenFiles: true)
     }
 
     func codexAgent(in tree: HerdrCoreTerminalProcesses) -> String? {

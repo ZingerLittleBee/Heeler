@@ -96,7 +96,29 @@ enum CodexLaunch {
         guard !arguments.isEmpty,
             !arguments.contains(where: { $0.dropFirst().first.map(nonInteractiveSubcommands.contains) == true })
         else { return nil }
-        return !arguments.contains { keepsOwnServer($0.dropFirst()) }
+        return !arguments.contains { keepsOwnServer($0.dropFirst(), addressesHidden: false) }
+    }
+
+    /// The words of a Codex's own command line that decide the shared server,
+    /// for a read of its argument vector that keeps only these, in order, where
+    /// nothing else names that command line (a Rex terminal). Every other word
+    /// reads as a placeholder and never leaves the Host (`HostProcessReader`).
+    static let launchWords: [String] = ownServerOptions
+        .union(["--remote", "--"])
+        .union(ownServerShortOptions.map { "-\($0)" })
+        .union(nonInteractiveSubcommands)
+        .sorted()
+
+    /// `launchesOnSharedServer(_:)` for a Codex whose own argument vector was read
+    /// keeping only `launchWords`. A `--remote` address is never among them, and
+    /// the shared server's own socket may be what it names, so a `--remote` counts
+    /// as reaching that server here: a Codex there holds no conversation of its
+    /// own either. Nil when the read did not answer.
+    static func launchesOnSharedServer(orderedArguments reading: HostProcessReader.Reading<[String]>) -> Bool? {
+        guard case .value(let arguments) = reading, !arguments.isEmpty,
+            arguments.dropFirst().first.map(nonInteractiveSubcommands.contains) != true
+        else { return nil }
+        return !keepsOwnServer(arguments.dropFirst(), addressesHidden: true)
     }
 
     /// The native binary rather than a launcher such as npm's Node script,
@@ -107,7 +129,7 @@ enum CodexLaunch {
             || process.argv?.first.map(lastComponent) == "codex"
     }
 
-    private static func keepsOwnServer(_ arguments: ArraySlice<String>) -> Bool {
+    private static func keepsOwnServer(_ arguments: ArraySlice<String>, addressesHidden: Bool) -> Bool {
         var remaining = arguments[...]
         while let argument = remaining.popFirst() {
             if argument == "--" { return false }
@@ -117,7 +139,7 @@ enum CodexLaunch {
                 if name == "--remote" {
                     let value: String? =
                         name.count < argument.count ? String(argument.dropFirst(name.count + 1)) : remaining.popFirst()
-                    if let value, !namesSharedServer(value) { return true }
+                    if !addressesHidden, let value, !namesSharedServer(value) { return true }
                 }
             } else if argument.hasPrefix("-"), argument.count > 1 {
                 let option = argument[argument.index(after: argument.startIndex)]
