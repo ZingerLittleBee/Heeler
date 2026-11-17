@@ -312,6 +312,10 @@ struct AgentTerminalView: View {
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
+    /// Where a terminal that keeps its own size, a Rex Agent's, shows the
+    /// notice that another device set it (ADR 0053): away from where the
+    /// output ends.
+    @State private var sizeNoticeEdge: VerticalEdge = .top
     /// Where the message-jump buttons sit, for the drawer handle to clear.
     @State private var messageJumpFrame: CGRect?
     /// Where the Attach Links button sits, for the drawer handle to clear.
@@ -479,10 +483,12 @@ struct AgentTerminalView: View {
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
-        screen.onViewportTextChanged = { text in
+        screen.onViewportTextChanged = { [noticeEdge = $sizeNoticeEdge] text in
             attach.viewportTextDidChange(text)
             messageJump.deliverViewportText(text)
             interactionProbe?.value?.messageJumpDidReceiveViewportText(text)
+            let edge = TerminalSizeNotice.edge(forViewport: text)
+            if edge != noticeEdge.wrappedValue { noticeEdge.wrappedValue = edge }
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
@@ -1109,6 +1115,17 @@ struct AgentTerminalView: View {
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
+        // A terminal that keeps its own size, a Rex Agent's, says when
+        // another device set it, as its Terminals screen does (ADR 0053).
+        // Over the output, under the floating buttons, the status dialog,
+        // the drawer and the back header.
+        .modifier(TerminalSizeNoticeOverlay(
+            store: attach, palette: themePalette,
+            colorScheme: terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
+            edge: sizeNoticeEdge,
+            top: max(backHeaderTop + AgentDetailHeader.controlSize, terminalTopInset) + 8 - terminalTopInset,
+            bottom: 8, isHidden: isHeaderDrawerOpen))
         // Above alternateScreenBottomRegion; only the buttons take hits —
         // see MessageJumpChromeContainer.
         .overlay {

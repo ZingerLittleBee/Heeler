@@ -174,12 +174,33 @@ struct TerminalSizeNoticeView: View {
     }
 }
 
-/// Lays a shell terminal's size notice over its screen at `edge`, `top` or
+/// What a terminal screen's size notice reads and tells: a Shell Terminal's
+/// store, or an Agent detail's Attach (ADRs 0053 and 0056).
+@MainActor
+protocol TerminalSizeNoticeSource: AnyObject {
+    /// What the view says while the terminal shows at a size another device
+    /// set; nil when there is nothing to say.
+    var sizeNotice: TerminalSizeNotice? { get }
+    /// Takes the terminal's size for this view, at the user's tap.
+    func takeTerminalSize()
+    /// Keeps the size the other device set, and hides the notice.
+    func dismissSizeNotice()
+    /// The scene went to the background: a size the view took is given back.
+    func sceneDidEnterBackground()
+    /// The scene came back: the terminal still on its screen takes the size
+    /// again.
+    func sceneDidBecomeActive()
+}
+
+extension ShellTerminalStore: TerminalSizeNoticeSource {}
+extension AgentAttachStore: TerminalSizeNoticeSource {}
+
+/// Lays a terminal's size notice over its screen at `edge`, `top` or
 /// `bottom` in from that edge, and tells the store when its scene goes to
 /// the background, which gives back a size the view took, and when it comes
 /// back, which takes it again (ADR 0053).
 struct TerminalSizeNoticeOverlay: ViewModifier {
-    let store: ShellTerminalStore
+    let store: any TerminalSizeNoticeSource
     let palette: TerminalThemePalette
     /// The terminal chrome's color scheme, as the back header takes it.
     let colorScheme: ColorScheme

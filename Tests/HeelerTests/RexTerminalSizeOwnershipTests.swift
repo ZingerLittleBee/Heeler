@@ -834,4 +834,106 @@ struct RexTerminalSizeOwnershipTests {
         #expect(methods[taken..<given].contains(Self.resize))
         await store.stop()
     }
+
+    // MARK: A Rex Agent's Terminal surface (ADR 0056)
+
+    /// An Agent detail's Attach over the same runner, as a Rex Agent's
+    /// Terminal surface makes it.
+    private func agent(_ session: RexHostSession) -> AgentAttachStore {
+        let host = Host(
+            name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: RexTerminalAttachTests.socket))
+        let runner = RexConsoleProjection(
+            host: host, session: session, pins: PinnedAgentsStore(), onChange: {}
+        ).terminalRunner()
+        let pin = TerminalCorePin()
+        return AgentAttachStore(
+            target: RexTerminalAttachTests.address.paneID, paneTitle: "codex", transportGeneration: nil,
+            isOnStage: { true },
+            runTerminal: { request, handler in try await runner(request, handler.keeping(to: pin)) },
+            closePane: {})
+    }
+
+    /// A Rex Agent's Terminal surface follows the terminal screen's rule:
+    /// shown, it takes the size before the first paint; kept off screen, as
+    /// the retention pool keeps it while Chat or another screen shows, it
+    /// gives it back; back on screen it takes it again. Another device's
+    /// take brings the notice, which the surface forwards, and the user can
+    /// keep that size for the showing.
+    @Test func aRexAgentsTerminalSurfaceFitsAsTheTerminalScreenDoes() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let attach = agent(session)
+        attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the opening take") { await ownership(control) == [Self.take] }
+        await rig.begin(columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the first paint") { attach.terminal.status == .live }
+        let methods = await control.requests.map(\.method)
+        let taken = try #require(methods.firstIndex(of: Self.take))
+        let streamed = try #require(methods.firstIndex(of: "data.connect"))
+        #expect(taken < streamed)
+        #expect(attach.sizeNotice == nil)
+
+        attach.setTerminalViewed(false)
+        try await waitUntil("the give back off screen") { await ownership(control) == [Self.take, Self.giveBack] }
+        attach.setTerminalViewed(true)
+        try await waitUntil("the take back on screen") {
+            await ownership(control) == [Self.take, Self.giveBack, Self.take]
+        }
+
+        try await takeAway(attach.terminal, rig: rig, on: control)
+        #expect(attach.sizeNotice?.phase == .offered)
+        attach.dismissSizeNotice()
+        #expect(attach.sizeNotice == nil)
+        #expect(!attach.terminal.sizeShowing.fitsOnItsOwn)
+        // The scene going to the background ends the showing, which leaves
+        // the other device's line; coming back is the next showing.
+        attach.sceneDidEnterBackground()
+        try await waitUntil("out of line in the background") { await ownership(control).count == 4 }
+        attach.sceneDidBecomeActive()
+        try await waitUntil("the next showing's take") {
+            await ownership(control) == [Self.take, Self.giveBack, Self.take, Self.giveBack, Self.take]
+        }
+        await attach.leave().value
+        #expect(await ownership(control).last == Self.giveBack)
+    }
+
+    /// An Agent detail's Attach replaced after a possible suspension carries
+    /// its showing to the new pipeline, which takes the size as it opens,
+    /// before its stream starts, and the old one takes nothing on its way
+    /// out.
+    @Test func aRexAgentsReplacedAttachTakesTheSizeAsItOpens() async throws {
+        let rig = Rig()
+        let control = await rig.server()
+        let session = hostSession([await rig.host([.server(control)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let attach = agent(session)
+        attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the opening take") { await ownership(control) == [Self.take] }
+        await rig.begin(columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the first paint") { attach.terminal.status == .live }
+
+        let first = attach.terminal
+        attach.sceneDidEnterBackground()
+        try await waitUntil("the give back") { await ownership(control) == [Self.take, Self.giveBack] }
+        attach.sceneDidBecomeActive()
+        attach.didBecomeActive(activation: 1, afterPossibleSuspension: true)
+        try await waitUntil("the replacement") { attach.terminal !== first }
+        #expect(attach.terminal.sizeShowing.fitsOnItsOwn)
+        #expect(!attach.terminal.sizeShowing.isSceneInBackground)
+
+        attach.viewDidResize(cols: 80, rows: 24)
+        try await waitUntil("the new attach's take") { await requests(control, Self.take).count == 2 }
+        await rig.begin(stream: 1, columns: 80, rows: 24, owner: Self.thisClient)
+        try await waitUntil("the new paint") { attach.terminal.status == .live }
+        let methods = await control.requests.map(\.method)
+        let taken = try #require(methods.lastIndex(of: Self.take))
+        let streamed = try #require(methods.lastIndex(of: "data.connect"))
+        #expect(taken < streamed)
+        await attach.leave().value
+    }
 }
