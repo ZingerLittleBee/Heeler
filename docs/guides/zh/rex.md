@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/rex.md at a299eadd -->
+<!-- Translated from docs/guides/rex.md at 3219167e -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac 或 Linux Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
@@ -137,6 +137,6 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 - **其他设备的尺寸不会适配屏幕：** 当终端保持着其他设备设定的、比你的屏幕更宽的尺寸时（见 [Sized for another device](#sized-for-another-device)），终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，光标、新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
 - **目前的测试范围：** Rex 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
 - **Chat 尚未搭配 Rex 中真实的 Agent 试用：** Chat 的输入是用替身程序测试的，绑定是用保存下来的 Claude Code 和 Codex 文件测试的，还没有在 Rex 中运行真实的 Claude Code 或 Codex 试过。
-- **上传尚未搭配 Rex 服务端试用：** 图片和文件是针对模拟的 Rex Host 测试的。上传本身与 Heeler 在所有 macOS 和 Linux Host 上使用的方式相同。
+- **上传尚未在实体设备上或搭配真实 Agent 试用：** 图片和文件已在 iOS 模拟器中针对运行中的 Rex 服务端试用，发送给替身程序。尚未在实体 iPhone 或 iPad 上试用，也未搭配真实的 Claude Code 或 Codex 试用。
 
 最后核对于 2026-11-17，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），使用测试程序进行。
