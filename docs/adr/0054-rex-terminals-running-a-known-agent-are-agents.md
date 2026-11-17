@@ -106,8 +106,9 @@ Terminal surface and the Composer, not the Terminals list's terminal detail.
   opens the Agent detail, whose Terminal surface keeps ADR 0053's size rule
   and notice, with Chat for Claude Code and Codex, Composer Send and Stop.
   Its menus offer only what the Host serves, so Changes, rename, close,
-  worktrees, New Agent and attachments stay out, and its row still offers
-  Pin alone.)
+  worktrees and New Agent stay out, and its row still offers Pin alone.
+  Attachments stayed out too until ADR 0056's update of 2026-11-17, which
+  offers them wherever Chat is.)
 - **Still left out.** Notifications, Live Activities, widgets, Usage, Accounts,
   background refresh, the plugin, the Host Helper and Pairing Codes still pick
   their Hosts by kind and leave Rex out, so no code that walks every Agent acts

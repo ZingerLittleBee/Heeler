@@ -43,9 +43,10 @@ find it. A terminal running a known agent program is an Agent with its Agent
 Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
 detail, with Chat for Claude Code and Codex, the Composer and the terminal,
 and nothing installed on the machine; an Agent whose program reports nothing
-to Rex reads Unknown and has no Stop and no Blocked Card. A Rex Host offers
-no notifications, Live Activities, Usage, attachments, Changes or New Agent
-(ADR 0056).
+to Rex reads Unknown and has no Stop and no Blocked Card. Where Chat is
+offered, its Agents take images and files too, staged over the Host's SSH
+connection as on the other Server Kinds. A Rex Host offers no notifications,
+Live Activities, Usage, Changes or New Agent (ADR 0056).
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new

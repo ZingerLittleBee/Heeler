@@ -130,6 +130,17 @@ picker, so keep both to lab Agents with stand-in programs. `RexConsoleTests`
 hosts that detail against `FakeRexServer` and checks what each surface sends;
 `RexChatTypingLiveTests` is the live check of Chat's typing.
 
+An attachment on a Rex Agent writes the file into a new
+`${TMPDIR:-/tmp}/heeler.XXXXXXXX` directory on the Host and types its path
+with the message, and Heeler never removes it (ADR 0005). Attach only to
+`heeler-lab-` Agents with stand-in programs, note each `heeler.` directory
+the stand-in received, and remove exactly those afterwards. `RexStagingTests`
+covers the seam, the server-instance pin, the slots and the typing against
+`ScriptedRexHost`, with a clipboard that writes nothing. In the Simulator,
+Add Image takes a picture added with `simctl addmedia`; Paste Image reads the
+Simulator's pasteboard, which Simulator.app syncs with the Mac's clipboard, so
+use it only with an image copied inside the Simulator.
+
 ## Lane selection
 
 | Change | Entry point | What it establishes |

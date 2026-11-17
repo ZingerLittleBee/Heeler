@@ -10,7 +10,9 @@ Host for things a Rex Host could not serve. ADR 0055 then built Chat's reads,
 typing and Composer Send for Rex on the control connection, and left them
 switched off. The maintainer decided on 2026-11-17 that Chat is to ship in
 full with Rex support. This ADR records how a Rex Agent now opens the Agent
-detail, what its Chat reads and types, and what still stays out.
+detail, what its Chat reads and types, and what still stays out. Its
+[update of the same day](#update-2026-11-17-attachments) adds images and files
+in messages.
 
 ## Settings
 
@@ -26,8 +28,9 @@ the code follows them:
   or pick file, and no option or label on the Rex server; a pick lives on this
   device. The Host services stay closed, so Skills, Changes, harness edits,
   the agy model list and the platform probe stay out. A file the user attaches
-  to a message would be the one write allowed, only through a narrow seam of
-  its own.
+  to a message is the one write allowed, only through a narrow seam of its
+  own (built on 2026-11-17, see
+  [Update 2026-11-17: attachments](#update-2026-11-17-attachments)).
 - **G3. Typing on the control connection.** One request per block at a time,
   shared with an open terminal view's input, each sent once. Typing opens no
   data link, asks for no size and takes or gives back nothing. A fresh read of
@@ -53,7 +56,9 @@ the code follows them:
   Composer Send and Stop, and Chat for `rexChatPrograms` (Claude Code and
   Codex) once the server has named a Linux or macOS kernel, as a tmux
   record's Chat waits on its kernel. Starting, renaming and closing anything,
-  Worktrees, uploads, Host scripts and take over stay off. The kernel comes
+  Worktrees, uploads, Host scripts and take over stay off. (Updated
+  2026-11-17: uploads turn on with Chat, wherever the server has named a Linux
+  or macOS kernel.) The kernel comes
   from the socket lookup or `server.version` and is kept in the Host's memory
   on this device; the Host as the catalog stores it knows none, so nothing
   reads Chat ahead for it. `ConsoleStore.chatProgram(for:)` reads a Rex Host
@@ -72,7 +77,9 @@ the code follows them:
   an Agent's row reads no Changes totals (`rowsReadChanges`). Snippets,
   Back to Console, the surfaces, the Composer and the Agent switcher stay.
   Grok Build, Pi, Oh My Pi, OpenCode and Antigravity CLI Agents open on the
-  Terminal surface.
+  Terminal surface. (Updated 2026-11-17: once the server has named a Linux or
+  macOS kernel, the detail offers attachments as well, on Chat and on the
+  terminal alike.)
 - **One holder per block.** The Agent detail's terminal (`AgentTerminalCache`)
   holds an Agent's block, and the terminal pool lets a connection to an
   Agent's block go at the next inventory, as on the other kinds. A Rex
@@ -101,7 +108,9 @@ the code follows them:
   it never reads for an Unknown Claude Code or Codex.
 - **Attachments stay off.** ADR 0055 found no narrow way to write one file on
   the Host: the stagers need the Host services, and `RexHostReads` writes
-  nothing. Images and files are not offered.
+  nothing. Images and files are not offered. (Superseded by
+  [Update 2026-11-17: attachments](#update-2026-11-17-attachments): they stage
+  through `RexHostStaging`, a seam of their own.)
 - **Still out.** Notifications, Live Activities, widgets, Usage, Accounts,
   background refresh, the plugin, the Host Helper and Pairing Codes leave Rex
   out by Server Kind, as before.
@@ -125,6 +134,8 @@ to the server's socket. Chat adds reads, and nothing that writes:
 They run under the connection's ordinary session slots, so a slow read waits
 behind other reads, never behind the control or data links. `RexHostReads`
 offers no write, by type. No `rex` command runs, and no server is started.
+(Updated 2026-11-17: a staging adds the one write, through `RexHostStaging`;
+see [Update 2026-11-17: attachments](#update-2026-11-17-attachments).)
 
 ## Evidence
 
@@ -189,7 +200,9 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
   Pi and OpenCode name their conversation only through Heeler's extension or
   plugin, which a Rex Host never gets.
 - Staging attachments over SFTP: no seam narrower than the Host services
-  exists, so attachments stay off (G2).
+  exists, so attachments stay off (G2). (Taken on 2026-11-17, through a seam
+  built for it; see
+  [Update 2026-11-17: attachments](#update-2026-11-17-attachments).)
 - Keeping a pick or a Blocked Card's answer as an option or label on the
   server: rejected (G2); both stay on this device.
 - Guessing Stop or a Blocked Card for an Unknown Agent from its screen:
@@ -199,7 +212,8 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
 
 - An Agent whose program reports nothing to Rex reads Unknown and has no Stop
   and no Blocked Card; the user acts on the Terminal surface.
-- Images and files cannot be attached on a Rex Host.
+- Images and files cannot be attached on a Rex Host. (Superseded on
+  2026-11-17: they can, once the server has named a Linux or macOS kernel.)
 - Windows take turns per Host, not per block: two windows on two Agents of the
   same Rex Host take turns too.
 - A program that changes its conversation without printing is followed only
@@ -209,3 +223,57 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
 - `HostCapabilities` gains `rowsReadChanges` and `terminalsShowInOneWindow`,
   and `AgentDetailMenuOffers` decides the detail's lifecycle items for every
   kind.
+
+## Update 2026-11-17: attachments
+
+The maintainer then asked for images and files on Rex Agents, as the other
+Server Kinds have them. G2's one write is built this way:
+
+- **A seam of its own.** `RexTransport.staging` hands out `RexHostStaging`, the
+  Host's own SSH connection behind a type that can stage a prepared image and
+  a prepared file and nothing else: no read of the Host's files, no other exec
+  and no path but the ones it makes. It sits beside `RexHostReads` and is not
+  one. `RexConsoleProjection.withHostServices` still throws for a Rex Host.
+- **What it runs.** The staging every POSIX Host uses (ADRs 0005 and 0006):
+  one exec that makes `${TMPDIR:-/tmp}/heeler.XXXXXXXX` at mode 0700, then an
+  SFTP write of `stage-<id>/<name>.part` at 0600, renamed to `<name>` once it
+  is whole. An image lands as `image.jpg` or `image.png`; a file keeps its
+  name, with characters other than ASCII letters, digits, `.`, `-` and `_`
+  turned into `_` and the stem cut to 64 characters. A failed or cancelled
+  transfer removes its `.part`; a staged file stays, as on every kind (ADR
+  0005). Nothing of Rex's runs, and no server is started.
+- **Slots.** The exec, and then the SFTP channel for the transfer, each take
+  one of the connection's four ordinary session slots, one at a time, at
+  normal priority. Chat's file and process reads ask at interactive priority,
+  so they take the next free slot ahead of a waiting staging, and a slow
+  upload holds one slot. The control link and the data links are
+  direct-streamlocal channels under their own budgets (events and attach),
+  which a staging never asks for.
+- **The pin.** `RexConsoleProjection.imageStager` and `fileStager` keep to the
+  server instance the Agent's detail opened on (`TerminalCorePin`): before
+  anything is staged and again once the connection is in hand, an Agent of a
+  server that is gone fails with `rexServerGone`, in those words, not
+  retryable, and nothing is staged. A staging begun while no server answers
+  fails as the Host not being connected, retryable.
+- **Delivery.** A staged path is part of the draft: a file's path where the
+  cursor is, an image's at the end, each followed by a space, as on the other
+  kinds. It reaches the program with the message's own typing, in Composer
+  Send's one paste in the block's lane (ADR 0055), then Enter, once and never
+  sent again; an unanswered last request reads as an unknown outcome, as for
+  any Send. Status gates nothing more than Send already does, so an Agent at
+  Unknown can attach and send. Cancel, removing an attachment before Send and
+  a connection lost mid-transfer behave as on tmux: nothing of that attachment
+  is typed, and a lost connection's upload can be retried.
+- **Where it is offered.** `HostCapabilities.uploads` turns on for a Rex
+  record exactly where Chat does, once the server has named a Linux or macOS
+  kernel, so Add Image, Paste Image, Add File and drop show on both of the
+  detail's surfaces. A Rex Terminal that is not an Agent offers none, as
+  before, and nothing else opens with it.
+
+Evidence: `RexStagingTests` stages through a scripted Rex Host, checks the
+seam's type and the pin across a server restart, holds an upload while the
+control link, a data link and a Chat process read go on, and types the staged
+paths once with a message from the Terminal surface and from Chat, for an
+idle and an Unknown Agent. The live path rests on the SSH staging every POSIX
+Host shares (`ImageStagingE2ETests`); no upload has yet been tried against a
+live Rex server.

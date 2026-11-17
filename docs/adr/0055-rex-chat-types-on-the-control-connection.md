@@ -23,7 +23,9 @@ connection Heeler already holds (ADR 0050).
 
 Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
 Chat and the Composer are offered on Rex Hosts, in the Agent detail, and the
-terminal Composer offers Stop.
+terminal Composer offers Stop. Since its update of 2026-11-17, images and
+files are attached as well: staged over the Host's SSH connection, their
+paths typed with the message.
 
 ## Decision
 
@@ -107,13 +109,18 @@ terminal Composer offers Stop.
   because its program reported none, gets no Stop and no Blocked Card.
 - **Nothing is recorded on the Host.** A Blocked Card's answers are not
   written anywhere on the machine, and a confirmed conversation is kept on the
-  device (`HerdrCoreHostMemory`), not in an option or file on the Host.
-- **No attachments.** Images and files in a message need a file written on the
+  device (`HerdrCoreHostMemory`), not in an option or file on the Host. (A
+  file the user attaches is staged there since ADR 0056's update of
+  2026-11-17; that is the user's own file, not a record of Heeler's.)
+- **Attachments.** Images and files in a message need a file written on the
   Host. On the other Server Kinds the stagers write it over SFTP through the
   Host services, which a Rex Host keeps closed
   (`RexConsoleProjection.withHostServices` throws), and `RexHostReads` can
-  write nothing, so there is no narrow way to put one file there. Rex's
-  `imageStager` and `fileStager` throw, and attachments stay unavailable.
+  write nothing, so this change left Rex's `imageStager` and `fileStager`
+  throwing. (Amended by ADR 0056's update of 2026-11-17: they stage through
+  `RexHostStaging`, a seam of the Host's SSH connection that can do nothing
+  else. A staged path is part of the message's text, so it reaches the
+  program in Composer Send's one paste, in the block's lane, once.)
 - **Claude Code and Codex only**, as `HostCapabilities.rexChatPrograms` says.
 - **Built, not offered.** `RexConsoleProjection` answers `readAgentScreen`,
   `sendAgentKeys`, `pasteIntoAgent`, `checkedChatTyping` and

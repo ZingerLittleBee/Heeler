@@ -18,7 +18,8 @@ terminal running a known agent program is an Agent.
 Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
 a Rex Agent opens the Agent detail, with Chat for Claude Code and Codex and
 the Composer, read over the Host's SSH connection and typed on the control
-connection.
+connection. Since its update of 2026-11-17, a file or image the user
+attaches to a message is staged on the Host over that SSH connection too.
 
 Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
 is gone, and every build offers Rex.
@@ -85,7 +86,12 @@ detail.
   file is there and whether a server listens on it (`/proc/net/unix` on Linux,
   `lsof` over the account's own processes on macOS). The reason then says Rex
   is not running, or that the SSH server refuses socket forwarding. It still
-  runs nothing of Rex's.
+  runs nothing of Rex's. (Amended by ADR 0056: the same SSH connection also
+  carries Chat's reads, which write nothing, and the staging of a file or
+  image the user attaches to a message, the one write: one exec that makes
+  a private directory under the account's temporary directory and an SFTP
+  write into it, as on the other Server Kinds (ADRs 0005 and 0006). Neither
+  runs anything of Rex's.)
 - A Rex Host's checks say hello and close with a close frame, which changes
   nothing on the server. A control connection that drops without a close frame
   comes back with the reconnect token from its welcome, so the server keeps the
@@ -97,7 +103,8 @@ detail.
   attaches only to Terminals that already exist and accepts one Rex API
   revision. (Amended by ADR 0054: a terminal running a known agent program is
   an Agent with its Agent Status. Amended by ADR 0056: that Agent opens the
-  Agent detail, with Chat for Claude Code and Codex, Composer Send and Stop;
+  Agent detail, with Chat for Claude Code and Codex, Composer Send and Stop,
+  and, since 2026-11-17, uploads of the images and files its messages carry;
   the rest of this list stands.)
 
 ## Why

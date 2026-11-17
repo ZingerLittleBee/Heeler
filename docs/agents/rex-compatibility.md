@@ -111,8 +111,16 @@ in users' words.
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
 - **Existing terminals only.** Nothing is created, closed or renamed, and no
-  layout changes; no notifications, Live Activities, Usage, Changes, New
-  Agent or attachments.
+  layout changes; no notifications, Live Activities, Usage, Changes or New
+  Agent.
+- **Attachments where Chat is.** Once the server has named a Linux or macOS
+  kernel, an Agent's Composer can attach images and files. Heeler stages them
+  over the Host's own SSH connection (one `mktemp -d` exec, then an SFTP
+  write into `${TMPDIR:-/tmp}/heeler.XXXXXXXX/stage-<id>/`), never through
+  Rex, and types the staged path with the message. No upload has yet been
+  tried against a live Rex server; the transport is the one every POSIX Host
+  uses ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md),
+  update of 2026-11-17).
 - **Chat for two programs.** Chat is offered for Claude Code and Codex only.
   An Agent whose program reports nothing to Rex reads Unknown, and then has
   no Stop and no Blocked Card; the user acts on its Terminal surface
