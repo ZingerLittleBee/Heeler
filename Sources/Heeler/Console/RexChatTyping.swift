@@ -148,23 +148,16 @@ final class RexChatTyping: CheckedChatTyping {
 
     /// Text as one paste, framed by the server as the program's modes say. A
     /// program with bracketed paste off would take each line break as Enter,
-    /// so text with one is refused then.
+    /// so text with one is refused then, as read in the lane.
     func paste(
         _ text: String, heldSinceScreenRead: Bool = false,
         whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
     ) async throws {
         let (requests, holder) = try await checkedRequests(heldSinceScreenRead: heldSinceScreenRead)
         guard requests.fitsOnePaste(text) else { throw Refusal(message: Self.pasteTooLarge) }
-        if text.contains(where: \.isNewline) {
-            let modes: TerminalModeTracker
-            do {
-                modes = try RexChatScreen.modes(from: await requests.read(.modes), kittyKeyboardFlags: 0)
-            } catch {
-                throw Refusal(message: Self.saying(error))
-            }
-            guard modes.usesBracketedPaste else { throw Refusal(message: Self.linesWouldSubmit) }
-        }
-        try await send([.paste(text)], on: requests, holder: holder, stillShows: stillShows)
+        try await send(
+            [.paste(text)], on: requests, holder: holder, needsBracketedPaste: text.contains(where: \.isNewline),
+            stillShows: stillShows)
     }
 
     /// The block's requests, with the Agent that holds it now.
@@ -181,10 +174,11 @@ final class RexChatTyping: CheckedChatTyping {
     }
 
     /// Sends `pieces` in the block's lane once the same Agent still holds the
-    /// foreground and, for a Blocked Card, its screen still shows.
+    /// foreground, with bracketed paste on when `needsBracketedPaste`, and,
+    /// for a Blocked Card, its screen still shows.
     private func send(
         _ pieces: [RexTerminalInputPiece], on requests: RexBlockRequests, holder: RexAgentHolder,
-        stillShows: (@Sendable (ANSIScreen) -> Bool)?
+        needsBracketedPaste: Bool = false, stillShows: (@Sendable (ANSIScreen) -> Bool)?
     ) async throws {
         let sending = try await requests.send(pieces) { @MainActor in
             let now: RexAgentHolder.Read
@@ -197,6 +191,15 @@ final class RexChatTyping: CheckedChatTyping {
             case .holds(let current) where current == holder: break
             case .holds, .agentLeft, .notSampledYet: throw Refusal(message: Self.holderChangedWhileOpening)
             case .ended: throw Refusal(message: Self.agentLeft)
+            }
+            if needsBracketedPaste {
+                let modes: TerminalModeTracker
+                do {
+                    modes = try RexChatScreen.modes(from: await requests.read(.modes), kittyKeyboardFlags: 0)
+                } catch {
+                    throw Refusal(message: Self.saying(error))
+                }
+                guard modes.usesBracketedPaste else { throw Refusal(message: Self.linesWouldSubmit) }
             }
             guard let stillShows else { return }
             let screen: ANSIScreen

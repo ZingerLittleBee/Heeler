@@ -5,9 +5,10 @@ import Foundation
 /// in the block's lane, which an open terminal view's input shares, in tmux's
 /// order of checks. It pastes only while a known Agent leads the foreground,
 /// its status does not read Blocked and bracketed paste is on, with the same
-/// process read again once the lane is held; and it submits only while that
-/// process still holds the terminal, read again in the lane before Enter,
-/// within the submit window. A shell that took over gets one `0x03`.
+/// process and bracketed paste read again once the lane is held; and it
+/// submits only while that process still holds the terminal, read again in
+/// the lane before Enter, within the submit window. A shell that took over
+/// gets one `0x03`.
 ///
 /// One Send runs at a time per Agent, and a request that got no answer is
 /// never sent again: the next Send waits for the server to answer a read and
@@ -165,7 +166,8 @@ final class RexComposerSend: CheckedComposerSend {
         }
     }
 
-    /// In the lane before the paste: the same process, with no question up.
+    /// In the lane before the paste: the same process, with no question up and
+    /// bracketed paste still on, since the program can turn it off at any time.
     private func stillHeld(
         _ held: RexAgentHolder, on requests: RexBlockRequests, in projection: RexConsoleProjection
     ) async throws {
@@ -183,6 +185,13 @@ final class RexComposerSend: CheckedComposerSend {
         case .holds, .agentLeft, .notSampledYet:
             throw Halt(outcome: .refused(.inputNotReady(Self.holderChangedWhileOpening)))
         }
+        let modes: TerminalModeTracker
+        do {
+            modes = try RexChatScreen.modes(from: await requests.read(.modes), kittyKeyboardFlags: 0)
+        } catch {
+            throw Halt(outcome: Self.beforePaste(error))
+        }
+        guard modes.usesBracketedPaste else { throw Halt(outcome: .refused(.programNotAcceptingPaste)) }
     }
 
     /// In the lane before Enter: the process the paste went to still holds the

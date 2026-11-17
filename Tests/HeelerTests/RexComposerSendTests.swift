@@ -47,9 +47,10 @@ struct RexComposerSendTests {
         let process = RexInventoryWire.terminalMethod("process")
         let methods = await rig.server.requests.dropFirst(before).map(\.method)
             .filter { $0.hasPrefix(terminal) || $0 == "block.event" }
+        let modes = RexInventoryWire.terminalMethod("modes")
         #expect(methods == [
             process, RexInventoryWire.terminalMethod("format"), RexInventoryWire.terminalMethod("blob_read"),
-            RexInventoryWire.terminalMethod("modes"), process, "block.event", process, RexChatRig.write,
+            modes, process, modes, "block.event", process, RexChatRig.write,
         ])
         await rig.tookNothing()
     }
@@ -75,6 +76,19 @@ struct RexComposerSendTests {
     @Test func bracketedPasteOffSendsNothing() async throws {
         let block = FakeRexChatBlock(lines: Self.prompt)
         block.update { $0.bracketedPaste = false }
+        let rig = try await RexChatRig.start(block, world: Self.world())
+        defer { rig.end() }
+        let send = try rig.composerSend()
+
+        #expect(await send.send("hello", route: .chat, attach: nil) == .refused(.programNotAcceptingPaste))
+        #expect(await rig.inputs().isEmpty)
+    }
+
+    /// The program can turn bracketed paste off after the first read: the
+    /// read in the lane, just before the paste, decides.
+    @Test func bracketedPasteOffByTheLaneSendsNothing() async throws {
+        let block = FakeRexChatBlock(lines: Self.prompt)
+        block.update { $0.bracketedPasteAnswers = [true, false] }
         let rig = try await RexChatRig.start(block, world: Self.world())
         defer { rig.end() }
         let send = try rig.composerSend()

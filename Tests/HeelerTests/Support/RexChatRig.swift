@@ -20,6 +20,8 @@ final class FakeRexChatBlock: Sendable {
         var kittyFlags = 0
         /// The next `process` answers, before the world's.
         var foregrounds: [JSONValue] = []
+        /// The next `modes` answers' bracketed paste, before `bracketedPaste`.
+        var bracketedPasteAnswers: [Bool] = []
     }
 
     let state: Mutex<State>
@@ -42,12 +44,15 @@ final class FakeRexChatBlock: Sendable {
             ])
         }
         await server.answer(RexInventoryWire.terminalMethod("modes")) { [self] _ in
-            let state = state.withLock { $0 }
+            let (state, queuedPaste) = state.withLock { state -> (State, Bool?) in
+                let queued = state.bracketedPasteAnswers.isEmpty ? nil : state.bracketedPasteAnswers.removeFirst()
+                return (state, queued)
+            }
             var modes: [JSONValue] = [
                 ["name": "insert", "number": 4, "ansi": true, "set": false],
                 ["name": "cursor_keys", "number": 1, "set": .bool(state.cursorKeys)],
             ]
-            if let paste = state.bracketedPaste {
+            if let paste = queuedPaste ?? state.bracketedPaste {
                 modes.append(["name": "bracketed_paste", "number": 2004, "set": .bool(paste)])
             }
             return .result(["screen": .string(state.alternateScreen ? "alternate" : "primary"), "modes": .array(modes)])

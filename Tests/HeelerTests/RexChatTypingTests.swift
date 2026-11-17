@@ -124,7 +124,8 @@ struct RexChatTypingTests {
     // MARK: Pastes
 
     /// A paste goes whole as a paste event; text with a line break waits for
-    /// bracketed paste, which would otherwise send each line.
+    /// bracketed paste, which would otherwise send each line, as read in the
+    /// lane after the holder.
     @Test func linesNeedBracketedPaste() async throws {
         let block = FakeRexChatBlock(lines: Self.dialog)
         block.update { $0.bracketedPaste = false }
@@ -137,9 +138,15 @@ struct RexChatTypingTests {
 
         try await rig.projection.pasteIntoAgent("one line", paneID: RexChatRig.paneID)
         block.update { $0.bracketedPaste = true }
+        let before = await rig.server.requests.count
         try await rig.projection.pasteIntoAgent("one\ntwo", paneID: RexChatRig.paneID)
 
         #expect(await rig.pasted() == ["one line", "one\ntwo"])
+        let terminal = RexInventoryWire.terminalMethod("")
+        let process = RexInventoryWire.terminalMethod("process")
+        let methods = await rig.server.requests.dropFirst(before).map(\.method)
+            .filter { $0.hasPrefix(terminal) || $0 == "block.event" }
+        #expect(methods == [process, process, RexInventoryWire.terminalMethod("modes"), "block.event"])
         await rig.tookNothing()
     }
 
