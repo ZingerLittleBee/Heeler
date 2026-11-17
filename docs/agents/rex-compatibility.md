@@ -59,6 +59,14 @@ server has been observed yet.
   `RexConsoleProjection` keeps the Host's kernel and a terminal's pick in
   `HerdrCoreHostMemory` on this device. See
   [Processes and Chat evidence](#processes-and-chat-evidence).
+- Chat's typing and Composer Send are built and stay closed the same way
+  ([ADR 0055](../adr/0055-rex-chat-types-on-the-control-connection.md)):
+  `RexBlockRequests`, from `RexHostSession.blockRequests`, reads and types
+  into one block on the control connection, in the lane an open view's input
+  shares (`RexBlockLanes`), with no `session.attach`, data connection, size or
+  take. `RexChatScreen` reads the screen, `RexChatTyping` checks the holder
+  and types, and `RexComposerSend` pastes and submits. See
+  [Chat's reads and input](#chats-reads-and-input).
 
 ## Known limits
 
@@ -601,6 +609,47 @@ recorded the bytes it read, under a set of modes.
   as a paste event; `cat -v` showed that ESC as a space in both modes. The
   view finished once the session was destroyed.
 
+### Chat's reads and input
+
+Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-17: lab captures
+`k1_typing` for input without a view, `k2_screen` and `k3_modes_keys` for the
+screen and modes, and `k2b_cost` and `k2c_slowlink` for what reads cost,
+against made-up lab programs in `heeler-lab-` sessions.
+
+- A control client that had only called `session.attach_all`, never
+  `session.attach`, could `write` to a block and send it a paste event, and
+  the program read both, whether nobody owned the block or another lab client
+  did. No owner or size change was announced while it typed, the size stayed
+  the owner's, and the typing client never joined the block's wanted sizes.
+  Requests from two clients that each waited for their answers arrived in
+  order.
+- `format` as `vt` with soft wraps kept as rows answered with the history,
+  then every row of the screen, a blank row as an empty line, the lines joined
+  by CR LF and no line end after the last; the screen was exactly the last
+  `rows` lines. While the alternate screen was up, the answer held its rows
+  alone, with nothing saying which screen it was; the modes answer says.
+- Inside rows the answer held three kinds of sequence: SGR, `CSI n C` over
+  blank cells and tab gaps, and `CSI n X` for cells blanked in a background
+  color, each time followed by a `CSI n C` of the same count. Each styled run
+  began and ended with a reset, so no style ran into the next line. Wide
+  characters came as themselves.
+- Asked for the kitty keyboard flags, the answer ended with `CSI = flags ; 1 u`
+  after the last row while the program had any flag set, and had nothing
+  added while it had none. The modes answer carries no kitty flags.
+- A read of the answer's tail by offset matched the whole answer's end byte
+  for byte. An offset inside a character came back as U+FFFD for the cut
+  part. A first page asked for 256 bytes came back with 249 characters of a
+  503-byte answer, which fits a limit counted on the text as JSON escapes it:
+  a page can stop short of what was asked.
+- No argument limits the text to the visible screen; arguments `format` does
+  not know were accepted and ignored.
+- On the local socket, whole reads of a 10,000-line history every second, then
+  every 150 ms, left another block's typing and the connection's events at
+  their usual pace. Through a lab proxy of about 50 ms each way and 10 Mbit/s,
+  a whole read took about half a second and held typing and events back behind
+  it, while a tail read (a 1 KiB first page, then the last 16 KiB) every
+  second took about a quarter of a second and left them at their usual pace.
+
 ### Documented for API revision 12, not observed
 
 Rex's API document for this revision says the following; no lab run, probe or
@@ -630,6 +679,7 @@ where noted.
   stream to resume, as a drop does.
 - `format` takes no argument that limits scrollback, so Heeler pages the whole
   redraw. `max_bytes` is capped at 983,040 and counts the JSON-escaped text.
+  Chat's screen read asks for no more than that cap in a page.
 - The server may run a block's methods concurrently, so Heeler never relies on
   the order of the redraw and title reads.
 - A take or give back that names no blocks, or an empty list, applies to every
