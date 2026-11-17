@@ -221,6 +221,7 @@ struct AgentRowRendererTests {
         #expect(ServerKind.herdrCore.agentBackend == .core)
         #expect(ServerKind.herdrTUI.agentBackend == .tui)
         #expect(ServerKind.tmux.agentBackend == .tmux)
+        #expect(ServerKind.rex.agentBackend == .rex)
         #expect(ServerKind.unconfirmed.agentBackend == nil)
 
         let empty = ConsoleAgent(

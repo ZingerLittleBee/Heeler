@@ -314,6 +314,9 @@ struct RexConsoleTests {
         #expect(agent.agent.paneID == paneID)
         #expect(agent.hostID == rex.id)
         #expect(agent.hostName == rex.displayName)
+        // The backend field reads `rex`, on its row and on its saved Chat entry.
+        #expect(agent.backend == .rex)
+        #expect(ChatCachedAgent(agent).consoleAgent(for: rex).backend == .rex)
         #expect(agent.workspaceLabel == "studio")
         #expect(agent.tabLabel == "editor")
         #expect(agent.agent.name == "left")
