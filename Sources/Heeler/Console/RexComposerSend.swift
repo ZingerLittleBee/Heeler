@@ -228,14 +228,21 @@ final class RexComposerSend: CheckedComposerSend {
 
     /// Nothing is submitted. When a shell now leads the foreground, one raw
     /// `0x03` drops a pending paste unrun, even where the exited Agent left
-    /// its keyboard flags behind.
+    /// its keyboard flags behind. It goes only while that shell still leads,
+    /// read again in the lane: the Agent back, or another process, gets none.
     private func giveUp(after process: RexInventoryWire.Process, on requests: RexBlockRequests) async -> Outcome {
         let name = process.program ?? ""
         let arguments = [process.argv0 ?? name]
-        guard process.processID != nil, HerdrCoreAgentRule.program(arguments: arguments, name: name) == .shell else {
+        guard let shellID = process.processID, HerdrCoreAgentRule.program(arguments: arguments, name: name) == .shell
+        else {
             return .refused(.notSubmitted(Self.mayRemain))
         }
-        switch try? await requests.send([.text("\u{03}")]) {
+        let interrupt = try? await requests.send([.text("\u{03}")]) { @MainActor in
+            guard case .agentLeft(let now) = try await RexAgentHolder.read(on: requests), now.processID == shellID else {
+                throw Halt(outcome: .refused(.notSubmitted(Self.mayRemain)))
+            }
+        }
+        switch interrupt {
         case .sent?:
             let shell = HerdrCoreAgentRule.shellName(arguments: arguments, name: name)
             return .refused(
