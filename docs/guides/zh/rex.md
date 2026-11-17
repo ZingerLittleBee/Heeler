@@ -121,12 +121,13 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 - **Send：** **Send** 会先确认仍是同一个 Agent 占据终端、它不处于 **Blocked**，并且接受粘贴，然后粘贴你的消息并按下 Enter。终端下方的 Composer 也以同样方式发送。如果 Rex 没有回应，Heeler 绝不会重新发送该消息；请先查看终端。
 - **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，先确认仍是同一个 Agent 占据终端，再按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。
 - **命令：** 在 Agent 上报空闲时，`/` 提供 `/compact`，不提供 Agent 的技能。其他操作请在终端中完成。
+- **图片和文件：** 在 Chat 或 Agent 的终端中轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Heeler 通过 Host 的 SSH 连接（而不是经由 Rex）把文件上传到你登录所用账户的临时目录下的一个新文件夹，并把路径加到你的消息里；**Send** 会把路径连同消息一起输入，且只输入一次。图片以不超过 16 MiB 的 JPEG 或 PNG 发送，文件最大 64 MiB。Heeler 从不删除已上传到 Host 的文件。如果上传期间 Rex 重启，上传会停止并显示 **This Terminal belongs to a Rex server that is gone**：请从列表中重新打开该 Agent。
 
 ## 尚未支持的功能
 
-- **只有状态和 Chat：** Rex 没有 Changes、Skills、消息中的图片或文件、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
+- **只有状态、Chat 和附件：** Rex 没有 Changes、Skills、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
 - **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
-- **Rex 不支持上传、Worktrees、Host Helper、扫码配对与 Add by Name。**
+- **Rex 不支持 Worktrees、Host Helper、扫码配对与 Add by Name。**
 
 ## 已知限制
 
@@ -136,5 +137,6 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 - **其他设备的尺寸不会适配屏幕：** 当终端保持着其他设备设定的、比你的屏幕更宽的尺寸时（见 [Sized for another device](#sized-for-another-device)），终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，光标、新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
 - **目前的测试范围：** Rex 只在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。尚未在实体 iPhone 或 iPad 上试用，也未在 Rex 应用显示同一终端时试用。
 - **Chat 尚未搭配 Rex 中真实的 Agent 试用：** Chat 的输入是用替身程序测试的，绑定是用保存下来的 Claude Code 和 Codex 文件测试的，还没有在 Rex 中运行真实的 Claude Code 或 Codex 试过。
+- **上传尚未搭配 Rex 服务端试用：** 图片和文件是针对模拟的 Rex Host 测试的。上传本身与 Heeler 在所有 macOS 和 Linux Host 上使用的方式相同。
 
 最后核对于 2026-11-17，基于 macOS 上的 Rex 0.1.0-preview.14（API revision 12），使用测试程序进行。

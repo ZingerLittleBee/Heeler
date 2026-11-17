@@ -120,12 +120,13 @@ On iPad, one window at a time shows a Rex Host's Agent terminals. Another window
 - **Send:** **Send** pastes your message and presses Enter once it checks that the same Agent still holds the terminal, is not **Blocked**, and accepts a paste. The Composer under the terminal sends the same way. If Rex does not answer, Heeler never sends the message again; check the terminal first.
 - **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Send** becomes **Stop**, which presses Esc once it checks that the same Agent still holds the terminal. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal.
 - **Commands:** `/` offers `/compact` while the Agent reports it is idle, and not the Agent's skills. Use the terminal for the rest.
+- **Images and files:** In Chat or on the Agent's terminal, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Heeler uploads the file over the Host's SSH connection, not through Rex, into a new folder in the temporary folder of the account you sign in with, and adds its path to your message; **Send** types the path with your message, once. An image is sent as a JPEG or PNG of at most 16 MiB, and a file can be up to 64 MiB. Heeler never deletes uploaded files from the Host. If Rex restarts during an upload, the upload stops with **This Terminal belongs to a Rex server that is gone**: open the Agent again from the list.
 
 ## What Heeler does not do yet
 
-- **Status and Chat only:** no Changes, Skills, images or files in messages, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
+- **Status, Chat and attachments only:** no Changes, Skills, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
 - **Nothing started, renamed, or closed:** New Agent, New Terminal, New Workspace, Rename, and Close are not offered. Do these in Rex; Heeler shows the result.
-- **No uploads, Worktrees, Host Helper, Pairing Code, or Add by Name** for Rex.
+- **No Worktrees, Host Helper, Pairing Code, or Add by Name** for Rex.
 
 ## Known limits
 
@@ -135,5 +136,6 @@ On iPad, one window at a time shows a Rex Host's Agent terminals. Another window
 - **Another device's size does not fit:** While a terminal stays at a size another device set wider than your screen (see [Sized for another device](#sized-for-another-device)), its lines wrap at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, the cursor, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.
 - **What has been tested so far:** Rex has been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. They have not been tried on a physical iPhone or iPad, or with the Rex app showing the same terminal.
 - **Chat not yet tried with a real Agent in Rex:** Chat's typing was tested with stand-in programs, and its binding with saved Claude Code and Codex files, not with a real Claude Code or Codex running in Rex.
+- **Uploads not yet tried with a Rex server:** Images and files were tested against a scripted Rex Host. The upload itself is the one Heeler uses on every macOS and Linux Host.
 
 Last checked on 2026-11-17 against Rex 0.1.0-preview.14 (API revision 12) on macOS, with test programs.
