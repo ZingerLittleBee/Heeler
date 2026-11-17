@@ -258,7 +258,11 @@ server did. Where Rex differs from tmux, this says how and why.
   none, rather than asking for a Host that Hosts already lists. Agent List
   Fields is kept on this device and asks nothing of the Host, so it lists a
   Rex record beside the others (`HostStore.rowLayoutHosts`), and its rows can
-  show the `backend` field as `rex`. Agents, Chat,
+  show the `backend` field as `rex`. Having no plugin, a Rex record starts,
+  there and in the Console alike, from the rows its Agents list with: the
+  Workspace and Tab, the Agent, then the directory
+  (`AgentRowLayout.withoutPlugin(on:)`), not a core Host's title and
+  directory. Agents, Chat,
   Composer, New Agent and New Terminal, notifications, Live Activities,
   widgets, background refresh, the plugin, the Host Helper and Pairing Codes
   still leave Rex out. (Agents no longer do since ADR 0054, and Chat and the

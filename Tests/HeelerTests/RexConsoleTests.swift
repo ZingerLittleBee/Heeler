@@ -159,6 +159,7 @@ struct RexConsoleTests {
     private func store(
         servers: [FakeRexServer] = [], dials: Dials = Dials(),
         memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
+        rowLayouts: AgentRowLayoutStore? = nil,
         rexConnect: (@Sendable (RexSocket?, RexControlLink?) async throws -> any RexTransport)? = nil
     ) -> ConsoleStore {
         let hosts = Mutex(servers.map { ScriptedRexHost(control: [.server($0)]) })
@@ -167,6 +168,7 @@ struct RexConsoleTests {
             // Its own suite, so a Pin never reaches the test host's defaults.
             pins: PinnedAgentsStore(
                 defaults: UserDefaults(suiteName: "rex-console-pins-\(UUID().uuidString)") ?? .standard),
+            rowLayouts: rowLayouts ?? AgentRowLayoutStore(),
             makeSession: { _, subscriptions in
                 EventsSession(
                     subscriptions: subscriptions,
@@ -216,6 +218,45 @@ struct RexConsoleTests {
             servers.append(server)
         }
         return servers
+    }
+
+    /// Agent List Fields starts a Rex Host from the rows its Agents list with
+    /// (the Workspace and Tab, the Agent, then the directory), so a field
+    /// added there joins them and removing it leaves them as they were. A
+    /// core Host still starts from its terminal's title, then its directory.
+    @Test func agentListFieldsStartARexHostFromTheRowsItsAgentsShow() throws {
+        let suite = "rex-agent-rows-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = store(rowLayouts: AgentRowLayoutStore(defaults: defaults))
+        defer { store.setHosts([]) }
+        let rex = rex
+        let core = Host(name: "Core", address: "core.example", username: "dev", serverKind: .herdrCore)
+        store.setHosts([rex, core])
+        let editor = AgentListFieldsEditor(console: store)
+
+        let listed = AgentRowLayout.consoleDefault.rows
+        #expect(listed == [[.init(.workspace), .init(.tab)], [.init(.agent)], [.init(.directory)]])
+        #expect(store.rowLayout(for: rex.id).rows == listed)
+        #expect(editor.layout(for: rex.id) == store.rowLayout(for: rex.id))
+        #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: rex.id)) == "Heeler's fields")
+
+        #expect(AgentLayoutTokensEditing.add(.backend, editor: editor, hostID: rex.id, rowIndex: 2))
+        let withBackend = Array(listed.prefix(2)) + [[.init(.directory), .init(.backend)]]
+        #expect(store.rowLayout(for: rex.id).rows == withBackend)
+        #expect(editor.layout(for: rex.id).rows == withBackend)
+        #expect(AgentLayoutTokensEditing.delete(IndexSet(integer: 1), editor: editor, hostID: rex.id, rowIndex: 2))
+        #expect(store.rowLayout(for: rex.id).rows == listed)
+
+        #expect(store.rowLayout(for: core.id) == .hostWithoutPluginDefault)
+        #expect(editor.layout(for: core.id) == .hostWithoutPluginDefault)
+        // The page says where a Rex Host's rows start, and offers no labels.
+        let note = AgentListFieldsCopy.rowSlots(followsPlugin: false, serverKind: .rex)
+        #expect(note.contains("Row 1 starts from the Workspace and Tab"))
+        #expect(!note.localizedCaseInsensitiveContains("label"))
+        #expect(!note.localizedCaseInsensitiveContains("plugin"))
+        #expect(AgentListFieldsCopy.rowSlots(followsPlugin: false, serverKind: .herdrCore)
+            == AgentListFieldsCopy.rowSlots(followsPlugin: false))
     }
 
     /// Only a Rex Host gets a Rex session; the other kinds keep their own.

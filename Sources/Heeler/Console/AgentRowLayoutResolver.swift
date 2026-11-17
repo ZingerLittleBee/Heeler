@@ -2,17 +2,19 @@
 /// rows and initialize Heeler's third row with the directory.
 /// Heeler's default is the silent last resort: it is never shown as a
 /// choice and the user never edits it. A Host that does not follow a plugin
-/// starts from Heeler's own layout instead, whatever snapshot is around.
-/// Whatever the source, the Console receives the three-slot shape without
-/// `state_icon`.
+/// starts from `withoutPlugin` instead, Heeler's own layout unless its kind
+/// starts elsewhere (`AgentRowLayout.withoutPlugin(on:)`), whatever snapshot
+/// is around. Whatever the source, the Console receives the three-slot shape
+/// without `state_icon`.
 enum AgentRowLayoutResolver {
     static func resolve(
         hostLayout: AgentRowLayout?,
         pluginSnapshot: AgentRowLayoutSnapshot?,
-        followsPlugin: Bool = true
+        followsPlugin: Bool = true,
+        withoutPlugin: AgentRowLayout = .hostWithoutPluginDefault
     ) -> AgentRowLayout {
         if let hostLayout { return hostLayout.normalizedForConsole() }
-        guard followsPlugin else { return .hostWithoutPluginDefault }
+        guard followsPlugin else { return withoutPlugin }
         return (pluginSnapshot?.layout ?? .heelerDefault).withHeelerRow()
     }
 }

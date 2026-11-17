@@ -45686,6 +45686,9 @@
         }
       }
     },
+    "Row 1 starts from the Workspace and Tab, Row 2 from the Agent, and Row 3 from its directory. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+      "comment" : "Agent List Fields footer for a Rex Host, which has no herdr plugin"
+    },
     "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "comment" : "Agent List Fields footer when the Host has no herdr plugin",
       "localizations" : {

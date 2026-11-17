@@ -2462,10 +2462,19 @@ final class ConsoleStore {
         return cachedChats.sidebarSnapshot(on: host)
     }
 
+    /// A core or Rex Host follows no plugin, and starts from
+    /// `rowLayoutWithoutPlugin`.
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
-        rowLayouts.resolvedLayout(
+        let kind = catalog.first { $0.id == hostID }?.serverKind
+        return rowLayouts.resolvedLayout(
             for: hostID, pluginSnapshot: effectiveSidebarSnapshot(for: hostID),
-            followsPlugin: coreHost(hostID) == nil)
+            followsPlugin: kind != .herdrCore && kind != .rex, withoutPlugin: .withoutPlugin(on: kind))
+    }
+
+    /// Where the rows of a Host that follows no plugin start until it saves
+    /// its own, which Agent List Fields starts editing from too.
+    func rowLayoutWithoutPlugin(for hostID: Host.ID) -> AgentRowLayout {
+        .withoutPlugin(on: catalog.first { $0.id == hostID }?.serverKind)
     }
 
     /// The fields this Host's Live Activity carries. Label fields are only for

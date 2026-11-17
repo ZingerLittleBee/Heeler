@@ -73,10 +73,12 @@ final class AgentRowLayoutStore {
     }
 
     func resolvedLayout(
-        for hostID: Host.ID, pluginSnapshot: AgentRowLayoutSnapshot?, followsPlugin: Bool = true
+        for hostID: Host.ID, pluginSnapshot: AgentRowLayoutSnapshot?, followsPlugin: Bool = true,
+        withoutPlugin: AgentRowLayout = .hostWithoutPluginDefault
     ) -> AgentRowLayout {
         AgentRowLayoutResolver.resolve(
-            hostLayout: hostLayouts[hostID], pluginSnapshot: pluginSnapshot, followsPlugin: followsPlugin)
+            hostLayout: hostLayouts[hostID], pluginSnapshot: pluginSnapshot, followsPlugin: followsPlugin,
+            withoutPlugin: withoutPlugin)
     }
 
     private func persist(hostLayouts: [Host.ID: AgentRowLayout]) throws {
