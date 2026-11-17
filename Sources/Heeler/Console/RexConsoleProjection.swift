@@ -661,8 +661,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// Checked Composer Send on the control link, from the terminal or from
     /// Chat. Stop has no checked way of its own: Chat's Stop presses its plan's
-    /// keys through `sendAgentKeys`, as on a herdr-core Host. `live` follows a
-    /// projection replaced after the Composer was opened.
+    /// keys through `sendAgentKeys`, as on a herdr-core Host, and the terminal
+    /// Composer's Stop presses Esc the same way. `live` follows a projection
+    /// replaced after the Composer was opened.
     func checkedComposerSend(
         for paneID: String,
         keepingTo corePin: TerminalCorePin,
@@ -671,6 +672,33 @@ final class RexConsoleProjection: ConsoleHostProjection {
         guard let address = RexPaneAddress(paneID: paneID) else { return nil }
         return RexComposerSend(
             address: address, projection: { live() as? RexConsoleProjection }, corePin: corePin, clock: sendClock)
+    }
+
+    /// The terminal Composer's Stop: one Esc, checked as Chat's keys are, so it
+    /// reaches only the Agent that leads the foreground, in the block's lane on
+    /// the control link. An unlisted block is a shell the Agent left, which
+    /// must not take the Agent's stop key; Grok Build keeps Send, as anywhere.
+    /// `live` follows a projection replaced after the Composer was opened.
+    func checkedTerminalStop(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> TerminalStopOffer? {
+        guard let listed = agentsByPane[paneID] else { return .keepSend }
+        let stop = AgentComposerInterrupt.terminal(forAgentKind: listed.agent.kind) {
+            guard let projection = live() as? RexConsoleProjection, projection.admits(corePin) else {
+                return .failed(TransportError.rexServerGone.presentation.message)
+            }
+            do {
+                try await projection.chatTyping(at: paneID).press(["esc"])
+                return .sent
+            } catch let refusal as RexChatTyping.Refusal {
+                return .failed(refusal.message)
+            } catch {
+                return .failed(ChatStopPlan.unreachableMessage)
+            }
+        }
+        return stop.map(TerminalStopOffer.interrupt) ?? .keepSend
     }
 
     /// Chat's checked typing for this Pane; nil for an id that names no block.

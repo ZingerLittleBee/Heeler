@@ -121,6 +121,41 @@ struct RexChatTypingTests {
         #expect(await rig.written() == ["\u{1B}"])
     }
 
+    // MARK: The terminal Composer's Stop
+
+    /// The terminal Composer's Stop is one Esc checked as Chat's keys are: it
+    /// reaches the Agent that holds the terminal, never a shell left behind,
+    /// and a block with no Agent listed keeps Send.
+    @Test func theTerminalStopPressesEscForTheAgentOnly() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        let projection = rig.projection
+        let pin = TerminalCorePin(joined: projection.inventoryCore)
+        guard case .interrupt(let stop)? = projection.checkedTerminalStop(
+            for: RexChatRig.paneID, keepingTo: pin, live: { projection })
+        else {
+            Issue.record("Expected the terminal's Stop")
+            return
+        }
+
+        #expect(await stop.perform() == .sent)
+        #expect(await rig.written() == ["\u{1B}"])
+
+        rig.block.update { $0.foregrounds = [FakeRexChatBlock.foreground("zsh", pid: 4300)] }
+        #expect(await stop.perform() == .failed("The Agent no longer holds this terminal, so Heeler pressed nothing."))
+        #expect(await rig.written() == ["\u{1B}"])
+
+        // The rig answers every block's foreground with the Agent, so only a
+        // block the inventory does not list has no Agent.
+        let unlisted = RexPaneAddress(sessionID: "session:studio", blockID: "block:gone").paneID
+        guard case .keepSend? = projection.checkedTerminalStop(for: unlisted, keepingTo: pin, live: { projection })
+        else {
+            Issue.record("Expected Send to stay on a block with no Agent")
+            return
+        }
+        await rig.tookNothing()
+    }
+
     // MARK: Pastes
 
     /// A paste goes whole as a paste event; text with a line break waits for
