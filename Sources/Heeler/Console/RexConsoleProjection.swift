@@ -79,6 +79,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// How long Chat's reads of a block wait on the control link.
     private let chatReadDeadline: RexDeliveryDeadline
+    /// Time as Composer Send's submit window counts it.
+    private let sendClock: BlockedCardClock
     /// Chat's typing by Pane, kept so the screen it last read is the one its
     /// keys are checked against. Another instance's Panes are other Panes.
     private var chatTypings: [String: RexChatTyping] = [:]
@@ -86,13 +88,14 @@ final class RexConsoleProjection: ConsoleHostProjection {
     init(
         host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         pins: PinnedAgentsStore, chatReadDeadline: RexDeliveryDeadline = RexConsoleProjection.chatReadDeadline,
-        onChange: @escaping @MainActor @Sendable () -> Void
+        sendClock: BlockedCardClock = .live, onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.memory = memory
         self.pins = pins
         self.chatReadDeadline = chatReadDeadline
+        self.sendClock = sendClock
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
     }
@@ -650,6 +653,20 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func pasteIntoAgent(_ text: String, paneID: String) async throws {
         try await chatTyping(at: paneID).paste(text)
+    }
+
+    /// Checked Composer Send on the control link, from the terminal or from
+    /// Chat. Stop has no checked way of its own: Chat's Stop presses its plan's
+    /// keys through `sendAgentKeys`, as on a herdr-core Host. `live` follows a
+    /// projection replaced after the Composer was opened.
+    func checkedComposerSend(
+        for paneID: String,
+        keepingTo corePin: TerminalCorePin,
+        live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> (any CheckedComposerSend)? {
+        guard let address = RexPaneAddress(paneID: paneID) else { return nil }
+        return RexComposerSend(
+            address: address, projection: { live() as? RexConsoleProjection }, corePin: corePin, clock: sendClock)
     }
 
     /// Chat's checked typing for this Pane; nil for an id that names no block.

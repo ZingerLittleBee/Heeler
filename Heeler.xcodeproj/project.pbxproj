@@ -781,6 +781,7 @@
 		9CAC2F486862665EAA95ECCA /* HerdrCoreSeenMarkFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357C7DDF7FED2F010E063DE3 /* HerdrCoreSeenMarkFile.swift */; };
 		9D876037CBC6A4878EA8D8C3 /* GrokScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707D880228BFDD6D1652DB85 /* GrokScreen.swift */; };
 		9DC6AF274D7C3BEDC038A985 /* GrokFileChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CF28C4CFD9E5A1823EA378 /* GrokFileChanges.swift */; };
+		9DD4D9A2BA83CC97B055A190 /* RexComposerSendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491876C2F09A59564964947A /* RexComposerSendTests.swift */; };
 		9E7AFEC6FD8926C79DCB9D1D /* HerdrAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7065C3BE109D2F52AE3BC2 /* HerdrAPITypes.swift */; };
 		9ED1A6DA97A8EC6C39C9D252 /* ClaudeCodeHooksSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76EF39DE950E595EC33F4FC /* ClaudeCodeHooksSection.swift */; };
 		9ED432CFB7DD4CCC60AA0B2A /* CodexPendingEchoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606DC1CA3CEE33CCCC4EA551 /* CodexPendingEchoTests.swift */; };
@@ -847,6 +848,7 @@
 		AB9F96B7D7E163391A43B272 /* TranscriptFollowerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5D0749EAEEF354B7939E72 /* TranscriptFollowerTests.swift */; };
 		AC0A24DC308EEBBAC1A04A7A /* AgentRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B2655F8FDE37EAC2615457 /* AgentRouteTests.swift */; };
 		AC52B1B1BB346B6FDA18900B /* RexStreamScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3DE32C79322C3A6BA8E757 /* RexStreamScannerTests.swift */; };
+		AC7A0023223D2DCE4514317F /* RexComposerSend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78959DBCDC5C1443E6AA9652 /* RexComposerSend.swift */; };
 		AD4029C736D22C3F73CEB19F /* RexDataWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A730484CAE297AB50F149333 /* RexDataWire.swift */; };
 		AD8F5D76914DBF0FE4494F0C /* ChatFollowLatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18F70A5EBC79510351A79B1 /* ChatFollowLatch.swift */; };
 		AD9CD88FF406768B4D94FEFC /* AgentActivityLink+Hosts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C57421FC20967BE702DC100 /* AgentActivityLink+Hosts.swift */; };
@@ -1703,6 +1705,7 @@
 		48B853441AF972F5F05ADA67 /* AgentStatusPaletteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusPaletteTests.swift; sourceTree = "<group>"; };
 		48EF1E70193168E3794D6266 /* SkeletonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonTests.swift; sourceTree = "<group>"; };
 		48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
+		491876C2F09A59564964947A /* RexComposerSendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexComposerSendTests.swift; sourceTree = "<group>"; };
 		492F0346506BE7CB862D819D /* ChatStopPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStopPlanTests.swift; sourceTree = "<group>"; };
 		493156366347AD36EC1985E8 /* HerdrCoreWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreWireTests.swift; sourceTree = "<group>"; };
 		49319E0639405C38ED774754 /* HostServerSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostServerSwitchTests.swift; sourceTree = "<group>"; };
@@ -1933,6 +1936,7 @@
 		77BA98D6CF98EA116DB45B76 /* TmuxLaunchConsoleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxLaunchConsoleTests.swift; sourceTree = "<group>"; };
 		77DB1F6C018F79AFBFCCD8F5 /* GrokCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCardBuilder.swift; sourceTree = "<group>"; };
 		7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UntrackedDirectoryListing.swift; sourceTree = "<group>"; };
+		78959DBCDC5C1443E6AA9652 /* RexComposerSend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexComposerSend.swift; sourceTree = "<group>"; };
 		78A53DB7ACA079F591F1ADEE /* ConsoleHostProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostProjection.swift; sourceTree = "<group>"; };
 		78C494178D0E1896DC3ACC69 /* FakeRexServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeRexServer.swift; sourceTree = "<group>"; };
 		78C87715683760CC51A10FF4 /* HerdrCoreComposerSend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreComposerSend.swift; sourceTree = "<group>"; };
@@ -3039,6 +3043,7 @@
 				A6FA97A9066CD546A9697D4C /* RexChatScreenTests.swift */,
 				B4C02BFCF63639934C0B691F /* RexChatTests.swift */,
 				1B3788AB60CAA2F63C6769C6 /* RexChatTypingTests.swift */,
+				491876C2F09A59564964947A /* RexComposerSendTests.swift */,
 				5CAEF7E8607F4C42AC0E11B8 /* RexConsoleTests.swift */,
 				324620D947C4C19F1D0F0A50 /* RexControlLinkTests.swift */,
 				2B4E662185DEE0DAD31542F1 /* RexControlWireTests.swift */,
@@ -3631,6 +3636,7 @@
 				EB7D2ACA4701AF48E8B6C8C5 /* RexAgentRule.swift */,
 				6A45638E160886B2D984B07A /* RexChatScreen.swift */,
 				9AEC482DB244ED1D6358A3C5 /* RexChatTyping.swift */,
+				78959DBCDC5C1443E6AA9652 /* RexComposerSend.swift */,
 				5A8F3998ED0247AE46C0C062 /* RexConsoleProjection.swift */,
 				1D35DE1B1360AC47FD67500C /* RexOrganization.swift */,
 				03A848B0172AE419C6445551 /* RexTurnState.swift */,
@@ -5148,6 +5154,7 @@
 				6248CF610ACDCC74CDF84749 /* RexBlockRequests.swift in Sources */,
 				EFF314C148B9EAAFA02A0FF9 /* RexChatScreen.swift in Sources */,
 				05559C509872D549E8D56DFA /* RexChatTyping.swift in Sources */,
+				AC7A0023223D2DCE4514317F /* RexComposerSend.swift in Sources */,
 				137E72767F36BD5D18022665 /* RexConsoleProjection.swift in Sources */,
 				DE4EE0A0D29024C888247DD5 /* RexControlLink.swift in Sources */,
 				9ACE8EC66E5BED8C9BF13644 /* RexControlWire.swift in Sources */,
@@ -5732,6 +5739,7 @@
 				7304A3E8AB0A77F08571A5D7 /* RexChatScreenTests.swift in Sources */,
 				8992515EFD7C6D6A9FA7E9E9 /* RexChatTests.swift in Sources */,
 				FFEC715C1D81AA410B8CB3E5 /* RexChatTypingTests.swift in Sources */,
+				9DD4D9A2BA83CC97B055A190 /* RexComposerSendTests.swift in Sources */,
 				77CC6E10EFEB2BA7F8DCB360 /* RexConsoleTests.swift in Sources */,
 				2CDBEAAA9287E8B4DD3C24B1 /* RexControlLinkTests.swift in Sources */,
 				8D50AD4B1D4215729357DEF7 /* RexControlWireTests.swift in Sources */,

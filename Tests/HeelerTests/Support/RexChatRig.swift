@@ -137,7 +137,7 @@ struct RexChatRig {
         _ block: FakeRexChatBlock, world: FakeRexWorld = FakeRexWorld(sessions: [RexChatRig.studio()]),
         inputDeadline: RexDeliveryDeadline? = nil,
         readDeadline: RexDeliveryDeadline = RexDeliveryDeadline(silence: .seconds(5), limit: .seconds(10)),
-        servers: Int = 1
+        sendClock: BlockedCardClock = .live, servers: Int = 1
     ) async throws -> RexChatRig {
         let server = FakeRexServer()
         await world.install(on: server)
@@ -161,7 +161,8 @@ struct RexChatRig {
             reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)),
             terminalOptions: options)
         let projection = RexConsoleProjection(
-            host: host, session: session, pins: PinnedAgentsStore(), chatReadDeadline: readDeadline, onChange: {})
+            host: host, session: session, pins: PinnedAgentsStore(), chatReadDeadline: readDeadline,
+            sendClock: sendClock, onChange: {})
         projection.start(isActive: true)
         let rig = RexChatRig(projection: projection, server: server, world: world, block: block, connection: connection)
         try await rig.waitUntil("the Agent listed") {
@@ -192,6 +193,14 @@ struct RexChatRig {
 
     func inputs() async -> [FakeRexServer.Request] {
         await Self.inputs(server)
+    }
+
+    /// Composer Send for the left terminal.
+    func composerSend() throws -> any CheckedComposerSend {
+        let projection = projection
+        let send = projection.checkedComposerSend(
+            for: Self.paneID, keepingTo: TerminalCorePin(joined: projection.inventoryCore), live: { projection })
+        return try #require(send)
     }
 
     /// What each write carried.
