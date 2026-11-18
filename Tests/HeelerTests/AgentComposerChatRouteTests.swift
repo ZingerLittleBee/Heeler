@@ -349,7 +349,7 @@ struct AgentComposerChatRouteTests {
 
         #expect(result == .refused(hold))
         #expect(store.messages.map(\.state) == [.failed(reason)])
-        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat))
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat, retried: failed.id))
         store.agentStatusDidChange(.working)
         #expect(store.notice == nil)
         #expect(store.messages.map(\.state) == [.failed(reason)])
@@ -510,6 +510,54 @@ struct AgentComposerChatRouteTests {
         #expect(store.draft == "/clear")
         #expect(store.notice?.refusal == hold)
         #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    /// A Retry refused as outside the menu is what Send Anyway sends, not
+    /// the draft typed since.
+    @Test func sendAnywayRetriesTheRefusedMessageNotTheDraft() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let policy = Self.claudeRulesPolicy()
+        store.replaceDraft(with: "/clear")
+        _ = await store.send(policy: policy)
+        await transport.setAgentPromptFailure(TransportError.sshUnreachable(detail: "offline"))
+        _ = await store.sendAnyway(policy: policy)
+        let failed = try #require(store.messages.first)
+        guard case .failed = failed.state else {
+            Issue.record("the send should have failed: \(failed.state)")
+            return
+        }
+        await transport.setAgentPromptFailure(nil)
+        store.replaceDraft(with: "next step")
+
+        #expect(await store.retry(failed.id, policy: policy) == .refused(.unknownCommand("clear")))
+        #expect(store.canSendAnyway)
+        #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
+
+        #expect(await transport.agentPromptParams.map(\.text) == ["/clear ", "/clear "])
+        #expect(store.messages.map(\.id) == [failed.id])
+        #expect(store.draft == "next step")
+        #expect(store.notice == nil)
+    }
+
+    /// Send Anyway waits for what Send or Retry would, and a tap meanwhile
+    /// keeps the notice.
+    @Test func sendAnywayWaitsUntilTheComposerCanSend() async throws {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let policy = Self.claudeRulesPolicy()
+        store.replaceDraft(with: "/clear")
+        _ = await store.send(policy: policy)
+
+        store.isConnectionAvailable = false
+        #expect(!store.canSendAnyway)
+        #expect(await store.sendAnyway(policy: policy) == .ignored)
+        #expect(store.notice?.refusal == .unknownCommand("clear"))
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        store.isConnectionAvailable = true
+        #expect(store.canSendAnyway)
+        #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
     }
 
     private func waitUntil(

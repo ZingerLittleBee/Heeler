@@ -511,21 +511,33 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
 
     /// The command the notice refused as outside the menu, which Send
-    /// Anyway can send. Any edit ends the notice, so the draft is still the
-    /// text refused.
+    /// Anyway can send now. Any edit ends the notice, so a refused draft is
+    /// still the text refused; a refused Retry must still be failed. Either
+    /// waits for what Send or Retry would.
     private var commandToSendAnyway: String? {
-        guard case .unknownCommand(let name) = notice?.refusal else { return nil }
+        guard let notice, case .unknownCommand(let name) = notice.refusal else { return nil }
+        if let id = notice.retried {
+            guard isConnectionAvailable,
+                let message = messages.first(where: { $0.id == id }),
+                case .failed = message.state
+            else { return nil }
+        } else if !canSend {
+            return nil
+        }
         return name
     }
 
     var canSendAnyway: Bool { commandToSendAnyway != nil }
 
-    /// Sends a draft refused only for a command outside the menu, after the
-    /// user chose to. The rest of `policy` applies as for any Send.
+    /// Sends a draft, or retries a failed message, refused only for a
+    /// command outside the menu, after the user chose to. The rest of
+    /// `policy` applies as for any Send.
     @discardableResult
     func sendAnyway(policy: ComposerDeliveryPolicy) async -> SendResult {
-        guard let name = commandToSendAnyway, notice?.route == policy.route else { return .ignored }
-        return await send(policy: policy.admitting(unknownCommand: name))
+        guard let name = commandToSendAnyway, let notice, notice.route == policy.route else { return .ignored }
+        let admitting = policy.admitting(unknownCommand: name)
+        if let id = notice.retried { return await retry(id, policy: admitting) }
+        return await send(policy: admitting)
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -561,7 +573,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// was and becomes the notice.
     @discardableResult
     func retry(_ id: Message.ID, policy: ComposerDeliveryPolicy = .terminal) async -> SendResult {
-        noting(await retryMessage(id, policy: policy), policy: policy)
+        noting(await retryMessage(id, policy: policy), policy: policy, retried: id)
     }
 
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -590,9 +602,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// A refusal shows even when Agent Status changed under the Send: the
     /// draft came back, and the notice is the only word of why. The next
     /// change that ends it still does.
-    private func noting(_ result: SendResult, policy: ComposerDeliveryPolicy) -> SendResult {
+    private func noting(
+        _ result: SendResult, policy: ComposerDeliveryPolicy, retried: Message.ID? = nil
+    ) -> SendResult {
         if case .refused(let refusal) = result {
-            notice = ComposerNotice(refusal: refusal, route: policy.route, conversation: policy.conversation?())
+            notice = ComposerNotice(
+                refusal: refusal, route: policy.route, conversation: policy.conversation?(), retried: retried)
         } else {
             notice = nil
         }
@@ -615,7 +630,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Any other notice stays.
     func replaceNotice(_ refusal: ComposerRefusal, with replacement: ComposerRefusal) {
         guard let notice, notice.refusal == refusal else { return }
-        self.notice = ComposerNotice(refusal: replacement, route: notice.route, conversation: notice.conversation)
+        self.notice = ComposerNotice(
+            refusal: replacement, route: notice.route, conversation: notice.conversation, retried: notice.retried)
     }
 
     /// Removes a failed or unanswered echo and restores all of its text to the

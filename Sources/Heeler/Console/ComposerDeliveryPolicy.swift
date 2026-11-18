@@ -126,4 +126,7 @@ struct ComposerNotice: Equatable {
     /// The conversation Chat followed when the refusal came
     /// (`ComposerDeliveryPolicy.conversation`).
     var conversation: Int?
+    /// The failed message whose Retry was refused, or nil when the draft
+    /// was. Send Anyway sends what was refused.
+    var retried: UUID?
 }
