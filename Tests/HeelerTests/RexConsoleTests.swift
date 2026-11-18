@@ -222,9 +222,10 @@ struct RexConsoleTests {
     }
 
     /// Agent List Fields starts a Rex Host from the rows its Agents list with
-    /// (the Workspace and Tab, the Agent, then the directory), so a field
-    /// added there joins them and removing it leaves them as they were. A
-    /// core Host still starts from its terminal's title, then its directory.
+    /// Agent List Fields starts every Host without a plugin (Rex, core and
+    /// tmux) from Heeler's two-row default (`terminal_title_stripped` | `host`,
+    /// `workspace` | `changes`), so a field added there joins them and removing
+    /// it leaves them as they were.
     @Test func agentListFieldsStartARexHostFromTheRowsItsAgentsShow() throws {
         let suite = "rex-agent-rows-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -233,29 +234,34 @@ struct RexConsoleTests {
         defer { store.setHosts([]) }
         let rex = rex
         let core = Host(name: "Core", address: "core.example", username: "dev", serverKind: .herdrCore)
-        store.setHosts([rex, core])
+        let tmux = Host(name: "Tmux", address: "tmux.example", username: "dev", serverKind: .tmux)
+        store.setHosts([rex, core, tmux])
         let editor = AgentListFieldsEditor(console: store)
 
         let listed = AgentRowLayout.consoleDefault.rows
-        #expect(listed == [[.init(.workspace), .init(.tab)], [.init(.agent)], [.init(.directory)]])
+        #expect(listed == [[.init(.terminalTitleStripped)], [.init(.workspace)]])
         #expect(store.rowLayout(for: rex.id).rows == listed)
+        #expect(store.rowLayout(for: rex.id).effectiveTrailing == [[.init(.host)], [.init(.changes)], []])
         #expect(editor.layout(for: rex.id) == store.rowLayout(for: rex.id))
         #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: rex.id)) == "Heeler's fields")
 
-        #expect(AgentLayoutTokensEditing.add(.backend, editor: editor, hostID: rex.id, rowIndex: 2))
-        let withBackend = Array(listed.prefix(2)) + [[.init(.directory), .init(.backend)]]
+        #expect(AgentLayoutTokensEditing.add(.backend, editor: editor, hostID: rex.id, rowIndex: 1))
+        let withBackend: [AgentRow] = [[.init(.terminalTitleStripped)], [.init(.workspace), .init(.backend)]]
         #expect(store.rowLayout(for: rex.id).rows == withBackend)
         #expect(editor.layout(for: rex.id).rows == withBackend)
-        #expect(AgentLayoutTokensEditing.delete(IndexSet(integer: 1), editor: editor, hostID: rex.id, rowIndex: 2))
+        #expect(AgentLayoutTokensEditing.delete(IndexSet(integer: 1), editor: editor, hostID: rex.id, rowIndex: 1))
         #expect(store.rowLayout(for: rex.id).rows == listed)
 
         #expect(store.rowLayout(for: core.id) == .hostWithoutPluginDefault)
         #expect(editor.layout(for: core.id) == .hostWithoutPluginDefault)
-        // The page says where a Rex Host's rows start, and offers no labels.
+        #expect(store.rowLayout(for: tmux.id) == .hostWithoutPluginDefault)
+        #expect(editor.layout(for: tmux.id) == .hostWithoutPluginDefault)
+        // The page says where a Rex or tmux Host's rows start, and offers no labels.
         let note = AgentListFieldsCopy.rowSlots(followsPlugin: false, serverKind: .rex)
-        #expect(note.contains("Row 1 starts from the Workspace and Tab"))
+        #expect(note.contains("Row 1 starts from the terminal's title"))
         #expect(!note.localizedCaseInsensitiveContains("label"))
         #expect(!note.localizedCaseInsensitiveContains("plugin"))
+        #expect(AgentListFieldsCopy.rowSlots(followsPlugin: false, serverKind: .tmux) == note)
         #expect(AgentListFieldsCopy.rowSlots(followsPlugin: false, serverKind: .herdrCore)
             == AgentListFieldsCopy.rowSlots(followsPlugin: false))
     }

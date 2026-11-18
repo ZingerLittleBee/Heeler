@@ -272,7 +272,7 @@ final class AgentListFieldsEditor {
                 ? String(localized: "Replaced with plugin fields.")
                 : AgentListFieldsCopy.syncDiagnostics)
         case .loaded(nil):
-            drafts[hostID] = kept(AgentRowLayout.heelerDefault.withHeelerRow(thirdRow))
+            drafts[hostID] = kept(AgentRowLayout.consoleDefault.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(
                 String(localized: "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
         case .unavailable:

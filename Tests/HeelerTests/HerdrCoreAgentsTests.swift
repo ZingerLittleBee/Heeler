@@ -569,26 +569,27 @@ struct HerdrCoreAgentsTests {
 
     // MARK: Agent Row Layout
 
-    private static let titleThenDirectory: [AgentRow] = [
-        [.init(.terminalTitleStripped)], [.init(.directory)],
+    private static let titleThenWorkspace: [AgentRow] = [
+        [.init(.terminalTitleStripped)], [.init(.workspace)],
     ]
 
-    @Test func aCoreHostsRowsStartFromTheTitleThenTheDirectory() async throws {
+    @Test func aCoreHostsRowsStartFromTheTitleThenTheWorkspace() async throws {
         let (store, _) = try await started([Self.claude("t1", title: "fix the sync")])
         defer { store.setHosts([]) }
         let layout = store.rowLayout(for: host.id)
-        #expect(layout.rows == Self.titleThenDirectory)
+        #expect(layout.rows == Self.titleThenWorkspace)
+        #expect(layout.effectiveTrailing == [[.init(.host)], [.init(.changes)], []])
         let row = try #require(agent(store, "t1"))
         #expect(
             AgentRowRenderer.render(layout: layout, agent: row).map { $0.map(\.text) }
-                == [["fix the sync"], ["src"]])
+                == [["fix the sync"], ["app"]])
     }
 
     @Test func aPluginSnapshotNeverSetsACoreHostsRowsButItsSavedLayoutDoes() {
         let plugin = AgentRowLayoutSnapshot(layout: AgentRowLayout(rows: [[.init(.workspace)]]))
         #expect(
             AgentRowLayoutResolver.resolve(hostLayout: nil, pluginSnapshot: plugin, followsPlugin: false).rows
-                == Self.titleThenDirectory)
+                == Self.titleThenWorkspace)
         let saved = AgentRowLayout(rows: [[.init(.host)]])
         #expect(
             AgentRowLayoutResolver.resolve(hostLayout: saved, pluginSnapshot: plugin, followsPlugin: false)
@@ -614,7 +615,7 @@ struct HerdrCoreAgentsTests {
             followsPlugin: { _ in false })
         let id = host.id
 
-        #expect(editor.layout(for: id).rows == Self.titleThenDirectory)
+        #expect(editor.layout(for: id).rows == Self.titleThenWorkspace)
         #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: id)) == "Heeler's fields")
 
         await editor.replaceWithPluginFields(id)
@@ -626,7 +627,7 @@ struct HerdrCoreAgentsTests {
         #expect(AgentLayoutTokensEditing.add(label, editor: editor, hostID: id, rowIndex: 1))
         #expect(
             AgentRowLayoutStore(defaults: defaults).hostLayouts[id]?.rows
-                == [[.init(.terminalTitleStripped)], [.init(.directory), .init(label)]])
+                == [[.init(.terminalTitleStripped)], [.init(.workspace), .init(label)]])
         #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: id)) == "Your fields")
     }
 

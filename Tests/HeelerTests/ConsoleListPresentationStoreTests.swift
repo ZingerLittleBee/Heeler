@@ -1110,7 +1110,8 @@ struct AgentCardPresentationTests {
             }
             return agents.map { found[$0.id] }
         }
-        #expect(qualifiers(.consoleDefault) == [nil, nil, nil])
+        #expect(qualifiers(AgentRowLayout.heelerDefault.withHeelerRow()) == [nil, nil, nil])
+        #expect(qualifiers(.consoleDefault) == ["OMP", "Pi", nil])
         let workspaceOnly = AgentRowLayout(rows: [[.init(.workspace)], [.init(.directory)]])
         #expect(qualifiers(workspaceOnly) == ["OMP", "Pi", nil])
     }

@@ -109,7 +109,7 @@ struct AgentLayoutTokensEditingTests {
         func saved() -> AgentRowLayout? { layouts.hostLayouts[hostID] }
 
         #expect(AgentLayoutTokensEditing.add(.status, editor: editor, hostID: hostID, rowIndex: 0))
-        #expect(saved()?.rows[0] == [.init(.workspace), .init(.tab), .init(.status)])
+        #expect(saved()?.rows[0] == [.init(.terminalTitleStripped), .init(.status)])
         #expect(saved()?.trailing == nil)
         #expect(!AgentLayoutTokensEditing.add(.changes, editor: editor, hostID: hostID, rowIndex: 0))
         #expect(!AgentLayoutTokensEditing.add(
@@ -118,23 +118,25 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.add(
             .changes, editor: editor, hostID: hostID, rowIndex: 0, side: .trailing))
-        #expect(saved()?.trailing == [[.init(.changes)], [.init(.host)], [.init(.changes)]])
+        #expect(saved()?.trailing == [[.init(.host), .init(.changes)], [.init(.changes)], []])
 
         // Across the gap: the field keeps its style and lands beside it.
         #expect(AgentLayoutTokensEditing.setStyle(
-            .secondary, at: 2, editor: editor, hostID: hostID, rowIndex: 0))
-        #expect(AgentLayoutTokensEditing.moveAcross(2, editor: editor, hostID: hostID, rowIndex: 0, from: .leading))
-        #expect(saved()?.rows[0] == [.init(.workspace), .init(.tab)])
+            .secondary, at: 1, editor: editor, hostID: hostID, rowIndex: 0))
+        #expect(AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 0, from: .leading))
+        #expect(saved()?.rows[0] == [.init(.terminalTitleStripped)])
+        #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.host), .init(.changes)])
+        #expect(!AgentLayoutTokensEditing.moveAcross(2, editor: editor, hostID: hostID, rowIndex: 0, from: .trailing))
+        #expect(AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 0, from: .trailing))
+        #expect(saved()?.rows[0] == [.init(.terminalTitleStripped), .init(.host)])
         #expect(saved()?.trailing?[0] == [.init(.status, dim: true), .init(.changes)])
-        #expect(!AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 0, from: .trailing))
-        #expect(AgentLayoutTokensEditing.moveAcross(0, editor: editor, hostID: hostID, rowIndex: 1, from: .trailing))
-        #expect(saved()?.rows[1] == [.init(.agent), .init(.host)])
-        #expect(saved()?.trailing?[1] == [])
         #expect(AgentLayoutTokensEditing.delete(
-            IndexSet(integer: 0), editor: editor, hostID: hostID, rowIndex: 2, side: .trailing))
-        #expect(saved()?.trailing?[2] == [])
+            IndexSet(integer: 0), editor: editor, hostID: hostID, rowIndex: 1, side: .trailing))
+        #expect(saved()?.trailing?[1] == [])
 
-        #expect(AgentLayoutTokensEditing.slotFields(1, of: try #require(saved())) == [.init(.agent), .init(.host)])
+        #expect(
+            AgentLayoutTokensEditing.slotFields(0, of: try #require(saved()))
+                == [.init(.terminalTitleStripped), .init(.host), .init(.status, dim: true), .init(.changes)])
         #expect(AgentLayoutTokensEditing.availableHeelerFields(in: [], side: .trailing)
             == [.host, .backend, .status, .directory, .path, .statusBadge, .changes])
         #expect(AgentLayoutTokensEditing.availableHeelerFields(in: []) == [.host, .backend, .status, .directory, .path])
@@ -160,8 +162,8 @@ struct AgentLayoutTokensEditingTests {
     /// The right side's defaults leave out a field the slot already shows
     /// on the left, so the first right-side change saves no field twice.
     @Test func rightSideDefaultsSkipAFieldTheLeftAlreadyShows() {
-        let layout = AgentRowLayout(rows: [[.init(.workspace)], [.init(.agent), .init(.host)], [.init(.directory)]])
-        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[], [], [.init(.changes)]])
+        let layout = AgentRowLayout(rows: [[.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory)]])
+        #expect(AgentLayoutTokensEditing.rows(.trailing, of: layout) == [[], [.init(.changes)], []])
         #expect(AgentLayoutTokensEditing.rows(.trailing, of: AgentRowLayout(rows: [])) == AgentRowLayout.defaultTrailing)
         #expect(AgentLayoutTokensEditing.keepingRightSides(
             [[.init(.workspace), .init(.tab)], [.init(.agent)]], of: [[.init(.workspace)], [], []])
@@ -234,7 +236,7 @@ struct AgentLayoutTokensEditingTests {
 
         #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 2))
         let saved = try #require(layouts.hostLayouts[hostID])
-        #expect(saved.rows == Array(before.rows.prefix(2)) + [[.init(.directory), .init(.host)]])
+        #expect(saved.rows == before.rows + [[.init(.host)]])
         #expect(saved.rowGap == before.rowGap && saved.rowsByAgent == before.rowsByAgent)
         #expect(editor.underlyingSource(for: hostID) == .saved)
     }
@@ -271,10 +273,10 @@ struct AgentLayoutTokensEditingTests {
                 IndexSet(integer: 0), editor: editor, hostID: hostID, rowIndex: 2) == false)
         #expect(layouts.hostLayouts[hostID]?.rows == twoRows)
         // Heeler fields land in a herdr row as well as in Row 3.
-        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 0))
+        #expect(AgentLayoutTokensEditing.add(.host, editor: editor, hostID: hostID, rowIndex: 1))
         #expect(AgentLayoutTokensEditing.add(.directory, editor: editor, hostID: hostID, rowIndex: 2))
         #expect(layouts.hostLayouts[hostID]?.rows
-            == [[.init(.workspace), .init(.host)], [.init(.agent)], [.init(.directory)]])
+            == [[.init(.workspace)], [.init(.agent), .init(.host)], [.init(.directory)]])
         #expect(AgentLayoutTokensEditing.row(2, in: editor.layout(for: hostID).rows) == [.init(.directory)])
         #expect(AgentLayoutTokensEditing.row(3, in: editor.layout(for: hostID).rows).isEmpty)
 
