@@ -37,9 +37,11 @@ final class StartAgentStore {
         case failed(String)
     }
 
-    /// What the form's Agent picker can hold.
+    /// What the form's Agent picker can hold. Choosing a preset jumps the
+    /// picker to that preset's harness and selects the preset.
     enum AgentChoice: Hashable {
         case kind(SupportedAgentKind)
+        case preset(LaunchPreset.ID)
         case template(AgentTemplate)
     }
 
@@ -169,21 +171,34 @@ final class StartAgentStore {
         didSet {
             if selectedAgentKind != nil { selectedTemplate = nil }
             // Another harness leaves the preset behind.
-            if let selectedPreset, selectedPreset.kind != selectedAgentKind { selectedPresetID = nil }
+            if selectedPresetID != nil,
+                selectedPreset == nil || selectedPreset?.kind != selectedAgentKind
+            {
+                selectedPresetID = nil
+            }
         }
     }
     /// The Launch Preset the Agent starts from (#622); nil starts the
     /// harness as the form describes it. Picking one picks its harness.
     var selectedPresetID: LaunchPreset.ID? {
         didSet {
-            if let selectedPreset, selectedAgentKind != selectedPreset.kind { selectedAgentKind = selectedPreset.kind }
+            guard selectedPresetID != nil else { return }
+            guard let selectedPreset else {
+                selectedPresetID = nil
+                return
+            }
+            if selectedAgentKind != selectedPreset.kind {
+                selectedAgentKind = selectedPreset.kind
+            }
         }
     }
     /// The Template selected in place of a kind.
     var selectedTemplate: AgentTemplate? {
         didSet { if selectedTemplate != nil { selectedAgentKind = nil } }
     }
-    /// Either one, as the form's picker holds it.
+    /// Either one, as the form's picker holds it. Choosing a preset from the
+    /// menu selects both the preset and its harness, so the picker reads back
+    /// as `.kind(preset.kind)`.
     var selectedAgent: AgentChoice? {
         get {
             selectedTemplate.map(AgentChoice.template) ?? selectedAgentKind.map(AgentChoice.kind)
@@ -191,6 +206,7 @@ final class StartAgentStore {
         set {
             switch newValue {
             case .kind(let kind): selectedAgentKind = kind
+            case .preset(let id): selectedPresetID = id
             case .template(let template): selectedTemplate = template
             case nil:
                 selectedAgentKind = nil
@@ -431,14 +447,22 @@ final class StartAgentStore {
         return Self.defaultAgentName(base: base, taken: taken)
     }
 
-    /// The presets of the harnesses the selected Host has.
+    /// The presets of the harnesses the selected Host has, offered in the
+    /// Agent picker to jump straight to a preset and its harness.
     var availablePresets: [LaunchPreset] {
         presetsProvider().filter { availableAgentKinds.contains($0.kind) }
     }
 
+    /// The presets for the currently selected harness, offered by the Preset
+    /// picker so another harness's presets never appear under it.
+    var selectedAgentPresets: [LaunchPreset] {
+        guard let selectedAgentKind else { return [] }
+        return availablePresets.filter { $0.kind == selectedAgentKind }
+    }
+
     var selectedPreset: LaunchPreset? {
         guard let selectedPresetID else { return nil }
-        return presetsProvider().first { $0.id == selectedPresetID }
+        return availablePresets.first { $0.id == selectedPresetID }
     }
 
     /// A preset's name as an Agent name when herdr accepts it lowercased
@@ -522,6 +546,7 @@ final class StartAgentStore {
     func discoverAgents() async {
         availableAgentKinds = []
         selectedAgentKind = nil
+        selectedPresetID = nil
         availableTemplates = []
         selectedTemplate = nil
         guard let hostID = selectedHostID else {

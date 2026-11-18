@@ -90,8 +90,8 @@ struct AgentKindMarkTests {
         let host = Host.fixture()
         let transport = ScriptedTransport(
             snapshot: .fixture(
-                workspaces: [.fixture(id: "w1", label: "proj")],
-                agents: []))
+                agents: [],
+                workspaces: [.fixture(workspaceID: "w1", label: "proj")]))
         let kinds: [SupportedAgentKind] = [.pi, .claude, .codex, .cursor, .antigravity, .omp, .opencode]
         await transport.setAvailableAgentKinds(kinds)
 
@@ -109,8 +109,8 @@ struct AgentKindMarkTests {
                 EventsSession(
                     subscriptions: subscriptions,
                     connect: { transport },
-                    reconnectPolicy: EventsReconnectPolicy(
-                        initialDelay: .milliseconds(10), maxDelay: .milliseconds(20)),
+                    reconnectPolicy: ReconnectPolicy(
+                        initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(20)),
                     keepalive: nil)
             })
         console.setHosts([host])
@@ -119,36 +119,136 @@ struct AgentKindMarkTests {
         let controller = UIHostingController(
             rootView: StartAgentView(hosts: [host], console: console, onStarted: { _ in }))
         try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            frame: CGRect(x: 0, y: 0, width: 402, height: 1000),
             rootViewController: controller
         ) { window in
             var budget = PollBudget(.seconds(5))
-            while !accessibleElements(in: window).contains(where: { $0.accessibilityLabel == "Agent" }),
+            while Self.formPicker(identifiedBy: "startAgent.agent", labeled: "Agent", in: window) == nil,
                 budget.hasTimeLeft
             {
+                window.layoutIfNeeded()
                 try await Task.sleep(for: .milliseconds(20))
                 budget.charge()
             }
 
             let expectedSize = AgentKindMark.menuImageSize
-            var agentActions: [(title: String, size: CGSize?)] = []
-            let menus = try await HostedMenu.items(labeled: "Agent", in: window) { menu in
-                agentActions = Self.leafActions(of: menu)
-            }
-            #expect(menus == [kinds.map(\.displayName)])
-            #expect(agentActions.count == kinds.count)
+            let agentActions = try await Self.openFormPickerActions(
+                identifiedBy: "startAgent.agent", labeled: "Agent", in: window)
+            #expect(agentActions.map(\.title) == kinds.map(\.displayName) + ["Work · Claude Code"])
             for action in agentActions {
                 #expect(action.size == expectedSize, "\(action.title) missing menu icon")
             }
 
-            var presetActions: [(title: String, size: CGSize?)] = []
-            let presetMenus = try await HostedMenu.items(labeled: "Preset", in: window) { menu in
-                presetActions = Self.leafActions(of: menu)
+            try await Self.selectFormPickerAction(
+                "Work · Claude Code", identifiedBy: "startAgent.agent", labeled: "Agent", in: window)
+            budget = PollBudget(.seconds(5))
+            while Self.formPicker(identifiedBy: "startAgent.preset", labeled: "Preset", in: window) == nil,
+                budget.hasTimeLeft
+            {
+                window.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(20))
+                budget.charge()
             }
-            #expect(presetMenus == [["None", "Work"]])
+
+            let presetActions = try await Self.openFormPickerActions(
+                identifiedBy: "startAgent.preset", labeled: "Preset", in: window)
+            #expect(presetActions.map(\.title) == ["None", "Work"])
             #expect(presetActions.first { $0.title == "None" }?.size == nil)
             #expect(presetActions.first { $0.title == "Work" }?.size == expectedSize)
         }
+    }
+
+    @MainActor
+    private static func formPicker(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) -> NSObject? {
+        accessibleElements(in: window).first { element in
+            guard !element.accessibilityTraits.contains(.header), !element.accessibilityFrame.isEmpty else {
+                return false
+            }
+            var current: UIView? =
+                (element as? UIView)
+                ?? ((element as? UIAccessibilityElement)?.accessibilityContainer as? UIView)
+            while let view = current {
+                if view.isHidden || view.alpha == 0 { return false }
+                current = view.superview
+            }
+            if (element as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
+                return true
+            }
+            guard let elementLabel = element.accessibilityLabel else { return false }
+            return elementLabel == label || elementLabel.hasPrefix("\(label),")
+        }
+    }
+
+    @MainActor
+    private static func openFormPickerMenu(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) async throws -> (controller: UIViewController, menu: UIMenu) {
+        let row = try #require(formPicker(identifiedBy: identifier, labeled: label, in: window))
+        let rowFrame = row.accessibilityFrame
+        func buttons(in view: UIView) -> [UIButton] {
+            var found: [UIButton] = []
+            if let button = view as? UIButton, button.menu != nil { found.append(button) }
+            for subview in view.subviews { found += buttons(in: subview) }
+            return found
+        }
+        let button = try #require(
+            buttons(in: window).first {
+                UIAccessibility.convertToScreenCoordinates($0.bounds, in: $0).intersects(rowFrame)
+            })
+        _ = button.accessibilityActivate() || row.accessibilityActivate()
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft {
+            if let presented = window.rootViewController?.presentedViewController,
+                let menu = button.menu,
+                !menu.children.isEmpty,
+                !menu.children.contains(where: { $0 is UIDeferredMenuElement })
+            {
+                return (presented, menu)
+            }
+            try await Task.sleep(for: .milliseconds(20))
+            budget.charge()
+        }
+        Issue.record("Timed out opening \(label) menu")
+        throw CancellationError()
+    }
+
+    @MainActor
+    private static func openFormPickerActions(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) async throws -> [(title: String, size: CGSize?)] {
+        let opened = try await openFormPickerMenu(identifiedBy: identifier, labeled: label, in: window)
+        let actions = leafActions(of: opened.menu)
+        opened.controller.dismiss(animated: false)
+        var budget = PollBudget(.seconds(5))
+        while window.rootViewController?.presentedViewController != nil, budget.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(20))
+            budget.charge()
+        }
+        return actions
+    }
+
+    @MainActor
+    private static func selectFormPickerAction(
+        _ title: String, identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) async throws {
+        let opened = try await openFormPickerMenu(identifiedBy: identifier, labeled: label, in: window)
+        func leaf(in menu: UIMenu) -> (any UIMenuLeaf)? {
+            for child in menu.children {
+                if let section = child as? UIMenu, let found = leaf(in: section) { return found }
+                if child.title == title, let item = child as? any UIMenuLeaf { return item }
+            }
+            return nil
+        }
+        let chosen = try #require(leaf(in: opened.menu))
+        opened.controller.dismiss(animated: false)
+        var budget = PollBudget(.seconds(5))
+        while window.rootViewController?.presentedViewController != nil, budget.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(20))
+            budget.charge()
+        }
+        chosen.performWithSender(nil, target: nil)
     }
 
     private static func leafActions(of menu: UIMenu) -> [(title: String, size: CGSize?)] {
