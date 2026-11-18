@@ -64,8 +64,8 @@ Heeler 是 iPhone 和 iPad 上独立的 **herdr 移动客户端**和 Agent 控�
 - **Rex**（实验性）—— 打开 macOS 或 Linux 上已在运行的 Rex 服务器中的终端。
   会话、窗口与终端呈现在控制台中，运行编程 Agent 的终端带着它向 Rex 上报的
   状态出现在 Agents 中，实时终端支持输入、粘贴与 Snippets，
-  并在你打开期间适配你的屏幕。Claude Code 与 Codex 可在 Chat 中打开，
-  无需在机器上安装任何东西
+  并在你打开期间适配你的屏幕。Claude Code、Codex、Pi 与 Oh My Pi 可在
+  Chat 中打开
   （[了解更多](https://docs.heeler.bybee.dev/zh/rex)）。
 - **Attach** —— libghostty 渲染的 Agent 真实终端：原生历史回看、也能驱动全屏
   TUI 的惯性触摸滚动、长按选择、接管失效的终端占用者，并静默收集网页链接
@@ -108,7 +108,7 @@ herdr-core Host（包括运行 Herdr 桌面端的机器）需手动添加，并�
 
 tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确认 Server Kind 与套接字名称。连接本身绝不会启动 tmux 服务器；在 Linux 上可按需通过 New Workspace 启动。实时终端通过 tmux 控制模式与桌面客户端并存接入，调整为适合屏幕的尺寸并保持在同一窗口已打开的桌面终端范围内。Claude Code 钩子可上报 Blocked、Done 与会话 ID，可选的 Host Helper 提供状态读取、Pi 与 Oh My Pi 扩展、通知、实时活动和 Usage（[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)）。
 
-Rex 服务器（实验性；适用于 macOS 与 Linux，基于 Rex 0.1.0-preview.14 开发）是它所在 Host 的一个 Server：Heeler 查看这台机器时会列出它，由你打开。Heeler 通过 direct-streamlocal 通道连接正在运行的 Rex 服务器的 Unix 套接字，绝不会启动它，并且只支持 Rex API revision 12。Rex Server 把运行编程 Agent 的终端连同该 Agent 向 Rex 上报的状态列在 Agents 中，其他终端列在 Terminals 中。它的 Agent 打开时带有 Claude Code 与 Codex 的 Chat，通过 SSH 读取、经 Rex 输入，无需在机器上安装任何东西，也能附上经 SSH 上传的图片和文件；没有通知或 Usage，也不能从 Heeler 新建、重命名或关闭任何内容（[连接 Rex](https://docs.heeler.bybee.dev/zh/rex)）。
+Rex 服务器（实验性；适用于 macOS 与 Linux，基于 Rex 0.1.0-preview.14 开发）是它所在 Host 的一个 Server：Heeler 查看这台机器时会列出它，由你打开。Heeler 通过 direct-streamlocal 通道连接正在运行的 Rex 服务器的 Unix 套接字，绝不会启动它，并且只支持 Rex API revision 12。Rex Server 把运行编程 Agent 的终端连同该 Agent 向 Rex 上报的状态列在 Agents 中，其他终端列在 Terminals 中。它的 Agent 打开时带有 Claude Code、Codex、Pi 与 Oh My Pi 的 Chat，通过 SSH 读取、经 Rex 输入，也能附上经 SSH 上传的图片和文件。无需在机器上安装任何东西，只有 Pi 与 Oh My Pi 需要 Heeler 的扩展，由你在 Chat 中添加；没有通知或 Usage，也不能从 Heeler 新建、重命名或关闭任何内容（[连接 Rex](https://docs.heeler.bybee.dev/zh/rex)）。
 
 如需通过 Tailscale、ZeroTier 或 EasyTier 访问机器，请参阅 [Overlay Network 设置教程](docs/guides/zh/overlay-networks.md)。教程涵盖 macOS 安装、Mac 上不装 VPN 的 Tailscale 方案、Heeler 配置和连接验证。Heeler 在应用内加入这些网络，无需配置 iOS 系统 VPN；需要带有 **Settings > Overlay Networks** 的 Heeler 版本。
 

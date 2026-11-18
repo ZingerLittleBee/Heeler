@@ -17,7 +17,8 @@ anything on the machine.
 Amended by [ADR 0056](0056-rex-agents-open-the-agent-detail-with-chat.md):
 a Rex Agent opens the Agent detail, with Chat for Claude Code and Codex, its
 Terminal surface and the Composer, not the Terminals list's terminal detail.
-`agentsOpenAsTerminals` is gone.
+`agentsOpenAsTerminals` is gone. Since ADR 0056's update of 2026-11-18, Chat
+is offered for Pi and Oh My Pi too.
 
 ## Decision
 

@@ -20,6 +20,9 @@ a Rex Agent opens the Agent detail, with Chat for Claude Code and Codex and
 the Composer, read over the Host's SSH connection and typed on the control
 connection. Since its update of 2026-11-17, a file or image the user
 attaches to a message is staged on the Host over that SSH connection too.
+Since its update of 2026-11-18, Chat is also offered for Pi and Oh My Pi,
+whose Chat adds Heeler's extension to the Agent's extension folder when the
+user asks.
 
 Amended 2026-11-16 (see [Update 2026-11-16](#update-2026-11-16)): the switch
 is gone, and every build offers Rex.

@@ -41,9 +41,12 @@ without one; turned on then, it connects once the user starts Rex, since
 Heeler never starts the server and never runs the `rex` command-line tool to
 find it. A terminal running a known agent program is an Agent with its Agent
 Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
-detail, with Chat for Claude Code and Codex, the Composer and the terminal,
-and nothing installed on the machine; an Agent whose program reports nothing
-to Rex reads Unknown and has no Stop and no Blocked Card. Where Chat is
+detail, with Chat for Claude Code, Codex, Pi and Oh My Pi, the Composer and
+the terminal. Nothing is installed on the machine for it, except that a Pi or
+Oh My Pi's Chat offers to add Heeler's extension to that Agent's own
+extension folder, and writes it only when the user says so; an Agent whose
+program reports nothing to Rex reads Unknown and has no Stop and no Blocked
+Card. Where Chat is
 offered, its Agents take images and files too, staged over the Host's SSH
 connection as on the other Server Kinds. A Rex Host offers no notifications,
 Live Activities, Usage, Changes or New Agent (ADR 0056).
@@ -472,9 +475,11 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
-On Rex, for Claude Code and Codex only, Chat binds the conversation as on
-herdr-core, from what the Host's SSH connection reads about the foreground
-process Rex names, and keeps a choice on this device. Its Send, Stop and
+On Rex, for Claude Code, Codex, Pi and Oh My Pi only, Chat binds the
+conversation as on herdr-core, from what the Host's SSH connection reads
+about the foreground process Rex names, and keeps a choice on this device. A
+Pi or Oh My Pi there is bound from a file Heeler's extension keeps for its
+process, where a label holds it on herdr-core. Its Send, Stop and
 Blocked Card answers are requests to the terminal's block on the control
 connection, never a terminal of Chat's own, and it reads the screen from the
 server's text of it, treating one whose shape is not certain as no screen

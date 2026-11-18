@@ -53,17 +53,23 @@ server has been observed yet.
   and `program_status_removed` events keep it current.
 - A Rex Agent opens the Agent detail, with its Chat and Terminal surfaces
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)):
-  `HostCapabilities` offers Composer Send and Stop, and Chat for Claude Code
-  and Codex once `server.version` named a Linux or macOS kernel; the Terminal
+  `HostCapabilities` offers Composer Send and Stop, and Chat for Claude
+  Code, Codex, Pi and Oh My Pi once `server.version` named a Linux or macOS
+  kernel; the Terminal
   surface takes the size under ADR 0053's rule and Chat takes none; the
   terminal pool holds no Agent's block, and windows take turns with a Rex
   Host's Agent terminals (`terminalsShowInOneWindow`).
 - Chat's reads and binding: `RexHostReads` reads files and processes over
   the Host's SSH connection and can write nothing, `HerdrCoreSessionBinder`'s
-  `.rex` scope binds from the foreground Rex names, and
-  `RexConsoleProjection` keeps the Host's kernel and a terminal's pick in
-  `HerdrCoreHostMemory` on this device. See
-  [Processes and Chat evidence](#processes-and-chat-evidence).
+  `.rex` scope binds from the foreground Rex names, read afresh for each
+  check, and `RexConsoleProjection` keeps the Host's kernel and a terminal's
+  pick in `HerdrCoreHostMemory` on this device. A Pi or Oh My Pi binds from
+  the file Heeler's extension keeps for its process, and Chat adds that
+  extension only when the user asks, through `RexHostExtensionPlacing`
+  (`ConsoleStore.rexExtensionFlow`,
+  `RexConsoleProjection.placeChatExtension`). See
+  [Processes and Chat evidence](#processes-and-chat-evidence) and
+  [Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal).
 - Chat's typing and Composer Send
   ([ADR 0055](../adr/0055-rex-chat-types-on-the-control-connection.md)):
   `RexBlockRequests`, from `RexHostSession.blockRequests`, reads and types
@@ -119,24 +125,32 @@ in users' words.
   write into `${TMPDIR:-/tmp}/heeler.XXXXXXXX/stage-<id>/`), never through
   Rex, and types the staged path with the message. Seen on 0.1.0-preview.14
   on macOS from the iOS Simulator: images and a file staged for stand-in
-  Agents reached their terminals as one paste and one Enter each. Not yet
-  tried from an iPhone or iPad, or with a real Claude Code or Codex; the
-  transport is the one every POSIX Host uses
+  Agents reached their terminals as one paste and one Enter each, and on
+  2026-11-18 an image reached each of six real agents and a text file two of
+  them ([Real agents in the Simulator](#real-agents-in-the-simulator)). Not
+  yet tried from an iPhone or iPad; the transport is the one every POSIX Host
+  uses
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md),
   update of 2026-11-17).
-- **Chat for two programs.** Chat is offered for Claude Code and Codex only.
-  An Agent whose program reports nothing to Rex reads Unknown, and then has
-  no Stop and no Blocked Card; the user acts on its Terminal surface
+- **Chat for four programs.** Chat is offered for Claude Code, Codex, Pi and
+  Oh My Pi only. A Pi or Oh My Pi names its conversation through Heeler's
+  extension, which no Host Helper brings to a Rex Host: Chat offers to add it
+  to that Agent's own extension folder, and the Agent loads it when it is
+  next started. An Agent whose program reports nothing to Rex reads Unknown,
+  and then has no Stop and no Blocked Card; the user acts on its Terminal
+  surface
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)).
-  No real Claude Code or Codex has been bound or typed into inside Rex in a
-  lab; binding rests on ADR 0034's macOS evidence and fixtures, and typing on
-  stand-ins.
+  Real agents have been bound and typed into only from the iOS Simulator, on
+  one Mac ([Real agents in the Simulator](#real-agents-in-the-simulator),
+  [Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal)).
+  There, Stop did nothing while a Claude Code waited on a command it had put
+  in the background.
 - **Agents Heeler cannot see.** A program that is a block's own command
   (behind `login`), one started with `exec` from the shell, and one under a
   `sh -c` that does not exec it read as `login` or the shell, so they stay
   Terminals although Rex keeps their reports. The foreground Heeler holds can
-  be behind until the terminal next prints. No real Claude Code, Pi, Oh My
-  Pi, OpenCode or Grok Build has reported inside Rex in a lab yet.
+  be behind until the terminal next prints. No real OpenCode has run inside
+  Rex in a lab yet.
 - **Where it has run.** Only the Simulator and the opt-in live suites, on one
   Mac. No physical iPhone or iPad has opened a Rex terminal, and no Rex
   terminal has been opened while the Rex desktop app showed the same one:
@@ -259,7 +273,8 @@ repository), unless a bullet names `RexProgramStatusLiveTests`.
   its children. A report replaces its record whole. Rex answers a program's
   `ESC ] 7501 ; ?` query itself, listing the states and kinds, so a program
   that asks before reporting should report inside Rex; no real agent was run
-  to see it.
+  to see it. (Seen on 2026-11-18: six real agents reported there, see
+  [Real agents in the Simulator](#real-agents-in-the-simulator).)
 - **The record's owner.** Each record names an owner, the process id and name
   of the terminal's foreground when the report arrived, not of the writer: a
   background job's report names the shell, and a launcher's child's report
@@ -356,15 +371,20 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
   terminal prints, about 100 ms after the output. A process that took another
   one's pid under the same name, a program that ran another in place under
   the same pid, and a new file in a program's folders raised no event, so a
-  Chat check waits for the next change Rex announces.
+  Chat check waits for the next change Rex announces. Nor did a program that
+  took its own name after it started
+  ([Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal)).
 - **SSH channels.** The control and data links are direct-streamlocal
   channels, which the disposable sshd did not count against `MaxSessions`;
   exec and SFTP channels count as on any Host.
-- **Programs.** Chat on a Rex Host is offered for Claude Code and Codex only
-  (`HostCapabilities.rexChatPrograms`): each names its conversation in files
-  its own process leads to, with nothing installed. Grok Build, Oh My Pi and
-  agy were not confirmed, and Pi and OpenCode name theirs only through
-  Heeler's extension or plugin, which a Rex Host never gets. Rex names no
+- **Programs.** Chat on a Rex Host is offered for Claude Code, Codex, Pi and
+  Oh My Pi (`HostCapabilities.rexChatPrograms`). Claude Code and Codex each
+  name their conversation in files their own process leads to, with nothing
+  installed. Pi and Oh My Pi name theirs through Heeler's extension, which
+  Chat adds when the user asks
+  ([Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal)).
+  Grok Build and agy were not confirmed, and OpenCode names its only through
+  Heeler's plugin, which a Rex Host never gets. Rex names no
   command line, so for a Codex the process read prints the words of its own
   argument vector that decide the shared server (`CodexLaunch.launchWords`),
   in order, and a placeholder for every other word, which never leaves the
@@ -377,6 +397,86 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
   no process, the foreground included, so a foreground the walk leaves
   unnamed is still the one Rex named and binds; one the walk answered
   without is gone.
+
+### Pi and Oh My Pi in a Rex terminal
+
+Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18, from the iOS
+Simulator over a disposable sshd, with a real Pi 1.5.2 and a real Oh My Pi
+18.12.3 in a `heeler-lab-` session, each given tiny prompts in an empty
+scratch folder (captures kept outside the repository). Heeler's extension is
+the copy Host Helper 0.5.10 carries.
+
+- **A name taken after the start.** `process_changed` named a starting Pi
+  `node`, with `node` as its first argument, and no later event followed. A
+  `process` read a moment later named the same pid with `pi` as its first
+  argument, and the process reader names that pid `pi`, which is neither
+  name Rex had announced. The foreground Heeler lists for a Pi so keeps
+  Node's names for as long as the terminal stays listed, and a process read
+  that goes by them finds no Pi. A Chat check therefore reads `process`
+  itself first (`RexConsoleProjection.detailsWithCurrentForeground`).
+- **The extension's file.** With the extension in the Agent's `extensions`
+  folder, each program wrote `heeler-session/<pid>.json` beside that folder
+  one to two seconds after it started. No Rex event marks it, so Chat looks
+  again by its own clock after a check that could not tell
+  (`AgentChatStore.Timing.unannouncedEvidenceChecks`), and bound within
+  about two seconds of the start.
+- **Leaving.** Pi's `/quit` reached the extension as a `session_shutdown`
+  whose reason is `quit`, and the file was gone. Oh My Pi's `/exit` reached
+  it with no such event, and the file stayed until the extension also
+  removed it as its process ends. A file a process that had ended left was
+  removed when the next session started in that Agent directory.
+- **`/new`.** After `/new` in either program, Chat's next Send was held once
+  with the notice that the Agent shows another conversation, Chat moved to
+  the new one, and the Send after that went there.
+- **Status and Stop.** Both reported their own status to Rex. Chat's Stop
+  interrupted a Working turn of each: Pi printed that the operation was
+  aborted, and Oh My Pi went back to idle. Oh My Pi read `working` during
+  each of four turns, with an older and the newer copy of the extension
+  alike.
+- **Without the extension.** With only a copy from before the extension
+  reported in a Rex terminal, Pi stayed at "can't tell", and Oh My Pi bound
+  after its first message, from its own terminal breadcrumb.
+- **Adding it.** Chat's offer named the Agent's one `extensions` folder,
+  found from the process's own environment, and the file written there had
+  the bytes this build carries, over the older copy. The Agent that was
+  already running kept the copy it had loaded, and Chat said so.
+- **Not seen.** A Linux Host, an Oh My Pi profile, a Pi before 1.1.0, either
+  program started with its extensions off, and an iPhone or iPad.
+
+### Real agents in the Simulator
+
+Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18: a second
+agent drove the iOS Simulator, on candidate `842bbc5a`, over a disposable
+sshd against a real Claude Code, Codex, Grok Build, agy, Pi and Oh My Pi in
+one `heeler-lab-` session (read afterwards as Claude Code 2.1.327, codex-cli
+0.169.1, Pi 1.5.2 and Oh My Pi 18.12.3; the others' versions were not
+recorded). Of 63 checks 60 passed, 1 failed and 2 were not run. Its report
+and captures are kept outside the repository.
+
+- **All six.** Each was listed as an Agent with the status it reported. Each
+  terminal was fitted to the screen as it opened (80 by 24 to 62 by 41,
+  owned by Heeler) and given back on leaving, and a message from the
+  Composer under it arrived once and was answered once. An image attached
+  there reached each of the six, typed once with its message, and each
+  named its color.
+- **Chat, Claude Code and Codex.** Chat opened on the terminal's own
+  conversation with no list to choose from. Consecutive Sends, a two-line
+  message, a Send after an answer that drew links, an attached image and a
+  text file each arrived once. A file edit's Blocked Card was approved once
+  and declined once. Stop interrupted a turn that was printing. Coming back
+  after 20 seconds in the background sent nothing twice, and Chat recovered
+  by itself after the SSH link was held for 8 and for 80 seconds.
+- **Failed: Stop while a command runs in the background.** A Claude Code
+  that had put a shell command in the background was back at its prompt
+  while Rex still read `working`, so Chat and the list read Working and
+  Chat offered Stop. The Esc changed nothing and the command finished, three
+  times out of three. Not fixed.
+- **Not run: Stop for Grok Build and Oh My Pi.** The Composer keeps Send for
+  a Working Grok Build, and Oh My Pi's short turns showed no status record
+  until `done` in that run (it read `working` in a later one, above).
+- **A check that timed out.** One Claude Code Send was held with the notice
+  that reading the conversation timed out and nothing was sent; nothing had
+  reached Rex, the draft stayed, and a retry sent it once.
 
 ### Resume and close
 

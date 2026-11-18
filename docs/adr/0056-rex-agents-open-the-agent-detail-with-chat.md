@@ -12,7 +12,8 @@ switched off. The maintainer decided on 2026-11-17 that Chat is to ship in
 full with Rex support. This ADR records how a Rex Agent now opens the Agent
 detail, what its Chat reads and types, and what still stays out. Its
 [update of the same day](#update-2026-11-17-attachments) adds images and files
-in messages.
+in messages, and [the next day's](#update-2026-11-18-pi-and-oh-my-pi) adds Chat
+for Pi and Oh My Pi.
 
 ## Settings
 
@@ -31,6 +32,10 @@ the code follows them:
   to a message is the one write allowed, only through a narrow seam of its
   own (built on 2026-11-17, see
   [Update 2026-11-17: attachments](#update-2026-11-17-attachments)).
+  (Updated 2026-11-18: Heeler's extension for a Pi or Oh My Pi is a second
+  write, also only when the user asks, and it then keeps one small file per
+  running Agent; see
+  [Update 2026-11-18: Pi and Oh My Pi](#update-2026-11-18-pi-and-oh-my-pi).)
 - **G3. Typing on the control connection.** One request per block at a time,
   shared with an open terminal view's input, each sent once. Typing opens no
   data link, asks for no size and takes or gives back nothing. A fresh read of
@@ -42,13 +47,16 @@ the code follows them:
   Done on this device.
 - **G5. Programs.** Claude Code and Codex. Another program with a transcript
   adapter is offered only once a lab shows it binds with nothing on the
-  machine.
+  machine. (Updated 2026-11-18: Pi and Oh My Pi as well, bound through
+  Heeler's extension, which Chat offers to add.)
 - **G6. Status decides.** Stop and the Blocked Card follow the Agent Status as
   on the other kinds. Unknown, from a program that reports nothing to Rex,
   means no Stop and no Blocked Card; the Terminal surface is where the user
   acts.
 - **G7. Rex wording.** No text that points the user at the Host Helper,
-  Heeler's plugin, hooks or New Agent is shown for a Rex Agent.
+  Heeler's plugin, hooks or New Agent is shown for a Rex Agent. (Updated
+  2026-11-18: a Pi or Oh My Pi's Chat names Heeler's extension and its
+  folder, and still none of those.)
 
 ## Decision
 
@@ -58,7 +66,8 @@ the code follows them:
   record's Chat waits on its kernel. Starting, renaming and closing anything,
   Worktrees, uploads, Host scripts and take over stay off. (Updated
   2026-11-17: uploads turn on with Chat, wherever the server has named a Linux
-  or macOS kernel.) The kernel comes
+  or macOS kernel. Updated 2026-11-18: `rexChatPrograms` gains Pi and Oh My
+  Pi.) The kernel comes
   from the socket lookup or `server.version` and is kept in the Host's memory
   on this device; the Host as the catalog stores it knows none, so nothing
   reads Chat ahead for it. `ConsoleStore.chatProgram(for:)` reads a Rex Host
@@ -79,7 +88,7 @@ the code follows them:
   Grok Build, Pi, Oh My Pi, OpenCode and Antigravity CLI Agents open on the
   Terminal surface. (Updated 2026-11-17: once the server has named a Linux or
   macOS kernel, the detail offers attachments as well, on Chat and on the
-  terminal alike.)
+  terminal alike. Updated 2026-11-18: Pi and Oh My Pi Agents have Chat.)
 - **One holder per block.** The Agent detail's terminal (`AgentTerminalCache`)
   holds an Agent's block, and the terminal pool lets a connection to an
   Agent's block go at the next inventory, as on the other kinds. A Rex
@@ -135,7 +144,11 @@ They run under the connection's ordinary session slots, so a slow read waits
 behind other reads, never behind the control or data links. `RexHostReads`
 offers no write, by type. No `rex` command runs, and no server is started.
 (Updated 2026-11-17: a staging adds the one write, through `RexHostStaging`;
-see [Update 2026-11-17: attachments](#update-2026-11-17-attachments).)
+see [Update 2026-11-17: attachments](#update-2026-11-17-attachments). Updated
+2026-11-18: adding Heeler's extension is a second, through
+`RexHostExtensionPlacing`, and each Chat check first reads the foreground on
+the control link; see
+[Update 2026-11-18: Pi and Oh My Pi](#update-2026-11-18-pi-and-oh-my-pi).)
 
 ## Evidence
 
@@ -198,7 +211,9 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
 - Grok Build, Oh My Pi and Antigravity CLI: their binders need nothing
   installed, but no lab bound one inside Rex, so they are not offered (G5).
   Pi and OpenCode name their conversation only through Heeler's extension or
-  plugin, which a Rex Host never gets.
+  plugin, which a Rex Host never gets. (Updated 2026-11-18: Pi and Oh My Pi
+  are offered, with the extension added from Chat when the user asks; see
+  [Update 2026-11-18: Pi and Oh My Pi](#update-2026-11-18-pi-and-oh-my-pi).)
 - Staging attachments over SFTP: no seam narrower than the Host services
   exists, so attachments stay off (G2). (Taken on 2026-11-17, through a seam
   built for it; see
@@ -220,6 +235,9 @@ silicon Mac with macOS 27.0, with made-up programs in `heeler-lab-` sessions
   at the next foreground or status change Rex announces.
 - No real Claude Code or Codex has run inside Rex in a lab yet; binding rests
   on ADR 0034's macOS evidence and fixtures, and typing on stand-ins.
+  (Superseded on 2026-11-18: both, and Pi and Oh My Pi, have run in the iOS
+  Simulator against a running server; `docs/agents/rex-compatibility.md`
+  says what was tried.)
 - `HostCapabilities` gains `rowsReadChanges` and `terminalsShowInOneWindow`,
   and `AgentDetailMenuOffers` decides the detail's lifecycle items for every
   kind.
@@ -291,3 +309,100 @@ cancel while the link was stalled left its `.part`: the app had moved to a
 new SSH connection, and the removal, tried on the old one, did not run.
 Uploads have not been tried from an iPhone or iPad, or with a real Claude
 Code or Codex.
+
+## Update 2026-11-18: Pi and Oh My Pi
+
+The maintainer asked that a Pi or Oh My Pi Agent's Chat on a Rex Host open and
+remind the user to add what it needs, where until now those Agents had no
+Chat. G5 gains the two programs, and G2 a second write:
+
+- **Offered.** `HostCapabilities.rexChatPrograms` gains Pi and Oh My Pi, so
+  their Agents open the Agent detail with Chat as a Claude Code's does. Grok
+  Build, agy and OpenCode stay on the Terminal surface.
+- **What names the session.** Heeler's extension, the one file a Host Helper
+  brings on other Server Kinds (ADR 0033). A Rex terminal has no labels and
+  no socket of a core's to report to, so inside one the extension keeps what
+  a label would hold in a file of its process's own:
+  `<agent directory>/heeler-session/<pid>.json`, beside the `extensions`
+  folder it was loaded from, holding the session id, its file when it has
+  one, the pid and the process's start. It is written at mode 0600 in a
+  folder at 0700, as a temporary file renamed into place, when a session
+  starts, switches or branches. It is removed when the program says it quits
+  and when its process ends, and a session's first write removes the files
+  of processes that are gone. The extension does this only in a process
+  whose environment names a Rex terminal (`REX_SESSION` and `REX_BLOCK`) and
+  no tmux Pane, loaded from a folder named `extensions`, in the program's
+  terminal interface. For a Pi before 1.1.0, which reports no status of its
+  own, it also prints the status as OSC 7501, as it does in a herdr-core
+  Terminal, which Rex reads.
+- **Binding.** `HerdrCoreSessionBinder` reads that one file over SFTP for the
+  Pi or Oh My Pi it found in the terminal's foreground, and takes it only
+  when its pid and start are that process's, as it holds a label on
+  herdr-core (ADR 0034). A file a reused pid left names nothing.
+- **The reminder.** When that process has no such file, Chat reads "Can't
+  Tell the Conversation" with a reason of its own
+  (`ChatUnavailableReason.cannotTellSessionOnRex`). The binder reads the
+  Agent's own `extensions/heeler-session.js` and looks for the name of the
+  variable every copy that reports in a Rex terminal reads. A folder with no
+  copy, or one from before the extension could report there, gets **Add
+  Heeler's Extension…**. A copy that can report gets no button: the text
+  says this Agent has not loaded it and asks the user to start it again. For
+  Oh My Pi both texts add that Chat follows the conversation after its first
+  message even without the extension, from its own terminal breadcrumb once
+  its process holds the conversation's file open. Nothing is offered outside
+  Chat, and nothing on the Rex Server's page.
+- **The write.** `RexTransport.extensionPlacing` hands out
+  `RexHostExtensionPlacing`, the Host's SSH connection behind a type with
+  one function. The folder is the one this Agent loads from, read from its
+  own process's environment by one bounded process read, and the sheet names
+  it before anything is written. On the user's word, over SFTP, it makes
+  that `extensions` folder only when the Agent's directory is there and has
+  none, then writes the file this build carries as a 0600 temporary file
+  renamed into place, over an older copy when there is one. It keeps to the
+  server instance the detail opened on, as a staging does, and refuses any
+  folder not named `extensions`. Only that Agent's folder is written, not
+  every profile's as on native Windows, since the Agent in front of the user
+  is the one that named it.
+- **After the write.** Chat looks again and says the extension is in place
+  but not loaded. Once the user starts the Agent again, Chat binds on its
+  own.
+- **Following an Agent Rex does not announce.** Two things a restart changes
+  raise no event. Rex names a foreground once, as it starts, and a Pi starts
+  under Node's name and takes its own afterwards, so the listed name matched
+  no process the read found. A Chat check, the read of a Claude Code's
+  launch, the conversation list and the look for the extension's folder now
+  each read the foreground on the control link first, as typing does (ADR
+  0055), and fall back to the listed one when the read fails or another
+  server answers. The extension's file then appears a
+  second or two after the program starts. After a check that could not tell
+  for a Pi or Oh My Pi on a Rex Host, Chat checks again after 2, 4 and 8
+  seconds, counted anew after any check something else asked for, and then
+  waits for the next change Rex announces.
+- **One file, one version.** The extension is the same file on every Server
+  Kind, so its Rex branch raises the Host Helper to 0.5.10 and Hosts with a
+  Helper are offered that update, whose only change does nothing outside a
+  Rex terminal.
+
+Considered and dropped: writing the extension as the Host is added, or from
+the Rex Server's page (G2: nothing is written until the user asks, where the
+need shows); keeping the session as a Rex label or option (G2); and binding a
+Pi from its newest session file, which is a guess between two Pis in one
+directory.
+
+Evidence: `plugin/test/helper-extension-rex.test.js` loads the extension as
+those programs do and checks the file, its modes, the sweep, the removal at
+quit and at process end, and that it does nothing outside a Rex terminal.
+`RexChatTests` binds a Pi from that file through a scripted Rex Host, takes
+nothing from a file a reused pid left, tells a missing or older copy from one
+not loaded, places the extension through the seam and refuses to after a
+server restart, binds a Pi Rex still lists as `node`, and steps through the
+three later checks. On 2026-11-18 the iOS Simulator ran this against Pi 1.5.2
+and Oh My Pi 18.12.3 in a running Rex 0.1.0-preview.14 server on macOS 27.0,
+each with an older copy of the extension in its folder: Chat offered the
+extension, the sheet named the one folder, the file written matched this
+build's, Chat then said it was not loaded, and after the Agent was started
+again Chat bound without being touched. A message sent from Chat was answered
+and shown, Stop interrupted a turn, a Send after `/new` was held once and the
+next one went to the new conversation, and the file was gone after each
+program quit. Not tried: an iPhone or iPad, a Linux Host, an Oh My Pi profile,
+and a Pi before 1.1.0.

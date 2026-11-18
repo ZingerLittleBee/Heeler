@@ -124,6 +124,9 @@ paths typed with the message.
   else. A staged path is part of the message's text, so it reaches the
   program in Composer Send's one paste, in the block's lane, once.)
 - **Claude Code and Codex only**, as `HostCapabilities.rexChatPrograms` says.
+  (Amended by ADR 0056's update of 2026-11-18: Pi and Oh My Pi as well. A
+  Chat check now also reads the foreground on the control link, as typing
+  does, before it reads the Host's processes.)
 - **Built, not offered.** `RexConsoleProjection` answers `readAgentScreen`,
   `sendAgentKeys`, `pasteIntoAgent`, `checkedChatTyping` and
   `checkedComposerSend` this way, while `HostCapabilities` still offers a Rex

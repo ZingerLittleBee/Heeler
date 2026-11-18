@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code and Codex only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code, Codex, Pi, and Oh My Pi only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
 
 ## Set up the Host
 

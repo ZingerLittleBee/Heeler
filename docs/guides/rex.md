@@ -108,19 +108,36 @@ On iPad, one window at a time shows a Rex Host's Agent terminals. Another window
 
 ## Chat
 
-**Chat** works for Claude Code and Codex in Rex on macOS and Linux, with nothing installed on the Host. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
+**Chat** works for Claude Code, Codex, Pi, and Oh My Pi in Rex on macOS and Linux. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
 
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Binds from the running Claude Code itself. After `/clear` or `/resume`, Chat checks again before it sends your next message. |
 | Codex | Binds once it holds its conversation file, after the first message. Start it with `--no-daemon` ([why](chat.md#set-up-the-host)); without it, Chat shows [**Codex Started Without --no-daemon**](chat-troubleshooting.md#codex-started-without---no-daemon) instead of the conversation. |
+| Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Pi starts. After `/new`, Chat checks again before it sends your next message. |
+| Oh My Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Oh My Pi starts. Without the extension, Chat follows the conversation after its first message. After `/new`, Chat checks again before it sends your next message. |
 | Other Agents | No Chat on Rex Hosts yet. They open on their terminal. |
 
-- **Can't Tell the Conversation:** When Chat cannot prove which conversation the Agent shows, it says so with **Check Again**. Tap **Choose a Conversation**, preview one, and tap **Use This Conversation**. Heeler keeps that choice on this device, for this terminal, until the Agent exits or Rex restarts. Nothing is written on the Host.
+- **Can't Tell the Conversation:** When Chat cannot prove which conversation the Agent shows, it says so with **Check Again**. For Claude Code and Codex, tap **Choose a Conversation**, preview one, and tap **Use This Conversation**. Heeler keeps that choice on this device, for this terminal, until the Agent exits or Rex restarts. Nothing is written on the Host. For Pi and Oh My Pi, [add Heeler's extension](#pi-and-oh-my-pi) instead.
 - **Send:** **Send** pastes your message and presses Enter once it checks that the same Agent still holds the terminal, is not **Blocked**, and accepts a paste. The Composer under the terminal sends the same way. If Rex does not answer, Heeler never sends the message again; check the terminal first.
 - **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Send** becomes **Stop**, which presses Esc once it checks that the same Agent still holds the terminal. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal.
 - **Commands:** `/` offers `/compact` while the Agent reports it is idle, and not the Agent's skills. Use the terminal for the rest.
 - **Images and files:** In Chat or on the Agent's terminal, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Heeler uploads the file over the Host's SSH connection, not through Rex, into a new folder in the temporary folder of the account you sign in with, and adds its path to your message; **Send** types the path with your message, once. An image is sent as a JPEG or PNG of at most 16 MiB, and a file can be up to 64 MiB. Heeler never deletes uploaded files from the Host. If Rex restarts, an upload started afterwards stops with **This Terminal belongs to a Rex server that is gone**; one already under way finishes and its file stays on the Host, but **Send** then refuses the message with the same words. Open the Agent again from the list.
+
+### Pi and Oh My Pi
+
+Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extension, one file named `heeler-session.js` in the Agent's own extension folder, such as `~/.pi/agent/extensions`. Rex has no Host Helper to bring it, so Chat asks you instead:
+
+1. Open the Agent and show **Chat**. It reads **Can't Tell the Conversation**, with **Add Heeler's Extension…**.
+2. Tap **Add Heeler's Extension…**. Heeler shows the one folder it will write to, found from the running Agent.
+3. Tap **Add to This Folder**. Heeler writes the file over the Host's SSH connection, replacing an older copy of it, and nothing else.
+4. Quit the Agent and start it again in the same terminal. It loads the extension as it starts.
+
+**It worked if** Chat shows the Agent's conversation by itself a few seconds after the Agent starts.
+
+- **Still Can't Tell the Conversation:** When the message says the Agent hasn't loaded the extension, the Agent was started before you added it, or with `--no-extensions`. Start it again with its extensions on.
+- **What the extension does:** Pi and Oh My Pi load it for every session on the Host. In a Rex terminal it keeps one small file per running Agent in a `heeler-session` folder beside the extension folder, naming the conversation, and removes it when the Agent quits. Outside Rex, tmux, and herdr-core it does nothing.
+- **Removing it:** Delete `heeler-session.js` from the extension folder, and the `heeler-session` folder beside it.
 
 ## What Heeler does not do yet
 
@@ -135,7 +152,8 @@ On iPad, one window at a time shows a Rex Host's Agent terminals. Another window
 - **What the first paint leaves out:** Rex's redraw does not carry the cursor shape or the terminal's own default colors, so the cursor keeps Heeler's shape until the program sets it again, and the terminal wears your Heeler theme. While a full-screen program is open, the history behind it appears only after the program closes.
 - **Another device's size does not fit:** While a terminal stays at a size another device set wider than your screen (see [Sized for another device](#sized-for-another-device)), its lines wrap at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, the cursor, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.
 - **What has been tested so far:** Rex has been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. Apart from one Chat message sent from an iPhone (below), they have not been tried on a physical iPhone or iPad. They have not been tried with the Rex app showing the same terminal either.
-- **Chat barely tried with a real Agent:** Chat's typing was tested with stand-in programs, and its binding with saved Claude Code and Codex files. On an iPhone, one message sent from Chat reached a real Codex 0.169.0 running in Rex, which answered it. That was an earlier build, which refused every later Send once Codex's answer drew links. Chat now reads such links, but this has not yet been tried with a real Agent on an iPhone or iPad, and Chat has not been tried with a real Claude Code in Rex.
-- **Uploads not yet tried on a device or with a real Agent:** Images and files were tried in the iOS Simulator against a running Rex server, sent to stand-in programs. They have not been tried from a physical iPhone or iPad, or with a real Claude Code or Codex.
+- **Chat with real Agents tried only in the Simulator:** In the iOS Simulator, Chat was tried with a real Claude Code, Codex, Pi, and Oh My Pi running in Rex on macOS: reading the conversation, **Send**, and **Stop** for all four, and the buttons on **Blocked** prompts for Claude Code and Codex. On an iPhone, one message sent from Chat reached a real Codex 0.169.0 running in Rex, which answered it. That was an earlier build, which refused every later Send once Codex's answer drew links. Chat now reads such links, but Chat has not been tried again on an iPhone or iPad. Pi and Oh My Pi have not been tried on Linux, or with an Oh My Pi profile.
+- **Stop while Claude Code waits on a background command:** When Claude Code has put a command in the background and is back at its prompt, it still reports **Working**, so Chat offers **Stop**. Stop does nothing then, and the command finishes by itself.
+- **Uploads not yet tried on a device:** Images and files were tried in the iOS Simulator against a running Rex server: an image with a real Claude Code, Codex, Grok Build, Antigravity CLI, Pi, and Oh My Pi, and a text file with Claude Code and Codex. They have not been tried from a physical iPhone or iPad.
 
-Last checked on 2026-11-18 against Rex 0.1.0-preview.14 (API revision 12) on macOS, with test programs and, for Chat, one real Codex.
+Last checked on 2026-11-18 against Rex 0.1.0-preview.14 (API revision 12) on macOS, with test programs and, in the iOS Simulator, real Agents.
