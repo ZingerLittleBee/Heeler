@@ -12,6 +12,10 @@ protocol KnownHostsStore: Sendable {
     /// Forgets the keys trusted for a catalog Host (`HostKeyTrust.host`), never
     /// an endpoint's, which another Host's Jump Host may share.
     func forgetHost(_ id: UUID) async
+    /// Makes `fingerprints` the only keys trusted for a catalog Host, in one
+    /// step: no connection meets the Host with no key, or with a retired one
+    /// beside the new.
+    func replaceTrust(ofHost id: UUID, with fingerprints: [HostKeyFingerprint]) async
 }
 
 extension KnownHostsStore {
@@ -53,6 +57,14 @@ actor InMemoryKnownHostsStore: KnownHostsStore {
         let key = HostKeyTrust.hostKey(id)
         let prefix = Self.algorithmKeyPrefix(host: key.host, port: key.port)
         storedFingerprints = storedFingerprints.filter { !$0.key.hasPrefix(prefix) }
+    }
+
+    func replaceTrust(ofHost id: UUID, with fingerprints: [HostKeyFingerprint]) {
+        forgetHost(id)
+        let key = HostKeyTrust.hostKey(id)
+        for fingerprint in fingerprints {
+            setFingerprint(fingerprint, host: key.host, port: key.port)
+        }
     }
 
     static func endpointKey(host: String, port: Int) -> String {
@@ -134,6 +146,20 @@ actor UserDefaultsKnownHostsStore: KnownHostsStore {
         } else {
             defaults.set(kept, forKey: Self.defaultsKey)
         }
+    }
+
+    func replaceTrust(ofHost id: UUID, with fingerprints: [HostKeyFingerprint]) {
+        let key = HostKeyTrust.hostKey(id)
+        let prefix = InMemoryKnownHostsStore.algorithmKeyPrefix(host: key.host, port: key.port)
+        var stored = storedValues().filter { !$0.key.hasPrefix(prefix) }
+        stored[InMemoryKnownHostsStore.endpointKey(host: key.host, port: key.port)] = nil
+        for fingerprint in fingerprints {
+            stored[
+                InMemoryKnownHostsStore.algorithmKey(
+                    host: key.host, port: key.port, algorithm: fingerprint.algorithm)] =
+                fingerprint.digest.base64EncodedString()
+        }
+        defaults.set(stored, forKey: Self.defaultsKey)
     }
 
     private func storedValues() -> [String: String] {

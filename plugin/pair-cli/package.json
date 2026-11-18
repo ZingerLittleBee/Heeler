@@ -1,0 +1,48 @@
+{
+  "name": "heeler-pair",
+  "version": "0.1.0",
+  "description": "Show a Pairing Code so the Heeler app can add this machine by scanning it",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "heeler-pair": "src/pair-cli.js"
+  },
+  "files": [
+    "src/addresses.js",
+    "src/authorized-keys.js",
+    "src/bootstrap-key.js",
+    "src/copy-pairing-code.js",
+    "src/device-key.js",
+    "src/envelope.js",
+    "src/host-key.js",
+    "src/pair-accept.js",
+    "src/pair-cli.js",
+    "src/pair-fatal.js",
+    "src/pairing-config.js",
+    "src/pairing-session.js",
+    "src/pairing-ui.js",
+    "src/select-list.js",
+    "src/session.js",
+    "src/tailscale-ssh.js"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "keywords": [
+    "heeler",
+    "herdr",
+    "tmux",
+    "ssh",
+    "pairing"
+  ],
+  "homepage": "https://docs.heeler.bybee.dev/pairing",
+  "bugs": "https://github.com/ZingerLittleBee/Heeler/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZingerLittleBee/Heeler.git",
+    "directory": "plugin"
+  }
+}

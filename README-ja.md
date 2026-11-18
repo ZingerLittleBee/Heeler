@@ -91,7 +91,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-表示された Pairing Code をスキャンすると、そのマシンが Host として追加され、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録まで完了します。[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)
+表示された Pairing Code をスキャンすると、そのマシンが Host として追加され、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録まで完了します。herdr がなく herdr-core や tmux だけを実行しているマシンでは、`npx -y heeler-pair@latest` で同じ Pairing Code を表示できます（Node 20 以降、0.1.20 より後の Heeler が必要です）。[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)
 
 **またはアドレスを入力する。** すべてのバックエンドで使えます。**Hosts** で **+** をタップし、アドレスと SSH ユーザーを入力すると、Heeler がそのマシンで実行中の Herdr TUI、herdr-core、各 tmux サーバーを一覧表示します。1 つの Host でこれらを複数同時に使えます。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) · [tmux に接続する](https://docs.heeler.bybee.dev/tmux) · [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup)
 

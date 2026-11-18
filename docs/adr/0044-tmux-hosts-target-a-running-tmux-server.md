@@ -9,6 +9,11 @@ a tmux server is a Server of its Host. Add Host and Host detail list every
 socket that answers and turn each on by itself, so nothing is confirmed in Host
 detail and no socket is picked there.
 
+Amended by [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md):
+Pairing no longer requires Herdr TUI. A tmux machine shows a Pairing Code with
+`heeler-pair`, and Pairing ends on Add Host's last step, which lists its
+sockets.
+
 Many people run coding agents in tmux sessions they started themselves, over
 SSH or on a desktop. tmux is neither Herdr TUI nor herdr-core: it has no API
 socket Heeler can speak, no plugins, and no Program Status of its own. Heeler

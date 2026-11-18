@@ -91,7 +91,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-掃描它顯示的配對碼，這台機器就會新增為主機，位址、主機金鑰指紋與 SSH 金鑰一併就緒。[配對指南](https://docs.heeler.bybee.dev/pairing)
+掃描它顯示的配對碼，這台機器就會新增為主機，位址、主機金鑰指紋與 SSH 金鑰一併就緒。機器上沒有 herdr、只執行 herdr-core 或 tmux 時，執行 `npx -y heeler-pair@latest` 可以顯示同樣的配對碼（需要 Node 20 或更新版本，以及 0.1.20 之後的 Heeler）。[配對指南](https://docs.heeler.bybee.dev/pairing)
 
 **或者輸入位址。** 適用於所有後端。在**主機**分頁點一下 **+**，輸入位址和 SSH 使用者，Heeler 會列出這台機器上執行的 Herdr TUI、herdr-core 和每個 tmux 伺服器。一台主機可以同時使用其中多個。[連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [連線到 tmux](https://docs.heeler.bybee.dev/tmux) · [Windows 設定](https://docs.heeler.bybee.dev/windows-setup)
 

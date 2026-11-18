@@ -1072,6 +1072,7 @@
       }
     },
     "%@ is already in Heeler. Checked servers are turned on there." : {},
+    "%@ is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before." : {},
     "%@ is no longer a Template on this Host, so nothing started. Detect Again refreshes the list." : {
       "localizations" : {
         "ja" : {
@@ -23929,6 +23930,28 @@
         }
       }
     },
+    "Find servers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーを探す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找伺服器"
+          }
+        }
+      }
+    },
     "Finished" : {
       "localizations" : {
         "ja" : {
@@ -29728,24 +29751,24 @@
         }
       }
     },
-    "In Hosts, tap Scan to Pair and point the camera at the code." : {
+    "In Hosts, tap Scan to Pair and point the camera at the code, then choose the machine's servers." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「ホスト」で「スキャンしてペアリング」をタップし、カメラでコードをかざしてください。"
+            "value" : "「ホスト」で「スキャンしてペアリング」をタップし、カメラでコードをかざしてから、マシンのサーバーを選んでください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在“主机”中，轻点“扫码配对”并将相机对准二维码。"
+            "value" : "在“主机”中，轻点“扫码配对”并将相机对准二维码，然后选择这台机器上的服务器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在「主機」頁面中點一下「掃描以配對」，並將相機對準代碼。"
+            "value" : "在「主機」頁面中點一下「掃描以配對」，將相機對準代碼，然後選擇這台機器上的伺服器。"
           }
         }
       }
@@ -38172,6 +38195,28 @@
         }
       }
     },
+    "On a machine that runs herdr-core or tmux without herdr, run this one instead." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr がなく herdr-core または tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器上没有 herdr、只运行 herdr-core 或 tmux 时，改为运行这条命令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器上沒有 herdr、只執行 herdr-core 或 tmux 時，請改為執行這個指令。"
+          }
+        }
+      }
+    },
     "On a private network, an admin authorizes this node ID before it can join." : {
       "localizations" : {
         "ja" : {
@@ -42017,46 +42062,46 @@
         }
       }
     },
-    "Point the camera at the Pairing Code shown by herdr." : {
+    "Point the camera at the Pairing Code shown on the computer." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr が表示するペアリングコードにカメラを向けてください。"
+            "value" : "コンピューターに表示されたペアリングコードにカメラを向けてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将相机对准 herdr 显示的配对码。"
+            "value" : "将相机对准电脑上显示的配对码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請將相機對準 herdr 顯示的配對碼。"
+            "value" : "請將相機對準電腦上顯示的配對碼。"
           }
         }
       }
     },
-    "Point the camera at the code. The machine is added as a Host." : {
+    "Point the camera at the code, then choose the machine's servers. The machine is added as a Host." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "カメラでコードをかざしてください。マシンがホストとして追加されます。"
+            "value" : "カメラでコードをかざしてから、マシンのサーバーを選んでください。マシンがホストとして追加されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将相机对准二维码，即可将该机器添加为主机。"
+            "value" : "将相机对准二维码，然后选择这台机器上的服务器，即可将该机器添加为主机。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請將相機對準代碼，這台機器會被加入為主機。"
+            "value" : "請將相機對準代碼，然後選擇這台機器上的伺服器，這台機器會被加入為主機。"
           }
         }
       }
@@ -53551,6 +53596,34 @@
         }
       }
     },
+    "Tailscale SSH answers port %lld at %@, not OpenSSH, so this device cannot be enrolled there. On the computer, run heeler-pair again with --port set to a port OpenSSH listens on, then scan the new Pairing Code." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tailscale SSH answers port %1$lld at %2$@, not OpenSSH, so this device cannot be enrolled there. On the computer, run heeler-pair again with --port set to a port OpenSSH listens on, then scan the new Pairing Code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale SSH は %2$@ のポート %1$lld に答えます。OpenSSH ではないため、このデバイスをそこで登録することはできません。コンピューターで、--port に OpenSSH がリッスンしているポートを指定して heeler-pair をもう一度実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 的端口 %1$lld 由 Tailscale SSH 响应，而非 OpenSSH，因此无法在该端口注册此设备。请在电脑上重新运行 heeler-pair，并用 --port 指定 OpenSSH 监听的端口，然后扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale SSH 在 %2$@ 的連接埠 %1$lld 上回應，而不是 OpenSSH，因此無法在那裡註冊此裝置。請在電腦上重新執行 heeler-pair，並用 --port 指定 OpenSSH 所監聽的連接埠，然後掃描新的配對碼。"
+          }
+        }
+      }
+    },
     "Tailscale SSH answers port %lld at %@, not OpenSSH, so this device cannot be enrolled there. On the computer, set ssh_port in the pairing plugin's pair.json to a port OpenSSH listens on, then generate a new Pairing Code." : {
       "localizations" : {
         "ja" : {
@@ -54377,24 +54450,24 @@
         }
       }
     },
-    "That QR code is not a herdr Pairing Code." : {
+    "That QR code is not a Pairing Code." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その QR コードは herdr のペアリングコードではありません。"
+            "value" : "その QR コードはペアリングコードではありません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该二维码不是 herdr 配对码。"
+            "value" : "该二维码不是配对码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "該 QR code 不是 herdr 配對碼。"
+            "value" : "該 QR code 不是配對碼。"
           }
         }
       }
@@ -56022,6 +56095,28 @@
         }
       }
     },
+    "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that OpenSSH, not another SSH server, answers this port, then run heeler-pair on the computer again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのペアリングコードを受け入れましたが、ペアリングコマンドが応答せずに終了しました。このポートで応答しているのが他の SSH サーバーではなく OpenSSH であることを確認してから、コンピューターで heeler-pair をもう一度実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机已接受此配对码，但配对命令未返回响应便已结束。请确认响应该端口的是 OpenSSH 而非其他 SSH 服务器，然后在电脑上重新运行 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機接受了此配對碼，但其配對指令結束時沒有回應。請確認由 OpenSSH（而不是其他 SSH 伺服器）回應此連接埠，然後在電腦上重新執行 heeler-pair。"
+          }
+        }
+      }
+    },
     "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that the pairing plugin is installed and that OpenSSH, not another SSH server, answers this port, then generate a new Pairing Code." : {
       "comment" : "Pairing failure",
       "localizations" : {
@@ -56175,6 +56270,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機不接受裝置金鑰，因此尚未在那裡取得授權。請在主機上加入此裝置的 authorized_keys 行，或改在 herdr 中產生配對碼。"
+          }
+        }
+      }
+    },
+    "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or run heeler-pair there again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストがデバイス鍵を受け入れなかったため、まだ承認されていません。ホストにこのデバイスの authorized_keys 行を追加するか、ホストで heeler-pair をもう一度実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未接受设备密钥，说明此设备尚未在主机上获得授权。请在主机上添加此设备的 authorized_keys 行，或在主机上重新运行 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機不接受裝置金鑰，因此尚未在那裡取得授權。請在主機上加入此裝置的 authorized_keys 行，或在主機上重新執行 heeler-pair。"
+          }
+        }
+      }
+    },
+    "The Host did not accept this device's key. Try again; if it keeps failing, update the app and run the latest heeler-pair." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのデバイスの鍵を承認しませんでした。再試行し、繰り返すようならアプリを更新して最新の heeler-pair を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未接受此设备的密钥。请重试；如果仍然失败，请更新 App 并运行最新版的 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機不接受此裝置的金鑰。請重試；若持續失敗，請更新 App 並執行最新版的 heeler-pair。"
           }
         }
       }
@@ -57091,6 +57230,28 @@
         }
       }
     },
+    "The Host refused Enrollment (%@). Update the app, then run the latest heeler-pair on the computer and scan the new Pairing Code." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストは登録を拒否しました（%@）。アプリを更新してから、コンピューターで最新の heeler-pair を実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了注册（%@）。请更新 App，然后在电脑上运行最新版的 heeler-pair 并扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕註冊（%@）。請更新 App，然後在電腦上執行最新版的 heeler-pair 並掃描新的配對碼。"
+          }
+        }
+      }
+    },
     "The Host refused Heeler's hook script." : {},
     "The Host refused Stop: %@" : {
       "localizations" : {
@@ -57243,6 +57404,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機拒絕登入。請檢查使用者名稱和密碼。"
+          }
+        }
+      }
+    },
+    "The Host rejected this Pairing Code. It may have been used already, expired, or heeler-pair was closed. Run heeler-pair on the computer again and scan the new Pairing Code." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのペアリングコードを拒否しました。すでに使用されたか、期限切れか、heeler-pair が閉じられた可能性があります。コンピューターで heeler-pair をもう一度実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了此配对码。该配对码可能已被使用、已过期，或 heeler-pair 已被关闭。请在电脑上重新运行 heeler-pair 并扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕了此配對碼。它可能已被使用、已過期，或 heeler-pair 已關閉。請在電腦上重新執行 heeler-pair 並掃描新的配對碼。"
           }
         }
       }
@@ -57976,24 +58159,24 @@
         }
       }
     },
-    "The Pairing Code could not be read. Regenerate it in herdr and scan again." : {
+    "The Pairing Code could not be read. Generate a new one on the computer and scan again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ペアリングコードを読み取れませんでした。herdr で再生成してから再スキャンしてください。"
+            "value" : "ペアリングコードを読み取れませんでした。コンピューターで新しいコードを生成してから再スキャンしてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取配对码。请在 herdr 中重新生成后再扫描。"
+            "value" : "无法读取配对码。请在电脑上重新生成后再扫描。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法讀取配對碼。請在 herdr 中重新產生後再掃描一次。"
+            "value" : "無法讀取配對碼。請在電腦上重新產生後再掃描一次。"
           }
         }
       }

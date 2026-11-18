@@ -37,6 +37,22 @@ struct NewHostWizardView: View {
             initialValue: NewHostWizard(catalog: catalog, dependencies: dependencies, prefill: prefill))
     }
 
+    /// Add Host from the step `wizard` is on: Scan to Pair hands over one that
+    /// has already looked for the paired machine's Servers (ADR 0057).
+    init(
+        wizard: NewHostWizard,
+        catalog: HostStore,
+        discoveries: HostServerDiscoveryStore,
+        dependencies: HostOnboardingDependencies,
+        onAdded: @escaping @MainActor (Host.ID) -> Void
+    ) {
+        self.catalog = catalog
+        self.discoveries = discoveries
+        self.dependencies = dependencies
+        self.onAdded = onAdded
+        _wizard = State(initialValue: wizard)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             form
@@ -295,7 +311,10 @@ struct NewHostWizardView: View {
                     Text("Found on \(wizard.address)")
                         .textCase(nil)
                 } footer: {
-                    if let existing = wizard.existing {
+                    if let existing = wizard.existing, wizard.replacesTrustedKey {
+                        Text(
+                            "\(existing.name) is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before.")
+                    } else if let existing = wizard.existing {
                         Text("\(existing.name) is already in Heeler. Checked servers are turned on there.")
                     } else {
                         Text(

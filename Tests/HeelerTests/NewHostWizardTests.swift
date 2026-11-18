@@ -3,6 +3,12 @@ import Testing
 
 @testable import Heeler
 
+/// The records whose Console was asked to try again.
+@MainActor
+private final class RetriedHosts {
+    var ids: [Host.ID] = []
+}
+
 /// Add Host with everything it touches, each a stand-in the test can read.
 @MainActor
 private struct WizardRig {
@@ -11,6 +17,7 @@ private struct WizardRig {
     let knownHosts: InMemoryKnownHostsStore
     let connector: FakeTransportConnector
     let switcher: HostServerSwitch
+    let retried: RetriedHosts
     let discoveries = HostServerDiscoveryStore(defaults: nil)
 
     func finish() async -> Host.ID? {
@@ -53,22 +60,27 @@ struct NewHostWizardTests {
         outcome: FakeTransportConnector.Outcome = .connects(pingResult: .failure(.cancelled)),
         presentedKeyBlob: Data? = nil,
         presentedJumpKeyBlob: Data? = nil,
-        knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore()
+        knownHosts: InMemoryKnownHostsStore = InMemoryKnownHostsStore(),
+        core: ScriptedCoreHost = machine(),
+        paired: PairedMachine? = nil
     ) -> WizardRig {
         let connector = FakeTransportConnector(
             outcome: outcome, presentedKeyBlob: presentedKeyBlob,
-            presentedJumpKeyBlob: presentedJumpKeyBlob, core: Self.machine())
+            presentedJumpKeyBlob: presentedJumpKeyBlob, core: core)
+        let retried = RetriedHosts()
         let dependencies = HostOnboardingDependencies(
             connector: connector,
             knownHosts: knownHosts,
             credentials: HostCredentialsProvider(
                 deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
                 rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
-                secrets: InMemorySecretStore()))
+                secrets: InMemorySecretStore()),
+            retryFailedHost: { retried.ids.append($0) })
         return WizardRig(
-            wizard: NewHostWizard(catalog: catalog, dependencies: dependencies),
+            wizard: paired.map { NewHostWizard(catalog: catalog, dependencies: dependencies, paired: $0) }
+                ?? NewHostWizard(catalog: catalog, dependencies: dependencies),
             catalog: catalog, knownHosts: knownHosts, connector: connector,
-            switcher: HostServerSwitch(catalog: catalog, dependencies: dependencies))
+            switcher: HostServerSwitch(catalog: catalog, dependencies: dependencies), retried: retried)
     }
 
     /// What the first step's form holds once the user has typed a Host in.
@@ -498,6 +510,104 @@ struct NewHostWizardTests {
 
         #expect(rig.wizard.step == .connect)
         #expect(rig.wizard.failure?.summary == error.presentation.summary)
+    }
+
+    // MARK: After pairing
+
+    /// What a Pairing Code's ceremony hands over: the login it proved, every
+    /// address the code offered, and the key it pinned.
+    private func pairedMachine(runsHerdrTUI: Bool = false) -> PairedMachine {
+        PairedMachine(
+            username: "dev", addresses: ["100.64.0.9", "studio.example"], port: 2222,
+            hostKeyFingerprint: hostKey, runsHerdrTUI: runsHerdrTUI)
+    }
+
+    /// A Host with nothing a look finds: no herdr on the login shell's PATH,
+    /// no core, no tmux.
+    private static func bareMachine() -> ScriptedCoreHost {
+        ScriptedCoreHost(locator: ScriptedCoreHost.locatorLines(executable: nil), channel: .refused)
+    }
+
+    /// The code pinned the Host's key, so the look lands on the Servers
+    /// without asking about it, and the Host is saved as the ceremony reached
+    /// it (ADR 0057).
+    @Test func aPairedMachineLandsOnTheServersWithItsKeyAlreadyTrusted() async throws {
+        let rig = makeRig(presentedKeyBlob: keyBlob, paired: pairedMachine())
+
+        await rig.wizard.connect()
+
+        #expect(rig.wizard.step == .servers)
+        #expect(rig.wizard.checked == [Self.tui, Self.tmux, Self.workTmux])
+        #expect(rig.catalog.hosts.isEmpty)
+
+        _ = await rig.finish()
+
+        let host = try #require(rig.catalog.machines.first).representative
+        #expect(host.username == "dev")
+        #expect(host.authMethod == .deviceKey)
+        #expect(host.routes.map(\.address) == ["100.64.0.9", "studio.example"])
+        #expect(host.routes.allSatisfy { $0.port == 2222 })
+        #expect(rig.serversOn == [Self.tui, Self.tmux, Self.workTmux])
+        for record in rig.catalog.hosts {
+            #expect(await rig.trustedKey(for: record.id) == hostKey)
+        }
+    }
+
+    /// herdr's plugin shows its code inside a running Herdr TUI, which a look
+    /// from a login shell without herdr on PATH cannot find.
+    @Test func aCodeShownInHerdrVouchesForAHerdrTUITheLookMissed() async throws {
+        let rig = makeRig(core: Self.bareMachine(), paired: pairedMachine(runsHerdrTUI: true))
+
+        await rig.wizard.connect()
+
+        let scan = try #require(rig.wizard.scan)
+        #expect(scan.servers == [FoundServer(key: Self.tui, isRunning: true, version: nil)])
+        #expect(!scan.missing.contains { $0.kind == .herdrTUI })
+        #expect(rig.wizard.checked == [Self.tui])
+    }
+
+    /// `heeler-pair` runs outside any server: what the look finds is all
+    /// there is.
+    @Test func aMachineCodeAddsNoServerTheLookDidNotFind() async throws {
+        let rig = makeRig(core: Self.bareMachine(), paired: pairedMachine())
+
+        await rig.wizard.connect()
+
+        let scan = try #require(rig.wizard.scan)
+        #expect(scan.servers.isEmpty)
+        #expect(scan.missing.contains { $0.kind == .herdrTUI })
+    }
+
+    /// Scanning a Pairing Code is the user replacing a trusted key: a Host in
+    /// the catalog that trusted another takes the one the code pinned once
+    /// the user finishes, and its Console is asked to try again (ADR 0057).
+    @Test func aPairingCodeReplacesTheKeyAHostInTheCatalogTrusted() async throws {
+        let existing = Host(
+            name: "Studio", username: "dev",
+            routes: [
+                HostRoute(address: "100.64.0.9", port: 2222), HostRoute(address: "studio.example", port: 2222),
+            ])
+        let knownHosts = InMemoryKnownHostsStore()
+        let old = HostKeyFingerprint(publicKeyBlob: Data("old-host-key".utf8))
+        let trust = HostKeyTrust.hostKey(existing.id)
+        await knownHosts.setFingerprint(old, host: trust.host, port: trust.port)
+        let rig = makeRig(
+            catalog: HostStore(volatileHosts: [existing]), presentedKeyBlob: keyBlob, knownHosts: knownHosts,
+            paired: pairedMachine())
+
+        await rig.wizard.connect()
+
+        #expect(rig.wizard.step == .servers)
+        #expect(rig.wizard.replacesTrustedKey)
+        #expect(await rig.trustedKey(for: existing.id) == old)
+
+        _ = await rig.finish()
+
+        #expect(rig.catalog.machines.count == 1)
+        for record in rig.catalog.hosts {
+            #expect(await rig.trustedKey(for: record.id) == hostKey)
+        }
+        #expect(rig.retried.ids.contains(existing.id))
     }
 
     // MARK: Closing

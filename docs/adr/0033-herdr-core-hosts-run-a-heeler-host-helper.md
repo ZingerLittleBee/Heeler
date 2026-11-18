@@ -4,6 +4,10 @@ status: proposed
 
 # herdr-core Hosts run a Heeler Host Helper and its harness extensions
 
+Amended by [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md):
+Pairing no longer requires Herdr TUI. A herdr-core machine shows a Pairing Code
+with `heeler-pair`.
+
 On Herdr TUI the Heeler plugin runs inside herdr: its hooks send Agent
 Notifications and Live Activity updates through the Push Relay while the app is
 away, and it collects Usage on the Host (ADRs 0027 and 0028). herdr-core runs

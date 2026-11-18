@@ -161,3 +161,45 @@ suite("Pairing Code v2 encoding", () => {
     );
   });
 });
+
+const vectorsV3 = JSON.parse(
+  readFileSync(new URL("../test-vectors/pairing-code-v3.json", import.meta.url), "utf8"),
+);
+
+suite("Pairing Code v3 encoding", () => {
+  const canonical = vectorsV3.valid.filter((vector) => !vector.decodeOnly);
+
+  test("the v3 vector file has cases", () => {
+    assert.ok(canonical.length >= 3);
+  });
+
+  test("encodes every canonical v3 vector exactly", () => {
+    for (const vector of canonical) {
+      assert.equal(
+        encodePairingCode({ ...fromVectorShape(vector.payload), machine: true }),
+        vector.code,
+        vector.name,
+      );
+    }
+  });
+
+  test("a machine code carries no Herdr Endpoint", () => {
+    assert.throws(
+      () =>
+        encodePairingCode({
+          ...fromVectorShape(canonical[0].payload),
+          machine: true,
+          socketPath: "/Users/ada/.config/herdr/herdr.sock",
+          herdrPath: "/usr/local/bin/herdr",
+        }),
+      (error) => error instanceof PairingCodeError && error.code === "bad_payload",
+    );
+  });
+
+  test("decoding still rejects version 3", () => {
+    assert.throws(
+      () => decodePairingCode(canonical[0].code),
+      (error) => error instanceof PairingCodeError && error.code === "unsupported_version",
+    );
+  });
+});

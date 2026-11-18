@@ -4,7 +4,8 @@ import Foundation
 /// source of truth for the envelope across the Node plugin and this app
 /// (ADR 0007). The JSON files are bundled into the test target as resources
 /// so the Swift tests exercise exactly the same cases as the Node tests;
-/// the v2 file (ADR 0023) is consumed by the Swift tests only.
+/// the v2 file (ADR 0023) is consumed by the Swift tests only, and the v3 file
+/// (ADR 0057) by this decoder and the Node encoder.
 struct PairingCodeVectorFile: Decodable, Sendable {
     let valid: [Valid]
     let invalid: [Invalid]
@@ -43,6 +44,8 @@ struct PairingCodeVectorFile: Decodable, Sendable {
     static let shared: PairingCodeVectorFile = load("pairing-code-v1")
     /// `pairing-code-v2.json`: version 2 codes, which only the app decodes.
     static let v2: PairingCodeVectorFile = load("pairing-code-v2")
+    /// `pairing-code-v3.json`: machine codes, which `heeler-pair` shows.
+    static let v3: PairingCodeVectorFile = load("pairing-code-v3")
 
     private static func load(_ resource: String) -> PairingCodeVectorFile {
         guard

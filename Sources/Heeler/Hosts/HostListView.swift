@@ -476,11 +476,16 @@ struct HostListView: View {
                     navigateToPendingOnboardingHostIfNeeded()
                 }
             ) {
-                // A successful Pairing lands on its Server's page, whose
-                // preflight is the only place its first connection can be
-                // trusted (session discovery included).
-                PairingScanView(catalog: store) { paired in
+                // A successful Pairing ends on Add Host's last step and comes
+                // back here, to the new row (ADR 0057). A code with a Herdr
+                // Endpoint lands on its one Server's page instead, whose
+                // preflight proves its launcher answers.
+                PairingScanView(
+                    catalog: store, discoveries: discoveries, dependencies: onboardingDependencies
+                ) { paired in
                     pendingOnboardingHostID = paired.id
+                } onAdded: { member in
+                    pointOut(member)
                 } onAddManually: {
                     manualFallbackRequested = true
                 }

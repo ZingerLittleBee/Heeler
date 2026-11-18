@@ -10,11 +10,14 @@ struct HostServerSwitch {
     /// A herdr-core Server was found on a native Windows machine, which its
     /// first connection may never reach to say.
     var noteWindowsCore: @MainActor (Host.ID) -> Void = { _ in }
+    /// A record's Console may try again, if it had stopped on a failure.
+    var retryFailedHost: @MainActor (Host.ID) -> Void = { _ in }
 
     init(catalog: HostStore, dependencies: HostOnboardingDependencies) {
         self.catalog = catalog
         knownHosts = dependencies.knownHosts
         noteWindowsCore = dependencies.noteWindowsCore
+        retryFailedHost = dependencies.retryFailedHost
     }
 
     /// Turns `server` on for the Host that `member` is a record of, with what
@@ -52,6 +55,24 @@ struct HostServerSwitch {
             if await knownHosts.fingerprints(host: key.host, port: key.port).isEmpty {
                 await knownHosts.copyTrust(from: record, to: member.id)
             }
+        }
+    }
+
+    /// A Pairing Code was scanned for the Host that `member` is a record of
+    /// (ADR 0057): the ceremony enrolled this device there again, and a look
+    /// just met the keys `record` trusts, which the code pinned. Every record
+    /// of the Host trusts those and no other from then on, whatever algorithm
+    /// a key it trusted before was of: scanning the code is the user replacing
+    /// it. A Console that had stopped on the old key, or on a Device Key the
+    /// Host no longer held, then tries again.
+    func pairAgain(hostOf member: Host.ID, trusting record: Host.ID) async {
+        guard let machine = catalog.machine(containing: member) else { return }
+        let key = HostKeyTrust.hostKey(record)
+        let pinned = await knownHosts.fingerprints(host: key.host, port: key.port)
+        guard !pinned.isEmpty else { return }
+        for member in machine.members {
+            await knownHosts.replaceTrust(ofHost: member.id, with: pinned)
+            retryFailedHost(member.id)
         }
     }
 

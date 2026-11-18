@@ -91,7 +91,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-Scan the code it shows and the machine is added as a Host, with its addresses, host key fingerprint, and SSH key in place. [Pairing guide](https://docs.heeler.bybee.dev/pairing)
+Scan the code it shows and the machine is added as a Host, with its addresses, host key fingerprint, and SSH key in place. On a machine without herdr, such as one that runs only herdr-core or tmux, `npx -y heeler-pair@latest` shows the same code (Node 20 or newer, Heeler after 0.1.20). [Pairing guide](https://docs.heeler.bybee.dev/pairing)
 
 **Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, herdr-core, and each tmux server. One Host can carry several of them. [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [Connect tmux](https://docs.heeler.bybee.dev/tmux) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
 
