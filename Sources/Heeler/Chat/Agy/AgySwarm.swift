@@ -89,22 +89,90 @@ struct AgySwarmSnapshot: Equatable, Sendable {
         let mentions: [String]
         let channelMentions: [String]
         let mentionsAll: Bool
+        let isMarkedDone: Bool
+        let isMarkedStall: Bool
+        let shouldCollapseBrief: Bool
+        let displayTime: String?
+        let recipientSummary: String?
+        let rawCitedSeqs: [Int]
 
         var id: Int { seq }
+
+        init(
+            seq: Int,
+            agent: String,
+            text: String,
+            time: String,
+            timestamp: Date?,
+            channel: String,
+            isBrief: Bool,
+            isControl: Bool,
+            mentions: [String],
+            channelMentions: [String],
+            mentionsAll: Bool,
+            rawCitedSeqs: [Int]? = nil,
+            shouldCollapseBrief: Bool? = nil,
+            isMarkedDone: Bool? = nil,
+            isMarkedStall: Bool? = nil,
+            displayTime: String?? = nil
+        ) {
+            self.seq = seq
+            self.agent = agent
+            self.text = text
+            self.time = time
+            self.timestamp = timestamp
+            self.channel = channel
+            self.isBrief = isBrief
+            self.isControl = isControl
+            self.mentions = mentions
+            self.channelMentions = channelMentions
+            self.mentionsAll = mentionsAll
+            self.isMarkedDone = isMarkedDone ?? (!isBrief && !isControl && Self.hasLeadingTag("[done]", in: text))
+            self.isMarkedStall = isMarkedStall ?? (!isBrief && !isControl && Self.hasLeadingTag("[stall]", in: text))
+            self.shouldCollapseBrief =
+                shouldCollapseBrief
+                ?? (isBrief && Self.exceedsBriefPreviewLimits(text))
+            if let explicitTime = displayTime {
+                self.displayTime = explicitTime
+            } else {
+                self.displayTime = Self.formatClockTime(time)
+            }
+            self.recipientSummary = Self.buildRecipientSummary(
+                agent: agent, mentions: mentions, channelMentions: channelMentions, mentionsAll: mentionsAll)
+            self.rawCitedSeqs =
+                rawCitedSeqs
+                ?? (isControl ? [] : AgySwarmParser.extractBoardTokens(in: text).citedSeqs)
+        }
+
+        static func == (lhs: BoardMessage, rhs: BoardMessage) -> Bool {
+            lhs.seq == rhs.seq
+                && lhs.isControl == rhs.isControl
+                && lhs.isBrief == rhs.isBrief
+                && lhs.mentionsAll == rhs.mentionsAll
+                && lhs.channel == rhs.channel
+                && lhs.agent == rhs.agent
+                && lhs.time == rhs.time
+                && lhs.mentions == rhs.mentions
+                && lhs.channelMentions == rhs.channelMentions
+                && lhs.text == rhs.text
+        }
 
         var mentionsCoordinator: Bool {
             mentions.contains { $0.caseInsensitiveCompare("coordinator") == .orderedSame }
         }
 
-        var isMarkedDone: Bool {
-            !isBrief && Self.hasLeadingTag("[done]", in: text)
+        func citedSeqs(in knownSeqs: Set<Int>) -> [Int] {
+            guard !rawCitedSeqs.isEmpty else { return [] }
+            var resolved: [Int] = []
+            resolved.reserveCapacity(min(6, rawCitedSeqs.count))
+            for n in rawCitedSeqs where n != seq && knownSeqs.contains(n) {
+                resolved.append(n)
+                if resolved.count == 6 { break }
+            }
+            return resolved
         }
 
-        var isMarkedStall: Bool {
-            !isBrief && Self.hasLeadingTag("[stall]", in: text)
-        }
-
-        private static func hasLeadingTag(_ tag: String, in text: String) -> Bool {
+        static func hasLeadingTag(_ tag: String, in text: String) -> Bool {
             var rest = text.drop(while: \.isWhitespace)
             while rest.first == "@" {
                 rest = rest.dropFirst().drop { !$0.isWhitespace }
@@ -113,7 +181,28 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             return rest.prefix(tag.count).caseInsensitiveCompare(tag) == .orderedSame
         }
 
-        var recipientSummary: String? {
+        static func exceedsBriefPreviewLimits(_ text: String) -> Bool {
+            if text.utf8.count > 1_440 || text.count > 360 { return true }
+            var newlines = 0
+            for byte in text.utf8 where byte == UInt8(ascii: "\n") {
+                newlines += 1
+                if newlines >= 6 { return true }
+            }
+            return false
+        }
+
+        static func formatClockTime(_ time: String) -> String? {
+            guard !time.isEmpty else { return nil }
+            if let space = time.lastIndex(of: " ") {
+                let clock = time[time.index(after: space)...]
+                return String(clock.prefix(5))
+            }
+            return time
+        }
+
+        private static func buildRecipientSummary(
+            agent: String, mentions: [String], channelMentions: [String], mentionsAll: Bool
+        ) -> String? {
             var targets = mentions.filter { $0.caseInsensitiveCompare(agent) != .orderedSame }.map { "@\($0)" }
             targets.append(contentsOf: channelMentions.map { "@#\($0)" })
             if mentionsAll { targets.append("@all") }
@@ -181,19 +270,70 @@ struct AgySwarmSnapshot: Equatable, Sendable {
     var title: String
     var head: Int
     var members: [Member]
-    var messages: [BoardMessage]
+    var messages: [BoardMessage] {
+        didSet {
+            rebuildBoardIndex()
+        }
+    }
+    private(set) var boardPosts: [BoardMessage]
+    private(set) var knownPostSeqs: Set<Int>
+    var boardRevision: Int
     var channels: [Channel]
     var systemAlerts: [SystemAlert]
     var overview: NarratorOverview?
     var isLive: Bool
 
+    init(
+        id: String,
+        title: String,
+        head: Int,
+        members: [Member],
+        messages: [BoardMessage],
+        boardPosts: [BoardMessage]? = nil,
+        knownPostSeqs: Set<Int>? = nil,
+        boardRevision: Int = 0,
+        channels: [Channel],
+        systemAlerts: [SystemAlert],
+        overview: NarratorOverview?,
+        isLive: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.head = head
+        self.members = members
+        self.messages = messages
+        let posts = boardPosts ?? messages.filter { !$0.isControl }
+        self.boardPosts = posts
+        self.knownPostSeqs = knownPostSeqs ?? Set(posts.map(\.seq))
+        self.boardRevision = boardRevision
+        self.channels = channels
+        self.systemAlerts = systemAlerts
+        self.overview = overview
+        self.isLive = isLive
+    }
+
+    private mutating func rebuildBoardIndex() {
+        let posts = messages.filter { !$0.isControl }
+        boardPosts = posts
+        knownPostSeqs = Set(posts.map(\.seq))
+        boardRevision &+= 1
+    }
+
+    static func == (lhs: AgySwarmSnapshot, rhs: AgySwarmSnapshot) -> Bool {
+        lhs.id == rhs.id
+            && lhs.isLive == rhs.isLive
+            && lhs.head == rhs.head
+            && lhs.title == rhs.title
+            && lhs.members == rhs.members
+            && lhs.channels == rhs.channels
+            && lhs.systemAlerts == rhs.systemAlerts
+            && lhs.overview == rhs.overview
+            && lhs.messages == rhs.messages
+    }
+
     var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? String(localized: "Swarm") : trimmed
-    }
-
-    var boardPosts: [BoardMessage] {
-        messages.filter { !$0.isControl }
     }
 
     var postCount: Int {
@@ -313,6 +453,12 @@ enum AgySwarmParser {
         var members: [String]
     }
 
+    struct ExtractedBoardTokens: Equatable, Sendable {
+        var mentionTokens: Set<String> = []
+        var channelMentions: [String] = []
+        var citedSeqs: [Int] = []
+    }
+
     struct RawBoardLine: Equatable, Sendable {
         var seq: Int
         var agent: String
@@ -321,6 +467,38 @@ enum AgySwarmParser {
         var kind: String?
         var channel: String
         var control: RawControl?
+        var tokens: ExtractedBoardTokens
+        var parsedTimestamp: Date?
+        var isMarkedDone: Bool
+        var isMarkedStall: Bool
+        var shouldCollapseBrief: Bool
+        var displayTime: String?
+
+        init(
+            seq: Int,
+            agent: String,
+            text: String,
+            time: String,
+            kind: String?,
+            channel: String,
+            control: RawControl?
+        ) {
+            self.seq = seq
+            self.agent = agent
+            self.text = text
+            self.time = time
+            self.kind = kind
+            self.channel = channel
+            self.control = control
+            let isControl = control != nil
+            let isBrief = kind == "brief"
+            self.tokens = isControl ? ExtractedBoardTokens() : AgySwarmParser.extractBoardTokens(in: text)
+            self.parsedTimestamp = AgySwarmParser.parseBoardTimestamp(time)
+            self.isMarkedDone = !isControl && !isBrief && AgySwarmSnapshot.BoardMessage.hasLeadingTag("[done]", in: text)
+            self.isMarkedStall = !isControl && !isBrief && AgySwarmSnapshot.BoardMessage.hasLeadingTag("[stall]", in: text)
+            self.shouldCollapseBrief = isBrief && AgySwarmSnapshot.BoardMessage.exceedsBriefPreviewLimits(text)
+            self.displayTime = AgySwarmSnapshot.BoardMessage.formatClockTime(time)
+        }
     }
 
     static func isRoleWorkerName(_ name: String) -> Bool {
@@ -483,30 +661,126 @@ enum AgySwarmParser {
 
     // MARK: Mentions & Channels
 
-    static func mentions(in text: String, rosterNames: [String]) -> (mentions: [String], all: Bool) {
-        let lower = text.lowercased()
+    struct CompiledBoardHistory: Sendable {
+        var channels: [AgySwarmSnapshot.Channel]
+        var activeChannelNames: Set<String>
+        var messages: [AgySwarmSnapshot.BoardMessage]
+        var boardPosts: [AgySwarmSnapshot.BoardMessage]
+        var knownPostSeqs: Set<Int>
+        var postCounts: [String: (posts: Int, lastSeq: Int)]
+        var postsAreMonotonic: Bool
+    }
+
+    static func extractBoardTokens(in text: String) -> ExtractedBoardTokens {
+        guard text.utf8.contains(UInt8(ascii: "@")) || text.utf8.contains(UInt8(ascii: "#")) else {
+            return ExtractedBoardTokens()
+        }
+        let reservedChannels: Set<String> = ["main", "all", "here"]
+        var result = ExtractedBoardTokens()
+        var cursor = text.startIndex
+        while let sigil = text[cursor...].firstIndex(where: { $0 == "@" || $0 == "#" }) {
+            let ch = text[sigil]
+            if ch == "@" {
+                let validStart =
+                    sigil == text.startIndex || !isNameCharacter(text[text.index(before: sigil)])
+                let afterAt = text.index(after: sigil)
+                if validStart, afterAt < text.endIndex {
+                    if text[afterAt] == "#" {
+                        let chanStart = text.index(after: afterAt)
+                        var chanEnd = chanStart
+                        var count = 0
+                        while chanEnd < text.endIndex, count <= 24, isChannelTokenCharacter(text[chanEnd]) {
+                            chanEnd = text.index(after: chanEnd)
+                            count += 1
+                        }
+                        if count >= 1, count <= 24,
+                            let first = text[chanStart].asciiValue,
+                            (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(first | 0x20),
+                            chanEnd == text.endIndex || !isNameCharacter(text[chanEnd])
+                        {
+                            let lower = text[chanStart..<chanEnd].lowercased()
+                            if !reservedChannels.contains(lower), !result.channelMentions.contains(lower) {
+                                result.channelMentions.append(lower)
+                            }
+                        }
+                        cursor = chanEnd
+                        continue
+                    } else {
+                        var nameEnd = afterAt
+                        while nameEnd < text.endIndex, isNameCharacter(text[nameEnd]) {
+                            nameEnd = text.index(after: nameEnd)
+                        }
+                        if nameEnd > afterAt {
+                            result.mentionTokens.insert(text[afterAt..<nameEnd].lowercased())
+                            cursor = nameEnd
+                            continue
+                        }
+                    }
+                }
+                cursor = afterAt
+            } else {
+                let validStart =
+                    sigil == text.startIndex || !isCitationPrefixCharacter(text[text.index(before: sigil)])
+                let afterHash = text.index(after: sigil)
+                if validStart, afterHash < text.endIndex {
+                    var digitEnd = afterHash
+                    var digitCount = 0
+                    while digitEnd < text.endIndex, text[digitEnd].isNumber {
+                        digitEnd = text.index(after: digitEnd)
+                        digitCount += 1
+                    }
+                    if digitCount >= 1, digitCount <= 5,
+                        let seq = Int(text[afterHash..<digitEnd]),
+                        !result.citedSeqs.contains(seq)
+                    {
+                        result.citedSeqs.append(seq)
+                    }
+                    if digitEnd > afterHash {
+                        cursor = digitEnd
+                        continue
+                    }
+                }
+                cursor = afterHash
+            }
+        }
+        return result
+    }
+
+    static func resolveMentions(
+        from extracted: Set<String>, in rawText: String, rosterNames: [String]
+    ) -> (mentions: [String], all: Bool) {
+        guard !extracted.isEmpty else { return ([], false) }
+        var fallbackLower: String?
         let matched = rosterNames.filter { name in
             let lowerName = name.lowercased()
-            if matchesNamedToken(in: lower, token: lowerName) { return true }
-            if let prefixMatch = lowerName.wholeMatch(of: #/^(.+)-\d+$/#) {
-                return matchesNamedToken(in: lower, token: String(prefixMatch.1))
+            if lowerName.allSatisfy(isNameCharacter) {
+                if extracted.contains(lowerName) { return true }
+                if let dash = lowerName.lastIndex(of: "-") {
+                    let suffix = lowerName[lowerName.index(after: dash)...]
+                    if !suffix.isEmpty, suffix.allSatisfy({ $0.isASCII && $0.isNumber }) {
+                        let prefix = String(lowerName[..<dash])
+                        if !prefix.isEmpty, extracted.contains(prefix) { return true }
+                    }
+                }
+                return false
             }
-            return false
+            let lower = fallbackLower ?? {
+                let computed = rawText.lowercased()
+                fallbackLower = computed
+                return computed
+            }()
+            return matchesNamedToken(in: lower, token: lowerName)
         }
-        let all = matchesNamedToken(in: lower, token: "all")
-        return (matched, all)
+        return (matched, extracted.contains("all"))
+    }
+
+    static func mentions(in text: String, rosterNames: [String]) -> (mentions: [String], all: Bool) {
+        let extracted = extractBoardTokens(in: text).mentionTokens
+        return resolveMentions(from: extracted, in: text, rosterNames: rosterNames)
     }
 
     static func channelMentions(in text: String) -> [String] {
-        let lower = text.lowercased()
-        var found: [String] = []
-        let reserved: Set<String> = ["main", "all", "here"]
-        for match in lower.matches(of: #/(?:^|[^\p{L}\p{Nd}_-])@#([a-z][a-z0-9-]{0,23})(?![\p{L}\p{Nd}_-])/#) {
-            let name = String(match.1)
-            guard !reserved.contains(name), !found.contains(name) else { continue }
-            found.append(name)
-        }
-        return found
+        extractBoardTokens(in: text).channelMentions
     }
 
     private static func matchesNamedToken(in lowerText: String, token: String) -> Bool {
@@ -533,6 +807,18 @@ enum AgySwarmParser {
         ch.isLetter || ch.isNumber || ch == "_" || ch == "-"
     }
 
+    private static func isChannelTokenCharacter(_ ch: Character) -> Bool {
+        guard let ascii = ch.asciiValue else { return false }
+        let lower = ascii | 0x20
+        return (lower >= UInt8(ascii: "a") && lower <= UInt8(ascii: "z"))
+            || (ascii >= UInt8(ascii: "0") && ascii <= UInt8(ascii: "9"))
+            || ascii == UInt8(ascii: "-")
+    }
+
+    private static func isCitationPrefixCharacter(_ ch: Character) -> Bool {
+        ch.isLetter || ch.isNumber || ch == "_"
+    }
+
     static func channelRegistry(from rawLines: [RawBoardLine]) -> [AgySwarmSnapshot.Channel] {
         var order: [String] = []
         var byName: [String: AgySwarmSnapshot.Channel] = [:]
@@ -555,6 +841,99 @@ enum AgySwarmParser {
         return order.compactMap { byName[$0] }
     }
 
+    static func buildBoardMessage(
+        from raw: RawBoardLine,
+        at index: Int,
+        rosterNames: [String],
+        activeChannelNames: Set<String>,
+        postCounts: inout [String: (posts: Int, lastSeq: Int)]
+    ) -> AgySwarmSnapshot.BoardMessage {
+        let seq = raw.seq > 0 ? raw.seq : (index + 1)
+        if raw.control != nil {
+            return AgySwarmSnapshot.BoardMessage(
+                seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: raw.parsedTimestamp,
+                channel: raw.channel, isBrief: false, isControl: true, mentions: [],
+                channelMentions: [], mentionsAll: false, rawCitedSeqs: [],
+                shouldCollapseBrief: false, isMarkedDone: false, isMarkedStall: false,
+                displayTime: raw.displayTime)
+        }
+        let parsedMentions = resolveMentions(
+            from: raw.tokens.mentionTokens, in: raw.text, rosterNames: rosterNames)
+        let chanMentions = raw.tokens.channelMentions.filter { activeChannelNames.contains($0) }
+        var current = postCounts[raw.agent] ?? (posts: 0, lastSeq: 0)
+        current.posts += 1
+        current.lastSeq = seq
+        postCounts[raw.agent] = current
+        return AgySwarmSnapshot.BoardMessage(
+            seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: raw.parsedTimestamp,
+            channel: raw.channel, isBrief: raw.kind == "brief", isControl: false,
+            mentions: parsedMentions.mentions, channelMentions: chanMentions,
+            mentionsAll: parsedMentions.all, rawCitedSeqs: raw.tokens.citedSeqs,
+            shouldCollapseBrief: raw.shouldCollapseBrief, isMarkedDone: raw.isMarkedDone,
+            isMarkedStall: raw.isMarkedStall, displayTime: raw.displayTime)
+    }
+
+    static func compileBoardHistory(
+        rawLines: [RawBoardLine], rosterNames: [String]
+    ) -> CompiledBoardHistory {
+        let channels = channelRegistry(from: rawLines)
+        let activeChannelNames = Set(channels.filter { !$0.isArchived }.map(\.name))
+        var postCounts: [String: (posts: Int, lastSeq: Int)] = [:]
+        var messages: [AgySwarmSnapshot.BoardMessage] = []
+        var boardPosts: [AgySwarmSnapshot.BoardMessage] = []
+        var knownPostSeqs: Set<Int> = []
+        messages.reserveCapacity(rawLines.count)
+        boardPosts.reserveCapacity(rawLines.count)
+        knownPostSeqs.reserveCapacity(rawLines.count)
+        var postsAreMonotonic = true
+        var lastPostSeq = Int.min
+
+        for (idx, raw) in rawLines.enumerated() {
+            let msg = buildBoardMessage(
+                from: raw, at: idx, rosterNames: rosterNames, activeChannelNames: activeChannelNames,
+                postCounts: &postCounts)
+            messages.append(msg)
+            if !msg.isControl {
+                if msg.seq <= lastPostSeq {
+                    postsAreMonotonic = false
+                }
+                lastPostSeq = msg.seq
+                boardPosts.append(msg)
+                knownPostSeqs.insert(msg.seq)
+            }
+        }
+        return CompiledBoardHistory(
+            channels: channels, activeChannelNames: activeChannelNames, messages: messages,
+            boardPosts: boardPosts, knownPostSeqs: knownPostSeqs, postCounts: postCounts,
+            postsAreMonotonic: postsAreMonotonic)
+    }
+
+    static func unreadPostCount(
+        for name: String, lastReadSeq: Int, in history: CompiledBoardHistory
+    ) -> Int {
+        let posts = history.boardPosts
+        guard !posts.isEmpty else { return 0 }
+        if history.postsAreMonotonic {
+            var low = 0
+            var high = posts.count
+            while low < high {
+                let mid = (low + high) / 2
+                if posts[mid].seq > lastReadSeq {
+                    high = mid
+                } else {
+                    low = mid + 1
+                }
+            }
+            guard low < posts.count else { return 0 }
+            var unread = 0
+            for idx in low..<posts.count where posts[idx].agent != name {
+                unread += 1
+            }
+            return unread
+        }
+        return posts.count { $0.seq > lastReadSeq && $0.agent != name }
+    }
+
     static func buildSnapshot(
         id: String,
         roster: RawRoster,
@@ -564,34 +943,25 @@ enum AgySwarmParser {
         isLive: Bool,
         now: Date
     ) -> AgySwarmSnapshot {
-        let channels = channelRegistry(from: rawLines)
-        let activeChannelNames = Set(channels.filter { !$0.isArchived }.map(\.name))
         let names = roster.members.keys.sorted()
-        var postCounts: [String: (posts: Int, lastSeq: Int)] = [:]
+        let compiled = compileBoardHistory(rawLines: rawLines, rosterNames: names)
+        return buildSnapshot(
+            id: id, roster: roster, sortedNames: names, compiledBoard: compiled, boardRevision: 0,
+            transcripts: transcripts, overview: overview, isLive: isLive, now: now)
+    }
 
-        let messages: [AgySwarmSnapshot.BoardMessage] = rawLines.enumerated().map { idx, raw in
-            let seq = raw.seq > 0 ? raw.seq : (idx + 1)
-            let ts = parseBoardTimestamp(raw.time)
-            if raw.control != nil {
-                return AgySwarmSnapshot.BoardMessage(
-                    seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: ts,
-                    channel: raw.channel, isBrief: false, isControl: true, mentions: [],
-                    channelMentions: [], mentionsAll: false)
-            }
-            let parsedMentions = mentions(in: raw.text, rosterNames: names)
-            let chanMentions = channelMentions(in: raw.text).filter { activeChannelNames.contains($0) }
-            var current = postCounts[raw.agent] ?? (posts: 0, lastSeq: 0)
-            current.posts += 1
-            current.lastSeq = seq
-            postCounts[raw.agent] = current
-            return AgySwarmSnapshot.BoardMessage(
-                seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: ts,
-                channel: raw.channel, isBrief: raw.kind == "brief", isControl: false,
-                mentions: parsedMentions.mentions, channelMentions: chanMentions,
-                mentionsAll: parsedMentions.all)
-        }
-
-        let head = messages.last?.seq ?? 0
+    static func buildSnapshot(
+        id: String,
+        roster: RawRoster,
+        sortedNames names: [String],
+        compiledBoard: CompiledBoardHistory,
+        boardRevision: Int,
+        transcripts: [String: AgySwarmMemberTranscript],
+        overview: AgySwarmSnapshot.NarratorOverview?,
+        isLive: Bool,
+        now: Date
+    ) -> AgySwarmSnapshot {
+        let head = compiledBoard.messages.last?.seq ?? 0
         var systemAlerts: [AgySwarmSnapshot.SystemAlert] = []
 
         var builtMembers: [AgySwarmSnapshot.Member] = names.compactMap { name in
@@ -619,10 +989,8 @@ enum AgySwarmParser {
                 isStuck = false
             }
 
-            let counts = postCounts[name] ?? (posts: 0, lastSeq: 0)
-            let unread = messages.count { msg in
-                !msg.isControl && msg.seq > raw.lastReadSeq && msg.agent != name
-            }
+            let counts = compiledBoard.postCounts[name] ?? (posts: 0, lastSeq: 0)
+            let unread = unreadPostCount(for: name, lastReadSeq: raw.lastReadSeq, in: compiledBoard)
             let member = AgySwarmSnapshot.Member(
                 name: name,
                 conversationID: raw.conversationID,
@@ -679,8 +1047,11 @@ enum AgySwarmParser {
         }
 
         return AgySwarmSnapshot(
-            id: id, title: roster.title, head: head, members: builtMembers, messages: messages,
-            channels: channels, systemAlerts: systemAlerts, overview: overview, isLive: isLive)
+            id: id, title: roster.title, head: head, members: builtMembers,
+            messages: compiledBoard.messages, boardPosts: compiledBoard.boardPosts,
+            knownPostSeqs: compiledBoard.knownPostSeqs, boardRevision: boardRevision,
+            channels: compiledBoard.channels, systemAlerts: systemAlerts, overview: overview,
+            isLive: isLive)
     }
 
     private static func memberSortRank(_ member: AgySwarmSnapshot.Member) -> Int {
@@ -693,16 +1064,53 @@ enum AgySwarmParser {
         }
     }
 
-    private static func parseBoardTimestamp(_ raw: String) -> Date? {
+    private static let gregorianCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }()
+
+    static func parseBoardTimestamp(_ raw: String) -> Date? {
         guard !raw.isEmpty else { return nil }
-        let isoCandidate = raw.replacingOccurrences(of: " ", with: "T")
-        if let parsed = try? Date(isoCandidate, strategy: .iso8601) {
-            return parsed
+        if let local = parseLocalBoardDateTime(raw) {
+            return local
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter.date(from: raw)
+        let isoCandidate = raw.replacingOccurrences(of: " ", with: "T")
+        return try? Date(isoCandidate, strategy: .iso8601)
+    }
+
+    /// Fast zero-formatter parse of `yyyy-MM-dd HH:mm:ss` (the standard `board.jsonl` clock format).
+    private static func parseLocalBoardDateTime(_ raw: String) -> Date? {
+        let bytes = Array(raw.utf8)
+        guard bytes.count == 19,
+            bytes[4] == UInt8(ascii: "-"),
+            bytes[7] == UInt8(ascii: "-"),
+            bytes[10] == UInt8(ascii: " ") || bytes[10] == UInt8(ascii: "T"),
+            bytes[13] == UInt8(ascii: ":"),
+            bytes[16] == UInt8(ascii: ":")
+        else { return nil }
+        func digits(_ range: ClosedRange<Int>) -> Int? {
+            var value = 0
+            for idx in range {
+                let b = bytes[idx]
+                guard b >= UInt8(ascii: "0"), b <= UInt8(ascii: "9") else { return nil }
+                value = value * 10 + Int(b - UInt8(ascii: "0"))
+            }
+            return value
+        }
+        guard let year = digits(0...3),
+            let month = digits(5...6), (1...12).contains(month),
+            let day = digits(8...9), (1...31).contains(day),
+            let hour = digits(11...12), (0...23).contains(hour),
+            let minute = digits(14...15), (0...59).contains(minute),
+            let second = digits(17...18), (0...60).contains(second)
+        else { return nil }
+        var calendar = gregorianCalendar
+        calendar.timeZone = .current
+        return DateComponents(
+            calendar: calendar, timeZone: calendar.timeZone,
+            year: year, month: month, day: day, hour: hour, minute: minute, second: second
+        ).date
     }
 
     fileprivate static func intValue(_ value: JSONValue?) -> Int? {

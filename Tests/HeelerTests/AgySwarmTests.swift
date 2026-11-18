@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -518,5 +520,232 @@ struct AgySwarmTests {
         #expect(messages[2].isMarkedDone)
         #expect(messages[3].isMarkedDone)
         #expect(messages[4].isMarkedStall)
+    }
+
+    // MARK: - Large Swarm Board Recycling & Incremental Updates
+
+    @Test func followerKeepsBoardRevisionStableAcrossWorkerTicksAndAppendsIncrementally() async throws {
+        let files = VirtualHostFiles()
+        let swarmDir = "\(Self.root)/brain/\(Self.coordinatorID)/.system_generated/swarm"
+        let workerCompact = "\(Self.root)/brain/\(Self.workerAID)/.system_generated/logs/transcript.jsonl"
+
+        await files.write(
+            """
+            {
+              "title": "Large Design Swarm",
+              "members": {
+                "coordinator": { "conversation_id": "\(Self.coordinatorID)", "role": "coordinator", "wake_mode": "anything" },
+                "worker-1": { "conversation_id": "\(Self.workerAID)", "role": "worker", "wake_mode": "mentions", "last_read_seq": 1 },
+                "worker-2": { "conversation_id": "\(Self.workerBID)", "role": "worker", "wake_mode": "mentions", "last_read_seq": 2 }
+              }
+            }
+            """,
+            at: "\(swarmDir)/members.json")
+
+        let initialBoard = (1...30).map { seq in
+            #"{"seq":\#(seq),"agent":"worker-\#((seq % 2) + 1)","text":"@coordinator @worker-1 Verified module \#(seq) after #\#(max(1, seq - 1)).","time":"2026-11-18 11:57:\#(String(format: "%02d", seq % 60))"}"#
+        }.joined(separator: "\n") + "\n"
+        await files.write(initialBoard, at: "\(swarmDir)/board.jsonl")
+        await files.write(
+            #"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"read_file","args":{"Path":"\"/repo/A.swift\""}}]}"#
+                + "\n",
+            at: workerCompact)
+
+        var follower = AgySwarmFollower()
+        let snap1 = try #require(
+            await follower.poll(
+                root: Self.root,
+                coordinatorID: Self.coordinatorID,
+                hasSwarmHint: true,
+                files: files.hostFiles(),
+                at: Self.baseDate,
+                isCancellation: { _ in false }))
+        #expect(snap1.postCount == 30)
+        #expect(snap1.boardPosts.last?.citedSeqs(in: snap1.knownPostSeqs) == [29])
+        #expect(snap1.boardPosts.last?.displayTime == "11:57")
+        #expect(snap1.boardPosts.last?.timestamp != nil)
+        let initialRev = snap1.boardRevision
+
+        // Worker advances steps without touching `board.jsonl`: `boardRevision` must not bump!
+        await files.write(
+            #"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"read_file","args":{"Path":"\"/repo/A.swift\""}}]}"#
+                + "\n"
+                + #"{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"read_file","args":{"Path":"\"/repo/B.swift\""}}]}"#
+                + "\n",
+            at: workerCompact)
+        let snap2 = try #require(
+            await follower.poll(
+                root: Self.root,
+                coordinatorID: Self.coordinatorID,
+                hasSwarmHint: true,
+                files: files.hostFiles(),
+                at: Self.baseDate.addingTimeInterval(1),
+                isCancellation: { _ in false }))
+        #expect(snap2.boardRevision == initialRev)
+        #expect(snap2.members.first(where: { $0.name == "worker-1" })?.steps == 3)
+
+        // Append post #31: `boardRevision` advances cleanly and unread counts update!
+        let appended = initialBoard
+            + #"{"seq":31,"agent":"coordinator","text":"@worker [done] Consolidated #30 findings.","time":"2026-11-18 12:01:09"}"#
+            + "\n"
+        await files.write(appended, at: "\(swarmDir)/board.jsonl")
+        let snap3 = try #require(
+            await follower.poll(
+                root: Self.root,
+                coordinatorID: Self.coordinatorID,
+                hasSwarmHint: true,
+                files: files.hostFiles(),
+                at: Self.baseDate.addingTimeInterval(2),
+                isCancellation: { _ in false }))
+        #expect(snap3.boardRevision > initialRev)
+        #expect(snap3.postCount == 31)
+        #expect(snap3.boardPosts.last?.mentions == ["worker-1", "worker-2"])
+        #expect(snap3.boardPosts.last?.isMarkedDone == true)
+    }
+
+    @MainActor
+    @Test func largeSwarmBoardRecyclesCellsAndSkipsRebuildsDuringWorkerPolls() async throws {
+        let roster = try #require(
+            AgySwarmParser.parseRoster(
+                Data(
+                    """
+                    {
+                      "title": "MuseDAM Design Swarm",
+                      "members": {
+                        "coordinator": { "conversation_id": "\(Self.coordinatorID)", "role": "coordinator", "wake_mode": "anything" },
+                        "verifier": { "conversation_id": "\(Self.workerAID)", "role": "worker", "wake_mode": "mentions" }
+                      }
+                    }
+                    """.utf8)))
+
+        let rawLines: [AgySwarmParser.RawBoardLine] = (1...120).compactMap { seq in
+            let isBrief = seq % 15 == 1
+            let body: String
+            if isBrief {
+                body = (1...10).map { "@verifier line \($0): audit `MaterialRPCEnterpriseOpenServiceImpl.java`." }
+                    .joined(separator: "\n")
+            } else {
+                body = """
+                    @coordinator Follow-up to #\(max(1, seq - 1)):
+                    - **Actual Repo Convention (\(seq))**:
+                      1. Add `@SentinelResource(value = "enterprise-query-\(seq)")` on `OpenEnterpriseCallController.java:36`.
+                      2. Configure QPS FlowRule catching `FlowException` -> `"429"` 请求太过频繁.
+
+                    | Endpoint | Status | Notes |
+                    | --- | --- | --- |
+                    | `/enterprise/open/\(seq)` | Ready | Verified against `#\(max(1, seq - 1))` |
+                    """
+            }
+            let escaped = body
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+            let kindField = isBrief ? #","kind":"brief""# : ""
+            return AgySwarmParser.parseBoardLine(
+                Self.line(
+                    #"{"seq":\#(seq),"agent":"verifier","text":"\#(escaped)","time":"2026-11-18 12:04:00"\#(kindField)}"#))
+        }
+        #expect(rawLines.count == 120)
+
+        var workerTr = AgySwarmMemberTranscript()
+        workerTr.modificationDate = Self.baseDate
+        workerTr.apply([
+            Self.line(
+                #"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"read_file","args":{"Path":"\"/repo/Service.java\""}}]}"#
+            ),
+        ])
+
+        let snapshot = AgySwarmParser.buildSnapshot(
+            id: Self.coordinatorID,
+            roster: roster,
+            rawLines: rawLines,
+            transcripts: ["verifier": workerTr],
+            overview: nil,
+            isLive: true,
+            now: Self.baseDate)
+
+        let boardModel = ChatSwarmBoardModel()
+        boardModel.warm(swarm: snapshot)
+        await boardModel.settled()
+
+        let controller = ChatSwarmListController<Int, ChatSwarmBoardRow, ChatSwarmBoardCard>(
+            accessibilityIdentifier: "chat.swarm.board.list"
+        ) { item in
+            ChatSwarmBoardCard(row: item.payload, toggleExpand: {}, jumpToSeq: { _ in })
+        }
+
+        let frame = CGRect(x: 0, y: 0, width: 393, height: 680)
+        try await withTestWindow(frame: frame, rootViewController: controller) { _ in
+            let initialState = boardModel.buildState(
+                swarmID: snapshot.id,
+                channel: nil,
+                posts: snapshot.boardPosts,
+                knownSeqs: snapshot.knownPostSeqs,
+                expandedBriefs: [],
+                highlightedSeq: nil)
+            controller.apply(initialState)
+            controller.timeline.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(40))
+            controller.timeline.layoutIfNeeded()
+
+            // Opened pinned to the newest post (#120) while realizing only a few visible cells!
+            #expect(controller.visibleItemIDs.contains(120))
+            #expect(controller.timeline.visibleCells.count < 10)
+            let buildsAfterInitial = controller.cellBuilds
+
+            // Simulate 10 consecutive 1-second worker step/activity updates with NO new board posts:
+            // ZERO cells on the Board may rebuild!
+            for step in 2...11 {
+                workerTr.apply([
+                    Self.line(
+                        #"{"step_index":\#(step),"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","tool_calls":[{"name":"read_file","args":{"Path":"\"/repo/File\#(step).java\""}}]}"#
+                    ),
+                ])
+                let ticked = AgySwarmParser.buildSnapshot(
+                    id: Self.coordinatorID,
+                    roster: roster,
+                    rawLines: rawLines,
+                    transcripts: ["verifier": workerTr],
+                    overview: nil,
+                    isLive: true,
+                    now: Self.baseDate.addingTimeInterval(Double(step)))
+                let nextState = boardModel.buildState(
+                    swarmID: ticked.id,
+                    channel: nil,
+                    posts: ticked.boardPosts,
+                    knownSeqs: ticked.knownPostSeqs,
+                    expandedBriefs: [],
+                    highlightedSeq: nil)
+                controller.apply(nextState)
+            }
+            #expect(controller.cellBuilds == buildsAfterInitial)
+
+            // Jump up to #45 in the middle of the 120-post board: offscreen cells recycle cleanly!
+            controller.scrollToItem(45, animated: false)
+            controller.timeline.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(40))
+            controller.timeline.layoutIfNeeded()
+            #expect(controller.visibleItemIDs.contains(45))
+            #expect(!controller.isFollowing)
+
+            let view = controller.timeline
+            let recycledOffscreen = view.subviews
+                .compactMap { $0 as? UICollectionViewCell }
+                .filter { !view.visibleCells.contains($0) }
+            #expect(recycledOffscreen.allSatisfy { $0.contentConfiguration == nil })
+
+            // Highlighting #45 reconfigures ONLY that 1 cell, not the rest of the board!
+            let buildsBeforeHighlight = controller.cellBuilds
+            let highlightedState = boardModel.buildState(
+                swarmID: snapshot.id,
+                channel: nil,
+                posts: snapshot.boardPosts,
+                knownSeqs: snapshot.knownPostSeqs,
+                expandedBriefs: [],
+                highlightedSeq: 45)
+            controller.apply(highlightedState)
+            controller.timeline.layoutIfNeeded()
+            #expect(controller.cellBuilds == buildsBeforeHighlight + 1)
+        }
     }
 }
