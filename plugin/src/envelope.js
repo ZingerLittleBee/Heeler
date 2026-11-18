@@ -1,10 +1,11 @@
-// Pairing Code envelope: v1 (ADR 0007) and v2 with a Herdr Endpoint (ADR 0023).
+// Pairing Code envelope: v1 (ADR 0007), v2 with a Herdr Endpoint (ADR 0023)
+// and v3 for a machine that names no server (ADR 0057).
 //
 // Wire format: "HERDR-PAIR:<version>:<base64url(JSON, no padding)>".
 // The JSON payload uses short wire keys; see README.md for the schema and
-// test-vectors/pairing-code-v{1,2}.json for the cross-implementation vectors.
-// This plugin encodes both versions but decodes v1 only: only the app
-// decodes v2.
+// test-vectors/pairing-code-v{1,2,3}.json for the cross-implementation
+// vectors. This plugin encodes every version but decodes v1 only: only the
+// app decodes v2 and v3.
 // Unknown payload fields are ignored (additive metadata); breaking changes
 // bump the version, which both implementations must honor.
 
@@ -13,6 +14,7 @@ import { sessionFromSocketPath } from "./session.js";
 export const PAIRING_CODE_PREFIX = "HERDR-PAIR";
 export const PAIRING_CODE_VERSION = 1;
 export const PAIRING_CODE_ENDPOINT_VERSION = 2;
+export const PAIRING_CODE_MACHINE_VERSION = 3;
 
 const BOOTSTRAP_SEED_BYTES = 32;
 // OpenSSH fingerprint: "SHA256:" + unpadded standard base64 of a 32-byte digest.
@@ -109,7 +111,9 @@ export function validateEndpoint({ socketPath, herdrPath }) {
 
 /**
  * Encode a Pairing Code payload into its canonical string: v2 when it
- * carries a Herdr Endpoint (`socketPath`, `herdrPath`), v1 otherwise.
+ * carries a Herdr Endpoint (`socketPath`, `herdrPath`), v3 when it is a
+ * machine code (`machine: true`, from `heeler-pair`, which runs outside
+ * herdr and so names no server), v1 otherwise.
  *
  * Key order is fixed so the same payload always yields the same code; the
  * shared vectors assert on the exact string.
@@ -117,6 +121,10 @@ export function validateEndpoint({ socketPath, herdrPath }) {
 export function encodePairingCode(payload) {
   validatePayload(payload);
   const hasEndpoint = payload.socketPath !== undefined || payload.herdrPath !== undefined;
+  const isMachine = payload.machine === true;
+  if (isMachine && hasEndpoint) {
+    fail("bad_payload", "a machine code carries no Herdr endpoint");
+  }
   const wire = {
     addrs: payload.addresses,
     port: payload.port,
@@ -133,7 +141,11 @@ export function encodePairingCode(payload) {
     wire.exp = payload.expiresAt;
   }
   const body = Buffer.from(JSON.stringify(wire), "utf8").toString("base64url");
-  const version = hasEndpoint ? PAIRING_CODE_ENDPOINT_VERSION : PAIRING_CODE_VERSION;
+  const version = hasEndpoint
+    ? PAIRING_CODE_ENDPOINT_VERSION
+    : isMachine
+      ? PAIRING_CODE_MACHINE_VERSION
+      : PAIRING_CODE_VERSION;
   return `${PAIRING_CODE_PREFIX}:${version}:${body}`;
 }
 

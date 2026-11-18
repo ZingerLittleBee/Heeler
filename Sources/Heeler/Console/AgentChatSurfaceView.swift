@@ -964,8 +964,7 @@ struct AgentChatSurfaceView: View {
         // while Antigravity CLI's Background Work promotes the Console row.
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(chat.agent.status),
-            isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale }
-                || chat.agySwarm?.holdsActivePace == true,
+            isBackgroundWorkRunning: chat.isBackgroundWorkRunningForTurns,
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: ChatTurnSignals.isLive(hostStatus: console.hostStatuses[agent.hostID], conversation: conversation),
             olderAwaitsUser: conversation.olderAwaitsUser)

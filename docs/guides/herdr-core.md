@@ -14,7 +14,7 @@ Heeler never starts a core when connecting or checking. Start the Herdr desktop 
 
 ### 1. Connect
 
-1. In **Hosts**, tap **+**, or **Add Manually** when empty. A Pairing Code always adds a Herdr TUI Server.
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. On a Mac or Linux machine you can [scan a Pairing Code](pairing.md#pair-a-machine-without-herdr) instead, which skips this step and goes straight to [choosing the Servers](#2-choose-the-servers).
 2. Enter the **Address** and your SSH **User**. **More Options** has the port, a Jump Host and an overlay network.
 3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
 4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.

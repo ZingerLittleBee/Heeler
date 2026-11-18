@@ -42,6 +42,9 @@ struct HostOnboardingDependencies: Sendable {
     /// Add Host's detection found a native Windows machine behind this Host, which
     /// its first connection may never reach to say.
     var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// A Pairing Code was scanned for a Host in the catalog again, so a record
+    /// whose Console stopped on a failure should try once more.
+    var retryFailedHost: @MainActor @Sendable (Host.ID) -> Void = { _ in }
     /// The kernel a herdr-core Host's locator last found, nil before any has.
     var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     /// A tmux Host's checks resolved its paths again, for the catalog to keep.

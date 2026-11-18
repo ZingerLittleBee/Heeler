@@ -1,0 +1,156 @@
+---
+// The pinned hero and story: one phone, five steps, and the fragments that
+// float above it. `src/scripts/home/stage.ts` drives all of it from the scroll.
+import type { ImageMetadata } from 'astro';
+import chat from '../../assets/screens/chat-iphone.png';
+import consoleShot from '../../assets/screens/console-iphone.png';
+import liveActivity from '../../assets/screens/live-activity-iphone.png';
+import liveTerminal from '../../assets/screens/live-terminal-iphone.png';
+import usage from '../../assets/screens/usage-iphone.png';
+import Logo from '../Logo.astro';
+import { steps, type Screen } from './content';
+import Phone from './Phone.astro';
+import StoreBadges from './StoreBadges.astro';
+
+const shots: Record<Screen, ImageMetadata> = {
+  console: consoleShot,
+  chat,
+  'live-terminal': liveTerminal,
+  'live-activity': liveActivity,
+  usage,
+};
+const screens = steps.map((step) => ({ name: step.screen, image: shots[step.screen] }));
+
+/** The Agents in the Console fragment, in their resting order. */
+const rows = [
+  { key: 'auth', state: 'd', name: 'Auth Service', label: 'Done' },
+  { key: 'pay', state: 'w', name: 'Payments API', label: 'Working' },
+  { key: 'search', state: 'w', name: 'Search', label: 'Working' },
+  { key: 'docs', state: 'i', name: 'Docs', label: 'Idle' },
+];
+const toasts = [
+  { state: 'b', name: 'Payments API', note: 'Blocked, needs you' },
+  { state: 'd', name: 'Auth Service', note: 'Done' },
+  { state: 'w', name: 'Search', note: 'Working' },
+];
+const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
+---
+
+<section class="stage" data-step="-1">
+  <i class="anc" id="features"></i>
+  <div class="pin">
+    <div class="wrap pin-in">
+      <div class="hero">
+        <h1 class="d1">
+          <span class="l"><span>Leave the desk.</span></span>
+          <span class="l dim"><span>Keep your agents.</span></span>
+        </h1>
+        <p class="hero-p">
+          Heeler is the iPhone and iPad console for the coding agents running on your own machines. See who needs you, answer in Chat or the real terminal, and get on with your day.
+        </p>
+        <StoreBadges />
+        <p class="hero-n">Works with Herdr TUI, Herdr desktop, tmux. Rex soon.</p>
+      </div>
+      <i class="scr"></i>
+      <div class="sc">
+        <div class="wh">
+          {
+            steps.map((step, i) => (
+              <article class="st" style={`--d:${i ? 1 : 0}`}>
+                <span class="mono">{step.label}</span>
+                <h2>
+                  {step.lead} <span class="dim">{step.dim}</span>
+                </h2>
+                <p>{step.body}</p>
+                {'note' in step && <small>{step.note}</small>}
+              </article>
+            ))
+          }
+        </div>
+      </div>
+      <div class="rl">
+        {
+          steps.map((step, i) => (
+            <button type="button" data-i={i} aria-label={`Go to ${step.label}`}>
+              <i />
+            </button>
+          ))
+        }
+      </div>
+      <div class="dev" data-glow="n">
+        <i class="gl gl-n"></i><i class="gl gl-r"></i><i class="gl gl-y"></i><i class="gl gl-g"></i>
+        <div class="dv-in">
+          <div class="dv-pose">
+            <div class="dv-tilt">
+              <Phone
+                screens={screens}
+                alt="Heeler on iPhone: the Agents list with a status ring on every Agent"
+                sizes="(max-width: 559px) 74vw, (max-width: 899px) 58vw, min(28vw, 400px)"
+                eager
+              />
+              {
+                toasts.map((toast, i) => (
+                  <div class={`ts ts${i}`}>
+                    <i class={`dot ${toast.state}`} />
+                    <b>{toast.name}</b>
+                    <span>{toast.note}</span>
+                  </div>
+                ))
+              }
+              <div class="fg f0 cd" data-f="0">
+                <ul class="rw">
+                  {
+                    rows.map((row) => (
+                      <li data-k={row.key} data-s={row.state}>
+                        <span class="rg">
+                          <i />
+                        </span>
+                        <b>{row.name}</b>
+                        <em>{row.label}</em>
+                      </li>
+                    ))
+                  }
+                </ul>
+              </div>
+              <div class="fg f1 cd" data-f="1" data-st="b">
+                <div class="pm-h">
+                  <i class="dot"></i>Payments API<span class="pm-s"><em class="sb">Blocked</em><em class="sw">Working</em></span>
+                </div>
+                <p class="pm-q">Allow edit to <code>retry.js</code>?</p>
+                <div class="pm-a">
+                  <div class="pm-bt"><i>Deny</i><i class="al">Allow</i></div>
+                  <div class="pm-ok"><i class="dot"></i>Allowed. Back to Working.</div>
+                  <i class="tap"></i>
+                </div>
+              </div>
+              <div class="fg f2" data-f="2">
+                <div class="sg cd"><i></i><span>Chat</span><span>Terminal</span></div>
+              </div>
+              <div class="fg f2k" data-f="2">
+                {keys.map((key, i) => <i style={`--i:${i}`}>{key}</i>)}
+              </div>
+              <div class="fg f3i" data-f="3"><i class="dot"></i><b>Payments API</b><em>Blocked</em></div>
+              <div class="fg f3" data-f="3">
+                <div class="bn">
+                  <Logo />
+                  <div>
+                    <b>Payments API<span>now</span></b>
+                    <p>Blocked. Allow edit to retry.js?</p>
+                  </div>
+                </div>
+              </div>
+              <div class="fg f4 cd" data-f="4">
+                <div class="us-h">Claude Code</div>
+                <div class="us-r">
+                  <span>Weekly</span><em data-n="27">27%</em><i><b style="--v:.27"></b></i><small>resets in 4d 20h</small>
+                </div>
+                <div class="us-r"><span>5-hour</span><em data-n="5">5%</em><i><b style="--v:.05"></b></i></div>
+                <div class="us-f"><span>Codex weekly <b>7%</b></span><span><b>$25.24</b> today</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

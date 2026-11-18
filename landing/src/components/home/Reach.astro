@@ -1,0 +1,88 @@
+---
+// Voice input, reaching the machine from anywhere, and the privacy statement.
+// Behaviour: `voice()`, `reach()` and `priv()` in `src/scripts/home/sections.ts`.
+import { overlays, privacy, routes } from './content';
+
+/** The voice waveform: 56 bars with fixed, uneven heights and tempos. */
+const bars = Array.from({ length: 56 }, (_, i) => {
+  const amplitude = 0.25 + 0.75 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.45));
+  return `--a:${amplitude.toFixed(2)};--t:${(0.7 + ((i * 37) % 50) / 100).toFixed(2)}s;--dl:-${((i * 53) % 90) / 100}s`;
+});
+---
+
+<section class="sec">
+  <div class="wrap">
+    <div class="t2g">
+      <article class="t2 vo" data-rv>
+        <h3>Say it. <span class="dim">Send it.</span></h3>
+        <p>
+          Draft with the full iOS keyboard, autocorrect and IME, or just talk. Voice Input turns speech into a draft, on device or with your own speech API key.
+        </p>
+        <div class="vo-d" aria-hidden="true">
+          <div class="vo-w">{bars.map((bar) => <i style={bar} />)}</div>
+          <div class="vo-c">
+            <div class="vo-t"><span></span></div>
+            <i class="vo-s">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block">
+                <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"></path>
+              </svg>
+            </i>
+          </div>
+        </div>
+      </article>
+      <article class="t2 re" data-rv data-rv-delay="90">
+        <h3><span class="is-c">Home Wi-Fi,</span> <span>coffee shop,</span> <span>cellular.</span></h3>
+        <p>
+          Tailscale, ZeroTier and EasyTier are built in, so the phone needs no VPN app and no VPN slot. Add a Jump Host for machines that can't be routed. Heeler races every route and takes the first one that shows the trusted key.
+        </p>
+        <ul class="chips">
+          {overlays.map((name) => <li>{name}</li>)}
+        </ul>
+        <ol class="race" aria-hidden="true">
+          {
+            routes.map((route) => (
+              <li>
+                {route}
+                <i>
+                  <b />
+                </i>
+                <em>trusted key</em>
+              </li>
+            ))
+          }
+        </ol>
+      </article>
+    </div>
+    <div class="pv" id="private">
+      <h2 class="h2" data-rv>Your machines. Your keys. <span class="dim">No cloud in the middle.</span></h2>
+      <div class="pv-g">
+        <div class="pv-d" data-rv role="img" aria-label="One SSH line runs straight from your phone to your machine. The detour through a cloud is crossed out.">
+          <i class="pv-ph">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="8" cy="16" r="4.5"></circle><path d="M11.2 12.8 20 4M16.4 7.6l3 3M13.4 10.6l2.2 2.2"></path></svg>
+          </i>
+          <p class="pv-la"><b>Your phone</b><span>holds the Device Key</span></p>
+          <div class="pv-w">
+            <i class="pv-ln"><i></i><i></i></i>
+            <em>SSH</em>
+            <span class="pv-x">
+              <i class="pv-c">
+                <svg viewBox="0 0 48 34" fill="none">
+                  <path d="M13.5 28h22a8 8 0 0 0 1.4-15.9 11.5 11.5 0 0 0-21.9-2.3A9.2 9.2 0 0 0 13.5 28z"></path>
+                  <path class="k" d="M9 31.5 40 3.5"></path>
+                  <path d="M9 31.5 40 3.5"></path>
+                </svg>
+              </i>
+            </span>
+          </div>
+          <i class="pv-mc">
+            <svg viewBox="0 0 64 46" fill="none"><rect x=".75" y=".75" width="62.5" height="44.5" rx="9.25"></rect><path d="M15 16.5l7 6.5-7 6.5M28 30h11"></path></svg>
+          </i>
+          <p class="pv-lb"><b>Your machine</b><span>keeps the code</span></p>
+        </div>
+        <ul class="pv-l">
+          {privacy.map((statement) => <li>{statement}</li>)}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

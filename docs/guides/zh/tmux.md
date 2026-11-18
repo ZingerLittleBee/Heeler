@@ -16,7 +16,7 @@ Heeler 在连接或检查时绝不会启动 tmux 服务端。
 
 ### 1. 连接
 
-1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Server。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。也可以改为[扫描配对码](pairing.md#配对没有-herdr-的机器)，这样会跳过本步骤，直接进入[选择 Server](#2-选择-server)。
 2. 输入 **Address** 和 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
 3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
 4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。

@@ -38,6 +38,18 @@ final class NewHostWizard {
     @ObservationIgnored private var didSave = false
     /// The routes the last attempt dialled.
     @ObservationIgnored private var attemptedRoutes: [HostMachine.Connection.Route]?
+    /// The key a Pairing Code pinned for the Host, until the first look
+    /// trusts it.
+    @ObservationIgnored private var pairedFingerprint: HostKeyFingerprint?
+    /// The key trusted under `recordID` is the one a Pairing Code pinned, which
+    /// counts for more than one a Host in the catalog trusted before (ADR 0057).
+    @ObservationIgnored private var trustsPairingCode = false
+    /// The Host in the catalog trusts another key than the one the Pairing
+    /// Code pinned and the look just met: finishing replaces it.
+    private(set) var replacesTrustedKey = false
+    /// A Pairing Code shown inside Herdr TUI vouches for one on the Host it
+    /// named, whatever a look finds there.
+    @ObservationIgnored private var runsHerdrTUI = false
 
     init(
         catalog: HostStore, dependencies: HostOnboardingDependencies = HostOnboardingDependencies(),
@@ -50,6 +62,27 @@ final class NewHostWizard {
         self.catalog = catalog
         scanner = HostServerScanner(dependencies: dependencies)
         knownHosts = dependencies.knownHosts
+    }
+
+    /// Add Host for a machine a Pairing Code just enrolled this device on
+    /// (ADR 0057): the form is what the ceremony proved, and `connect()`
+    /// trusts the key the code pinned, so it lands on the Servers unasked.
+    convenience init(
+        catalog: HostStore, dependencies: HostOnboardingDependencies = HostOnboardingDependencies(),
+        paired machine: PairedMachine
+    ) {
+        var draft = HostDraft()
+        draft.username = machine.username
+        draft.authMethod = .deviceKey
+        draft.routes = machine.addresses.map { address in
+            var route = HostRouteDraft()
+            route.address = address
+            route.port = String(machine.port)
+            return route
+        }
+        self.init(catalog: catalog, dependencies: dependencies, prefill: draft)
+        pairedFingerprint = machine.hostKeyFingerprint
+        runsHerdrTUI = machine.runsHerdrTUI
     }
 
     var step: Step {
@@ -97,22 +130,61 @@ final class NewHostWizard {
         // A key trusted on an earlier attempt belongs to the machine those
         // routes reached, which edited routes may no longer name.
         let routes = HostMachine.Connection(host).routes
-        if let attemptedRoutes, attemptedRoutes != routes { await knownHosts.forgetHost(recordID) }
+        if let attemptedRoutes, attemptedRoutes != routes {
+            await knownHosts.forgetHost(recordID)
+            // What a Pairing Code said was said of the machine it named.
+            runsHerdrTUI = false
+            trustsPairingCode = false
+        }
         attemptedRoutes = routes
+        if let pairedFingerprint {
+            let key = HostKeyTrust.hostKey(recordID)
+            await knownHosts.setFingerprint(pairedFingerprint, host: key.host, port: key.port)
+            self.pairedFingerprint = nil
+            trustsPairingCode = true
+        }
         // A Host that is in the catalog was trusted there: its key is not
-        // asked about twice, and a key that changed since is still refused.
-        if let existing { await knownHosts.copyTrust(from: existing.representative.id, to: recordID) }
-        let found = await scanner.look(at: host, typedPassword: draft.passwordUpdate)
+        // asked about twice, and a key that changed since is still refused,
+        // unless a Pairing Code just pinned the one the Host has now.
+        if !trustsPairingCode, let existing {
+            await knownHosts.copyTrust(from: existing.representative.id, to: recordID)
+        }
+        let found = await scanner.look(at: host, typedPassword: draft.passwordUpdate).map { vouchedFor($0) }
         didTrust = false
         if let found {
             scan = found
             checked = Set(found.servers.filter(\.startsChecked).map(\.key))
+            replacesTrustedKey = await catalogTrustsAnotherKey()
         } else {
             scan = nil
+            replacesTrustedKey = false
             if case .failed(let failure) = scanner.phase, !failure.isDeclinedTrust {
                 self.failure = failure
             }
         }
+    }
+
+    /// What a look found, with the Herdr TUI a Pairing Code vouched for.
+    private func vouchedFor(_ found: HostServerScan) -> HostServerScan {
+        runsHerdrTUI ? found.assumingHerdrTUI() : found
+    }
+
+    /// Whether a record of the Host in the catalog trusts a key the look, which
+    /// went by the Pairing Code's, did not meet.
+    private func catalogTrustsAnotherKey() async -> Bool {
+        guard trustsPairingCode, let existing else { return false }
+        let pinned = await trustedKeys(of: recordID)
+        for member in existing.members {
+            let trusted = await trustedKeys(of: member.id)
+            let holdsPinned = pinned.allSatisfy { key in trusted.contains { $0.digest == key.digest } }
+            if !trusted.isEmpty, !holdsPinned { return true }
+        }
+        return false
+    }
+
+    private func trustedKeys(of record: Host.ID) async -> [HostKeyFingerprint] {
+        let key = HostKeyTrust.hostKey(record)
+        return await knownHosts.fingerprints(host: key.host, port: key.port)
     }
 
     /// The key the second step shows: the one being asked about, or the one
@@ -141,7 +213,7 @@ final class NewHostWizard {
     func scanAgain() async {
         guard !scanner.isLooking, let host = draft.makeHost(id: recordID) else { return }
         isScanningAgain = true
-        let found = await scanner.look(at: host, typedPassword: draft.passwordUpdate)
+        let found = await scanner.look(at: host, typedPassword: draft.passwordUpdate).map { vouchedFor($0) }
         isScanningAgain = false
         if let found {
             let before = Set(scan?.servers.map(\.key) ?? [])
@@ -151,6 +223,7 @@ final class NewHostWizard {
                 found.servers.filter { $0.startsChecked && !before.contains($0.key) }.map(\.key))
         } else if case .failed(let failure) = scanner.phase {
             scan = nil
+            replacesTrustedKey = false
             self.failure = failure.isDeclinedTrust ? nil : failure
         }
     }
@@ -166,6 +239,11 @@ final class NewHostWizard {
         let member: Host.ID
         if let existing {
             member = existing.representative.id
+            // The ceremony enrolled this device there again, and the look just
+            // met the key its code pinned.
+            if trustsPairingCode, scan != nil {
+                await switcher.pairAgain(hostOf: member, trusting: recordID)
+            }
         } else {
             do {
                 try catalog.add(host, password: draft.passwordUpdate)

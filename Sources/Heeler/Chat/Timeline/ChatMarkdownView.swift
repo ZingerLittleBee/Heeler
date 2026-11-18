@@ -86,6 +86,16 @@ struct ChatMarkdownView: View {
         return result
     }
 
+    /// Every level is bold, as Claude Code's terminal draws them, and the
+    /// top two are larger than the text.
+    nonisolated static func headingFont(_ level: Int) -> Font {
+        switch level {
+        case 1: .title2.weight(.bold)
+        case 2: .title3.weight(.bold)
+        default: .body.weight(.bold)
+        }
+    }
+
     /// The content as a text block draws it in `font`.
     ///
     /// Chat's font sets a design on the whole conversation, which outranks
@@ -95,6 +105,15 @@ struct ChatMarkdownView: View {
     nonisolated static func styled(_ content: AttributedString, in font: Font, opensImages: Bool = false)
         -> AttributedString
     {
+        let needsTransform = content.runs.contains { run in
+            if let intent = run.inlinePresentationIntent,
+                intent.contains(.stronglyEmphasized) || intent.contains(.code)
+            {
+                return true
+            }
+            return opensImages && run[ChatImageLink.PathAttribute.self] != nil
+        }
+        guard needsTransform else { return content }
         var result = tintingCode(boldingStrongEmphasis(content, in: font), opensImages: opensImages)
         for run in result.runs {
             if run.inlinePresentationIntent?.contains(.code) == true {
@@ -226,7 +245,7 @@ private struct ChatMarkdownBlockView: View {
         case .paragraph:
             styledText(in: .body)
         case .heading(let level):
-            styledText(in: Self.headingFont(level))
+            styledText(in: ChatMarkdownView.headingFont(level))
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let marker):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -269,18 +288,14 @@ private struct ChatMarkdownBlockView: View {
         }
     }
 
+    @ViewBuilder
     private func styledText(in font: Font) -> some View {
-        ChatMarkdownView.text(block.content, in: font, opensImages: imageOpener != nil)
-            .font(font)
-    }
-
-    /// Every level is bold, as Claude Code's terminal draws them, and the
-    /// top two are larger than the text.
-    private static func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: .title2.weight(.bold)
-        case 2: .title3.weight(.bold)
-        default: .body.weight(.bold)
+        if imageOpener != nil, block.hasImageLinks {
+            ChatMarkdownView.text(block.content, in: font, opensImages: true)
+                .font(font)
+        } else {
+            Text(block.styledContent)
+                .font(font)
         }
     }
 }
@@ -312,8 +327,7 @@ struct ChatMarkdownTableView: View {
                     ForEach(table.columns.indices, id: \.self) { @Sendable column in
                         MainActorContent {
                             let alignment = alignment(for: table.columns[column])
-                            ChatMarkdownView.text(
-                                table.rows[row][column], in: .subheadline, opensImages: imageOpener != nil)
+                            cellText(row: row, column: column)
                                 .font(row == 0 ? .subheadline.weight(.semibold) : .subheadline)
                                 .multilineTextAlignment(textAlignment(for: table.columns[column]))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
@@ -331,6 +345,13 @@ struct ChatMarkdownTableView: View {
                 }
             }
         }
+    }
+
+    private func cellText(row: Int, column: Int) -> Text {
+        if imageOpener != nil, table.hasImageLinks {
+            return ChatMarkdownView.text(table.rows[row][column], in: .subheadline, opensImages: true)
+        }
+        return Text(table.styledRows[row][column])
     }
 
     private func alignment(for column: ChatMarkdownBlock.Table.Alignment) -> Alignment {

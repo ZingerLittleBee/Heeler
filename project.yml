@@ -293,6 +293,10 @@ targets:
       # Pairing Code v2 vectors (ADR 0021): Swift-only, the Node plugin emits v1.
       - path: plugin/test-vectors/pairing-code-v2.json
         buildPhase: resources
+      # Pairing Code v3 vectors (ADR 0057): machine codes, which `heeler-pair`
+      # encodes and only the app decodes.
+      - path: plugin/test-vectors/pairing-code-v3.json
+        buildPhase: resources
       # Shared notification envelope vectors (ADR 0008), same arrangement.
       - path: plugin/test-vectors/notification-payload-v1.json
         buildPhase: resources

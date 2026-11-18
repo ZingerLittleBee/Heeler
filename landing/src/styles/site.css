@@ -1,0 +1,166 @@
+/* Site chrome shared by every page: the design tokens, a small reset for the
+   elements that carry `.lp`, the header and the footer. The homepage's own
+   styles are in `home/`. */
+
+:where(html) { -webkit-text-size-adjust: 100%; }
+:where(body) { margin: 0; background: oklch(0.155 0.004 264); }
+
+@keyframes lp-fade { from { opacity: 0; } }
+
+.lp {
+  --bg: oklch(0.155 0.004 264);
+  --s1: oklch(0.205 0.005 264);
+  --ln: oklch(0.3 0.006 264);
+  --tx: oklch(0.965 0.003 90);
+  --t2: oklch(0.74 0.008 264);
+  --t3: oklch(0.6 0.01 264);
+  --ink: oklch(0.18 0.004 264);
+  --hair: oklch(1 0 0 / 0.09);
+  --blk: #f38ba8;
+  --wrk: #f9e2af;
+  --don: #a6e3a1;
+  --idl: #7f849c;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --pad: clamp(20px, 4.4vw, 64px);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Damped springs sampled into linear(). Pair with 500-900ms durations. */
+  --spring-soft: linear(0, 0.05, 0.168, 0.317, 0.473, 0.617, 0.742, 0.843, 0.92, 0.976, 1.012, 1.033, 1.044, 1.046, 1.043, 1.038, 1.031, 1.023, 1.017, 1.011, 1.007, 1.003, 1.001, 0.999, 0.998, 0.998, 1);
+  --spring: linear(0, 0.07, 0.235, 0.44, 0.645, 0.822, 0.959, 1.052, 1.105, 1.125, 1.122, 1.104, 1.079, 1.053, 1.029, 1.01, 0.997, 0.988, 0.985, 0.984, 0.986, 0.989, 0.992, 0.995, 0.998, 1, 1.001, 1.002, 1);
+  --spring-bouncy: linear(0, 0.072, 0.249, 0.474, 0.702, 0.901, 1.052, 1.15, 1.198, 1.203, 1.18, 1.139, 1.091, 1.046, 1.008, 0.981, 0.965, 0.958, 0.959, 0.966, 0.975, 0.985, 0.993, 1, 1.005, 1.008, 1.009, 1.008, 1.006, 1.004, 1.003, 1.001, 1, 0.999, 1);
+  color: var(--tx);
+  font: 400 17px/1.55 Geist, ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  letter-spacing: normal;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  &, *, *::before, *::after { box-sizing: border-box; }
+  :is(h1, h2, h3, h4, p, ol, ul, figure, pre) { margin: 0; padding: 0; }
+  :is(ol, ul) { list-style: none; }
+  img { display: block; max-width: 100%; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  a { color: inherit; text-decoration: none; border-bottom: 0; }
+  :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 4px; }
+
+  ::selection { background: oklch(0.965 0.003 90 / 0.24); }
+  .wrap { width: min(100%, 1320px); margin-inline: auto; padding-inline: var(--pad); }
+  .dim { color: var(--t3); }
+  .mono { font: 500 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--t3); }
+  .dot { position: relative; flex: none; width: 0.62em; height: 0.62em; border-radius: 50%; background: var(--c); }
+  .b { --c: var(--blk); }
+  .w { --c: var(--wrk); }
+  .d { --c: var(--don); }
+  .sen { position: absolute; top: 0; left: 0; width: 1px; height: 24px; pointer-events: none; }
+  .skip {
+    position: fixed; left: 16px; top: 12px; z-index: 60; padding: 9px 14px; border-radius: 99px;
+    background: var(--tx); color: var(--ink); font-size: 14.5px; font-weight: 500;
+    transform: translateY(-200%); transition: transform 0.2s var(--ease-out);
+    &:focus-visible { transform: none; }
+  }
+
+  /* ------------------------------------------------------------ header */
+  .hd {
+    position: sticky; top: 0; z-index: 50; height: 64px;
+    animation: lp-fade 0.9s var(--ease-out) 0.1s backwards;
+    &::before {
+      content: ''; position: absolute; inset: 0;
+      background: oklch(0.155 0.004 264 / 0.72);
+      -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+      border-bottom: 1px solid var(--hair);
+      opacity: 0; transition: opacity 0.45s var(--ease-out);
+    }
+    &.is-sc::before, &.is-open::before { opacity: 1; }
+  }
+  .hd-in { position: relative; display: flex; align-items: center; gap: 20px; height: 100%; }
+  .brand {
+    display: flex; align-items: center; gap: 10px; margin-right: auto;
+    font-size: 17px; font-weight: 600; letter-spacing: -0.02em;
+    transition: opacity 0.2s var(--ease-out);
+    img { width: 28px; height: 28px; border-radius: 7px; }
+    &:hover { opacity: 0.8; }
+  }
+  .nav {
+    display: flex; gap: 2px;
+    a {
+      padding: 8px 12px; border-radius: 99px; font-size: 14.5px; opacity: 0.7;
+      transition: opacity 0.2s var(--ease-out), transform 0.3s var(--spring-soft);
+      &:hover { opacity: 1; }
+      &:active { transform: scale(0.96); }
+    }
+  }
+  .btn {
+    display: inline-flex; align-items: center; height: 38px; padding: 0 17px; border-radius: 99px;
+    background: var(--tx); color: var(--ink); font-size: 14.5px; font-weight: 500; white-space: nowrap;
+    translate: var(--mx, 0px) var(--my, 0px);
+    transition: scale 0.45s var(--spring-soft), filter 0.25s var(--ease-out);
+    &:hover { filter: brightness(1.12); }
+    &:active { scale: 0.96; transition-duration: 0.12s; }
+  }
+  .mn {
+    display: none; position: relative; width: 44px; height: 44px; margin-right: -12px;
+    i {
+      position: absolute; left: 13px; top: 18px; width: 18px; height: 1.5px; border-radius: 2px;
+      background: currentColor; transition: transform 0.55s var(--spring-soft);
+      & + i { top: 25px; }
+    }
+  }
+  .hd.is-open .mn i { transform: translateY(3.5px) rotate(45deg); & + i { transform: translateY(-3.5px) rotate(-45deg); } }
+
+  /* ------------------------------------------------------------ footer */
+  .ft {
+    position: relative; border-top: 1px solid var(--hair); padding-block: 30px 40px; background: var(--bg); font-size: 14px; color: var(--t3);
+    .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 30px; }
+    .brand { margin-right: 0; }
+    nav { display: flex; gap: 4px; margin-left: -10px; }
+    nav a { display: flex; align-items: center; min-height: 44px; padding: 0 10px; color: var(--t2); transition: opacity 0.2s var(--ease-out); &:hover { opacity: 0.7; } }
+    p { margin-left: auto; }
+  }
+  :is(.brand, .ft a):active { opacity: 0.55; }
+  .mn:active { scale: 0.9; }
+
+  /* ------------------------------------------------------------ narrow: the nav folds into a menu */
+  @media (max-width: 899px) {
+    .mn { display: block; }
+    .nav {
+      position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; gap: 0; padding: 6px var(--pad) 18px;
+      background: oklch(0.155 0.004 264 / 0.94);
+      -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--hair);
+      clip-path: inset(0 0 100% 0); visibility: hidden;
+      transition: clip-path 0.5s var(--ease-out-expo), visibility 0s 0.5s;
+      a {
+        display: flex; align-items: center; height: 48px; padding: 0; font-size: 18px;
+        opacity: 0; transform: translateY(-10px);
+        transition: opacity 0.3s var(--ease-out), transform 0.55s var(--ease-out-expo);
+      }
+    }
+    .hd.is-open .nav {
+      clip-path: inset(0); visibility: visible; transition-delay: 0s;
+      a { opacity: 0.85; transform: none; transition-delay: calc(var(--i) * 35ms + 60ms); }
+    }
+  }
+  @media (max-width: 899px) {
+    .ft p { margin-left: 0; }
+  }
+  @media (pointer: coarse) {
+    .btn { height: 44px; }
+  }
+
+  /* Without scripts the header keeps its backdrop, and the menu button, which could not open, is left out. */
+  :where(html:not(.js)) & {
+    .hd::before { opacity: 1; }
+    .mn { display: none; }
+  }
+
+  /* reduced motion: no entrances, nothing in flight */
+  .is-still & .hd { animation: none; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+}
+
+/* The header and footer wrappers add the tokens without a box of their own,
+   so the header stays sticky against the page. */
+.lp-chrome { display: contents; }
+.lp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

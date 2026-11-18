@@ -470,6 +470,7 @@
 		5BCA26370C2844EB77BB2484 /* HerdrCorePiSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB4A50BD2089165F17D9445D /* HerdrCorePiSessionBinderTests.swift */; };
 		5BFCE188EA8080664FE28D77 /* HostConnectionTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4ABB6F8C8FE6655D524EAE2 /* HostConnectionTone.swift */; };
 		5BFE20A2DA12554824D6CD3A /* PiHostEvidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383A6663C0582220AFFBD70E /* PiHostEvidence.swift */; };
+		5C06E113984FF91B98C5DD17 /* pairing-code-v3.json in Resources */ = {isa = PBXBuildFile; fileRef = 11E3F17F4D822B687D57A949 /* pairing-code-v3.json */; };
 		5C66C27D3D893A6B971284F1 /* HostAccountsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67536602B7CE21DF19B7BFC1 /* HostAccountsStoreTests.swift */; };
 		5C68C3082AD5958A28843055 /* TerminalTitleGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */; };
 		5C79B0EEF08521BF5907D3F2 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
@@ -588,6 +589,7 @@
 		741391A0B5F2BB39982C0B62 /* ConsoleSplitPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFF345ABEDF3CCB4D5748354 /* ConsoleSplitPresentationTests.swift */; };
 		74257FA18D6431785BFECE9A /* TerminalInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E30B96F852EFC3C322C9EB /* TerminalInputController.swift */; };
 		7436C64F9C18244C09925E44 /* ThemeAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4502F9D84E99D59E93A81E9B /* ThemeAppearance.swift */; };
+		7436EBBA057E54BFCE70DA0F /* ChatSwarmTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C428E134CD3CB4BC6DA7797 /* ChatSwarmTimeline.swift */; };
 		745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233075006FC2C8907BBFF40F /* GitBranchNameTests.swift */; };
 		745A30266F85F25CE919BBC2 /* HostOnboardingCoreStartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0D4897C97D900DE5E413FF /* HostOnboardingCoreStartTests.swift */; };
 		7555D2F687F17FB912B68076 /* OpenCodeTranscriptReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B939955A4C35E06974573291 /* OpenCodeTranscriptReducer.swift */; };
@@ -1437,6 +1439,7 @@
 		1142E803F7CA971D3CCDF2EB /* LiveActivityPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPreferences.swift; sourceTree = "<group>"; };
 		1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettingsTests.swift; sourceTree = "<group>"; };
 		11E0EA7996F618E85BF3B988 /* HeelerPluginInstallation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerPluginInstallation.swift; sourceTree = "<group>"; };
+		11E3F17F4D822B687D57A949 /* pairing-code-v3.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v3.json"; sourceTree = "<group>"; };
 		11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreDoneTests.swift; sourceTree = "<group>"; };
 		1209F79DFBDD6D95E0510227 /* PollBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollBudget.swift; sourceTree = "<group>"; };
 		1264F90327344290A094B378 /* HeelerSSHTransportBehaviorE2ETests+FailureStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+FailureStates.swift"; sourceTree = "<group>"; };
@@ -1973,6 +1976,7 @@
 		7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SealedEnvelopeCodec.swift; sourceTree = "<group>"; };
 		7C26CB9A95794EEDF88CF131 /* ClaudeChainResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeChainResolverTests.swift; sourceTree = "<group>"; };
 		7C3C7B94577B96CE8B76F3BB /* HostLiveActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostLiveActivityCoordinator.swift; sourceTree = "<group>"; };
+		7C428E134CD3CB4BC6DA7797 /* ChatSwarmTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSwarmTimeline.swift; sourceTree = "<group>"; };
 		7C5FB265AFF6961CD0A3C1D9 /* ClaudeProjectKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProjectKey.swift; sourceTree = "<group>"; };
 		7CCE32D8F2A1A12B183B3DA5 /* TerminalKeysKeyboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboardTests.swift; sourceTree = "<group>"; };
 		7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboardInset.swift; sourceTree = "<group>"; };
@@ -3380,6 +3384,7 @@
 			children = (
 				14D568BA3A9D538D8DC66E21 /* ChatSwarmLiveBar.swift */,
 				0722630AACC18EB7ED1D96FE /* ChatSwarmSheet.swift */,
+				7C428E134CD3CB4BC6DA7797 /* ChatSwarmTimeline.swift */,
 			);
 			path = Swarm;
 			sourceTree = "<group>";
@@ -3883,6 +3888,7 @@
 				CC9851A5A6E65C7F52290A20 /* notification-session-v1.json */,
 				F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */,
 				791A29C99001477839E4C3E5 /* pairing-code-v2.json */,
+				11E3F17F4D822B687D57A949 /* pairing-code-v3.json */,
 				CD3F97D0C9A6A0BC8FBEE6CD /* plugin-version-v1.json */,
 				ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */,
 				1765851A869BD4D35E29CF58 /* tmux-heeler-status-v1.json */,
@@ -4585,6 +4591,7 @@
 				88B077F195BA4B6B46FD330C /* notification-session-v1.json in Resources */,
 				DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */,
 				1CCAA769DDCA71EC02D40707 /* pairing-code-v2.json in Resources */,
+				5C06E113984FF91B98C5DD17 /* pairing-code-v3.json in Resources */,
 				F271226A2892164D44593BD9 /* plugin-version-v1.json in Resources */,
 				9F495C6368D1C8754903D457 /* sidebar-layout-v1.json in Resources */,
 				547CAC0CD4BF2095D61C07E2 /* tmux-heeler-status-v1.json in Resources */,
@@ -4849,6 +4856,7 @@
 				91386D52E541ABB78FA4F39C /* ChatStopPlan.swift in Sources */,
 				529A33DD861882A86316682C /* ChatSwarmLiveBar.swift in Sources */,
 				9393659C506CE9BCD3F2A960 /* ChatSwarmSheet.swift in Sources */,
+				7436EBBA057E54BFCE70DA0F /* ChatSwarmTimeline.swift in Sources */,
 				78BF7E48D0A205E24E1CBB29 /* ChatTextSettings.swift in Sources */,
 				0D5004AF03F46533BF3B27FA /* ChatTimelineController.swift in Sources */,
 				815BA6026CCD7AD9B4DA496C /* ChatTimelineGeometry.swift in Sources */,

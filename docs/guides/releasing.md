@@ -326,3 +326,34 @@ Older apps install `ZingerLittleBee/Heeler/plugin --ref main`, so `plugin/` on
 `main` must remain directly installable. herdr 0.7.5+ replaces an older
 GitHub-installed plugin with the same ID; a linked installation must first be
 unlinked through the app's notice.
+
+## Publishing heeler-pair
+
+`heeler-pair` is the npm package that shows a Pairing Code on a machine
+without herdr ([ADR 0057](../adr/0057-heeler-pair-pairs-a-machine-without-herdr.md)).
+It has its own version, in `plugin/pair-cli/package.json`, and is published by
+hand from `main`:
+
+```sh
+make pair-cli DRY_RUN=1
+make pair-cli
+make pair-cli YES=1
+make pair-cli SOURCE=<commit>
+```
+
+[publish-pair-cli.sh](../../scripts/publish-pair-cli.sh) assembles the package
+from a commit on `origin/main` (`plugin/pair-cli`'s manifest and README over
+the modules its `files` names in `plugin/src`), refuses a version that is not
+newer than the published one, packs it, installs the tarball as `npx` would,
+starts the command and the Enrollment entrypoint, then prints the file list
+and asks before `npm publish`. `DRY_RUN=1` stops before that and also accepts
+a `SOURCE` that is not on `main` yet.
+
+Publishing needs `npm login` as an owner of the package. A published version
+cannot be replaced, and can be unpublished only within 72 hours, so bump
+`version` for every change to the modules the package ships.
+
+The app's Setup Guide and the pairing guide name `npx -y heeler-pair@latest`.
+Publish the package before a build that carries them reaches testers. A
+machine code needs an app that decodes Pairing Code v3; an older app answers
+it with its "update Heeler" message.

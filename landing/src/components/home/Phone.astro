@@ -1,0 +1,40 @@
+---
+// An iPhone frame around one screenshot, or around several stacked ones that
+// the stage swaps by toggling `.is-on`.
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  screens: { name: string; image: ImageMetadata }[];
+  alt: string;
+  /** The `sizes` hint: how wide the phone is drawn. */
+  sizes: string;
+  /** The first screenshot is above the fold. */
+  eager?: boolean;
+}
+
+const { screens, alt, sizes, eager = false } = Astro.props;
+const stacked = screens.length > 1;
+---
+
+<div class="lp-phone">
+  <div class="lp-phone-body">
+    <div class="lp-phone-screen">
+      {
+        screens.map((screen, i) => (
+          <Image
+            src={screen.image}
+            alt={i ? '' : alt}
+            widths={[440, 660, 880, 1320]}
+            sizes={sizes}
+            class={stacked && !i ? 'is-on' : undefined}
+            data-screen={stacked ? screen.name : undefined}
+            loading={eager && !i ? 'eager' : 'lazy'}
+            fetchpriority={eager && !i ? 'high' : undefined}
+            draggable="false"
+          />
+        ))
+      }
+    </div>
+  </div>
+</div>
