@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/herdr-core.md at a76a7a53 -->
+<!-- Translated from docs/guides/herdr-core.md at 7882049d -->
 # 连接 herdr-core
 
 Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。在同时运行两者的机器上，它们各自是 Heeler 中同一个 Host 的一个 Server。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
@@ -43,7 +43,7 @@ Heeler 会在不启动任何服务的情况下查看一次，并列出这台机�
 | --- | --- |
 | <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、Routes 和 Account"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
 
-**成功的标志是**该 Host 所在的行显示绿色的 **herdr-core** 标签，且该 Server 的页面将 **Server Kind** 显示为带版本号的 herdr-core，**herdr-core running** 检查通过。
+**成功的标志是**该 Host 所在的行显示绿色的 **herdr-core** 标签，该 Host 的页面将 herdr-core 列为带版本号的 **Running**，且该 Server 的页面上 **herdr-core running** 检查通过。
 
 <a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
 

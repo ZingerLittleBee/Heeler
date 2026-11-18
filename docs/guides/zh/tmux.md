@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/tmux.md at a76a7a53 -->
+<!-- Translated from docs/guides/tmux.md at 7882049d -->
 # 连接 tmux
 
 通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是其 Host 的一个 Server，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
@@ -44,7 +44,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | --- | --- |
 | <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、Routes 和 Account"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
 
-**成功的标志是**该 Host 所在的行显示绿色的 **tmux** 标签，且该 Server 的页面将 **Server Kind** 显示为带版本号的 `tmux`，**Socket** 显示你的 socket 名称，**tmux server running** 检查通过。
+**成功的标志是**该 Host 所在的行显示绿色的 **tmux** 标签，该 Host 的页面将 tmux 列为带版本号的 **Running**，且该 Server 的页面上 **tmux server running** 检查通过。
 
 <a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
 
