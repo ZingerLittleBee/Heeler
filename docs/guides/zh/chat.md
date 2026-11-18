@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/chat.md at 36d63d52 -->
+<!-- Translated from docs/guides/chat.md at ac238220 -->
 # 在 Chat 中使用 Agent
 
 在 iPhone 或 iPad 上通过 Heeler 的原生 Chat 使用 Claude Code 和 Codex。你可以阅读对话并通过 SSH 回复，Agent 继续在 Host 上运行。
