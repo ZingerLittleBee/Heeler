@@ -12,14 +12,18 @@ enum ChatSwarmPalette {
     static let coordinatorInk = Color(uiColor: sapphireInkUI)
     static let coordinatorWash = Color(uiColor: sapphireInkUI).opacity(0.14)
 
-    static func stripBorder(for swarm: AgySwarmSnapshot) -> Color {
-        if swarm.hasSystemAlerts {
+    static func stripBorder(hasSystemAlerts: Bool, hasActiveWorkers: Bool) -> Color {
+        if hasSystemAlerts {
             return Color(uiColor: AgentStatusPalette.red).opacity(0.34)
         }
-        if swarm.hasActiveWorkers {
+        if hasActiveWorkers {
             return Color(uiColor: AgentStatusPalette.yellow).opacity(0.34)
         }
         return Color(uiColor: mauveWashUI).opacity(0.28)
+    }
+
+    static func stripBorder(for swarm: AgySwarmSnapshot) -> Color {
+        stripBorder(hasSystemAlerts: swarm.hasSystemAlerts, hasActiveWorkers: swarm.hasActiveWorkers)
     }
 
     static func memberStatusInk(_ status: AgySwarmSnapshot.MemberStatus) -> Color {
@@ -58,14 +62,53 @@ enum ChatSwarmPalette {
 /// - Condensed (keyboard up or Blocked card shown): 1-line summary bar.
 /// Tapping anywhere opens `ChatSwarmSheet`.
 struct ChatSwarmLiveBar: View {
-    let swarm: AgySwarmSnapshot
+    fileprivate struct Summary: Equatable {
+        let displayTitle: String
+        let hasSystemAlerts: Bool
+        let hasActiveWorkers: Bool
+        let activeCount: Int
+        let waitingCount: Int
+        let postCount: Int
+        let tickerText: String?
+        let dotStatuses: [AgySwarmSnapshot.MemberStatus]
+
+        init(swarm: AgySwarmSnapshot) {
+            self.displayTitle = swarm.displayTitle
+            self.hasSystemAlerts = swarm.hasSystemAlerts
+            let workers = swarm.taskWorkers
+            let active = workers.count { $0.status == .working }
+            let waiting = workers.count { $0.status == .waiting }
+            self.activeCount = active
+            self.waitingCount = waiting
+            self.hasActiveWorkers = active > 0
+            self.postCount = swarm.postCount
+            self.tickerText = swarm.tickerText
+            let nonKilled = workers.filter { !$0.isKilled }
+            let source = nonKilled.isEmpty ? workers : nonKilled
+            self.dotStatuses = source.map(\.status)
+        }
+    }
+
+    private let summary: Summary
     let isCondensed: Bool
     let open: () -> Void
+
+    init(swarm: AgySwarmSnapshot, isCondensed: Bool, open: @escaping () -> Void) {
+        self.summary = Summary(swarm: swarm)
+        self.isCondensed = isCondensed
+        self.open = open
+    }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .subheadline) private var glyphColumn: CGFloat = 18
 
     private static let hint = String(localized: "Opens the swarm board and member status.")
+
+    private var borderColor: Color {
+        ChatSwarmPalette.stripBorder(
+            hasSystemAlerts: summary.hasSystemAlerts,
+            hasActiveWorkers: summary.hasActiveWorkers)
+    }
 
     var body: some View {
         Group {
@@ -86,7 +129,7 @@ struct ChatSwarmLiveBar: View {
                     leadingGlyph
                         .frame(width: glyphColumn)
 
-                    Text(verbatim: swarm.displayTitle)
+                    Text(verbatim: summary.displayTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -96,11 +139,11 @@ struct ChatSwarmLiveBar: View {
                     trailingMeta
                 }
 
-                if let ticker = swarm.tickerText {
+                if let ticker = summary.tickerText {
                     Text(verbatim: ticker)
                         .font(.caption)
                         .foregroundStyle(
-                            swarm.hasSystemAlerts
+                            summary.hasSystemAlerts
                                 ? ChatBackgroundWorkPalette.statusInk(.failed)
                                 : .secondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
@@ -113,13 +156,13 @@ struct ChatSwarmLiveBar: View {
                 ChatBackgroundWorkStyle.card
                     .fill(.regularMaterial)
                     .overlay {
-                        if swarm.hasSystemAlerts {
+                        if summary.hasSystemAlerts {
                             ChatBackgroundWorkStyle.card.fill(
                                 LinearGradient(
                                     colors: [Color(uiColor: AgentStatusPalette.red).opacity(0.08), .clear],
                                     startPoint: .top,
                                     endPoint: .bottom))
-                        } else if swarm.hasActiveWorkers {
+                        } else if summary.hasActiveWorkers {
                             ChatBackgroundWorkStyle.card.fill(
                                 LinearGradient(
                                     colors: [Color(uiColor: AgentStatusPalette.yellow).opacity(0.07), .clear],
@@ -136,17 +179,17 @@ struct ChatSwarmLiveBar: View {
             }
             .overlay {
                 ChatBackgroundWorkStyle.card
-                    .stroke(ChatSwarmPalette.stripBorder(for: swarm), lineWidth: 1)
+                    .stroke(borderColor, lineWidth: 1)
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Swarm: \(swarm.displayTitle)"))
+        .accessibilityLabel(String(localized: "Swarm: \(summary.displayTitle)"))
         .accessibilityValue(accessibilitySummary)
         .accessibilityHint(Self.hint)
-        .accessibilityAddTraits(swarm.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
+        .accessibilityAddTraits(summary.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
         .accessibilityAction(.default, open)
         .accessibilityIdentifier("chat.swarm.bar")
     }
@@ -159,12 +202,12 @@ struct ChatSwarmLiveBar: View {
 
                 Text(verbatim: condensedSummaryText)
                     .font(.footnote.monospacedDigit())
-                    .foregroundStyle(swarm.hasActiveWorkers || swarm.hasSystemAlerts ? .primary : .secondary)
+                    .foregroundStyle(summary.hasActiveWorkers || summary.hasSystemAlerts ? .primary : .secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !swarm.taskWorkers.isEmpty {
-                    ChatSwarmMemberDots(workers: swarm.taskWorkers)
+                if !summary.dotStatuses.isEmpty {
+                    ChatSwarmStatusDots(statuses: summary.dotStatuses)
                 }
 
                 Image(systemName: "chevron.right")
@@ -176,29 +219,29 @@ struct ChatSwarmLiveBar: View {
             .background(.regularMaterial, in: ChatBackgroundWorkStyle.card)
             .overlay {
                 ChatBackgroundWorkStyle.card
-                    .stroke(ChatSwarmPalette.stripBorder(for: swarm), lineWidth: 1)
+                    .stroke(borderColor, lineWidth: 1)
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Swarm: \(swarm.displayTitle)"))
+        .accessibilityLabel(String(localized: "Swarm: \(summary.displayTitle)"))
         .accessibilityValue(accessibilitySummary)
         .accessibilityHint(Self.hint)
-        .accessibilityAddTraits(swarm.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
+        .accessibilityAddTraits(summary.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
         .accessibilityAction(.default, open)
         .accessibilityIdentifier("chat.swarm.summary")
     }
 
     @ViewBuilder
     private var leadingGlyph: some View {
-        if swarm.hasSystemAlerts {
+        if summary.hasSystemAlerts {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
                 .accessibilityHidden(true)
-        } else if swarm.hasActiveWorkers {
+        } else if summary.hasActiveWorkers {
             ChatBackgroundWorkSpinningArc(size: 13, lineWidth: 2)
                 .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
         } else {
@@ -211,16 +254,16 @@ struct ChatSwarmLiveBar: View {
 
     private var trailingMeta: some View {
         HStack(spacing: 6) {
-            if !swarm.taskWorkers.isEmpty {
-                ChatSwarmMemberDots(workers: swarm.taskWorkers)
+            if !summary.dotStatuses.isEmpty {
+                ChatSwarmStatusDots(statuses: summary.dotStatuses)
             }
-            if swarm.postCount > 0 {
-                Text(verbatim: "#\(swarm.postCount)")
+            if summary.postCount > 0 {
+                Text(verbatim: "#\(summary.postCount)")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Color(uiColor: .tertiaryLabel))
         }
         .lineLimit(1)
@@ -228,35 +271,32 @@ struct ChatSwarmLiveBar: View {
     }
 
     private var condensedSummaryText: String {
-        var parts: [String] = [swarm.displayTitle]
-        let activeCount = swarm.activeTaskWorkers.count
-        if swarm.hasSystemAlerts {
+        var parts: [String] = [summary.displayTitle]
+        if summary.hasSystemAlerts {
             parts.append(String(localized: "Needs attention"))
-        } else if activeCount > 0 {
-            parts.append(String(localized: "\(activeCount) active"))
-        } else if !swarm.waitingTaskWorkers.isEmpty {
+        } else if summary.activeCount > 0 {
+            parts.append(String(localized: "\(summary.activeCount) active"))
+        } else if summary.waitingCount > 0 {
             parts.append(String(localized: "Idle"))
         }
-        if swarm.postCount > 0 {
-            parts.append("#\(swarm.postCount)")
+        if summary.postCount > 0 {
+            parts.append("#\(summary.postCount)")
         }
         return parts.joined(separator: " · ")
     }
 
     private var accessibilitySummary: String {
         var clauses: [String] = []
-        let activeCount = swarm.activeTaskWorkers.count
-        let waitingCount = swarm.waitingTaskWorkers.count
-        if activeCount > 0 {
-            clauses.append(String(localized: "\(activeCount) active"))
+        if summary.activeCount > 0 {
+            clauses.append(String(localized: "\(summary.activeCount) active"))
         }
-        if waitingCount > 0 {
-            clauses.append(String(localized: "\(waitingCount) waiting"))
+        if summary.waitingCount > 0 {
+            clauses.append(String(localized: "\(summary.waitingCount) waiting"))
         }
-        if swarm.postCount > 0 {
-            clauses.append("#\(swarm.postCount)")
+        if summary.postCount > 0 {
+            clauses.append("#\(summary.postCount)")
         }
-        if let ticker = swarm.tickerText {
+        if let ticker = summary.tickerText {
             clauses.append(ticker)
         }
         return clauses.joined(separator: ", ")
@@ -268,18 +308,27 @@ struct ChatSwarmLiveBar: View {
 struct ChatSwarmMemberDots: View {
     let workers: [AgySwarmSnapshot.Member]
 
-    private var liveWorkers: [AgySwarmSnapshot.Member] {
+    private var statuses: [AgySwarmSnapshot.MemberStatus] {
         let nonKilled = workers.filter { !$0.isKilled }
-        return nonKilled.isEmpty ? workers : nonKilled
+        let source = nonKilled.isEmpty ? workers : nonKilled
+        return source.map(\.status)
     }
 
     var body: some View {
-        let shown = Array(liveWorkers.prefix(8))
-        let overflow = max(0, liveWorkers.count - shown.count)
+        ChatSwarmStatusDots(statuses: statuses)
+    }
+}
+
+struct ChatSwarmStatusDots: View, Equatable {
+    let statuses: [AgySwarmSnapshot.MemberStatus]
+
+    var body: some View {
+        let shown = Array(statuses.prefix(8))
+        let overflow = max(0, statuses.count - shown.count)
         if !shown.isEmpty {
             HStack(spacing: 4) {
-                ForEach(shown) { member in
-                    dot(for: member)
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, status in
+                    dot(for: status)
                 }
                 if overflow > 0 {
                     Text(verbatim: "+\(overflow)")
@@ -295,8 +344,8 @@ struct ChatSwarmMemberDots: View {
     }
 
     @ViewBuilder
-    private func dot(for member: AgySwarmSnapshot.Member) -> some View {
-        switch member.status {
+    private func dot(for status: AgySwarmSnapshot.MemberStatus) -> some View {
+        switch status {
         case .working:
             Circle()
                 .fill(Color(uiColor: AgentStatusPalette.yellow))

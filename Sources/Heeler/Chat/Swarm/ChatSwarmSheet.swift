@@ -1,6 +1,98 @@
 import SwiftUI
 import UIKit
 
+/// Sheet presentation for the 3-tab Swarm console: standard form sizing on
+/// regular width (never re-measuring scroll geometry on every frame) and
+/// expandable bottom detents on compact width.
+private struct ChatSwarmSheetPresentationModifier: ViewModifier {
+    let presentation: ConsoleSheetPresentation
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch presentation {
+        case .form:
+            content
+                .presentationSizing(.form)
+                .presentationBackground(ConsoleStatusSheetPresentationModifier.formBackground)
+        case .inheritedSheet:
+            content
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+private struct ChatSwarmHeaderSummary: Equatable {
+    var activeCount: Int
+    var waitingCount: Int
+    var postCount: Int
+    var isOffline: Bool
+    var hasSystemAlerts: Bool
+    var dotStatuses: [AgySwarmSnapshot.MemberStatus]
+
+    init(swarm: AgySwarmSnapshot, isHostConnected: Bool) {
+        let workers = swarm.taskWorkers
+        self.activeCount = workers.count { $0.status == .working }
+        self.waitingCount = workers.count { $0.status == .waiting }
+        self.postCount = swarm.postCount
+        self.isOffline = !isHostConnected || !swarm.isLive
+        self.hasSystemAlerts = swarm.hasSystemAlerts
+        let nonKilled = workers.filter { !$0.isKilled }
+        let source = nonKilled.isEmpty ? workers : nonKilled
+        self.dotStatuses = source.map(\.status)
+    }
+}
+
+private struct ChatSwarmHeaderStatusBar: View, Equatable {
+    let summary: ChatSwarmHeaderSummary
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ChatSwarmStatusDots(statuses: summary.dotStatuses)
+
+            Text(
+                verbatim: headerSummaryText(
+                    active: summary.activeCount,
+                    waiting: summary.waitingCount,
+                    posts: summary.postCount)
+            )
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if summary.isOffline {
+                Text("Offline")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.stopped))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(ChatBackgroundWorkPalette.statusWash(.stopped), in: Capsule())
+            } else if summary.hasSystemAlerts {
+                Text("Needs attention")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(ChatBackgroundWorkPalette.statusWash(.failed), in: Capsule())
+            }
+        }
+    }
+
+    private func headerSummaryText(active: Int, waiting: Int, posts: Int) -> String {
+        var parts: [String] = []
+        if active > 0 {
+            parts.append(String(localized: "\(active) active"))
+        }
+        if waiting > 0 {
+            parts.append(String(localized: "\(waiting) waiting"))
+        }
+        parts.append("#\(posts)")
+        return parts.joined(separator: " · ")
+    }
+}
+
 /// Native 3-tab Swarm Sheet (`Board`, `Members`, `Overview`) plus pushed
 /// read-only Worker sub-conversation view.
 struct ChatSwarmSheet: View {
@@ -12,6 +104,13 @@ struct ChatSwarmSheet: View {
         var id: String { rawValue }
     }
 
+    private struct BoardBlocksTaskKey: Equatable {
+        var swarmID: String
+        var boardRevision: Int
+        var channel: String?
+        var expandedBriefs: Set<Int>
+    }
+
     let chat: AgentChatStore
     let isHostConnected: Bool
     let sheetPresentation: ConsoleSheetPresentation
@@ -21,6 +120,9 @@ struct ChatSwarmSheet: View {
     @State private var expandedBriefs: Set<Int> = []
     @State private var highlightedSeq: Int?
     @State private var pendingScrollSeq: Int?
+    @State private var scrollRequest: ChatSwarmScrollRequest<Int>?
+    @State private var scrollNonce = 0
+    @State private var disclosureSeq: Int?
     @State private var showsKilledMembers = false
     @State private var path: [String] = []
     @Environment(\.dismiss) private var dismiss
@@ -64,7 +166,7 @@ struct ChatSwarmSheet: View {
                     isHostConnected: isHostConnected)
             }
         }
-        .modifier(ConsoleStatusSheetPresentationModifier(presentation: sheetPresentation))
+        .modifier(ChatSwarmSheetPresentationModifier(presentation: sheetPresentation))
         .accessibilityIdentifier("chat.swarm.sheet")
         .onChange(of: chat.agySwarm == nil) { _, isNil in
             if isNil { dismiss() }
@@ -82,7 +184,8 @@ struct ChatSwarmSheet: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("chat.swarm.tabs")
 
-                statusHeaderLine(swarm: swarm)
+                ChatSwarmHeaderStatusBar(
+                    summary: ChatSwarmHeaderSummary(swarm: swarm, isHostConnected: isHostConnected))
             }
             .padding(.horizontal, 16)
             .padding(.top, 6)
@@ -104,54 +207,24 @@ struct ChatSwarmSheet: View {
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private func statusHeaderLine(swarm: AgySwarmSnapshot) -> some View {
-        HStack(spacing: 8) {
-            ChatSwarmMemberDots(workers: swarm.taskWorkers)
-
-            let activeCount = swarm.activeTaskWorkers.count
-            let waitingCount = swarm.waitingTaskWorkers.count
-            Text(verbatim: headerSummaryText(active: activeCount, waiting: waitingCount, posts: swarm.postCount))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            if !isHostConnected || !swarm.isLive {
-                Text("Offline")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.stopped))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(ChatBackgroundWorkPalette.statusWash(.stopped), in: Capsule())
-            } else if swarm.hasSystemAlerts {
-                Text("Needs attention")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(ChatBackgroundWorkPalette.statusWash(.failed), in: Capsule())
-            }
-        }
-    }
-
-    private func headerSummaryText(active: Int, waiting: Int, posts: Int) -> String {
-        var parts: [String] = []
-        if active > 0 {
-            parts.append(String(localized: "\(active) active"))
-        }
-        if waiting > 0 {
-            parts.append(String(localized: "\(waiting) waiting"))
-        }
-        parts.append("#\(posts)")
-        return parts.joined(separator: " · ")
-    }
-
     // MARK: - Board Tab
 
     private func boardPage(swarm: AgySwarmSnapshot) -> some View {
         let posts = filteredPosts(in: swarm)
-        let knownSeqs = Set(swarm.boardPosts.map(\.seq))
+        let boardModel = chat.swarmBoard
+        let listState = boardModel.buildState(
+            swarmID: swarm.id,
+            channel: selectedChannel,
+            posts: posts,
+            knownSeqs: swarm.knownPostSeqs,
+            expandedBriefs: expandedBriefs,
+            highlightedSeq: highlightedSeq)
+        let blocksKey = BoardBlocksTaskKey(
+            swarmID: swarm.id,
+            boardRevision: swarm.boardRevision,
+            channel: selectedChannel,
+            expandedBriefs: expandedBriefs)
+
         return VStack(spacing: 0) {
             if !swarm.channels.isEmpty {
                 channelFilterBar(channels: swarm.channels)
@@ -166,41 +239,43 @@ struct ChatSwarmSheet: View {
                         description: Text("Assignments and findings posted by swarm members appear here."))
                         .padding(.vertical, 36)
                 }
-                .consoleSheetPage()
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(posts) { message in
-                                ChatSwarmBoardCard(
-                                    message: message,
-                                    knownSeqs: knownSeqs,
-                                    isExpanded: expandedBriefs.contains(message.seq),
-                                    isHighlighted: highlightedSeq == message.seq,
-                                    toggleExpand: { toggleBrief(message.seq) },
-                                    jumpToSeq: { target in jumpToMessage(target, in: swarm, proxy: proxy) })
-                                    .id(message.seq)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 22)
-                    }
-                    .defaultScrollAnchor(.bottom)
-                    .consoleSheetPage()
-                    .onAppear {
-                        if let seq = pendingScrollSeq {
-                            pendingScrollSeq = nil
-                            scrollAndHighlight(seq, proxy: proxy)
-                        }
-                    }
-                    .onChange(of: pendingScrollSeq) { _, seq in
-                        guard let seq else { return }
+                ChatSwarmListView(
+                    state: listState,
+                    scrollRequest: scrollRequest,
+                    disclosureAnchor: disclosureSeq,
+                    initialMeasuredHeights: boardModel.measuredHeights,
+                    onMeasure: { seq, height in
+                        boardModel.recordMeasuredHeight(height, for: seq)
+                    },
+                    onForgetMeasurements: { kept in
+                        boardModel.forgetMeasuredHeights(keeping: kept)
+                    },
+                    accessibilityIdentifier: "chat.swarm.board.list"
+                ) { item in
+                    ChatSwarmBoardCard(
+                        row: item.payload,
+                        toggleExpand: { toggleBrief(item.id) },
+                        jumpToSeq: { target in jumpToMessage(target) })
+                }
+                .onAppear {
+                    if let seq = pendingScrollSeq {
                         pendingScrollSeq = nil
-                        scrollAndHighlight(seq, proxy: proxy)
+                        scrollAndHighlight(seq)
                     }
                 }
+                .onChange(of: pendingScrollSeq) { _, seq in
+                    guard let seq else { return }
+                    pendingScrollSeq = nil
+                    scrollAndHighlight(seq)
+                }
             }
+        }
+        .task(id: blocksKey) {
+            boardModel.ensureBlocks(
+                swarmID: swarm.id,
+                posts: posts,
+                expandedBriefs: expandedBriefs)
         }
     }
 
@@ -227,9 +302,8 @@ struct ChatSwarmSheet: View {
     private func channelChip(label: String, value: String?, isArchived: Bool) -> some View {
         let isSelected = selectedChannel == value
         return Button {
-            withAnimation(.snappy(duration: 0.18)) {
-                selectedChannel = value
-            }
+            disclosureSeq = nil
+            selectedChannel = value
         } label: {
             Text(verbatim: label)
                 .font(.caption.weight(.semibold))
@@ -252,37 +326,36 @@ struct ChatSwarmSheet: View {
     }
 
     private func toggleBrief(_ seq: Int) {
-        withAnimation(.snappy(duration: 0.2)) {
-            if expandedBriefs.contains(seq) {
-                expandedBriefs.remove(seq)
-            } else {
-                expandedBriefs.insert(seq)
-            }
+        disclosureSeq = seq
+        if expandedBriefs.contains(seq) {
+            expandedBriefs.remove(seq)
+        } else {
+            expandedBriefs.insert(seq)
         }
     }
 
-    private func jumpToMessage(_ seq: Int, in swarm: AgySwarmSnapshot, proxy: ScrollViewProxy) {
-        if let targetMsg = swarm.boardPosts.first(where: { $0.seq == seq }),
-            selectedChannel != nil, selectedChannel != targetMsg.channel
+    private func jumpToMessage(_ seq: Int) {
+        if let swarm = chat.agySwarm,
+            let targetMsg = swarm.boardPosts.first(where: { $0.seq == seq }),
+            selectedChannel != nil,
+            selectedChannel != targetMsg.channel
         {
             selectedChannel = nil
             pendingScrollSeq = seq
             return
         }
-        scrollAndHighlight(seq, proxy: proxy)
+        scrollAndHighlight(seq)
     }
 
-    private func scrollAndHighlight(_ seq: Int, proxy: ScrollViewProxy) {
-        withAnimation(.snappy(duration: 0.26)) {
-            proxy.scrollTo(seq, anchor: .center)
-            highlightedSeq = seq
-        }
+    private func scrollAndHighlight(_ seq: Int) {
+        disclosureSeq = nil
+        scrollNonce &+= 1
+        scrollRequest = ChatSwarmScrollRequest(nonce: scrollNonce, target: seq)
+        highlightedSeq = seq
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.6))
             if highlightedSeq == seq {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    highlightedSeq = nil
-                }
+                highlightedSeq = nil
             }
         }
     }
@@ -300,7 +373,7 @@ struct ChatSwarmSheet: View {
         let killed = swarm.killedMembers
 
         return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 ForEach(coordinators) { coordinator in
                     memberCardButton(coordinator)
                 }
@@ -362,7 +435,6 @@ struct ChatSwarmSheet: View {
             .padding(.top, 12)
             .padding(.bottom, 22)
         }
-        .consoleSheetPage()
     }
 
     private func memberSection(
@@ -432,7 +504,7 @@ struct ChatSwarmSheet: View {
                 }
 
                 if let overview = swarm.overview {
-                    narratorOverviewSection(overview: overview, swarm: swarm)
+                    narratorOverviewSection(overview: overview)
                 } else {
                     computedOverviewSection(swarm: swarm)
                 }
@@ -441,7 +513,6 @@ struct ChatSwarmSheet: View {
             .padding(.top, 12)
             .padding(.bottom, 22)
         }
-        .consoleSheetPage()
     }
 
     private func systemAlertsSection(swarm: AgySwarmSnapshot) -> some View {
@@ -509,9 +580,7 @@ struct ChatSwarmSheet: View {
         }
     }
 
-    private func narratorOverviewSection(
-        overview: AgySwarmSnapshot.NarratorOverview, swarm: AgySwarmSnapshot
-    ) -> some View {
+    private func narratorOverviewSection(overview: AgySwarmSnapshot.NarratorOverview) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 if !overview.headline.isEmpty {
@@ -656,6 +725,9 @@ struct ChatSwarmSheet: View {
         let highlights = swarm.boardPosts.filter {
             $0.isMarkedDone || $0.isMarkedStall || ($0.mentionsCoordinator && !$0.isBrief)
         }.suffix(6)
+        let workers = swarm.taskWorkers
+        let activeCount = workers.count { $0.status == .working }
+        let waitingCount = workers.count { $0.status == .waiting }
 
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
@@ -664,11 +736,11 @@ struct ChatSwarmSheet: View {
 
                 HStack(spacing: 12) {
                     statTile(
-                        value: "\(swarm.activeTaskWorkers.count)",
+                        value: "\(activeCount)",
                         label: String(localized: "Active"),
-                        tint: swarm.hasActiveWorkers ? ChatBackgroundWorkPalette.statusInk(.running) : .primary)
+                        tint: activeCount > 0 ? ChatBackgroundWorkPalette.statusInk(.running) : .primary)
                     statTile(
-                        value: "\(swarm.waitingTaskWorkers.count)",
+                        value: "\(waitingCount)",
                         label: String(localized: "Waiting"),
                         tint: .primary)
                     statTile(
@@ -803,42 +875,15 @@ struct ChatSwarmSheet: View {
 
 // MARK: - Board Message Card
 
-private struct ChatSwarmBoardCard: View {
-    let message: AgySwarmSnapshot.BoardMessage
-    let knownSeqs: Set<Int>
-    let isExpanded: Bool
-    let isHighlighted: Bool
+struct ChatSwarmBoardCard: View {
+    let row: ChatSwarmBoardRow
     let toggleExpand: () -> Void
     let jumpToSeq: (Int) -> Void
 
+    private var message: AgySwarmSnapshot.BoardMessage { row.message }
+
     private var isCoordinator: Bool {
         message.agent.caseInsensitiveCompare("coordinator") == .orderedSame
-    }
-
-    private var shouldCollapseBrief: Bool {
-        guard message.isBrief else { return false }
-        let newlineCount = message.text.count { $0 == "\n" }
-        return newlineCount >= 6 || message.text.count > 360
-    }
-
-    private var citedSeqs: [Int] {
-        var found: [Int] = []
-        for match in message.text.matches(of: #/(?:^|[^\p{L}\p{Nd}_])#(\d{1,5})(?!\d)/#) {
-            guard let n = Int(match.1), n != message.seq, knownSeqs.contains(n), !found.contains(n) else {
-                continue
-            }
-            found.append(n)
-        }
-        return Array(found.prefix(6))
-    }
-
-    private var displayTime: String? {
-        guard !message.time.isEmpty else { return nil }
-        if let space = message.time.lastIndex(of: " ") {
-            let clock = message.time[message.time.index(after: space)...]
-            return String(clock.prefix(5))
-        }
-        return message.time
     }
 
     var body: some View {
@@ -886,14 +931,14 @@ private struct ChatSwarmBoardCard: View {
                         wash: ChatBackgroundWorkPalette.statusWash(.failed))
                 }
 
-                if let clock = displayTime {
+                if let clock = message.displayTime {
                     Text(verbatim: clock)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
             }
 
-            if shouldCollapseBrief && !isExpanded {
+            if row.isCollapsedBrief {
                 Text(verbatim: message.text)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -907,11 +952,16 @@ private struct ChatSwarmBoardCard: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                ChatMarkdownView(blocks: ChatMarkdown.blocks(from: message.text))
-                    .font(.subheadline)
-                    .textSelection(.enabled)
+                if let blocks = row.blocks {
+                    ChatMarkdownView(blocks: blocks)
+                        .font(.subheadline)
+                } else {
+                    Text(verbatim: message.text)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
-                if shouldCollapseBrief {
+                if message.shouldCollapseBrief {
                     Button(action: toggleExpand) {
                         Text("Show less")
                             .font(.caption.weight(.semibold))
@@ -921,9 +971,9 @@ private struct ChatSwarmBoardCard: View {
                 }
             }
 
-            if !citedSeqs.isEmpty {
+            if !row.citedSeqs.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(citedSeqs, id: \.self) { seq in
+                    ForEach(row.citedSeqs, id: \.self) { seq in
                         Button {
                             jumpToSeq(seq)
                         } label: {
@@ -949,7 +999,7 @@ private struct ChatSwarmBoardCard: View {
             ChatBackgroundWorkStyle.card
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 .overlay {
-                    if isHighlighted {
+                    if row.isHighlighted {
                         ChatBackgroundWorkStyle.card
                             .fill(ChatSwarmPalette.accentWash)
                     }
@@ -957,13 +1007,13 @@ private struct ChatSwarmBoardCard: View {
         }
         .overlay {
             ChatBackgroundWorkStyle.card
-                .stroke(borderColor, lineWidth: isHighlighted ? 1.5 : 1)
+                .stroke(borderColor, lineWidth: row.isHighlighted ? 1.5 : 1)
         }
         .accessibilityIdentifier("chat.swarm.post.\(message.seq)")
     }
 
     private var borderColor: Color {
-        if isHighlighted {
+        if row.isHighlighted {
             return ChatSwarmPalette.accentInk
         }
         if message.isMarkedStall {
@@ -1183,15 +1233,27 @@ struct ChatSwarmMemberStatusPill: View {
 // MARK: - Worker Read-Only Sub-Conversation Peek
 
 struct ChatSwarmWorkerDetailView: View {
+    private struct BlocksTaskKey: Equatable {
+        var memberName: String
+        var entryCount: Int
+        var latestEntryID: ChatEntryID?
+        var isAssignmentExpanded: Bool
+        var expandedEntries: Set<ChatEntryID>
+    }
+
     let chat: AgentChatStore
     let memberName: String
     let isHostConnected: Bool
 
+    @State private var workerModel = ChatSwarmWorkerModel()
     @State private var transcript: ChatTranscript?
     @State private var failureMessage: String?
     @State private var isLoading = true
     @State private var isAssignmentExpanded = false
     @State private var expandedEntries: Set<ChatEntryID> = []
+    @State private var disclosureItem: ChatSwarmWorkerItemID?
+    @State private var pollSleeper: Task<Void, Never>?
+    @State private var wakePollRequested = false
 
     private var liveMember: AgySwarmSnapshot.Member? {
         chat.agySwarm?.members.first { $0.name == memberName }
@@ -1204,72 +1266,118 @@ struct ChatSwarmWorkerDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if let member = liveMember {
-                    workerHeaderCard(member: member)
-                }
+        let member = liveMember
+        let assignment = assignmentPost
+        let entries = transcript?.entries
+        let listState = workerModel.buildState(
+            memberName: memberName,
+            member: member,
+            assignment: assignment,
+            isAssignmentExpanded: isAssignmentExpanded,
+            isLoading: isLoading,
+            failureMessage: failureMessage,
+            entries: entries,
+            expandedEntries: expandedEntries)
+        let blocksKey = BlocksTaskKey(
+            memberName: memberName,
+            entryCount: entries?.count ?? 0,
+            latestEntryID: entries?.last?.id,
+            isAssignmentExpanded: isAssignmentExpanded,
+            expandedEntries: expandedEntries)
 
-                if let assignment = assignmentPost {
-                    assignmentCard(post: assignment)
-                }
-
-                if isLoading, transcript == nil {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Loading worker conversation…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 28)
-                } else if let failureMessage, transcript == nil {
-                    ContentUnavailableView(
-                        "Can't Show Worker Conversation",
-                        systemImage: "exclamationmark.bubble",
-                        description: Text(failureMessage))
-                        .padding(.vertical, 20)
-                } else if let entries = transcript?.entries, !entries.isEmpty {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(entries) { entry in
-                            ChatSwarmWorkerEntryView(
-                                entry: entry,
-                                isExpanded: expandedEntries.contains(entry.id),
-                                toggle: { toggleEntry(entry.id) })
-                        }
-                    }
-                } else {
-                    ContentUnavailableView(
-                        "No Steps Recorded Yet",
-                        systemImage: "ellipsis.bubble",
-                        description: Text("This worker hasn't written any steps to its transcript yet."))
-                        .padding(.vertical, 20)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 24)
+        ChatSwarmListView(
+            state: listState,
+            disclosureAnchor: disclosureItem,
+            initialMeasuredHeights: workerModel.measuredHeights,
+            onMeasure: { id, height in
+                workerModel.recordMeasuredHeight(height, for: id)
+            },
+            onForgetMeasurements: { kept in
+                workerModel.forgetMeasuredHeights(keeping: kept)
+            },
+            accessibilityIdentifier: "chat.swarm.worker.\(memberName)"
+        ) { item in
+            workerRowView(item.payload)
         }
-        .defaultScrollAnchor(.bottom)
         .background(Color(uiColor: .systemGroupedBackground))
-        .consoleSheetPage()
         .navigationTitle(Text(verbatim: "@\(memberName)"))
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("chat.swarm.worker.\(memberName)")
         .task(id: "\(memberName)-\(isHostConnected)") {
             await pollWorkerLoop()
         }
+        .task(id: blocksKey) {
+            workerModel.ensureBlocks(
+                memberName: memberName,
+                assignment: assignment,
+                isAssignmentExpanded: isAssignmentExpanded,
+                entries: entries ?? [],
+                expandedEntries: expandedEntries)
+        }
         .onChange(of: liveMember?.steps) { _, _ in
-            Task { await refreshOnce() }
+            wakePoll()
+        }
+    }
+
+    @ViewBuilder
+    private func workerRowView(_ row: ChatSwarmWorkerRow) -> some View {
+        switch row {
+        case .header(let member):
+            workerHeaderCard(member: member)
+        case .assignment(let post, let isExpanded, let blocks):
+            assignmentCard(post: post, isExpanded: isExpanded, blocks: blocks)
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Loading worker conversation…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 28)
+        case .failure(let message):
+            ContentUnavailableView(
+                "Can't Show Worker Conversation",
+                systemImage: "exclamationmark.bubble",
+                description: Text(message))
+                .padding(.vertical, 20)
+        case .empty:
+            ContentUnavailableView(
+                "No Steps Recorded Yet",
+                systemImage: "ellipsis.bubble",
+                description: Text("This worker hasn't written any steps to its transcript yet."))
+                .padding(.vertical, 20)
+        case .entry(let entry, let isExpanded, let blocks):
+            ChatSwarmWorkerEntryView(
+                entry: entry,
+                isExpanded: isExpanded,
+                blocks: blocks,
+                toggle: { toggleEntry(entry.id) })
+        }
+    }
+
+    private func wakePoll() {
+        if let pollSleeper {
+            pollSleeper.cancel()
+        } else {
+            wakePollRequested = true
         }
     }
 
     private func pollWorkerLoop() async {
         await refreshOnce()
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(2))
+            if wakePollRequested {
+                wakePollRequested = false
+            } else {
+                let sleeper = Task<Void, Never> { try? await Task.sleep(for: .seconds(2)) }
+                pollSleeper = sleeper
+                await sleeper.value
+                pollSleeper = nil
+            }
             guard !Task.isCancelled else { return }
-            if liveMember?.status == .working {
+            let wokeEarly = wakePollRequested
+            wakePollRequested = false
+            if wokeEarly || liveMember?.status == .working {
                 await refreshOnce()
             }
         }
@@ -1285,7 +1393,9 @@ struct ChatSwarmWorkerDetailView: View {
             isWorking: member.status == .working)
         {
         case .success(let loaded):
-            transcript = loaded
+            if transcript != loaded {
+                transcript = loaded
+            }
             failureMessage = nil
             isLoading = false
         case .failure(let error):
@@ -1295,12 +1405,11 @@ struct ChatSwarmWorkerDetailView: View {
     }
 
     private func toggleEntry(_ id: ChatEntryID) {
-        withAnimation(.snappy(duration: 0.2)) {
-            if expandedEntries.contains(id) {
-                expandedEntries.remove(id)
-            } else {
-                expandedEntries.insert(id)
-            }
+        disclosureItem = .entry(id)
+        if expandedEntries.contains(id) {
+            expandedEntries.remove(id)
+        } else {
+            expandedEntries.insert(id)
         }
     }
 
@@ -1334,12 +1443,15 @@ struct ChatSwarmWorkerDetailView: View {
         }
     }
 
-    private func assignmentCard(post: AgySwarmSnapshot.BoardMessage) -> some View {
+    private func assignmentCard(
+        post: AgySwarmSnapshot.BoardMessage,
+        isExpanded: Bool,
+        blocks: [ChatMarkdownBlock]?
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    isAssignmentExpanded.toggle()
-                }
+                disclosureItem = .assignment
+                isAssignmentExpanded.toggle()
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text")
@@ -1352,16 +1464,21 @@ struct ChatSwarmWorkerDetailView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isAssignmentExpanded ? 90 : 0))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
 
-            if isAssignmentExpanded {
-                ChatMarkdownView(blocks: ChatMarkdown.blocks(from: post.text))
-                    .font(.footnote)
-                    .textSelection(.enabled)
+            if isExpanded {
+                if let blocks {
+                    ChatMarkdownView(blocks: blocks)
+                        .font(.footnote)
+                } else {
+                    Text(verbatim: post.text)
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
                 Text(verbatim: post.singleLinePreview)
                     .font(.caption)
@@ -1382,6 +1499,7 @@ struct ChatSwarmWorkerDetailView: View {
 private struct ChatSwarmWorkerEntryView: View {
     let entry: ChatEntry
     let isExpanded: Bool
+    let blocks: [ChatMarkdownBlock]?
     let toggle: () -> Void
 
     private static let innerBox = RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1418,9 +1536,15 @@ private struct ChatSwarmWorkerEntryView: View {
                     .buttonStyle(.plain)
 
                     if isExpanded {
-                        ChatMarkdownView(blocks: ChatMarkdown.blocks(from: reasoning.text), isMuted: true)
-                            .font(.footnote)
-                            .textSelection(.enabled)
+                        if let blocks {
+                            ChatMarkdownView(blocks: blocks, isMuted: true)
+                                .font(.footnote)
+                        } else {
+                            Text(verbatim: reasoning.text)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
                 .padding(.horizontal, 11)
@@ -1432,12 +1556,18 @@ private struct ChatSwarmWorkerEntryView: View {
             toolCard(tool)
 
         case .assistant(let message):
-            ChatMarkdownView(blocks: ChatMarkdown.blocks(from: message.text))
-                .font(.subheadline)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-                .textSelection(.enabled)
+            Group {
+                if let blocks {
+                    ChatMarkdownView(blocks: blocks)
+                        .font(.subheadline)
+                } else {
+                    Text(verbatim: message.text)
+                        .font(.body)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
 
         case .notice(let notice):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -1530,7 +1660,6 @@ private struct ChatSwarmWorkerEntryView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
-                        .textSelection(.enabled)
                 } else if let preview = tool.preview?.text, !preview.isEmpty {
                     Text(verbatim: preview)
                         .font(.caption2.monospaced())
@@ -1539,7 +1668,6 @@ private struct ChatSwarmWorkerEntryView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
-                        .textSelection(.enabled)
                 }
             }
         }

@@ -47,6 +47,12 @@ struct AgySwarmFollower: Sendable {
     private var sawSwarmHint = false
     private var boardFollower: WorkflowJournalFollower?
     private var rawBoardLines: [AgySwarmParser.RawBoardLine] = []
+    private var boardGeneration = 0
+    private var compiledBoard: AgySwarmParser.CompiledBoardHistory?
+    private var compiledBoardGeneration = -1
+    private var compiledLineCount = -1
+    private var compiledRosterNames: [String] = []
+    private var boardRevision = 0
     private var boardFailures = 0
     private var nextBoardLook: Date?
     private var boardIsUnreadable = false
@@ -66,6 +72,12 @@ struct AgySwarmFollower: Sendable {
         sawSwarmHint = false
         boardFollower = nil
         rawBoardLines = []
+        boardGeneration = 0
+        compiledBoard = nil
+        compiledBoardGeneration = -1
+        compiledLineCount = -1
+        compiledRosterNames = []
+        boardRevision = 0
         boardFailures = 0
         nextBoardLook = nil
         boardIsUnreadable = false
@@ -129,6 +141,7 @@ struct AgySwarmFollower: Sendable {
             if boardFollower?.path != boardPath {
                 boardFollower = WorkflowJournalFollower(path: boardPath, limits: limits.boardFollower)
                 rawBoardLines = []
+                boardGeneration &+= 1
             }
             if var follower = boardFollower {
                 do {
@@ -144,6 +157,7 @@ struct AgySwarmFollower: Sendable {
                         nextBoardLook = nil
                     case .restarted(let lines):
                         rawBoardLines = lines.compactMap(AgySwarmParser.parseBoardLine)
+                        boardGeneration &+= 1
                         boardFailures = 0
                         nextBoardLook = nil
                     case .tooLarge:
@@ -232,16 +246,76 @@ struct AgySwarmFollower: Sendable {
                 isCancellation: isCancellation)
         }
 
+        refreshCompiledBoard(roster: roster)
         return snapshot(isLive: true, at: date)
+    }
+
+    private mutating func refreshCompiledBoard(roster: AgySwarmParser.RawRoster) {
+        let sortedNames = roster.members.keys.sorted()
+        if let existing = compiledBoard,
+            compiledBoardGeneration == boardGeneration,
+            compiledRosterNames == sortedNames
+        {
+            if compiledLineCount == rawBoardLines.count {
+                return
+            }
+            if compiledLineCount < rawBoardLines.count {
+                let appendedSlice = rawBoardLines[compiledLineCount..<rawBoardLines.count]
+                let hasControlOp = appendedSlice.contains { $0.control != nil }
+                if !hasControlOp {
+                    var updated = existing
+                    var lastSeq = updated.boardPosts.last?.seq ?? Int.min
+                    for idx in compiledLineCount..<rawBoardLines.count {
+                        let msg = AgySwarmParser.buildBoardMessage(
+                            from: rawBoardLines[idx],
+                            at: idx,
+                            rosterNames: sortedNames,
+                            activeChannelNames: updated.activeChannelNames,
+                            postCounts: &updated.postCounts)
+                        updated.messages.append(msg)
+                        if !msg.isControl {
+                            if msg.seq <= lastSeq {
+                                updated.postsAreMonotonic = false
+                            }
+                            lastSeq = msg.seq
+                            updated.boardPosts.append(msg)
+                            updated.knownPostSeqs.insert(msg.seq)
+                        }
+                    }
+                    compiledBoard = updated
+                    compiledLineCount = rawBoardLines.count
+                    boardRevision &+= 1
+                    return
+                }
+            }
+        }
+        compiledBoard = AgySwarmParser.compileBoardHistory(rawLines: rawBoardLines, rosterNames: sortedNames)
+        compiledBoardGeneration = boardGeneration
+        compiledLineCount = rawBoardLines.count
+        compiledRosterNames = sortedNames
+        boardRevision &+= 1
     }
 
     func snapshot(isLive: Bool, at date: Date) -> AgySwarmSnapshot? {
         guard let roster, let coordinatorID = trackedCoordinatorID else { return nil }
         let transcripts = members.mapValues(\.transcript)
+        let sortedNames = roster.members.keys.sorted()
+        let history: AgySwarmParser.CompiledBoardHistory
+        if let existing = compiledBoard,
+            compiledBoardGeneration == boardGeneration,
+            compiledLineCount == rawBoardLines.count,
+            compiledRosterNames == sortedNames
+        {
+            history = existing
+        } else {
+            history = AgySwarmParser.compileBoardHistory(rawLines: rawBoardLines, rosterNames: sortedNames)
+        }
         return AgySwarmParser.buildSnapshot(
             id: coordinatorID,
             roster: roster,
-            rawLines: rawBoardLines,
+            sortedNames: sortedNames,
+            compiledBoard: history,
+            boardRevision: boardRevision,
             transcripts: transcripts,
             overview: overview,
             isLive: isLive,

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// One block of an assistant message's Markdown, in reading order: a
 /// paragraph, a heading, a list item, a code block and so on.
@@ -34,6 +35,29 @@ struct ChatMarkdownBlock: Sendable, Equatable {
         var columns: [Alignment]
         /// Header first, then body rows. Empty cells retain their positions.
         var rows: [[AttributedString]]
+        /// Pre-styled cells for `opensImages == false` so main-thread cell
+        /// layout avoids iterating runs on every scroll pass.
+        let styledRows: [[AttributedString]]
+        let hasImageLinks: Bool
+
+        init(columns: [Alignment], rows: [[AttributedString]]) {
+            self.columns = columns
+            self.rows = rows
+            var sawImage = false
+            self.styledRows = rows.map { row in
+                row.map { cell in
+                    if !sawImage, cell.runs.contains(where: { $0[ChatImageLink.PathAttribute.self] != nil }) {
+                        sawImage = true
+                    }
+                    return ChatMarkdownView.styled(cell, in: .subheadline, opensImages: false)
+                }
+            }
+            self.hasImageLinks = sawImage
+        }
+
+        static func == (lhs: Table, rhs: Table) -> Bool {
+            lhs.columns == rhs.columns && lhs.rows == rhs.rows
+        }
     }
 
     let table: Table?
@@ -45,6 +69,10 @@ struct ChatMarkdownBlock: Sendable, Equatable {
     /// block's is its text, with each line that is an image's path marked
     /// (`ChatImageLink.markingLines`).
     let content: AttributedString
+    /// Pre-styled inline content in the block's default font when image-link
+    /// rewriting is not needed, computed off the main actor alongside parsing.
+    let styledContent: AttributedString
+    let hasImageLinks: Bool
     /// The block as plain text, for Select Text and VoiceOver. A list item
     /// starts with its marker and a space, so a numbered list keeps its
     /// numbers when it is selected or read aloud. Empty for a thematic break.
@@ -66,10 +94,30 @@ struct ChatMarkdownBlock: Sendable, Equatable {
         self.table = table
         self.kind = kind
         self.content = content
+        self.hasImageLinks = content.runs.contains { $0[ChatImageLink.PathAttribute.self] != nil }
+        switch kind {
+        case .paragraph, .listItem:
+            self.styledContent = ChatMarkdownView.styled(content, in: .body, opensImages: false)
+        case .heading(let level):
+            self.styledContent = ChatMarkdownView.styled(
+                content, in: ChatMarkdownView.headingFont(level), opensImages: false)
+        case .code, .table, .thematicBreak, .html:
+            self.styledContent = content
+        }
         self.text = text
         self.listDepth = listDepth
         self.quoteDepth = quoteDepth
         self.blankLineBefore = blankLineBefore
+    }
+
+    static func == (lhs: ChatMarkdownBlock, rhs: ChatMarkdownBlock) -> Bool {
+        lhs.table == rhs.table
+            && lhs.kind == rhs.kind
+            && lhs.content == rhs.content
+            && lhs.text == rhs.text
+            && lhs.listDepth == rhs.listDepth
+            && lhs.quoteDepth == rhs.quoteDepth
+            && lhs.blankLineBefore == rhs.blankLineBefore
     }
 }
 
