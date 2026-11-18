@@ -14,6 +14,25 @@ struct HostConsoleLink {
     /// outside the Console.
     var reconnect: (@MainActor @Sendable (HostMachine) async -> Void)?
     var stopConnecting: (@MainActor @Sendable (HostMachine) async -> Void)?
+    /// Dials one Server again, leaving the Host's other Servers alone.
+    var retry: (@MainActor @Sendable (Host.ID) async -> Void)?
+
+    func lookFollowUp(of machine: HostMachine) -> HostLookFollowUp {
+        HostLookFollowUp(servers: machine.servers.map { (id: $0.id, status: statuses[$0.id]) })
+    }
+
+    /// A look just reached the Host: the Servers waiting on its connection
+    /// dial again at once, on whichever route wins.
+    @MainActor
+    func redialAfterLook(at machine: HostMachine) async {
+        guard let retry else { return }
+        let waiting = lookFollowUp(of: machine).redials
+        await withTaskGroup(of: Void.self) { group in
+            for record in waiting {
+                group.addTask { await retry(record) }
+            }
+        }
+    }
 
     func routes(of machine: HostMachine) -> HostRoutesPresentation {
         HostRoutesPresentation(

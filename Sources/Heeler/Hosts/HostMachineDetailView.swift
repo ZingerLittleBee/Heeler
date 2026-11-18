@@ -21,6 +21,9 @@ struct HostMachineDetailView: View {
     @State private var scanner: HostServerScanner
     /// What this visit's last look found.
     @State private var scan: HostServerScan?
+    /// Counts the looks that reached the Host, each of which may bring its
+    /// connection back (ADR 0058).
+    @State private var looksThatReached = 0
     /// The Servers that were new when the page opened or turned up since. The
     /// list stops pointing at them once they are seen here; this page keeps
     /// pointing until it closes.
@@ -74,7 +77,28 @@ struct HostMachineDetailView: View {
         .onChange(of: catalog.hosts) { follow() }
         // A Host reached another way is another Host to look at.
         .task(id: connection) { await look() }
+        // The Console never asks about a key, so a dial it stopped at one is
+        // answered by a look, which asks (ADR 0058). A key the user just
+        // declined is not asked about again until they look themselves.
+        .onChange(of: connectionAsksForKey) { _, asks in
+            guard asks, !scanner.isLooking, !lastLookWasDeclined else { return }
+            Task { await look() }
+        }
+        // Decided here, where the Console's word is current: the look that
+        // counted may have begun long before it ended.
+        .onChange(of: looksThatReached) {
+            guard let machine else { return }
+            Task { await console.redialAfterLook(at: machine) }
+        }
         .onDisappear { scanner.cancel() }
+    }
+
+    private var connectionAsksForKey: Bool {
+        machine.map { console.lookFollowUp(of: $0).asksForKey } ?? false
+    }
+
+    private var lastLookWasDeclined: Bool {
+        if case .failed(let failure) = scanner.phase { failure.isDeclinedTrust } else { false }
     }
 
     /// Keeps hold of the Host through a change to its records, and leaves once
@@ -418,6 +442,7 @@ struct HostMachineDetailView: View {
         discoveries.note(found, on: machine.id)
         newServers.formUnion(discoveries.unseen(on: machine).map(\.key))
         discoveries.markShown(on: machine.id)
+        looksThatReached += 1
     }
 
     private func turnOn(_ server: HostServerKey) {

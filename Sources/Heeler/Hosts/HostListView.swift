@@ -594,7 +594,8 @@ struct HostListView: View {
             routeIDs: routeIDs,
             syncIssues: syncIssues,
             manualReconnects: manualReconnectInFlightHostIDs,
-            reconnect: reconnectHost)
+            reconnect: reconnectHost,
+            retry: retryConnection)
         if let stopConnecting {
             link.stopConnecting = { (machine: HostMachine) async in
                 for server in machine.servers {

@@ -44,6 +44,28 @@ extension EventsSessionStatus {
     }
 }
 
+/// What Host detail's look at the Host owes the Host's connection (ADR 0058).
+/// The Console never asks about a key and waits out its backoff. A look asks,
+/// and one that reaches the Host shows there is nothing left to wait for.
+struct HostLookFollowUp: Equatable {
+    /// A dial stopped at a key nobody has confirmed, so a look is due: only
+    /// a look may ask about it.
+    let asksForKey: Bool
+    /// The Servers a look that reached the Host dials again at once: on, and
+    /// stopped on or backing off from a failure of the connection. One the
+    /// user stopped, and one whose own Server is missing, stay as they are.
+    let redials: [Host.ID]
+
+    init(servers: [(id: Host.ID, status: EventsSessionStatus?)]) {
+        let waiting = servers.compactMap { server -> (Host.ID, TransportError)? in
+            guard let failure = server.status?.failure, !failure.isServerFailure else { return nil }
+            return (server.id, failure)
+        }
+        asksForKey = waiting.contains { $0.1.isDeclinedHostKey }
+        redials = waiting.map(\.0)
+    }
+}
+
 /// Host detail's Routes section (ADR 0058): the one route the Host's
 /// connections hold, or each route's own failure when a dial reached none,
 /// and what the section's one action does.

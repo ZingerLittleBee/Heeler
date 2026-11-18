@@ -176,6 +176,45 @@ struct HostRoutesPresentationTests {
         #expect(!text.hasPrefix("Not connected."))
     }
 
+    /// The Console never asks about a key, so Host detail looks, which asks.
+    @Test func aDialStoppedAtAnUnconfirmedKeyAsksForALook() {
+        let key = HostKeyFingerprint(publicKeyBlob: Data([1, 2, 3]))
+        let unconfirmedJumpHost = TransportError.noRouteReached([
+            RouteFailure(
+                route: "192.168.1.20", mayNameAnotherMachine: true,
+                error: .sshUnreachable(detail: "refused"), routeID: home.id),
+            RouteFailure(
+                route: "box.example.com:2222", mayNameAnotherMachine: false,
+                error: .jumpHostFailed(.hostKeyRejected(presented: key)), routeID: away.id),
+        ])
+        let one = UUID()
+
+        let retrying = EventsSessionStatus.reconnecting(attempt: 3, delay: .seconds(4), failure: unconfirmedJumpHost)
+        #expect(HostLookFollowUp(servers: [(id: one, status: retrying)]).asksForKey)
+        #expect(HostLookFollowUp(servers: [(id: one, status: .failed(.hostKeyRejected(presented: key)))]).asksForKey)
+        #expect(!HostLookFollowUp(servers: [(id: one, status: .failed(noRouteReached))]).asksForKey)
+        #expect(!HostLookFollowUp(servers: [(id: one, status: .connected)]).asksForKey)
+    }
+
+    /// A look that reached the Host leaves nothing to wait out a backoff for.
+    @Test func aLookThatReachedTheHostRedialsTheServersWaitingOnTheConnection() {
+        let stopped = UUID()
+        let retrying = UUID()
+        let followUp = HostLookFollowUp(servers: [
+            (id: stopped, status: .failed(noRouteReached)),
+            (id: retrying, status: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
+            (id: UUID(), status: .connected),
+            (id: UUID(), status: .connecting),
+            // The user stopped it.
+            (id: UUID(), status: .suspended),
+            // Its own Server is missing, which the connection cannot mend.
+            (id: UUID(), status: .failed(.socketNotFound(path: "/tmp/herdr.sock"))),
+            (id: UUID(), status: nil),
+        ])
+
+        #expect(followUp.redials == [stopped, retrying])
+    }
+
     @Test func aServersRowSaysItsOwnStateAndNeverTheConnections() {
         let found = FoundServer(key: HostServerKey(kind: .tmux, name: "default"), isRunning: true, version: "3.5a")
         let stopped = TransportError.tmuxServerNotRunning(socketName: "default")

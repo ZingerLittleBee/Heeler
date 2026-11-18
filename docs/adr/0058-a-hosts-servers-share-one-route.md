@@ -66,6 +66,14 @@ reaching the LAN, until the user pressed Reconnect.
   header carries the one action: Stop while a Server is dialling, otherwise
   Reconnect, which forgets the Host's Route and dials every Server that is
   on, so the Routes race afresh.
+  - Host detail's look at the Host serves the connection it shows. The
+    Console never asks about a host key, so when a dial stops at a key nobody
+    has confirmed, the Host's or a Jump Host's, the page looks at the Host,
+    and the look asks. A key the user declined is not asked about again
+    until they tap Scan Again.
+  - A look that reaches the Host dials again, at once, the Servers that
+    stopped on the connection or are waiting out a backoff. A Server the
+    user stopped, and one whose own Server is missing, stay as they are.
 - **A Server's row says the Server's own state.** Running with its version, a
   sync issue, or a failure that is the Server's (a missing socket, a core
   that is not running, a tmux server that stopped). A failure of the
