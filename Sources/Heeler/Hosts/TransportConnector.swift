@@ -19,9 +19,20 @@ protocol TransportConnector: Sendable {
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection
+
+    /// Which of `candidates`, indices into the settings' routes, reaches the
+    /// Host's trusted key first; nil when none does. It signs in nowhere and
+    /// keeps no connection (ADR 0058).
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int?
 }
 
 extension TransportConnector {
+    /// A connector that cannot look says no route is in reach, so a Host
+    /// stays on the route it holds.
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int? {
+        nil
+    }
+
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
@@ -60,6 +71,10 @@ struct SSHTransportConnector: TransportConnector {
         try await HeelerSSHTransport.connect(settings: settings)
     }
 
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int? {
+        await HeelerSSHTransport.reachableRoute(among: candidates, settings: settings)
+    }
+
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         HerdrCoreSSHTransport(
             connection: try await HeelerSSHTransport.connect(settings: settings),
@@ -79,12 +94,14 @@ extension SSHTransportSettings {
     /// to the race, and the Host's key is trusted by Host, whichever route
     /// reaches it (ADR 0022). `overlays` resolves each route's Overlay
     /// Network, if it names one; the route itself fails the dial when that
-    /// network has since been removed.
+    /// network has since been removed. The race runs only while no connection
+    /// to the Host stands: `routeLeases` keeps the route they hold (ADR 0058).
     init(
         host: Host,
         credentials: SSHCredentials,
         hostKeyPolicy: HostKeyPolicy,
-        overlays: OverlayNetworkRuntime = .shared
+        overlays: OverlayNetworkRuntime = .shared,
+        routeLeases: HostRouteLeases = .shared
     ) {
         self.init(
             routes: host.routes.map { route in
@@ -111,6 +128,7 @@ extension SSHTransportSettings {
             hostKeyPolicy: hostKeyPolicy,
             hostKeyTrust: .host(host.id),
             socket: host.socketLocation)
+        routeLease = HostRouteLease(host: HostMachine.Connection(host), leases: routeLeases)
         serverKind = host.serverKind
         coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
         tmuxSocketName = host.tmuxSocketName

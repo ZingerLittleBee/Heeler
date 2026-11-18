@@ -28,6 +28,9 @@ struct ConsoleActivityDriver {
     /// one inside the grace period. Pending browser sign-ins resume here so
     /// their nodes cannot race the preceding suspension teardown.
     var afterResume: (@Sendable () async -> Void)? = nil
+    /// Looks for a faster route for the Hosts that came back still connected
+    /// (ADR 0058). It probes the network, so it runs off this loop.
+    var checkRoutes: (@MainActor @Sendable () async -> Void)? = nil
 
     /// Consumes activity events until the app ends. Cancellation ends it.
     func run() async {
@@ -39,6 +42,9 @@ struct ConsoleActivityDriver {
                 Self.log.notice("Reactivating the Console")
                 await console.reactivate()
                 Self.log.notice("Reactivated the Console")
+                if let checkRoutes {
+                    Task { await checkRoutes() }
+                }
                 if let afterResume {
                     overlay.enqueue { await afterResume() }
                 }

@@ -372,6 +372,53 @@ struct ConsoleStoreTests {
         #expect(await condition(), comment)
     }
 
+    /// A Host's Servers share its route, so one of them losing its link asks
+    /// the others at once instead of at their next keepalive (ADR 0058).
+    @Test func aServerLosingItsLinkAsksTheHostsOtherServers() async throws {
+        let first = Host(address: "box.example", username: "dev")
+        let second = Host(address: "box.example", username: "dev", sessionName: "work")
+        let elsewhere = Host(address: "other.example", username: "dev")
+        let transports = [
+            first.id: ScriptedTransport(), second.id: ScriptedTransport(),
+            elsewhere.id: ScriptedTransport(),
+        ]
+        let store = makeStore(transports: transports)
+        store.setHosts([first, second, elsewhere])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("every Server connects") {
+            [first, second, elsewhere].allSatisfy { store.hostStatuses[$0.id] == .connected }
+        }
+        let sibling = try #require(transports[second.id])
+        let stranger = try #require(transports[elsewhere.id])
+        let siblingPings = await sibling.pingCount
+        let strangerPings = await stranger.pingCount
+
+        await transports[first.id]?.failEventStream(.sshUnreachable(detail: "link down"))
+
+        try await waitUntil("the Host's other Server is asked") {
+            await sibling.pingCount > siblingPings
+        }
+        #expect(await stranger.pingCount == strangerPings)
+    }
+
+    /// A network change asks every live connection whether it survived
+    /// (ADR 0058).
+    @Test func aNetworkChangeAsksEveryLiveConnection() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport()
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Host connects") { store.hostStatuses[host.id] == .connected }
+        let pings = await transport.pingCount
+
+        await store.networkPathDidChange()
+
+        try await waitUntil("the connection is asked") { await transport.pingCount > pings }
+    }
+
     @Test func aLaunchReadsTheCurrentAccountVariableAndRefusesAReadFailure() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport()

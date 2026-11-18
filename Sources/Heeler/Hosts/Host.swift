@@ -48,6 +48,12 @@ struct HostRoute: Identifiable, Codable, Hashable, Sendable {
         !jumpAddress.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// Whether the device dials the Host itself over its own network, as
+    /// `SSHRoute.isDirect` has it for the route this becomes.
+    var isDirect: Bool {
+        !usesJumpHost && overlayNetworkID == nil
+    }
+
     /// The address the device itself dials: the Jump Host's when there is
     /// one, otherwise the Host's. An Overlay Network carries this hop.
     var firstHopAddress: String {
