@@ -1527,19 +1527,254 @@ struct StartAgentStoreTests {
                 == ["CLAUDE_CONFIG_DIR": "/home/you/.claude-work", "ANTHROPIC_LOG": "debug"])
     }
 
-    /// Picking another harness leaves the preset; the launch is plain again.
-    @Test func choosingAnotherHarnessLeavesThePreset() async {
+    /// Picking another harness leaves the preset; the Preset picker offers
+    /// only the selected harness's presets, while the Agent picker's preset
+    /// choices jump to their harness.
+    @Test func choosingAnotherHarnessLeavesThePresetAndScopesPresetChoices() async {
+        let agyPreset = LaunchPreset(
+            name: "agy", kind: .antigravity, arguments: "--dangerously-skip-permissions")
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [Host.fixture()], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
-            agentKinds: { _ in [.claude, .codex] }, presets: [Self.work], recorder: recorder)
+            agentKinds: { _ in [.claude, .antigravity] }, presets: [Self.work, agyPreset, Self.yolo], recorder: recorder)
         await store.discoverAgents()
-        store.selectedPresetID = Self.work.id
-        store.selectedAgentKind = .codex
+        #expect(store.selectedAgentKind == .claude)
+        #expect(store.availablePresets.map(\.name) == ["Work", "agy"])
+        #expect(store.selectedAgentPresets.map(\.name) == ["Work"])
+
+        // Picking another harness's preset from the Agent menu jumps to its
+        // harness and scopes Preset to that harness alone.
+        store.selectedAgent = .preset(agyPreset.id)
+        #expect(store.selectedAgentKind == .antigravity)
+        #expect(store.selectedAgent == .kind(.antigravity))
+        #expect(store.selectedPresetID == agyPreset.id)
+        #expect(store.selectedAgentPresets.map(\.name) == ["agy"])
+
+        // Switching back to Claude Code clears agy's preset and hides agy from
+        // Claude Code's Preset list; uninstalled presets cannot be selected.
+        store.selectedAgent = .kind(.claude)
         #expect(store.selectedPresetID == nil)
+        #expect(store.selectedAgentPresets.map(\.name) == ["Work"])
+        store.selectedAgent = .preset(Self.yolo.id)
+        #expect(store.selectedPresetID == nil)
+        #expect(store.selectedAgentKind == .claude)
+
         await store.submit()
+        #expect(recorder.params.first?.kind == "claude")
         #expect(recorder.params.first?.environment == [:])
         #expect(recorder.params.first?.arguments == [])
+    }
+
+    private func isVisibleAccessibilityElement(_ element: NSObject) -> Bool {
+        guard !element.accessibilityFrame.isEmpty else { return false }
+        var current: UIView? =
+            (element as? UIView)
+            ?? ((element as? UIAccessibilityElement)?.accessibilityContainer as? UIView)
+        while let view = current {
+            if view.isHidden || view.alpha == 0 { return false }
+            current = view.superview
+        }
+        return true
+    }
+
+    private func formPickerElement(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) -> NSObject? {
+        accessibleElements(in: window).first { element in
+            guard !element.accessibilityTraits.contains(.header),
+                isVisibleAccessibilityElement(element)
+            else { return false }
+            if (element as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
+                return true
+            }
+            guard let elementLabel = element.accessibilityLabel else { return false }
+            return elementLabel == label || elementLabel.hasPrefix("\(label),")
+        }
+    }
+
+    private func formPickerSummary(_ element: NSObject?) -> String? {
+        guard let element else { return nil }
+        if let value = element.accessibilityValue, !value.isEmpty { return value }
+        guard let label = element.accessibilityLabel,
+            let comma = label.firstIndex(of: ",")
+        else { return element.accessibilityLabel }
+        return label[label.index(after: comma)...].trimmingCharacters(in: .whitespaces)
+    }
+
+    private func openFormPicker(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) async throws -> (controller: UIViewController, button: UIButton, menu: UIMenu) {
+        let all = accessibleElements(in: window).map {
+            "\($0.accessibilityLabel ?? "-")|\($0.accessibilityValue ?? "-")|\(($0 as? UIAccessibilityIdentification)?.accessibilityIdentifier ?? "-")"
+        }
+        let row = try #require(
+            formPickerElement(identifiedBy: identifier, labeled: label, in: window),
+            "Missing \(label) in \(all)")
+        let rowFrame = row.accessibilityFrame
+        func buttons(in view: UIView) -> [UIButton] {
+            var found: [UIButton] = []
+            if let button = view as? UIButton, button.menu != nil { found.append(button) }
+            for subview in view.subviews { found += buttons(in: subview) }
+            return found
+        }
+        let button = try #require(
+            buttons(in: window).first {
+                UIAccessibility.convertToScreenCoordinates($0.bounds, in: $0).intersects(rowFrame)
+            },
+            "Missing menu UIButton for \(label)")
+        _ = button.accessibilityActivate() || row.accessibilityActivate()
+        var opened: (UIViewController, UIMenu)?
+        try await waitUntil("the \(label) picker menu opens") {
+            guard let presented = window.rootViewController?.presentedViewController,
+                let menu = button.menu,
+                !menu.children.isEmpty,
+                !menu.children.contains(where: { $0 is UIDeferredMenuElement })
+            else { return false }
+            opened = (presented, menu)
+            return true
+        }
+        let resolved = try #require(opened)
+        return (resolved.0, button, resolved.1)
+    }
+
+    private func formPickerTitles(
+        identifiedBy identifier: String, labeled label: String, in window: UIWindow,
+        inspect: (UIMenu) -> Void = { _ in }
+    ) async throws -> [String] {
+        let opened = try await openFormPicker(identifiedBy: identifier, labeled: label, in: window)
+        func titles(of menu: UIMenu) -> [String] {
+            menu.children.flatMap { ($0 as? UIMenu).map(titles(of:)) ?? [$0.title] }
+        }
+        let result = titles(of: opened.menu)
+        inspect(opened.menu)
+        opened.controller.dismiss(animated: false)
+        try await waitUntil("the \(label) picker menu closes") {
+            window.rootViewController?.presentedViewController == nil
+        }
+        return result
+    }
+
+    private func selectFormPickerItem(
+        _ title: String, identifiedBy identifier: String, labeled label: String, in window: UIWindow
+    ) async throws {
+        let opened = try await openFormPicker(identifiedBy: identifier, labeled: label, in: window)
+        func leaf(in menu: UIMenu) -> (any UIMenuLeaf)? {
+            for child in menu.children {
+                if let submenu = child as? UIMenu, let found = leaf(in: submenu) { return found }
+                if child.title == title, let item = child as? any UIMenuLeaf { return item }
+            }
+            return nil
+        }
+        let chosen = try #require(leaf(in: opened.menu), "Missing \(title) in \(label)")
+        opened.controller.dismiss(animated: false)
+        try await waitUntil("the \(label) picker menu closes") {
+            window.rootViewController?.presentedViewController == nil
+        }
+        chosen.performWithSender(nil, target: nil)
+    }
+
+    @Test func hostedNewAgentMenusKeepPresetsScopedToTheSelectedHarnessAndJumpFromAgentMenu() async throws {
+        let host = Host.fixture()
+        let agyPreset = LaunchPreset(
+            name: "agy", kind: .antigravity, arguments: "--dangerously-skip-permissions")
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Heeler")] },
+            agentKinds: { _ in [.claude, .antigravity] },
+            presets: [agyPreset],
+            recorder: StartRecorder())
+        let console = ConsoleStore { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "unused") },
+                keepalive: nil)
+        }
+        let controller = UIHostingController(rootView: StartAgentView(store: store, console: console))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 390, height: 1000),
+            rootViewController: controller
+        ) { window in
+            try await waitUntil("Agent discovery finishes on open") {
+                window.layoutIfNeeded()
+                return store.agentDiscoveryState == .loaded
+                    && self.formPickerElement(
+                        identifiedBy: "startAgent.agent", labeled: "Agent", in: window) != nil
+            }
+            window.layoutIfNeeded()
+
+            // Claude Code has no presets, so agy never appears in a Preset row.
+            #expect(store.selectedAgentKind == .claude)
+            #expect(
+                formPickerElement(identifiedBy: "startAgent.preset", labeled: "Preset", in: window)
+                    == nil)
+
+            var sectionTitle: String?
+            let agentItems = try await formPickerTitles(
+                identifiedBy: "startAgent.agent", labeled: "Agent", in: window
+            ) { menu in
+                sectionTitle = menu.children.compactMap { $0 as? UIMenu }.first { !$0.title.isEmpty }?.title
+            }
+            #expect(agentItems == ["Claude Code", "Antigravity", "agy · Antigravity"])
+            #expect(sectionTitle == "Launch Presets")
+
+            // Picking agy from the Agent menu jumps Agent to Antigravity and
+            // opens Antigravity's Preset picker with agy selected.
+            try await selectFormPickerItem(
+                "agy · Antigravity", identifiedBy: "startAgent.agent", labeled: "Agent", in: window)
+            try await waitUntil("Preset row appears for Antigravity") {
+                window.layoutIfNeeded()
+                return self.formPickerSummary(
+                    self.formPickerElement(
+                        identifiedBy: "startAgent.preset", labeled: "Preset", in: window)) == "agy"
+            }
+            #expect(store.selectedAgentKind == .antigravity)
+            #expect(store.selectedPresetID == agyPreset.id)
+            #expect(
+                formPickerSummary(
+                    formPickerElement(identifiedBy: "startAgent.agent", labeled: "Agent", in: window))
+                    == "Antigravity")
+            let presetItems = try await formPickerTitles(
+                identifiedBy: "startAgent.preset", labeled: "Preset", in: window)
+            #expect(presetItems == ["None", "agy"])
+
+            // Clearing Preset to None keeps Antigravity, and picking agy from
+            // Agent again while already on Antigravity keeps the Agent label.
+            try await selectFormPickerItem(
+                "None", identifiedBy: "startAgent.preset", labeled: "Preset", in: window)
+            try await waitUntil("Preset clears to None") {
+                window.layoutIfNeeded()
+                return self.formPickerSummary(
+                    self.formPickerElement(
+                        identifiedBy: "startAgent.preset", labeled: "Preset", in: window)) == "None"
+            }
+            #expect(store.selectedAgentKind == .antigravity)
+            #expect(store.selectedPresetID == nil)
+
+            try await selectFormPickerItem(
+                "agy · Antigravity", identifiedBy: "startAgent.agent", labeled: "Agent", in: window)
+            try await waitUntil("Preset selects agy again") {
+                window.layoutIfNeeded()
+                return self.formPickerSummary(
+                    self.formPickerElement(
+                        identifiedBy: "startAgent.preset", labeled: "Preset", in: window)) == "agy"
+            }
+            #expect(store.selectedPresetID == agyPreset.id)
+            #expect(
+                formPickerSummary(
+                    formPickerElement(identifiedBy: "startAgent.agent", labeled: "Agent", in: window))
+                    == "Antigravity")
+
+            // Switching Agent back to Claude Code drops agy and hides Preset.
+            try await selectFormPickerItem(
+                "Claude Code", identifiedBy: "startAgent.agent", labeled: "Agent", in: window)
+            try await waitUntil("Preset hides again for Claude Code") {
+                window.layoutIfNeeded()
+                return self.formPickerElement(
+                    identifiedBy: "startAgent.preset", labeled: "Preset", in: window) == nil
+            }
+            #expect(store.selectedAgentKind == .claude)
+            #expect(store.selectedPresetID == nil)
+        }
     }
 
     /// The Account's folder variable comes from the Host's Accounts; a

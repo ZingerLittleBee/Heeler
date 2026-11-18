@@ -30,6 +30,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Scope **New Agent**'s **Preset** picker to the currently selected Agent so another harness's presets never appear under it, and list all installed harnesses' **Launch Presets** inside the **Agent** menu so choosing one there jumps **Agent** to that harness and selects the preset. (PR #777)
 - Scroll large Antigravity CLI (`agy`) Swarm boards and worker conversations smoothly without stutter or position jumps while workers actively run: Board posts and worker steps parse Markdown off the main thread, recycle off-screen cells in a `UICollectionView` timeline with preserved row heights and Copy / Select Text menus, incrementally append board posts and worker transcripts instead of re-scanning or re-downloading `1 MiB` tails every second, and keep worker ticks from invalidating the Chat timeline. (PR #771)
 - Clear an Agent's Done status to Idle reliably after opening it on iPhone, even when SwiftUI sends a spurious disappear while Chat stays on screen or when you return to the Agents list while background SSH reads are still queued on the Host. (PR #761)
 - A Claude Code on a Rex Host that has finished its turn while a command it put in the background still runs reads Done or Idle, and Chat and the Composer offer Send. It read Working for as long as the command ran, with a Stop that did nothing. Stop still never ends that command; end it in the terminal. (PR #775)
