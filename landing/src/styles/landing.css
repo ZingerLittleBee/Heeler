@@ -1,8 +1,8 @@
-/* Page-level structure shared by every section.
+/* Page skeleton for the pages outside the homepage (`/ipad` and `/404`).
  *
- * Substrate tokens carry all the visual decisions; this file only owns the
- * page skeleton (gutters, section rhythm, the two repeated text roles) and the
- * breakpoints, which the static design did not specify. */
+ * Substrate tokens carry the visual decisions; this file only owns the
+ * skeleton (gutters, section rhythm, the repeated text roles) and the
+ * breakpoints. The homepage has its own styles in `home/`. */
 
 :root {
   --gutter-x: 32px;
@@ -20,8 +20,9 @@ a {
   border-bottom: none;
 }
 
+/* The site canvas, as in `site.css`, so the header and footer sit flush. */
 body {
-  background: var(--surface-canvas);
+  background: oklch(0.155 0.004 264);
 }
 
 .container {
@@ -63,27 +64,6 @@ body {
   margin-top: var(--sp-6);
 }
 
-/* Inline machine vocabulary: paths, methods, key names. */
-.mono {
-  font: var(--type-mono-sm);
-  color: var(--text-primary);
-}
-
-/* Syntax token colours, the three the pairing snippet needs. Named after the
- * design system's code component so a later switch to the full `sb-code`
- * markup keeps working. */
-.tk-comment {
-  color: var(--syn-comment);
-}
-
-.tk-fn {
-  color: var(--syn-fn);
-}
-
-.tk-string {
-  color: var(--syn-string);
-}
-
 .text-link {
   color: var(--text-primary);
   border-bottom: 1px solid var(--n-500);
@@ -91,22 +71,4 @@ body {
 
 .text-link:hover {
   border-bottom-color: var(--n-900);
-}
-
-.skip-link {
-  position: absolute;
-  left: var(--sp-4);
-  top: var(--sp-4);
-  z-index: var(--z-tooltip, 500);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-control);
-  background: var(--n-999);
-  color: var(--n-000);
-  font: var(--type-label);
-  transform: translateY(-200%);
-  transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.skip-link:focus-visible {
-  transform: none;
 }

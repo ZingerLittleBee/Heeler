@@ -1,0 +1,17 @@
+---
+// One "Also in the box" card: a small drawing (the `art` slot), a title and a line of copy.
+interface Props {
+  title: string;
+  /** Position in the grid, which staggers the entrance by column and row. */
+  index: number;
+}
+
+const { title, index } = Astro.props;
+const delay = 60 + (index % 4) * 70 + (index > 3 ? 90 : 0);
+---
+
+<li class="bx-c" data-rv data-rv-delay={delay}>
+  <div class="bx-i" aria-hidden="true"><slot name="art" /></div>
+  <h3>{title}</h3>
+  <p><slot /></p>
+</li>

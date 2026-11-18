@@ -1,0 +1,7 @@
+---
+// The app icon at the size the header, footer and notification banner draw it.
+import { Image } from 'astro:assets';
+import logo from '../assets/logo.png';
+---
+
+<Image src={logo} alt="" width={28} height={28} densities={[2, 3]} loading="eager" />

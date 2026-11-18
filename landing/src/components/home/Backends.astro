@@ -1,0 +1,46 @@
+---
+// Where Heeler connects: one SSH line from the phone to each backend, and the
+// agents Chat can read. Behaviour: `backends()` in `src/scripts/home/sections.ts`.
+import { agents, backends } from './content';
+---
+
+<section class="sec" id="backends">
+  <div class="wrap">
+    <h2 class="h2" data-rv>Runs where your agents <span class="dim">already run.</span></h2>
+    <p class="lede" data-rv data-rv-delay="80">Heeler hosts nothing. It connects over SSH to what is already on your machine.</p>
+    <div class="bk-net" data-rv="fade" data-rv-delay="160">
+      <div class="bk-bus"><i class="bk-ph"></i><span class="bk-ssh">SSH</span><i class="bk-run"></i></div>
+      <ul class="bk-tiles">
+        {
+          backends.map((backend) => (
+            <li class="bk-t">
+              <i class="bk-dw">
+                <b />
+              </i>
+              <i class="bk-nd" />
+              <h3>{backend.name}</h3>
+              <p>{backend.body}</p>
+              <small>{backend.runs}</small>
+            </li>
+          ))
+        }
+        <li class="bk-t is-soon">
+          <i class="bk-dw"><b></b></i>
+          <i class="bk-nd"></i>
+          <h3>Rex</h3>
+          <small>Soon</small>
+        </li>
+      </ul>
+    </div>
+    <div class="mq">
+      <span>Chat works with</span>
+      <div>
+        <ul>
+          <li class="lp-sr">{agents.join(', ')}</li>
+          {/* The strip scrolls by one copy of the list, so it holds two. */}
+          {[...agents, ...agents].map((agent) => <li aria-hidden="true">{agent}</li>)}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

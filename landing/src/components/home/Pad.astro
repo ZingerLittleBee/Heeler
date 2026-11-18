@@ -1,0 +1,21 @@
+---
+// An iPad frame around one screenshot.
+import { Image } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  image: ImageMetadata;
+  alt: string;
+  sizes: string;
+}
+
+const { image, alt, sizes } = Astro.props;
+---
+
+<div class="lp-pad">
+  <div class="lp-pad-body">
+    <div class="lp-pad-screen">
+      <Image src={image} alt={alt} widths={[720, 1080, 1440, 2160]} sizes={sizes} draggable="false" />
+    </div>
+  </div>
+</div>

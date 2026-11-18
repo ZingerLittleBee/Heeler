@@ -1,0 +1,81 @@
+---
+// Three steps to a first Agent, with two ways to add the machine.
+// Behaviour: `setup()` in `src/scripts/home/sections.ts`.
+import appStoreBadge from '../../assets/badges/app-store-badge.svg';
+import { links } from '../../data/links';
+import { pairCommands } from './content';
+
+// One block per command; the "$ " prompt is not part of what Copy copies.
+const commands = pairCommands.map((command) => `<span><i>$ </i><b>${command.split(' ').join('</b> <b>')}</b></span>`).join('');
+const found = ['Herdr TUI', 'Herdr desktop', 'tmux'];
+---
+
+<section class="sec">
+  <div class="wrap">
+    <h2 class="h2" data-rv>Set up before <span class="dim">your coffee cools.</span></h2>
+    <ol class="su" data-rv="fade" data-rv-delay="100">
+      <li class="su-s" style="--i:0">
+        <i class="su-n">1</i>
+        <h3>Get Heeler from the App Store.</h3>
+        <p>For iPhone and iPad, on iOS 18 or newer.</p>
+        <a class="su-b" href={links.appStore} target="_blank" rel="noopener">
+          <img src={appStoreBadge.src} alt="Download on the App Store" width="132" height="44" loading="lazy" />
+        </a>
+      </li>
+      <li class="su-s" style="--i:1">
+        <i class="su-n">2</i>
+        <h3>Add your machine.</h3>
+        <div class="su-sw" role="tablist" aria-label="How to add the machine" data-i="0">
+          <i></i>
+          <button type="button" role="tab" id="su-t0" aria-selected="true" aria-controls="su-p0">Scan a QR code</button>
+          <button type="button" role="tab" id="su-t1" aria-selected="false" aria-controls="su-p1" tabindex="-1">Enter the address</button>
+        </div>
+        <div class="su-ps">
+          <div class="su-p is-on" id="su-p0" role="tabpanel" aria-labelledby="su-t0">
+            <p>With Herdr TUI, run two commands on the machine and scan the QR code they show.</p>
+            <div class="code">
+              <div class="code-h">
+                <span>On the machine</span>
+                <button class="cp" type="button" aria-label="Copy both commands"><span>Copy</span><span>Copied</span></button>
+              </div>
+              <pre set:html={commands} />
+              <i class="code-sw"></i>
+            </div>
+            <div class="su-lk">
+              <a class="lk" href={`${links.docs}pairing`} target="_blank" rel="noopener">Pairing guide <span>→</span></a>
+            </div>
+          </div>
+          <div class="su-p" id="su-p1" role="tabpanel" aria-labelledby="su-t1">
+            <p>On any backend, enter the address and Heeler finds what the machine runs.</p>
+            <div class="code ad">
+              <div class="code-h"><span>In Heeler, under Hosts</span></div>
+              <dl>
+                <div><dt>Address</dt><dd><b>studio.local</b></dd></div>
+                <div><dt>User</dt><dd>you</dd></div>
+              </dl>
+              <div class="ad-f">
+                <span>Found on this machine</span>
+                <ul>
+                  {found.map((name, i) => <li style={`--i:${i}`}><i />{name}</li>)}
+                </ul>
+              </div>
+            </div>
+            <div class="su-lk">
+              <a class="lk" href={`${links.docs}tmux`} target="_blank" rel="noopener">tmux guide <span>→</span></a>
+              <a class="lk" href={`${links.docs}herdr-core`} target="_blank" rel="noopener">Herdr desktop guide <span>→</span></a>
+            </div>
+          </div>
+        </div>
+      </li>
+      <li class="su-s" style="--i:2">
+        <i class="su-n">3</i>
+        <h3>Open an Agent.</h3>
+        <p>Your Agents are already in the Console.</p>
+        <ul class="su-a" aria-hidden="true">
+          <li data-s="b"><span class="rg"><i></i></span><b>Payments API</b><em>Blocked</em></li>
+          <li data-s="w"><span class="rg"><i></i></span><b>Search</b><em>Working</em></li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+</section>

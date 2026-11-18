@@ -7,7 +7,9 @@
 <a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="App Store でダウンロード" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="TestFlight で入手可能" height="40" /></a>
 
-**[herdr](https://herdr.dev)（エージェントファーストのターミナルランタイム）および tmux のための、ネイティブ iOS コンパニオンアプリです。**
+**ご自身のマシンで動くコーディングエージェントのための、iPhone と iPad のコンソールです。**
+
+[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux に対応しています。Rex にもまもなく対応します。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -24,25 +26,32 @@
 
 ---
 
-Heeler は、iPhone と iPad で使える独立した **herdr モバイルクライアント**であり、Claude Code、Codex などのコーディング Agent のためのエージェントコンソールです。Agent はご自身の Host 上で Herdr TUI、Herdr デスクトップアプリ（herdr-core）、または tmux とともに動作し、Heeler は SSH で接続します。複数のマシンにまたがる複数の Agent を、対応が必要なものから順に並べて監視し、ライブターミナルや対応している Chat の会話を開いて指示を送れます。
+Heeler は、iPhone と iPad で使える独立したオープンソースのエージェントコンソールであり、Claude Code、Codex などのコーディング Agent のための **herdr モバイルクライアント**です。Agent はご自身のマシン上の Herdr TUI、Herdr デスクトップアプリ（herdr-core）、または tmux でそのまま動き続け、Heeler は SSH で直接接続するため、コードが私たちのサーバーを通ることはありません。どの Agent が対応を待っているかをひと目で確認し、ネイティブの Chat または実際のターミナルで応答でき、Agent が Blocked または Done になると暗号化された通知が届きます。
+
+**[ウェブサイト](https://heeler.bybee.dev)** · **[ドキュメント](https://docs.heeler.bybee.dev)** · [プライバシー](PRIVACY.md) · [変更履歴](CHANGELOG.md)
 
 ## スクリーンショット
 
-| Agent Console | ライブターミナル | Chat |
+| Agent Console | Chat | ライブターミナル |
 | --- | --- | --- |
-| <img src="docs/images/console-iphone.png" width="240" alt="iPhone で Host をまたいで Agent とそのステータスを一覧表示する Agent Console" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone で Direct Input を使う Agent のライブターミナル" /> | <img src="docs/images/chat-iphone.png" width="240" alt="iPhone で Agent の会話をネイティブのメッセージとして表示する Chat" /> |
+| <img src="docs/images/console-iphone.png" width="240" alt="iPhone で Host をまたいで Agent とそのステータスを一覧表示する Agent Console" /> | <img src="docs/images/chat-iphone.png" width="240" alt="iPhone で Agent の会話をネイティブのメッセージとして表示する Chat" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone で Direct Input を使う Agent のライブターミナル" /> |
+
+| ライブアクティビティ | Usage | ウィジェット |
+| --- | --- | --- |
+| <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone のロック画面で Agent を追跡するライブアクティビティ" /> | <img src="docs/images/usage-iphone.png" width="240" alt="iPhone で 30 日分の推定 API コスト、Usage Limits、日別のグラフを表示する Usage タブ" /> | <img src="docs/images/widgets-iphone.png" width="240" alt="iPhone のホーム画面に置いた小サイズと中サイズの Usage と Usage Limits のウィジェット" /> |
+
+<details>
+<summary>その他のスクリーンショット</summary>
 
 | キーボード | Changes | Terminals |
 | --- | --- | --- |
 | <img src="docs/images/agent-iphone.png" width="240" alt="iPhone でショートカットと完全な Terminal Keyboard を備えた Agent の Direct Input" /> | <img src="docs/images/changes-iphone.png" width="240" alt="iPhone で Checkout のステージ済みと未ステージのファイルを一覧表示する Changes" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone で Host と Workspace ごとにシェルのペインを一覧表示する Terminals タブ" /> |
 
-| Skills | Hosts | ライブアクティビティ |
+| Skills | Hosts | ロック画面のウィジェット |
 | --- | --- | --- |
-| <img src="docs/images/skills-iphone.png" width="240" alt="iPhone での Composer の Skills の候補" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="iPhone で Host を接続状態ごとにまとめ、レイテンシとともに表示する Hosts タブ" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone のロック画面で Agent を追跡するライブアクティビティ" /> |
+| <img src="docs/images/skills-iphone.png" width="240" alt="iPhone での Composer の Skills の候補" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="iPhone で Host を接続状態ごとにまとめ、レイテンシとともに表示する Hosts タブ" /> | <img src="docs/images/widgets-lock-iphone.png" width="240" alt="iPhone のロック画面に置いた Usage と Usage Limits のアクセサリウィジェット" /> |
 
-| Usage | ウィジェット | ロック画面のウィジェット |
-| --- | --- | --- |
-| <img src="docs/images/usage-iphone.png" width="240" alt="iPhone で 30 日分の推定 API コスト、Usage Limits、日別のグラフを表示する Usage タブ" /> | <img src="docs/images/widgets-iphone.png" width="240" alt="iPhone のホーム画面に置いた小サイズと中サイズの Usage と Usage Limits のウィジェット" /> | <img src="docs/images/widgets-lock-iphone.png" width="240" alt="iPhone のロック画面に置いた Usage と Usage Limits のアクセサリウィジェット" /> |
+</details>
 
 <a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="iPad のフローティングウィンドウで動作する Heeler" /></a>
 
@@ -50,87 +59,67 @@ Heeler は、iPhone と iPad で使える独立した **herdr モバイルクラ
 
 ## 機能
 
-- **Console** — すべてのマシン上のすべての Agent を、ステータス順（Blocked が先頭）の 1 つのリストにまとめます。Host で絞り込むことができ、リアルタイムで更新されます。
-- **Herdr デスクトップと herdr-core** — macOS、Linux、ネイティブの Windows で動作する Herdr デスクトップアプリ、またはヘッドレスの herdr-core に接続します。Console はデスクトップアプリのスペースとタブに従い、ライブターミナル、Chat、Composer、New Agent、New Workspace も利用できます（[詳しくはこちら](https://docs.heeler.bybee.dev/herdr-core)）。
-- **tmux** — macOS または Linux で動作する tmux 3.3+ サーバーに接続します。セッション、ウィンドウ、ペインが Console に表示され、ライブターミナルは画面に合わせてサイズ調整されつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Chat、Composer、New Agent、New Workspace、Worktrees も利用でき、Claude Code のフックとオプションの Host Helper によって Agent のステータス、通知、ライブアクティビティ、Usage を追加できます（[詳しくはこちら](https://docs.heeler.bybee.dev/tmux)）。
-- **Attach** — libghostty で描画される Agent の実際のターミナルです。ネイティブのスクロールバック、全画面の TUI も操作できる慣性つきのタッチスクロール、長押しでの選択、古くなったターミナルの所有者からの引き継ぎに対応し、Web リンクを目立たないように集めて、あとで開けるようにします。
-- **Chat** — Agent の会話をターミナル画面ではなくネイティブのメッセージとして読み、Composer から返信し、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています（[詳しくはこちら](https://docs.heeler.bybee.dev/chat)）。
-- **Composer** — iOS の完全なキーボード（自動修正、IME、音声入力）を使って手元で下書きし、一度の Send で送信します。ツールキーボードでは、Agent の制御キー、Agent Skills、再利用できる Snippets、ターミナルの外観を利用できます。Voice Input を使うと、ご自身の音声サービスの API キーで Composer に話しかけることができます（[詳しくはこちら](https://docs.heeler.bybee.dev/voice-input)）。
-- **Terminal** — Agent のディレクトリで通常のシェルを開きます。Text と Keys の 2 つのモードがあり、Workspace ごとに 1 つのタブを再利用します。
-- **添付ファイル** — 写真や 64 MiB までのファイルを SFTP で Host に置き、そのパスを下書きに挿入します。
-- **QR ペアリング** — Pairing Code をスキャンしてマシンを追加します。鍵はデバイス上で生成され、秘密鍵は Keychain から出ることはなく、コードによってホスト鍵のフィンガープリントが固定されます。
-- **通知 + ライブアクティビティ** — Agent が Blocked または Done になったときのエンドツーエンド暗号化されたプッシュ通知と、Agent をリアルタイムで追跡するロック画面 / Dynamic Island のバナーです。リレーが内容を読むことは決してできません（[PRIVACY.md](PRIVACY.md)）。
-- **Usage** — Claude Code と Codex の Usage Limits とそのリセット時刻、および最大 30 日分の Token Usage とその推定 API コストを、すべての Host の合計または 1 台ごとに表示します。ホーム画面とロック画面のウィジェットで、いつでも確認できます（[詳しくはこちら](https://docs.heeler.bybee.dev/usage)）。
-- **Worktrees** — Workspace のリポジトリのクリーンなチェックアウトで Agent を起動します。
-- **外観** — System、Light、Dark から選べます。Light と Dark で別々に設定でき、ターミナル、Chat、アプリ全体に適用される 30 種類のテーマ、同梱の JetBrains Mono と IBM Plex Mono、ピンチによるズームに対応しています。
-- **Jump Host** — SSH のジャンプを経由して直接到達できないマシンにアクセスし、両方のホップで鍵を検証します。
-
-## 接続のしくみ
-
-macOS と Linux の Host では、Heeler は SSH 経由で herdr の JSON API を使います。各リクエストは `herdr.sock` への direct-streamlocal チャネルを開き、1 本の長時間維持されるチャネルがイベントストリームを運び、対話型のターミナルは SSH PTY 上で `herdr agent attach --takeover` を実行します。必要なのは SSH でのアクセスと、動作中の herdr だけです。サーバー側の変更も、追加のパッケージも必要ありません。SSH サーバーでは stream-local フォワーディングが許可されている必要があります（OpenSSH のデフォルト）。無効になっている場合は、オンボーディングで指摘されます。Fedora、RHEL とその派生ディストリビューションでは、フォワーディングが許可されていても SELinux がソケットを開くことを拒否する場合があります。[Fedora または RHEL の Host での SELinux](docs/guides/selinux.md) をご覧ください。
-
-ネイティブの Windows Host（herdr >= 0.9.3）は SSH で接続し、手動で追加します。
-
-herdr-core の Host（Herdr デスクトップアプリを実行しているマシンを含む）は手動で追加し、Server Kind を確認します。Heeler は core との間に 1 本のフレーム化されたリンクを使います。macOS と Linux では core のソケットへの direct-streamlocal チャネル、ネイティブの Windows では SSH exec で実行する `herdr-core connect` です。macOS と Linux では、接続しただけで core が起動することはありません。オプションの Host Helper を入れると、macOS と Linux で通知、ライブアクティビティ、Usage を利用できます（[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)）。
-
-tmux の Host（macOS と Linux の tmux >= 3.3）も手動で追加し、Server Kind とソケット名を確認します。接続しただけで tmux サーバーが起動することはありませんが、Linux では必要に応じて New Workspace から起動できます。ライブターミナルは tmux の制御モードでデスクトップクライアントと共存してペインごとに接続し、画面に合わせてサイズ調整しつつ、同じウィンドウを開いているデスクトップターミナルの範囲内に収まります。Claude Code のフックで Blocked、Done、会話 ID を報告でき、オプションの Host Helper を入れるとステータスの読み取り、Pi と Oh My Pi の拡張機能、通知、ライブアクティビティ、Usage を利用できます（[tmux に接続する](https://docs.heeler.bybee.dev/tmux)）。
-
-Tailscale、ZeroTier、EasyTier でアクセスする場合は、[Overlay Network のセットアップガイド](docs/guides/overlay-networks.md)に従ってください。macOS へのインストール、Mac で VPN を使わない Tailscale、Heeler の設定、接続の確認について説明しています。Heeler は iOS の VPN 構成を使わずに、アプリ内でこれらのネットワークに参加します。**Settings > Overlay Networks** がある Heeler のバージョンが必要です。
-
-Tailscale、ZeroTier、および EasyTier の 2 つのモードについて、[Heeler のセットアップのスクリーンショットを見る](docs/guides/overlay-networks.md#heeler-setup-screenshots)ことができます。
-
-直接到達できないマシンは、SSH の Jump Host の背後に置くことができます。
-
-- [リモートアクセスを順を追ってセットアップする](docs/guides/vps-jump-host-setup.md)
-- [アーキテクチャ、セキュリティの境界、VPS のランブック](docs/guides/vps-jump-host.md)
-
-Host には、自宅では LAN のアドレス、外出先では Overlay Network や Jump Host というように、複数のルートを持たせることができます：[複数のルートで Host に到達する](docs/guides/host-routes.md)。
+- **Console**：すべてのマシン上の Agent を 1 つのリストにまとめ、Blocked を先頭にリアルタイムで表示します。Host で絞り込めます。
+- **Chat**：Agent の会話をネイティブのメッセージとして読み、Blocked の Agent にはボタンで回答できます。Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI に対応しています。[Chat ガイド](https://docs.heeler.bybee.dev/chat)
+- **ライブターミナル**：libghostty で描画される Agent の実際のターミナルで、ネイティブのスクロールバックと選択に対応します。Agent のディレクトリで通常のシェルを開くこともできます。
+- **通知とライブアクティビティ**：Agent が Blocked または Done になるとエンドツーエンド暗号化されたプッシュ通知が届き、ロック画面と Dynamic Island に Agent が表示されます。リレーが内容を読むことはできません。[プライバシー](PRIVACY.md)
+- **Usage**：Claude Code と Codex の Usage Limits とリセット時刻、最大 30 日分の Token Usage と推定 API コスト、ホーム画面とロック画面のウィジェットを利用できます。[Usage ガイド](https://docs.heeler.bybee.dev/usage)
+- **Composer**：iOS の完全なキーボードまたは音声で下書きし、一度の Send で送信します。ツールキーボードには Agent の制御キー、Skills、Snippets があり、写真や 64 MiB までのファイルも添付できます。[Voice Input ガイド](https://docs.heeler.bybee.dev/voice-input)
+- **どこからでも接続**：Tailscale、ZeroTier、EasyTier をアプリに内蔵しているため、VPN アプリは必要ありません。直接到達できないマシンには Jump Host を使え、1 つの Host に複数のルートを設定できます。[Overlay Network](https://docs.heeler.bybee.dev/overlay-networks) · [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup) · [複数のルート](https://docs.heeler.bybee.dev/host-routes)
+- **そのほか**：QR ペアリング、Worktrees、ステージ済みと未ステージのファイルを確認できる Changes、30 種類のテーマ、Magic Keyboard のショートカット、マルチウィンドウ、ドラッグ＆ドロップに対応した iPad 版があります。
 
 ## インストール
 
-[App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) または [TestFlight](https://testflight.apple.com/join/aXSxRn4r) から Heeler をインストールしてください。
+[App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) または [TestFlight](https://testflight.apple.com/join/aXSxRn4r) から Heeler をインストールしてください。マシン側では SSH を有効にし、次のいずれかのバックエンドを実行します。
 
-- **macOS / Linux:** [herdr](https://herdr.dev/docs/install/) をインストールし、SSH を有効にしてから、以下のペアリングの手順に従ってください。
-- **ネイティブの Windows:** [Windows のセットアップガイド](docs/guides/windows-setup.md)に従ってください。
-- **Herdr デスクトップアプリ / herdr-core:** デスクトップアプリまたは herdr-core を起動し、SSH を有効にしてから、Host を手動で追加してください。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)をご覧ください。Heeler 0.1.18 以降が必要です。
-- **tmux（macOS / Linux）:** tmux 3.3 以降を起動し（Linux では New Workspace から起動することも可能）、SSH を有効にしてから、Host を手動で追加してください。[tmux に接続する](https://docs.heeler.bybee.dev/tmux)をご覧ください。
+| バックエンド | 対応環境 | ガイド |
+| --- | --- | --- |
+| [Herdr TUI](https://herdr.dev/docs/install/) | macOS、Linux | [スキャンでペアリング](https://docs.heeler.bybee.dev/pairing) |
+| Herdr TUI 0.9.3 以降 | ネイティブの Windows | [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup) |
+| Herdr デスクトップアプリまたは herdr-core | macOS、Linux、ネイティブの Windows | [herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) |
+| tmux 3.3 以降 | macOS、Linux | [tmux に接続する](https://docs.heeler.bybee.dev/tmux) |
+| Rex | まもなく対応 | |
 
 ## マシンの追加
 
-herdr を実行している macOS または Linux のマシン上で（Node >= 20、herdr >= 0.7.5、OpenSSH サーバーが有効。macOS では **システム設定 > 一般 > 共有 > リモートログイン**）、次を実行します。
+まずマシンの OpenSSH サーバーを有効にしてください（macOS では **システム設定 > 一般 > 共有 > リモートログイン**）。
+
+**Pairing Code をスキャンする。** Herdr TUI を実行している macOS または Linux のマシン上で（herdr 0.7.5 以降、Node 20 以降）、次を実行します。
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-表示された Pairing Code の QR をスキャンすると、そのマシンが Host として追加されます。コードには、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録情報が含まれています。アプリでその Host の通知を有効にすると、同じ[プラグイン](plugin/README.md)が暗号化された通知を配信します。すべての手順、ポップアップのキー、トラブルシューティングについては、[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)をご覧ください。
+表示された Pairing Code をスキャンすると、そのマシンが Host として追加され、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録まで完了します。[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)
+
+**またはアドレスを入力する。** すべてのバックエンドで使えます。**Hosts** で **+** をタップし、アドレスと SSH ユーザーを入力すると、Heeler がそのマシンで実行中の Herdr TUI、herdr-core、各 tmux サーバーを一覧表示します。1 つの Host でこれらを複数同時に使えます。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) · [tmux に接続する](https://docs.heeler.bybee.dev/tmux) · [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup)
+
+**外出先から接続する。** 内蔵の [Overlay Network](https://docs.heeler.bybee.dev/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/easytier)）、[Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup)、または [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel) を使い、Host に[複数のルート](https://docs.heeler.bybee.dev/host-routes)を設定すると、自宅でも外出先でも接続できます。
+
+## 接続のしくみ
+
+Heeler に必要なのは SSH でのアクセスと動作中のバックエンドだけです。サーバー側の変更も、接続のための追加パッケージも必要ありません。
+
+- **Herdr TUI**：stream-local フォワーディングで `herdr.sock` に接続して herdr の JSON API を使い、ターミナルは SSH PTY 上で動作します。このフォワーディングは OpenSSH のデフォルトで許可されていますが、[Fedora または RHEL の SELinux](https://docs.heeler.bybee.dev/selinux) が拒否する場合があります。
+- **herdr-core**：core のソケットとの間に 1 本のフレーム化されたリンクを使います。
+- **tmux**：制御モードでペインごとに接続し、デスクトップクライアントと共存します。Agent のステータスは Claude Code のフックが報告します。
+
+macOS と Linux の Host では、通知、ライブアクティビティ、Usage を [Heeler プラグイン](plugin/README.md)（Herdr TUI）またはオプションの Host Helper（herdr-core、tmux）が提供します。[プラグインと Host Helper を更新する](https://docs.heeler.bybee.dev/updates)
+
+秘密鍵はデバイス上で生成され、Keychain から出ることはありません。Host の鍵は Pairing Code で固定されるか、初回接続時にフィンガープリントを確認して信頼します。トランスポートの設計判断は [`docs/adr/`](docs/adr) に記録されています。
 
 ## 別のアプリから Agent を開く
-
-別のアプリから、リンクを使って Heeler で Agent を開くことができます。
 
 ```text
 heeler://agent?host=my-mac&session=work&pane=w1%3Ap1
 ```
 
-- `host` は、そのセッションに保存されている Host を指定します。そのアドレスか、セッション上にそのアドレスを持つ Host がない場合はその名前です。大文字と小文字は区別されません。
-- `session` は herdr のセッション名です。省略するか `default` を渡すと、デフォルトのセッションになります。
-- `pane` は herdr のペイン ID です。省略すると Console が開きます。
-
-各値はパーセントエンコードし、スペースは `%20` にしてください。`+` はプラス記号のまま扱われるため、フォームエンコード（JavaScript の `URLSearchParams` など）では `Build Box` のような名前に一致しません。そのセッションに一致する保存済みの Host がない場合や、複数の Host が一致する場合は、リンクで Console が開きます。
-
-## スタック
-
-- SwiftUI、iOS 18+、iPhone と iPad。iPad のサポートは 0.1.8 で復活し、Magic Keyboard のショートカット、マルチウィンドウ、ドラッグ＆ドロップに対応しています。
-- SSH には、リポジトリ内の `Packages/HeelerSSH`（libssh2 + OpenSSL）
-- ターミナルのエミュレーションと Metal での描画には [libghostty-spm](https://github.com/lakr233/libghostty-spm)
-
-その理由については `docs/adr/` をご覧ください。特にトランスポートの経緯は自明ではありません。
+`host` は保存済みの Host のアドレスまたは名前（大文字と小文字は区別しません）、`session` は herdr のセッション（省略するとデフォルトのセッション）、`pane` はペイン ID（省略すると Console が開きます）です。各値はパーセントエンコードし、スペースは `+` ではなく `%20` にしてください。一致する保存済みの Host がない場合や、複数の Host が一致する場合は、Console が開きます。
 
 ## コントリビュート
 
-Issue と PR を歓迎します。構成、ビルド / テスト、規約については [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
+Heeler は SwiftUI で作られ、iOS 18+ に対応しています。SSH にはリポジトリ内の `Packages/HeelerSSH`（libssh2 と OpenSSL）、ターミナルの描画には [libghostty-spm](https://github.com/lakr233/libghostty-spm) を使っています。Issue と PR を歓迎します。構成、ビルド、テスト、規約については [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
 
 ## ステータス
 
