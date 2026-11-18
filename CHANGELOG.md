@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Send a `/command` that Chat's `/` menu doesn't offer, such as Claude Code's `/clear`, with **Send Anyway** on the notice that refuses it. The draft goes once as typed, after the same input box check as any message; everything else Chat refuses still can't be sent. (PR #774)
 - Move a Host back to a direct route by itself. When a Host is connected through an overlay network or a Jump Host and one of its direct routes comes into reach, such as its LAN address when you get home, Heeler reconnects the Host's Servers over the direct route. It checks when the device's network changes and when you return to Heeler, and **Reconnect** still tries every route again. (PR #773)
 - Pair a machine that runs herdr-core or tmux without herdr by scanning a code. Run `npx -y heeler-pair@latest` in a terminal on the macOS or Linux machine (Node 20 or newer), check the addresses your device can reach, and scan the Pairing Code with **Scan to Pair**: this device's key is enrolled and the machine's key fingerprint is pinned, with no address to type and no key to copy by hand. `--port` and `--address` cover a machine behind a port mapping, and the Setup Guide shows the command. (PR #770)
 - Show Antigravity CLI (`agy`) Swarms in Chat on macOS and Linux Hosts with a live Swarm bar above the Composer, a 3-tab Swarm sheet (**Board**, **Members**, and **Overview**), read-only worker sub-conversation views, `/swarm` in the `/` skill menu, and Working status promotion while task workers actively run. (PR #763)
