@@ -121,8 +121,8 @@ connects first. See [multiple routes](host-routes.md).
 
 1. Cloudflare One Agent shows **Connected**, and the tunnel is **Healthy** in
    **Networking > Tunnels**.
-2. Open the Host from **Hosts**, tap one of its Servers, and check that the route
-   marked **In Use** is the one pointing at the Mac's private address.
+2. Open the Host from **Hosts** and check that the route marked **In Use** under
+   **Routes** is the one pointing at the Mac's private address.
 3. The Host checks pass and the session's Agents or Terminals load.
 4. In a **New Terminal**, `pwd` prints a folder on the Mac.
 5. Turn off Wi-Fi on the phone and repeat over cellular, checking **In Use**
