@@ -50,6 +50,7 @@ Heeler confirms a Host's key once, and every route has to reach the machine with
 ## If a route always fails
 
 - Read its reason under **Routes** on the Host's page.
+- **The Jump Host's key is not trusted** or **The host key is not trusted** means nobody has confirmed that key on this iPhone or iPad yet. The Host's page asks you to confirm its fingerprint, and reconnects once you trust it. If you dismissed the question, tap **Scan Again** to see it again.
 - For an overlay network route, check that the network shows as connected in **Settings > Overlay Networks** and that the Mac is online in it.
 - For a Jump Host route, check that you can reach the Jump Host and that it accepts the same Device Key, RSA Key, or password as the Host. See [the Jump Host guide](vps-jump-host-setup.md).
 - For a LAN address, it only answers on that network. Away from home it fails, and another route connects instead.
