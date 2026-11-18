@@ -3224,7 +3224,8 @@ struct MissingAgentPresentation: Equatable {
         /// Standing Failure.
         case hostFailed
         /// The Host is Connected, but its first snapshot for this connection
-        /// has not landed yet.
+        /// has not landed yet, or it lists the Pane without having said what
+        /// holds it.
         case hostLoadingAgents
         case paneGone
     }
@@ -3263,6 +3264,7 @@ struct MissingAgentPresentation: Equatable {
         hostStatuses: [Host.ID: EventsSessionStatus],
         hosts: [Host],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
+        panesAwaitingForeground: Set<ConsoleAgent.ID> = [],
         hostStandingFailures: [Host.ID: TransportError] = [:]
     ) {
         let host = hosts.first { $0.id == agentID.hostID }
@@ -3307,7 +3309,7 @@ struct MissingAgentPresentation: Equatable {
         case .failed(let failure):
             (cause, title, systemImage, message) = applyFailed(failure)
         case .connected:
-            if hostsAwaitingSnapshot.contains(agentID.hostID) {
+            if hostsAwaitingSnapshot.contains(agentID.hostID) || panesAwaitingForeground.contains(agentID) {
                 cause = .hostLoadingAgents
                 title = String(localized: "Loading Agents…")
                 systemImage = "hourglass"
@@ -3358,6 +3360,7 @@ struct MissingAgentPresentation: Equatable {
             hostStatuses: console.hostStatuses,
             hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
+            panesAwaitingForeground: console.panesAwaitingForeground,
             hostStandingFailures: console.hostStandingFailures)
     }
 }

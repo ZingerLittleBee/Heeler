@@ -57,6 +57,10 @@ final class ConsoleStore {
     /// Their empty Agent projection is loading state, not proof that a pane
     /// disappeared.
     private(set) var hostsAwaitingSnapshot: Set<Host.ID> = []
+    /// Panes a connected Host lists without having said yet what holds them.
+    /// A detail open on one waits as it does for a first snapshot: nothing
+    /// says its Agent went.
+    private(set) var panesAwaitingForeground: Set<ConsoleAgent.ID> = []
     /// Hosts whose inventory predates their current connection, including one
     /// replaced silently. Their rows stay listed, but input waits.
     private(set) var hostsAwaitingFreshSnapshot: Set<Host.ID> = []
@@ -2346,6 +2350,13 @@ final class ConsoleStore {
             current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
         if hostsAwaitingSnapshot != nextAwaitingSnapshot {
             hostsAwaitingSnapshot = nextAwaitingSnapshot
+        }
+        let nextAwaitingForeground = Set(
+            current.lazy.flatMap { projection in
+                projection.panesAwaitingForeground.map { ConsoleAgent.ID(hostID: projection.host.id, paneID: $0) }
+            })
+        if panesAwaitingForeground != nextAwaitingForeground {
+            panesAwaitingForeground = nextAwaitingForeground
         }
         let nextAwaitingFreshSnapshot = Set(
             current.lazy.filter(\.isAwaitingFreshSnapshot).map(\.host.id))
