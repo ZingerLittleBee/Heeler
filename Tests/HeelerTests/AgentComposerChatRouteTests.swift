@@ -443,6 +443,75 @@ struct AgentComposerChatRouteTests {
         #expect(await transport.agentPromptParams.count == 2)
     }
 
+    /// Chat's own rules for Claude Code with no skills: the menu holds
+    /// only `/compact`.
+    private static func claudeRulesPolicy(
+        preflight: (@MainActor (String) async -> ComposerRefusal?)? = nil
+    ) -> ComposerDeliveryPolicy {
+        let rules = ChatSendRules(
+            program: .claude,
+            commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .claude))
+        return chatPolicy(
+            validate: { rules.validate($0) }, outgoingText: { rules.outgoingText($0) }, preflight: preflight)
+    }
+
+    @Test func sendAnywaySendsACommandOutsideTheMenuAsTyped() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "/clear")
+        let policy = Self.claudeRulesPolicy()
+
+        #expect(await store.send(policy: policy) == .refused(.unknownCommand("clear")))
+        #expect(store.notice?.refusal == .unknownCommand("clear"))
+        #expect(store.canSendAnyway)
+
+        #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["/clear "])
+        #expect(store.draft.isEmpty)
+        #expect(store.notice == nil)
+    }
+
+    @Test func sendAnywayAdmitsOnlyTheCommandItWasOfferedFor() {
+        let policy = Self.claudeRulesPolicy().admitting(unknownCommand: "clear")
+
+        #expect(policy.validate("/clear") == nil)
+        #expect(policy.validate("/restart") == .unknownCommand("restart"))
+        #expect(policy.validate("!ls") != nil)
+        #expect(policy.validate("exit") != nil)
+    }
+
+    @Test func sendAnywayDoesNothingForOtherRefusals() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "!ls")
+        let policy = Self.claudeRulesPolicy()
+
+        guard case .refused(.unsafeText) = await store.send(policy: policy) else {
+            Issue.record("!ls was not refused as unsafe")
+            return
+        }
+        #expect(!store.canSendAnyway)
+        #expect(await store.sendAnyway(policy: policy) == .ignored)
+        #expect(store.draft == "!ls")
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    /// Send Anyway skips only the menu check: the input box is still read
+    /// first, and a hold returns the draft.
+    @Test func sendAnywayStillWaitsForAnEmptyInputBox() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        store.replaceDraft(with: "/clear")
+        let hold = ComposerRefusal.inputNotReady("A menu is open over the Agent's input box.")
+        let policy = Self.claudeRulesPolicy(preflight: { _ in hold })
+
+        _ = await store.send(policy: policy)
+        #expect(await store.sendAnyway(policy: policy) == .refused(hold))
+        #expect(store.draft == "/clear")
+        #expect(store.notice?.refusal == hold)
+        #expect(await transport.agentPromptParams.isEmpty)
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),

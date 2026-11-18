@@ -48419,6 +48419,7 @@
         }
       }
     },
+    "Send Anyway" : {},
     "Send Back" : {
       "localizations" : {
         "ja" : {
@@ -48574,6 +48575,7 @@
         }
       }
     },
+    "Sends the command as typed, though Chat's menu doesn't offer it" : {},
     "Sends this key directly to the Agent" : {
       "localizations" : {
         "ja" : {

@@ -102,6 +102,19 @@ struct ComposerDeliveryPolicy: Sendable {
     static let terminal = ComposerDeliveryPolicy(
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
         validate: { _ in nil }, preflight: nil, verify: nil)
+
+    /// This policy with `/name` let past the menu, for a Send Anyway the
+    /// user chose after `unknownCommand(name)`. Every other refusal, the
+    /// input box read and the delivery check still apply.
+    func admitting(unknownCommand name: String) -> ComposerDeliveryPolicy {
+        var policy = self
+        let validate = self.validate
+        policy.validate = { text in
+            let refusal = validate(text)
+            return refusal == .unknownCommand(name) ? nil : refusal
+        }
+        return policy
+    }
 }
 
 /// A refusal the Composer shows until the draft it refused changes, a later

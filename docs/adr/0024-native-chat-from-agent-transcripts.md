@@ -551,6 +551,13 @@ request, under rules that stand in for the screen the user cannot see:
   pointer to the menu or the terminal. OpenCode names a custom command by its
   file's path (`/git/commit`) and runs a message that starts with one, so
   there a leading `/word` with a slash in it is refused too.
+  That refusal also offers Send Anyway, which sends the same draft once as
+  typed, for a command the program runs without a picker, such as Claude
+  Code's `/clear`, or `/restart` while an update is ready. Only the menu
+  check is skipped: every other rule here, the screen read and the delivery
+  check still apply, so a command that opens a menu holds the next send
+  until the terminal closes it. The menu still offers no such command, so
+  Chat keeps no list of built-ins that goes stale with each program.
 - Invisible characters are removed and exactly one trailing space is appended,
   so a final `/name` or `@path` cannot leave a completion popup open when
   Enter arrives. Oh My Pi's and OpenCode's `/compact` are the exceptions:

@@ -510,6 +510,24 @@ final class AgentComposerStore: ComposerDraftOperations {
         noting(await sendDraft(policy: policy), policy: policy)
     }
 
+    /// The command the notice refused as outside the menu, which Send
+    /// Anyway can send. Any edit ends the notice, so the draft is still the
+    /// text refused.
+    private var commandToSendAnyway: String? {
+        guard case .unknownCommand(let name) = notice?.refusal else { return nil }
+        return name
+    }
+
+    var canSendAnyway: Bool { commandToSendAnyway != nil }
+
+    /// Sends a draft refused only for a command outside the menu, after the
+    /// user chose to. The rest of `policy` applies as for any Send.
+    @discardableResult
+    func sendAnyway(policy: ComposerDeliveryPolicy) async -> SendResult {
+        guard let name = commandToSendAnyway, notice?.route == policy.route else { return .ignored }
+        return await send(policy: policy.admitting(unknownCommand: name))
+    }
+
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
         guard canSend else { return .ignored }
         let promptText = composedDraft
