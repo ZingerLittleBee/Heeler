@@ -455,6 +455,14 @@ struct RexInventoryBook {
         RexInventory(sessions: order.compactMap { id in sessions[id].flatMap { session(id, $0) } })
     }
 
+    /// Whether nothing has said what holds the terminal at `address`: no
+    /// foreground is known, and the read that would name one is due or on its
+    /// way. A read that came back naming none leaves it at that.
+    private func awaitsForeground(at address: RexPaneAddress) -> Bool {
+        guard let record = details[address] else { return carried[address]?.program == nil }
+        return record.details.program == nil && (record.wanted || record.reading)
+    }
+
     private func shownAddresses() -> [RexPaneAddress] {
         order.flatMap { id -> [RexPaneAddress] in
             guard let record = sessions[id], let session = session(id, record) else { return [] }
@@ -469,10 +477,11 @@ struct RexInventoryBook {
         func terminal(_ facts: RexInventoryWire.BlockFacts) -> RexInventory.Terminal? {
             guard facts.isTerminal, !record.closedBlocks.contains(facts.id) else { return nil }
             let address = RexPaneAddress(sessionID: id, blockID: facts.id)
+            var shown = details[address]?.details ?? carried[address] ?? RexTerminalDetails()
+            shown.awaitsForeground = awaitsForeground(at: address)
             return RexInventory.Terminal(
                 blockID: facts.id, label: facts.customLabel,
-                owner: record.owners[facts.id].map(\.owner) ?? facts.owner,
-                details: details[address]?.details ?? carried[address] ?? RexTerminalDetails())
+                owner: record.owners[facts.id].map(\.owner) ?? facts.owner, details: shown)
         }
         let windows = (record.view?.windows ?? []).map { window in
             RexInventory.Window(id: window.id, label: window.customLabel, terminals: window.blocks.compactMap(terminal))

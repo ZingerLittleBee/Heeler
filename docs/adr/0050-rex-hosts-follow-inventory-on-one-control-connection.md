@@ -43,7 +43,12 @@ restarted servers without showing a stale or half-read list.
   minute in all, before it drops the connection for a new one.
 - The Console sees an inventory only once every session's structure is
   current: first with the structure, then again when the terminals' details
-  are read, then on each change once it settles. A session whose view the
+  are read, then on each change once it settles. (Updated 2026-11-18: the
+  first of these lists terminals nothing has named a foreground for yet, and
+  says so for each, `RexTerminalDetails.awaitsForeground`. Such a terminal
+  is not known to host an Agent or to host none, so a detail a relaunch
+  restored on one reads Loading Agents until its read answers. It read Agent
+  Gone for that moment before.) A session whose view the
   server refuses, or answers in a way Heeler cannot read, before it was ever
   read is read again twice, two seconds apart, rather than shown empty or left
   out at once. After that the inventory shows without it, and it is read

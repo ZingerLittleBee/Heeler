@@ -22,6 +22,10 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Whether input must wait: unlike `isAwaitingSnapshot`, this also covers a
     /// connection replaced without any non-connected status.
     var isAwaitingFreshSnapshot: Bool { get }
+    /// Listed Panes whose foreground the Host has yet to say, on a Server
+    /// Kind that lists a Pane before it reads what holds it. Whether one
+    /// hosts an Agent is not known either way, so a detail open on one waits.
+    var panesAwaitingForeground: Set<String> { get }
     /// A slow connection is being probed, so input pauses.
     var isCheckingConnection: Bool { get }
     var workspaces: [ConsoleWorkspace] { get }
@@ -238,6 +242,8 @@ extension ConsoleHostProjection {
     var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }
 
     var inventoryCore: String? { nil }
+
+    var panesAwaitingForeground: Set<String> { [] }
 
     /// Until a snapshot proves what the Host runs, its Console rows may be saved
     /// Chat entries, on a Host that offers Chat at all.

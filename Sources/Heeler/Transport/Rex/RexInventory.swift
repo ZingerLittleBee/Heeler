@@ -100,6 +100,11 @@ struct RexTerminalDetails: Sendable, Equatable {
     /// The Program Status the terminal's programs last reported without an id,
     /// whichever program it came from; nil for none.
     var status: RexProgramStatus?
+    /// Whether nothing has said yet what holds the terminal: this link has
+    /// neither read its foreground nor heard it change, and the last link
+    /// knew none. Until then it is not known to host an Agent, or to host
+    /// none. `RexInventoryBook` says it as it lists the terminal.
+    var awaitsForeground = false
 
     init(
         title: String? = nil, program: String? = nil, directory: String? = nil, processID: Int? = nil,

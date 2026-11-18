@@ -393,6 +393,47 @@ struct RexConsoleTests {
         #expect(methods.isSubset(of: Self.inventoryMethods))
     }
 
+    /// A detail restored at a relaunch names its Agent before the link has read
+    /// which terminals host one: the first inventory lists every terminal
+    /// with no foreground. Until its terminal's is read, the detail says the
+    /// Host is loading its Agents, not that the Agent is gone, and it shows
+    /// the Agent once the read answers.
+    @Test func aRestoredRexAgentsDetailWaitsForItsTerminalsForeground() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "idle")])
+        let servers = await served(world)
+        let process = RexInventoryWire.terminalMethod("process")
+        await servers[0].stopAnswering(process)
+        let store = store(servers: servers)
+        defer { store.setHosts([]) }
+        let rex = rex
+        let id = ConsoleAgent.ID(
+            hostID: rex.id, paneID: RexPaneAddress(sessionID: "session:studio", blockID: "block:left").paneID)
+        func missing() -> MissingAgentPresentation {
+            MissingAgentPresentation(
+                agentID: id, hostStatuses: store.hostStatuses, hosts: [rex],
+                hostsAwaitingSnapshot: store.hostsAwaitingSnapshot,
+                panesAwaitingForeground: store.panesAwaitingForeground,
+                hostStandingFailures: store.hostStandingFailures)
+        }
+
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("the terminals listed") { store.terminals.count == 5 }
+        #expect(store.detailAgent(for: id) == nil)
+        #expect(missing().cause == .hostLoadingAgents)
+
+        // The reads held so far answer, and each later one as it arrives.
+        let held = await servers[0].requests.filter { $0.method == process }
+        await world.install(on: servers[0])
+        let blocks = world.sessions[0].windows.flatMap { $0.layers.flatMap(\.blocks) } + world.sessions[0].detached
+        for _ in held {
+            let request = await servers[0].nextRequest()
+            let block = try #require(blocks.first { $0.id == request.payload?["block_id"]?.stringValue })
+            await servers[0].respond(to: request, with: FakeRexWorld.process(block))
+        }
+        try await waitUntil("the Agent") { store.detailAgent(for: id)?.agent.kind == "codex" }
+    }
+
     /// A Rex Agent reads Done as the other kinds' do (ADR 0054): its program
     /// reported done and this device has not looked at it since. Opening its
     /// terminal looks at it; the same done reported again keeps it Idle; the
