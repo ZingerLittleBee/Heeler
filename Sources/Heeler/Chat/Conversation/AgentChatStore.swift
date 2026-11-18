@@ -205,6 +205,9 @@ final class AgentChatStore {
     /// Built timeline rows, Markdown memos, and measured row heights kept
     /// across surface mounts while this Agent's Chat store lives.
     let timeline = ChatTimelineModel()
+    /// Pre-parsed Swarm Board Markdown memos and measured card heights kept
+    /// across Swarm tab switches and sheet presentations.
+    let swarmBoard = ChatSwarmBoardModel()
     /// The conversation as last read, or why there is none.
     private(set) var conversation: ChatConversationSnapshot
     /// Whether a Chat view is showing this conversation.
@@ -224,6 +227,9 @@ final class AgentChatStore {
     /// Antigravity CLI's native Swarm (`members.json`, `board.jsonl`, member
     /// transcripts, and narrator `view.json`), as last read.
     private(set) var agySwarm: AgySwarmSnapshot?
+    /// Isolated boolean for `ChatTurnSignals.isBackgroundWorkRunning` so 1-second
+    /// Swarm / Background Work progress updates do not invalidate `AgentChatSurfaceView`.
+    private(set) var isBackgroundWorkRunningForTurns = false
 
     /// Whether a visible Chat is still confirming its initial transcript open
     /// or filling its initial screen, so background prefetches and secondary
@@ -617,10 +623,12 @@ final class AgentChatStore {
         isVisible = false
         stopLoop()
         timeline.reset()
+        swarmBoard.reset()
         blocked.end()
         backgroundWork = ChatBackgroundWork()
         rawAgySwarm = nil
         agySwarm = nil
+        if isBackgroundWorkRunningForTurns { isBackgroundWorkRunningForTurns = false }
         notifyRunningBackgroundWorkIfNeeded()
     }
 
@@ -634,8 +642,7 @@ final class AgentChatStore {
         if case .locating = conversation.phase {} else { isReady = true }
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(agent.status),
-            isBackgroundWorkRunning: backgroundWork.rows.contains { $0.isRunning && !$0.isStale }
-                || agySwarm?.holdsActivePace == true,
+            isBackgroundWorkRunning: isBackgroundWorkRunningForTurns,
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: isHostConnected && !conversation.isFromCache,
             olderAwaitsUser: conversation.olderAwaitsUser)
@@ -1780,9 +1787,11 @@ final class AgentChatStore {
         agyScreenEvidence = [:]
         rawAgySwarm = nil
         agySwarm = nil
+        swarmBoard.reset()
         needsAgyScreenCheck = true
         lastAgyScreenCheck = nil
         backgroundWork = ChatBackgroundWork()
+        if isBackgroundWorkRunningForTurns { isBackgroundWorkRunningForTurns = false }
         hasReadLive = false
         notifyRunningBackgroundWorkIfNeeded()
         if target == nil {
@@ -2304,7 +2313,15 @@ final class AgentChatStore {
         } else {
             nextSwarm = nil
         }
-        if nextSwarm != agySwarm { agySwarm = nextSwarm }
+        if nextSwarm != agySwarm {
+            agySwarm = nextSwarm
+            swarmBoard.warm(swarm: nextSwarm)
+        }
+        let nextRunningForTurns =
+            next.rows.contains { $0.isRunning && !$0.isStale } || nextSwarm?.holdsActivePace == true
+        if nextRunningForTurns != isBackgroundWorkRunningForTurns {
+            isBackgroundWorkRunningForTurns = nextRunningForTurns
+        }
         notifyRunningBackgroundWorkIfNeeded()
     }
 

@@ -393,8 +393,18 @@ actor ChatConversationEngine {
     private var workflowRunEndCalls = 0
     private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
     private var agyBackgroundWork = AgyBackgroundWorkFollower()
+    private struct FollowedSwarmWorker {
+        let workerID: String
+        let path: String
+        var follower: TranscriptFollower
+        var reducer: AgyTranscriptReducer
+        var cachedTranscript: ChatTranscript?
+        var cachedIsWorking: Bool?
+    }
+
     private let agySwarmLimits: AgySwarmFollower.Limits
     private var agySwarm = AgySwarmFollower()
+    private var agyWorkerPeek: FollowedSwarmWorker?
     /// Where the Agent's own program keeps Transcripts, from a check of its process
     /// (ADR 0034): Claude Code's config dir, or Pi's or Oh My Pi's sessions folder.
     /// Nil looks in the Host's default place.
@@ -1034,8 +1044,9 @@ actor ChatConversationEngine {
         return agySwarm.snapshot(isLive: false, at: date)
     }
 
-    /// Reads the tail window of one Swarm member's `transcript_full.jsonl` on
-    /// demand for the Swarm sheet's read-only worker conversation peek.
+    /// Reads and incrementally follows the tail window of one Swarm member's
+    /// `transcript_full.jsonl` on demand for the Swarm sheet's read-only worker
+    /// conversation peek.
     func agySwarmTranscript(
         of conversationID: String, isWorking: Bool
     ) async -> Result<ChatTranscript, ChatToolOutputFailure> {
@@ -1052,14 +1063,52 @@ actor ChatConversationEngine {
             inFolder: AgyTranscriptLocator.folder(in: root, id: workerID))
         guard RemoteFilePath.isAcceptable(workerPath) else { return .failure(.gone) }
         do {
+            if var peek = agyWorkerPeek, peek.workerID == workerID, peek.path == workerPath {
+                switch try await peek.follower.poll(files) {
+                case .unchanged:
+                    if let cached = peek.cachedTranscript, peek.cachedIsWorking == isWorking {
+                        agyWorkerPeek = peek
+                        return .success(cached)
+                    }
+                case .appended(let lines):
+                    peek.reducer.append(lines)
+                    peek.cachedTranscript = nil
+                case .reset(let lines, _):
+                    peek.reducer = AgyTranscriptReducer()
+                    peek.reducer.append(lines)
+                    peek.cachedTranscript = nil
+                case .missing:
+                    agyWorkerPeek = nil
+                    return .failure(.gone)
+                }
+                var projectionContext = ChatProjectionContext(activity: isWorking ? .working : .idle)
+                projectionContext.windowStart = peek.follower.windowStart ?? 0
+                let built = peek.reducer.transcript(projectionContext)
+                peek.cachedTranscript = built
+                peek.cachedIsWorking = isWorking
+                agyWorkerPeek = peek
+                return .success(built)
+            }
+
             var follower = TranscriptFollower(
                 path: workerPath, limits: adapter.limits, identity: adapter.identity)
-            guard let lines = try await follower.open(files) else { return .failure(.gone) }
+            guard let lines = try await follower.open(files) else {
+                agyWorkerPeek = nil
+                return .failure(.gone)
+            }
             var workerReducer = AgyTranscriptReducer()
             workerReducer.append(lines)
             var projectionContext = ChatProjectionContext(activity: isWorking ? .working : .idle)
             projectionContext.windowStart = follower.windowStart ?? 0
-            return .success(workerReducer.transcript(projectionContext))
+            let built = workerReducer.transcript(projectionContext)
+            agyWorkerPeek = FollowedSwarmWorker(
+                workerID: workerID,
+                path: workerPath,
+                follower: follower,
+                reducer: workerReducer,
+                cachedTranscript: built,
+                cachedIsWorking: isWorking)
+            return .success(built)
         } catch {
             return .failure(
                 .unreadable(
