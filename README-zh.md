@@ -134,8 +134,13 @@ tmux Host（macOS 与 Linux 上的 tmux >= 3.3）同样需手动添加，并确�
 
 ## 添加机器
 
-在运行 herdr 的 macOS 或 Linux 机器上（Node >= 20、herdr >= 0.7.5、已启用 OpenSSH 服务器
-—— macOS 上是 **系统设置 > 通用 > 共享 > 远程登录**）：
+Heeler 通过 SSH 连接每一台机器，所以先开启机器上的 OpenSSH 服务器（macOS 上是
+**系统设置 > 通用 > 共享 > 远程登录**）。运行 Herdr TUI 的机器可以扫码配对；任何机器，
+包括运行 Herdr 桌面端或 tmux 的机器，都可以通过地址添加。
+
+### 扫描 Pairing Code（Herdr TUI）
+
+在运行 herdr 的 macOS 或 Linux 机器上（Node >= 20、herdr >= 0.7.5）：
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
@@ -146,6 +151,18 @@ herdr plugin action invoke heeler.pair
 host key 指纹和 SSH 密钥注册全部由配对码承载。在应用里为该 Host 启用通知
 后，同一个[插件](plugin/README.md)负责投递加密通知。完整步骤、弹窗按键和排错
 方法见[扫码配对指南](https://docs.heeler.bybee.dev/zh/pairing)。
+
+### 输入地址（Herdr TUI、Herdr 桌面端、tmux）
+
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。
+2. 输入 **Address** 和 SSH **User**，选择 **Device Key**、**RSA Key** 或 **Password**，
+   然后轻点 **Connect** 并核对 Host 的密钥指纹。
+3. Heeler 会列出这台机器上运行的内容：Herdr TUI、herdr-core 和每个 tmux 服务器。
+   勾选需要的项目，然后添加 Host。
+
+一个 Host 可以同时带其中的多个。之后要再添加，打开该 Host 并轻点 **Scan Again**。
+完整步骤见[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core)和[连接 tmux](https://docs.heeler.bybee.dev/zh/tmux)，
+Windows 原生机器见 [Windows 设置指南](docs/guides/zh/windows-setup.md)。
 
 ## 从其他应用打开 Agent
 

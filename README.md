@@ -153,8 +153,14 @@ or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
 
 ## Adding a machine
 
-On a macOS or Linux machine running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server on —
-macOS: **System Settings > General > Sharing > Remote Login**):
+Heeler reaches every machine over SSH, so turn on its OpenSSH server first
+(macOS: **System Settings > General > Sharing > Remote Login**). A machine
+running Herdr TUI can pair with a QR code. Any machine, including one running
+the Herdr desktop app or tmux, can be added by its address.
+
+### Scan a Pairing Code (Herdr TUI)
+
+On a macOS or Linux machine running herdr (Node >= 20, herdr >= 0.7.5):
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
@@ -166,6 +172,22 @@ code carries the addresses, the host key fingerprint, and SSH key enrollment.
 The same [plugin](plugin/README.md) delivers the encrypted notifications once
 you enable them for the Host in the app. For every step, the popup's keys, and
 troubleshooting, see the [pairing guide](https://docs.heeler.bybee.dev/pairing).
+
+### Enter the address (Herdr TUI, Herdr desktop app, tmux)
+
+1. In **Hosts**, tap **+**, or **Add Manually** when the list is empty.
+2. Enter the **Address** and your SSH **User**, choose **Device Key**,
+   **RSA Key**, or **Password**, then tap **Connect** and confirm the Host's
+   key fingerprint.
+3. Heeler lists what the machine runs: Herdr TUI, herdr-core, and each tmux
+   server. Check the ones you want and add the Host.
+
+One Host can carry several of them. To add another later, open the Host and
+tap **Scan Again**. For the full steps, see
+[Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) and
+[Connect tmux](https://docs.heeler.bybee.dev/tmux), or the
+[Windows setup guide](docs/guides/windows-setup.md) for a native Windows
+machine.
 
 ## Opening an Agent from another app
 

@@ -141,8 +141,13 @@ tmux 主機（macOS 與 Linux 上的 tmux >= 3.3）同樣需手動新增，並�
 
 ## 新增機器
 
-在執行 herdr 的 macOS 或 Linux 機器上（Node >= 20、herdr >= 0.7.5、已開啟 OpenSSH 伺服器——
-macOS：**系統設定 > 一般 > 共享 > 遠端登入**）：
+Heeler 透過 SSH 連線到每一台機器，所以請先開啟機器上的 OpenSSH 伺服器
+（macOS：**系統設定 > 一般 > 共享 > 遠端登入**）。執行 Herdr TUI 的機器可以掃碼配對；
+任何機器，包括執行 Herdr 桌面應用程式或 tmux 的機器，都可以透過位址新增。
+
+### 掃描配對碼（Herdr TUI）
+
+在執行 herdr 的 macOS 或 Linux 機器上（Node >= 20、herdr >= 0.7.5）：
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
@@ -153,6 +158,19 @@ herdr plugin action invoke heeler.pair
 主機金鑰指紋與 SSH 金鑰註冊資訊。你在應用程式中為該主機啟用通知後，
 同一個[外掛](plugin/README.md)就會傳送加密通知。每個步驟、彈出視窗中的
 按鍵以及疑難排解，請參閱[配對指南](https://docs.heeler.bybee.dev/pairing)。
+
+### 輸入位址（Herdr TUI、Herdr 桌面應用程式、tmux）
+
+1. 在**主機**分頁點一下 **+**，清單為空時點一下**手動新增**。
+2. 輸入**位址**和 SSH **使用者**，選擇**裝置金鑰**、**RSA 金鑰**或**密碼**，
+   然後連線並確認主機的金鑰指紋。
+3. Heeler 會列出這台機器上執行的項目：Herdr TUI、herdr-core 和每個 tmux 伺服器。
+   勾選需要的項目，然後新增主機。
+
+一台主機可以同時使用其中多個。之後要再新增，請開啟該主機並點一下**重新掃描**。
+完整步驟請參閱[連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core)與
+[連線到 tmux](https://docs.heeler.bybee.dev/tmux)，原生 Windows 機器請參閱
+[Windows 設定指南](docs/guides/windows-setup.md)。
 
 ## 從其他應用程式開啟 Agent
 

@@ -101,7 +101,11 @@ Host には、自宅では LAN のアドレス、外出先では Overlay Network
 
 ## マシンの追加
 
-herdr を実行している macOS または Linux のマシン上で（Node >= 20、herdr >= 0.7.5、OpenSSH サーバーが有効。macOS では **システム設定 > 一般 > 共有 > リモートログイン**）、次を実行します。
+Heeler はすべてのマシンに SSH で接続するため、まずマシンの OpenSSH サーバーを有効にしてください（macOS では **システム設定 > 一般 > 共有 > リモートログイン**）。Herdr TUI を実行しているマシンは QR コードでペアリングできます。Herdr デスクトップアプリや tmux を実行しているマシンを含め、どのマシンもアドレスを入力して追加できます。
+
+### Pairing Code をスキャンする（Herdr TUI）
+
+herdr を実行している macOS または Linux のマシン上で（Node >= 20、herdr >= 0.7.5）、次を実行します。
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
@@ -109,6 +113,14 @@ herdr plugin action invoke heeler.pair
 ```
 
 表示された Pairing Code の QR をスキャンすると、そのマシンが Host として追加されます。コードには、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録情報が含まれています。アプリでその Host の通知を有効にすると、同じ[プラグイン](plugin/README.md)が暗号化された通知を配信します。すべての手順、ポップアップのキー、トラブルシューティングについては、[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)をご覧ください。
+
+### アドレスを入力する（Herdr TUI、Herdr デスクトップアプリ、tmux）
+
+1. **Hosts** で **+** をタップします。リストが空の場合は **Add Manually** をタップします。
+2. **Address** と SSH の **User** を入力し、**Device Key**、**RSA Key**、**Password** のいずれかを選んで **Connect** をタップし、Host の鍵のフィンガープリントを確認します。
+3. Heeler がそのマシンで実行中のもの（Herdr TUI、herdr-core、各 tmux サーバー）を一覧表示します。使いたいものにチェックを入れて Host を追加します。
+
+1 つの Host でこれらを複数同時に使えます。あとから追加するには、Host を開いて **Scan Again** をタップします。詳しい手順は [herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core)と [tmux に接続する](https://docs.heeler.bybee.dev/tmux)を、ネイティブの Windows マシンについては [Windows のセットアップガイド](docs/guides/windows-setup.md)をご覧ください。
 
 ## 別のアプリから Agent を開く
 
