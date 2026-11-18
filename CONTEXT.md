@@ -573,11 +573,13 @@ says why instead, since its prompt would act on those keys.
 _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Background Work**:
-The Subagents, Workflows and non-daemon background commands an Agent runs in
-the background (Claude Code Subagents and Workflows; Antigravity CLI Subagents,
-Workflows and background commands), which Chat lists over the Composer from
-their launch and end records in the Transcript and, for a Claude Code Workflow,
-its journal and run file beside it. Running work comes first; finished work
+The Subagents, Workflows and background commands an Agent runs in the
+background (Claude Code Subagents, Workflows, background commands and
+Monitors; Antigravity CLI Subagents, Workflows and non-daemon background
+commands), which Chat lists over the Composer from their launch and end
+records in the Transcript and, for a Claude Code Workflow, its journal and run
+file beside it. Claude Code records nothing that tells a server from a command
+that will end, so each of its background commands is listed. Running work comes first; finished work
 stays listed until the user's next prompt, and the strip over the Composer hides
 once both the foreground turn and all Background Work have ended. Chat only
 shows it and stops none of it. A Subagent is one background agent; a Workflow is

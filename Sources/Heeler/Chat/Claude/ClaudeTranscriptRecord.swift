@@ -227,7 +227,13 @@ struct ClaudeToolUseResult: Sendable, Equatable {
     /// Bash `stdout`, then `stderr`, capped.
     var commandOutput: ChatToolPreview?
     var isInterrupted = false
+    /// The task a Bash or PowerShell call left running in the background:
+    /// asked to, timed out, or moved there by the user or the program.
     var backgroundTaskID: String?
+    /// Monitor: how long until the program stops it, and whether it is one
+    /// that never expires.
+    var monitorTimeoutMilliseconds: Int?
+    var isPersistentMonitor = false
     var persistedOutputPath: String?
     /// Write `create`/`update`; Read `text`/`image`/…
     var type: String?
@@ -517,6 +523,8 @@ extension ClaudeToolUseResult {
         }
         isInterrupted = raw.interrupted ?? false
         backgroundTaskID = raw.backgroundTaskId
+        monitorTimeoutMilliseconds = raw.timeoutMs
+        isPersistentMonitor = raw.persistent ?? false
         persistedOutputPath = raw.persistedOutputPath
         type = raw.type
         filePath = raw.filePath
@@ -923,6 +931,8 @@ private struct RawToolUseResult: Decodable {
     var stderr: String?
     var interrupted: Bool?
     var backgroundTaskId: String?
+    var timeoutMs: Int?
+    var persistent: Bool?
     var persistedOutputPath: String?
     var type: String?
     var filePath: String?
@@ -944,6 +954,7 @@ private struct RawToolUseResult: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case stdout, stderr, interrupted, backgroundTaskId, persistedOutputPath, type, filePath
+        case timeoutMs, persistent
         case content, structuredPatch, bashEditDiff, status, agentId, answers, plan, newTodos
         case taskId, taskType, workflowName, runId, summary, name
         case taskSnakeID = "task_id"
@@ -956,6 +967,8 @@ private struct RawToolUseResult: Decodable {
         stderr = c.lenient(String.self, .stderr)
         interrupted = c.lenient(Bool.self, .interrupted)
         backgroundTaskId = c.lenient(String.self, .backgroundTaskId)
+        timeoutMs = c.lenient(Int.self, .timeoutMs)
+        persistent = c.lenient(Bool.self, .persistent)
         persistedOutputPath = c.lenient(String.self, .persistedOutputPath)
         type = c.lenient(String.self, .type)
         filePath = c.lenient(String.self, .filePath)
