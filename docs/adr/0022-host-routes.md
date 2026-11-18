@@ -4,6 +4,12 @@ status: proposed
 
 # Separate a Host from the Routes that reach it
 
+Amended by [ADR 0058](0058-a-hosts-servers-share-one-route.md): the
+connections of one Host hold one Route, so the first of its Servers to dial
+races and the rest follow it. A Host on a Route through an Overlay Network or
+a Jump Host moves to a direct Route that comes into reach. The In Use and
+Failed marks are on Host detail.
+
 A Host used to carry exactly one way to reach it: an address and port,
 optionally a Jump Host, optionally an Overlay Network (ADR 0021). The same
 machine is often reachable in different ways depending on where the device
