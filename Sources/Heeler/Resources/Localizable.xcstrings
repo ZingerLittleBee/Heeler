@@ -22794,6 +22794,28 @@
         }
       }
     },
+    "Every server on %@ uses the first route that reaches it. Heeler moves to a direct route when one comes into reach." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上のすべてのサーバーは、最初にホストへ到達した経路を使用します。直接の経路に到達できるようになると、Heeler はその経路に切り替えます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有服务器都使用最先连上主机的那条线路。有直连线路可达时，Heeler 会切换过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有伺服器都使用第一個能連到主機的路由。有直接連線的路由可用時，Heeler 會切換過去。"
+          }
+        }
+      }
+    },
     "Exit %lld" : {
       "localizations" : {
         "ja" : {
@@ -27919,7 +27941,7 @@
         }
       }
     },
-    "Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off." : {},
+    "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on %@. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
         "ja" : {
@@ -28031,46 +28053,52 @@
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host." : {
+    "Heeler tried all %lld routes and none reached %@. Check that it is awake and on a network this device can reach." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler tried all %1$lld routes and none reached %2$@. Check that it is awake and on a network this device can reach."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを採用します。"
+            "value" : "Heeler は %1$lld 本の経路をすべて試しましたが、%2$@ には到達できませんでした。起動中であること、このデバイスから到達できるネットワーク上にあることを確認してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。"
+            "value" : "Heeler 尝试了全部 %1$lld 条线路，都无法连接到 %2$@。请确认它已唤醒，并且所在的网络可从此设备访问。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。"
+            "value" : "Heeler 嘗試了全部 %1$lld 條路由，都無法連到 %2$@。請確認它處於喚醒狀態，且所在的網路可從此裝置連上。"
           }
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later." : {
+    "Heeler tries every route when it connects, and every server on the Host uses the first that reaches it. Routes over this device's own network start first, and Heeler moves to one of them when it comes into reach." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを維持します。このデバイス自身のネットワークを使う経路が最初に開始し、残りは少し後に開始します。"
+            "value" : "Heeler は接続時にすべての経路を試み、ホスト上のすべてのサーバーが最初に到達した経路を使用します。このデバイス自身のネットワークを使う経路が最初に開始し、後からそのような経路に到達できるようになると、Heeler はそちらに切り替えます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。使用此设备自身网络的线路会最先开始尝试，其余线路稍后开始。"
+            "value" : "Heeler 连接时会尝试所有线路，主机上的所有服务器都使用最先连上的那条。使用此设备自身网络的线路会最先开始尝试；之后这类线路一旦可达，Heeler 会切换过去。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。經由此裝置自身網路的路由會先啟動，其餘的稍後啟動。"
+            "value" : "Heeler 連線時會嘗試所有路由，主機上的所有伺服器都使用第一個能連上的路由。經由此裝置自身網路的路由會先啟動；之後這類路由一旦可用，Heeler 會切換過去。"
           }
         }
       }
@@ -37905,7 +37933,6 @@
         }
       }
     },
-    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {
@@ -48640,28 +48667,6 @@
         }
       }
     },
-    "Server Kind" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバーの種類"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器类型"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "伺服器類型"
-          }
-        }
-      }
-    },
     "Server Kind detection" : {
       "localizations" : {
         "ja" : {
@@ -48815,28 +48820,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "服務失敗"
-          }
-        }
-      }
-    },
-    "Session" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "セッション"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作階段"
           }
         }
       }
@@ -49681,7 +49664,6 @@
         }
       }
     },
-    "Show in Heeler" : {},
     "Show keyboard" : {
       "localizations" : {
         "ja" : {
@@ -51056,28 +51038,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "片語無法使用"
-          }
-        }
-      }
-    },
-    "Socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ソケット"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Socket"
           }
         }
       }

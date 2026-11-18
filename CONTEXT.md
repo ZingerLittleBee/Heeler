@@ -5,14 +5,16 @@ A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes and its account.
+A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes with the state of its connection and its Reconnect, and its account.
 _Avoid_: server, machine, connection
 
 **Server**:
 One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
-session, or a tmux server. Each is on or off on this device (Show in Heeler).
-One that is on has its own connection, Agents, Terminals, notifications and
-settings, and its own page under Host detail. A look at the Host finds its
+session, or a tmux server. Each is on or off on this device, by its switch in
+Host detail. One that is on has its own connection, on the Route its Host's
+connections share (ADR 0058), its own Agents, Terminals, notifications and
+settings, and its own page under Host detail, which says nothing of the
+connection. A look at the Host finds its
 Servers; ones found after the Host was added arrive off. In code, and wherever
 this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
 Server that is on: the catalog still stores one `Host` record for each (ADR
@@ -50,10 +52,13 @@ _Avoid_: herdr-app (its executable), desktop (alone)
 One way to reach a Host: an address and port, optionally resolved from a Jump
 Host, with the first hop optionally carried by an Overlay Network. A Host lists
 its Routes in order; the first is its primary Route, the address shown for it.
-Every connection races the Host's Routes and keeps the first that reaches the
-Host, Routes over the device's own network a moment ahead of the rest — no
-rule picks a Route by Wi-Fi name or location (ADR 0022). A Route that reaches a
-machine presenting another key fails; it is not the Host.
+A Host's connections hold one Route. The first to dial races the Host's Routes
+and keeps the first that reaches the Host, Routes over the device's own network
+a moment ahead of the rest, and the Host's other Servers follow it. No rule
+picks a Route by Wi-Fi name or location (ADR 0022). A Host on a Route through
+an Overlay Network or a Jump Host moves to a direct Route that comes into
+reach, when the device's network changes or the app returns (ADR 0058). A Route
+that reaches a machine presenting another key fails; it is not the Host.
 _Avoid_: path, connection, profile
 
 **Jump Host**:
@@ -734,10 +739,10 @@ it.
 It exists so Host Connection Status can report running work honestly without
 the app withdrawing the explanation at the moment the user is reading it: a
 Host re-proved on a foreground return is Connecting, and every status-derived
-surface but the Server's page keeps presenting the Standing Failure until the
-activation answers. The Server's page, where the user asks for Reconnect, reads only
-Connecting… once the activation begins, since there the old failure read as the
-new attempt's own. The failure remains stored and continues to render on Agent
+surface but Host detail's Routes keeps presenting the Standing Failure until the
+activation answers. Host detail's Routes, where the user asks for Reconnect, show
+only that the Host is connecting once the activation begins, since there the old
+failure read as the new attempt's own. The failure remains stored and continues to render on Agent
 detail, the Console, and the Hosts list.
 Only a failure that reached Failed becomes standing. A retryable failure inside
 a recovery cycle does not, because nothing stopped and Reconnecting already
@@ -765,7 +770,7 @@ instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
 Detail with it. A Hosts list row names a problem by its Summary alone, beside
-Retry once the Host stops; Host detail names it against the Server that stopped, and that Server's page shows the rest. A first-hop failure is presented against the Jump Host; where no
+Retry once the Host stops; Host detail names a failure of the connection under its Routes, each Route with its own reason, and a Server's own failure against that Server, whose checks show the rest (ADR 0058). A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the
@@ -774,12 +779,13 @@ _Avoid_: Connection Guidance, error message, connection error, retry hint,
 actionable error
 
 **Reconnect Request**:
-A user's explicit Reconnect press on a Server's page, and the brief window in which
-the app shows that press being served. It is feedback about a request, not a
-Host Connection Status: it is never derived from the status and never changes
-it, an automatic Reconnecting is not a Reconnect Request, and a press in flight
-suppresses that page's failure footer while driving the button's own
-progress (#160).
+A user's explicit Reconnect press in Host detail, which dials every Server of
+the Host that is on, and the brief window in which the app shows that press
+being served. It is feedback about a request, not a Host Connection Status: it
+is never derived from the status and never changes it, an automatic
+Reconnecting is not a Reconnect Request, and a press in flight suppresses the
+Routes' marks and failure footer while driving the header's own progress
+(#160, ADR 0058).
 _Avoid_: retry, reconnecting, manual reconnect state
 
 **Background Grace Period**:

@@ -37,13 +37,13 @@ Heeler looks once through your login shell without starting anything and lists w
 | tmux alongside Herdr TUI or herdr-core | Check each one you want in Heeler. They are all Servers of this one Host. |
 | No running server | Add the Host anyway. Start tmux, open the Host, tap **Scan Again**, and turn on **tmux**. |
 
-Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its connection, checks and Host Helper. To turn on a socket before its server runs, tap **Add by Name…** on the Host's page, choose **tmux**, type the `-L <name>` socket name (blank for `default`), and tap **Turn On**. Custom socket file paths (`tmux -S <path>`) cannot be typed.
+Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its checks and Host Helper. The connection is the Host's, under **Routes**. To turn on a socket before its server runs, tap **Add by Name…** on the Host's page, choose **tmux**, type the `-L <name>` socket name (blank for `default`), and tap **Turn On**. Custom socket file paths (`tmux -S <path>`) cannot be typed.
 
 | The Host's page | Add by Name |
 | --- | --- |
-| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux with their switches on, Scan Again, Add by Name…, Routes, and Account"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
+| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux running with their switches on, Scan Again, Add by Name…, Routes with the route in use, and Plugin & Helper"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
 
-**It worked if** the Host's row shows a green **tmux** tag, and the Server's page shows **Server Kind** as `tmux` with the version, **Socket** with your socket name, and **tmux server running** passing.
+**It worked if** the Host's row shows a green **tmux** tag, the Host's page lists tmux as **Running** with its version, and the Server's page shows **tmux server running** passing.
 
 <a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, tmux, and herdr-core"></a>
 

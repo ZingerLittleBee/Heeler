@@ -19,20 +19,23 @@ Adding a Host asks for its first address on the first step, with the port, Jump 
 
 ## How Heeler picks a route
 
-- Each time it connects, Heeler races the Host's routes with staggered starts and keeps the first that reaches it.
+- Each time it connects, Heeler races the Host's routes with staggered starts and keeps the first that reaches it. Every Server on the Host uses that one route.
 - **Direct** routes without a Jump Host start first. Overlay network and Jump Host routes start a moment later, or right away once every direct route has failed. At home the LAN address can win before an overlay network ever starts.
 - The order of the list does not decide which route wins. The first route is only the address shown for the Host in the Hosts list.
-- A connection keeps its route until it ends. If you move from Wi-Fi to cellular, the next connection picks again.
+- The Host keeps its route for as long as it stays connected. If you move from Wi-Fi to cellular, it reconnects and picks again.
+- When the Host is connected through an overlay network or a Jump Host and a **Direct** route comes into reach, such as its LAN address when you get home, Heeler moves to the direct route by itself. It checks when your iPhone or iPad changes network and when you return to Heeler. If the Mac wakes up or joins the Wi-Fi only later, tap **Reconnect** to pick again.
 
 ## See which route is in use
 
-Open the Host from **Hosts** and tap one of its Servers. Each Server keeps a connection of its own, and the card under **Show in Heeler** shows it:
+Open the Host from **Hosts**. **Routes** shows how Heeler reaches it, for all of its Servers at once:
 
-- **Connected** names the route it used, and that route is marked **In Use** under **Routes**. Tap ↻ to reconnect.
-- While Heeler is connecting, tap ■ to stop trying. The Server stays paused until you tap **Reconnect**.
-- **Can't Connect** means no route reached the Host. Each route is marked **Failed** with its own reason, such as a timeout or an overlay network that isn't connected.
+- The route the Host is connected through is marked **In Use**. Tap **Reconnect** beside **Routes** to try every route again.
+- While Heeler is connecting, tap **Stop** to stop trying. The Host's Servers stay paused until you tap **Reconnect**.
+- When no route reached the Host, each route is marked **Failed** with its own reason, such as a timeout or an overlay network that isn't connected.
 
-<a href="images/hosts/routes-in-use.png"><img src="images/hosts/routes-in-use.png" width="300" alt="Herdr TUI Server page showing Connected on 127.0.0.1 Direct, with 127.0.0.1 marked In Use and 192.168.1.10 not selected under Routes"></a>
+A Server's own page holds that Server's checks, plugin and Host Helper. The connection is always shown here, on the Host's page.
+
+<a href="images/hosts/routes-in-use.png"><img src="images/hosts/routes-in-use.png" width="300" alt="Host page for Studio Mac with two Servers on and, under Routes, a Reconnect button, 127.0.0.1 marked In Use and 192.168.1.10 not in use"></a>
 
 Here the `127.0.0.1` **Direct** route is **In Use**, and the `192.168.1.10` **Direct** route is not selected. Tap the image to enlarge it.
 
@@ -46,7 +49,8 @@ Heeler confirms a Host's key once, and every route has to reach the machine with
 
 ## If a route always fails
 
-- Read its reason under **Routes** on the Server's page.
+- Read its reason under **Routes** on the Host's page.
+- **The Jump Host's key is not trusted** or **The host key is not trusted** means nobody has confirmed that key on this iPhone or iPad yet. The Host's page asks you to confirm its fingerprint, and reconnects once you trust it. If you dismissed the question, tap **Scan Again** to see it again.
 - For an overlay network route, check that the network shows as connected in **Settings > Overlay Networks** and that the Mac is online in it.
 - For a Jump Host route, check that you can reach the Jump Host and that it accepts the same Device Key, RSA Key, or password as the Host. See [the Jump Host guide](vps-jump-host-setup.md).
 - For a LAN address, it only answers on that network. Away from home it fails, and another route connects instead.
