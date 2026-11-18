@@ -7,6 +7,7 @@ Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host
 
 ## Before you start
 
+- A Heeler version after 0.1.20.
 - Rex running on the Host under the account you will sign in as over SSH. Heeler connects only to a Rex server that is already running and never starts one.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for Rex.
 - An SSH server that allows forwarding to a Unix socket, as OpenSSH does by default. If its `sshd_config` sets `AllowStreamLocalForwarding no` or `AllowTcpForwarding no`, Heeler cannot reach Rex.
@@ -18,7 +19,7 @@ Heeler never starts Rex when connecting or checking, and never runs the `rex` co
 
 ### 1. Connect
 
-1. In **Hosts**, tap **+**, or **Add Manually** when empty. A [Pairing Code](pairing.md) always adds a Herdr TUI Server.
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. You can [scan a Pairing Code](pairing.md#pair-a-machine-without-herdr) instead, which skips this step and goes straight to [choosing the Servers](#2-choose-the-servers).
 2. Enter the **Address** and the SSH **User** of the account that runs Rex. **More Options** has the port, a Jump Host and an overlay network.
 3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
 4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
@@ -143,7 +144,7 @@ Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extens
 
 - **Status, Chat and attachments only:** no Changes, Skills, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
 - **Nothing started, renamed, or closed:** New Agent, New Terminal, New Workspace, Rename, and Close are not offered. Do these in Rex; Heeler shows the result.
-- **No Worktrees, Host Helper, Pairing Code, or Add by Name** for Rex.
+- **No Worktrees, Host Helper, or Add by Name** for Rex.
 
 ## Known limits
 

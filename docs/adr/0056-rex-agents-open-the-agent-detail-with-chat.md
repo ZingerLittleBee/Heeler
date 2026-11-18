@@ -122,7 +122,9 @@ the code follows them:
   through `RexHostStaging`, a seam of their own.)
 - **Still out.** Notifications, Live Activities, widgets, Usage, Accounts,
   background refresh, the plugin, the Host Helper and Pairing Codes leave Rex
-  out by Server Kind, as before.
+  out by Server Kind, as before. (Updated 2026-11-18: Pairing no longer does.
+  Since [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md)
+  it ends on Add Host's Servers step, which lists a Rex Server.)
 
 ## What runs over SSH
 

@@ -8,6 +8,7 @@
 
 ## 开始之前
 
+- 0.1.20 之后的 Heeler 版本。
 - Host 上的 Rex 以你通过 SSH 登录的账户运行。Heeler 只连接已在运行的 Rex 服务端，绝不会自行启动。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。Rex 不支持原生 Windows。
 - SSH 服务端允许转发到 Unix socket，OpenSSH 默认即允许。如果它的 `sshd_config` 设置了 `AllowStreamLocalForwarding no` 或 `AllowTcpForwarding no`，Heeler 将无法连接 Rex。
@@ -19,7 +20,7 @@ Heeler 在连接或检查时绝不会启动 Rex，也从不运行 `rex` 命令�
 
 ### 1. 连接
 
-1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Server。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。也可以改为[扫描配对码](pairing.md#配对没有-herdr-的机器)，这样会跳过本步骤，直接进入[选择 Server](#2-选择-server)。
 2. 输入 **Address**，并以运行 Rex 的账户作为 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
 3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
 4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
@@ -144,7 +145,7 @@ Pi 和 Oh My Pi 通过 Heeler 的扩展告诉 Chat 自己正处于哪个对话�
 
 - **只有状态、Chat 和附件：** Rex 没有 Changes、Skills、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
 - **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
-- **Rex 不支持 Worktrees、Host Helper、扫码配对与 Add by Name。**
+- **Rex 不支持 Worktrees、Host Helper 与 Add by Name。**
 
 ## 已知限制
 

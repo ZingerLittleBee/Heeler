@@ -38,7 +38,10 @@ detail.
 - Rex is an experimental Server Kind under ADR 0031's rules: a Host added by
   hand is confirmed once in Host detail and never switches kind, and a Pairing
   Code never adds one. (Amended 2026-11-16: a Rex Server is turned on, not
-  confirmed; see the update below.) A confirmed Rex Host persists in a defaults catalog of
+  confirmed; see the update below. Amended 2026-11-18: since
+  [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md)
+  Pairing ends on Add Host's Servers step, whose look lists a Rex Server like
+  any other.) A confirmed Rex Host persists in a defaults catalog of
   its own (`rexHosts`), which builds before this change never read, so they
   neither show nor rewrite its Hosts.
 - A Rex Host is one Rex server that is already running on a macOS or Linux
@@ -268,8 +271,9 @@ server did. Where Rex differs from tmux, this says how and why.
   directory. Agents, Chat,
   Composer, New Agent and New Terminal, notifications, Live Activities,
   widgets, background refresh, the plugin, the Host Helper and Pairing Codes
-  still leave Rex out. (Agents no longer do since ADR 0054, and Chat and the
-  Composer no longer do since ADR 0056.)
+  still leave Rex out. (Agents no longer do since ADR 0054, Chat and the
+  Composer no longer do since ADR 0056, and Pairing Codes no longer do since
+  ADR 0057.)
 
 For Rex this supersedes the confirmation in Host detail, "where none runs,
 Rex is not offered", and detection that offers Rex only for a usable socket.

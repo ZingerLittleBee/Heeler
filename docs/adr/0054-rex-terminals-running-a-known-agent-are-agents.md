@@ -113,7 +113,9 @@ is offered for Pi and Oh My Pi too.
 - **Still left out.** Notifications, Live Activities, widgets, Usage, Accounts,
   background refresh, the plugin, the Host Helper and Pairing Codes still pick
   their Hosts by kind and leave Rex out, so no code that walks every Agent acts
-  on a Rex one.
+  on a Rex one. (Updated 2026-11-18: Pairing no longer does. Since
+  [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md)
+  it ends on Add Host's Servers step, which lists a Rex Server.)
 
 ## Why
 
