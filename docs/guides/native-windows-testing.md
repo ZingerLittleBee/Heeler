@@ -460,9 +460,10 @@ the version under test.
 9. On the Host, tap **Add by Name…**, choose **herdr-core**, and enter a name with
    a space. Below the field the sheet says Heeler cannot use that session name on
    native Windows, and **Turn On** stays off. A Host no look has yet found on
-   Windows takes the name; turned on, that Server reads **Can't Connect** and
-   **This session name can't be used**, with the same note and one closing period,
-   and Rename and Worktrees are still not offered. Not run in this sheet: the
+   Windows takes the name; turned on, the Host reads **Can't Connect** in the Hosts
+   list and that Server's row on the Host's page reads **This session name can't
+   be used**. The Server's page gives the same note, with one closing period, under
+   its checks, and Rename and Worktrees are still not offered. Not run in this sheet: the
    recheck saw the same refusal in the earlier Edit Host form, ending in one period,
    with Save off, and the state after a refused name was saved was not seen.
 10. Install an agent the launch can find, with OpenCode too if you have it. New

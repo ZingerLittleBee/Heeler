@@ -88,6 +88,10 @@ struct SSHTransportSettings: Sendable {
     /// Where the Host's own key is trusted: by endpoint, or by the catalog
     /// Host every route reaches. Jump Hosts are always trusted by endpoint.
     var hostKeyTrust: HostKeyTrust = .endpoint
+    /// The catalog Host this connection is one of several to. Its dials then
+    /// take the one route those connections hold instead of each racing for
+    /// itself (ADR 0058). nil races every time.
+    var routeLease: HostRouteLease? = nil
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
     /// Explicit server selection; no fallback from a refused legacy socket.

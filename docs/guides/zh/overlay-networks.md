@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/overlay-networks.md at a76a7a53 -->
+<!-- Translated from docs/guides/overlay-networks.md at 7882049d -->
 
 # 通过 Overlay Network 连接 Heeler
 
@@ -95,7 +95,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 这里的 **Connected** 表示 Heeler 已加入网络，不代表 Host 正在使用它。请继续按下方步骤验证 Host 路由。网络名称已匿名化；你只需配置所选网络，不必同时添加三个。轻点图片可放大查看。
 
 1. 在 **Settings > Overlay Networks** 中，该网络显示为 **Connected**。
-2. 从 **Hosts** 打开目标 Host，轻点其中一个 Server，查看 **Routes** 下标记为 **In Use** 的路由，确认它使用的是本次要测试的 Overlay Network。如果其他路由胜出，这次连接不能证明目标 Overlay 路由可用。参见[查看当前使用的路由](host-routes.md#查看当前使用的路由)。
+2. 从 **Hosts** 打开目标 Host，查看 **Routes** 下标记为 **In Use** 的路由，确认它使用的是本次要测试的 Overlay Network。如果其他路由胜出，这次连接不能证明目标 Overlay 路由可用。参见[查看当前使用的路由](host-routes.md#查看当前使用的路由)。
 3. Host 各项检查全部通过，会话中的 Agent 或终端正常加载。
 4. 打开一个 **New Terminal**，运行 `pwd` 能输出 Mac 上的目录。测试时请新建终端，不要在正在运行的 Agent 终端里测试。
 5. 关闭手机 Wi-Fi，在蜂窝网络下重复上述测试，并再次检查 **In Use**。其他可用路由（例如跳板机或另一个 Overlay Network）仍可能胜出。

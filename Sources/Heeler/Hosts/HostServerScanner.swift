@@ -241,10 +241,11 @@ extension HostServerScanner.Failure {
 }
 
 extension TransportError {
-    /// The user was shown a key and declined it: the Host's, a Jump Host's one
-    /// hop earlier, or either on one of several Routes, whatever stopped the
-    /// others.
-    fileprivate var isDeclinedHostKey: Bool {
+    /// A key nobody confirmed stopped the dial: the user was shown it and
+    /// declined, or the dial was one that may not ask. The Host's, a Jump
+    /// Host's one hop earlier, or either on one of several Routes, whatever
+    /// stopped the others.
+    var isDeclinedHostKey: Bool {
         switch self {
         case .hostKeyRejected: true
         case .jumpHostFailed(let error): error.isDeclinedHostKey

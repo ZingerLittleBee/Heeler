@@ -411,17 +411,40 @@ actor HeelerSSHTransport: Transport {
     /// are cancelled, and only the winner authenticates against the Host.
     /// A Jump Host is authenticated on its own route, since nothing past it
     /// is reachable otherwise.
+    ///
+    /// A catalog Host with several routes races them only while no
+    /// connection to it stands: after that every dial takes the route those
+    /// connections hold (ADR 0058).
     static func connect(settings: SSHTransportSettings) async throws -> HeelerSSHTransport {
+        guard let lease = settings.routeLease, settings.routes.count > 1 else {
+            return try await dial(settings, following: nil).connection
+        }
+        return try await lease.leases.connect(
+            to: lease.host,
+            dial: { leased in try await dial(settings, following: leased) },
+            isAlive: { await $0.isConnected },
+            close: { try? await $0.close() })
+    }
+
+    /// One authenticated connection, and the index of the route it reached:
+    /// `leased` alone when the Host's connections hold a route, otherwise
+    /// whichever wins the race.
+    private static func dial(
+        _ settings: SSHTransportSettings, following leased: Int?
+    ) async throws -> (connection: HeelerSSHTransport, route: Int) {
         let gate = HostKeyVerificationGate()
         let connection: SSHConnection
-        let routeID: UUID?
+        let index: Int
         if settings.routes.count == 1, let route = settings.routes.first {
             connection = try await reach(route, settings: settings, gate: gate)
-            routeID = route.id
+            index = 0
+        } else if let leased, settings.routes.indices.contains(leased) {
+            connection = try await follow(leased, settings: settings, gate: gate)
+            index = leased
         } else {
             let won = try await race(settings: settings, gate: gate)
             connection = won.connection
-            routeID = settings.routes[won.index].id
+            index = won.index
         }
         do {
             try await authenticate(
@@ -433,7 +456,62 @@ actor HeelerSSHTransport: Transport {
             try? await connection.close(timeout: .seconds(2))
             throw mapConnect(error)
         }
-        return HeelerSSHTransport(connection: connection, settings: settings, routeID: routeID)
+        let transport = HeelerSSHTransport(
+            connection: connection, settings: settings, routeID: settings.routes[index].id)
+        return (transport, index)
+    }
+
+    /// The one route the Host's connections hold, as far as a verified host
+    /// key. Its failure is reported the way a race reports it, so a changed
+    /// key at an address that may name another machine stays excused and the
+    /// failure keeps the route's name.
+    private static func follow(
+        _ index: Int, settings: SSHTransportSettings, gate: HostKeyVerificationGate
+    ) async throws -> SSHConnection {
+        let route = settings.routes[index]
+        do {
+            return try await reach(route, settings: settings, gate: gate)
+        } catch {
+            let mapped = mapConnect(error)
+            if Task.isCancelled { throw TransportError.cancelled }
+            if case .cancelled = mapped { throw mapped }
+            throw TransportError.noRouteReached([
+                RouteFailure(
+                    route: route.label, mayNameAnotherMachine: route.mayNameAnotherMachine,
+                    error: mapped, routeID: route.id)
+            ])
+        }
+    }
+
+    /// How long a probe of faster routes waits on each of them (ADR 0058).
+    static let routeProbeTimeout: Duration = .seconds(5)
+
+    /// Which of `candidates`, indices into the settings' routes, presents the
+    /// Host's trusted key first; nil when none does. Nothing authenticates
+    /// and no connection is kept: it only says the route would carry a dial
+    /// now. An address another machine answers at fails its key and is not
+    /// reachable.
+    static func reachableRoute(
+        among candidates: [Int], settings: SSHTransportSettings
+    ) async -> Int? {
+        let candidates = candidates.filter(settings.routes.indices.contains)
+        guard !candidates.isEmpty else { return nil }
+        var probe = settings
+        probe.requestTimeout = min(settings.requestTimeout, routeProbeTimeout)
+        let gate = HostKeyVerificationGate()
+        let won = try? await RouteRace.first(
+            count: candidates.count,
+            isDeferred: { _ in false },
+            stagger: .zero,
+            attempt: { [probe] index in
+                try await reach(probe.routes[candidates[index]], settings: probe, gate: gate)
+            },
+            discard: { connection in
+                try? await connection.close(timeout: .seconds(2))
+            })
+        guard let won else { return nil }
+        try? await won.value.close(timeout: .seconds(2))
+        return candidates[won.index]
     }
 
     /// The winning route's index in `settings.routes` and its connection.

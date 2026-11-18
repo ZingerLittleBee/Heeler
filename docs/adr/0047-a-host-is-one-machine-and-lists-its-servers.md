@@ -10,6 +10,11 @@ on Add Host's last step, with the Servers the look found. Only a code with a
 Herdr Endpoint still adds its one Server. A code scanned for a Host in the
 catalog is also a way the user replaces its changed key.
 
+Amended by [ADR 0058](0058-a-hosts-servers-share-one-route.md): each Server
+still keeps its own connection, and the connections of one Host now hold one
+Route. A Server's page no longer shows the connection or a Show in Heeler
+switch; Host detail shows the connection under its Routes.
+
 ADR 0031 bound a Host to one Server Kind, so a machine that ran Herdr TUI and
 tmux was added twice, with the address, account, key and trust typed and
 confirmed each time, and showed as two rows nobody could tell were one

@@ -530,6 +530,65 @@ final class ConsoleStore {
         await task.value
     }
 
+    /// The device's network changed while the app is in front. Every live
+    /// connection is asked whether it survived, as on a foreground return:
+    /// one that did not would otherwise go on holding its Host's route until
+    /// its keepalive noticed (ADR 0058). Stopped Hosts are left alone.
+    func networkPathDidChange() async {
+        await enqueueLifecycleTransition { [self] in
+            guard isActive else { return }
+            let live = projections.values.filter { $0.status == .connected }
+            await withTaskGroup(of: Void.self) { group in
+                for projection in live {
+                    group.addTask { await projection.revalidate() }
+                }
+            }
+        }
+    }
+
+    /// A Server that just lost its connection puts the route in doubt for the
+    /// Host's other Servers, which share it (ADR 0058). Each is asked now
+    /// rather than at its next keepalive: until they notice, they hold the
+    /// route, and the Server reconnecting would follow it nowhere.
+    private func revalidateHostsLosingAServer(
+        from previous: [Host.ID: EventsSessionStatus],
+        to next: [Host.ID: EventsSessionStatus],
+        among current: [any ConsoleHostProjection]
+    ) {
+        let dropped = current.filter { projection in
+            guard previous[projection.host.id] == .connected,
+                case .reconnecting = next[projection.host.id]
+            else { return false }
+            return true
+        }
+        guard !dropped.isEmpty else { return }
+        let machines = Set(dropped.map { HostMachine.Connection($0.host) })
+        for projection in current
+        where next[projection.host.id] == .connected
+            && machines.contains(HostMachine.Connection(projection.host))
+        {
+            Task { await projection.revalidate() }
+        }
+    }
+
+    /// Reconnect on Host detail: the Host forgets its route and every Server
+    /// that is on dials again, so the routes race once and the Servers settle
+    /// on the winner together (ADR 0058).
+    func reconnect(_ machine: HostMachine, leases: HostRouteLeases = .shared) async {
+        await leases.release(machine.id)
+        for server in machine.servers {
+            await retryHost(server.id)
+        }
+    }
+
+    /// Stop on Host detail: every Server of the Host that is still dialing
+    /// stops at once. A connected one is left alone.
+    func stopConnecting(_ machine: HostMachine) async {
+        for server in machine.servers {
+            await cancelHostConnection(server.id)
+        }
+    }
+
     func retryFailedHosts() async {
         for projection in projections.values {
             await projection.retry()
@@ -2215,6 +2274,7 @@ final class ConsoleStore {
                 (projection.host.id, projection.status ?? .connecting)
             })
         if hostStatuses != nextStatuses { hostStatuses = nextStatuses }
+        revalidateHostsLosingAServer(from: previousStatuses, to: nextStatuses, among: current)
         for (id, store) in agentUsageStores
         where nextStatuses[id] == .connected && previousStatuses[id] != .connected {
             store.connectionBecameUsable()
@@ -3689,6 +3749,24 @@ extension ConsoleStore {
             try await connector.connectTmux(
                 settings: consoleSettings(
                     for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+        }
+    }
+
+    /// Which of a Host's routes, by index, reaches it now, under the
+    /// Console's trust rules: a key that still needs trusting is declined
+    /// (ADR 0058).
+    static func sshRouteProbe(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host, [Int]) async -> Int? {
+        { host, candidates in
+            guard
+                let settings = try? consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
+            else { return nil }
+            return await connector.reachableRoute(among: candidates, settings: settings)
         }
     }
 

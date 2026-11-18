@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/cloudflare-tunnel.md at 5171f178 -->
+<!-- Translated from docs/guides/cloudflare-tunnel.md at 7882049d -->
 
 # 通过 Cloudflare Tunnel 连接 Mac
 
@@ -78,7 +78,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 ## 验证连接
 
 1. Cloudflare One Agent 显示 **Connected**，且 **Networking > Tunnels** 中的隧道为 **Healthy**。
-2. 从 **Hosts** 打开该 Host，轻点其中一个 Server，确认标记为 **In Use** 的路由就是指向 Mac 私有地址的那一条。
+2. 从 **Hosts** 打开该 Host，确认 **Routes** 下标记为 **In Use** 的路由就是指向 Mac 私有地址的那一条。
 3. Host 各项检查全部通过，会话中的 Agent 或终端正常加载。
 4. 打开一个 **New Terminal**，运行 `pwd` 能输出 Mac 上的目录。
 5. 关闭手机 Wi-Fi，在蜂窝网络下重复上述测试，并再次检查 **In Use**。

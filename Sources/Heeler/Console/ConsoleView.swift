@@ -505,6 +505,7 @@ struct ConsoleView: View {
             harnessEdits: console,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
+            reconnectHost: { await reconnectMachine($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
             origin: origin,
             onDone: onDone)
@@ -2750,6 +2751,18 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
+    }
+
+    /// Host detail's Reconnect: the Host's Servers dial again together, on
+    /// whichever route wins (ADR 0058). A second press while one is being
+    /// served does nothing.
+    private func reconnectMachine(_ machine: HostMachine) async {
+        let servers = Set(machine.servers.map(\.id))
+        guard manualReconnectInFlightHostIDs.isDisjoint(with: servers) else { return }
+        manualReconnectInFlightHostIDs.formUnion(servers)
+        await console.reconnect(machine)
+        try? await Task.sleep(for: .milliseconds(1_200))
+        manualReconnectInFlightHostIDs.subtract(servers)
     }
 }
 

@@ -243,13 +243,31 @@ final class HeelerAppModel {
         // Console resumes, pending browser sign-ins also resume, even when
         // no Host has been added to bring their nodes back up with a dial.
         let overlayNetworks = overlayNetworks
+        // A Host keeps the route its connections hold, so one that settled on
+        // an Overlay Network or a Jump Host is looked at again when a direct
+        // route may have come into reach: on a foreground return, and when
+        // the device's network changes (ADR 0058).
+        let routeUpgrader = HostRouteUpgrader(
+            machines: { [hostStore] in hostStore.machines },
+            isConnected: { [console] id in console.hostStatuses[id] == .connected },
+            probe: ConsoleStore.sshRouteProbe(),
+            redial: { [console] id in await console.retryHost(id) })
         Task {
             await ConsoleActivityDriver(
                 activity: activity,
                 console: console,
                 afterSuspend: { await overlayNetworks.suspend() },
-                afterResume: { await overlayNetworks.resumeBrowserSignInAfterActivation() }
+                afterResume: { await overlayNetworks.resumeBrowserSignInAfterActivation() },
+                checkRoutes: { await routeUpgrader.check() }
             ).run()
+        }
+        Task { [console] in
+            for await _ in NetworkPathChanges.stream() {
+                // A change arrives as a burst of path updates; act once.
+                try? await Task.sleep(for: .seconds(1))
+                await console.networkPathDidChange()
+                await routeUpgrader.check()
+            }
         }
         Task { await pushRegistration.refresh() }
         // Existing installs' Notification Keys predate the app-group
