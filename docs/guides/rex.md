@@ -39,11 +39,11 @@ Heeler looks once through your login shell without starting anything and lists w
 | Rex alongside Herdr TUI, herdr-core, or tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
 | No **Rex** | Rex is not installed. Add the Host anyway, install and start Rex, open the Host, tap **Scan Again**, and turn on **Rex**. |
 
-Each Server has a switch on the Host's page. Tap **Rex** while it is on to open its own page, with its connection and checks. **Add by Name…** does not offer Rex: the Host's one Rex Server has no name to type, and Heeler lists it wherever Rex is installed.
+Each Server has a switch on the Host's page. Tap **Rex** while it is on to open its own page, with its checks. The connection is the Host's, under **Routes**. **Add by Name…** does not offer Rex: the Host's one Rex Server has no name to type, and Heeler lists it wherever Rex is installed.
 
 If the Host's page reads **Rex** with **Socket found, but this account cannot use it**, Rex runs under another account. Add the machine again as another Host with that account's **User**.
 
-**It worked if** the Host's row shows a green **Rex** tag, and the Server's page shows **Server Kind** as `Rex`, **Socket** with the path Rex listens on, and **SSH connection**, **Rex installed**, **Rex server running**, and **protocol compatible** passing.
+**It worked if** the Host's row shows a green **Rex** tag, the Host's page lists Rex as **Running**, and the Server's page shows **SSH connection**, **Rex installed**, **Rex server running**, and **protocol compatible** passing.
 
 ## When it does not connect
 

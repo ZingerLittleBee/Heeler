@@ -40,11 +40,11 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | 同时检测到 Rex 与 Herdr TUI、herdr-core 或 tmux | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
 | 没有 **Rex** | Rex 没有安装。仍然添加该 Host，安装并启动 Rex，打开该 Host，轻点 **Scan Again**，然后开启 **Rex**。 |
 
-每个 Server 在 Host 页面上都有一个开关。**Rex** 开启后，轻点它可打开它自己的页面，其中有它的连接和检查项。**Add by Name…** 不提供 Rex：一个 Host 唯一的 Rex Server 没有需要输入的名称，而且只要装了 Rex，Heeler 就会列出它。
+每个 Server 在 Host 页面上都有一个开关。**Rex** 开启后，轻点它可打开它自己的页面，其中有它的检查项。连接属于 Host，显示在 **Routes** 下。**Add by Name…** 不提供 Rex：一个 Host 唯一的 Rex Server 没有需要输入的名称，而且只要装了 Rex，Heeler 就会列出它。
 
 如果 Host 页面上的 **Rex** 显示 **Socket found, but this account cannot use it**，说明 Rex 以另一个账户运行。请以该账户作为 **User**，把这台机器另外添加为一个 Host。
 
-**成功的标志是**该 Host 所在的行显示绿色的 **Rex** 标签，且该 Server 的页面将 **Server Kind** 显示为 `Rex`，**Socket** 显示 Rex 监听的路径，**SSH connection**、**Rex installed**、**Rex server running** 与 **protocol compatible** 均通过。
+**成功的标志是**该 Host 所在的行显示绿色的 **Rex** 标签，该 Host 的页面将 Rex 列为 **Running**，且该 Server 的页面上 **SSH connection**、**Rex installed**、**Rex server running** 与 **protocol compatible** 均通过。
 
 ## 无法连接时
 
