@@ -42,6 +42,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// Until the server that answered has listed its terminals, nothing says
     /// what the Host runs.
     private(set) var isAwaitingSnapshot = true
+    /// Listed terminals whose foreground this connection has yet to read. The
+    /// first inventory lists every terminal before its details answer, so
+    /// one of these may host the Agent a restored detail names.
+    private(set) var panesAwaitingForeground: Set<String> = []
     private(set) var workspaces: [ConsoleWorkspace] = []
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
@@ -284,6 +288,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     private func invalidateInventory() {
         isAwaitingSnapshot = true
+        panesAwaitingForeground = []
         inventory = nil
         workspaces = []
         terminalsByPane = [:]
@@ -300,6 +305,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
         terminalsByPane = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         agentsByPane = agents
         lastKnownAgentsByPane = agents
+        panesAwaitingForeground = Set(
+            inventory.sessions.flatMap { session in
+                session.terminals.lazy.filter(\.details.awaitsForeground)
+                    .map { RexPaneAddress(sessionID: session.id, blockID: $0.blockID).paneID }
+            })
         pins.retainPins(hostID: host.id, paneIDs: Set(terminalsByPane.keys))
         chatTypings = chatTypings.filter { terminalsByPane[$0.key] != nil }
         workspaces = builder.workspaceRows()

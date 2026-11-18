@@ -143,8 +143,9 @@ in users' words.
   Real agents have been bound and typed into only from the iOS Simulator, on
   one Mac ([Real agents in the Simulator](#real-agents-in-the-simulator),
   [Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal)).
-  There, Stop did nothing while a Claude Code waited on a command it had put
-  in the background.
+  A Claude Code waiting on a command it put in the background has ended its
+  turn, whatever its record says, and Heeler never stops that command
+  ([Claude Code's record after a turn](#claude-codes-record-after-a-turn)).
 - **Agents Heeler cannot see.** A program that is a block's own command
   (behind `login`), one started with `exec` from the shell, and one under a
   `sh -c` that does not exec it read as `login` or the shell, so they stay
@@ -339,6 +340,45 @@ repository), unless a bullet names `RexProgramStatusLiveTests`.
   server's children, so a new instance should mean new terminals with no
   records.
 
+### Claude Code's record after a turn
+
+Seen with a real Claude Code 2.1.327 in a `heeler-lab-` session on Rex
+0.1.0-preview.14, API revision 12, macOS 27.0, local socket, 2026-11-18. A
+newer Claude Code may word it differently; check before relying on it.
+
+- **While a turn runs.** The root record reads `working`, and its `msg` says
+  what the turn is doing (a foreground command's description, for one). The
+  screen's last line offers `esc to interrupt`.
+- **After a turn that left commands in the background.** The root record
+  stays `working`, and its `msg` gives a count: `1 shell still running`, and
+  `2 shells still running` after a turn that left two. The count is not the
+  number of commands still running: with one left by an earlier turn and one
+  by the latest, it read `1 shell still running`. Each command also has a
+  child record, under its task's id, reading `working` with the command's
+  description as its `title`. Claude Code is back at an empty prompt, the
+  screen's last line no longer offers `esc to interrupt`, and Esc interrupts
+  nothing. Its last line offers `↓ to manage`: Down, then Enter, shows the
+  command with `x to stop`.
+- **A later turn while the command still runs.** The root record reads
+  `working` with what that turn is doing, and ends at `done` if the turn
+  left nothing new in the background. An Esc during it interrupts that turn
+  only: the root record reads `idle`, and the earlier command's child record
+  and process stay.
+- **When the command ends.** Claude Code takes a turn by itself to say so:
+  the record reads `working` with what it is doing, then `done`.
+- **What Heeler does.** `RexInventoryWire` reads a Claude Code root record
+  that is `working` with a `msg` of a count followed by `still running` as
+  `done`: the turn is over. The Agent then reads Done or Idle and the
+  Composer offers Send, as on a Herdr TUI Host, where Claude Code's own hook
+  reports the turn's end. Before that, the Agent read Working for as long as
+  the command ran, and Stop pressed an Esc that did nothing. Heeler never
+  stops the background command; that stays in the terminal. Checked in the
+  Simulator against that Claude Code: while the record read `working` with
+  `1 shell still running`, Chat and the Agents list read Idle and the
+  Composer offered Send; a foreground turn sent then read Working with Stop,
+  and Stop interrupted it. Only a shell was put in the background in this
+  run; a background agent's wording was not seen.
+
 ### Processes and Chat evidence
 
 From a lab run on Rex 0.1.0-preview.14, API revision 12, macOS 27.0, over a
@@ -470,7 +510,8 @@ and captures are kept outside the repository.
   that had put a shell command in the background was back at its prompt
   while Rex still read `working`, so Chat and the list read Working and
   Chat offered Stop. The Esc changed nothing and the command finished, three
-  times out of three. Not fixed.
+  times out of three. (Fixed afterwards: Heeler reads that record as the end
+  of the turn. See [Claude Code's record after a turn](#claude-codes-record-after-a-turn).)
 - **Not run: Stop for Grok Build and Oh My Pi.** The Composer keeps Send for
   a Working Grok Build, and Oh My Pi's short turns showed no status record
   until `done` in that run (it read `working` in a later one, above).

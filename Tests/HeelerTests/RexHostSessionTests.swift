@@ -547,7 +547,10 @@ struct RexHostSessionTests {
         }
         let terminals = log.inventories[before].sessions.first?.terminals ?? []
         #expect(!terminals.isEmpty)
-        #expect(terminals.allSatisfy { $0.details == RexTerminalDetails() })
+        // Nothing of them is known yet, their foreground included.
+        var unread = RexTerminalDetails()
+        unread.awaitsForeground = true
+        #expect(terminals.allSatisfy { $0.details == unread })
         await session.end()
     }
 
