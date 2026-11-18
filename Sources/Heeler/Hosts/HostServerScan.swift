@@ -34,8 +34,8 @@ struct HostServerScan: Equatable, Sendable {
         let note: String?
     }
 
-    let servers: [FoundServer]
-    let missing: [Missing]
+    private(set) var servers: [FoundServer]
+    private(set) var missing: [Missing]
     private let detection: ServerKindDetection
 
     init(_ detection: ServerKindDetection) {
@@ -99,6 +99,19 @@ struct HostServerScan: Equatable, Sendable {
     }
 
     var isNativeWindows: Bool { detection.isNativeWindows }
+
+    /// The same look at a Host known to run Herdr TUI: a Pairing Code shown
+    /// inside one says so (ADR 0057) even where the look found no herdr, as
+    /// from a login shell without it on PATH. Its default session is listed as
+    /// running, which is what such a code has always added.
+    func assumingHerdrTUI() -> HostServerScan {
+        guard !servers.contains(where: { $0.key.kind == .herdrTUI }) else { return self }
+        var scan = self
+        scan.servers.insert(
+            FoundServer(key: HostServerKey(kind: .herdrTUI, name: ""), isRunning: true, version: nil), at: 0)
+        scan.missing.removeAll { $0.kind == .herdrTUI }
+        return scan
+    }
 
     /// What a tmux Server turned on from this look stores: its login shell just
     /// resolved both paths (ADR 0044).

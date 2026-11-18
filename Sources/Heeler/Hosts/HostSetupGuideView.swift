@@ -18,6 +18,8 @@ enum HostSetupGuide {
     ]
     static let pluginInstallCommand = (["herdr"] + pluginInstallArguments).joined(separator: " ")
     static let pairCommand = "herdr plugin action invoke heeler.pair"
+    /// Shows a Pairing Code on a machine without herdr (ADR 0057).
+    static let machinePairCommand = "npx -y heeler-pair@latest"
 }
 
 /// How the guide hands the user back to the Host list once the machine is
@@ -113,12 +115,17 @@ struct HostSetupGuideView: View {
             ) {
                 CommandBlock(command: HostSetupGuide.pluginInstallCommand)
                 CommandBlock(command: HostSetupGuide.pairCommand)
+                Text("On a machine that runs herdr-core or tmux without herdr, run this one instead.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                CommandBlock(command: HostSetupGuide.machinePairCommand)
             }
             SetupStep(
                 number: 4, title: "Scan It",
                 detail: onAction == nil
-                    ? "In Hosts, tap Scan to Pair and point the camera at the code."
-                    : "Point the camera at the code. The machine is added as a Host."
+                    ? "In Hosts, tap Scan to Pair and point the camera at the code, then choose the machine's servers."
+                    : "Point the camera at the code, then choose the machine's servers. The machine is added as a Host."
             ) {
                 if let onAction {
                     Button {

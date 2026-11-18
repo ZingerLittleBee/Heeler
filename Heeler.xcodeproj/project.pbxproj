@@ -438,6 +438,7 @@
 		5BCA26370C2844EB77BB2484 /* HerdrCorePiSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB4A50BD2089165F17D9445D /* HerdrCorePiSessionBinderTests.swift */; };
 		5BFCE188EA8080664FE28D77 /* HostConnectionTone.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4ABB6F8C8FE6655D524EAE2 /* HostConnectionTone.swift */; };
 		5BFE20A2DA12554824D6CD3A /* PiHostEvidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383A6663C0582220AFFBD70E /* PiHostEvidence.swift */; };
+		5C06E113984FF91B98C5DD17 /* pairing-code-v3.json in Resources */ = {isa = PBXBuildFile; fileRef = 11E3F17F4D822B687D57A949 /* pairing-code-v3.json */; };
 		5C66C27D3D893A6B971284F1 /* HostAccountsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67536602B7CE21DF19B7BFC1 /* HostAccountsStoreTests.swift */; };
 		5C68C3082AD5958A28843055 /* TerminalTitleGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651D511E8A282C4CB0214098 /* TerminalTitleGlyphs.swift */; };
 		5C79B0EEF08521BF5907D3F2 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
@@ -1358,6 +1359,7 @@
 		1142E803F7CA971D3CCDF2EB /* LiveActivityPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPreferences.swift; sourceTree = "<group>"; };
 		1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettingsTests.swift; sourceTree = "<group>"; };
 		11E0EA7996F618E85BF3B988 /* HeelerPluginInstallation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerPluginInstallation.swift; sourceTree = "<group>"; };
+		11E3F17F4D822B687D57A949 /* pairing-code-v3.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v3.json"; sourceTree = "<group>"; };
 		11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreDoneTests.swift; sourceTree = "<group>"; };
 		1209F79DFBDD6D95E0510227 /* PollBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollBudget.swift; sourceTree = "<group>"; };
 		1264F90327344290A094B378 /* HeelerSSHTransportBehaviorE2ETests+FailureStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HeelerSSHTransportBehaviorE2ETests+FailureStates.swift"; sourceTree = "<group>"; };
@@ -3683,6 +3685,7 @@
 				CC9851A5A6E65C7F52290A20 /* notification-session-v1.json */,
 				F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */,
 				791A29C99001477839E4C3E5 /* pairing-code-v2.json */,
+				11E3F17F4D822B687D57A949 /* pairing-code-v3.json */,
 				CD3F97D0C9A6A0BC8FBEE6CD /* plugin-version-v1.json */,
 				ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */,
 				1765851A869BD4D35E29CF58 /* tmux-heeler-status-v1.json */,
@@ -4341,6 +4344,7 @@
 				88B077F195BA4B6B46FD330C /* notification-session-v1.json in Resources */,
 				DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */,
 				1CCAA769DDCA71EC02D40707 /* pairing-code-v2.json in Resources */,
+				5C06E113984FF91B98C5DD17 /* pairing-code-v3.json in Resources */,
 				F271226A2892164D44593BD9 /* plugin-version-v1.json in Resources */,
 				9F495C6368D1C8754903D457 /* sidebar-layout-v1.json in Resources */,
 				547CAC0CD4BF2095D61C07E2 /* tmux-heeler-status-v1.json in Resources */,

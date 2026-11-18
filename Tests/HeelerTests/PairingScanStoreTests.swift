@@ -18,6 +18,11 @@ struct PairingScanStoreTests {
     private static let endpointVector = PairingCodeVectorFile.v2.valid.first {
         $0.payload.bootstrapSeed != nil && $0.payload.socketPath != nil
     }!
+    /// The machine code (v3) with the same Host coordinates and expiry as
+    /// `bootstrapVector`.
+    private static let machineVector = PairingCodeVectorFile.v3.valid.first {
+        $0.payload.bootstrapSeed != nil && $0.payload.addresses == ["10.0.0.7"]
+    }!
     /// A moment safely inside the bootstrap vector's TTL.
     private static let insideTTL = Date(timeIntervalSince1970: 1_753_305_500)
 
@@ -106,28 +111,28 @@ struct PairingScanStoreTests {
         env.store.submit(scannedCode: "  not-a-pairing-code  ")
 
         #expect(env.store.pairingCode == nil)
-        #expect(env.store.scanFailureMessage?.contains("not a herdr Pairing Code") == true)
+        #expect(env.store.scanFailureMessage?.contains("not a Pairing Code") == true)
     }
 
-    @Test func foreignQRCodesAskForTheHerdrPairingCode() throws {
+    @Test func foreignQRCodesAskForAPairingCode() throws {
         let env = try makeEnv()
         defer { env.cleanup() }
 
         env.store.submit(scannedCode: "https://example.com/some-other-qr")
 
         #expect(env.store.pairingCode == nil)
-        #expect(env.store.scanFailureMessage?.contains("not a herdr Pairing Code") == true)
+        #expect(env.store.scanFailureMessage?.contains("not a Pairing Code") == true)
     }
 
     @Test func unsupportedVersionsNameTheVersionAndAskForAnUpdate() throws {
         let env = try makeEnv()
         defer { env.cleanup() }
 
-        env.store.submit(scannedCode: "HERDR-PAIR:3:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
+        env.store.submit(scannedCode: "HERDR-PAIR:4:eyJhZGRycyI6WyIxOTIuMTY4LjEuNDIiXX0")
 
         #expect(env.store.pairingCode == nil)
         let message = env.store.scanFailureMessage
-        #expect(message?.contains("version 3") == true)
+        #expect(message?.contains("version 4") == true)
         #expect(message?.contains("Update Heeler") == true)
     }
 
@@ -138,7 +143,7 @@ struct PairingScanStoreTests {
         env.store.submit(scannedCode: "HERDR-PAIR:1:!!!corrupt!!!")
 
         #expect(env.store.pairingCode == nil)
-        #expect(env.store.scanFailureMessage?.contains("Regenerate") == true)
+        #expect(env.store.scanFailureMessage?.contains("Generate a new one") == true)
     }
 
     @Test func aGoodScanClearsAnEarlierFailure() throws {
@@ -190,10 +195,10 @@ struct PairingScanStoreTests {
 
     // MARK: Ceremony success
 
-    /// Every candidate the code offered becomes a route, the one that
-    /// answered first, so the Host stays reachable from the networks the
-    /// user picked each address for (ADR 0022).
-    @Test func everyCandidateAddressBecomesARouteLedByTheOneThatAnswered() async throws {
+    /// Every candidate the code offered is handed on, the one that answered
+    /// first, so the Host stays reachable from the networks the user picked
+    /// each address for (ADR 0022).
+    @Test func everyCandidateAddressIsHandedOnLedByTheOneThatAnswered() async throws {
         let multiple = PairingCodeVectorFile.shared.valid[1]
         let answered = PairingResult(
             address: "100.101.102.103", port: 2222, username: "grace",
@@ -204,19 +209,15 @@ struct PairingScanStoreTests {
 
         await env.store.pair()
 
-        let paired = try #require(env.store.pairedHost)
-        #expect(
-            paired.routes.map(\.address)
-                == ["100.101.102.103", "192.168.1.42", "fd7a:115c:a1e0::1"])
-        #expect(paired.routes.allSatisfy { $0.port == 2222 && !$0.usesJumpHost })
-        #expect(paired.primaryRoute.id == paired.id)
-        #expect(Set(paired.routes.map(\.id)).count == 3)
-        #expect(
-            await env.knownHosts.fingerprint(trustedFor: paired)
-                == answered.hostKeyFingerprint)
+        let machine = try #require(env.store.pairedMachine)
+        #expect(machine.addresses == ["100.101.102.103", "192.168.1.42", "fd7a:115c:a1e0::1"])
+        #expect(machine.port == 2222)
+        #expect(machine.hostKeyFingerprint == answered.hostKeyFingerprint)
     }
 
-    @Test func successfulCeremonyPersistsTheHostAndPinsTheFingerprint() async throws {
+    /// A code that names no Server saves nothing here: Add Host's last step
+    /// looks for the machine's Servers and saves the Host (ADR 0057).
+    @Test func successfulCeremonyHandsTheMachineToAddHost() async throws {
         let secrets = InMemorySecretStore()
         let credentials = HostCredentialsProvider(
             deviceKeys: DeviceKeyStore(secrets: secrets), secrets: secrets)
@@ -230,24 +231,31 @@ struct PairingScanStoreTests {
         // other blob; the connector captured what actually went over the wire.
         let expectedBlob = try credentials.deviceKey().publicKeyBlob
         #expect(await env.connector.capturedDeviceKeyBlobs == [expectedBlob])
-        let paired = try #require(env.store.pairedHost)
-        #expect(env.catalog.hosts == [paired])
-        #expect(paired.address == "10.0.0.7")
-        #expect(paired.port == 22)
-        #expect(paired.username == "lin")
-        #expect(paired.authMethod == .deviceKey)
-        // Session selection stays with preflight discovery (ADR 0007).
-        #expect(paired.sessionName.isEmpty)
-        // A version 1 code leaves the Host on its home-relative socket.
-        #expect(paired.herdrEndpoint == nil)
-        #expect(paired.displayName == "lin@10.0.0.7")
-        // The pinned fingerprint means preflight never TOFU-prompts.
+        // A code shown by herdr's plugin vouches for a Herdr TUI there.
         #expect(
-            await env.knownHosts.fingerprint(trustedFor: paired)
-                == Self.pairedResult.hostKeyFingerprint)
+            env.store.pairedMachine
+                == PairedMachine(
+                    username: "lin", addresses: ["10.0.0.7"], port: 22,
+                    hostKeyFingerprint: Self.pairedResult.hostKeyFingerprint, runsHerdrTUI: true))
+        #expect(env.store.pairedHost == nil)
+        #expect(env.catalog.hosts.isEmpty)
         #expect(env.store.failure == nil)
         #expect(env.store.isPairing == false)
         #expect(env.store.step == nil)
+    }
+
+    /// `heeler-pair` runs outside herdr, so its code vouches for no Server.
+    @Test func aMachineCodeVouchesForNoServer() async throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.machineVector.code)
+
+        await env.store.pair()
+
+        let machine = try #require(env.store.pairedMachine)
+        #expect(!machine.runsHerdrTUI)
+        #expect(machine.addresses == ["10.0.0.7"])
+        #expect(env.catalog.hosts.isEmpty)
     }
 
     /// The ceremony result names no endpoint, so the Host must take it from
@@ -274,24 +282,23 @@ struct PairingScanStoreTests {
         #expect(await env.connector.capturedCodes.first?.endpoint == expected)
     }
 
-    @Test func aPairingCodeAddsAHerdrTUIHost() async throws {
-        for code in [Self.bootstrapVector.code, Self.endpointVector.code] {
-            let env = try makeEnv()
-            defer { env.cleanup() }
-            env.store.submit(scannedCode: code)
+    @Test func aCodeWithAHerdrEndpointAddsAHerdrTUIHost() async throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.endpointVector.code)
 
-            await env.store.pair()
+        await env.store.pair()
 
-            let paired = try #require(env.store.pairedHost)
-            #expect(paired.serverKind == .herdrTUI)
-            #expect(env.catalog.hosts == [paired])
-        }
+        let paired = try #require(env.store.pairedHost)
+        #expect(paired.serverKind == .herdrTUI)
+        #expect(env.catalog.hosts == [paired])
+        #expect(env.store.pairedMachine == nil)
     }
 
     @Test func aPairedHostIsAlreadyConfirmed() async throws {
         let env = try makeEnv()
         defer { env.cleanup() }
-        env.store.submit(scannedCode: Self.bootstrapVector.code)
+        env.store.submit(scannedCode: Self.endpointVector.code)
 
         await env.store.pair()
 
@@ -303,22 +310,42 @@ struct PairingScanStoreTests {
     }
 
     @Test func pairingAgainAfterSuccessIsIgnored() async throws {
-        let env = try makeEnv()
-        defer { env.cleanup() }
-        env.store.submit(scannedCode: Self.bootstrapVector.code)
-        await env.store.pair()
+        for code in [Self.bootstrapVector.code, Self.endpointVector.code] {
+            let env = try makeEnv()
+            defer { env.cleanup() }
+            env.store.submit(scannedCode: code)
+            await env.store.pair()
 
-        await env.store.pair()
+            await env.store.pair()
 
-        #expect(await env.connector.capturedCodes.count == 1)
-        #expect(env.catalog.hosts.count == 1)
+            #expect(await env.connector.capturedCodes.count == 1)
+        }
     }
 
-    @Test func hostIsPersistedOnlyAfterTheVerifiedReconnect() async throws {
+    @Test func theMachineIsHandedOnOnlyAfterTheVerifiedReconnect() async throws {
         let env = try makeEnv()
         defer { env.cleanup() }
         await env.connector.hold()
         env.store.submit(scannedCode: Self.bootstrapVector.code)
+
+        let run = Task { await env.store.pair() }
+        try await waitUntil("the ceremony should reach the verify step") {
+            env.store.step == .verify
+        }
+        #expect(env.store.isPairing)
+        #expect(env.store.pairedMachine == nil)
+
+        await env.connector.release()
+        await run.value
+
+        #expect(env.store.pairedMachine != nil)
+    }
+
+    @Test func aHostWithAHerdrEndpointIsPersistedOnlyAfterTheVerifiedReconnect() async throws {
+        let env = try makeEnv()
+        defer { env.cleanup() }
+        await env.connector.hold()
+        env.store.submit(scannedCode: Self.endpointVector.code)
 
         let run = Task { await env.store.pair() }
         try await waitUntil("the ceremony should reach the verify step") {
@@ -358,6 +385,7 @@ struct PairingScanStoreTests {
         await env.store.pair()
 
         #expect(env.store.pairedHost == nil)
+        #expect(env.store.pairedMachine == nil)
         #expect(env.catalog.hosts.isEmpty)
         #expect(await env.knownHosts.fingerprint(host: "10.0.0.7", port: 22) == nil)
         let failure = try #require(env.store.failure)
@@ -393,6 +421,28 @@ struct PairingScanStoreTests {
         #expect(failure.message.contains(phrase), "copy was: \(failure.message)")
     }
 
+    /// What to do on the computer depends on what showed the code: a machine
+    /// code came from `heeler-pair`, which has no plugin and no pair.json.
+    @Test(arguments: [
+        PairingCeremonyError.tailscaleSSH(addresses: ["100.64.0.1"], port: 22),
+        .bootstrapRejected,
+        .enrollmentRefused(.invalidKey),
+        .enrollmentRefused(.unrecognized(code: "quota_exceeded")),
+        .enrollmentUnanswered,
+    ])
+    func aMachineCodeFailureNamesHeelerPair(error: PairingCeremonyError) async throws {
+        let env = try makeEnv(outcomes: [.fails(error)])
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.machineVector.code)
+
+        await env.store.pair()
+
+        let message = try #require(env.store.failure).message
+        #expect(message.contains("heeler-pair"), "copy was: \(message)")
+        #expect(!message.contains("plugin"), "copy was: \(message)")
+        #expect(!message.contains("pair.json"), "copy was: \(message)")
+    }
+
     @Test func expiredCodeIsReportedWithoutConnecting() async throws {
         let env = try makeEnv(now: Date(timeIntervalSince1970: 1_753_305_601))
         defer { env.cleanup() }
@@ -423,7 +473,7 @@ struct PairingScanStoreTests {
 
         await env.store.pair()
 
-        #expect(env.store.pairedHost != nil)
+        #expect(env.store.pairedMachine != nil)
         let scanned = try PairingCode.decode(Self.bootstrapVector.code)
         #expect(await env.connector.capturedCodes == [scanned, scanned])
     }
@@ -441,7 +491,7 @@ struct PairingScanStoreTests {
 
         await env.store.pair()
 
-        #expect(env.store.pairedHost != nil)
+        #expect(env.store.pairedMachine != nil)
         let codes = await env.connector.capturedCodes
         #expect(codes.count == 2)
         // Enrollment already landed on the Host; the retry repeats only the
@@ -450,6 +500,25 @@ struct PairingScanStoreTests {
         #expect(codes.last?.bootstrap == nil)
         #expect(codes.last?.addresses == codes.first?.addresses)
         #expect(codes.last?.username == codes.first?.username)
+    }
+
+    /// The bootstrap-less retry code is rebuilt field by field; where the
+    /// code was shown must survive it, or a retried machine code would vouch
+    /// for a Herdr TUI that `heeler-pair` never saw.
+    @Test func verifyRetryKeepsWhereTheCodeWasShown() async throws {
+        let env = try makeEnv(outcomes: [
+            .fails(.verificationFailed(detail: "timeout")),
+            .succeeds(Self.pairedResult),
+        ])
+        defer { env.cleanup() }
+        env.store.submit(scannedCode: Self.machineVector.code)
+
+        await env.store.pair()
+        #expect(try #require(env.store.failure).canRetry)
+        await env.store.pair()
+
+        #expect(await env.connector.capturedCodes.last?.source == .machine)
+        #expect(try #require(env.store.pairedMachine).runsHerdrTUI == false)
     }
 
     /// The bootstrap-less retry code is rebuilt field by field; the Herdr
@@ -541,7 +610,7 @@ struct PairingScanStoreTests {
     @Test func unwritableCatalogSurfacesTheSaveFailureAndPinsNothing() async throws {
         let env = try makeEnv(corruptCatalog: true)
         defer { env.cleanup() }
-        env.store.submit(scannedCode: Self.bootstrapVector.code)
+        env.store.submit(scannedCode: Self.endpointVector.code)
 
         await env.store.pair()
 

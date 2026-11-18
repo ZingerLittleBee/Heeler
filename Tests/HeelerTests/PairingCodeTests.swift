@@ -6,11 +6,13 @@ import Testing
 /// Decoder tests for the Pairing Code envelope (#62, #380), driven by the
 /// shared vectors in `plugin/test-vectors/pairing-code-v1.json` — the same
 /// file the Node plugin tests consume, so the two implementations cannot
-/// drift — and the app-only `pairing-code-v2.json` (ADR 0023).
+/// drift — the app-only `pairing-code-v2.json` (ADR 0023), and
+/// `pairing-code-v3.json`, which the Node side encodes (ADR 0057).
 @Suite("Pairing Code envelope")
 struct PairingCodeTests {
     private static let vectors = PairingCodeVectorFile.shared
     private static let v2Vectors = PairingCodeVectorFile.v2
+    private static let v3Vectors = PairingCodeVectorFile.v3
 
     /// Guards against silently loading an empty or truncated vector file;
     /// mirrors the same assertion in the Node suite.
@@ -58,6 +60,35 @@ struct PairingCodeTests {
             Issue.record("unexpectedly decoded \(vector.name)")
         } catch {
             #expect(error.wireCode == vector.error, "\(vector.name)")
+        }
+    }
+
+    /// A machine code is a version 1 payload that says where it was shown:
+    /// outside herdr, so it never has an endpoint, even one it spells out.
+    @Test(arguments: v3Vectors.valid)
+    func decodesValidV3Vector(vector: PairingCodeVectorFile.Valid) throws {
+        let code = try PairingCode.decode(vector.code)
+
+        try expectDecoded(code, matches: vector.payload)
+        #expect(code.endpoint == nil)
+        #expect(code.source == .machine)
+        #expect(!code.needsConfirmation)
+    }
+
+    @Test(arguments: v3Vectors.invalid)
+    func rejectsInvalidV3Vector(vector: PairingCodeVectorFile.Invalid) {
+        do {
+            _ = try PairingCode.decode(vector.code)
+            Issue.record("unexpectedly decoded \(vector.name)")
+        } catch {
+            #expect(error.wireCode == vector.error, "\(vector.name)")
+        }
+    }
+
+    /// Only `heeler-pair` shows a code outside herdr.
+    @Test func codesFromThePluginSayTheyWereShownInHerdr() throws {
+        for vector in Self.vectors.valid + Self.v2Vectors.valid {
+            #expect(try PairingCode.decode(vector.code).source == .herdrPlugin, "\(vector.name)")
         }
     }
 

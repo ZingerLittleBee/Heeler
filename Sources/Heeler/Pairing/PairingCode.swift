@@ -8,18 +8,31 @@ import Foundation
 /// Version 1 carries the SSH coordinates and an optional Bootstrap Key.
 /// Version 2 adds a required Herdr Endpoint (`sock`, `herdr`) for a herdr
 /// outside the user's config home (ADR 0023); only this app decodes it, and
-/// the plugin emits it for such a herdr (ADR 0029). The schema and error
-/// taxonomy live in `plugin/README.md`; the shared test vectors in
-/// `plugin/test-vectors/pairing-code-v1.json` are the single source of truth
-/// for both this decoder and the plugin's encoder, and `pairing-code-v2.json`
-/// pins version 2. Unknown payload fields are ignored (additive metadata
-/// within a version); breaking changes bump the version, which both
-/// implementations must honor together.
+/// the plugin emits it for such a herdr (ADR 0029). Version 3 is a version 1
+/// payload shown by `heeler-pair` outside herdr, which names no server
+/// (ADR 0057). The schema and error taxonomy live in `plugin/README.md`; the
+/// shared test vectors in `plugin/test-vectors/pairing-code-v1.json` are the
+/// single source of truth for both this decoder and the plugin's encoder, and
+/// `pairing-code-v2.json` and `pairing-code-v3.json` pin the other versions.
+/// Unknown payload fields are ignored (additive metadata within a version);
+/// breaking changes bump the version, which both implementations must honor
+/// together.
 struct PairingCode: Sendable, Equatable {
     static let prefix = "HERDR-PAIR"
     static let version = 1
     /// The envelope version that carries a Herdr Endpoint (ADR 0023).
     static let endpointVersion = 2
+    /// The envelope version of a machine code (ADR 0057).
+    static let machineVersion = 3
+
+    /// Where a code was shown, which is what it says of the Host's Servers.
+    enum Source: Sendable, Equatable {
+        /// herdr's plugin, inside a running Herdr TUI: versions 1 and 2.
+        case herdrPlugin
+        /// `heeler-pair`, outside any server: version 3. The Host may run
+        /// herdr-core, tmux, Herdr TUI or none of them.
+        case machine
+    }
 
     /// Candidate addresses in the order the app should try them.
     /// IPv6 literals carry no brackets and no zone id.
@@ -35,6 +48,7 @@ struct PairingCode: Sendable, Equatable {
     /// The Host's own herdr: required by version 2, never read from version 1
     /// (a v1 code carrying `sock`/`herdr` still decodes without one).
     var endpoint: HerdrEndpoint? = nil
+    var source: Source = .herdrPlugin
 
     /// Whether pairing waits for a Pair tap: a launcher code without a
     /// Bootstrap Key (ADR 0023).
@@ -62,6 +76,13 @@ struct PairingCode: Sendable, Equatable {
         let encodedBody = String(rest[rest.index(after: separator)...])
         if foundVersion == String(version) {
             return try validated(decodedPayload(WirePayload.self, from: encodedBody))
+        }
+        if foundVersion == String(machineVersion) {
+            // A version 1 payload under the same rules: `sock` and `herdr`
+            // are not fields of it, so a machine code never has an endpoint.
+            var code = try validated(decodedPayload(WirePayload.self, from: encodedBody))
+            code.source = .machine
+            return code
         }
         guard foundVersion == String(endpointVersion) else {
             throw .unsupportedVersion(found: foundVersion)

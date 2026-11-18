@@ -7,24 +7,42 @@ import VisionKit
 /// a paste path for the same string, the permission prompt, and a usable
 /// denied path. Once a code parses, the pairing ceremony runs immediately —
 /// one scan or paste, no confirmation step, except for a code that names a
-/// launcher without a Bootstrap Key (ADR 0023) — and on success the persisted
-/// Host is handed to `onPaired`, entering the same preflight a manually
-/// added Host does.
+/// launcher without a Bootstrap Key (ADR 0023). On success the sheet looks
+/// for the machine's Servers and becomes Add Host's last step, which saves
+/// the Host with the ones the user checks (ADR 0057). A code with a Herdr
+/// Endpoint names its one Server instead: its persisted Host is handed to
+/// `onPaired`, entering the same preflight a manually added Host does.
 struct PairingScanView: View {
     let onPaired: (Host) -> Void
+    /// Called with a record of the Host that Add Host's last step saved.
+    let onAdded: @MainActor (Host.ID) -> Void
     let onAddManually: () -> Void
+    private let catalog: HostStore
+    private let discoveries: HostServerDiscoveryStore
+    private let dependencies: HostOnboardingDependencies
     @State private var store: PairingScanStore
+    /// Add Host for the machine just paired, once its look has ended.
+    @State private var wizard: NewHostWizard?
     @State private var cameraAccess: CameraAccess = .undetermined
     @Environment(\.dismiss) private var dismiss
 
     init(
         catalog: HostStore,
+        discoveries: HostServerDiscoveryStore = .shared,
+        dependencies: HostOnboardingDependencies = HostOnboardingDependencies(),
         onPaired: @escaping (Host) -> Void = { _ in },
+        onAdded: @escaping @MainActor (Host.ID) -> Void = { _ in },
         onAddManually: @escaping () -> Void = {}
     ) {
+        self.catalog = catalog
+        self.discoveries = discoveries
+        self.dependencies = dependencies
         self.onPaired = onPaired
+        self.onAdded = onAdded
         self.onAddManually = onAddManually
-        _store = State(initialValue: PairingScanStore(catalog: catalog))
+        _store = State(
+            initialValue: PairingScanStore(
+                catalog: catalog, knownHosts: dependencies.knownHosts, credentials: dependencies.credentials))
     }
 
     private enum CameraAccess {
@@ -34,6 +52,19 @@ struct PairingScanView: View {
     }
 
     var body: some View {
+        Group {
+            if let wizard {
+                NewHostWizardView(
+                    wizard: wizard, catalog: catalog, discoveries: discoveries, dependencies: dependencies,
+                    onAdded: onAdded)
+            } else {
+                scanAndPair
+            }
+        }
+        .task(id: store.pairedMachine) { await findServers() }
+    }
+
+    private var scanAndPair: some View {
         NavigationStack {
             Group {
                 if let code = store.pairingCode {
@@ -56,6 +87,21 @@ struct PairingScanView: View {
                 onPaired(paired)
             }
         }
+    }
+
+    /// Looks for the paired machine's Servers, then shows Add Host where the
+    /// look left it: on its last step, or on its first with why the Host did
+    /// not answer.
+    private func findServers() async {
+        guard let machine = store.pairedMachine, wizard == nil else { return }
+        let wizard = NewHostWizard(catalog: catalog, dependencies: dependencies, paired: machine)
+        await wizard.connect()
+        guard !Task.isCancelled else {
+            // The sheet went away mid-look, and the pinned key with it.
+            await wizard.close()
+            return
+        }
+        self.wizard = wizard
     }
 
     @ViewBuilder
@@ -107,7 +153,7 @@ struct PairingScanView: View {
                     pastePairingCodeButton
                     Text(
                         store.scanFailureMessage
-                            ?? String(localized: "Point the camera at the Pairing Code shown by herdr."))
+                            ?? String(localized: "Point the camera at the Pairing Code shown on the computer."))
                         .font(.callout)
                         .multilineTextAlignment(.center)
                         .padding(12)
@@ -214,6 +260,12 @@ private struct PairingCeremonyView: View {
                 ForEach(ceremonySteps, id: \.self) { @Sendable step in
                     MainActorContent { stepRow(step) }
                 }
+                // Add Host's last step follows a code that names no Server.
+                if code.endpoint == nil {
+                    progressRow(
+                        String(localized: "Find servers"),
+                        status: store.pairedMachine == nil ? .pending : .active)
+                }
             } header: {
                 Text("Pairing")
             } footer: {
@@ -251,10 +303,14 @@ private struct PairingCeremonyView: View {
     }
 
     private func stepRow(_ step: PairingStep) -> some View {
+        progressRow(title(for: step), status: status(for: step))
+    }
+
+    private func progressRow(_ title: String, status: StepStatus) -> some View {
         HStack {
-            Text(title(for: step))
+            Text(title)
             Spacer()
-            switch status(for: step) {
+            switch status {
             case .pending:
                 Image(systemName: "circle")
                     .foregroundStyle(.tertiary)
@@ -281,7 +337,7 @@ private struct PairingCeremonyView: View {
     }
 
     private func status(for step: PairingStep) -> StepStatus {
-        if store.pairedHost != nil {
+        if store.pairedHost != nil || store.pairedMachine != nil {
             return .done
         }
         if let failure = store.failure {
