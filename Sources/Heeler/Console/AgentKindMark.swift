@@ -10,7 +10,7 @@ struct AgentKindMark: Equatable, Sendable {
     /// Nil for a kind without a mark, which shows `monogram` instead.
     let artwork: Artwork?
 
-    struct Artwork: Equatable, Sendable {
+    struct Artwork: Hashable, Sendable {
         /// The one-color mark, a template image.
         let template: String
         /// The program's own colors, where they read on a tile; elsewhere
@@ -29,7 +29,7 @@ struct AgentKindMark: Equatable, Sendable {
 
     /// A brand color per appearance, lifted or darkened where the brand's
     /// own sits too close to the avatar's disc.
-    struct Tint: Equatable, Sendable {
+    struct Tint: Hashable, Sendable {
         let light: UInt32
         let dark: UInt32
 
@@ -39,11 +39,108 @@ struct AgentKindMark: Equatable, Sendable {
         }
     }
 
+    init(kind: SupportedAgentKind) {
+        label = AgentNotificationIdentity.kindLabel(kind.rawValue)
+        artwork = Self.artwork(for: kind)
+    }
+
     init(kind: String) {
         label = AgentNotificationIdentity.kindLabel(kind)
         artwork = SupportedAgentKind(
             rawValue: kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         ).flatMap(Self.artwork(for:))
+    }
+
+    /// Centered 18x18 glyph with symmetric 5pt horizontal sidebearings so a
+    /// closed `Form` `Picker` value has a space's width before the title while
+    /// `UIMenu`'s trailing icon column stays centered.
+    static let menuImageSize = CGSize(width: 28, height: 20)
+
+    /// Flattened at menu glyph size for `UIMenu` and `Picker` rows, which take
+    /// a single `UIImage`: the program's art or brand tint where available,
+    /// its template mark in the label color, or its initial in a circle.
+    @MainActor
+    func menuImage(style: UIUserInterfaceStyle) -> UIImage {
+        let resolved: UIUserInterfaceStyle = style == .dark ? .dark : .light
+        let key = AgentKindMenuGlyphCache.Key(label: label, artwork: artwork, style: resolved)
+        if let cached = AgentKindMenuGlyphCache.images[key] { return cached }
+        let image = renderMenuImage(style: resolved)
+        AgentKindMenuGlyphCache.images[key] = image
+        return image
+    }
+
+    private func renderMenuImage(style: UIUserInterfaceStyle) -> UIImage {
+        let canvas = Self.menuImageSize
+        let bounds = CGRect(x: 5, y: 1, width: 18, height: 18)
+        let traits = UITraitCollection(traitsFrom: [
+            UITraitCollection(displayScale: 3),
+            UITraitCollection(userInterfaceStyle: style),
+        ])
+        let format = UIGraphicsImageRendererFormat(for: traits)
+        format.scale = 3
+        format.opaque = false
+
+        if let artwork {
+            if let art = artwork.art,
+                let source = UIImage(named: art, in: nil, compatibleWith: traits)
+            {
+                let drawn = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
+                    source.draw(in: Self.fittedRect(for: source.size, in: bounds))
+                }
+                return drawn.withRenderingMode(.alwaysOriginal)
+            }
+            if let tint = artwork.tint,
+                let source = UIImage(named: artwork.template, in: nil, compatibleWith: traits)?
+                    .withTintColor(
+                        UIColor(rgb: style == .dark ? tint.dark : tint.light),
+                        renderingMode: .alwaysOriginal)
+            {
+                let drawn = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
+                    source.draw(in: Self.fittedRect(for: source.size, in: bounds))
+                }
+                return drawn.withRenderingMode(.alwaysOriginal)
+            }
+            if let source = UIImage(named: artwork.template, in: nil, compatibleWith: traits)?
+                .withTintColor(.black, renderingMode: .alwaysOriginal)
+            {
+                let drawn = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
+                    source.draw(in: Self.fittedRect(for: source.size, in: bounds))
+                }
+                return drawn.withRenderingMode(.alwaysTemplate)
+            }
+        }
+
+        let drawn = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
+            UIColor.black.setStroke()
+            let border = UIBezierPath(ovalIn: bounds.insetBy(dx: 0.7, dy: 0.7))
+            border.lineWidth = 1.4
+            border.stroke()
+
+            let baseFont = UIFont.systemFont(ofSize: 10.5, weight: .bold)
+            let font = baseFont.fontDescriptor.withDesign(.rounded)
+                .map { UIFont(descriptor: $0, size: 10.5) } ?? baseFont
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.black,
+            ]
+            let textSize = (monogram as NSString).size(withAttributes: attributes)
+            let origin = CGPoint(
+                x: bounds.midX - textSize.width / 2,
+                y: bounds.midY - textSize.height / 2)
+            (monogram as NSString).draw(at: origin, withAttributes: attributes)
+        }
+        return drawn.withRenderingMode(.alwaysTemplate)
+    }
+
+    private static func fittedRect(for imageSize: CGSize, in bounds: CGRect) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return bounds }
+        let scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: bounds.midX - size.width / 2,
+            y: bounds.midY - size.height / 2,
+            width: size.width,
+            height: size.height)
     }
 
     /// The first letter of the name, for a kind without a mark.
@@ -68,9 +165,11 @@ struct AgentKindMark: Equatable, Sendable {
         case .kiro: Artwork(kind, art: true, tint: Tint(0x9046FF, dark: 0x9955FF))
         case .qwen: Artwork(kind, art: true, tint: Tint(0x6336E7, dark: 0x8866ED))
         case .qodercli: Artwork(kind, art: true, tint: Tint(0x20A646, dark: 0x2ADB5C))
+        case .pi: Artwork(kind, art: true, tint: Tint(0x4D9ABF, dark: 0x5EB0D8))
+        case .omp: Artwork(kind, art: true, tint: Tint(0x9B4DFF, dark: 0xAD6BFF))
         case .opencode, .cursor, .copilot, .cline, .grok, .kilo, .mastracode, .hermes:
             Artwork(kind)
-        case .droid, .pi, .omp, .maki, .muse: nil
+        case .droid, .maki, .muse: nil
         }
     }
 }
@@ -214,6 +313,38 @@ private struct AgentWorkingArc: View {
                 style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             .rotationEffect(.degrees((turn - turn.rounded(.down)) * 360 - 50))
     }
+}
+
+/// A `Picker` or `Menu` item's label leading (or trailing in `UIMenu`) with
+/// the harness's mark.
+struct AgentKindMenuLabel: View {
+    private let title: String
+    private let mark: AgentKindMark
+    @Environment(\.colorScheme) private var colorScheme
+
+    nonisolated init(_ title: String, kind: SupportedAgentKind) {
+        self.title = title
+        self.mark = AgentKindMark(kind: kind)
+    }
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(uiImage: mark.menuImage(style: colorScheme == .dark ? .dark : .light))
+        }
+    }
+}
+
+@MainActor
+private enum AgentKindMenuGlyphCache {
+    struct Key: Hashable {
+        let label: String
+        let artwork: AgentKindMark.Artwork?
+        let style: UIUserInterfaceStyle
+    }
+
+    static var images: [Key: UIImage] = [:]
 }
 
 extension UIColor {

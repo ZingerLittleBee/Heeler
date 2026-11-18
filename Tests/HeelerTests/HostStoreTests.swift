@@ -1240,11 +1240,16 @@ struct HostStoreTests {
         }
         await knownHosts.setFingerprint(key, host: "jump.example", port: 22)
         let recents = RecentLaunchStore(defaults: defaults)
+        let removedHost = Host.fixture(id: removed, address: "removed.example")
+        let otherHost = Host.fixture(id: other, address: "other.example")
+        recents.rememberHost(removed)
+        recents.rememberHost(other)
         recents.rememberWorkspace("w1", for: removed)
         recents.rememberWorkspace("w2", for: other)
 
         await knownHosts.forgetHost(removed)
         recents.forgetWorkspace(for: removed)
+        recents.forgetHost(removed)
 
         let removedTrust = HostKeyTrust.hostKey(removed)
         let otherTrust = HostKeyTrust.hostKey(other)
@@ -1253,12 +1258,17 @@ struct HostStoreTests {
         #expect(await knownHosts.fingerprints(host: "jump.example", port: 22) == [key])
         #expect(recents.workspaceID(for: removed) == nil)
         #expect(recents.workspaceID(for: other) == "w2")
+        #expect(recents.preferredHostID(in: [removedHost, otherHost]) == other)
+        #expect(recents.preferredHostID(in: [removedHost]) == nil)
 
         await knownHosts.forgetHost(other)
         await knownHosts.forgetHost(UUID())
         recents.forgetWorkspace(for: other)
+        recents.forgetHost(other)
+        recents.forgetHost(UUID())
         #expect(await knownHosts.fingerprints(host: "jump.example", port: 22) == [key])
         #expect(defaults.object(forKey: "recent-workspace-by-host") == nil)
+        #expect(defaults.object(forKey: "recent-host-ids") == nil)
     }
 
     /// Removing a Host that never opted in wrote an empty list (#587).

@@ -162,14 +162,13 @@ struct ConsoleListPresentationStoreTests {
         #expect(m3.toggled(in: [rex.id]).isEmpty)
     }
 
-    @Test func newTerminalStartsOnTheFilteredHostsOneServerThatCanStartOne() {
+    @Test func newTerminalStartsOnTheFilteredHost() {
         let (tui, tmux, build) = twoServerCatalog()
         let machines = HostMachine.grouped([tui, tmux, build])
         let m3 = machines.filter { $0.contains(tui.id) }
 
         #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: m3) == tui.id)
-        // The filter does not say which of two Servers to use.
-        #expect(ConsoleView.newTerminalHostID(offered: [tui, tmux, build], filteredTo: m3) == nil)
+        #expect(ConsoleView.newTerminalHostID(offered: [tui, tmux, build], filteredTo: m3) == tui.id)
         #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: machines) == nil)
         #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: []) == nil)
     }
