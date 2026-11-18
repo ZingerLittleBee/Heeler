@@ -42,7 +42,17 @@ is offered for Pi and Oh My Pi too.
   program's. Either way the Agent reads Unknown, and so does an Agent with no
   record. Otherwise its state maps as on herdr-core: `idle` and `done` read
   Idle, `working` Working, `blocked` Blocked, `error` Error, and any other word
-  Unknown, but for Done, below.
+  Unknown, but for Done, below. (Updated 2026-11-18: one record is not read
+  as reported. Claude Code keeps its record at `working` after a turn ended
+  while commands it put in the background still run, and counts them in
+  `msg`, as in "1 shell still running", where a running turn says what it is
+  doing. Heeler reads that record as `done`: the turn is over, Claude Code
+  takes the next prompt, and Esc has nothing to interrupt, so the Agent reads
+  Done or Idle and the Composer offers Send, as on a Herdr TUI Host. Before,
+  it read Working for as long as the command ran, with a Stop that did
+  nothing. Heeler leaves the background command alone. Any other wording
+  reads as reported; the observation is in
+  `docs/agents/rex-compatibility.md`.)
 - **Done per device.** A Rex Agent reads Done as an Agent of the other kinds
   does (ADRs 0033 and 0046): it finished a turn this device has not looked at
   since, and its record says idle or done; opening its terminal looks at it.

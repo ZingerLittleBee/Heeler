@@ -415,6 +415,31 @@ struct RexInventoryBookTests {
         #expect(RexInventoryWire.rootStatus(["records": [["state": "idle"]]]) == RexProgramStatus(state: "idle"))
     }
 
+    /// Claude Code's record stays at working once its turn has ended while
+    /// commands it left in the background run, and says how many. That record
+    /// reads done; what a running turn says, another program's record and
+    /// another state read as reported.
+    @Test(arguments: [
+        ("working", "claude-code", "1 shell still running", "done"),
+        ("working", "claude-code", "2 shells still running", "done"),
+        ("working", "Claude-Code", "1 shell still running", "done"),
+        ("working", "claude-code", "Check the server is still running", "working"),
+        ("working", "claude-code", "still running", "working"),
+        ("working", "claude-code", nil, "working"),
+        ("working", "codex", "1 shell still running", "working"),
+        ("working", nil, "1 shell still running", "working"),
+        ("blocked", "claude-code", "1 shell still running", "blocked"),
+    ] as [(String, String?, String?, String)])
+    func aClaudeCodeRecordWaitingOnlyOnBackgroundCommandsReadsDone(
+        reported: String, app: String?, message: String?, read: String
+    ) {
+        var record: [String: JSONValue] = ["state": .string(reported)]
+        if let app { record["app"] = .string(app) }
+        if let message { record["msg"] = .string(message) }
+        #expect(RexInventoryWire.rootStatus(["records": [.object(record)]])?.state == read)
+        #expect(RexInventoryWire.changedStatus(["id": "", "record": .object(record)])?.state == read)
+    }
+
     /// No event says a detached terminal's label changed, so a session with
     /// detached terminals can be read again on demand; one with none is not.
     @Test func onlySessionsWithDetachedTerminalsAreReadAgain() throws {

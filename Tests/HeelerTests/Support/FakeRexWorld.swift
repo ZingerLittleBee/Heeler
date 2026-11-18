@@ -38,9 +38,10 @@ final class FakeRexWorld: Sendable {
         /// The root record a report of `state` from the foreground leaves, or
         /// from `owner` when another process made it, taken at `at`: Rex
         /// moves the time on every report, the same one made again too.
+        /// `message` is what the program said it is doing.
         func record(
             _ state: String, app: String? = nil, owner: (pid: Int, name: String)? = nil,
-            at time: String = "2026-11-16T12:00:00+00:00"
+            at time: String = "2026-11-16T12:00:00+00:00", message: String? = nil
         ) -> JSONValue {
             var record: [String: JSONValue] = [
                 "state": .string(state), "updated_at": .string(time),
@@ -52,6 +53,7 @@ final class FakeRexWorld: Sendable {
                 record["app"] = .string(app)
                 record["effective_app"] = .string(app)
             }
+            if let message { record["msg"] = .string(message) }
             return .object(record)
         }
 

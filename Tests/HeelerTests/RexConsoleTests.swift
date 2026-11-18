@@ -434,6 +434,47 @@ struct RexConsoleTests {
         try await waitUntil("the Agent") { store.detailAgent(for: id)?.agent.kind == "codex" }
     }
 
+    /// Claude Code keeps reporting working after its turn ended while commands
+    /// it put in the background still run, saying how many where a running
+    /// turn says what it is doing. Its turn is over then: the Agent reads Done
+    /// until this device looks at it, and the Composer offers Send, since
+    /// nothing is left for Stop to interrupt. A report of what it is doing is
+    /// a turn again.
+    @Test func aClaudeCodeWaitingOnBackgroundCommandsHasEndedItsTurn() async throws {
+        var studio = FakeRexWorld.studio()
+        var claude = FakeRexWorld.Block.running("block:left", program: "claude")
+        claude.processID = 5150
+        claude.status = claude.record(
+            "working", app: "claude-code", message: "Sleeping for 12 seconds in the foreground")
+        studio.windows[0].layers[0].blocks[2] = claude
+        let servers = await served(FakeRexWorld(sessions: [studio]))
+        let store = store(servers: servers)
+        defer { store.setHosts([]) }
+        func report(_ message: String, at second: Int) async {
+            let record = claude.record(
+                "working", app: "claude-code", at: "2026-11-16T12:00:0\(second)+00:00", message: message)
+            await servers[0].push(
+                "block_event", blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]),
+                session: "session:studio")
+        }
+        func primaryControl() -> AgentComposerPrimaryControl? {
+            store.agents.first.map { AgentComposerPrimaryControl(status: $0.agent.status, draft: "", canStop: true) }
+        }
+
+        store.setHosts([rex])
+        await store.resume()
+        try await waitUntil("the turn running") { store.agents.first?.agent.status == .working }
+        #expect(primaryControl() == .stop)
+
+        await report("1 shell still running", at: 1)
+        try await waitUntil("the turn ended") { store.agents.first?.agent.status == .done }
+        #expect(primaryControl() == .send)
+
+        await report("Reading the command's output", at: 2)
+        try await waitUntil("the next turn") { store.agents.first?.agent.status == .working }
+        #expect(primaryControl() == .stop)
+    }
+
     /// A Rex Agent reads Done as the other kinds' do (ADR 0054): its program
     /// reported done and this device has not looked at it since. Opening its
     /// terminal looks at it; the same done reported again keeps it Idle; the

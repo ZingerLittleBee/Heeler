@@ -436,10 +436,28 @@ enum RexInventoryWire {
             value?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
         }
         let owner = record["owner"]
+        let app = text(record["app"]) ?? text(record["effective_app"])
         return RexProgramStatus(
-            state: state, app: text(record["app"]) ?? text(record["effective_app"]),
+            state: turnState(state, app: app, message: text(record["msg"])), app: app,
             ownerProcessID: owner?["pid"]?.rexWholeNumber, ownerName: text(owner?["name"]),
             updatedAt: text(record["updated_at"]))
+    }
+
+    /// A record's state as Heeler reads it. Claude Code keeps its record at
+    /// `working` once a turn has ended while commands it put in the
+    /// background still run, and says how many in `msg`, where a running turn
+    /// says what it is doing: "1 shell still running" (2.1.327, live). The
+    /// turn is over then. Claude Code sits at its prompt, takes the next one,
+    /// and has nothing for Esc to interrupt, so that record reads `done`, as
+    /// the end of its turn does on the other Server Kinds, for everything
+    /// that reads the state: Agent Status, Done per device, and the Composer,
+    /// which offers Send. Any other wording leaves the state as reported.
+    private static func turnState(_ reported: String, app: String?, message: String?) -> String {
+        guard reported == "working", app?.lowercased() == "claude-code", let words = message?.split(separator: " "),
+            words.count >= 4, words.suffix(2).elementsEqual(["still", "running"]),
+            let count = words.first, count.allSatisfy(\.isASCII), count.allSatisfy(\.isNumber)
+        else { return reported }
+        return "done"
     }
 
     private static func window(_ value: JSONValue) -> ViewWindow? {
