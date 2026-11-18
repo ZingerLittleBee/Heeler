@@ -479,6 +479,9 @@ final class AgentChatStore {
     @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
     /// Live SFTP end-of-run evidence for Claude Code Workflows.
     @ObservationIgnored private var claudeWorkflowEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    /// When each running Claude Code background command last wrote its
+    /// output file, from SFTP.
+    @ObservationIgnored private var claudeCommandEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     /// Live SFTP and screen evidence for Antigravity CLI Background Work.
     @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
@@ -1201,6 +1204,8 @@ final class AgentChatStore {
                 if engine === self.engine {
                     claudeWorkflowEvidence = stampingEndPromptOffsets(workflowEnds, previous: claudeWorkflowEvidence)
                 }
+                let commandOutputs = await engine.followClaudeCommandOutputs()
+                if engine === self.engine { claudeCommandEvidence = commandOutputs }
             }
         }
         if olderRequest == nil, program == .agy, polled || opened,
@@ -1805,6 +1810,7 @@ final class AgentChatStore {
         waitingOutputs = []
         workflowProgress = [:]
         claudeWorkflowEvidence = [:]
+        claudeCommandEvidence = [:]
         agyFileEvidence = [:]
         agyScreenEvidence = [:]
         rawAgySwarm = nil
@@ -2350,7 +2356,9 @@ final class AgentChatStore {
     private func mergedBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
         switch program {
         case .claude:
-            return claudeWorkflowEvidence
+            // A Workflow's run file and a command's output file never share
+            // an id.
+            return claudeWorkflowEvidence.merging(claudeCommandEvidence) { $0.merging($1) }
         case .agy:
             var merged = agyFileEvidence
             for (id, screen) in agyScreenEvidence {

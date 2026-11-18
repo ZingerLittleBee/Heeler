@@ -313,6 +313,12 @@ actor ChatConversationEngine {
         /// `<task-notification>` in the main transcript lands first.
         var runEndCheckInterval: TimeInterval = 5
         var runEndSettle: TimeInterval = 5
+        /// How many running background commands' output files one call
+        /// stats, least recently looked at first, and how long one waits
+        /// before it is looked at again: its time only keeps a command
+        /// that has run for hours from reading as quiet.
+        var commandOutputsPerCall = 4
+        var commandOutputCheckInterval: TimeInterval = 30
         /// Waits after a failed look at a journal, one per failure; the
         /// last repeats.
         var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
@@ -346,6 +352,18 @@ actor ChatConversationEngine {
         var isUnreadable = false
         var firstSeenAt: Date?
         var settledEvidence: ChatBackgroundWorkEvidence?
+    }
+
+    /// One running Claude Code background command's output file
+    /// (`<tasks>/<task id>.output`), which the command writes as it runs.
+    private struct FollowedCommandOutput {
+        let path: String
+        var lastLook = 0
+        var failures = 0
+        var nextLook: Date?
+        var isUnreadable = false
+        /// When the Host last wrote the file, as of the last look.
+        var lastSeenAt: Date?
     }
 
     /// One request for older history, across the calls that read its pages.
@@ -405,6 +423,8 @@ actor ChatConversationEngine {
     private var journalCalls = 0
     private var workflowRunEnds: [String: FollowedWorkflowRunEnd] = [:]
     private var workflowRunEndCalls = 0
+    private var commandOutputs: [String: FollowedCommandOutput] = [:]
+    private var commandOutputCalls = 0
     private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
     private var agyBackgroundWork = AgyBackgroundWorkFollower()
     private struct FollowedSwarmWorker {
@@ -998,6 +1018,69 @@ actor ChatConversationEngine {
             if agents.contains(where: { $0.state == .failed }) { return .failed }
         }
         return .completed
+    }
+
+    /// Stats the output files of running Claude Code background commands, a
+    /// few a call and each at most once an interval, so one that still
+    /// writes shows when it last did. The file says nothing of a command's
+    /// end, which only the transcript records; nothing is read from it.
+    func followClaudeCommandOutputs() async -> [String: ChatBackgroundWorkEvidence] {
+        guard reference.program == .claude else { return [:] }
+        guard case .following = snapshot.phase, !snapshot.isFromCache, snapshot.readFailure == nil else {
+            return claudeCommandOutputEvidence
+        }
+        var running: [String: String] = [:]
+        for item in snapshot.transcript.listedBackgroundWork
+        where item.kind == .command && item.state == .running {
+            guard let path = item.outputPath, RemoteFilePath.isAcceptable(path) else { continue }
+            running[item.id] = path
+        }
+        commandOutputs = commandOutputs.filter { running[$0.key] == $0.value.path }
+        guard !running.isEmpty else { return [:] }
+        for (id, path) in running where commandOutputs[id] == nil {
+            commandOutputs[id] = FollowedCommandOutput(path: path)
+        }
+        commandOutputCalls += 1
+        let date = now()
+        let due = commandOutputs
+            .filter { !$0.value.isUnreadable && ($0.value.nextLook.map { date >= $0 } ?? true) }
+            .sorted { ($0.value.lastLook, $0.key) < ($1.value.lastLook, $1.key) }
+            .prefix(workflowLimits.commandOutputsPerCall)
+        for (id, var followed) in due {
+            followed.lastLook = commandOutputCalls
+            do {
+                if let status = try await files.status(followed.path) {
+                    followed.failures = 0
+                    followed.nextLook = date.addingTimeInterval(workflowLimits.commandOutputCheckInterval)
+                    let writtenAt = status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                    followed.lastSeenAt = [followed.lastSeenAt, writtenAt].compactMap(\.self).max()
+                } else {
+                    backOff(&followed.failures, &followed.nextLook, at: date)
+                }
+            } catch {
+                if Self.isCancellation(error) { return claudeCommandOutputEvidence }
+                if case .hostFileUnreadable? = error as? TransportError {
+                    followed.isUnreadable = true
+                } else {
+                    backOff(&followed.failures, &followed.nextLook, at: date)
+                }
+            }
+            commandOutputs[id] = followed
+        }
+        return claudeCommandOutputEvidence
+    }
+
+    private var claudeCommandOutputEvidence: [String: ChatBackgroundWorkEvidence] {
+        commandOutputs.compactMapValues { followed in
+            followed.lastSeenAt.map { ChatBackgroundWorkEvidence(lastSeenAt: $0) }
+        }
+    }
+
+    private func backOff(_ failures: inout Int, _ nextLook: inout Date?, at date: Date) {
+        let delays = workflowLimits.backoff
+        let delay = delays.isEmpty ? 0 : delays[min(failures, delays.count - 1)]
+        failures += 1
+        nextLook = date.addingTimeInterval(delay)
     }
 
     /// Reads SFTP side files of an Antigravity CLI conversation's running

@@ -1203,6 +1203,13 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     /// Where a Workflow records its agents, on the Host; nil when it is
     /// not where Chat may read.
     var journalPath: String?
+    /// Where a Claude Code background command writes its output, on the
+    /// Host, whose modification time is a sign it still runs; nil when the
+    /// transcript does not say.
+    var outputPath: String?
+    /// Claude Code's id for a background command's task, which a stop or a
+    /// Monitor's closing event names in place of the launching call.
+    var taskID: String?
     var launchOffset: UInt64
     /// Where the record that says it ended starts.
     var endOffset: UInt64?
@@ -1215,8 +1222,8 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
 
     init(
         id: String, kind: Kind, title: String, subtitle: String? = nil, state: State = .running,
-        journalPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil, launchedAt: Date? = nil,
-        lastActivityAt: Date? = nil, endedAt: Date? = nil, usage: Usage? = nil
+        journalPath: String? = nil, outputPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil,
+        launchedAt: Date? = nil, lastActivityAt: Date? = nil, endedAt: Date? = nil, usage: Usage? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -1224,6 +1231,7 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
         self.subtitle = subtitle
         self.state = state
         self.journalPath = journalPath
+        self.outputPath = outputPath
         self.launchOffset = launchOffset
         self.endOffset = endOffset
         self.launchedAt = launchedAt
@@ -1377,7 +1385,8 @@ struct ChatTranscript: Equatable, Sendable {
     /// lines.
     var latestPromptOffset: UInt64?
     /// Every end the loaded lines record, by the launching call's id,
-    /// including ends of work launched above them.
+    /// including ends of work launched above them. An end that names only
+    /// a Claude Code background command's task is filed by that task's id.
     var backgroundWorkEnds: [String: ChatBackgroundWorkEnd]
     /// The first record among the loaded lines that stopped all Background
     /// Work, which ends work launched above them with no end of its own.
@@ -1454,9 +1463,16 @@ struct ChatTranscript: Equatable, Sendable {
         let loaded = Set(backgroundWork.map(\.id))
         var carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
             var item = item
-            if let end = backgroundWorkEnds[item.id], end.offset > (item.endOffset ?? item.launchOffset) {
+            // A record that ends a command can name only its task.
+            let end = backgroundWorkEnds[item.id] ?? item.taskID.flatMap { backgroundWorkEnds[$0] }
+            if let end, end.offset > (item.endOffset ?? item.launchOffset) {
+                // A later carrier restates a command's end, which came
+                // when the first one did.
+                let firstEndedAt = item.kind == .command && item.state == end.state ? item.endedAt : nil
                 item.apply(end)
-            } else if item.state == .running, let stop = backgroundWorkStop {
+                item.endedAt = [firstEndedAt, item.endedAt].compactMap(\.self).min()
+            } else if item.state == .running, item.kind != .command, let stop = backgroundWorkStop {
+                // Claude Code's `agents_killed` says nothing of a command.
                 item.apply(stop)
             }
             return item

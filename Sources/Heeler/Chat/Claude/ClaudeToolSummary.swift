@@ -26,6 +26,12 @@ struct ClaudeToolSummary: Sendable, Equatable {
             } else {
                 self.init(kind: .command, title: command)
             }
+        case "Monitor":
+            // Claude Code 2.1.327 names a Monitor by its description in
+            // every event it reports. One on a WebSocket has no command.
+            let description = input.description.flatMap { $0.isEmpty ? nil : $0 }
+            let command = input.command.flatMap { $0.isEmpty ? nil : $0 }
+            self.init(kind: .other, title: description ?? use.name, subtitle: command)
         case "Edit", "MultiEdit", "NotebookEdit":
             self.init(kind: .fileEdit, title: file)
         case "Write":

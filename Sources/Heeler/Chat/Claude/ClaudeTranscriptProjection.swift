@@ -418,6 +418,9 @@ private struct Builder {
         var notification: ClaudeTaskNotification
         var offset: UInt64
         var timestamp: String?
+        /// The earliest record that carried this notification: Claude Code
+        /// queues it when the work ends and can deliver it minutes later.
+        var firstTimestamp: String?
     }
 
     struct BackgroundLaunch {
@@ -425,6 +428,15 @@ private struct Builder {
         var kind: ChatBackgroundWorkItem.Kind
         var launchOffset: UInt64
         var taskID: String?
+        /// When the program stops a Monitor that has not ended by itself.
+        var monitorDeadline: Date?
+    }
+
+    /// What a Monitor's events say about it: when the newest came, and the
+    /// first that closed it.
+    struct MonitorEvents {
+        var lastEventAt: Date?
+        var end: ChatBackgroundWorkEnd?
     }
 
     let chain: ClaudeChain
@@ -458,11 +470,26 @@ private struct Builder {
     private var turnOpen = false
     /// How the turn opened above the loaded lines ended, when they say.
     private(set) var precedingTurnEnd: ChatTurnEnd?
-    /// The latest notification for each background call.
+    /// The latest notification for each background call, a Monitor's events
+    /// aside.
     private var notifications: [String: Delivery] = [:]
     /// Terminal ends resolved per background call, including `TaskStop`,
     /// `agents_killed`, and `turn_duration` pending-count caps.
     private var resolvedBackgroundEnds: [String: ChatBackgroundWorkEnd] = [:]
+    /// Each Monitor's events, by its task id.
+    private var monitorEvents: [String: MonitorEvents] = [:]
+    /// Successful `TaskStop` calls, by the task each stopped, and which of
+    /// those tasks their results call a background command.
+    private var taskStops: [String: ChatBackgroundWorkEnd] = [:]
+    private var stoppedCommandTasks: Set<String> = []
+    /// The background commands and Monitors among the loaded records, by
+    /// the call that started each, with its task id.
+    private var commandTasks: [String: String] = [:]
+    /// The output file each background command's launch or notification
+    /// named, by task id, and the directory the first of them is in, which
+    /// every task of the session writes to.
+    private var taskOutputPaths: [String: String] = [:]
+    private var taskOutputDirectory: String?
     /// Notifications shown from user records, so a queued copy is not shown
     /// twice.
     private var notificationKeys: Set<String> = []
@@ -527,18 +554,28 @@ private struct Builder {
         }
 
         var callIDByTaskID: [String: String] = [:]
-        var taskStops: [String: ChatBackgroundWorkEnd] = [:]
+        var monitorDeadlines: [String: Date] = [:]
+        var loadedCalls: Set<String> = []
         for record in mainRecords {
             if record.kind == .system("agents_killed") {
                 agentsKilled.append(record)
             }
             for use in record.toolUses {
+                loadedCalls.insert(use.id)
                 if !use.id.isEmpty,
-                    let result = allAnswers[use.id]?.record.toolResult?.result,
-                    let launch = Self.backgroundLaunch(for: use, at: record.byteOffset, result: result),
+                    let answer = allAnswers[use.id],
+                    let result = answer.record.toolResult?.result,
+                    let launch = Self.backgroundLaunch(
+                        for: use, at: record.byteOffset, result: result, answeredAt: answer.record.timestamp),
                     let taskID = launch.taskID
                 {
                     callIDByTaskID[taskID] = use.id
+                    if launch.kind == .command {
+                        commandTasks[use.id] = taskID
+                        noteTaskOutput(
+                            Self.taskOutputPath(in: answer.result.content.text, taskID: taskID), taskID: taskID)
+                        monitorDeadlines[taskID] = launch.monitorDeadline
+                    }
                 }
                 if (use.name == "TaskStop" || use.name == "KillShell"),
                     !use.id.isEmpty,
@@ -546,24 +583,45 @@ private struct Builder {
                     case .succeeded = answer.outcome,
                     let stoppedID = (answer.record.toolResult?.result?.taskID ?? use.input.taskID)?.nonEmpty
                 {
-                    let stop = ChatBackgroundWorkEnd(
-                        state: .stopped, offset: answer.record.byteOffset,
-                        endedAt: ClaudeTranscriptProjection.date(answer.record.timestamp))
-                    if taskStops[stoppedID].map({ $0.offset <= stop.offset }) ?? true {
-                        taskStops[stoppedID] = stop
-                    }
+                    noteTaskStop(stoppedID, answeredBy: answer.record)
                 }
             }
         }
+        // A stop's result names the command it stopped by itself, so it
+        // counts when the call that sent it lies above the loaded lines.
+        for (callID, answer) in allAnswers where !loadedCalls.contains(callID) {
+            guard case .succeeded = answer.outcome, let result = answer.record.toolResult?.result,
+                result.taskType == Self.commandTaskType, let stoppedID = result.taskID?.nonEmpty
+            else { continue }
+            noteTaskStop(stoppedID, answeredBy: answer.record)
+        }
 
         func offerNotification(_ notification: ClaudeTaskNotification, offset: UInt64, timestamp: String?) {
+            if let taskID = notification.taskID?.nonEmpty {
+                noteTaskOutput(notification.outputFile, taskID: taskID)
+                if notification.isMonitorEvent {
+                    noteMonitorEvent(
+                        notification, taskID: taskID, offset: offset, timestamp: timestamp,
+                        deadline: monitorDeadlines[taskID])
+                    return
+                }
+            }
             guard
                 let callID =
                     notification.toolUseID?.nonEmpty
-                    ?? notification.taskID?.nonEmpty.flatMap({ callIDByTaskID[$0] }),
-                notifications[callID].map({ $0.offset <= offset }) ?? true
+                    ?? notification.taskID?.nonEmpty.flatMap({ callIDByTaskID[$0] })
             else { return }
-            notifications[callID] = Delivery(notification: notification, offset: offset, timestamp: timestamp)
+            let kept = notifications[callID]
+            let carriesKept = kept.map { Self.key(of: $0.notification) == Self.key(of: notification) } ?? false
+            if let kept, kept.offset > offset {
+                if carriesKept {
+                    notifications[callID]?.firstTimestamp = Self.earlier(kept.firstTimestamp, timestamp)
+                }
+                return
+            }
+            notifications[callID] = Delivery(
+                notification: notification, offset: offset, timestamp: timestamp,
+                firstTimestamp: carriesKept ? Self.earlier(kept?.firstTimestamp, timestamp) : timestamp)
         }
 
         for record in mainRecords {
@@ -605,15 +663,20 @@ private struct Builder {
                 delivery.offset > launch.launchOffset,
                 Self.state(of: delivery.notification) != .running
             {
-                resolvedBackgroundEnds[launch.callID] = Self.end(of: delivery)
+                resolvedBackgroundEnds[launch.callID] = Self.end(of: delivery, atFirstCarrier: launch.kind == .command)
                 continue
             }
             let explicitTaskStop = launch.taskID
                 .flatMap { taskStops[$0] }
                 .flatMap { $0.offset > launch.launchOffset ? $0 : nil }
-            let killStop = end(stoppingAfter: launch.launchOffset)
+            // `agents_killed` reports background agents terminated, and
+            // says nothing of a command; a Monitor's own closing event does.
+            let otherStop =
+                launch.kind == .command
+                ? launch.taskID.flatMap { monitorEvents[$0]?.end }.flatMap { $0.offset > launch.launchOffset ? $0 : nil }
+                : end(stoppingAfter: launch.launchOffset)
             resolvedBackgroundEnds[launch.callID] =
-                [explicitTaskStop, killStop].compactMap(\.self).min { $0.offset < $1.offset }
+                [explicitTaskStop, otherStop].compactMap(\.self).min { $0.offset < $1.offset }
         }
 
         let hasAnyPendingWorkflowCount = mainRecords.contains {
@@ -676,12 +739,24 @@ private struct Builder {
         }
     }
 
+    /// `answeredAt` is when the call's result was recorded, which a Monitor's
+    /// deadline counts from.
     private static func backgroundLaunch(
-        for use: ClaudeToolUse, at offset: UInt64, result: ClaudeToolUseResult
+        for use: ClaudeToolUse, at offset: UInt64, result: ClaudeToolUseResult, answeredAt: String? = nil
     ) -> BackgroundLaunch? {
-        guard !use.id.isEmpty,
-            result.status == "async_launched" || result.status == "remote_launched"
-        else { return nil }
+        guard !use.id.isEmpty else { return nil }
+        if let taskID = commandTaskID(for: use, result: result) {
+            var launch = BackgroundLaunch(callID: use.id, kind: .command, launchOffset: offset, taskID: taskID)
+            if use.name == "Monitor", !result.isPersistentMonitor,
+                let timeout = result.monitorTimeoutMilliseconds,
+                let started = ClaudeTranscriptProjection.date(answeredAt)
+            {
+                launch.monitorDeadline = started.addingTimeInterval(
+                    TimeInterval(timeout) / 1_000 - monitorDeadlineSlack)
+            }
+            return launch
+        }
+        guard result.status == "async_launched" || result.status == "remote_launched" else { return nil }
         if isWorkflow(use, result: result) {
             return BackgroundLaunch(
                 callID: use.id, kind: .workflow, launchOffset: offset, taskID: result.taskID?.nonEmpty)
@@ -692,6 +767,104 @@ private struct Builder {
                 taskID: (result.agentID ?? result.taskID)?.nonEmpty)
         }
         return nil
+    }
+
+    /// The task a call left running as a background command: the
+    /// `backgroundTaskId` of a Bash or PowerShell call that was asked to run
+    /// there, timed out, or was moved there, or a Monitor's `taskId`
+    /// (Claude Code 2.1.327).
+    private static func commandTaskID(for use: ClaudeToolUse, result: ClaudeToolUseResult) -> String? {
+        if let taskID = result.backgroundTaskID?.nonEmpty { return taskID }
+        return use.name == "Monitor" ? result.taskID?.nonEmpty : nil
+    }
+
+    /// What a `TaskStop` result calls a background command or a Monitor
+    /// (2.1.327).
+    private static let commandTaskType = "local_bash"
+
+    /// Keeps the newest stop of `taskID`, and whether its result says the
+    /// task was a command.
+    private mutating func noteTaskStop(_ taskID: String, answeredBy record: ClaudeRecord) {
+        let stop = ChatBackgroundWorkEnd(
+            state: .stopped, offset: record.byteOffset, endedAt: ClaudeTranscriptProjection.date(record.timestamp))
+        if taskStops[taskID].map({ $0.offset <= stop.offset }) ?? true {
+            taskStops[taskID] = stop
+        }
+        if record.toolResult?.result?.taskType == Self.commandTaskType {
+            stoppedCommandTasks.insert(taskID)
+        }
+    }
+
+    /// The result record is written just after a Monitor starts, so its
+    /// expiry can be stamped a moment before the deadline counted from it.
+    private static let monitorDeadlineSlack: TimeInterval = 1
+
+    /// A Monitor's event is a sign it runs, unless it is the program's own
+    /// closing note or comes at the deadline, when the Monitor is over:
+    /// expiry writes no end with a `<status>`.
+    private mutating func noteMonitorEvent(
+        _ notification: ClaudeTaskNotification, taskID: String, offset: UInt64, timestamp: String?, deadline: Date?
+    ) {
+        let date = ClaudeTranscriptProjection.date(timestamp)
+        var events = monitorEvents[taskID] ?? MonitorEvents()
+        events.lastEventAt = [events.lastEventAt, date].compactMap(\.self).max()
+        let note = notification.event ?? ""
+        let isClosingNote = note.hasPrefix(ClaudeTaskNotification.monitorClosingPrefix)
+        let isPastDeadline = deadline.flatMap { deadline in date.map { $0 >= deadline } } ?? false
+        if isClosingNote || isPastDeadline {
+            // Each carrier restates the note, as with a notification: the
+            // end stands at the newest one, at the first one's time.
+            let state: ChatBackgroundWorkItem.State =
+                note.hasPrefix(ClaudeTaskNotification.monitorStoppedPrefix) ? .stopped : .completed
+            events.end = ChatBackgroundWorkEnd(
+                state: events.end?.state ?? state, offset: max(events.end?.offset ?? 0, offset),
+                endedAt: [events.end?.endedAt, date].compactMap(\.self).min())
+        }
+        monitorEvents[taskID] = events
+    }
+
+    /// Keeps the output file a launch or notification names for `taskID`,
+    /// and the directory every task of the session writes to.
+    private mutating func noteTaskOutput(_ path: String?, taskID: String) {
+        guard let path, Self.isTaskID(taskID), path.hasSuffix("/tasks/\(taskID).output"),
+            RemoteFilePath.isAcceptable(path)
+        else { return }
+        taskOutputPaths[taskID] = path
+        if taskOutputDirectory == nil {
+            taskOutputDirectory = String(path.dropLast("/\(taskID).output".count))
+        }
+    }
+
+    /// Where `taskID` writes its output: the path the transcript names, or
+    /// its name in the directory another task's path gave.
+    private func taskOutputPath(_ taskID: String) -> String? {
+        if let path = taskOutputPaths[taskID] { return path }
+        guard let taskOutputDirectory, Self.isTaskID(taskID) else { return nil }
+        return RemoteFilePath.join(taskOutputDirectory, "\(taskID).output")
+    }
+
+    /// A task id is a kind letter and eight base-36 characters (2.1.292);
+    /// anything that could not be one names no file.
+    private static func isTaskID(_ taskID: String) -> Bool {
+        !taskID.isEmpty && taskID.utf8.count <= 64
+            && taskID.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+
+    /// The output file a background launch's result text names: `Output is
+    /// being written to: <dir>/tasks/<task id>.output`.
+    private static func taskOutputPath(in text: String, taskID: String) -> String? {
+        guard let marker = text.range(of: "Output is being written to: "),
+            let end = text.range(of: "/tasks/\(taskID).output", range: marker.upperBound..<text.endIndex)
+        else { return nil }
+        return String(text[marker.upperBound..<end.upperBound])
+    }
+
+    /// The earlier of two record timestamps, which Claude Code writes in
+    /// one fixed-width UTC form.
+    private static func earlier(_ first: String?, _ second: String?) -> String? {
+        guard let first else { return second }
+        guard let second else { return first }
+        return min(first, second)
     }
 
     mutating func build() {
@@ -774,6 +947,10 @@ private struct Builder {
         let structured = answer?.record.toolResult?.result
         var status = outcome?.status ?? unansweredStatus(of: use, after: record.byteOffset)
         if status == .succeeded, let launch = structured?.status, launch == "async_launched" || launch == "remote_launched" {
+            status = backgroundStatus(callID, launchedAt: record.byteOffset)
+        } else if status == .succeeded, role == .main, let callID, commandTasks[callID] != nil {
+            // A command left in the background runs on past its call's
+            // result. Only a session's own transcript resolves how it ended.
             status = backgroundStatus(callID, launchedAt: record.byteOffset)
         } else if status == .succeeded, structured?.status == "teammate_spawned" {
             status = .started
@@ -859,6 +1036,12 @@ private struct Builder {
         {
             row.preview = ChatToolPreview(capping: report)
         }
+        // A background command's notification names the code it failed with.
+        if row.exitCode == nil, status == .failed, commandTasks[use.id] != nil,
+            let ended = notifications[use.id]?.notification, ended.status == "failed"
+        {
+            row.exitCode = ended.exitCode
+        }
         if use.name == "AskUserQuestion" {
             let given = structured?.answers ?? [:]
             row.questions = use.input.questions.map { question in
@@ -884,7 +1067,9 @@ private struct Builder {
     }
 
     /// A background agent runs until its task notification arrives, or until
-    /// `TaskStop`, `agents_killed`, or a `turn_duration` count retires it.
+    /// `TaskStop`, `agents_killed`, or a `turn_duration` count retires it. A
+    /// background command runs until its notification, a `TaskStop`, or a
+    /// Monitor's closing event.
     private func backgroundStatus(_ callID: String?, launchedAt offset: UInt64) -> ChatToolActivity.Status {
         let resolvedEnd = callID.flatMap { resolvedBackgroundEnds[$0] }
         if let callID, let delivery = notifications[callID] {
@@ -899,7 +1084,8 @@ private struct Builder {
         if let resolvedEnd {
             return Self.toolStatus(for: resolvedEnd.state)
         }
-        if agentsKilled.contains(where: { $0.byteOffset > offset }) { return .interrupted }
+        let isCommand = callID.map { commandTasks[$0] != nil } ?? false
+        if !isCommand, agentsKilled.contains(where: { $0.byteOffset > offset }) { return .interrupted }
         return .running
     }
 
@@ -916,17 +1102,31 @@ private struct Builder {
         use.name == "Workflow" || result?.taskType == "local_workflow"
     }
 
-    /// A Subagent or Workflow the call started in the background, with how
-    /// it ended once its notification arrived. Teammates are left out:
-    /// nothing in the transcript says when one is done.
+    /// A Subagent, Workflow, background command or Monitor the call started
+    /// in the background, with how it ended once its notification arrived.
+    /// Teammates are left out: nothing in the transcript says when one is
+    /// done.
     private func backgroundWorkItem(
         for use: ClaudeToolUse, in record: ClaudeRecord, result: ClaudeToolUseResult?
     ) -> ChatBackgroundWorkItem? {
-        guard role == .main, !use.id.isEmpty, let result,
-            result.status == "async_launched" || result.status == "remote_launched"
-        else { return nil }
+        guard role == .main, !use.id.isEmpty, let result else { return nil }
         var item: ChatBackgroundWorkItem
-        if Self.isWorkflow(use, result: result) {
+        if let taskID = commandTasks[use.id] {
+            // The command is the row's terminal line and what the model
+            // said it does its headline; a Monitor on a WebSocket has only
+            // the latter.
+            let command = use.input.command.flatMap(\.nonEmpty)
+            let description = use.input.description.flatMap(\.nonEmpty)
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .command, title: command ?? description ?? String(localized: "Command"),
+                subtitle: command == nil || description == command ? nil : description,
+                launchOffset: record.byteOffset)
+            item.taskID = taskID
+            item.outputPath = taskOutputPath(taskID)
+            item.lastActivityAt = monitorEvents[taskID]?.lastEventAt
+        } else if result.status != "async_launched", result.status != "remote_launched" {
+            return nil
+        } else if Self.isWorkflow(use, result: result) {
             item = ChatBackgroundWorkItem(
                 id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? String(localized: "Workflow"),
                 subtitle: result.workflowSummary.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
@@ -949,18 +1149,32 @@ private struct Builder {
     }
 
     /// How each background call ended, by its id, as its latest terminal
-    /// notification says.
+    /// notification says. A `TaskStop` and a Monitor's closing event name
+    /// only the task, so those ends are filed by the task's id, for a
+    /// command launched above the loaded lines.
     var backgroundWorkEnds: [String: ChatBackgroundWorkEnd] {
-        notifications.compactMapValues { delivery in
-            let end = Self.end(of: delivery)
+        var ends: [String: ChatBackgroundWorkEnd] = notifications.compactMapValues { delivery in
+            let end = Self.end(of: delivery, atFirstCarrier: commandTasks[delivery.notification.toolUseID ?? ""] != nil)
             return end.state == .running ? nil : end
         }
+        for (taskID, events) in monitorEvents {
+            if let end = events.end { ends[taskID] = end }
+        }
+        for taskID in stoppedCommandTasks {
+            guard let stop = taskStops[taskID], ends[taskID].map({ stop.offset < $0.offset }) ?? true else { continue }
+            ends[taskID] = stop
+        }
+        return ends
     }
 
-    private static func end(of delivery: Delivery) -> ChatBackgroundWorkEnd {
-        ChatBackgroundWorkEnd(
+    /// `atFirstCarrier` dates the end by the first record that carried the
+    /// notification, which is when a command stopped: nothing else in its
+    /// notification says how long it ran.
+    private static func end(of delivery: Delivery, atFirstCarrier: Bool = false) -> ChatBackgroundWorkEnd {
+        let timestamp = atFirstCarrier ? delivery.firstTimestamp ?? delivery.timestamp : delivery.timestamp
+        return ChatBackgroundWorkEnd(
             state: state(of: delivery.notification), offset: delivery.offset,
-            endedAt: ClaudeTranscriptProjection.date(delivery.timestamp), usage: delivery.notification.usage)
+            endedAt: ClaudeTranscriptProjection.date(timestamp), usage: delivery.notification.usage)
     }
 
     /// The first `agents_killed` record past `offset`, which stops work
@@ -1490,15 +1704,18 @@ private struct Builder {
         return notification
     }
 
+    /// A Monitor's events share their task, status and summary, and differ
+    /// only in what they say.
     private static func key(of notification: ClaudeTaskNotification) -> String {
-        [notification.taskID, notification.toolUseID, notification.status, notification.summary]
+        [notification.taskID, notification.toolUseID, notification.status, notification.summary, notification.event]
             .map { $0 ?? "" }.joined(separator: "\u{1F}")
     }
 
+    /// The agent's report, or what a Monitor's event said, under the title.
     private static func notice(for notification: ClaudeTaskNotification) -> ChatNotice {
         ChatNotice(
             kind: .taskNotification, title: notification.title,
-            detail: notification.result.map { ChatToolPreview(capping: $0).text }?.nonEmpty)
+            detail: (notification.result ?? notification.event).map { ChatToolPreview(capping: $0).text }?.nonEmpty)
     }
 }
 
