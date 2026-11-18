@@ -28,6 +28,7 @@ final class NewTerminalStore {
     }
 
     let hosts: [Host]
+    let hostChoices: [LaunchHostChoice]
 
     var selectedHostID: Host.ID? {
         didSet {
@@ -37,6 +38,39 @@ final class NewTerminalStore {
             newWorkspaceDirectory = ""
             newWorkspaceLabel = ""
         }
+    }
+
+    var selectedHostChoice: LaunchHostChoice? {
+        guard let selectedHostID else { return nil }
+        return hostChoices.first { choice in
+            choice.servers.contains { $0.id == selectedHostID }
+        }
+    }
+
+    var serversForSelectedHost: [Host] {
+        selectedHostChoice?.servers ?? []
+    }
+
+    var offersServerChoice: Bool {
+        serversForSelectedHost.count > 1
+    }
+
+    var selectedHostConnection: HostMachine.Connection? {
+        get { selectedHostChoice?.id }
+        set {
+            guard let newValue else {
+                selectedHostID = nil
+                return
+            }
+            selectHost(newValue)
+        }
+    }
+
+    func selectHost(_ connection: HostMachine.Connection) {
+        guard let choice = hostChoices.first(where: { $0.id == connection }),
+            selectedHostChoice?.id != connection
+        else { return }
+        selectedHostID = choice.servers.first?.id
     }
 
     /// The picked Workspace while it still exists, else the Host's first in
@@ -76,8 +110,10 @@ final class NewTerminalStore {
         awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?,
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
+        let hostChoices = LaunchHostChoice.grouped(hosts)
         self.offersDesktopAppNames = offersDesktopAppNames
         self.hosts = hosts
+        self.hostChoices = hostChoices
         self.workspacesProvider = workspaces
         self.directory = directory
         self.remoteHome = remoteHome
@@ -85,7 +121,7 @@ final class NewTerminalStore {
         self.awaitTerminal = awaitTerminal
         selectedHostID =
             initialHostID.flatMap { id in hosts.contains { $0.id == id } ? id : nil }
-            ?? (hosts.count == 1 ? hosts.first?.id : nil)
+            ?? (hostChoices.count == 1 ? hostChoices.first?.servers.first?.id : nil)
         pickedWorkspaceID = initialWorkspaceID
     }
 

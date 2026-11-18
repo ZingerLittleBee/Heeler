@@ -121,6 +121,7 @@ extension HostRemovalDependencies {
             forgetHostRecords: { id in
                 await knownHosts.forgetHost(id)
                 recentLaunches.forgetWorkspace(for: id)
+                recentLaunches.forgetHost(id)
             },
             copyHostKeyTrust: { source, record in
                 await knownHosts.copyTrust(from: source, to: record)

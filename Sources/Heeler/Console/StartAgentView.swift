@@ -78,14 +78,12 @@ struct StartAgentView: View {
                     }
                 } else {
                     Section("Host") {
-                        Picker("Host", selection: $store.selectedHostID) {
-                            if store.selectedHostID == nil {
-                                Text("Select a Host").tag(Host.ID?.none)
-                            }
-                            ForEach(store.hosts) { @Sendable host in
-                                Text(host.displayName).tag(Host.ID?.some(host.id))
-                            }
-                        }
+                        StartHostPickers(
+                            hosts: store.hostChoices,
+                            selectedHost: $store.selectedHostConnection,
+                            servers: store.serversForSelectedHost,
+                            offersServerChoice: store.offersServerChoice,
+                            selectedServerID: $store.selectedHostID)
                     }
 
                     Section {
@@ -383,6 +381,35 @@ struct StartAgentView: View {
         directoryBrowser = RemoteDirectoryBrowser(
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+    }
+}
+
+/// Picks a Host by its name alone, and adds a Server picker only when that
+/// Host offers more than one Server here.
+struct StartHostPickers: View {
+    let hosts: [LaunchHostChoice]
+    @Binding var selectedHost: HostMachine.Connection?
+    let servers: [Host]
+    let offersServerChoice: Bool
+    @Binding var selectedServerID: Host.ID?
+
+    var body: some View {
+        Picker("Host", selection: $selectedHost) {
+            if selectedHost == nil {
+                Text("Select a Host").tag(HostMachine.Connection?.none)
+            }
+            ForEach(hosts) { @Sendable host in
+                Text(host.name).tag(HostMachine.Connection?.some(host.id))
+            }
+        }
+        if offersServerChoice {
+            Picker("Server", selection: $selectedServerID) {
+                ForEach(servers) { @Sendable server in
+                    Text(LaunchHostChoice.serverLabel(for: server))
+                        .tag(Host.ID?.some(server.id))
+                }
+            }
+        }
     }
 }
 

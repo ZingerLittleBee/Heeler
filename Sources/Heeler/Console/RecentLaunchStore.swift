@@ -1,13 +1,17 @@
 import Foundation
 
-/// What the user last launched, so the new-agent sheet opens on it (#12,
-/// #601): launching several agents into the same project, with the same
-/// Agent, is the common case, and re-picking either every time is pure tax.
+/// What the user last chose or launched, so the new-agent sheet opens on it
+/// (#12, #601): launching several agents on the same Host and into the same
+/// project, with the same Agent, is the common case, and re-picking them every
+/// time is pure tax.
 ///
-/// The Workspace is remembered per Host because a workspace ID only means
-/// something inside one herdr session. The Agent kind is a single preference
-/// across Hosts: a Host that lacks it falls back to its own first kind.
+/// Hosts are kept in recency order by Server record ID, so both the last Host
+/// and the last Server picked on each multi-Server Host are remembered. The
+/// Workspace is remembered per Server record because a workspace ID only means
+/// something inside one session. The Agent kind is a single preference across
+/// Hosts: a Host that lacks it falls back to its own first kind.
 struct RecentLaunchStore {
+    private static let hostIDsKey = "recent-host-ids"
     private static let workspaceKey = "recent-workspace-by-host"
     private static let agentKindKey = "recent-agent-kind"
 
@@ -15,6 +19,32 @@ struct RecentLaunchStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    /// The most recently chosen Server among `hosts`, if any still exists.
+    func preferredHostID(in hosts: [Host]) -> Host.ID? {
+        let available = Set(hosts.map(\.id))
+        return hostIDs.first { available.contains($0) }
+    }
+
+    func rememberHost(_ hostID: Host.ID) {
+        let key = hostID.uuidString
+        var updated = rawHostIDs.filter { $0 != key }
+        updated.insert(key, at: 0)
+        defaults.set(updated, forKey: Self.hostIDsKey)
+    }
+
+    /// Remove Host or turning a Server off forgets its remembered entry.
+    func forgetHost(_ hostID: Host.ID) {
+        let key = hostID.uuidString
+        let current = rawHostIDs
+        guard current.contains(key) else { return }
+        let updated = current.filter { $0 != key }
+        if updated.isEmpty {
+            defaults.removeObject(forKey: Self.hostIDsKey)
+        } else {
+            defaults.set(updated, forKey: Self.hostIDsKey)
+        }
     }
 
     func workspaceID(for hostID: Host.ID) -> String? {
@@ -47,6 +77,14 @@ struct RecentLaunchStore {
         } else {
             defaults.set(updated, forKey: Self.workspaceKey)
         }
+    }
+
+    private var hostIDs: [Host.ID] {
+        rawHostIDs.compactMap(UUID.init(uuidString:))
+    }
+
+    private var rawHostIDs: [String] {
+        defaults.stringArray(forKey: Self.hostIDsKey) ?? []
     }
 
     private var workspacesByHost: [String: String] {

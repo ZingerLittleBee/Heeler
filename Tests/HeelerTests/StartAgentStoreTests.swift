@@ -1846,4 +1846,108 @@ struct StartAgentStoreTests {
             base: String(repeating: "a", count: 29) + "-xy", taken: [String(repeating: "a", count: 29) + "-xy"])
         #expect(AgentName.validationError(trimmed) == nil)
     }
+
+    @Test func hostChoicesShowOnlyHostNamesAndShowServerOnlyWithSeveral() throws {
+        let m3TUI = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .herdrTUI)
+        let m3Rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
+        let m3ProCore = Host(
+            name: "MacBook Pro M3", address: "m3pro.example", username: "dev", serverKind: .herdrCore)
+        let box = Host(name: "amux", address: "amux.example", username: "dev", serverKind: .herdrTUI)
+        let m3ProTUI = Host(
+            name: "MacBook Pro M3", address: "m3pro.example", username: "dev", serverKind: .herdrTUI)
+        let catalog = HostStore(volatileHosts: [m3TUI, m3Rex, m3ProCore, box, m3ProTUI])
+        let offered = catalog.consoleHosts.offeringNewItem(listsTerminals: false, capabilities: \.capabilities)
+        // `m3`'s Rex Server gave `m3TUI` a Server label in the catalog, yet only
+        // one Server on `m3` offers New Agent.
+        #expect(offered.first { $0.id == m3TUI.id }?.displayName == "m3 · Herdr TUI")
+
+        let store = makeStore(hosts: offered, recorder: StartRecorder())
+        #expect(store.hostChoices.map(\.name) == ["m3", "MacBook Pro M3", "amux"])
+        #expect(store.selectedHostID == nil)
+        #expect(!store.offersServerChoice)
+
+        let m3Choice = try #require(store.hostChoices.first { $0.name == "m3" })
+        store.selectedHostConnection = m3Choice.id
+        #expect(store.selectedHostID == m3TUI.id)
+        #expect(!store.offersServerChoice)
+
+        let m3ProChoice = try #require(store.hostChoices.first { $0.name == "MacBook Pro M3" })
+        store.selectedHostConnection = m3ProChoice.id
+        #expect(store.selectedHostID == m3ProCore.id)
+        #expect(store.offersServerChoice)
+        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["herdr-core", "Herdr TUI"])
+    }
+
+    @Test func singleHostWithSeveralServersPreSelectsTheHostAndOffersServerChoice() {
+        let core = Host(name: "Studio", address: "studio.example", username: "dev", serverKind: .herdrCore)
+        let tui = Host(name: "Studio", address: "studio.example", username: "dev", serverKind: .herdrTUI)
+        let store = makeStore(hosts: [core, tui], recorder: StartRecorder())
+
+        #expect(store.hostChoices.map(\.name) == ["Studio"])
+        #expect(store.selectedHostID == core.id)
+        #expect(store.offersServerChoice)
+        #expect(store.serversForSelectedHost.map(\.id) == [core.id, tui.id])
+    }
+
+    @Test func remembersTheLastSelectedHostAndServerAcrossOpenings() async throws {
+        let m3 = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .herdrTUI)
+        let m3ProCore = Host(
+            name: "MacBook Pro M3", address: "m3pro.example", username: "dev", serverKind: .herdrCore)
+        let m3ProTUI = Host(
+            name: "MacBook Pro M3", address: "m3pro.example", username: "dev", serverKind: .herdrTUI)
+        let offered = [m3, m3ProCore, m3ProTUI]
+        let recents = makeRecents()
+
+        let first = makeStore(hosts: offered, recents: recents, recorder: StartRecorder())
+        let m3ProChoice = try #require(first.hostChoices.first { $0.name == "MacBook Pro M3" })
+        first.selectedHostConnection = m3ProChoice.id
+        first.selectedHostID = m3ProTUI.id
+
+        // Reopening without submitting still keeps the Host and Server picked last.
+        let reopened = makeStore(hosts: offered, recents: recents, recorder: StartRecorder())
+        #expect(reopened.selectedHostChoice?.name == "MacBook Pro M3")
+        #expect(reopened.selectedHostID == m3ProTUI.id)
+        #expect(reopened.offersServerChoice)
+
+        // Switching to `m3` and later back to `MacBook Pro M3` keeps `Herdr TUI` on it.
+        let m3Choice = try #require(reopened.hostChoices.first { $0.name == "m3" })
+        reopened.selectedHostConnection = m3Choice.id
+        #expect(reopened.selectedHostID == m3.id)
+
+        let afterM3 = makeStore(hosts: offered, recents: recents, recorder: StartRecorder())
+        #expect(afterM3.selectedHostID == m3.id)
+        afterM3.selectedHostConnection = m3ProChoice.id
+        #expect(afterM3.selectedHostID == m3ProTUI.id)
+
+        // Origin launches keep their own Host without overwriting the picker's.
+        let fromOrigin = makeStore(
+            hosts: offered,
+            origin: StartAgentStore.LaunchOrigin(hostID: m3.id, workspaceID: "w1", cwd: "/work"),
+            recents: recents,
+            recorder: StartRecorder())
+        #expect(fromOrigin.selectedHostID == m3.id)
+        await fromOrigin.discoverAgents()
+        await fromOrigin.submit()
+
+        let afterOrigin = makeStore(hosts: offered, recents: recents, recorder: StartRecorder())
+        #expect(afterOrigin.selectedHostID == m3ProTUI.id)
+    }
+
+    @Test func singleHostSubmitRemembersHostOnceAnotherHostIsAdded() async {
+        let m3 = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .herdrTUI)
+        let win = Host(name: "win", address: "win.example", username: "dev", serverKind: .herdrTUI)
+        let recents = makeRecents()
+
+        let solo = makeStore(
+            hosts: [m3],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            recents: recents,
+            recorder: StartRecorder())
+        await solo.discoverAgents()
+        await solo.submit()
+        #expect(solo.state == started(on: m3))
+
+        let withWin = makeStore(hosts: [win, m3], recents: recents, recorder: StartRecorder())
+        #expect(withWin.selectedHostID == m3.id)
+    }
 }
