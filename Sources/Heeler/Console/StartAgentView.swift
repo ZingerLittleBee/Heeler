@@ -14,14 +14,21 @@ struct StartAgentView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(
+        store: StartAgentStore, console: ConsoleStore,
+        onStarted: @escaping (ConsoleAgent.ID) -> Void = { _ in }
+    ) {
+        self.onStarted = onStarted
+        self.console = console
+        _store = State(initialValue: store)
+    }
+
+    init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
-        self.onStarted = onStarted
-        self.console = console
-        _store = State(
-            initialValue: StartAgentStore(
+        self.init(
+            store: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
                 existingAgentNames: { console.takenAgentNames(on: $0) },
@@ -48,7 +55,9 @@ struct StartAgentView: View {
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
-                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }))
+                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }),
+            console: console,
+            onStarted: onStarted)
     }
 
     var body: some View {
@@ -194,10 +203,11 @@ struct StartAgentView: View {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
-                        if !store.availablePresets.isEmpty {
+                        agentPicker
+                        if !store.selectedAgentPresets.isEmpty {
                             Picker("Preset", selection: $store.selectedPresetID) {
                                 Text("None").tag(LaunchPreset.ID?.none)
-                                ForEach(store.availablePresets) { @Sendable preset in
+                                ForEach(store.selectedAgentPresets) { @Sendable preset in
                                     AgentKindMenuLabel(preset.name, kind: preset.kind)
                                         .tag(LaunchPreset.ID?.some(preset.id))
                                 }
@@ -207,7 +217,6 @@ struct StartAgentView: View {
                                 LaunchPresetSummary(preset: preset)
                             }
                         }
-                        agentPicker
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
@@ -348,6 +357,15 @@ struct StartAgentView: View {
                 AgentKindMenuLabel(kind.displayName, kind: kind)
                     .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
             }
+            if !store.availablePresets.isEmpty {
+                Section("Launch Presets") {
+                    ForEach(store.availablePresets) { @Sendable preset in
+                        AgentKindMenuLabel(
+                            "\(preset.name) · \(preset.kind.displayName)", kind: preset.kind)
+                            .tag(StartAgentStore.AgentChoice?.some(.preset(preset.id)))
+                    }
+                }
+            }
             if !store.availableTemplates.isEmpty {
                 Section("Templates") {
                     ForEach(store.availableTemplates) { @Sendable template in
@@ -357,6 +375,7 @@ struct StartAgentView: View {
                 }
             }
         }
+        .accessibilityIdentifier("startAgent.agent")
     }
 
     private func openDirectoryBrowser() {
