@@ -111,7 +111,7 @@ struct HostFormView: View {
                     String(localized: "Add the address Heeler connects to: directly, over an overlay network, or through a Jump Host."))
             } else if draft.routes.count > 1 {
                 Text(
-                    String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later."))
+                    String(localized: "Heeler tries every route when it connects, and every server on the Host uses the first that reaches it. Routes over this device's own network start first, and Heeler moves to one of them when it comes into reach."))
             } else {
                 Text(
                     String(localized: "Add another way to reach this Host, such as its LAN address at home and an overlay network or Jump Host elsewhere."))

@@ -280,7 +280,10 @@ struct HostListView: View {
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
-    /// Stops a Host's connection attempt instead of waiting for its timeout.
+    /// Host detail's Reconnect: every Server of the Host dials again, on one
+    /// route (ADR 0058).
+    private let reconnectHost: (@MainActor @Sendable (HostMachine) async -> Void)?
+    /// Stops a Server's connection attempt instead of waiting for its timeout.
     private let stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)?
     /// Where `initialHostID` was opened from. Its detail's back button goes
     /// back there instead of to this list.
@@ -332,6 +335,7 @@ struct HostListView: View {
         harnessEdits: ConsoleStore? = nil,
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
+        reconnectHost: (@MainActor @Sendable (HostMachine) async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil,
         discoveries: HostServerDiscoveryStore = .shared,
@@ -353,14 +357,14 @@ struct HostListView: View {
         self.harnessEdits = harnessEdits
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
+        self.reconnectHost = reconnectHost
         self.stopConnecting = stopConnecting
         self.origin = origin
         self.onDone = onDone
         // On the stack from the first frame, so the requested detail never
         // renders with the list's back button first.
         _path = State(
-            initialValue: Self.requestedRoute(initialHostID, opensHostHelper: opensHostHelper, in: store)
-                .map { [$0] } ?? [])
+            initialValue: Self.requestedPath(initialHostID, opensHostHelper: opensHostHelper, in: store))
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -516,14 +520,13 @@ struct HostListView: View {
             // A caller that keeps this view's identity across requests
             // still lands on the new one.
             .onChange(of: initialHostID) { _, id in
-                if let route = Self.requestedRoute(id, opensHostHelper: opensHostHelper, in: store) {
-                    path = [route]
-                }
+                let requested = Self.requestedPath(id, opensHostHelper: opensHostHelper, in: store)
+                if !requested.isEmpty { path = requested }
             }
             .onChange(of: store.hosts.map(\.id)) { _, records in
                 // A Server turned off from its own page has no page left.
                 path.removeAll { route in
-                    if case .server(let id, _, _) = route { !records.contains(id) } else { false }
+                    if case .server(let id, _) = route { !records.contains(id) } else { false }
                 }
                 discoveries.retain(store.machines.map(\.id))
             }
@@ -542,9 +545,9 @@ struct HostListView: View {
         case .host(let member, let isRequested):
             HostMachineDetailView(
                 catalog: store, member: member, discoveries: discoveries, removal: removal,
-                dependencies: onboardingDependencies, serverState: { serverPresentation($0) })
+                dependencies: onboardingDependencies, console: consoleLink)
                 .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
-        case .server(let id, let isRequested, let opensHostHelper):
+        case .server(let id, let opensHostHelper):
             if let host = store.hosts.first(where: { $0.id == id }) {
                 // Keyed by the record's id: onboarding restarts itself for a
                 // Host edited underneath.
@@ -554,37 +557,52 @@ struct HostListView: View {
                     usage: usageStore?(id),
                     openUsage: openUsage.map { open in { open(id) } },
                     connectionStatus: connectionStatuses[id],
-                    connectedRouteID: routeIDs[id],
                     syncIssue: syncIssues[id],
                     coreEnvironmentNotice: coreEnvironmentNotices[id],
                     harnessEdits: harnessEdits,
                     isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                     retryConnection: retryAction(for: id),
-                    stopConnecting: stopAction(for: id),
-                    turnOff: {
-                        let dependencies = removalDependencies
-                        Task { await removal.turnOff(id, dependencies: dependencies) }
-                    },
-                    // Opened from elsewhere, it has no Host detail behind it.
-                    openHost: isRequested ? { path.append(.host(id)) } : nil,
                     opensHostHelper: opensHostHelper,
                     dependencies: onboardingDependencies)
                     .id(id)
-                    .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
             } else {
                 ContentUnavailableView("Host removed", systemImage: "server.rack")
             }
         }
     }
 
-    /// Where a request for one catalog record lands: a Server's own page, or
-    /// Host detail for the record of a Host with no Server on.
-    private static func requestedRoute(
-        _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore
-    ) -> HostDetailDestination? {
-        guard let id, let record = store.hosts.first(where: { $0.id == id }) else { return nil }
-        guard record.serverKind.isConfirmed else { return .host(id, isRequested: true) }
-        return .server(id, isRequested: true, opensHostHelper: opensHostHelper)
+    /// Where a request for one catalog record lands: the Server's own page
+    /// over its Host's detail, or Host detail alone for the record of a Host
+    /// with no Server on. A Server's page says nothing of the connection and
+    /// has no switch, so its Host is always the page behind it (ADR 0058).
+    /// `isRequested` marks a page opened from elsewhere, whose Host detail
+    /// goes back there.
+    private static func requestedPath(
+        _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore, isRequested: Bool = true
+    ) -> [HostDetailDestination] {
+        guard let id, let record = store.hosts.first(where: { $0.id == id }) else { return [] }
+        let host = HostDetailDestination.host(id, isRequested: isRequested)
+        guard record.serverKind.isConfirmed else { return [host] }
+        return [host, .server(id, opensHostHelper: opensHostHelper)]
+    }
+
+    /// The Console's connections, as Host detail reads them.
+    private var consoleLink: HostConsoleLink {
+        var link = HostConsoleLink(
+            statuses: connectionStatuses,
+            standingFailures: standingFailures,
+            routeIDs: routeIDs,
+            syncIssues: syncIssues,
+            manualReconnects: manualReconnectInFlightHostIDs,
+            reconnect: reconnectHost)
+        if let stopConnecting {
+            link.stopConnecting = { (machine: HostMachine) async in
+                for server in machine.servers {
+                    await stopConnecting(server.id)
+                }
+            }
+        }
+        return link
     }
 
     private var entries: [HostListEntry] {
@@ -615,16 +633,6 @@ struct HostListView: View {
                     .listRowBackground(ListCard.fill)
             }
         }
-    }
-
-    private func serverPresentation(_ record: Host) -> HostRowPresentation {
-        HostRowPresentation(
-            host: record,
-            status: connectionStatuses[record.id],
-            standingFailure: standingFailures[record.id],
-            latency: latencies[record.id],
-            syncIssue: syncIssues[record.id],
-            canRetry: retryConnection != nil)
     }
 
     /// The Hosts the Console has a connection to. A look for new Servers goes
@@ -752,9 +760,7 @@ struct HostListView: View {
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
-        if let route = Self.requestedRoute(id, opensHostHelper: false, in: store) {
-            path.append(route.fromTheList)
-        }
+        path += Self.requestedPath(id, opensHostHelper: false, in: store, isRequested: false)
     }
 
     private func retryAction(
@@ -764,12 +770,6 @@ struct HostListView: View {
         return { await retryConnection(id) }
     }
 
-    private func stopAction(
-        for id: Host.ID
-    ) -> (@MainActor @Sendable () async -> Void)? {
-        guard let stopConnecting else { return nil }
-        return { await stopConnecting(id) }
-    }
 }
 
 /// One page pushed from the Hosts list (ADR 0047).
@@ -778,17 +778,9 @@ enum HostDetailDestination: Hashable {
     /// request is marked in the route itself, not inferred from where it sits
     /// on the stack, so it knows where Back goes from its first render.
     case host(Host.ID, isRequested: Bool = false)
-    /// One Server's page, by its record. `opensHostHelper` opens the Host
-    /// Helper sheet over it on arrival.
-    case server(Host.ID, isRequested: Bool = false, opensHostHelper: Bool = false)
-
-    /// The same page as the list itself opens it: Back returns to the list.
-    var fromTheList: Self {
-        switch self {
-        case .host(let id, _): .host(id)
-        case .server(let id, _, let opensHostHelper): .server(id, opensHostHelper: opensHostHelper)
-        }
-    }
+    /// One Server's page, by its record, over its Host's detail.
+    /// `opensHostHelper` opens the Host Helper sheet over it on arrival.
+    case server(Host.ID, opensHostHelper: Bool = false)
 }
 
 /// The confirmation before a Host goes or a Server is turned off, and the
