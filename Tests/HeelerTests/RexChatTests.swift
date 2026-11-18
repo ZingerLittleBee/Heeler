@@ -308,7 +308,7 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .pi, .omp])
         #expect(!rig.host.capabilities.chat)
 
         world.restart(as: "instance-0002")
@@ -340,8 +340,8 @@ struct RexChatTests {
         #expect(request.valuesOf.starts(with: ["REX_SESSION", "REX_BLOCK"]))
 
         let logged = await connection.log
-        let pi = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .pi)
-        #expect(pi == .unavailable(.cannotTellSession(.pi)))
+        let grok = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .grok)
+        #expect(grok == .unavailable(.cannotTellSession(.grok)))
         let gone = RexPaneAddress(sessionID: "session:studio", blockID: "block:gone").paneID
         let unlisted = try await rig.projection.checkChatSession(paneID: gone, program: .claude)
         #expect(unlisted == .unavailable(.cannotTellSession(.claude)))
@@ -507,5 +507,253 @@ struct RexChatTests {
         await #expect(throws: TransportError.rexServerGone) {
             try await rig.projection.writeChatPick(candidate, of: list, paneID: Self.paneID)
         }
+    }
+
+    // MARK: Pi and Oh My Pi, through Heeler's extension (ADR 0056)
+
+    private static let piAgent = "/home/dev/.pi/agent"
+    private static let piSession = "\(piAgent)/sessions/--home-dev-app--/2026-11-18T07-15-55-433Z_\(first).jsonl"
+    private static let piSessionRecord = "\(piAgent)/heeler-session/4242.json"
+    private static let piExtension = "\(piAgent)/extensions/heeler-session.js"
+
+    /// The studio with Pi in its left terminal, reporting idle.
+    private static func studioRunningPi() -> FakeRexWorld.Session {
+        var studio = FakeRexWorld.studio()
+        var pi = FakeRexWorld.Block.running("block:left", program: "pi")
+        pi.label = "left"
+        pi.directory = "/home/dev/app"
+        pi.status = pi.record("idle", app: "pi")
+        studio.windows[0].layers[0].blocks[2] = pi
+        return studio
+    }
+
+    /// Pi's process in that terminal, with nothing set that moves its files.
+    private static func piProcess() -> ScriptedProcessTable.Process {
+        .init(
+            pid: 4242, name: "pi", start: start,
+            environment: ["REX_SESSION": "session:studio", "REX_BLOCK": "block:left", "HOME": "/home/dev"])
+    }
+
+    /// What the extension keeps for a process: the label's own shape.
+    private static func sessionRecord(start: String = RexChatTests.start) -> Data {
+        Data(#"{"session":"\#(first)","file":"\#(piSession)","pid":4242,"start":"\#(start)"}"#.utf8)
+    }
+
+    /// A projection on a Host whose left terminal runs Pi, with its files.
+    private func piRig() async throws -> (rig: Rig, files: VirtualHostFiles, connection: ScriptedRexHost) {
+        let server = await served(FakeRexWorld(sessions: [Self.studioRunningPi()]))
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: "/home/dev")
+        await table.add(Self.piProcess())
+        let connection = ScriptedRexHost(
+            control: [.server(server)], files: files, processes: { try await table.read($0) })
+        let rig = rig(connection)
+        try await waitUntil("Pi's terminal") {
+            rig.projection.kernel != nil && !rig.projection.isAwaitingSnapshot
+                && details(rig)?.processID == 4242 && details(rig)?.program == "pi"
+        }
+        return (rig, files, connection)
+    }
+
+    /// Pi binds from the file Heeler's extension keeps for its process under
+    /// the Agent's own directory, held against that process by pid and
+    /// start. A file a reused pid left names nothing.
+    @Test func aCheckBindsPiFromWhatItsExtensionKeeps() async throws {
+        let (rig, files, _) = try await piRig()
+        defer { rig.projection.end() }
+        await files.write(Self.sessionRecord(), at: Self.piSessionRecord)
+
+        #expect(
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .pi)
+                == .bound(sessionID: Self.piSession, transcriptRoot: "\(Self.piAgent)/sessions", directory: nil))
+
+        await files.write(Self.sessionRecord(start: "Wed Nov 11 06:00:00 2026"), at: Self.piSessionRecord)
+        #expect(
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .pi)
+                == .unavailable(.cannotTellSessionOnRex(.pi, extensionInPlace: false)))
+    }
+
+    /// Rex announces a foreground once, as it starts: Pi under Node is `node`
+    /// then, takes its own name after, and is never announced again. A check
+    /// goes by what Rex names when it is made, so the name it announced does
+    /// not keep a Chat that stayed open from the process a read finds.
+    @Test func aCheckGoesByTheForegroundRexNamesNow() async throws {
+        var studio = FakeRexWorld.studio()
+        var pi = FakeRexWorld.Block.running("block:left", program: "node", argv0: "pi")
+        pi.label = "left"
+        pi.directory = "/home/dev/app"
+        pi.status = pi.record("idle", app: "pi")
+        studio.windows[0].layers[0].blocks[2] = pi
+        let server = await served(FakeRexWorld(sessions: [studio]))
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: "/home/dev")
+        await table.add(Self.piProcess())
+        await files.write(Self.sessionRecord(), at: Self.piSessionRecord)
+        let rig = rig(
+            ScriptedRexHost(control: [.server(server)], files: files, processes: { try await table.read($0) }))
+        defer { rig.projection.end() }
+        try await waitUntil("Pi's terminal") {
+            rig.projection.kernel != nil && !rig.projection.isAwaitingSnapshot && details(rig)?.processID == 4242
+        }
+        // What Rex announced as Pi started, before Pi took its name.
+        await server.push(
+            "block_event",
+            Self.blockEvent(
+                "process_changed", ["foreground": ["pid": 4242, "name": "node", "argv0": "node"]]),
+            session: "session:studio")
+        try await waitUntil("the announced foreground") { details(rig)?.argv0 == "node" }
+
+        #expect(
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .pi)
+                == .bound(sessionID: Self.piSession, transcriptRoot: "\(Self.piAgent)/sessions", directory: nil))
+        #expect(
+            try await rig.projection.chatExtensionFolder(paneID: Self.paneID) == "\(Self.piAgent)/extensions")
+    }
+
+    private final class ManualClock: @unchecked Sendable {
+        private let time = Mutex(Date(timeIntervalSince1970: 1_795_000_000))
+        var now: Date { time.withLock { $0 } }
+        func advance(_ seconds: TimeInterval) { time.withLock { $0 += seconds } }
+    }
+
+    /// What a check answers next, and how many were made.
+    private actor ScriptedEvidence {
+        private(set) var checks = 0
+        private var answer: ChatSessionEvidence
+
+        init(_ answer: ChatSessionEvidence) {
+            self.answer = answer
+        }
+
+        func set(_ next: ChatSessionEvidence) {
+            answer = next
+        }
+
+        func check() -> ChatSessionEvidence {
+            checks += 1
+            return answer
+        }
+    }
+
+    /// Heeler's extension names the conversation in a file just after the
+    /// program starts, and Rex announces nothing when it does. So a check
+    /// that couldn't tell is followed by a few more on Chat's own clock, each
+    /// wait once, and then by none until something else asks for a check.
+    @Test func aPiThatNamesNothingYetIsCheckedAgainAFewTimes() async throws {
+        let clock = ManualClock()
+        let inPlace = ChatUnavailableReason.cannotTellSessionOnRex(.pi, extensionInPlace: true)
+        let evidence = ScriptedEvidence(.unavailable(inPlace))
+        let agent = Agent(
+            terminalID: "t1", kind: "pi", title: "", status: .idle, workspaceID: "w1", tabID: "t1",
+            paneID: Self.paneID, cwd: "/home/dev/app", revision: 1, agentSession: nil)
+        let files = VirtualHostFiles(home: "/home/dev")
+        let host = Self.host()
+        let chat = AgentChatStore(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: Self.paneID), agent: agent, program: .pi,
+            source: AgentChatSource(
+                hostID: host.id, socketLocation: .defaultSession, files: files.hostFiles(),
+                agentInfo: { agent }, cache: VolatileChatTranscriptCache(),
+                adapter: try #require(ChatTranscriptAdapter.standard(for: .pi)),
+                sessionEvidence: { await evidence.check() }),
+            now: { clock.now })
+        let waits = AgentChatStore.Timing().unannouncedEvidenceChecks
+        #expect(!waits.isEmpty)
+
+        await chat.step()
+        #expect(await evidence.checks == 1)
+        #expect(chat.conversation.phase == .unavailable(inPlace))
+        for (index, wait) in waits.enumerated() {
+            await chat.step()
+            #expect(await evidence.checks == index + 1)
+            #expect(chat.interval <= .seconds(wait))
+            clock.advance(wait)
+            await chat.step()
+            #expect(await evidence.checks == index + 2)
+        }
+        clock.advance(600)
+        await chat.step()
+        #expect(await evidence.checks == waits.count + 1)
+
+        // A check something else asks for starts the waits again, and the
+        // first of them finds what the extension has kept by then.
+        chat.sessionEvidenceMayHaveChanged()
+        await chat.step()
+        #expect(await evidence.checks == waits.count + 2)
+        await evidence.set(
+            .bound(sessionID: Self.piSession, transcriptRoot: "\(Self.piAgent)/sessions", directory: nil))
+        clock.advance(waits[0])
+        await chat.step()
+        #expect(await evidence.checks == waits.count + 3)
+        #expect(chat.conversation.phase != .unavailable(inPlace))
+        chat.end()
+    }
+
+    /// With nothing kept for the process, the reason says what the Agent's
+    /// extension folder holds: none, or one from before the extension
+    /// reported in a Rex terminal, offers Heeler's; one that reports there
+    /// was not loaded by this process, which a restart mends.
+    @Test func aPiThatNamesNothingSaysWhatItsExtensionFolderHolds() async throws {
+        let (rig, files, _) = try await piRig()
+        defer { rig.projection.end() }
+        func reason() async throws -> ChatSessionEvidence {
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .pi)
+        }
+        let absent = ChatUnavailableReason.cannotTellSessionOnRex(.pi, extensionInPlace: false)
+        let inPlace = ChatUnavailableReason.cannotTellSessionOnRex(.pi, extensionInPlace: true)
+
+        #expect(try await reason() == .unavailable(absent))
+        await files.write("const terminal = process.env.HC_TERMINAL_ID;\n", at: Self.piExtension)
+        #expect(try await reason() == .unavailable(absent))
+        await files.write("if (!env.REX_SESSION || !env.REX_BLOCK) return null;\n", at: Self.piExtension)
+        #expect(try await reason() == .unavailable(inPlace))
+
+        #expect(rig.projection.chatCannotTell(.pi) == absent)
+        #expect(rig.projection.chatCannotTell(.omp) == .cannotTellSessionOnRex(.omp, extensionInPlace: false))
+        #expect(absent.offersHeelersExtension)
+        #expect(!inPlace.offersHeelersExtension)
+        #expect(absent.offersRetry && inPlace.offersRetry)
+        #expect(!absent.leavesItToAPick && !inPlace.leavesItToAPick)
+        #expect(!ChatUnavailableReason.cannotTellSession(.claude).offersHeelersExtension)
+    }
+
+    /// Chat's offer writes Heeler's extension into the one folder the Agent
+    /// loads from, found from its own process, and nowhere else. A terminal
+    /// that runs no such Agent has no folder, and a server that has moved on
+    /// takes no write.
+    @Test func theExtensionGoesOnlyWhereTheAgentLoadsItFrom() async throws {
+        let world = FakeRexWorld(sessions: [Self.studioRunningPi()])
+        let servers = [await served(world), await served(world)]
+        let table = ScriptedProcessTable()
+        await table.add(Self.piProcess())
+        let connection = ScriptedRexHost(
+            control: servers.map { .server($0) }, files: VirtualHostFiles(home: "/home/dev"),
+            processes: { try await table.read($0) })
+        let rig = rig(connection)
+        defer { rig.projection.end() }
+        try await waitUntil("Pi's terminal") {
+            rig.projection.kernel != nil && !rig.projection.isAwaitingSnapshot && details(rig)?.processID == 4242
+        }
+        let folder = "\(Self.piAgent)/extensions"
+        let pin = TerminalCorePin(joined: rig.projection.inventoryCore)
+
+        #expect(try await rig.projection.chatExtensionFolder(paneID: Self.paneID) == folder)
+        let shell = RexPaneAddress(sessionID: "session:studio", blockID: "block:right").paneID
+        await #expect(throws: TransportError.self) { try await rig.projection.chatExtensionFolder(paneID: shell) }
+        #expect(await connection.placedExtensions.isEmpty)
+
+        let revision = rig.projection.sessionEventRevision(of: Self.paneID)
+        try await rig.projection.placeChatExtension(Data("extension".utf8), inFolder: folder, keepingTo: pin)
+        let placed = await connection.placedExtensions
+        #expect(placed.map(\.folder) == [folder])
+        #expect(placed.first?.contents == Data("extension".utf8))
+        #expect(rig.projection.sessionEventRevision(of: Self.paneID) != revision)
+
+        world.restart(as: "instance-0002")
+        await servers[0].close(.goingAway, reason: "shutting down")
+        try await waitUntil("the new server") { rig.projection.chatCacheScope == "rex:instance-0002" }
+        await #expect(throws: TransportError.rexServerGone) {
+            try await rig.projection.placeChatExtension(Data("extension".utf8), inFolder: folder, keepingTo: pin)
+        }
+        #expect(await connection.placedExtensions.count == 1)
     }
 }

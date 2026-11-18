@@ -118,7 +118,7 @@ extension HostCapabilities {
         // 0054). Its Agents offer Composer Send and Stop, and Chat for
         // `rexChatPrograms` once the server has named Linux or macOS, read and
         // typed over the Host's own connection (ADRs 0055 and 0056). Named
-        // so, it also stages images and files over SFTP for both, as a tmux
+        // so, it also stages images and files over SFTP for them, as a tmux
         // Host does.
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
@@ -225,12 +225,13 @@ extension HostCapabilities {
     /// permissions and questions from cards, and the colored one followed `/clear`.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
 
-    /// The programs a Rex Host's Chat opens for, where nothing is installed on the
-    /// Host (ADRs 0034 and 0056, rex-compatibility.md): Claude Code and Codex, each
-    /// bound from its own process and files. Rex 0.1.0-preview.14 on macOS
-    /// confirmed nothing more for Grok Build, Oh My Pi or agy, and Pi and OpenCode
-    /// bind only with Heeler's extension or plugin, so none of those is offered.
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex]
+    /// The programs a Rex Host's Chat opens for (ADRs 0034 and 0056,
+    /// rex-compatibility.md): Claude Code and Codex, each bound from its own process
+    /// and files with nothing installed, and Pi and Oh My Pi, bound through Heeler's
+    /// extension, which Chat offers to add where the Agent's extension folder lacks
+    /// it. Rex 0.1.0-preview.14 on macOS confirmed nothing for Grok Build or agy, and
+    /// OpenCode binds only with Heeler's plugin, so none of those is offered.
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity

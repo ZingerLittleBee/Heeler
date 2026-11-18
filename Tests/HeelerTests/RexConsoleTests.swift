@@ -55,9 +55,10 @@ struct RexConsoleTests {
             #expect(offers.composerSend)
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
-            #expect(offers.chatPrograms == (opensChat ? [.claude, .codex] : []))
+            #expect(offers.chatPrograms == (opensChat ? [.claude, .codex, .pi, .omp] : []))
             for program in ChatProgram.allCases {
-                #expect(offers.offersChat(for: program) == (opensChat && [.claude, .codex].contains(program)))
+                #expect(
+                    offers.offersChat(for: program) == (opensChat && [.claude, .codex, .pi, .omp].contains(program)))
             }
             #expect(offers.terminalsShowInOneWindow)
             #expect(

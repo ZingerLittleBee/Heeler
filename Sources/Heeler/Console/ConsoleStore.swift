@@ -3024,11 +3024,55 @@ final class ConsoleStore {
             })
     }
 
+    /// What a Chat that can't bind a Pi or Oh My Pi offers where no Host Helper
+    /// brings Heeler's extension: a Rex Host's flow, else a native Windows core
+    /// Host's.
+    func heelersExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HeelersExtensionFlow {
+        projections[agentID.hostID] is RexConsoleProjection
+            ? rexExtensionFlow(for: agentID, keepingTo: corePin)
+            : windowsExtensionFlow(for: agentID, keepingTo: corePin)
+    }
+
+    /// Heeler's extension for the Pi or Oh My Pi in a Rex terminal (ADR 0056): the one
+    /// folder that Agent loads its extensions from, found from its own process, and
+    /// one file written there over SFTP once the user confirms. A detail keeps to its
+    /// own server: one that has moved on writes nothing.
+    func rexExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HeelersExtensionFlow {
+        let hostID = agentID.hostID
+        func rex(of store: ConsoleStore) throws -> RexConsoleProjection {
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw store.leftCoreError(on: hostID) }
+            guard let rex = store.projections[hostID] as? RexConsoleProjection else {
+                throw TransportError.cancelled
+            }
+            return rex
+        }
+        return HeelersExtensionFlow(
+            readyFooter: String(
+                localized: "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there."),
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return [try await rex(of: self).chatExtensionFolder(paneID: agentID.paneID)]
+            },
+            write: { [weak self] folders in
+                guard let self else { throw TransportError.cancelled }
+                guard let contents = try self.hostHelperBundle().files[HostHelperScript.extensionPath] else {
+                    throw HostHelperBundle.LoadError.unreadable(HostHelperScript.extensionPath)
+                }
+                for folder in folders {
+                    try await rex(of: self).placeChatExtension(contents, inFolder: folder, keepingTo: corePin)
+                }
+            })
+    }
+
     /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
     /// its own core: a Host that has moved on writes nothing more, even part way.
     func windowsExtensionFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
-    ) -> HerdrCoreWindowsExtensionFlow {
+    ) -> HeelersExtensionFlow {
         let hostID = agentID.hostID
         func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
             guard !store.hasLeftCore(corePin, on: hostID) else { throw store.leftCoreError(on: hostID) }
@@ -3037,7 +3081,7 @@ final class ConsoleStore {
             }
             return core
         }
-        return HerdrCoreWindowsExtensionFlow(
+        return HeelersExtensionFlow(
             locate: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await core(of: self).windowsExtensionFolders()

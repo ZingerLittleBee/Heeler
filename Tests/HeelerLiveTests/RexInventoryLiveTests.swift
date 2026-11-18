@@ -128,6 +128,9 @@ actor LocalRexTransport: RexTransport {
     /// Nor anywhere to stage a file.
     nonisolated var staging: any RexHostStaging { NoHostStaging() }
 
+    /// Nor a folder to place Heeler's extension in.
+    nonisolated var extensionPlacing: any RexHostExtensionPlacing { NoHostExtensionPlacing() }
+
     func close() async {
         closed = true
         await control.close()
@@ -145,6 +148,13 @@ private struct NoHostReads: RexHostReads {
     func hostHomeDirectory() async throws -> String { throw Self.unavailable }
     func readProcesses(_: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         throw Self.unavailable
+    }
+}
+
+/// The placing of a transport with no SSH connection, which fails.
+private struct NoHostExtensionPlacing: RexHostExtensionPlacing {
+    func placeHeelersExtension(_: Data, inFolder _: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: "Host writes")
     }
 }
 

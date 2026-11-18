@@ -158,6 +158,8 @@ final actor ScriptedRexHost: RexHostConnection {
 
     /// Every file staged, oldest first, where it landed and what it holds.
     private(set) var stagedFiles: [(path: String, contents: Data)] = []
+    /// Every copy of Heeler's extension placed, oldest first: its folder and what it holds.
+    private(set) var placedExtensions: [(folder: String, contents: Data)] = []
     private var stagingFailures: [AttachmentStagingError] = []
     private var holdsStages = false
     /// Stagings inside their slot, held or not.
@@ -187,6 +189,12 @@ final actor ScriptedRexHost: RexHostConnection {
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile {
         try StagedFile(path: try await stage(file.fileURL, named: file.remoteFilename, progress: progress))
+    }
+
+    func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
+        log.append("place extension \(folder)")
+        guard isConnected else { throw TransportError.sshUnreachable(detail: "closed") }
+        placedExtensions.append((folder, contents))
     }
 
     /// One staging, under an ordinary session slot as `HeelerSSHTransport`'s is.

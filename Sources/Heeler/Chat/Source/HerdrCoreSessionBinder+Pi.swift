@@ -6,8 +6,15 @@ import Foundation
 /// with no extension, its terminal breadcrumb once the process holds that file open.
 /// With none of those, and the extension in the Agent's own extension folder, the
 /// reason says it isn't loaded rather than asking for a Helper that is there.
+///
+/// A Rex terminal has no labels, so there the extension keeps what a label would
+/// hold in a file of its process's own under the Agent's directory, read over SFTP
+/// and held against the same process (ADR 0056).
 extension HerdrCoreSessionBinder {
     private static let breadcrumbLimit = 16 * 1024
+    private static let rexSessionLimit = 16 * 1024
+    /// Past this no copy of the extension was ever this long, so it is not read further.
+    private static let extensionLimit = 256 * 1024
 
     func checkPiFamily(
         _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
@@ -30,6 +37,9 @@ extension HerdrCoreSessionBinder {
         func bound(_ session: String) -> ChatSessionEvidence {
             .bound(sessionID: session, transcriptRoot: places.sessions, directory: nil)
         }
+        if let session = try await rexSession(agentDirectory: places.agent, pid: pid, start: start) {
+            return bound(session)
+        }
         // On Windows only the extension's label counts: Heeler's launch runs under
         // PowerShell, and open files are not read there.
         guard !isOnWindows else { return cannotTell }
@@ -43,6 +53,7 @@ extension HerdrCoreSessionBinder {
             return bound(file)
         }
         guard await holdsHeelersExtension(agentDirectory: places.agent) else { return cannotTell }
+        if case .rex = processScope { return .unavailable(.cannotTellSessionOnRex(program, extensionInPlace: true)) }
         return .unavailable(
             .extensionNotLoaded(program, turnedOff: turnsExtensionsOff(process, pid: pid, record: record)))
     }
@@ -69,10 +80,47 @@ extension HerdrCoreSessionBinder {
 
     /// Whether Heeler's extension is where this Agent loads its extensions from. It
     /// only chooses the words, so a read that fails says no, and the check still
-    /// answers that it can't tell, as it did before it read this.
+    /// answers that it can't tell, as it did before it read this. On a Rex Host a
+    /// copy from before the extension reported there is none: the Agent would load
+    /// it and still name nothing, so Chat offers the one this build carries.
     private func holdsHeelersExtension(agentDirectory: String) async -> Bool {
-        let path = RemoteFilePath.join(agentDirectory, "extensions", HostHelperScript.extensionFileName)
-        return (try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 1)))?.length != nil
+        let path = RemoteFilePath.join(
+            agentDirectory, HostHelperScript.extensionFolderName, HostHelperScript.extensionFileName)
+        guard case .rex = processScope else {
+            return (try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: 1)))?.length != nil
+        }
+        guard let slice = try? await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.extensionLimit)),
+            slice.length != nil
+        else { return false }
+        return slice.data.range(of: Data(HostHelperScript.rexExtensionMark.utf8)) != nil
+    }
+
+    /// What Heeler's extension wrote for this process in a Rex terminal:
+    /// `<agent directory>/heeler-session/<pid>.json`, holding what a label holds on
+    /// herdr-core. It names a session only for the process it was written by, by
+    /// pid and start, so a file a reused pid left names nothing. The extension
+    /// renames it into place, so a read never sees half of one.
+    private func rexSession(agentDirectory: String, pid: String, start: String) async throws -> String? {
+        guard case .rex = processScope else { return nil }
+        let path = RemoteFilePath.join(agentDirectory, HostHelperScript.rexSessionFolderName, "\(pid).json")
+        let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.rexSessionLimit))
+        guard slice.length != nil, slice.data.count < Self.rexSessionLimit,
+            let hint = HerdrCoreSessionHint(label: String(decoding: slice.data, as: UTF8.self)),
+            String(hint.pid) == pid, hint.start == start
+        else { return nil }
+        return hint.piSession(onWindows: false)
+    }
+
+    /// The folder this Agent loads its extensions from, by its own environment, for
+    /// a Rex Host's Chat to offer Heeler's extension into (ADR 0056). Nil when the
+    /// read finds no such Agent in the terminal or cannot say where it keeps them.
+    func piFamilyExtensionFolder(of record: HerdrCoreTerminalRecord) async throws -> String? {
+        guard program.namesItsSessionThroughHeelersExtension,
+            let tree = try await readTerminalProcesses(of: record, ask: piFamilyProcessAsk),
+            let pid = piFamilyAgent(in: tree), let process = tree.facts[pid],
+            let places = PiSessionLayout(program: program).places(in: process.variables)
+        else { return nil }
+        return RemoteFilePath.join(places.agent, HostHelperScript.extensionFolderName)
     }
 
     /// Pi takes its title as its process's arguments, which drops its flags (herdr

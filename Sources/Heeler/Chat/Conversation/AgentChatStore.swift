@@ -134,6 +134,12 @@ final class AgentChatStore {
         /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
         /// My Pi without its extension the open of its session file (ADR 0034).
         var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
+        /// On a Rex Host, how long after a check that couldn't tell which
+        /// conversation a Pi or Oh My Pi is in Chat checks again, one wait after
+        /// another: Heeler's extension names the conversation in a file just
+        /// after the program starts, and Rex announces nothing when it does
+        /// (ADR 0056). They count from the last check anything else asked for.
+        var unannouncedEvidenceChecks: [TimeInterval] = [2, 4, 8]
         /// How often Chat reads an Antigravity CLI pane's screen to confirm or
         /// retire running Background Work while Chat is visible vs hidden.
         var agyBackgroundTaskScreenCheckVisible: TimeInterval = 15
@@ -285,6 +291,9 @@ final class AgentChatStore {
     /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
     /// overdue when Chat opens is the check opening makes anyway.
     @ObservationIgnored private var lateEvidenceCheckAt: Date?
+    /// How many of `Timing.unannouncedEvidenceChecks` were taken since a check
+    /// that an event, the user or opening Chat asked for.
+    @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     @ObservationIgnored private let source: AgentChatSource
     /// The pane as a Blocked card types into it: on a herdr-core Host, each
     /// step only while the process read last still holds the terminal.
@@ -1083,6 +1092,7 @@ final class AgentChatStore {
         }
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
+        if needsAgentRefresh { unannouncedEvidenceChecksTaken = 0 }
         if let due = lateEvidenceCheckAt, now() >= due {
             lateEvidenceCheckAt = nil
             if evidenceReason != nil { needsAgentRefresh = true }
@@ -1484,6 +1494,7 @@ final class AgentChatStore {
             } else {
                 awaitSession(reason)
             }
+            scheduleUnannouncedEvidenceCheck(after: reason)
         case .pickUnconfirmed(let reason):
             evidenceReason = reason
             if program == .agy {
@@ -1506,6 +1517,17 @@ final class AgentChatStore {
                 showUnavailable()
             }
         }
+    }
+
+    /// The next of `Timing.unannouncedEvidenceChecks`, while any is left: what a
+    /// Pi or Oh My Pi's extension keeps on a Rex Host arrives with no event, so
+    /// nothing else would bring the check that reads it.
+    private func scheduleUnannouncedEvidenceCheck(after reason: ChatUnavailableReason) {
+        guard case .cannotTellSessionOnRex = reason,
+            unannouncedEvidenceChecksTaken < timing.unannouncedEvidenceChecks.count
+        else { return }
+        lateEvidenceCheckAt = now().addingTimeInterval(timing.unannouncedEvidenceChecks[unannouncedEvidenceChecksTaken])
+        unannouncedEvidenceChecksTaken += 1
     }
 
     /// Nothing the check found names a session. Whatever Chat has been showing stays
@@ -1651,7 +1673,7 @@ final class AgentChatStore {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
             .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
             .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon), .unavailable(.cannotTellSessionOnRex):
             true
         default: false
         }
@@ -2111,7 +2133,7 @@ final class AgentChatStore {
         else { return nil }
         switch reason {
         case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
-            .transcriptOff, .codexSharedDaemon:
+            .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
             sessionEvidenceMayHaveChanged()
             return Self.cannotTellSessionReason(program)
         default:

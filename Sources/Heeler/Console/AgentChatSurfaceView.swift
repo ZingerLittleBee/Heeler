@@ -66,7 +66,7 @@ struct AgentChatSurfaceView: View {
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
-    @State private var windowsExtensionFlow: HerdrCoreWindowsExtensionFlow?
+    @State private var extensionFlow: HeelersExtensionFlow?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -766,9 +766,9 @@ struct AgentChatSurfaceView: View {
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
-                addExtension: { windowsExtensionFlow = console.windowsExtensionFlow(for: agent.id, keepingTo: session.corePin) })
-            .sheet(item: $windowsExtensionFlow) { flow in
-                HerdrCoreWindowsExtensionSheet(flow: flow)
+                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) })
+            .sheet(item: $extensionFlow) { flow in
+                HeelersExtensionSheet(flow: flow)
             }
         case .disconnected:
             ContentUnavailableView(

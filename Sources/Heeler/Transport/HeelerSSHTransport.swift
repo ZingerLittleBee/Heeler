@@ -4117,4 +4117,20 @@ extension HeelerSSHTransport: RexHostConnection {
             script, feature: String(localized: "Rex Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_REX_SOCKET_CHECK_TIMEOUT_", timedOut: .timedOut)
     }
+
+    /// The folder is made only as the last part of a directory that is there:
+    /// an Agent's own directory is the program's to make. The file goes as a
+    /// Host Helper's copy of it does, a 0600 temporary file renamed into place.
+    func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
+        guard RemoteFilePath.isAcceptable(folder), folder.hasSuffix("/\(HostHelperScript.extensionFolderName)") else {
+            throw TransportError.invalidDirectoryPath(path: folder)
+        }
+        let timeout = requestTimeout
+        try await withHostFileClient(path: folder) { client in
+            guard try await client.fileStatus(at: folder, timeout: timeout) == nil else { return }
+            try await client.createDirectory(at: folder, permissions: 0o755, timeout: timeout)
+        }
+        try await replaceHostHelperFile(
+            contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
+    }
 }

@@ -48,6 +48,11 @@ protocol RexTransport: Sendable {
     /// connection, and nothing else of it.
     nonisolated var staging: any RexHostStaging { get }
 
+    /// The placing of Heeler's extension for Pi and Oh My Pi, when the user
+    /// asks for it from Chat, on this same SSH connection, and nothing else
+    /// of it.
+    nonisolated var extensionPlacing: any RexHostExtensionPlacing { get }
+
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
@@ -84,14 +89,14 @@ protocol RexHostReads: Sendable {
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
 }
 
-/// The one write Heeler makes on a Rex Host (ADR 0056): a file or image the
-/// user attaches to a message, staged as on every other Server Kind (ADRs 0005
-/// and 0006). One exec makes a private directory under the account's
-/// temporary directory, and one SFTP channel writes the file into it as a
-/// part file it renames, with progress, cancellation and the removal of a
-/// part file left by a failed transfer. Nothing else is reachable from it:
-/// no read of the Host's files, no other exec, and no path but the ones it
-/// makes.
+/// One of the two writes Heeler makes on a Rex Host (ADR 0056): a file or
+/// image the user attaches to a message, staged as on every other Server Kind
+/// (ADRs 0005 and 0006). One exec makes a private directory under the
+/// account's temporary directory, and one SFTP channel writes the file into
+/// it as a part file it renames, with progress, cancellation and the removal
+/// of a part file left by a failed transfer. Nothing else is reachable from
+/// it: no read of the Host's files, no other exec, and no path but the ones
+/// it makes.
 ///
 /// The exec and then the SFTP channel each take one of the connection's
 /// ordinary session slots, one at a time, at normal priority, so Chat's file
@@ -112,9 +117,22 @@ protocol RexHostStaging: Sendable {
     ) async throws -> StagedFile
 }
 
+/// The other write Heeler makes on a Rex Host, and only when the user asks for
+/// it from a Pi or Oh My Pi Agent's Chat (ADR 0056): Heeler's own extension,
+/// the one file a Host Helper brings on other Server Kinds (ADR 0033), into
+/// the folder that Agent loads its extensions from. Over SFTP it makes that
+/// one folder when the Agent's directory has none, then writes the file as a
+/// 0600 temporary file it renames into place. Nothing else is reachable from
+/// it: no other file name, no exec, and no read of the Host's files.
+protocol RexHostExtensionPlacing: Sendable {
+    /// `folder` is an `extensions` folder by its absolute path; any other is
+    /// refused before anything is written.
+    func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
+}
+
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
-protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads, RexHostStaging {
+protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing {
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -238,6 +256,11 @@ actor RexSSHTransport: RexTransport {
 
     /// The connection's staging behind a type of its own, for the same reason.
     nonisolated var staging: any RexHostStaging { RexStagingOnly(connection: connection) }
+
+    /// And its placing of Heeler's extension, for the same reason.
+    nonisolated var extensionPlacing: any RexHostExtensionPlacing {
+        RexExtensionPlacingOnly(connection: connection)
+    }
 
     func close() async {
         await control.close()
@@ -365,6 +388,15 @@ private struct RexStagingOnly: RexHostStaging {
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile {
         try await connection.stageFile(file, progress: progress)
+    }
+}
+
+/// A Rex Host connection's placing of Heeler's extension, and nothing else of it.
+private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
+    let connection: any RexHostExtensionPlacing
+
+    func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
+        try await connection.placeHeelersExtension(contents, inFolder: folder)
     }
 }
 

@@ -7811,6 +7811,7 @@
         }
       }
     },
+    "Add to This Folder" : {},
     "Add worker @%@" : {
       "localizations" : {
         "ja" : {
@@ -13030,6 +13031,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again." : {
       "localizations" : {
         "ja" : {
@@ -13120,6 +13123,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this %@ hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {
       "comment" : "Chat explanation; %@ is Pi or Oh My Pi",
       "localizations" : {
@@ -23071,6 +23076,7 @@
         }
       }
     },
+    "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there." : {},
     "Expired" : {
       "localizations" : {
         "ja" : {
@@ -28067,6 +28073,7 @@
         }
       }
     },
+    "Heeler's extension for this Agent" : {},
     "Heeler's extension in %@" : {
       "comment" : "Feature unavailable when Heeler's extension could not be written. %@ is the folder.",
       "localizations" : {

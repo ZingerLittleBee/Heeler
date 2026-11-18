@@ -13,8 +13,10 @@ import Foundation
 /// an Agent's detail. Nothing is started, closed or renamed on a Rex Host, and
 /// nothing runs on it but Chat's reads and the staging of what the user
 /// attaches: what Chat needs of the Host it reads over the same SSH
-/// connection (`RexHostReads`), and the one thing written there is a file or
-/// image staged for a message (`RexHostStaging`, ADR 0056). Chat and the
+/// connection (`RexHostReads`), and two things are written there, each only
+/// when the user asks: a file or image staged for a message
+/// (`RexHostStaging`), and Heeler's extension in the folder a Pi or Oh My Pi
+/// Agent loads from (`RexHostExtensionPlacing`, ADR 0056). Chat and the
 /// Composer read a terminal's screen and type into it on the control link,
 /// one checked request at a time (`RexChatTyping`, `RexComposerSend`, ADR
 /// 0055), the staged paths with the message.
@@ -380,8 +382,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
         inventoryReplacements &+ (sessionEventCounts[paneID] ?? 0)
     }
 
+    /// A Pi or Oh My Pi's reason is the one that offers Heeler's extension,
+    /// as its binder's is (ADR 0056).
     func chatCannotTell(_ program: ChatProgram) -> ChatUnavailableReason {
-        HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
+        program.namesItsSessionThroughHeelersExtension
+            ? .cannotTellSessionOnRex(program, extensionInPlace: false)
+            : HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
     /// One exec from the foreground Rex names, then the program's own files.
@@ -390,16 +396,18 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func checkChatSession(paneID: String, program: ChatProgram) async throws -> ChatSessionEvidence {
         guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
         guard HostCapabilities.rexChatPrograms.contains(program), let address = RexPaneAddress(paneID: paneID),
-            let details = listedDetails(at: address), let activeServer = server
+            let listed = listedDetails(at: address), let activeServer = server
         else { return .unavailable(chatCannotTell(program)) }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
         return try await chatBinder(at: address, details: details, program: program, server: activeServer)
             .check(chatRecord(at: address, details: details))
     }
 
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID),
-            let details = listedDetails(at: address), let activeServer = server
+            let listed = listedDetails(at: address), let activeServer = server
         else { return nil }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
         let binder = chatBinder(at: address, details: details, program: .claude, server: activeServer)
         let ask = HerdrCoreSessionBinder.ProcessAsk(
             namesOf: [ChatTranscriptOffVariable.childSession.rawValue],
@@ -415,8 +423,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer {
         guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
         guard HostCapabilities.rexChatPrograms.contains(program), let address = RexPaneAddress(paneID: paneID),
-            let details = listedDetails(at: address), let activeServer = server
+            let listed = listedDetails(at: address), let activeServer = server
         else { return .noProcess }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
         let answer = try await chatBinder(at: address, details: details, program: program, server: activeServer)
             .candidates(of: chatRecord(at: address, details: details))
         guard case .listed(var list) = answer else { return answer }
@@ -466,6 +475,25 @@ final class RexConsoleProjection: ConsoleHostProjection {
         sessionEventCounts[paneID, default: 0] &+= 1
         // The guard is still on its way out; the Console hears of it after.
         Task { [weak self] in self?.onChange() }
+    }
+
+    /// A terminal's details with the foreground Rex names now, read on the
+    /// control link as typing reads it (ADR 0055). Rex announces a foreground
+    /// once, as it starts, and a program that takes its name after that, as
+    /// Pi does under Node, is never announced again: the listed name would
+    /// match nothing a process read finds, for as long as the terminal stays
+    /// listed (rex-compatibility.md). A read that fails, or one another
+    /// server answers, leaves the listed foreground.
+    private func detailsWithCurrentForeground(
+        at address: RexPaneAddress, listed: RexTerminalDetails, server activeServer: RexServerStatus
+    ) async -> RexTerminalDetails {
+        guard let requests = try? await session.blockRequests(at: address, readDeadline: chatReadDeadline),
+            requests.server.instanceID == activeServer.instanceID,
+            let answer = try? await requests.read(.process)
+        else { return listed }
+        var details = listed
+        details.noteForeground(RexInventoryWire.process(answer))
+        return details
     }
 
     private func chatBinder(
@@ -815,6 +843,44 @@ final class RexConsoleProjection: ConsoleHostProjection {
         return staging
     }
 
+    // MARK: Heeler's extension, when Chat offers it (ADR 0056)
+
+    /// The folder the Pi or Oh My Pi in this terminal loads its extensions
+    /// from, by that process's own environment: one bounded process read,
+    /// and nothing written.
+    func chatExtensionFolder(paneID: String) async throws -> String {
+        guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
+        guard let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
+            let activeServer = server
+        else { throw Self.extensionFolderUnknown }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
+        guard let program = RexAgentRule.agentKind(in: details).flatMap(ChatProgram.init(rawValue:)),
+            program.namesItsSessionThroughHeelersExtension,
+            let folder = try await chatBinder(at: address, details: details, program: program, server: activeServer)
+                .piFamilyExtensionFolder(of: chatRecord(at: address, details: details))
+        else { throw Self.extensionFolderUnknown }
+        return folder
+    }
+
+    /// Writes Heeler's extension into `folder` over the Host's SSH connection
+    /// (`RexHostExtensionPlacing`), for the Agent on the server `corePin`
+    /// keeps to, then has its Chat look again. Another instance throws
+    /// `TransportError.rexServerGone` before anything is written.
+    func placeChatExtension(_ contents: Data, inFolder folder: String, keepingTo pin: TerminalCorePin?) async throws {
+        if let pin { guard admits(pin) else { throw TransportError.rexServerGone } }
+        let (placing, instanceID) = try await session.withConnection {
+            ($0.transport.extensionPlacing, $0.server.instanceID)
+        }
+        if let pin { guard admits(pin), pin.admits(instanceID) else { throw TransportError.rexServerGone } }
+        try await placing.placeHeelersExtension(contents, inFolder: folder)
+        inventoryReplacements &+= 1
+        onChange()
+    }
+
+    private nonisolated static var extensionFolderUnknown: TransportError {
+        .hostFeatureUnavailable(feature: String(localized: "Heeler's extension for this Agent"))
+    }
+
     // MARK: The Host's files, on the same SSH connection
 
     /// Chat's reads of the Host, on the connection the server's links use:
@@ -846,11 +912,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func remoteHomeDirectory() async throws -> String { throw Self.unavailable }
     func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
 
-    /// Chat reads the Host's files and processes through `RexHostReads`, and
-    /// an attachment is staged through `RexHostStaging`; nothing else runs on
-    /// it over SSH: Changes, Skills, harness edits, the agy model list and the
-    /// platform probe stay out, and the Host is POSIX without asking it (ADR
-    /// 0056).
+    /// Chat reads the Host's files and processes through `RexHostReads`, an
+    /// attachment is staged through `RexHostStaging`, and Heeler's extension
+    /// goes where the user asks through `RexHostExtensionPlacing`; nothing
+    /// else runs on it over SSH: Changes, Skills, harness edits, the agy
+    /// model list and the platform probe stay out, and the Host is POSIX
+    /// without asking it (ADR 0056).
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {

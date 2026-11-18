@@ -85,6 +85,14 @@ struct HostHelperScript: Sendable, Equatable {
     static let quietMinutesBeforeTidying = 5
     /// What the Helper places in each folder Pi and Oh My Pi load extensions from.
     static let extensionFileName = "heeler-session.js"
+    /// That folder's name in an Agent's own directory.
+    static let extensionFolderName = "extensions"
+    /// Beside it, where the extension keeps a Rex terminal's session, one
+    /// `<pid>.json` per process (ADR 0056).
+    static let rexSessionFolderName = "heeler-session"
+    /// What every extension that reports inside a Rex terminal reads, so a
+    /// copy without it is one from before it could.
+    static let rexExtensionMark = "REX_BLOCK"
     /// That file in the Helper's tree.
     static let extensionPath = "extensions/\(extensionFileName)"
     /// The script that finds those folders, in the Helper's tree.

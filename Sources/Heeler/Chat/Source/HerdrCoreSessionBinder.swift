@@ -184,7 +184,16 @@ struct HerdrCoreSessionBinder: Sendable {
     }
 
     var cannotTell: ChatSessionEvidence {
-        .unavailable(hostSystem.cannotTellSession(program))
+        .unavailable(cannotTellReason)
+    }
+
+    /// A Pi or Oh My Pi in a Rex terminal has its own reason, since what names
+    /// its session there is offered in Chat and by no Host Helper (ADR 0056).
+    var cannotTellReason: ChatUnavailableReason {
+        if case .rex = processScope, program.namesItsSessionThroughHeelersExtension {
+            return .cannotTellSessionOnRex(program, extensionInPlace: false)
+        }
+        return hostSystem.cannotTellSession(program)
     }
 
     /// A native Windows Host, whose foreground is the Terminal's first process, usually
