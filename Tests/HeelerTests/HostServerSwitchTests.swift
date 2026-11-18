@@ -27,6 +27,10 @@ private actor ListedKnownHosts: KnownHostsStore {
     func forgetHost(_ id: UUID) {
         stored[HostKeyTrust.hostKey(id).host] = nil
     }
+
+    func replaceTrust(ofHost id: UUID, with fingerprints: [HostKeyFingerprint]) {
+        stored[HostKeyTrust.hostKey(id).host] = fingerprints
+    }
 }
 
 @MainActor
@@ -307,5 +311,34 @@ struct HostServerSwitchTests {
         #expect(await trustedKey(for: tui.id, in: knownHosts) == Self.trusted)
         // Another Host is another machine, with a key of its own to show.
         #expect(await trustedKey(for: elsewhere.id, in: knownHosts) == nil)
+    }
+
+    /// A rebuilt machine may show a key of another algorithm than the one a
+    /// record trusted. The old one goes: kept beside the new, it would still
+    /// be taken from whoever holds it.
+    @Test func pairingAgainLeavesEveryRecordOnlyTheKeysTheCodePinned() async throws {
+        let tui = record()
+        let tmux = record(kind: .tmux)
+        let elsewhere = record(address: "build.example")
+        let catalog = HostStore(volatileHosts: [tui, tmux, elsewhere])
+        let suiteName = "pair-again-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let knownHosts = try #require(UserDefaultsKnownHostsStore(suiteName: suiteName))
+        let retired = HostKeyFingerprint(digest: Data("retired-host-key".utf8), algorithm: "ecdsa-sha2-nistp256")
+        let pinned = HostKeyFingerprint(digest: Data("pinned-host-key".utf8), algorithm: "ssh-ed25519")
+        let paired = UUID()
+        await trust(retired, for: tui.id, in: knownHosts)
+        await trust(retired, for: elsewhere.id, in: knownHosts)
+        await trust(pinned, for: paired, in: knownHosts)
+
+        await makeSwitch(catalog, knownHosts: knownHosts).pairAgain(hostOf: tui.id, trusting: paired)
+
+        for id in [tui.id, tmux.id] {
+            let key = HostKeyTrust.hostKey(id)
+            #expect(await knownHosts.fingerprints(host: key.host, port: key.port) == [pinned])
+        }
+        let other = HostKeyTrust.hostKey(elsewhere.id)
+        #expect(await knownHosts.fingerprints(host: other.host, port: other.port) == [retired])
     }
 }

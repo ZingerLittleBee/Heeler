@@ -61,13 +61,17 @@ struct HostServerSwitch {
     /// A Pairing Code was scanned for the Host that `member` is a record of
     /// (ADR 0057): the ceremony enrolled this device there again, and a look
     /// just met the keys `record` trusts, which the code pinned. Every record
-    /// of the Host takes them, in place of one it trusted before: scanning the
-    /// code is the user replacing it. A Console that had stopped on the old
-    /// key, or on a Device Key the Host no longer held, then tries again.
+    /// of the Host trusts those and no other from then on, whatever algorithm
+    /// a key it trusted before was of: scanning the code is the user replacing
+    /// it. A Console that had stopped on the old key, or on a Device Key the
+    /// Host no longer held, then tries again.
     func pairAgain(hostOf member: Host.ID, trusting record: Host.ID) async {
         guard let machine = catalog.machine(containing: member) else { return }
+        let key = HostKeyTrust.hostKey(record)
+        let pinned = await knownHosts.fingerprints(host: key.host, port: key.port)
+        guard !pinned.isEmpty else { return }
         for member in machine.members {
-            await knownHosts.copyTrust(from: record, to: member.id)
+            await knownHosts.replaceTrust(ofHost: member.id, with: pinned)
             retryFailedHost(member.id)
         }
     }

@@ -50,11 +50,12 @@ and Enrollment are OpenSSH and Node.
 - **A Pairing Code replaces a key the catalog trusted.** When the connection
   is in the catalog and its records trust another key than the code pinned,
   the look goes by the code's key and the step says the key changed.
-  Finishing gives every record of the Host that key and asks a Console that
-  had stopped on a failure to try again. Cancelling replaces nothing. Scanning
-  the code is the user replacing the key, as Trust New Key is: the code came
-  off the machine's own screen, and the ceremony authenticated with a
-  Bootstrap Key only that code carried.
+  Finishing leaves every record of the Host trusting that key and no other,
+  so a retired key of another algorithm is not kept beside it, and asks a
+  Console that had stopped on a failure to try again. Cancelling replaces
+  nothing. Scanning the code is the user replacing the key, as Trust New Key
+  is: the code came off the machine's own screen, and the ceremony
+  authenticated with a Bootstrap Key only that code carried.
 - **Codes from the plugin end there too.** A v1 code was shown inside a
   running Herdr TUI, so the step lists its default session as running even
   where the look finds no herdr, as from a login shell without it on `PATH`.
