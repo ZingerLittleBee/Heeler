@@ -639,17 +639,18 @@ enum AgentListFieldsCopy {
     static let rowSlots =
         String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
 
-    /// A Rex Host starts from other rows than the other Hosts without a
-    /// plugin (`AgentRowLayout.withoutPlugin(on:)`), and its Terminals carry
-    /// no labels.
+    /// Hosts without a plugin start from Heeler's two-row default; only
+    /// herdr-core Terminals carry labels.
     static func rowSlots(followsPlugin: Bool, serverKind: ServerKind? = nil) -> String {
         guard !followsPlugin else { return rowSlots }
-        guard serverKind != .rex else {
+        guard serverKind == nil || serverKind == .herdrCore else {
             return String(
-                localized: "Row 1 starts from the Workspace and Tab, Row 2 from the Agent, and Row 3 from its directory. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.",
-                comment: "Agent List Fields footer for a Rex Host, which has no herdr plugin")
+                localized: "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.",
+                comment: "Agent List Fields footer when the Host has no herdr plugin and no Terminal labels")
         }
-        return String(localized: "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
+        return String(
+            localized: "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.",
+            comment: "Agent List Fields footer when the Host has no herdr plugin")
     }
 }
 

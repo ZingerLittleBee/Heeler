@@ -81,14 +81,15 @@ struct AgentRowRendererTests {
         let agent = kindAgent("claude")
         #expect(AgentRowRenderer.render(layout: layout, agent: agent, omittingMarkedKind: true)
             .map { $0.map(\.text).joined() } == ["Heeler", "claude"])
-        let trailing = try #require(
-            AgentRowRenderer.renderTrailing(layout: layout, agent: agent, omittingMarkedKind: true))
+        let trailing = AgentRowRenderer.renderTrailing(layout: layout, agent: agent, omittingMarkedKind: true)
         #expect(trailing[0] == [.host])
         #expect(trailing[1] == [.fields([RenderedToken(token: .workspace, text: "Heeler", fg: nil, bold: nil, dim: nil)])])
         #expect(trailing[2] == [.host, .statusBadge, .changes])
-        let kept = try #require(AgentRowRenderer.renderTrailing(layout: layout, agent: agent))
+        let kept = AgentRowRenderer.renderTrailing(layout: layout, agent: agent)
         #expect(kept[0] == [.fields([RenderedToken(token: .agent, text: "claude", fg: nil, bold: nil, dim: nil)]), .host])
-        #expect(AgentRowRenderer.renderTrailing(layout: AgentRowLayout(rows: layout.rows), agent: agent) == nil)
+        #expect(
+            AgentRowRenderer.renderTrailing(layout: AgentRowLayout(rows: layout.rows), agent: agent)
+                == [[.host], [.changes], []])
     }
 
     /// A CLI Agent whose launch directory and SSH account are the only things

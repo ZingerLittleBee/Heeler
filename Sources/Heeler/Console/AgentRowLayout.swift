@@ -184,27 +184,26 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     static let maximumTokensPerRow = 16
     /// Console row slots: Row 1 and Row 2 follow herdr, Row 3 is Heeler's.
     static let maximumConsoleRows = 3
-    /// herdr's default sidebar rows without `machine`, used when a Host has
-    /// no snapshot. herdr 0.9.0 and later add `machine` after `state_icon`,
-    /// which Heeler does not render. Still carries `state_icon`; the Console
-    /// never does.
+    /// herdr's default sidebar rows without `machine`, used when a `sidebar.json`
+    /// snapshot omits `sidebar.agents`. herdr 0.9.0 and later add `machine`
+    /// after `state_icon`, which Heeler does not render. Still carries
+    /// `state_icon`; the Console never does.
     static let heelerDefault = AgentRowLayout(rows: [
         [.init(.stateIcon), .init(.workspace), .init(.tab)], [.init(.agent)],
     ])
-    /// Fallback sidebar fields with Heeler's default directory row.
-    static let consoleDefault = heelerDefault.withHeelerRow()
-    /// Where a Host with no plugin starts: the terminal's title, then its
-    /// directory.
+    /// Where Heeler starts when a Host follows no plugin or has no plugin
+    /// snapshot: two rows, `terminal_title_stripped` (with `host` on the right)
+    /// then `workspace` (with `changes` on the right).
     static let hostWithoutPluginDefault = AgentRowLayout(rows: [
-        [.init(.terminalTitleStripped)], [.init(.directory)],
+        [.init(.terminalTitleStripped)], [.init(.workspace)],
     ])
+    /// Fallback Console layout when a Host has no saved choice and no plugin
+    /// snapshot.
+    static let consoleDefault = hostWithoutPluginDefault
 
-    /// Where the rows of a Host of `kind` that follows no plugin start. A Rex
-    /// Host's start from the Workspace and Tab, the Agent, then the
-    /// directory, as its Agents have listed since ADR 0054; any other's from
-    /// `hostWithoutPluginDefault`.
+    /// Where the rows of a Host of `kind` that follows no plugin start.
     static func withoutPlugin(on kind: ServerKind?) -> AgentRowLayout {
-        kind == .rex ? consoleDefault : hostWithoutPluginDefault
+        hostWithoutPluginDefault
     }
 
     var rowGap: Int
@@ -212,14 +211,22 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     var rowsByAgent: [String: [AgentRow]]
     /// The fields that end each Console row slot on the right, index-aligned
     /// with the slots. Heeler's own: herdr never sends them, and Sync from
-    /// plugin keeps them. Nil leaves the right side to the list
-    /// (`AgentCardLines`), which ends the first line under the title with
-    /// the Host and the last with the Checkout's Changes totals.
+    /// plugin keeps them. Nil uses `defaultTrailing` (Host on Row 1, Changes
+    /// totals on Row 2).
     var trailing: [AgentRow]?
 
-    /// What the editor shows, and starts from, for a layout whose right
-    /// side the list places.
-    static let defaultTrailing: [AgentRow] = [[], [.init(.host)], [.init(.changes)]]
+    /// What the Console and the editor start from for a layout whose right
+    /// side was not saved: Host on Row 1, Changes totals on Row 2.
+    static let defaultTrailing: [AgentRow] = [[.init(.host)], [.init(.changes)], []]
+
+    /// Each Console row slot's right side: `trailing` where chosen, else
+    /// `defaultTrailing` less any field the slot already holds on the left.
+    var effectiveTrailing: [AgentRow] {
+        trailing ?? Self.defaultTrailing.enumerated().map { slot, defaults in
+            let left = rows.indices.contains(slot) ? rows[slot] : []
+            return defaults.filter { field in !left.contains { $0.token == field.token } }
+        }
+    }
 
     init(
         rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:],
@@ -264,8 +271,8 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     }
 
     /// Import only herdr's first two rows. The third belongs to Heeler;
-    /// new layouts show the directory, while sync supplies the user's row.
-    func withHeelerRow(_ thirdRow: AgentRow = [.init(.directory)]) -> AgentRowLayout {
+    /// new layouts keep it empty, while sync supplies the user's row.
+    func withHeelerRow(_ thirdRow: AgentRow = []) -> AgentRowLayout {
         var imported = normalizedForConsole()
         imported.rows = Array(AgentRowSlot.slotRows(imported.rows).prefix(AgentRowSlot.herdrRowCount))
             + [thirdRow]

@@ -47078,28 +47078,48 @@
         }
       }
     },
-    "Row 1 starts from the Workspace and Tab, Row 2 from the Agent, and Row 3 from its directory. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
-      "comment" : "Agent List Fields footer for a Rex Host, which has no herdr plugin"
-    },
-    "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "comment" : "Agent List Fields footer when the Host has no herdr plugin",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行 1 はターミナルのタイトルから、行 2 はそのディレクトリから始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 行初始使用终端标题，第 2 行初始使用其目录。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 列以終端機的標題為起點，第 2 列以它的目錄為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+          }
+        }
+      }
+    },
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+      "comment" : "Agent List Fields footer when the Host has no herdr plugin and no Terminal labels",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
           }
         }
       }

@@ -71,7 +71,7 @@
                 #expect(bytes == DemoScreenshotFixture.sidebarLayoutData)
                 #expect(composition.console.rowLayout(for: host.id)
                     == AgentRowLayout(rows: [
-                        [.init(.workspace)], [.init(.terminalTitleStripped)], [.init(.directory)],
+                        [.init(.workspace)], [.init(.terminalTitleStripped)], [],
                     ]))
             }
             let row = try #require(composition.console.agents.first)
