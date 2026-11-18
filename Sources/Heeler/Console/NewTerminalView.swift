@@ -48,14 +48,12 @@ struct NewTerminalView: View {
         NavigationStack {
             Form {
                 Section("Host") {
-                    Picker("Host", selection: $store.selectedHostID) {
-                        if store.selectedHostID == nil {
-                            Text("Select a Host").tag(Host.ID?.none)
-                        }
-                        ForEach(store.hosts) { @Sendable host in
-                            Text(host.displayName).tag(Host.ID?.some(host.id))
-                        }
-                    }
+                    StartHostPickers(
+                        hosts: store.hostChoices,
+                        selectedHost: $store.selectedHostConnection,
+                        servers: store.serversForSelectedHost,
+                        offersServerChoice: store.offersServerChoice,
+                        selectedServerID: $store.selectedHostID)
                 }
 
                 Section {

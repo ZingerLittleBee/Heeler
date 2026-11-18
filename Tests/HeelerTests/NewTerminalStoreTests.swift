@@ -62,9 +62,20 @@ struct NewTerminalStoreTests {
     }
 
     @Test func severalHostsWaitForAChoice() {
-        let store = makeStore(hosts: [host, Host.fixture(name: "other")], recorder: Recorder())
+        let store = makeStore(
+            hosts: [host, Host.fixture(name: "other", address: "other.example")],
+            recorder: Recorder())
         #expect(store.selectedHostID == nil)
         #expect(!store.canSubmit)
+    }
+
+    @Test func singleHostWithSeveralServersIsPreselectedAndOffersServerChoice() {
+        let core = Host(name: "studio", address: "host.example", username: "dev", serverKind: .herdrCore)
+        let store = makeStore(hosts: [host, core], recorder: Recorder())
+        #expect(store.hostChoices.map(\.name) == ["studio"])
+        #expect(store.selectedHostID == host.id)
+        #expect(store.offersServerChoice)
+        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["Herdr TUI", "herdr-core"])
     }
 
     @Test func existingWorkspaceOpensInItsDirectoryWithATrimmedTabName() async {
@@ -176,7 +187,7 @@ struct NewTerminalStoreTests {
     }
 
     @Test func switchingHostsResetsTheWorkspaceChoice() {
-        let other = Host.fixture(name: "other")
+        let other = Host.fixture(name: "other", address: "other.example")
         let store = makeStore(hosts: [host, other], recorder: Recorder())
         store.selectedHostID = host.id
         store.selectExistingWorkspace("w2")

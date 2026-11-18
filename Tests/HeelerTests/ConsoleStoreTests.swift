@@ -1006,6 +1006,7 @@ struct ConsoleStoreTests {
         await knownHosts.setFingerprint(
             HostKeyFingerprint(publicKeyBlob: Data("key".utf8)), host: trust.host, port: trust.port)
         let recents = RecentLaunchStore(defaults: defaults)
+        recents.rememberHost(host.id)
         recents.rememberWorkspace("w1", for: host.id)
         let dependencies = HostRemovalDependencies.app(
             console: console, notificationPreferences: preferences,
@@ -1026,6 +1027,8 @@ struct ConsoleStoreTests {
         #expect(file.devices.isEmpty)
         #expect(await knownHosts.fingerprints(host: trust.host, port: trust.port).isEmpty)
         #expect(recents.workspaceID(for: host.id) == nil)
+        #expect(recents.preferredHostID(in: [host]) == nil)
+        #expect(defaults.object(forKey: "recent-host-ids") == nil)
         #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
 
         // What the app model's catalog observer does next.
