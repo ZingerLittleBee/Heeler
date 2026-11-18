@@ -14,14 +14,21 @@ struct StartAgentView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(
+        store: StartAgentStore, console: ConsoleStore,
+        onStarted: @escaping (ConsoleAgent.ID) -> Void = { _ in }
+    ) {
+        self.onStarted = onStarted
+        self.console = console
+        _store = State(initialValue: store)
+    }
+
+    init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
-        self.onStarted = onStarted
-        self.console = console
-        _store = State(
-            initialValue: StartAgentStore(
+        self.init(
+            store: StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
                 existingAgentNames: { console.takenAgentNames(on: $0) },
@@ -48,7 +55,9 @@ struct StartAgentView: View {
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
-                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }))
+                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }),
+            console: console,
+            onStarted: onStarted)
     }
 
     var body: some View {
@@ -69,14 +78,12 @@ struct StartAgentView: View {
                     }
                 } else {
                     Section("Host") {
-                        Picker("Host", selection: $store.selectedHostID) {
-                            if store.selectedHostID == nil {
-                                Text("Select a Host").tag(Host.ID?.none)
-                            }
-                            ForEach(store.hosts) { @Sendable host in
-                                Text(host.displayName).tag(Host.ID?.some(host.id))
-                            }
-                        }
+                        StartHostPickers(
+                            hosts: store.hostChoices,
+                            selectedHost: $store.selectedHostConnection,
+                            servers: store.serversForSelectedHost,
+                            offersServerChoice: store.offersServerChoice,
+                            selectedServerID: $store.selectedHostID)
                     }
 
                     Section {
@@ -194,11 +201,13 @@ struct StartAgentView: View {
                             Task { await store.discoverAgents() }
                         }
                     case .loaded:
-                        if !store.availablePresets.isEmpty {
+                        agentPicker
+                        if !store.selectedAgentPresets.isEmpty {
                             Picker("Preset", selection: $store.selectedPresetID) {
                                 Text("None").tag(LaunchPreset.ID?.none)
-                                ForEach(store.availablePresets) { @Sendable preset in
-                                    Text(preset.name).tag(LaunchPreset.ID?.some(preset.id))
+                                ForEach(store.selectedAgentPresets) { @Sendable preset in
+                                    AgentKindMenuLabel(preset.name, kind: preset.kind)
+                                        .tag(LaunchPreset.ID?.some(preset.id))
                                 }
                             }
                             .accessibilityIdentifier("startAgent.preset")
@@ -206,7 +215,6 @@ struct StartAgentView: View {
                                 LaunchPresetSummary(preset: preset)
                             }
                         }
-                        agentPicker
                         Button("Detect Again", systemImage: "arrow.clockwise") {
                             Task { await store.discoverAgents() }
                         }
@@ -344,8 +352,17 @@ struct StartAgentView: View {
     private var agentPicker: some View {
         Picker("Agent", selection: $store.selectedAgent) {
             ForEach(store.availableAgentKinds) { @Sendable kind in
-                Text("\(kind.displayName) (\(kind.executable))")
+                AgentKindMenuLabel(kind.displayName, kind: kind)
                     .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
+            }
+            if !store.availablePresets.isEmpty {
+                Section("Launch Presets") {
+                    ForEach(store.availablePresets) { @Sendable preset in
+                        AgentKindMenuLabel(
+                            "\(preset.name) · \(preset.kind.displayName)", kind: preset.kind)
+                            .tag(StartAgentStore.AgentChoice?.some(.preset(preset.id)))
+                    }
+                }
             }
             if !store.availableTemplates.isEmpty {
                 Section("Templates") {
@@ -356,6 +373,7 @@ struct StartAgentView: View {
                 }
             }
         }
+        .accessibilityIdentifier("startAgent.agent")
     }
 
     private func openDirectoryBrowser() {
@@ -363,6 +381,35 @@ struct StartAgentView: View {
         directoryBrowser = RemoteDirectoryBrowser(
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+    }
+}
+
+/// Picks a Host by its name alone, and adds a Server picker only when that
+/// Host offers more than one Server here.
+struct StartHostPickers: View {
+    let hosts: [LaunchHostChoice]
+    @Binding var selectedHost: HostMachine.Connection?
+    let servers: [Host]
+    let offersServerChoice: Bool
+    @Binding var selectedServerID: Host.ID?
+
+    var body: some View {
+        Picker("Host", selection: $selectedHost) {
+            if selectedHost == nil {
+                Text("Select a Host").tag(HostMachine.Connection?.none)
+            }
+            ForEach(hosts) { @Sendable host in
+                Text(host.name).tag(HostMachine.Connection?.some(host.id))
+            }
+        }
+        if offersServerChoice {
+            Picker("Server", selection: $selectedServerID) {
+                ForEach(servers) { @Sendable server in
+                    Text(LaunchHostChoice.serverLabel(for: server))
+                        .tag(Host.ID?.some(server.id))
+                }
+            }
+        }
     }
 }
 

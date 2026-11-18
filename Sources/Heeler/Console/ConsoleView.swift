@@ -2624,12 +2624,11 @@ struct ConsoleView: View {
     }
 
     /// Where the New Terminal sheet starts with the filter on one Host: that
-    /// Host's Server in `offered`, when it has one only. With more, the
-    /// filter does not say which, so the sheet's picker asks.
+    /// Host's first Server in `offered`. When the Host has more than one, the
+    /// sheet's Server picker offers the rest.
     static func newTerminalHostID(offered: [Host], filteredTo filtered: [HostMachine]) -> Host.ID? {
         guard filtered.count == 1, let host = filtered.first else { return nil }
-        let servers = offered.filter { host.contains($0.id) }
-        return servers.count == 1 ? servers.first?.id : nil
+        return offered.first { host.contains($0.id) }?.id
     }
 
     private struct HostsTabRequest {
