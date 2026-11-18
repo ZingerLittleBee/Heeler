@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at 27c2619f -->
+<!-- Translated from docs/guides/pairing.md at 25c500b6 -->
 
 # 扫码配对 Host
 
