@@ -198,7 +198,8 @@ struct StartAgentView: View {
                             Picker("Preset", selection: $store.selectedPresetID) {
                                 Text("None").tag(LaunchPreset.ID?.none)
                                 ForEach(store.availablePresets) { @Sendable preset in
-                                    Text(preset.name).tag(LaunchPreset.ID?.some(preset.id))
+                                    AgentKindMenuLabel(preset.name, kind: preset.kind)
+                                        .tag(LaunchPreset.ID?.some(preset.id))
                                 }
                             }
                             .accessibilityIdentifier("startAgent.preset")
@@ -344,7 +345,7 @@ struct StartAgentView: View {
     private var agentPicker: some View {
         Picker("Agent", selection: $store.selectedAgent) {
             ForEach(store.availableAgentKinds) { @Sendable kind in
-                Text("\(kind.displayName) (\(kind.executable))")
+                AgentKindMenuLabel(kind.displayName, kind: kind)
                     .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
             }
             if !store.availableTemplates.isEmpty {

@@ -25,7 +25,7 @@ struct AgentKindMarkTests {
 
     @Test func onlyKindsWithoutAPublishedMarkFallBackToTheirInitial() {
         let unmarked = SupportedAgentKind.allCases.filter { AgentKindMark.artwork(for: $0) == nil }
-        #expect(Set(unmarked) == [.droid, .pi, .omp, .maki, .muse])
+        #expect(Set(unmarked) == [.droid, .maki, .muse])
     }
 
     /// herdr's kind is matched as `kindLabel` matches it; a kind this build
@@ -56,6 +56,130 @@ struct AgentKindMarkTests {
             }
         }
         #expect(try pixels(.dark) != pixels(.light))
+    }
+
+    @MainActor
+    @Test(arguments: SupportedAgentKind.allCases)
+    func everyKindRendersANonEmptyMenuImage(kind: SupportedAgentKind) throws {
+        let mark = AgentKindMark(kind: kind)
+        let expectedSize = AgentKindMark.menuImageSize
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let image = mark.menuImage(style: style)
+            #expect(image.size == expectedSize)
+            if mark.artwork?.art != nil || mark.artwork?.tint != nil {
+                #expect(image.renderingMode == .alwaysOriginal)
+            } else {
+                #expect(image.renderingMode == .alwaysTemplate)
+            }
+            let cgImage = try #require(image.cgImage)
+            #expect(Self.hasNonTransparentPixels(cgImage), "\(kind.rawValue) (\(style.rawValue))")
+        }
+    }
+
+    @MainActor
+    @Test(arguments: [SupportedAgentKind.kiro, .qwen, .qodercli])
+    func appearanceSensitiveMenuImagesDifferBetweenLightAndDark(kind: SupportedAgentKind) throws {
+        let mark = AgentKindMark(kind: kind)
+        let light = try #require(mark.menuImage(style: .light).pngData())
+        let dark = try #require(mark.menuImage(style: .dark).pngData())
+        #expect(light != dark)
+    }
+
+    @MainActor
+    @Test func newAgentMenuItemsShowEachAgentKindsIcon() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(
+            snapshot: .fixture(
+                workspaces: [.fixture(id: "w1", label: "proj")],
+                agents: []))
+        let kinds: [SupportedAgentKind] = [.pi, .claude, .codex, .cursor, .antigravity, .omp, .opencode]
+        await transport.setAvailableAgentKinds(kinds)
+
+        let presetDefaultsName = "start-agent-icon-test-\(UUID().uuidString)"
+        let presetDefaults = try #require(UserDefaults(suiteName: presetDefaultsName))
+        presetDefaults.removePersistentDomain(forName: presetDefaultsName)
+        defer { presetDefaults.removePersistentDomain(forName: presetDefaultsName) }
+        let presetStore = LaunchPresetStore(defaults: presetDefaults)
+        _ = try presetStore.save(LaunchPreset(name: "Work", kind: .claude))
+
+        let console = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            launchPresets: presetStore,
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { transport },
+                    reconnectPolicy: EventsReconnectPolicy(
+                        initialDelay: .milliseconds(10), maxDelay: .milliseconds(20)),
+                    keepalive: nil)
+            })
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+
+        let controller = UIHostingController(
+            rootView: StartAgentView(hosts: [host], console: console, onStarted: { _ in }))
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller
+        ) { window in
+            var budget = PollBudget(.seconds(5))
+            while !accessibleElements(in: window).contains(where: { $0.accessibilityLabel == "Agent" }),
+                budget.hasTimeLeft
+            {
+                try await Task.sleep(for: .milliseconds(20))
+                budget.charge()
+            }
+
+            let expectedSize = AgentKindMark.menuImageSize
+            var agentActions: [(title: String, size: CGSize?)] = []
+            let menus = try await HostedMenu.items(labeled: "Agent", in: window) { menu in
+                agentActions = Self.leafActions(of: menu)
+            }
+            #expect(menus == [kinds.map(\.displayName)])
+            #expect(agentActions.count == kinds.count)
+            for action in agentActions {
+                #expect(action.size == expectedSize, "\(action.title) missing menu icon")
+            }
+
+            var presetActions: [(title: String, size: CGSize?)] = []
+            let presetMenus = try await HostedMenu.items(labeled: "Preset", in: window) { menu in
+                presetActions = Self.leafActions(of: menu)
+            }
+            #expect(presetMenus == [["None", "Work"]])
+            #expect(presetActions.first { $0.title == "None" }?.size == nil)
+            #expect(presetActions.first { $0.title == "Work" }?.size == expectedSize)
+        }
+    }
+
+    private static func leafActions(of menu: UIMenu) -> [(title: String, size: CGSize?)] {
+        menu.children.flatMap { child -> [(title: String, size: CGSize?)] in
+            if let section = child as? UIMenu {
+                return leafActions(of: section)
+            }
+            if let leaf = child as? any UIMenuLeaf {
+                return [(title: leaf.title, size: leaf.image?.size)]
+            }
+            return [(title: child.title, size: nil)]
+        }
+    }
+
+    private static func hasNonTransparentPixels(_ cgImage: CGImage) -> Bool {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return false }
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        guard
+            let context = CGContext(
+                data: &bytes,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return stride(from: 3, to: bytes.count, by: 4).contains { bytes[$0] > 0 }
     }
 }
 

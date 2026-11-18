@@ -221,7 +221,7 @@ final class ConsoleStore {
         (@MainActor (Host.ID, String, [String: HerdrCoreTurnState.Mark]) -> Void)?
     @ObservationIgnored private var hostAccountsStores: [Host.ID: HostAccountsStore] = [:]
     /// The device's Launch Presets (#622).
-    let launchPresets = LaunchPresetStore()
+    let launchPresets: LaunchPresetStore
     /// Writes the widgets' snapshot of those readings. Only the app passes
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
@@ -278,6 +278,7 @@ final class ConsoleStore {
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
+        launchPresets: LaunchPresetStore = LaunchPresetStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
         connectCore: @escaping @Sendable (Host) async throws -> any HerdrCoreTransport =
@@ -330,6 +331,7 @@ final class ConsoleStore {
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
         self.usageSettings = usageSettings
+        self.launchPresets = launchPresets
         self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
         terminalConnections = TerminalConnectionPool(budget: terminalBudget)
