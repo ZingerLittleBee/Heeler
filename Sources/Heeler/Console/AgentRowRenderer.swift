@@ -47,16 +47,17 @@ enum AgentRowRenderer {
         }
     }
 
-    /// Each Console row slot's right side, or nil where the layout leaves
-    /// it to the list. Text fields render as `render` renders them, one run
+    /// Each Console row slot's right side (`layout.effectiveTrailing`: the
+    /// saved right sides, or `defaultTrailing` with Host on Row 1 and Changes
+    /// totals on Row 2). Text fields render as `render` renders them, one run
     /// between the entries the card draws: the status badge, the Host, and
     /// the Checkout's Changes totals, which it shows as its list does, so
     /// `hiding` leaves them to it.
     static func renderTrailing(
         layout: AgentRowLayout, agent: ConsoleAgent, hiding: Set<AgentRowToken> = [],
         omittingMarkedKind: Bool = false
-    ) -> [[AgentCardTrailing]]? {
-        guard let sides = layout.trailing else { return nil }
+    ) -> [[AgentCardTrailing]] {
+        let sides = layout.effectiveTrailing
         let omitting = slotsOmittingAgent(layout: layout, agent: agent, omittingMarkedKind: omittingMarkedKind)
         let slots = AgentRowSlot.slotRows(Array(sides.prefix(AgentRowLayout.maximumConsoleRows)))
         return slots.enumerated().map { slot, row in

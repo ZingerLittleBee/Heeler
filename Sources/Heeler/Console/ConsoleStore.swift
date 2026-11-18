@@ -2536,13 +2536,13 @@ final class ConsoleStore {
         return cached
     }
 
-    /// A core or Rex Host follows no plugin, and starts from
+    /// A core, tmux or Rex Host follows no plugin, and starts from
     /// `rowLayoutWithoutPlugin`.
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
         let kind = catalog.first { $0.id == hostID }?.serverKind
         return rowLayouts.resolvedLayout(
             for: hostID, pluginSnapshot: effectiveSidebarSnapshot(for: hostID),
-            followsPlugin: kind != .herdrCore && kind != .rex, withoutPlugin: .withoutPlugin(on: kind))
+            followsPlugin: kind == nil || kind == .herdrTUI, withoutPlugin: .withoutPlugin(on: kind))
     }
 
     /// Where the rows of a Host that follows no plugin start until it saves

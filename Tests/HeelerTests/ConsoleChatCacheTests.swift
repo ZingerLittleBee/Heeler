@@ -296,13 +296,11 @@ struct ConsoleChatCacheTests {
         #expect(
             cachedCards.first?.additionalRows == [
                 "feat/cache-fields · ◑ Cache row layout fields · Main pane",
-                "heeler",
             ])
         #expect(cachedCards.last?.headline == "Audit sidebar snapshot")
         #expect(
             cachedCards.last?.additionalRows == [
                 "feat/sidebar · ◐ Audit sidebar snapshot · Review pane",
-                "heeler",
             ])
 
         // Session snapshot lands while sidebar.json is still loading: layout does not revert.
