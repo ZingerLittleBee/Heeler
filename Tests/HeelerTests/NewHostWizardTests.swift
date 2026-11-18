@@ -625,6 +625,27 @@ struct NewHostWizardTests {
         #expect(scan.missing.contains { $0.kind == .herdrTUI })
     }
 
+    /// Pairing ends on the same look, so a Rex server it finds is listed and
+    /// saved with its socket, as from a typed address (ADRs 0049 and 0057).
+    @Test func aPairedMachineListsTheRexItsLookFound() async throws {
+        let socket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let rex = HostServerKey(kind: .rex, name: "")
+        let rig = makeRig(
+            presentedKeyBlob: keyBlob, core: Self.machineWithRex(socket: socket), paired: pairedMachine())
+
+        await rig.wizard.connect()
+
+        #expect(rig.wizard.step == .servers)
+        #expect(rig.wizard.checked.contains(rex))
+
+        rig.wizard.checked = [rex]
+        _ = await rig.finish()
+
+        let host = try #require(rig.catalog.machines.first)
+        #expect(rig.serversOn == [rex])
+        #expect(host.record(of: rex)?.rexSocket?.path == socket)
+    }
+
     /// Scanning a Pairing Code is the user replacing a trusted key: a Host in
     /// the catalog that trusted another takes the one the code pinned once
     /// the user finishes, and its Console is asked to try again (ADR 0057).
