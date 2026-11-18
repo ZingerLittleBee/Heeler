@@ -1072,6 +1072,7 @@
       }
     },
     "%@ is already in Heeler. Checked servers are turned on there." : {},
+    "%@ is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before." : {},
     "%@ is no longer a Template on this Host, so nothing started. Detect Again refreshes the list." : {
       "localizations" : {
         "ja" : {

@@ -86,6 +86,7 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 - The Host is named after your username and its address. To rename it, open it from **Hosts** and tap **Edit**.
 - Heeler signs in with this device's Device Key. To pair another iPhone or iPad, repeat steps 3 and 4 on it.
 - Pairing a machine that is already in **Hosts** under the same user and addresses adds nothing: the last step says so and turns on the Servers you check on that Host. With other addresses it becomes a second entry. Swipe left on the entry you no longer need and tap **Remove**.
+- Pairing again also repairs a Host that says **The host key changed**, for example after the machine was reinstalled, or one that lost this device's key. The last step says when the key changed, and finishing it trusts the key from the new code and reconnects the Host.
 - A Server you left unchecked, or one that starts later, has a switch on the Host's page.
 - To get notifications on your iPhone or iPad when an Agent needs you (**Blocked**) or finishes (**Done**), go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on this Host's switch under **Hosts**.
 

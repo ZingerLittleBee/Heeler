@@ -7,7 +7,8 @@ status: proposed
 Amended by [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md):
 a Host added by Pairing Code is no longer one Herdr TUI Server. Pairing ends
 on Add Host's last step, with the Servers the look found. Only a code with a
-Herdr Endpoint still adds its one Server.
+Herdr Endpoint still adds its one Server. A code scanned for a Host in the
+catalog is also a way the user replaces its changed key.
 
 ADR 0031 bound a Host to one Server Kind, so a machine that ran Herdr TUI and
 tmux was added twice, with the address, account, key and trust typed and

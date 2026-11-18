@@ -47,6 +47,14 @@ and Enrollment are OpenSSH and Node.
   record's id, runs the one look and shows the Servers step in the same
   sheet. The Host is saved there with the Servers the user checks. When its
   connection is already in the catalog, they are turned on there instead.
+- **A Pairing Code replaces a key the catalog trusted.** When the connection
+  is in the catalog and its records trust another key than the code pinned,
+  the look goes by the code's key and the step says the key changed.
+  Finishing gives every record of the Host that key and asks a Console that
+  had stopped on a failure to try again. Cancelling replaces nothing. Scanning
+  the code is the user replacing the key, as Trust New Key is: the code came
+  off the machine's own screen, and the ceremony authenticated with a
+  Bootstrap Key only that code carried.
 - **Codes from the plugin end there too.** A v1 code was shown inside a
   running Herdr TUI, so the step lists its default session as running even
   where the look finds no herdr, as from a login shell without it on `PATH`.
@@ -66,6 +74,9 @@ and Enrollment are OpenSSH and Node.
   on a step that says what else the machine runs.
 - Pairing a Host whose connection is in the catalog no longer adds a second
   Herdr TUI Server. Its key is still pinned from the code, never asked about.
+- A Host that stopped on a changed host key, or on a Device Key its machine
+  no longer holds, is repaired by scanning a new code. Before, that scan
+  added a second Host beside the one that stayed failed.
 - Cancelling on the last step leaves the Device Key enrolled on the machine
   and no Host in the app. The command's last screen names the key and revokes
   it on one key press, as the popup's does.

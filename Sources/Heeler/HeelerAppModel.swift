@@ -126,6 +126,10 @@ final class HeelerAppModel {
             },
             harnessEdits: console.harnessEdits,
             noteWindowsCore: { [weak console] in console?.noteWindowsCore(on: $0) },
+            retryFailedHost: { [weak console] id in
+                guard let console, case .failed = console.hostStatuses[id] else { return }
+                Task { await console.retryHost(id) }
+            },
             coreKernel: { [weak console] in console?.hostCoreKernels[$0] },
             noteTmuxPaths: { [weak hostStore] id, paths in try? hostStore?.noteTmuxPaths(paths, for: id) },
             notePlugin: { [weak hostUpdates] id, status in hostUpdates?.notePlugin(status, for: id) })

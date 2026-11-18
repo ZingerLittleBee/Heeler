@@ -311,7 +311,10 @@ struct NewHostWizardView: View {
                     Text("Found on \(wizard.address)")
                         .textCase(nil)
                 } footer: {
-                    if let existing = wizard.existing {
+                    if let existing = wizard.existing, wizard.replacesTrustedKey {
+                        Text(
+                            "\(existing.name) is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before.")
+                    } else if let existing = wizard.existing {
                         Text("\(existing.name) is already in Heeler. Checked servers are turned on there.")
                     } else {
                         Text(
