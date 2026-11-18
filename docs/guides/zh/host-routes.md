@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/host-routes.md at 7882049d -->
+<!-- Translated from docs/guides/host-routes.md at 4732ddb2 -->
 # 通过多条路由访问 Host
 
 一台 Host 可以配置不止一条路由：在家时使用局域网地址，在外时使用 Overlay Network 或跳板机（Jump Host）。每次连接时，Heeler 都会尝试所有路由并采用最先连通 Host 的那一条，因此无需手动切换任何设置。
@@ -51,6 +51,7 @@ Heeler 只会确认一次 Host 的主机密钥，所有路由都必须连向持�
 ## 当某条路由总是失败时
 
 - 在该 Host 的页面上的 **Routes** 下查看具体失败原因。
+- **The Jump Host's key is not trusted** 或 **The host key is not trusted** 表示这台 iPhone 或 iPad 上还没有人确认过该密钥。Host 的页面会请你确认它的指纹，信任之后会重新连接。如果你关掉了这个提示，轻点 **Scan Again** 可以再次看到它。
 - 对于 Overlay Network 路由，检查该网络在 **Settings > Overlay Networks** 中是否显示为已连接，并确认 Mac 在该 Overlay Network 中处于在线状态。
 - 对于跳板机路由，检查跳板机本身是否可达，以及它是否接受与目标 Host 相同的设备密钥（Device Key）、RSA 密钥（RSA Key）或密码。参见[跳板机配置指南](vps-jump-host-setup.md)。
 - 对于局域网地址，它仅在对应局域网内有效。离开家后该路由会自然失败，并由其他路由接管连接。
