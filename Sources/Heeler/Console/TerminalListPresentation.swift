@@ -55,8 +55,9 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
 }
 
 /// One Workspace card: its ordinary shell panes, in tab order, then New
-/// Terminal. Agent panes stay on the Agents tab, so a Workspace running only
-/// Agents holds New Terminal alone.
+/// Terminal where its Host starts terminals. Agent panes stay on the Agents
+/// tab, so a Workspace running only Agents holds New Terminal alone, and on a
+/// Host that starts none it would hold nothing and is not listed.
 struct TerminalWorkspaceGroup: Identifiable, Equatable {
     /// Workspace ids are opaque and scoped to their Host.
     struct ID: Hashable, Sendable {
@@ -81,6 +82,25 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
     var headerAccessibilityValue: String {
         let state = isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded")
         return [TerminalCount.text(terminals.count), state].joined(separator: ", ")
+    }
+}
+
+/// Which ends of a By Host Workspace card a row closes. That plain list draws
+/// no cards, so each row rounds its own slice: the first row the top, the
+/// last the bottom. New Terminal ends a card where its Host starts terminals;
+/// otherwise the last shell does, as the grouped By Workspace list closes it.
+struct TerminalCardEdges: Equatable {
+    let isFirst: Bool
+    let isLast: Bool
+
+    /// The shell at `index` of a card listing `count` shells.
+    static func shell(at index: Int, of count: Int, endsInNewTerminal: Bool) -> Self {
+        Self(isFirst: index == 0, isLast: !endsInNewTerminal && index == count - 1)
+    }
+
+    /// New Terminal, after the card's `shellCount` shells.
+    static func newTerminal(afterShells shellCount: Int) -> Self {
+        Self(isFirst: shellCount == 0, isLast: true)
     }
 }
 
@@ -285,8 +305,15 @@ struct TerminalListProjection {
         for shell in shells where !ordered.contains(where: { $0.id == shell.workspaceID }) {
             ordered.append((shell.workspaceID, nil))
         }
+        // A card with no shell holds New Terminal alone, so where the Host
+        // never starts terminals it has nothing to show or offer, as a Rex
+        // session whose terminals all run Agents (ADR 0054). Read from the
+        // Host's kind rather than its connection, so a herdr-core card keeps
+        // its place while the core is still being located.
+        let offersNewTerminal = host.capabilities.startsTerminals
         return ordered.compactMap { id, workspace in
             let all = shellsByWorkspace[id] ?? []
+            if all.isEmpty && !offersNewTerminal { return nil }
             let matching = needle.isEmpty ? all : all.filter { $0.matchesSearch(needle) }
             if !needle.isEmpty && matching.isEmpty { return nil }
             let label = (workspace?.label ?? all.first?.workspaceLabel)?

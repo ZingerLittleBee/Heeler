@@ -83,7 +83,7 @@ extension HerdrCoreSessionBinder {
     /// reads as none yet.
     private func unconfirmed(_ evidence: ChatSessionEvidence) -> ChatSessionEvidence {
         guard case .unavailable(let reason) = evidence else { return evidence }
-        return .pickUnconfirmed(reason == .noConversationYet(program) ? hostSystem.cannotTellSession(program) : reason)
+        return .pickUnconfirmed(reason == .noConversationYet(program) ? cannotTellReason : reason)
     }
 
     /// The id or file the label names, in the form this program's Chat reads it.

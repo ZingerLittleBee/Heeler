@@ -174,18 +174,24 @@ struct TerminalListView: View {
         .selectionDisabled()
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
+            // A Rex Host never offers New Terminal, so its last shell closes
+            // the card.
+            let endsInNewTerminal = console.capabilities(for: workspace.id.hostID).startsTerminals
             ForEach(Array(terminals.enumerated()), id: \.element.id) { @Sendable index, terminal in
                 MainActorContent {
+                    let edges = TerminalCardEdges.shell(
+                        at: index, of: terminals.count, endsInNewTerminal: endsInNewTerminal)
                     terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
                         .modifier(
                             TerminalCardRow(
-                                isFirst: index == 0, isLast: false,
+                                isFirst: edges.isFirst, isLast: edges.isLast,
                                 isSelected: isShownSelected(terminal)))
                 }
             }
-            if console.capabilities(for: workspace.id.hostID).startsTerminals {
+            if endsInNewTerminal {
+                let edges = TerminalCardEdges.newTerminal(afterShells: terminals.count)
                 newTerminalRow(workspace)
-                    .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
+                    .modifier(TerminalCardRow(isFirst: edges.isFirst, isLast: edges.isLast))
             }
         }
     }

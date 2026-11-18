@@ -51,6 +51,8 @@ struct HostOnboardingDependencies: Sendable {
     var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
     /// A Server's page read its plugin, or changed it, for Updates to follow.
     var notePlugin: @MainActor @Sendable (Host.ID, HeelerPluginStatus) -> Void = { _, _ in }
+    /// A Rex Host's checks looked its socket up, for the catalog to keep.
+    var noteRexSocket: @MainActor @Sendable (Host.ID, RexSocket) -> Void = { _, _ in }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -128,6 +130,7 @@ final class HostOnboardingStore {
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
     @ObservationIgnored private let notePlugin: @MainActor (Host.ID, HeelerPluginStatus) -> Void
+    @ObservationIgnored private let noteRexSocket: @MainActor (Host.ID, RexSocket) -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -149,10 +152,12 @@ final class HostOnboardingStore {
         },
         harnessEdits: HarnessConfigEditStore? = nil,
         noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in },
-        notePlugin: @escaping @MainActor (Host.ID, HeelerPluginStatus) -> Void = { _, _ in }
+        notePlugin: @escaping @MainActor (Host.ID, HeelerPluginStatus) -> Void = { _, _ in },
+        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
     ) {
         self.noteTmuxPaths = noteTmuxPaths
         self.notePlugin = notePlugin
+        self.noteRexSocket = noteRexSocket
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
@@ -282,6 +287,9 @@ final class HostOnboardingStore {
             return
         case .tmux:
             await performTmuxChecks(settings: settings)
+            return
+        case .rex:
+            await performRexChecks(settings: settings)
             return
         case .herdrTUI:
             break
@@ -439,6 +447,28 @@ final class HostOnboardingStore {
                 await confirmation()
                 try? await transport.close()
             }
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// A Rex Host's checks reach its server's socket and say hello, then close
+    /// with a close frame, which changes nothing on the server (ADR 0049). A
+    /// Host that stores no socket has it looked up again, and the catalog keeps
+    /// what was found. They never run `rex` or start a server.
+    private func performRexChecks(settings: SSHTransportSettings) async {
+        pluginStatus = .unsupportedServerKind
+        do {
+            let transport = try await connector.connectRex(settings: settings)
+            if let found = transport.foundSocket, host.rexSocket == nil {
+                host.rexSocket = found
+                noteRexSocket(host.id, found)
+            }
+            await transport.close()
+            guard !Task.isCancelled else { return }
+            report = .allPassed
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)

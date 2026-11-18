@@ -265,6 +265,42 @@ struct TerminalModeTrackerTests {
         #expect(!tracker.usesBracketedPaste)
     }
 
+    /// A full reset puts every mode back, as the emulator does, so a paint
+    /// that starts with one and sets only what is on leaves no stale mode
+    /// behind: no wheel report or arrow key from a touch scroll at a shell.
+    @Test(arguments: [1, 2])
+    func aFullResetPutsEveryModeBack(cut: Int) {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data("\u{1B}[?9001h\u{1B}[?1h\u{1B}[?2004h\u{1B}[>5u\u{1B}[?1049h\u{1B}[?1000h\u{1B}[?1006h".utf8))
+        tracker.receive(Data("\u{1B}[>3u".utf8))
+        #expect(tracker.isAlternateScreen && tracker.tracksMouse && tracker.kittyKeyboardFlags == 3)
+
+        let paint = Data("\u{1B}c\u{1B}[H\u{1B}[2J$ ".utf8)
+        tracker.receive(paint.prefix(cut))
+        tracker.receive(paint.dropFirst(cut))
+
+        #expect(!tracker.isAlternateScreen)
+        #expect(!tracker.tracksMouse)
+        #expect(!tracker.usesSGRMouseEncoding)
+        #expect(!tracker.usesApplicationCursorKeys)
+        #expect(tracker.bracketedPasteSetting == false)
+        #expect(tracker.kittyKeyboardFlags == 0)
+        #expect(tracker.remoteScrollSequence(towardOlderContent: true, columns: 80, rows: 24) == nil)
+        #expect(tracker.hasNamedWin32InputMode)
+
+        tracker.receive(Data("\u{1B}c\u{1B}[?1049h".utf8))
+        #expect(tracker.isAlternateScreen)
+        #expect(tracker.kittyKeyboardFlags == 0)
+    }
+
+    /// `c` closing a control sequence, such as a device attributes request,
+    /// is no reset.
+    @Test func aSequenceEndingInCIsNoReset() {
+        var tracker = TerminalModeTracker()
+        tracker.receive(Data("\u{1B}[?1049h\u{1B}[c\u{1B}[>0c".utf8))
+        #expect(tracker.isAlternateScreen)
+    }
+
     @Test func aControlByteInsideASequenceDoesNotEndIt() {
         var tracker = TerminalModeTracker()
         tracker.receive(Data("\u{1B}[?20\n04h".utf8))

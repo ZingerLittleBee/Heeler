@@ -524,6 +524,8 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.integratedHosts,
+            rowLayoutHosts: hosts.rowLayoutHosts,
+            hasOnlyRexServersOn: hosts.hasOnlyRexServersOn,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
             onDone: onDone)
@@ -609,7 +611,7 @@ struct ConsoleView: View {
                     AgentUsageDashboard(
                         entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
-                        allowsColumns: true)
+                        allowsColumns: true, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
                         .navigationTitle(
                             usageScope.wrappedValue.flatMap { id in usageEntries.first { $0.id == id }?.name }
                                 ?? String(localized: "All Hosts"))
@@ -623,7 +625,7 @@ struct ConsoleView: View {
         } else {
             AgentUsageTabView(
                 entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
-                limitsRequested: $usageLimitsRequested)
+                limitsRequested: $usageLimitsRequested, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
         }
     }
 

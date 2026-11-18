@@ -43,6 +43,18 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     var sidebarRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
+    // MARK: What a detail keeps to
+
+    /// Whether an address on this Host can come to mean another Terminal, as a
+    /// herdr-core Host's does under another core and a tmux Host's under another
+    /// server instance. A detail there keeps to the inventory it opened on.
+    var keepsDetailsToInventory: Bool { get }
+    /// What an ended terminal says in a detail kept to an inventory this Host
+    /// has left (`inventoryCore` moved on).
+    var leftInventoryMessage: String { get }
+    /// What an action from such a detail throws. Nothing was sent.
+    var leftInventoryError: TransportError { get }
+
     // MARK: Lifecycle
 
     func start(isActive: Bool)
@@ -116,7 +128,8 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func imageStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> ImageStager
     func fileStager(beside paneID: String, keepingTo corePin: TerminalCorePin) -> FileStager
     /// Whether staging shows `TransportError`s in their own words, as a Host
-    /// whose uploads ride its own RPC link does.
+    /// whose uploads ride its own RPC link does, and a Rex Host, whose uploads
+    /// keep to a server instance.
     var stagingSaysTransportFailures: Bool { get }
     func sessionFileReader() -> SessionFileReader
     func modelContextWindowResolver() -> ModelContextWindowResolver

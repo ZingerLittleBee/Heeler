@@ -48,6 +48,9 @@ final class TerminalInputController {
     private var writer: ((Data) -> Void)?
     private var acknowledgedWriter: (@Sendable (Data) async throws -> Void)?
     private var tmuxSend: TmuxAttachSend?
+    /// Set for a session whose server pastes for it (Rex): pastes and
+    /// multiline Snippets go there as text, never framed here.
+    private var paster: TerminalAttachPaster?
     private var scroller: ((Data, Int) -> Void)?
     private var discardPendingScroll: (() -> Void)?
     private var pendingPasteText: String?
@@ -88,7 +91,8 @@ final class TerminalInputController {
         scroller: ((Data, Int) -> Void)? = nil,
         discardPendingScroll: (() -> Void)? = nil,
         acknowledgedWriter: (@Sendable (Data) async throws -> Void)? = nil,
-        tmuxSend: TmuxAttachSend? = nil
+        tmuxSend: TmuxAttachSend? = nil,
+        paster: TerminalAttachPaster? = nil
     ) -> SessionGeneration {
         self.discardPendingScroll?()
         nextGeneration &+= 1
@@ -100,6 +104,7 @@ final class TerminalInputController {
         self.writer = writer
         self.acknowledgedWriter = acknowledgedWriter
         self.tmuxSend = tmuxSend
+        self.paster = paster
         self.scroller = scroller
         self.discardPendingScroll = discardPendingScroll
         return generation
@@ -115,6 +120,7 @@ final class TerminalInputController {
         writer = nil
         acknowledgedWriter = nil
         tmuxSend = nil
+        paster = nil
         scroller = nil
         userMessageIndex.reset()
         if !preservingPendingPaste {
@@ -134,6 +140,7 @@ final class TerminalInputController {
         writer = nil
         acknowledgedWriter = nil
         tmuxSend = nil
+        paster = nil
         scroller = nil
         userMessageIndex.reset()
     }
@@ -253,6 +260,11 @@ final class TerminalInputController {
         guard isEnabled, let writer, !text.isEmpty,
             TerminalTextSafety.containsOnlySafeScalars(text)
         else { return false }
+        if let paster, TerminalTextSafety.isMultiline(text) {
+            guard paster.refusal(text) == nil else { return false }
+            paste(text, using: paster, bracketed: bracketedPaste, source: .snippet)
+            return true
+        }
         write(
             TerminalBracketedPaste.encode(
                 text, bracketed: bracketedPaste && TerminalTextSafety.isMultiline(text)),
@@ -327,8 +339,15 @@ final class TerminalInputController {
             pasteErrorMessage = String(localized: "The clipboard contains unsafe terminal control characters.")
             return .rejected
         }
+        if let paster, let refusal = paster.refusal(text) {
+            cancelPaste()
+            pasteErrorMessage = refusal
+            return .rejected
+        }
         guard TerminalTextSafety.isMultiline(text) else {
-            if !text.isEmpty, let writer {
+            if !text.isEmpty, let paster {
+                paste(text, using: paster, bracketed: false, source: .paste)
+            } else if !text.isEmpty, let writer {
                 write(Data(text.utf8), using: writer, source: .paste)
             }
             return .inserted
@@ -347,6 +366,11 @@ final class TerminalInputController {
     @discardableResult
     func confirmPaste() -> Bool {
         guard canConfirmPaste, let writer, let text = pendingPasteText else { return false }
+        if let paster {
+            paste(text, using: paster, bracketed: pendingPasteIsBracketed, source: .paste)
+            cancelPaste()
+            return true
+        }
         // Reviewed text is still multiline text: without framing its newlines
         // reach the pane as separate key events, which is the very thing the
         // review sheet leaves the user unable to prevent.
@@ -383,6 +407,19 @@ final class TerminalInputController {
     ) {
         userMessageIndex.observeOutgoing(data, source: source)
         writer(data)
+    }
+
+    /// Hands `text` to the server's own paste, whole and unframed. The index
+    /// reads it as the other Server Kinds send it, with the framing the view's
+    /// modes asked for, though only the server frames what the program gets.
+    private func paste(
+        _ text: String,
+        using paster: TerminalAttachPaster,
+        bracketed: Bool,
+        source: AttachUserMessageIndex.OutgoingSource
+    ) {
+        userMessageIndex.observeOutgoing(TerminalBracketedPaste.encode(text, bracketed: bracketed), source: source)
+        paster.paste(text)
     }
 
     private static func lineCount(_ text: String) -> Int {

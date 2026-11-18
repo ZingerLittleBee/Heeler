@@ -272,7 +272,7 @@ final class ComposerStagingStore {
     private var operationID: UInt64 = 0
     private var cancellationDisposition: CancellationDisposition?
     private var insertsPathIntoComposer = true
-    /// A core Host's upload says a transport failure in the transport's words.
+    /// A core or Rex Host's upload says a transport failure in the transport's words.
     private let saysTransportFailures: Bool
     /// Optional per-operation terminal events. The picker path does not set this.
     @ObservationIgnored

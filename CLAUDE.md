@@ -18,6 +18,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
 - **RPC, subscriptions, launch/input, or scrolling compatibility:** consult
   [versioned herdr and tmux observations](docs/agents/herdr-compatibility.md). Check each
   observation's version before applying it to a newer server.
+- **Rex control connection, inventory, events or resume:** consult
+  [versioned Rex observations](docs/agents/rex-compatibility.md), checking the
+  Rex version each names.
 
 ## Architecture
 
@@ -41,6 +44,18 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
   from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
   readers (ADRs 0044, 0045, and 0046).
+- Rex Hosts (experimental; one Rex Server per Host, listed by a look) target
+  one running macOS or Linux Rex server by its Unix socket, API revision 12
+  only: one WebSocket control link over direct-streamlocal carries inventory,
+  events and terminal input, and each open terminal adds a data link on a
+  channel of its own, painted from the server's redraw. Connecting never
+  starts a server or runs `rex`; a block's size is taken only for a terminal
+  on screen, before its first paint, and given back when it leaves (ADRs 0049
+  to 0053). Rex Agents open the Agent detail: Chat (Claude Code, Codex, Pi
+  and Oh My Pi) reads over SSH (SFTP and bounded read-only execs, nothing
+  installed), writes there only a file the user attaches and, when the user
+  asks from a Pi or Oh My Pi's Chat, Heeler's extension, and types as block
+  requests on the control link (ADRs 0054 to 0056).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

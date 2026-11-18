@@ -262,7 +262,11 @@ struct TerminalScreenView: UIViewRepresentable {
             theme: theme,
             fontSize: fontSize,
             fontFamily: fontFamily) }
-        let view = retention?.surface(for: feed, make: make) ?? make()
+        var isKept = retention != nil
+        let view = retention?.surface(for: feed) {
+            isKept = false
+            return make()
+        } ?? make()
         view.updateCallbacks(
             onSizeChanged: onSizeChanged, onViewportTextChanged: onViewportTextChanged,
             onSend: onSend, onScroll: onScroll, onPaste: onPaste)
@@ -291,6 +295,10 @@ struct TerminalScreenView: UIViewRepresentable {
         // The feed holds the surface weakly so a replaced UIKit view cannot be
         // kept alive by an obsolete terminal pipeline.
         feed.attach(view)
+        // A kept surface comes back showing what it showed, and what it
+        // received while away reached no screen. This one hears it now, not
+        // at the next output, which a quiet terminal may never send.
+        if isKept { view.reportViewportTextSoon() }
         #if DEBUG
         onSurfaceAttached?()
         #endif
@@ -386,7 +394,8 @@ struct TerminalScreenView: UIViewRepresentable {
         // back into the state it was driven by: reporting the viewport text
         // feeds the Attach Link index, whose observers include this very view,
         // and the update loops on itself until the app is wedged. Terminal
-        // output already schedules a snapshot in `receive`.
+        // output already schedules a snapshot in `receive`, and a grid change
+        // in the engine schedules one too (`onEngineResize`).
         view.onOpenLink = { url in openURL(url) }
     }
 }
@@ -475,6 +484,9 @@ final class TerminalSessionCallbackBridge {
     var onScroll: ((Data, Int) -> Void)?
     var onPaste: ((String, Bool) -> Void)?
     var onViewport: ((InMemoryTerminalViewport) -> Void)?
+    /// Hears every grid the engine resizes to, whether or not the Host is
+    /// told: what the viewport shows moves with it.
+    var onEngineResize: (() -> Void)?
     var isSizeReportCurrent: ((_ columns: Int, _ rows: Int) -> Bool)?
     var onReliableInput: (() -> Void)?
     /// Reports every freeze transition. The return to `.live` carries the grid
@@ -589,6 +601,7 @@ final class TerminalSessionCallbackBridge {
         _ viewport: InMemoryTerminalViewport,
         sequence: UInt64
     ) {
+        onEngineResize?()
         pendingResizeReports[sequence] = viewport
 
         while let viewport = pendingResizeReports.removeValue(
@@ -1133,6 +1146,12 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         callbackBridge.onReliableInput = { [weak self] in
             self?.reliableInputDidBegin()
         }
+        // A new grid moves where the output ends on screen (the keyboard, a
+        // rotation, a pinch), and a server that keeps its own size, as Rex
+        // does for a terminal another device sized, need not redraw for it.
+        callbackBridge.onEngineResize = { [weak self] in
+            self?.scheduleViewportSnapshot()
+        }
         observeModeSource()
         installTouchScrolling()
         installZoom()
@@ -1269,10 +1288,19 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
         callbackBridge.viewportTextDidChange(text)
     }
 
-    private func scheduleViewportSnapshot() {
+    /// Reports the viewport on the next turn rather than after output's
+    /// settling delay, for a kept surface handed to a new screen: it shows
+    /// what it has already parsed, and output still arriving schedules its
+    /// own report. The next turn keeps the read out of the SwiftUI update
+    /// that handed the surface over.
+    func reportViewportTextSoon() {
+        scheduleViewportSnapshot(after: .zero)
+    }
+
+    private func scheduleViewportSnapshot(after delay: Duration = .milliseconds(50)) {
         viewportSnapshotTask?.cancel()
         viewportSnapshotTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
+            if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
             self?.reportViewportText()
         }

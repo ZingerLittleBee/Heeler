@@ -88,6 +88,9 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     case herdrCore
     /// A tmux server the user runs, named by its socket (ADR 0044).
     case tmux
+    /// A Rex server already running on a macOS or Linux Host, found by its
+    /// socket (ADR 0049).
+    case rex
     /// Added by hand and waiting for the user to confirm one of the others. It
     /// stays in the shared catalog, and only its Host detail ever dials it.
     case unconfirmed
@@ -95,11 +98,11 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     var isConfirmed: Bool { self != .unconfirmed }
 
     /// Whether Heeler's side of the Host exists for this kind: the plugin or
-    /// the Host Helper behind Usage and Accounts.
+    /// the Host Helper behind Usage and Accounts. A Rex Host has neither.
     var hasHostIntegrations: Bool {
         switch self {
         case .herdrTUI, .herdrCore, .tmux: true
-        case .unconfirmed: false
+        case .rex, .unconfirmed: false
         }
     }
 
@@ -108,7 +111,9 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     }
 
     /// Why this kind's server would refuse `value`, in words for the user. An
-    /// unconfirmed Host answers to no rule yet: confirming asks this again.
+    /// unconfirmed Host answers to no rule yet: confirming asks this again. A
+    /// Rex Host names no session: its server is the one on its socket, and
+    /// what it holds is listed, never typed.
     func sessionNameRefusal(_ value: String) -> String? {
         switch self {
         case .herdrTUI:
@@ -119,16 +124,17 @@ enum ServerKind: String, Codable, Hashable, Sendable {
             return HerdrCoreSessionName.refusal(value)
         case .tmux:
             return TmuxSocketName.refusal(value)
-        case .unconfirmed:
+        case .rex, .unconfirmed:
             return nil
         }
     }
 
-    /// `value` as this kind stores it.
+    /// `value` as this kind stores it. A Rex Host stores none.
     func storedSessionName(_ value: String) -> String {
         switch self {
         case .herdrCore: HerdrCoreSessionName.normalized(value)
         case .tmux: TmuxSocketName.normalized(value)
+        case .rex: ""
         case .herdrTUI, .unconfirmed: value.trimmingCharacters(in: .whitespaces)
         }
     }
@@ -138,6 +144,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .herdrTUI: String(localized: "Herdr TUI")
         case .herdrCore: "herdr-core"
         case .tmux: "tmux"
+        case .rex: "Rex"
         case .unconfirmed: String(localized: "Not confirmed")
         }
     }
@@ -148,6 +155,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .herdrCore: .core
         case .herdrTUI: .tui
         case .tmux: .tmux
+        case .rex: .rex
         case .unconfirmed: nil
         }
     }
@@ -186,6 +194,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
     /// (ADR 0044). Nil until then, and on every other kind. Read them through
     /// `storedTmuxPaths`, which knows the socket name they were resolved for.
     var tmuxPaths: TmuxPaths?
+    /// A Rex Host's server socket, as detection found it (ADR 0049). Nil on
+    /// every other kind, and when a stored one did not read: the next
+    /// connection looks it up again.
+    var rexSocket: RexSocket?
     /// The ways to reach this Host, in the user's order: never empty. The
     /// first is the primary route, which names the Host where one address
     /// is shown and is what builds without Routes connect to.
@@ -214,6 +226,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         // name in `sessionName`.
         case unconfirmedSessionName
         case tmuxPaths
+        case rexSocket
         case routes
         // The primary route, flattened as Hosts were saved before Routes
         // (ADR 0022), so a build without them still decodes and connects it.
@@ -230,6 +243,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         sessionName: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
         tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil,
         routes: [HostRoute]
     ) {
         precondition(!routes.isEmpty, "A Host needs at least one route")
@@ -241,6 +255,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         self.sessionName = sessionName
         self.herdrEndpoint = herdrEndpoint
         self.tmuxPaths = self.serverKind == .tmux ? tmuxPaths : nil
+        self.rexSocket = self.serverKind == .rex ? rexSocket : nil
         self.routes = routes
     }
 
@@ -259,6 +274,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         jumpUsername: String = "",
         herdrEndpoint: HerdrEndpoint? = nil,
         tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil,
         overlayNetworkID: UUID? = nil
     ) {
         self.init(
@@ -270,6 +286,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
             sessionName: sessionName,
             herdrEndpoint: herdrEndpoint,
             tmuxPaths: tmuxPaths,
+            rexSocket: rexSocket,
             routes: [
                 HostRoute(
                     id: id,
@@ -308,6 +325,10 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         tmuxPaths =
             serverKind == .tmux
             ? (try? container.decodeIfPresent(TmuxPaths.self, forKey: .tmuxPaths)) ?? nil : nil
+        // So is a Rex socket that does not read (ADR 0049).
+        rexSocket =
+            serverKind == .rex
+            ? (try? container.decodeIfPresent(RexSocket.self, forKey: .rexSocket)) ?? nil : nil
         if serverKind == .unconfirmed,
             let name = try container.decodeIfPresent(String.self, forKey: .unconfirmedSessionName)
         {
@@ -361,6 +382,7 @@ struct Host: Identifiable, Codable, Hashable, Sendable {
         }
         try container.encodeIfPresent(herdrEndpoint, forKey: .herdrEndpoint)
         if serverKind == .tmux { try container.encodeIfPresent(tmuxPaths, forKey: .tmuxPaths) }
+        if serverKind == .rex { try container.encodeIfPresent(rexSocket, forKey: .rexSocket) }
         try container.encode(routes, forKey: .routes)
         let primary = primaryRoute
         try container.encode(primary.address, forKey: .address)

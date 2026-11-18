@@ -9,7 +9,7 @@
 
 **ご自身のマシンで動くコーディングエージェントのための、iPhone と iPad のコンソールです。**
 
-[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux に対応しています。Rex にもまもなく対応します。
+[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux に対応しています。Rex への対応は実験的です。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -78,7 +78,7 @@ Heeler は、iPhone と iPad で使える独立したオープンソースのエ
 | Herdr TUI 0.9.3 以降 | ネイティブの Windows | [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup) |
 | Herdr デスクトップアプリまたは herdr-core | macOS、Linux、ネイティブの Windows | [herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) |
 | tmux 3.3 以降 | macOS、Linux | [tmux に接続する](https://docs.heeler.bybee.dev/tmux) |
-| Rex | まもなく対応 | |
+| Rex（実験的、0.1.20 より後の Heeler が必要） | macOS、Linux | [Rex に接続する](https://docs.heeler.bybee.dev/rex) |
 
 ## マシンの追加
 
@@ -93,7 +93,7 @@ herdr plugin action invoke heeler.pair
 
 表示された Pairing Code をスキャンすると、そのマシンが Host として追加され、アドレス、ホスト鍵のフィンガープリント、SSH 鍵の登録まで完了します。herdr がなく herdr-core や tmux だけを実行しているマシンでは、`npx -y heeler-pair@latest` で同じ Pairing Code を表示できます（Node 20 以降、0.1.20 より後の Heeler が必要です）。[ペアリングガイド](https://docs.heeler.bybee.dev/pairing)
 
-**またはアドレスを入力する。** すべてのバックエンドで使えます。**Hosts** で **+** をタップし、アドレスと SSH ユーザーを入力すると、Heeler がそのマシンで実行中の Herdr TUI、herdr-core、各 tmux サーバーを一覧表示します。1 つの Host でこれらを複数同時に使えます。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) · [tmux に接続する](https://docs.heeler.bybee.dev/tmux) · [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup)
+**またはアドレスを入力する。** すべてのバックエンドで使えます。**Hosts** で **+** をタップし、アドレスと SSH ユーザーを入力すると、Heeler がそのマシンで実行中の Herdr TUI、herdr-core、各 tmux サーバー、Rex を一覧表示します。1 つの Host でこれらを複数同時に使えます。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) · [tmux に接続する](https://docs.heeler.bybee.dev/tmux) · [Rex に接続する](https://docs.heeler.bybee.dev/rex) · [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup)
 
 **外出先から接続する。** 内蔵の [Overlay Network](https://docs.heeler.bybee.dev/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/easytier)）、[Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup)、または [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel) を使い、Host に[複数のルート](https://docs.heeler.bybee.dev/host-routes)を設定すると、自宅でも外出先でも接続できます。
 
@@ -104,6 +104,7 @@ Heeler に必要なのは SSH でのアクセスと動作中のバックエン�
 - **Herdr TUI**：stream-local フォワーディングで `herdr.sock` に接続して herdr の JSON API を使い、ターミナルは SSH PTY 上で動作します。このフォワーディングは OpenSSH のデフォルトで許可されていますが、[Fedora または RHEL の SELinux](https://docs.heeler.bybee.dev/selinux) が拒否する場合があります。
 - **herdr-core**：core のソケットとの間に 1 本のフレーム化されたリンクを使います。
 - **tmux**：制御モードでペインごとに接続し、デスクトップクライアントと共存します。Agent のステータスは Claude Code のフックが報告します。
+- **Rex**（実験的）：すでに動作している Rex サーバーのソケットとの間に 1 本の WebSocket リンクを使い、開いているターミナルごとにチャネルを 1 本追加します。Heeler が Rex を起動することはなく、Rex には通知、ライブアクティビティ、Usage はありません。
 
 macOS と Linux の Host では、通知、ライブアクティビティ、Usage を [Heeler プラグイン](plugin/README.md)（Herdr TUI）またはオプションの Host Helper（herdr-core、tmux）が提供します。[プラグインと Host Helper を更新する](https://docs.heeler.bybee.dev/updates)
 

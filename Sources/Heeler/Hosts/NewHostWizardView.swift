@@ -282,17 +282,32 @@ struct NewHostWizardView: View {
                         .textCase(nil)
                 }
                 Section {
-                    ForEach(scan.missing.map(\.kind), id: \.self) { @Sendable kind in
+                    ForEach(scan.missing, id: \.kind) { @Sendable missing in
                         MainActorContent {
-                            Button {
-                                isShowingSetupGuide = true
-                            } label: {
-                                LabeledContent {
-                                    Text("Setup Guide")
-                                        .foregroundStyle(.tint)
+                            if missing.kind == .rex {
+                                // The Setup Guide sets up herdr. A Rex named
+                                // missing runs already, under an account this
+                                // one cannot use (ADR 0049).
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(missing.kind.displayName)
+                                    if let note = missing.note {
+                                        Text(note)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .accessibilityElement(children: .combine)
+                            } else {
+                                Button {
+                                    isShowingSetupGuide = true
                                 } label: {
-                                    Text(kind.displayName)
-                                        .foregroundStyle(Color.primary)
+                                    LabeledContent {
+                                        Text("Setup Guide")
+                                            .foregroundStyle(.tint)
+                                    } label: {
+                                        Text(missing.kind.displayName)
+                                            .foregroundStyle(Color.primary)
+                                    }
                                 }
                             }
                         }

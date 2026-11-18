@@ -232,6 +232,49 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
             ? HerdrCoreForeground(pid: nil, name: pane.command, argv: argv, cwd: pane.path)
             : nil
     }
+
+    /// A Rex terminal as `HerdrCoreSessionBinder` reads it: the foreground Rex
+    /// names, by pid, name and directory. Rex gives no process of the
+    /// terminal's own and only the first argument, so `pid` is nil and `argv`
+    /// empty: what needs either says it cannot tell, or leaves it to a pick.
+    /// `chatPick` is the pick this device keeps for the terminal, its only
+    /// label: nothing on the Host labels a Rex terminal.
+    init(rexTerminal details: RexTerminalDetails, paneID: String, chatPick: String?) {
+        address = paneID
+        name = nil
+        labels = chatPick.map { [HerdrCoreSessionHint.pickLabel: $0] } ?? [:]
+        argv = []
+        cwd = details.directory ?? ""
+        keep = false
+        state = "live"
+        pid = nil
+        exitCode = nil
+        signal = nil
+        reason = nil
+        createdMilliseconds = nil
+        finishedMilliseconds = nil
+        screen = nil
+        columns = 0
+        rows = 0
+        identity = nil
+        status = nil
+        statusMilliseconds = nil
+        records = [:]
+        turn = 0
+        reported = false
+        title = ""
+        parent = nil
+        notify = false
+        dieWithParent = false
+        removeOnExit = false
+        template = nil
+        submit = nil
+        stop = nil
+        pasteGapMilliseconds = nil
+        foreground = details.processID.map {
+            HerdrCoreForeground(pid: $0, name: details.program ?? "", argv: [], cwd: details.directory ?? "")
+        }
+    }
 }
 
 /// The terminals a subscription starts from, or that a `missed` replaces them

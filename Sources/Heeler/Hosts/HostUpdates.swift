@@ -172,11 +172,12 @@ struct HostUpdateItem: Identifiable, Equatable, Sendable {
 
 extension ServerKind {
     /// Whether a Server of this kind is served by its Host's Helper, where a
-    /// Herdr TUI Server has its plugin.
+    /// Herdr TUI Server has its plugin. A Rex Server has neither, so Updates
+    /// never reads, lists or updates anything for it (ADR 0049).
     var usesHostHelper: Bool {
         switch self {
         case .herdrCore, .tmux: true
-        case .herdrTUI, .unconfirmed: false
+        case .herdrTUI, .rex, .unconfirmed: false
         }
     }
 }

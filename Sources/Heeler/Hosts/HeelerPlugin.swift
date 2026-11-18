@@ -127,10 +127,11 @@ struct HeelerPluginRequirement: Hashable, Sendable {
 }
 
 /// The plugin is Herdr TUI's: it cannot be installed into the core daemon,
-/// and a tmux server takes none.
+/// and a tmux or Rex server takes none.
 enum HeelerPluginUnavailableError: Error, Sendable {
     case herdrCore
     case tmux
+    case rex
 }
 
 /// What one Host's plugin read established.

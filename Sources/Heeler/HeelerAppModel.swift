@@ -132,7 +132,8 @@ final class HeelerAppModel {
             },
             coreKernel: { [weak console] in console?.hostCoreKernels[$0] },
             noteTmuxPaths: { [weak hostStore] id, paths in try? hostStore?.noteTmuxPaths(paths, for: id) },
-            notePlugin: { [weak hostUpdates] id, status in hostUpdates?.notePlugin(status, for: id) })
+            notePlugin: { [weak hostUpdates] id, status in hostUpdates?.notePlugin(status, for: id) },
+            noteRexSocket: { [weak hostStore] id, socket in try? hostStore?.noteRexSocket(socket, for: id) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
         // reads each Host's confirmed notify flags and fails closed on
@@ -172,11 +173,15 @@ final class HeelerAppModel {
                 hostStore?.supportsLiveActivities(for: id) ?? false
             },
             registrationGate: { [weak hostStore, weak notificationPreferences] id in
-                let kind = hostStore?.hosts.first(where: { $0.id == id })?.serverKind
-                guard kind == .herdrCore || kind == .tmux else {
+                switch hostStore?.hosts.first(where: { $0.id == id })?.serverKind {
+                case .herdrCore, .tmux:
+                    return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
+                // A Rex Host registers nothing (ADR 0049).
+                case .rex:
+                    return .closed
+                case .herdrTUI, .unconfirmed, nil:
                     return .open
                 }
-                return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
             },
             pinnedPaneIDs: { [weak console] id in
                 console?.pins.pinnedPaneIDs(for: id) ?? []

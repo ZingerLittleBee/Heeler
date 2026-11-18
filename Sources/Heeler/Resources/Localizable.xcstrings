@@ -6263,6 +6263,7 @@
         }
       }
     },
+    "A message was too large for the connection to Rex. If this keeps happening, check the Rex version on the Host." : {},
     "A moon is not valid. Fix it in Advanced." : {
       "localizations" : {
         "ja" : {
@@ -6683,6 +6684,7 @@
         }
       }
     },
+    "Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none." : {},
     "Accounts are not available on this Host." : {
       "localizations" : {
         "ja" : {
@@ -7810,6 +7812,7 @@
         }
       }
     },
+    "Add to This Folder" : {},
     "Add worker @%@" : {
       "localizations" : {
         "ja" : {
@@ -10328,6 +10331,7 @@
         }
       }
     },
+    "Asks the Host again to resize the terminal to fit this screen." : {},
     "Assign one to this device in the EasyTier console." : {
       "localizations" : {
         "ja" : {
@@ -13028,6 +13032,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again." : {
       "localizations" : {
         "ja" : {
@@ -13118,6 +13124,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this %@ hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {
       "comment" : "Chat explanation; %@ is Pi or Oh My Pi",
       "localizations" : {
@@ -13517,6 +13525,7 @@
         }
       }
     },
+    "Check the Rex version on the Host." : {},
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -14582,6 +14591,7 @@
         }
       }
     },
+    "Clear its scrollback, then reattach." : {},
     "Clear text" : {
       "comment" : "Accessibility label for the button that clears the rename text field.",
       "localizations" : {
@@ -15410,6 +15420,7 @@
         }
       }
     },
+    "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app‑server daemon stop frees it, ending any other Codex on that server." : {},
     "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume %@, and pick the conversation in Codex's list. %@" : {
       "localizations" : {
         "ja" : {
@@ -16108,6 +16119,7 @@
       }
     },
     "Connect" : {},
+    "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -18520,6 +18532,7 @@
         }
       }
     },
+    "Couldn't fit to this screen" : {},
     "Couldn't load output: %@" : {
       "localizations" : {
         "ja" : {
@@ -20038,6 +20051,7 @@
         }
       }
     },
+    "Detached" : {},
     "Detached HEAD" : {
       "localizations" : {
         "ja" : {
@@ -23085,6 +23099,7 @@
         }
       }
     },
+    "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there." : {},
     "Expired" : {
       "localizations" : {
         "ja" : {
@@ -24072,6 +24087,8 @@
         }
       }
     },
+    "Fit to Screen" : {},
+    "Fitting to this screen…" : {},
     "Fix it in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -26677,6 +26694,7 @@
         }
       }
     },
+    "Heeler could not look for Rex on this Host" : {},
     "Heeler could not reach this Host's systemd user manager to ask about the service. %@" : {
       "localizations" : {
         "ja" : {
@@ -26765,6 +26783,7 @@
         }
       }
     },
+    "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -26787,6 +26806,7 @@
         }
       }
     },
+    "Heeler could not write the request to Rex." : {},
     "Heeler couldn't add the extension. Nothing more was written." : {
       "localizations" : {
         "ja" : {
@@ -27587,6 +27607,7 @@
         }
       }
     },
+    "Heeler finds Rex on macOS and Linux Hosts only." : {},
     "Heeler hasn't found this conversation's transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -28103,6 +28124,7 @@
         }
       }
     },
+    "Heeler's extension for this Agent" : {},
     "Heeler's extension in %@" : {
       "comment" : "Feature unavailable when Heeler's extension could not be written. %@ is the folder.",
       "localizations" : {
@@ -30253,6 +30275,7 @@
         }
       }
     },
+    "Install Rex and start it, then check again." : {},
     "Install Tailscale on your Mac and sign in with the same account. It appears here, ready to add as a Host." : {
       "localizations" : {
         "ja" : {
@@ -31215,6 +31238,7 @@
         }
       }
     },
+    "Keeps the size the other device set." : {},
     "Kept in this device's Keychain and sent only with recordings to %@." : {
       "localizations" : {
         "ja" : {
@@ -35362,6 +35386,7 @@
         }
       }
     },
+    "No Rex server socket was found" : {},
     "No Skills" : {
       "localizations" : {
         "ja" : {
@@ -37600,6 +37625,7 @@
         }
       }
     },
+    "Nothing was typed" : {},
     "Nothing was written." : {
       "localizations" : {
         "ja" : {
@@ -44147,6 +44173,7 @@
         }
       }
     },
+    "Reattach to open it again." : {},
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -46193,6 +46220,7 @@
         }
       }
     },
+    "Resizes the terminal to fit this screen. Other devices show it at this size until you leave it." : {},
     "Resolving the Host's home directory timed out." : {
       "localizations" : {
         "ja" : {
@@ -46660,6 +46688,36 @@
         }
       }
     },
+    "Rex Hosts" : {},
+    "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
+    "Rex did not finish opening the connection." : {},
+    "Rex did not let this account in" : {},
+    "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
+    "Rex dropped the connection because too many events were waiting for Heeler." : {},
+    "Rex installed" : {},
+    "Rex is not answering" : {},
+    "Rex is not running" : {},
+    "Rex is running, but SSH will not open %@" : {},
+    "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rex offers API revision %1$lld, and this build of Heeler works with revision %2$lld only"
+          }
+        }
+      }
+    },
+    "Rex refused the connection with HTTP status %lld." : {},
+    "Rex rejected the request" : {},
+    "Rex sent an answer Heeler cannot read" : {},
+    "Rex server running" : {},
+    "Rex stopped sending this terminal's output" : {},
+    "Rex was not found on this Host" : {},
+    "Rex's answer could not be read." : {},
+    "Rex's session list could not be read." : {},
+    "Rex's status named no server instance." : {},
+    "Rex's terminal modes could not be read." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {
@@ -47019,6 +47077,9 @@
           }
         }
       }
+    },
+    "Row 1 starts from the Workspace and Tab, Row 2 from the Agent, and Row 3 from its directory. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+      "comment" : "Agent List Fields footer for a Rex Host, which has no herdr plugin"
     },
     "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "comment" : "Agent List Fields footer when the Host has no herdr plugin",
@@ -47422,6 +47483,7 @@
         }
       }
     },
+    "SSH could not open %@: Rex stopped, or the SSH server refuses socket forwarding" : {},
     "SSH unavailable" : {
       "localizations" : {
         "ja" : {
@@ -49928,6 +49990,16 @@
         }
       }
     },
+    "Shown at %lld columns by %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shown at %1$lld columns by %2$lld rows"
+          }
+        }
+      }
+    },
     "Shown per Host" : {
       "localizations" : {
         "ja" : {
@@ -50725,6 +50797,7 @@
         }
       }
     },
+    "Sized for another device" : {},
     "Skill" : {
       "localizations" : {
         "ja" : {
@@ -51043,6 +51116,7 @@
       }
     },
     "Socket (blank for default)" : {},
+    "Socket found, but this account cannot use it" : {},
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -51352,6 +51426,8 @@
         }
       }
     },
+    "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex." : {},
+    "Start Rex on the Host, then check again. Heeler does not start it." : {},
     "Start herdr-core" : {
       "localizations" : {
         "ja" : {
@@ -56829,6 +56905,7 @@
         }
       }
     },
+    "The Host didn't answer. The size may still change." : {},
     "The Host does not accept RSA-SHA2-512" : {
       "localizations" : {
         "ja" : {
@@ -57145,6 +57222,7 @@
         }
       }
     },
+    "The Host isn't connected right now." : {},
     "The Host plugin probe failed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -57479,6 +57557,7 @@
         }
       }
     },
+    "The Host turned down the new size." : {},
     "The Host's Address and Port are resolved from the Jump Host, usually through a loopback-only reverse tunnel. %@ You confirm each machine's host key fingerprint independently on first connect." : {
       "localizations" : {
         "ja" : {
@@ -58207,6 +58286,7 @@
         }
       }
     },
+    "The Rex socket found has a path Heeler cannot use." : {},
     "The SSH connection is closed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -59063,6 +59143,7 @@
         }
       }
     },
+    "The connection to Rex ended." : {},
     "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected." : {
       "localizations" : {
         "ja" : {
@@ -61537,6 +61618,7 @@
         }
       }
     },
+    "The request was larger than Rex accepts, so it was not sent." : {},
     "The response has neither a result nor an error." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -61694,6 +61776,7 @@
         }
       }
     },
+    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {
@@ -62514,6 +62597,7 @@
         }
       }
     },
+    "The terminal's screen couldn't be read through Rex" : {},
     "The top of Oh My Pi's panel is off screen." : {
       "localizations" : {
         "ja" : {
@@ -63856,6 +63940,8 @@
     "This Pane belongs to a tmux server that is gone" : {},
     "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
     "This Pane is gone" : {},
+    "This Terminal belongs to a Rex server that is gone" : {},
+    "This Terminal belongs to a Rex server that is gone. Open it again from the list." : {},
     "This Terminal belongs to a core that is gone" : {
       "localizations" : {
         "ja" : {
@@ -63988,6 +64074,8 @@
         }
       }
     },
+    "This account may not use the socket at %@" : {},
+    "This action on a Rex Host" : {},
     "This action on a tmux Host" : {
       "localizations" : {
         "ja" : {
@@ -65269,6 +65357,7 @@
         }
       }
     },
+    "This paste is too large to send to a Rex terminal in one piece. Paste less at a time." : {},
     "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain." : {
       "localizations" : {
         "ja" : {
@@ -65671,6 +65760,7 @@
         }
       }
     },
+    "This terminal's history is too long to show" : {},
     "This text contains control characters a terminal would read as commands. Remove them and try again." : {
       "localizations" : {
         "ja" : {
@@ -65693,6 +65783,7 @@
         }
       }
     },
+    "This version of Rex is not supported" : {},
     "This worker hasn't written any steps to its transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -67483,6 +67574,7 @@
         }
       }
     },
+    "Update Heeler once a version for this Rex is available." : {},
     "Update Heeler to read this Host's Usage format." : {
       "localizations" : {
         "ja" : {
@@ -67550,6 +67642,7 @@
         }
       }
     },
+    "Update Rex on the Host." : {},
     "Update and Turn On" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
@@ -68436,6 +68529,7 @@
         }
       }
     },
+    "Usage comes from herdr and tmux Servers. Rex Servers report none." : {},
     "Usage comes with the Host Helper, which is not available on native Windows yet." : {
       "localizations" : {
         "ja" : {

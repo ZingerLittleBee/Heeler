@@ -44,6 +44,11 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// The same because the read of the Agent's process failed on that Host, which
     /// its extension would not change (ADR 0034).
     case cannotReadProcessesOnWindows(ChatProgram)
+    /// The same for a Pi or Oh My Pi in a Rex terminal, whose Server has no Host
+    /// Helper to bring the extension that names its session, so Chat offers it
+    /// (ADR 0056). `extensionInPlace` says the Agent's own extension folder holds
+    /// one that reports there, which this process then has not loaded.
+    case cannotTellSessionOnRex(ChatProgram, extensionInPlace: Bool)
     /// The Agent's process carries a variable that stops the program keeping
     /// a Transcript, so there is no file to wait for (ADR 0034).
     case transcriptOff(ChatTranscriptOffVariable, coreCarriesIt: Bool)
@@ -88,6 +93,15 @@ extension ChatProgram {
     /// Claude Code does: a message waits for its record as long as the
     /// reply takes.
     var writesNewConversationWithFirstReply: Bool {
+        switch self {
+        case .pi, .omp: true
+        case .claude, .codex, .grok, .opencode, .agy: false
+        }
+    }
+
+    /// Whether what names the running session is Heeler's own extension, which
+    /// Pi and Oh My Pi load from their extension folders (ADR 0033).
+    var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
         case .claude, .codex, .grok, .opencode, .agy: false

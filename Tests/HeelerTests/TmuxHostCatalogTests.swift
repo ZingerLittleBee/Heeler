@@ -134,12 +134,12 @@ struct TmuxHostCatalogTests {
         Host(name: name, address: "new.example", username: "dev", serverKind: .unconfirmed, sessionName: session)
     }
 
-    private func tmuxHost(name: String = "tmux") -> Host {
-        Host(name: name, address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
+    private func tmuxHost(name: String = "tmux", address: String = "tmux.example") -> Host {
+        Host(name: name, address: address, username: "dev", serverKind: .tmux, sessionName: "default")
     }
 
-    private func coreHost(name: String = "Core") -> Host {
-        Host(name: name, address: "core.example", username: "dev", serverKind: .herdrCore, sessionName: "work")
+    private func coreHost(name: String = "Core", address: String = "core.example") -> Host {
+        Host(name: name, address: address, username: "dev", serverKind: .herdrCore, sessionName: "work")
     }
 
     private var paths: TmuxPaths {
@@ -271,13 +271,15 @@ struct TmuxHostCatalogTests {
         defer { cleanup() }
         let secrets = InMemorySecretStore()
         let store = HostStore(defaults: defaults, secrets: secrets)
-        let first = Host.fixture(name: "First")
+        // Each on its own machine: records at one address are one Host and
+        // share its name.
+        let first = Host.fixture(name: "First", address: "first.example")
         let tmux = tmuxHost()
-        let second = Host.fixture(name: "Second")
+        let second = Host.fixture(name: "Second", address: "second.example")
         let core = coreHost()
         let waiting = unconfirmedHost(name: "Waiting")
-        let third = Host.fixture(name: "Third")
-        let lastTmux = tmuxHost(name: "Last tmux")
+        let third = Host.fixture(name: "Third", address: "third.example")
+        let lastTmux = tmuxHost(name: "Last tmux", address: "last-tmux.example")
         for host in [first, tmux, second, core, waiting, third] { try store.add(host) }
         #expect(HostStore(defaults: defaults, secrets: secrets).hosts == store.hosts)
 
@@ -306,7 +308,7 @@ struct TmuxHostCatalogTests {
         let tmuxCatalog = defaults.data(forKey: Self.tmuxKey)
 
         // The older build adds a herdr-core Host and saves its own order.
-        let added = coreHost(name: "Added by the older build")
+        let added = coreHost(name: "Added by the older build", address: "added.example")
         let coreEntries = try [core, added].map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
         let order = [tui.id, core.id, added.id].map { "\"\($0.uuidString)\"" }.joined(separator: ",")
         defaults.set(

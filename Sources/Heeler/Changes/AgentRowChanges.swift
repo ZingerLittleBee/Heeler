@@ -40,11 +40,18 @@ final class AgentRowChanges {
     /// Rows on screen per Agent, across windows, kept apart from the stores
     /// so a row shown before its Agent reports a directory still counts.
     private var visibleRows: [ConsoleAgent.ID: Int] = [:]
+    private let reads: @MainActor (ConsoleAgent) -> Bool
     private let makeStore: @MainActor (ConsoleAgent) -> ChangesStore
 
     /// `makeStore` reads the Checkout the Agent is in at the time of each
-    /// read, following its status.
-    init(makeStore: @escaping @MainActor (ConsoleAgent) -> ChangesStore) {
+    /// read, following its status. `reads` says whether an Agent's row reads
+    /// at all: a Rex Agent's, whose Host runs nothing for them, does not
+    /// (ADR 0056).
+    init(
+        reads: @escaping @MainActor (ConsoleAgent) -> Bool = { _ in true },
+        makeStore: @escaping @MainActor (ConsoleAgent) -> ChangesStore
+    ) {
+        self.reads = reads
         self.makeStore = makeStore
     }
 
@@ -53,7 +60,8 @@ final class AgentRowChanges {
     }
 
     /// The row's store, made on first use; nil for an Agent that has not
-    /// reported a directory, which has nothing to read yet.
+    /// reported a directory, which has nothing to read yet, and for one whose
+    /// row reads nothing.
     func store(for agent: ConsoleAgent) -> ChangesStore? {
         entry(for: agent)?.store
     }
@@ -121,7 +129,7 @@ final class AgentRowChanges {
 
     private func entry(for agent: ConsoleAgent) -> Entry? {
         if let entry = entries[agent.id] { return entry }
-        guard agent.directory != nil else { return nil }
+        guard agent.directory != nil, reads(agent) else { return nil }
         let store = makeStore(agent)
         store.announcesAutomaticUpdates = false
         let entry = Entry(store: store)

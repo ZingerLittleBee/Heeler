@@ -194,6 +194,7 @@ final actor FakeTransportConnector: TransportConnector {
     private let pluginSteps: FakePluginSteps
     private let core: ScriptedCoreHost?
     private let tmux: ScriptedTmuxHost?
+    private let rex: ScriptedRexHost?
     private(set) var capturedSettings: [SSHTransportSettings] = []
     private(set) var transports: [FakeTransport] = []
 
@@ -203,10 +204,12 @@ final actor FakeTransportConnector: TransportConnector {
         plugin: Result<HeelerPluginInstallation?, TransportError>? = nil,
         pluginSteps: FakePluginSteps = FakePluginSteps(),
         core: ScriptedCoreHost? = nil,
-        tmux: ScriptedTmuxHost? = nil
+        tmux: ScriptedTmuxHost? = nil,
+        rex: ScriptedRexHost? = nil
     ) {
         self.core = core
         self.tmux = tmux
+        self.rex = rex
         self.outcome = outcome
         self.presentedKeyBlob = presentedKeyBlob
         self.presentedJumpKeyBlob = presentedJumpKeyBlob
@@ -279,6 +282,27 @@ final actor FakeTransportConnector: TransportConnector {
             throw TransportError.hostFeatureUnavailable(feature: "tmux Hosts")
         }
         return await tmux.transport(socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
+    }
+
+    /// The real Rex transport over a scripted Host, for this Host's socket.
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport {
+        capturedSettings.append(settings)
+        switch outcome {
+        case .connectFails(let error):
+            throw error
+        case .hangs(let duration):
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+            throw TransportError.timedOut
+        case .connects:
+            break
+        }
+        guard let rex else {
+            throw TransportError.hostFeatureUnavailable(feature: "Rex Hosts")
+        }
+        return try await RexSSHTransport.connect(
+            over: rex, socket: settings.rexSocket, resuming: previous, options: .testing)
     }
 
     func connect(settings: SSHTransportSettings) async throws -> any Transport {

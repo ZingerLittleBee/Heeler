@@ -91,6 +91,11 @@ tmux sockets on one machine, that is the common case, not the odd one.
   Folding a Host is stored by record id, as the filter is: a Host is folded
   while any of its records is, and folding or unfolding it sets or clears them
   all, so a Host folded while each Server had its own section stays folded.
+- A Host with nothing to list, nothing to say and nothing to offer has no
+  section in a list's By Host. It has something to say while a Server is not
+  connected, still loading or out of sync, and something to offer while a
+  Server's kind can start what the list shows, so only a connected Rex Host
+  can be left out ([ADR 0054](0054-rex-terminals-running-a-known-agent-are-agents.md)).
 - Usage counts a Host once. A Host's Servers read the same Transcripts under
   the same account, so the Usage tab, its widgets and Accounts in Settings
   list the Host, not its records, under the id of its first record that can
@@ -101,6 +106,8 @@ tmux sockets on one machine, that is the common case, not the odd one.
 This supersedes ADR 0031's "an SSH target that runs both is added once per
 kind, as two Hosts" and its confirmation in Host detail, and ADR 0044's
 "confirmed once in Host detail" for tmux. Everything else in both stands.
+A Rex server ([ADR 0049](0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md),
+whose update of 2026-11-16 says how) is a Server of its Host in the same way.
 
 ## Why
 
@@ -142,6 +149,9 @@ kind, as two Hosts" and its confirmation in Host detail, and ADR 0044's
   Fields shows `core`, `tui`, `rex`, or `tmux` separately from `host`. By
   Workspace lists cards in the Hosts tab's order of Hosts, so two Hosts the
   catalog interleaved read apart.
+- With every Host connected and each with nothing to list and nothing it
+  could start, which only a Rex Host can be, By Host shows the same empty
+  state the flat list does, not a list of bare headings.
 - Opening Host detail and each look from the list open one more SSH
   connection for the detection exec, beside one connection for each Server
   that is on.

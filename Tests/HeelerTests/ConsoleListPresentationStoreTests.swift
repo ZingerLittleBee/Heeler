@@ -144,6 +144,36 @@ struct ConsoleListPresentationStoreTests {
         #expect(ConsoleListPresentationStore(defaults: defaults).hostFilter.isEmpty)
     }
 
+    @Test func theFilterOffersAHostOnceWhenAnyOfItsServersIsOn() throws {
+        let (tui, tmux, build) = twoServerCatalog()
+        let rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
+        let lab = Host(name: "lab", address: "lab.example", username: "dev", serverKind: .rex)
+        let held = Host(name: "spare", address: "spare.example", username: "dev", serverKind: .unconfirmed)
+        let catalog = HostStore(volatileHosts: [lab, tui, held, build, tmux, rex])
+        #expect(catalog.consoleHosts.first { $0.id == tui.id }?.displayName == "m3 · Herdr TUI")
+
+        // A Host with no Server on is not offered; a Rex-only one is, as both
+        // lists show its Agents and Terminals (ADR 0054).
+        let offered = ConsoleView.hostFilterChoices(in: catalog)
+        #expect(offered.map(\.name) == ["lab", "m3", "Build"])
+        // Chosen, a Host keeps every Server it has on.
+        let m3 = try #require(offered.dropFirst().first)
+        #expect(m3.toggled(in: [build.id]) == [build.id, tui.id, tmux.id, rex.id])
+        #expect(m3.toggled(in: [rex.id]).isEmpty)
+    }
+
+    @Test func newTerminalStartsOnTheFilteredHostsOneServerThatCanStartOne() {
+        let (tui, tmux, build) = twoServerCatalog()
+        let machines = HostMachine.grouped([tui, tmux, build])
+        let m3 = machines.filter { $0.contains(tui.id) }
+
+        #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: m3) == tui.id)
+        // The filter does not say which of two Servers to use.
+        #expect(ConsoleView.newTerminalHostID(offered: [tui, tmux, build], filteredTo: m3) == nil)
+        #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: machines) == nil)
+        #expect(ConsoleView.newTerminalHostID(offered: [tui, build], filteredTo: []) == nil)
+    }
+
     @Test func rowsAndSectionsOfEachServerNameTheHostAloneAndCarryBackend() throws {
         let (tui, tmux, build) = twoServerCatalog()
         let catalog = HostStore(volatileHosts: [tui, build, tmux])
@@ -210,6 +240,99 @@ struct ConsoleListPresentationStoreTests {
             == ["tmux-blocked", "tui-working", "tmux-working", "tui-idle"])
         #expect(store.workspaceSections(hosts: records, agents: mixed).map(\.title)
             == ["tmux-blocked", "tui-work", "tmux-work", "idle-space"])
+    }
+
+    /// A Host folded while the list showed a section for each Server stays
+    /// folded if any of them was; unfolding drops them all, and folding
+    /// holds them all, so a build that lists each Server folds both.
+    @Test func aHostStaysFoldedIfAnyOfItsServersWas() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (tui, tmux, build) = twoServerCatalog()
+        let hosts = [tui, build, tmux]
+        let agents = hosts.map { consoleAgent(host: $0, paneID: "p1", status: .idle) }
+        // As a build that listed each Server saved "m3 · tmux" folded.
+        ConsoleListPresentationStore(defaults: defaults).setCollapsed(true, for: tmux.id)
+
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        #expect(store.sections(hosts: hosts, agents: agents).map(\.isCollapsed) == [true, false])
+        store.toggleCollapsed([tui.id, tmux.id])
+        let reloaded = ConsoleListPresentationStore(defaults: defaults)
+        #expect(reloaded.sections(hosts: hosts, agents: agents).map(\.isCollapsed) == [false, false])
+        reloaded.toggleCollapsed([tui.id, tmux.id])
+        let folded = ConsoleListPresentationStore(defaults: defaults)
+        #expect(folded.isCollapsed([tui.id]))
+        #expect(folded.isCollapsed([tmux.id]))
+        #expect(!folded.isCollapsed([build.id]))
+    }
+
+    /// A Host with no Agents keeps its section while it has something to say
+    /// or could start an Agent. A connected Rex Host, which starts none,
+    /// would be a bare header and has no section; on its own, the list says
+    /// No Agents instead (ADR 0054).
+    @Test func aHostWithNothingToListOrSayOrOfferHasNoSection() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let (tui, tmux, build) = twoServerCatalog()
+        let rex = Host(name: "lab", address: "lab.example", username: "dev", serverKind: .rex)
+        let m3Rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
+        let store = ConsoleListPresentationStore(defaults: defaults)
+        let connected = Dictionary(uniqueKeysWithValues: [tui, tmux, build, rex, m3Rex].map { ($0.id, EventsSessionStatus.connected) })
+
+        let sections = store.sections(hosts: [rex, tui, build, tmux, m3Rex], agents: [], hostStatuses: connected)
+        // herdr, tmux and herdr-core could start one; a Host with a Server
+        // that could keeps its Rex Server in its section.
+        #expect(sections.map(\.hostName) == ["m3", "Build"])
+        #expect(sections.first?.hostIDs == [tui.id, tmux.id, m3Rex.id])
+        #expect(store.sections(hosts: [rex], agents: [], hostStatuses: connected).isEmpty)
+
+        // Something to say keeps a Rex Host: connecting, loading, or a problem.
+        #expect(store.sections(hosts: [rex], agents: []).map(\.hostName) == ["lab"])
+        #expect(store.sections(
+            hosts: [rex], agents: [], hostStatuses: connected, hostsAwaitingSnapshot: [rex.id]
+        ).count == 1)
+        #expect(store.sections(
+            hosts: [rex], agents: [], hostStatuses: [rex.id: .failed(.authenticationFailed)]
+        ).count == 1)
+        // So does an Agent.
+        let agent = consoleAgent(host: rex, paneID: "codex", status: .working)
+        #expect(store.sections(hosts: [rex], agents: [agent], hostStatuses: connected).count == 1)
+
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 1, filteredHostName: nil, filteredAgentCount: 0, visibleIssueCount: 0,
+                presentationMode: .grouped, projectedSectionCount: 0) == .noAgents)
+    }
+
+    @Test func filterChoicesNameAHostOnceAndChooseAllItsServers() async throws {
+        let (tui, tmux, build) = twoServerCatalog()
+        let catalog = HostStore(volatileHosts: [tui, build, tmux])
+        var selectedHosts: Set<Host.ID> = []
+        func choices() -> ConsoleListFilterChoices {
+            ConsoleListFilterChoices(
+                hosts: ConsoleView.hostFilterChoices(in: catalog),
+                hostFilter: Binding(get: { selectedHosts }, set: { selectedHosts = $0 }),
+                agentStatuses: nil, counts: [:])
+        }
+        let controller = UIHostingController(rootView: choices())
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 320, height: 568), rootViewController: controller
+        ) { window in
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(accessibleElement(labeled: "m3 · Herdr TUI", in: window) == nil)
+            #expect(accessibleElement(labeled: "m3 · tmux", in: window) == nil)
+            #expect(accessibleElement(labeled: "Build", in: window) != nil)
+            let m3 = try #require(accessibleElement(labeled: "m3", in: window))
+            #expect(m3.accessibilityActivate())
+            #expect(selectedHosts == [tui.id, tmux.id])
+            // The binding reads a local, so the view is drawn again to show it.
+            controller.rootView = choices()
+            try await Task.sleep(for: .milliseconds(100))
+            let chosen = try #require(accessibleElement(labeled: "m3", in: window))
+            #expect(chosen.accessibilityTraits.contains(.selected))
+            #expect(chosen.accessibilityActivate())
+            #expect(selectedHosts.isEmpty)
+        }
     }
 
     @Test(.serialized, arguments: [DynamicTypeSize.large, .accessibility3])

@@ -415,6 +415,9 @@ final class AgentAttachStore {
         terminalRecoveryOwner = recoveryOwner
         activationRecoveryOwnsOnStageLifecycle =
             activationRecoveryOwnsOnStageLifecycle || ownsOnStageLifecycle
+        // Before the stop below gets its turn: a showing that began just now,
+        // as the screen came back, takes nothing for the old attach (ADR 0053).
+        terminal.willBeReplaced()
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard isStillWanted() else {
@@ -446,6 +449,7 @@ final class AgentAttachStore {
                 target: self.target,
                 viewer: .resumed,
                 isViewed: previous.isViewed,
+                sizeShowing: previous.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -578,6 +582,7 @@ final class AgentAttachStore {
             let replacement = Self.makeTerminal(
                 target: self.target,
                 isViewed: self.terminal.isViewed,
+                sizeShowing: self.terminal.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -622,6 +627,26 @@ final class AgentAttachStore {
     func setTerminalViewed(_ viewed: Bool) {
         terminal.setViewed(viewed)
     }
+
+    // MARK: The size of a terminal that keeps its own (ADR 0053)
+
+    /// What the view says while the terminal shows at a size another device
+    /// set, as on a Rex Agent's Terminal surface; nil when there is nothing
+    /// to say, and always on a Server Kind that sizes to the view.
+    var sizeNotice: TerminalSizeNotice? { terminal.sizeNotice }
+
+    /// Takes the terminal's size for this view, at the user's tap.
+    func takeTerminalSize() { terminal.takeSize() }
+
+    /// Keeps the size the other device set, and hides the notice.
+    func dismissSizeNotice() { terminal.dismissSizeNotice() }
+
+    /// The scene went to the background: a size the view took is given back.
+    func sceneDidEnterBackground() { terminal.sceneDidEnterBackground() }
+
+    /// The scene came back from the background: the terminal still on its
+    /// screen is shown again, and takes the size again.
+    func sceneDidBecomeActive() { terminal.sceneDidBecomeActive() }
 
     /// Cancels view-owned interaction while a retained PTY continues receiving
     /// output. Returning to this terminal keeps its feed and emulator intact.
@@ -728,6 +753,7 @@ final class AgentAttachStore {
         target: String,
         viewer: TerminalViewerRole = .interactive,
         isViewed: Bool = true,
+        sizeShowing: AttachTerminalStore.SizeShowing = AttachTerminalStore.SizeShowing(),
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -742,6 +768,7 @@ final class AgentAttachStore {
             takeover: true,
             viewer: viewer,
             isViewed: isViewed,
+            sizeShowing: sizeShowing,
             input: input,
             transportGeneration: transportGeneration,
             observeOutput: { data in linkIndex.receive(data) },

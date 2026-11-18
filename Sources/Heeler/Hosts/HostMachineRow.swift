@@ -337,6 +337,7 @@ extension ServerKind {
         case .herdrTUI: String(localized: "Herdr TUI")
         case .herdrCore: "Herdr Core"
         case .tmux: "Tmux"
+        case .rex: "Rex"
         case .unconfirmed: String(localized: "Not confirmed")
         }
     }

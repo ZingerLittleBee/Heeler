@@ -12,7 +12,11 @@ extension TransportError {
             .herdrCoreNotRunning, .herdrCoreForwardingRefused, .herdrCoreUpdateRequired,
             .herdrCoreSocketPathTooLong, .herdrCoreSessionNameRefused, .herdrCoreInventoryStale,
             .herdrCoreTerminalGone, .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxServerNotRunning,
-            .tmuxStartOnMac, .tmuxPaneGone, .tmuxServerGone, .malformedResponse, .apiRejected,
+            .tmuxStartOnMac, .tmuxPaneGone, .tmuxServerGone, .rexTerminalOutputUnavailable,
+            .rexTerminalHistoryTooLong, .rexServerGone, .rexNotInstalled, .rexLookupFailed,
+            .rexServerNotRunning, .rexForwardingRefused, .rexSocketUnreachable, .rexAccountRefused,
+            .rexUnsupportedRevision, .rexRejected, .rexAnswerUnreadable, .rexScreenUnreadable,
+            .malformedResponse, .apiRejected,
             .hostFeatureUnavailable, .eventsChannelAlreadyOpen, .terminalChannelAlreadyOpen,
             .invalidDirectoryPath, .gitTimedOut, .coreMutationOutcomeUnknown, .hostFileTimedOut,
             .hostFileUnreadable, .hostStoreUnreadable, .attachExited:

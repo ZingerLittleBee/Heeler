@@ -59,11 +59,14 @@ struct AgentUsageDashboard: View {
     /// An iPad's detail column lays the page out in two columns when it
     /// has the width for them.
     var allowsColumns = false
+    /// Hosts has Hosts, and only Rex Servers are on: there is no Host to add,
+    /// only none that reports Usage.
+    var hasOnlyRexServersOn = false
 
     init(
         entries: [AgentUsageHostEntry], scopeHostID: Binding<Host.ID?>, metric: Binding<AgentUsageMetric>,
         showsLimits: Binding<Bool> = .constant(false), limitsRequested: Binding<Bool> = .constant(false),
-        allowsColumns: Bool = false
+        allowsColumns: Bool = false, hasOnlyRexServersOn: Bool = false
     ) {
         self.entries = entries
         _scopeHostID = scopeHostID
@@ -71,6 +74,7 @@ struct AgentUsageDashboard: View {
         _showsLimits = showsLimits
         _limitsRequested = limitsRequested
         self.allowsColumns = allowsColumns
+        self.hasOnlyRexServersOn = hasOnlyRexServersOn
     }
 
     @State private var range = AgentUsageRange.last30Days
@@ -779,7 +783,9 @@ struct AgentUsageDashboard: View {
 
     private func message(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if entries.isEmpty {
+            if entries.isEmpty, hasOnlyRexServersOn {
+                Text("Usage comes from herdr and tmux Servers. Rex Servers report none.")
+            } else if entries.isEmpty {
                 Text("Add a Host to read its Usage.")
             } else if let entry = scopedEntries.first, scopedEntries.count == 1, entry.isConnected {
                 AgentUsageContent(state: entry.store.state)

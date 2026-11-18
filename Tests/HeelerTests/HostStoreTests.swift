@@ -283,9 +283,11 @@ struct HostStoreTests {
 
     private static let coreKey = "herdrCoreHosts"
 
-    private func coreHost(name: String = "Core", authMethod: Host.AuthMethod = .deviceKey) -> Host {
+    private func coreHost(
+        name: String = "Core", address: String = "core.example", authMethod: Host.AuthMethod = .deviceKey
+    ) -> Host {
         Host(
-            name: name, address: "core.example", username: "dev", authMethod: authMethod,
+            name: name, address: address, username: "dev", authMethod: authMethod,
             serverKind: .herdrCore, sessionName: "work")
     }
 
@@ -527,7 +529,8 @@ struct HostStoreTests {
         let store = HostStore(defaults: defaults, secrets: InMemorySecretStore())
         let tui = Host.fixture(name: "TUI")
         var core = coreHost()
-        let second = coreHost(name: "Second")
+        // Its own machine: records at one address are one Host and share its name.
+        let second = coreHost(name: "Second", address: "second-core.example")
 
         try store.add(tui)
         try store.add(core)
@@ -648,16 +651,18 @@ struct HostStoreTests {
         defer { cleanup() }
         let secrets = InMemorySecretStore()
         let store = HostStore(defaults: defaults, secrets: secrets)
-        let first = Host.fixture(name: "First")
+        // Each on its own machine: records at one address are one Host and
+        // share its name.
+        let first = Host.fixture(name: "First", address: "first.example")
         let core = coreHost(name: "Core")
-        let second = Host.fixture(name: "Second")
-        let lastCore = coreHost(name: "Last core")
+        let second = Host.fixture(name: "Second", address: "second.example")
+        let lastCore = coreHost(name: "Last core", address: "last-core.example")
         for host in [first, core, second, lastCore] { try store.add(host) }
 
         #expect(HostStore(defaults: defaults, secrets: secrets).hosts == [first, core, second, lastCore])
 
         // A Herdr TUI Host added since the order was written follows it.
-        let third = Host.fixture(name: "Third")
+        let third = Host.fixture(name: "Third", address: "third.example")
         try store.add(third)
         #expect(store.hosts == [first, core, second, lastCore, third])
         #expect(HostStore(defaults: defaults, secrets: secrets).hosts == store.hosts)

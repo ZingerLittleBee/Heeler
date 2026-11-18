@@ -369,6 +369,8 @@ targets:
     dependencies:
       - target: Heeler
       - package: HeelerSSH
+      # Rex terminal streams are compared through Heeler's own emulator.
+      - package: GhosttyTerminal
 
 schemes:
   Heeler:

@@ -86,6 +86,64 @@ The app wrapper resolves a Simulator name once, enables the accessibility tree,
 then restores only the preferences it changed. Direct `xcodebuild` skips that
 preparation and can miss SwiftUI labels on a clean Simulator (#339).
 
+## Opt-in live suites
+
+`Tests/HeelerLiveTests` is a separate target and scheme, `HeelerLiveTests`,
+for suites that run against a real server the operator owns. They are not
+members of `HeelerTests`, so `make test`, the `test-ci-*` lanes and every CI
+workflow never select them, and the CI coverage contract never counts them.
+Each suite reads its configuration from the Simulator's launchd environment
+and fails rather than skips when selected without it.
+
+| Suite | Gate | Needs |
+| --- | --- | --- |
+| `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
+| `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
+| `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing |
+| `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests`, `RexProgramStatusLiveTests`, `RexChatTypingLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
+| `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
+
+Set the gate, run one suite, then unset it:
+
+```sh
+xcrun simctl spawn <UDID> launchctl setenv HEELER_REX_LIVE_SOCKET "<socket path>"
+make test-app SCHEME=HeelerLiveTests \
+  SIM_DESTINATION='platform=iOS Simulator,id=<UDID>' \
+  TEST_SELECTOR='HeelerLiveTests/RexInventoryLiveTests'
+xcrun simctl spawn <UDID> launchctl unsetenv HEELER_REX_LIVE_SOCKET
+```
+
+Each suite's header comment states what it may create or change. Never commit
+or print a configuration, key seed, session label or terminal contents. The
+Rex suites print counts and booleans only; record their Rex version in
+[rex-compatibility.md](rex-compatibility.md) when they inform an observation.
+
+A Rex terminal the app shows takes its size from every other client of that
+server ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md)),
+so opening one in the Simulator resizes it on the desktop too. Open only
+terminals of `heeler-lab-` sessions there, from Terminals and from Agents
+alike; reading the lists takes nothing. A Rex Agent opens the Agent detail
+([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)): its
+Terminal surface takes the size like any shown terminal, and its Chat surface
+takes none but types into the block and lists the Host's conversations in its
+picker, so keep both to lab Agents with stand-in programs. `RexConsoleTests`
+hosts that detail against `FakeRexServer` and checks what each surface sends;
+`RexChatTypingLiveTests` is the live check of Chat's typing, and of its
+screen read over hyperlinks and the styles Chat does not keep.
+
+An attachment on a Rex Agent writes the file into a new
+`${TMPDIR:-/tmp}/heeler.XXXXXXXX` directory on the Host and types its path
+with the message, and Heeler never removes it (ADR 0005). Attach only to
+`heeler-lab-` Agents with stand-in programs, note each `heeler.` directory
+the stand-in received, and remove exactly those afterwards. `RexStagingTests`
+covers the seam, the server-instance pin, the slots and the typing against
+`ScriptedRexHost`, with a clipboard that writes nothing. In the Simulator,
+Add Image takes a picture added with `simctl addmedia`; Paste Image reads the
+Simulator's pasteboard, which Simulator.app syncs with the Mac's clipboard, so
+use it only with an image copied inside the Simulator. Every finished upload
+also copies its Host path to that pasteboard (`SystemAttachmentClipboard`),
+so with that sync on the path reaches the Mac's clipboard too.
+
 ## Lane selection
 
 | Change | Entry point | What it establishes |

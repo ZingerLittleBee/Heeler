@@ -9,7 +9,7 @@
 
 **The iPhone and iPad console for the coding agents running on your own machines.**
 
-Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), and tmux. Rex is coming soon.
+Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), and tmux. Rex support is experimental.
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -78,7 +78,7 @@ Install Heeler from the [App Store](https://apps.apple.com/us/app/heeler-for-her
 | Herdr TUI 0.9.3 or newer | Native Windows | [Windows setup](https://docs.heeler.bybee.dev/windows-setup) |
 | Herdr desktop app or herdr-core | macOS, Linux, native Windows | [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) |
 | tmux 3.3 or newer | macOS, Linux | [Connect tmux](https://docs.heeler.bybee.dev/tmux) |
-| Rex | Coming soon | |
+| Rex (experimental, Heeler after 0.1.20) | macOS, Linux | [Connect Rex](https://docs.heeler.bybee.dev/rex) |
 
 ## Adding a machine
 
@@ -93,7 +93,7 @@ herdr plugin action invoke heeler.pair
 
 Scan the code it shows and the machine is added as a Host, with its addresses, host key fingerprint, and SSH key in place. On a machine without herdr, such as one that runs only herdr-core or tmux, `npx -y heeler-pair@latest` shows the same code (Node 20 or newer, Heeler after 0.1.20). [Pairing guide](https://docs.heeler.bybee.dev/pairing)
 
-**Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, herdr-core, and each tmux server. One Host can carry several of them. [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [Connect tmux](https://docs.heeler.bybee.dev/tmux) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
+**Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, herdr-core, each tmux server, and Rex. One Host can carry several of them. [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [Connect tmux](https://docs.heeler.bybee.dev/tmux) · [Connect Rex](https://docs.heeler.bybee.dev/rex) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
 
 **Away from home.** Reach the machine over a built-in [overlay network](https://docs.heeler.bybee.dev/overlay-networks) ([Tailscale](https://docs.heeler.bybee.dev/tailscale), [ZeroTier](https://docs.heeler.bybee.dev/zerotier), [EasyTier](https://docs.heeler.bybee.dev/easytier)), a [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup), or [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel), and give the Host [several routes](https://docs.heeler.bybee.dev/host-routes) so it works at home and away.
 
@@ -104,6 +104,7 @@ Heeler needs only SSH access and a running backend: no server changes, and no ex
 - **Herdr TUI**: herdr's JSON API over stream-local forwarding to `herdr.sock`, with terminals on an SSH PTY. OpenSSH allows the forwarding by default, though [SELinux on Fedora or RHEL](https://docs.heeler.bybee.dev/selinux) can deny it.
 - **herdr-core**: one framed link to the core's socket.
 - **tmux**: control mode, attached per Pane alongside your desktop clients, with Claude Code hooks reporting Agent status.
+- **Rex** (experimental): one WebSocket link to the socket of a Rex server that is already running, and one more channel for each open terminal. Heeler never starts Rex, and Rex has no notifications, Live Activities, or Usage.
 
 On macOS and Linux Hosts, notifications, Live Activities, and Usage come from the [Heeler plugin](plugin/README.md) on Herdr TUI and from the optional Host Helper on herdr-core and tmux. [Update the plugin and Host Helper](https://docs.heeler.bybee.dev/updates)
 

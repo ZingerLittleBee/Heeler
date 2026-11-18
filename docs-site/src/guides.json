@@ -34,7 +34,7 @@
         "en": "Hosts",
         "zh": "Host"
       },
-      "guides": ["herdr-core", "tmux", "updates", "host-routes", "windows-setup", "selinux"]
+      "guides": ["herdr-core", "tmux", "rex", "updates", "host-routes", "windows-setup", "selinux"]
     },
     {
       "title": {
@@ -71,6 +71,7 @@
       "vps-jump-host": "Jump Host in depth",
       "herdr-core": "herdr-core",
       "tmux": "tmux",
+      "rex": "Rex",
       "updates": "Plugin and Helper updates",
       "host-routes": "Multiple routes",
       "windows-setup": "Windows setup",
@@ -92,6 +93,7 @@
       "vps-jump-host": "Jump Host 详解",
       "herdr-core": "herdr-core",
       "tmux": "tmux",
+      "rex": "Rex",
       "updates": "插件与 Helper 更新",
       "host-routes": "多条路由",
       "windows-setup": "Windows 配置",
@@ -114,6 +116,7 @@
     "vps-jump-host": "ShieldCheck",
     "herdr-core": "Server",
     "tmux": "SquareTerminal",
+    "rex": "Terminal",
     "updates": "CircleArrowUp",
     "host-routes": "Route",
     "windows-setup": "MonitorCog",

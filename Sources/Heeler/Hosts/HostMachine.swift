@@ -5,7 +5,8 @@ import Foundation
 struct HostServerKey: Hashable, Codable, Sendable {
     let kind: ServerKind
     /// The session or socket name, as the kind stores it. Blank is Herdr TUI's
-    /// default session.
+    /// default session, and Rex's only Server: a Host has one, whatever socket
+    /// its record holds (ADR 0049).
     let name: String
     /// The socket of a Pairing Code endpoint (ADR 0023), which is a herdr of
     /// its own beside the one on the SSH PATH.
@@ -23,7 +24,8 @@ struct HostServerKey: Hashable, Codable, Sendable {
         case .herdrTUI: name.isEmpty ? nil : name
         case .herdrCore: name == HerdrCoreSessionName.normalized("") ? nil : name
         case .tmux: name == TmuxSocketName.defaultName ? nil : name
-        case .unconfirmed: nil
+        // A Host has one Rex Server, which names no session (ADR 0049).
+        case .rex, .unconfirmed: nil
         }
     }
 

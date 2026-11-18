@@ -142,9 +142,11 @@ suite("Heeler's Pi and Oh My Pi extension", () => {
     delete process.env.HC_TERMINAL_ID;
     delete process.env.HC_TERMINAL_SOCKET;
     delete process.env.PI_PROGRAM_STATUS;
-    // A run inside tmux must not reach the tmux branch.
+    // A run inside tmux or a Rex terminal must not reach their branches.
     delete process.env.TMUX;
     delete process.env.TMUX_PANE;
+    delete process.env.REX_SESSION;
+    delete process.env.REX_BLOCK;
     reports = [];
     process.stdout.write = function (chunk, ...rest) {
       if (String(chunk).includes(OSC_7501)) {

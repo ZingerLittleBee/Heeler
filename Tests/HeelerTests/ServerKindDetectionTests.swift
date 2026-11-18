@@ -61,7 +61,9 @@ struct ServerKindDetectionTests {
     }
 
     @Test func theScriptNamesNoHCAndAsksTheCoreOnlyForItsVersion() {
-        let body = script()
+        // The Rex part names the socket files it tests, `server.sock`, and
+        // runs nothing (`RexServerKindDetectionTests`).
+        let body = script().replacingOccurrences(of: RexProbe.script(nonce: "n0nce"), with: "")
         // `hc ` appears once, as the version text the locator accepts.
         #expect(body.components(separatedBy: "'hc '").count == 2)
         #expect(body.replacingOccurrences(of: "'hc '", with: "").range(

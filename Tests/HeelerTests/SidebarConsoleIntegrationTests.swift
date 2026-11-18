@@ -156,6 +156,139 @@ struct SidebarConsoleIntegrationTests {
         }
     }
 
+    /// A Rex Agent takes its place in the same order as the other kinds':
+    /// Blocked, Done (a finished turn this device has not looked at), Working,
+    /// Idle, then Unknown, as `RexAgentRule` and `RexTurnState` read each
+    /// terminal, whatever order Rex lists them in. The flat list, the Host
+    /// filter, By Host and By Workspace agree, for a Host whose one Server is
+    /// Rex and for one with a Herdr TUI Server on beside it, and a Pin on a
+    /// Rex Agent leads as any Pin does.
+    @Test func rexAgentsTakeTheirPlaceInTheOneStatusPriorityOrder() async throws {
+        let suite = "sidebar-rex-order-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let socket = RexSocket(path: "/run/user/1000/rex/server.sock")
+        let m3TUI = Host(name: "m3", address: "m3.example", username: "dev")
+        let m3Rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex, rexSocket: socket)
+        let lab = Host(name: "lab", address: "lab.example", username: "dev", serverKind: .rex, rexSocket: socket)
+        let records = HostStore(volatileHosts: [m3TUI, m3Rex, lab]).consoleHosts
+        #expect(records.map(\.id) == [m3TUI.id, m3Rex.id, lab.id])
+
+        let tui = ScriptedTransport(snapshot: .fixture(
+            agents: [
+                .fixture(paneID: "tui-working", status: .working, workspaceID: "w-api"),
+                .fixture(paneID: "tui-done", status: .done, workspaceID: "w-web"),
+                .fixture(paneID: "tui-idle", status: .idle, workspaceID: "w-api"),
+            ],
+            workspaces: [.fixture(workspaceID: "w-api", label: "api"), .fixture(workspaceID: "w-web", label: "web")]))
+        /// One window of Codex terminals, each named for what its record
+        /// reads, holding the record its last report left, or none.
+        func rexSession(_ id: String, label: String, _ terminals: [(name: String, state: String?)])
+            -> FakeRexWorld.Session
+        {
+            let blocks = terminals.enumerated().map { index, terminal in
+                var block = FakeRexWorld.Block.running("block:\(terminal.name)", program: "codex")
+                block.label = terminal.name
+                block.processID = 5100 + index
+                block.status = terminal.state.map { block.record($0, app: "codex") }
+                return block
+            }
+            func tiled(_ ids: ArraySlice<String>) -> FakeRexWorld.Layout {
+                let first = FakeRexWorld.Layout.block(ids[ids.startIndex])
+                return ids.count == 1 ? first : .split(first, tiled(ids.dropFirst()))
+            }
+            return FakeRexWorld.Session(
+                id: id, label: label, activeWindowID: "window:a",
+                windows: [
+                    FakeRexWorld.Window(
+                        id: "window:a", label: "agents",
+                        layers: [FakeRexWorld.Layer(layout: tiled(blocks.map(\.id)[...]), blocks: blocks)])
+                ])
+        }
+        // A first sight of done is a turn this device has not looked at.
+        let m3World = FakeRexWorld(sessions: [
+            rexSession("session:studio", label: "studio", [
+                ("rex-idle", "idle"), ("rex-working", "working"), ("rex-unknown", nil), ("rex-done", "done"),
+                ("rex-blocked", "blocked"),
+            ])
+        ])
+        let labWorld = FakeRexWorld(
+            instanceID: "instance-0002",
+            sessions: [rexSession("session:bench", label: "bench", [("lab-working", "working"), ("lab-done", "done")])])
+        let m3Server = FakeRexServer()
+        await m3World.install(on: m3Server)
+        let labServer = FakeRexServer()
+        await labWorld.install(on: labServer)
+        let rexConnections = Mutex([
+            m3Rex.id: ScriptedRexHost(control: [.server(m3Server)]),
+            lab.id: ScriptedRexHost(control: [.server(labServer)]),
+        ])
+        let store = ConsoleStore(
+            pins: PinnedAgentsStore(defaults: defaults), rowLayouts: AgentRowLayoutStore(defaults: defaults),
+            makeSession: { host, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: {
+                    guard host.id == m3TUI.id else { throw TransportError.cancelled }
+                    return tui
+                }, keepalive: nil)
+            },
+            makeRexSession: { host in
+                RexHostSession(storedSocket: host.rexSocket) { socket, previous in
+                    guard let connection = rexConnections.withLock({ $0.removeValue(forKey: host.id) }) else {
+                        throw TransportError.sshUnreachable(detail: "no more scripted connections")
+                    }
+                    return try await RexSSHTransport.connect(
+                        over: connection, socket: socket, resuming: previous, options: .testing)
+                }
+            })
+        defer { store.setHosts([]) }
+        store.setHosts(records)
+        await store.resume()
+
+        func name(_ agent: ConsoleAgent) -> String { agent.agent.name ?? agent.agent.paneID }
+        let statuses: [String: AgentStatus] = [
+            "rex-blocked": .blocked, "rex-done": .done, "rex-working": .working, "rex-idle": .idle,
+            "rex-unknown": .unknown, "lab-done": .done, "lab-working": .working,
+            "tui-done": .done, "tui-working": .working, "tui-idle": .idle,
+        ]
+        try await waitForConsole(store) {
+            Dictionary(store.agents.map { (name($0), $0.agent.status) }) { first, _ in first } == statuses
+        }
+        let backends: [AgentBackend: Int] = Dictionary(grouping: store.agents.compactMap(\.backend)) { $0 }
+            .mapValues(\.count)
+        #expect(backends == [.rex: 7, .tui: 3])
+
+        // Status first; a Host's name, then the catalog's Server order, for equals.
+        let ordered = [
+            "rex-blocked", "lab-done", "tui-done", "rex-done", "lab-working", "tui-working", "rex-working",
+            "tui-idle", "rex-idle", "rex-unknown",
+        ]
+        #expect(store.agents.map(name) == ordered)
+        #expect(store.chatDisplayAgents.map(name) == ordered)
+        let m3 = Set([m3TUI.id, m3Rex.id])
+        let m3Ordered = ordered.filter { !$0.hasPrefix("lab-") }
+        #expect(store.chatDisplayAgents.filter { m3.contains($0.hostID) }.map(name) == m3Ordered)
+        #expect(store.chatDisplayAgents.filter { $0.hostID == lab.id }.map(name) == ["lab-done", "lab-working"])
+
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+        let byHost = presentation.sections(hosts: records, console: store)
+        #expect(byHost.map(\.hostName) == ["m3", "lab"])
+        #expect(byHost.map { $0.agents.map(name) } == [m3Ordered, ["lab-done", "lab-working"]])
+        // A Workspace follows its first Agent in that order, across the Host's Servers.
+        let cards = presentation.workspaceSections(hosts: records, console: store)
+        #expect(cards.map(\.title) == ["studio", "web", "api", "bench"])
+        #expect(cards.map(\.hostName) == ["m3", "m3", "m3", "lab"])
+        #expect(cards.map { $0.agents.map(name) } == [
+            ["rex-blocked", "rex-done", "rex-working", "rex-idle", "rex-unknown"], ["tui-done"],
+            ["tui-working", "tui-idle"], ["lab-done", "lab-working"],
+        ])
+
+        let unknown = try #require(store.agents.first { name($0) == "rex-unknown" })
+        store.togglePin(hostID: m3Rex.id, paneID: unknown.agent.paneID)
+        #expect(store.agents.map(name) == ["rex-unknown"] + Array(ordered.dropLast()))
+        #expect(presentation.sections(hosts: records, console: store).first?.agents.map(name)
+            == ["rex-unknown"] + Array(m3Ordered.dropLast()))
+    }
+
     @Test func consoleBorrowsConnectionsIgnoresPluginSpacesSortAndKeepsGroupingIndependent() async throws {
         let suite = "sidebar-console-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))

@@ -212,7 +212,7 @@ struct HostMachineDetailView: View {
         rows += found.filter { !listed.contains($0.key) }.map {
             ServerRow(id: .server($0.key), key: $0.key, record: nil, found: $0)
         }
-        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux]
+        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux, .rex]
         return rows.sorted { lhs, rhs in
             let left = (
                 kinds.firstIndex(of: lhs.key.kind) ?? kinds.count, lhs.key.distinguishingName ?? "",
@@ -354,25 +354,38 @@ struct HostMachineDetailView: View {
             })
     }
 
+    @ViewBuilder
     private func missingRow(_ missing: HostServerScan.Missing) -> some View {
-        Button {
-            isShowingSetupGuide = true
-        } label: {
-            LabeledContent {
-                Text("Setup Guide")
-                    .foregroundStyle(.tint)
+        if missing.kind == .rex {
+            // The Setup Guide sets up herdr. A Rex named missing runs already,
+            // under an account this one cannot use (ADR 0049).
+            missingLabel(title: missing.kind.displayName, note: missing.note)
+                .accessibilityElement(children: .combine)
+        } else {
+            Button {
+                isShowingSetupGuide = true
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    // A color, not the hierarchical style: inside a button that
-                    // one is a shade of the tint.
-                    Text("\(missing.kind.displayName) not found")
-                        .foregroundStyle(Color.secondary)
-                    if let note = missing.note {
-                        Text(note)
-                            .font(.footnote)
-                            .foregroundStyle(Color.secondary)
-                    }
+                LabeledContent {
+                    Text("Setup Guide")
+                        .foregroundStyle(.tint)
+                } label: {
+                    missingLabel(
+                        title: String(localized: "\(missing.kind.displayName) not found"), note: missing.note)
                 }
+            }
+        }
+    }
+
+    private func missingLabel(title: String, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // A color, not the hierarchical style: inside a button that
+            // one is a shade of the tint.
+            Text(title)
+                .foregroundStyle(Color.secondary)
+            if let note {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(Color.secondary)
             }
         }
     }
@@ -488,7 +501,9 @@ private struct HostMachineDetailSheets: ViewModifier {
 }
 
 /// Turns on a Server a look cannot find: a session or socket by a name the
-/// user knows, running or not.
+/// user knows, running or not. Rex is not among the kinds: a Host's one Rex
+/// Server has no name to type, and a look lists it wherever Rex is installed
+/// (ADR 0049).
 private struct HostServerNameSheet: View {
     let machine: HostMachine
     let isNativeWindows: Bool

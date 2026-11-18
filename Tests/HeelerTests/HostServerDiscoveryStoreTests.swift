@@ -20,19 +20,25 @@ struct HostServerDiscoveryStoreTests {
         HostMachine.grouped(records)[0]
     }
 
-    /// A look that found a tmux Server on each of `sockets`, and a core that is
-    /// installed and runs or not where `coreRuns` says.
-    private func scan(tmux sockets: [String] = [], coreRuns: Bool? = nil) async throws -> HostServerScan {
+    /// A look that found a tmux Server on each of `sockets`, a core that is
+    /// installed and runs or not where `coreRuns` says, and Rex the same way
+    /// where `rexRuns` says.
+    private func scan(
+        tmux sockets: [String] = [], coreRuns: Bool? = nil, rexRuns: Bool? = nil
+    ) async throws -> HostServerScan {
         let locator =
             switch coreRuns {
             case nil: ScriptedCoreHost.locatorLines(executable: nil)
             case false?: ScriptedCoreHost.locatorLines()
             case true?: ScriptedCoreHost.locatorLines(socketFile: true)
             }
+        let rexSocket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let rex = rexRuns.map { runs in ScriptedCoreHost.rexLines(sockets: runs ? [(rexSocket, true, true)] : []) }
         let host = ScriptedCoreHost(
             locator: locator,
             tmuxProbe: sockets.isEmpty
                 ? ScriptedCoreHost.tmuxLines() : ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: sockets),
+            rexProbe: rex,
             channel: .refused)
         return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
     }
@@ -116,6 +122,26 @@ struct HostServerDiscoveryStoreTests {
         #expect(store.unseen(on: studio).map(\.key) == [Self.core])
     }
 
+    /// A Rex server started on a Host added earlier is pointed out as a new
+    /// tmux server is, and stays off until the user turns it on.
+    @Test func aRexServerThatStartsLaterIsPointedOutAndLeftOff() async throws {
+        let store = HostServerDiscoveryStore(defaults: nil)
+        let tui = record()
+        let studio = machine(tui)
+        let rex = HostServerKey(kind: .rex, name: "")
+        store.note(try await scan(rexRuns: false), on: studio.id, shown: true)
+        #expect(store.found(on: studio.id).map(\.key) == [rex])
+        #expect(store.unseen(on: studio).isEmpty)
+
+        store.note(try await scan(rexRuns: true), on: studio.id)
+
+        #expect(store.unseen(on: studio).map(\.key) == [rex])
+        #expect(store.unseen(on: studio).map(\.key.badgeLabel) == ["Rex"])
+        #expect(studio.record(of: rex) == nil)
+        // Once its record is on, it is news no more.
+        #expect(store.unseen(on: machine(tui, record(kind: .rex))).isEmpty)
+    }
+
     // MARK: When a background look is due
 
     @Test func aHostIsLookedAtAgainOnceTheIntervalHasPassed() async throws {
@@ -186,6 +212,62 @@ struct HostServerDiscoveryStoreTests {
         #expect(relaunched.lastLook(at: other.id) == Self.start + 60)
         // An attempt is not kept: a new launch may look again.
         #expect(relaunched.isDue(studio.id, at: Self.start + 7201))
+    }
+
+    /// The shared memory holds no Rex Server, so a build before Rex still reads
+    /// what it found on every Host (ADR 0049), and this build gets each Rex
+    /// Server back on its Host, last as a look lists it.
+    @Test func aRexServerIsKeptWhereABuildBeforeRexDoesNotRead() async throws {
+        let suiteName = "HostServerDiscoveryStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let studio = machine(record())
+        let other = machine(record(address: "build.example"))
+        let rex = HostServerKey(kind: .rex, name: "")
+        let found = try await scan(tmux: ["default"], rexRuns: true)
+        #expect(found.servers.map(\.key) == [Self.defaultTmux, rex])
+        // One Rex Server fails a build before Rex's whole read.
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode([BeforeRex.Found].self, from: JSONEncoder().encode(found.servers))
+        }
+        let store = HostServerDiscoveryStore(defaults: defaults)
+        store.note(found, on: studio.id, shown: true, at: Self.start)
+        store.note(found, on: other.id, at: Self.start)
+
+        let shared = try #require(defaults.data(forKey: "host-server-discoveries"))
+        let read = try JSONDecoder().decode([BeforeRex.Entry].self, from: shared)
+        #expect(read.map { $0.found.map(\.key.kind) } == [[.tmux], [.tmux]])
+        #expect(read.map { $0.shown.map(\.kind) } == [[.tmux], []])
+
+        let relaunched = HostServerDiscoveryStore(defaults: defaults)
+        #expect(relaunched.found(on: studio.id) == found.servers)
+        #expect(relaunched.unseen(on: studio).isEmpty)
+        #expect(relaunched.unseen(on: other).map(\.key) == [Self.defaultTmux, rex])
+
+        relaunched.retain([studio.id])
+        #expect(HostServerDiscoveryStore(defaults: defaults).found(on: other.id).isEmpty)
+        #expect(HostServerDiscoveryStore(defaults: defaults).found(on: studio.id) == found.servers)
+    }
+
+    /// How a build before Rex reads the shared memory: its Server Kinds have no
+    /// Rex, and one kind it does not know fails the whole read.
+    private enum BeforeRex {
+        enum Kind: String, Decodable { case herdrTUI, herdrCore, tmux, unconfirmed }
+        struct Key: Decodable {
+            let kind: Kind
+            let name: String
+            let endpointSocketPath: String?
+        }
+        struct Found: Decodable {
+            let key: Key
+            let isRunning: Bool
+            let version: String?
+        }
+        struct Entry: Decodable {
+            let found: [Found]
+            let shown: [Key]
+            let lookedAt: Date
+        }
     }
 
     @Test func aStoreWithNoDefaultsKeepsNothingBeyondItself() async throws {

@@ -136,7 +136,9 @@ final class ConsoleStore {
     @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
-    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
+    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
+        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges }
+    ) { [unowned self] agent in
         let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
         store.onLoaded = { [weak self] changes in
@@ -170,6 +172,7 @@ final class ConsoleStore {
         @Sendable (Host, [EventSubscription]) -> EventsSession
     @ObservationIgnored private let makeCoreSession: @Sendable (Host) -> HerdrCoreHostSession
     @ObservationIgnored private let makeTmuxSession: @Sendable (Host) -> TmuxHostSession
+    @ObservationIgnored private let makeRexSession: @Sendable (Host) -> RexHostSession
     /// Hears the paths a tmux Host's connection resolved again, for the catalog.
     @ObservationIgnored var onTmuxPathsResolved: (@MainActor (Host.ID, TmuxPaths) -> Void)?
     /// A test supplies each Host's projection. Production leaves the choice to
@@ -284,6 +287,7 @@ final class ConsoleStore {
             ConsoleStore.coreSessionFactory(),
         makeTmuxSession: @escaping @Sendable (Host) -> TmuxHostSession =
             ConsoleStore.tmuxSessionFactory(),
+        makeRexSession: @escaping @Sendable (Host) -> RexHostSession = ConsoleStore.rexSessionFactory(),
         makeProjection: (@MainActor (Host) -> any ConsoleHostProjection)? = nil,
         coreStopClock: BlockedCardClock = .live,
         coreHostMemory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
@@ -309,6 +313,7 @@ final class ConsoleStore {
         self.coreSendClock = coreSendClock
         self.makeCoreSession = makeCoreSession
         self.makeTmuxSession = makeTmuxSession
+        self.makeRexSession = makeRexSession
         self.makeProjection = makeProjection
         self.coreStopClock = coreStopClock
         self.herdrAppRename = herdrAppRename
@@ -360,15 +365,21 @@ final class ConsoleStore {
         let incoming = Dictionary(hosts.map { ($0.id, $0) }) { _, last in last }
         catalog = hosts
         // A tmux Host's stored paths are what a connection last resolved (ADR
-        // 0044): they move without making it another Host.
+        // 0044), and a Rex Host's first stored socket what one looked up (ADR
+        // 0049): they move without making it another Host.
         for (id, projection) in projections {
-            guard let tmux = projection as? TmuxConsoleProjection, let host = incoming[id] else { continue }
-            tmux.adoptPaths(of: host)
+            guard let host = incoming[id] else { continue }
+            if let tmux = projection as? TmuxConsoleProjection {
+                tmux.adoptPaths(of: host)
+            } else if let rex = projection as? RexConsoleProjection {
+                rex.adoptSocket(of: host)
+            }
         }
         if let hostsOutOfSight {
             let retained = hostsOutOfSight.union(hosts.lazy.filter { $0.serverKind == .herdrCore }.map(\.id))
-            // A tmux Host's server instance is kept where a core Host's core id is.
-            coreHostMemory.retainHosts(retained.union(hosts.lazy.filter { $0.serverKind == .tmux }.map(\.id)))
+            // A tmux or Rex Host's server instance is kept where a core Host's core id is.
+            coreHostMemory.retainHosts(
+                retained.union(hosts.lazy.filter { $0.serverKind == .tmux || $0.serverKind == .rex }.map(\.id)))
             harnessEdits.retainHosts(retained)
             pendingTitleRenames.retainHosts(hostsOutOfSight.union(incoming.keys))
         }
@@ -626,11 +637,10 @@ final class ConsoleStore {
         projections[hostID] as? TmuxConsoleProjection
     }
 
-    /// Whether an address on this Host can come to mean another Terminal: a
-    /// herdr-core Host's under another core, a tmux Host's under another server
-    /// instance. A detail there keeps to the one it opened on.
+    /// Whether an address on this Host can come to mean another Terminal, as the
+    /// Host's projection answers it. A detail there keeps to the one it opened on.
     func keepsDetailsToCores(on hostID: Host.ID) -> Bool {
-        projections[hostID] is HerdrCoreConsoleProjection || projections[hostID] is TmuxConsoleProjection
+        projections[hostID]?.keepsDetailsToInventory == true
     }
 
     func corePin(on hostID: Host.ID) -> TerminalCorePin {
@@ -648,14 +658,14 @@ final class ConsoleStore {
     /// its own words.
     func terminalEndedMessage(keepingTo corePin: TerminalCorePin?, on hostID: Host.ID) -> String? {
         guard hasLeftCore(corePin, on: hostID) else { return nil }
-        return projections[hostID] is TmuxConsoleProjection
-            ? TerminalStatusPresentation.tmuxServerGoneMessage : TerminalStatusPresentation.coreGoneMessage
+        return projections[hostID]?.leftInventoryMessage ?? TerminalStatusPresentation.coreGoneMessage
     }
 
-    /// What an action from a detail that `hasLeftCore` throws: a tmux Host's
-    /// Pane belongs to a server, a core Host's Terminal to a core.
+    /// What an action from a detail that `hasLeftCore` throws, as the Host's
+    /// projection names what its addresses belong to. A Host gone from the
+    /// catalog answers as a core Host.
     func leftCoreError(on hostID: Host.ID) -> TransportError {
-        projections[hostID] is TmuxConsoleProjection ? .tmuxServerGone : .herdrCoreTerminalGone
+        projections[hostID]?.leftInventoryError ?? .herdrCoreTerminalGone
     }
 
     /// What Agent Ended says for `id`, when it has more to say than its plain
@@ -1757,9 +1767,10 @@ final class ConsoleStore {
         try await projection(for: hostID).focusAgent(paneID)
     }
 
-    /// Which Agent one Agent detail shows now, nil once it shows none. On a core
-    /// Host this is what Done per device reads: a shown Agent's turns are seen as
-    /// they end, whichever window shows it.
+    /// Which Agent one Agent detail shows now, on either surface, nil once it
+    /// shows none. On a core, tmux or Rex Host this is what Done per device
+    /// reads: a shown Agent's turns are seen as they end, whichever window
+    /// shows it.
     func setAgentShown(_ agent: ConsoleAgent.ID?, viewer: UUID, scene: UUID?) {
         // A window that ended may still run a late update.
         let shown = scene.map(endedScenes.contains) == true ? nil : agent
@@ -2216,6 +2227,10 @@ final class ConsoleStore {
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },
                         onChange: onChange)
+                case .rex:
+                    RexConsoleProjection(
+                        host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
+                        onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
@@ -2430,15 +2445,20 @@ final class ConsoleStore {
                 terminalSnapshotRevisions[hostID] != projection.sidebarRevision
             else { continue }
             terminalSnapshotRevisions[hostID] = projection.sidebarRevision
+            // An Agent's terminal is its detail's, on a Rex Host too (ADR 0056):
+            // each block has one holder.
             let identities = Set(
                 projection.terminalsByPane.values.filter { !$0.isAgent }.map {
                     ShellTerminalIdentity(
                         paneID: $0.paneID, tabID: $0.tabID, terminalID: $0.terminalID)
                 })
             let revision = projection.sidebarRevision
-            // Only a tmux Host can restart its server on the same SSH connection and
-            // reuse an address such as `%0` without bumping `transportGeneration`.
-            let tmuxServerInstance = projection.host.serverKind == .tmux ? projection.inventoryCore : nil
+            // A tmux or Rex Host can restart its server on the same SSH connection,
+            // and a tmux one reuse an address such as `%0`, without bumping
+            // `transportGeneration`.
+            let kind = projection.host.serverKind
+            let serverInstance = kind == .tmux || kind == .rex ? projection.inventoryCore : nil
+            let tmuxServerInstance = kind == .tmux ? serverInstance : nil
             // A detail stays on a departed Agent, and so does its terminal.
             let agents = Array(projection.agentsByPane.values)
                 + Array(projection.departedAgentsByPane.values)
@@ -2449,7 +2469,7 @@ final class ConsoleStore {
             }
             Task {
                 await terminalConnections.reconcile(
-                    hostID: hostID, identities: identities, tmuxServerInstance: tmuxServerInstance,
+                    hostID: hostID, identities: identities, serverInstance: serverInstance,
                     isCurrent: isCurrent)
                 await agentTerminals.reconcile(
                     hostID: hostID, agents: agents, tmuxServerInstance: tmuxServerInstance, isCurrent: isCurrent)
@@ -2466,7 +2486,9 @@ final class ConsoleStore {
         for projection in current
         where projection.status == .connected && !projection.isAwaitingSnapshot {
             let hostID = projection.host.id
-            guard hostPlatformGenerations[hostID] != projection.transportGeneration,
+            // A Rex Host is POSIX without a probe (ADR 0056).
+            guard projection.host.serverKind != .rex,
+                hostPlatformGenerations[hostID] != projection.transportGeneration,
                 mayOfferChat(on: projection)
                     || (projection.host.serverKind == .herdrCore
                         && (herdrAppRename || composerSessions.keys.contains { $0.hostID == hostID }))
@@ -2501,10 +2523,19 @@ final class ConsoleStore {
         return cached
     }
 
+    /// A core or Rex Host follows no plugin, and starts from
+    /// `rowLayoutWithoutPlugin`.
     func rowLayout(for hostID: Host.ID) -> AgentRowLayout {
-        rowLayouts.resolvedLayout(
+        let kind = catalog.first { $0.id == hostID }?.serverKind
+        return rowLayouts.resolvedLayout(
             for: hostID, pluginSnapshot: effectiveSidebarSnapshot(for: hostID),
-            followsPlugin: coreHost(hostID) == nil)
+            followsPlugin: kind != .herdrCore && kind != .rex, withoutPlugin: .withoutPlugin(on: kind))
+    }
+
+    /// Where the rows of a Host that follows no plugin start until it saves
+    /// its own, which Agent List Fields starts editing from too.
+    func rowLayoutWithoutPlugin(for hostID: Host.ID) -> AgentRowLayout {
+        .withoutPlugin(on: catalog.first { $0.id == hostID }?.serverKind)
     }
 
     /// The fields this Host's Live Activity carries. Label fields are only for
@@ -3053,11 +3084,55 @@ final class ConsoleStore {
             })
     }
 
+    /// What a Chat that can't bind a Pi or Oh My Pi offers where no Host Helper
+    /// brings Heeler's extension: a Rex Host's flow, else a native Windows core
+    /// Host's.
+    func heelersExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HeelersExtensionFlow {
+        projections[agentID.hostID] is RexConsoleProjection
+            ? rexExtensionFlow(for: agentID, keepingTo: corePin)
+            : windowsExtensionFlow(for: agentID, keepingTo: corePin)
+    }
+
+    /// Heeler's extension for the Pi or Oh My Pi in a Rex terminal (ADR 0056): the one
+    /// folder that Agent loads its extensions from, found from its own process, and
+    /// one file written there over SFTP once the user confirms. A detail keeps to its
+    /// own server: one that has moved on writes nothing.
+    func rexExtensionFlow(
+        for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
+    ) -> HeelersExtensionFlow {
+        let hostID = agentID.hostID
+        func rex(of store: ConsoleStore) throws -> RexConsoleProjection {
+            guard !store.hasLeftCore(corePin, on: hostID) else { throw store.leftCoreError(on: hostID) }
+            guard let rex = store.projections[hostID] as? RexConsoleProjection else {
+                throw TransportError.cancelled
+            }
+            return rex
+        }
+        return HeelersExtensionFlow(
+            readyFooter: String(
+                localized: "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there."),
+            locate: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                return [try await rex(of: self).chatExtensionFolder(paneID: agentID.paneID)]
+            },
+            write: { [weak self] folders in
+                guard let self else { throw TransportError.cancelled }
+                guard let contents = try self.hostHelperBundle().files[HostHelperScript.extensionPath] else {
+                    throw HostHelperBundle.LoadError.unreadable(HostHelperScript.extensionPath)
+                }
+                for folder in folders {
+                    try await rex(of: self).placeChatExtension(contents, inFolder: folder, keepingTo: corePin)
+                }
+            })
+    }
+
     /// Heeler's extension on a native Windows core Host (ADR 0033). A detail keeps to
     /// its own core: a Host that has moved on writes nothing more, even part way.
     func windowsExtensionFlow(
         for agentID: ConsoleAgent.ID, keepingTo corePin: TerminalCorePin? = nil
-    ) -> HerdrCoreWindowsExtensionFlow {
+    ) -> HeelersExtensionFlow {
         let hostID = agentID.hostID
         func core(of store: ConsoleStore) throws -> HerdrCoreConsoleProjection {
             guard !store.hasLeftCore(corePin, on: hostID) else { throw store.leftCoreError(on: hostID) }
@@ -3066,7 +3141,7 @@ final class ConsoleStore {
             }
             return core
         }
-        return HerdrCoreWindowsExtensionFlow(
+        return HeelersExtensionFlow(
             locate: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await core(of: self).windowsExtensionFolders()
@@ -3284,9 +3359,9 @@ final class ConsoleStore {
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
-        let platform =
-            hostPlatforms[agent.hostID]
-            ?? (catalog.first(where: { $0.id == agent.hostID })?.serverKind == .tmux ? .posix : nil)
+        // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056).
+        let kind = catalog.first(where: { $0.id == agent.hostID })?.serverKind
+        let platform = hostPlatforms[agent.hostID] ?? (kind == .tmux || kind == .rex ? .posix : nil)
         if let platform {
             return AgentChatAvailability.program(
                 for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
@@ -3743,6 +3818,25 @@ extension ConsoleStore {
                     for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
                 settings.tmuxPaths = paths
                 return try await connector.connectTmux(settings: settings)
+            }
+        }
+    }
+
+    /// The Rex Hosts' equivalent, with the same trust rules. Each connection
+    /// starts from the socket the session holds: the catalog's, then the one
+    /// a connection found.
+    static func rexSessionFactory(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) -> RexHostSession {
+        { host in
+            RexHostSession(storedSocket: host.rexSocket) { socket, previous in
+                var settings = try consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays)
+                settings.rexSocket = socket
+                return try await connector.connectRex(settings: settings, resuming: previous)
             }
         }
     }

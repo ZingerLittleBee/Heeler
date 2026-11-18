@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at d65d8b36 -->
+<!-- Translated from docs/guides/pairing.md at 25c500b6 -->
 
 # 扫码配对 Host
 
@@ -8,7 +8,7 @@
 
 ## 开始之前
 
-- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 herdr、只运行 herdr-core 或 tmux 时，也能用一条命令配对：请直接跳到[配对没有 herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
+- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 herdr、只运行 herdr-core、tmux 或 Rex 时，也能用一条命令配对：请直接跳到[配对没有 herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
 - iPhone 或 iPad 与这台机器处于同一网络（例如同一个 Wi-Fi），或连接到同一个 VPN。配对不会使用 Heeler 中 **Settings > Overlay Networks** 里的网络；这些网络可以在配对完成后再添加，用于[外出时使用](#外出时使用)。
 - 预留约两分钟：配对码只能使用一次，两分钟后失效。
 
@@ -72,7 +72,7 @@ herdr plugin action invoke heeler.pair
 2. 允许访问相机；如果 iOS 询问，也请允许访问本地网络中的设备。然后将相机对准二维码。
 3. 配对会立即开始，Heeler 会逐项显示每个步骤的完成情况。无需核对指纹：配对码中已包含指纹。
 
-4. 配对完成后，Heeler 会查看这台机器并列出它运行的 Server：**Herdr TUI**，以及机器上有的 **herdr-core** 和每个 tmux 服务端。保留想要的勾选项，需要的话给 Host 起个名字，然后轻点 **Add Host with 1 Server**（数字随勾选的数量变化）。
+4. 配对完成后，Heeler 会查看这台机器并列出它运行的 Server：**Herdr TUI**，以及机器上有的 **herdr-core**、每个 tmux 服务端和 **Rex**。保留想要的勾选项，需要的话给 Host 起个名字，然后轻点 **Add Host with 1 Server**（数字随勾选的数量变化）。
 
 如果无法使用相机，请在弹窗中按 `c`。在 Mac 上，这会复制配对码；把它传到 iPhone 或 iPad 上（例如通过通用剪贴板），然后在 **Scan to Pair** 中轻点 **Paste Pairing Code**。在 Linux 上，按 `c` 会在二维码下方打印配对码：把它发送到 iPhone 或 iPad（例如发到自己的备忘录或消息中），在设备上复制后按同样方式粘贴。
 
@@ -96,7 +96,7 @@ herdr plugin action invoke heeler.pair
 
 **运行位置：Mac 或 Linux**
 
-只运行 herdr-core 或 tmux、没有 herdr 的机器没有插件可以显示配对码。按[步骤 1](#1-开启-ssh) 开启 SSH，然后以 Heeler 要登录的账户，在这台机器的终端中运行下面的命令。需要 [Node.js](https://nodejs.org/) 20 或更高版本，以及 0.1.20 之后的 Heeler 版本：
+只运行 herdr-core、tmux 或 Rex、没有 herdr 的机器没有插件可以显示配对码。按[步骤 1](#1-开启-ssh) 开启 SSH，然后以 Heeler 要登录的账户，在这台机器的终端中运行下面的命令。需要 [Node.js](https://nodejs.org/) 20 或更高版本，以及 0.1.20 之后的 Heeler 版本：
 
 ```sh
 npx -y heeler-pair@latest

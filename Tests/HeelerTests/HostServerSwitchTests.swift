@@ -87,6 +87,15 @@ struct HostServerSwitchTests {
         return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
     }
 
+    /// One look at a Mac with Rex installed, its server on `socket` while that
+    /// is set.
+    private func rexScan(socket: String?) async throws -> HostServerScan {
+        let host = ScriptedCoreHost(
+            rexProbe: ScriptedCoreHost.rexLines(sockets: socket.map { [($0, true, true)] } ?? []),
+            channel: .refused)
+        return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
+    }
+
     /// One look at a native Windows Host with a core.
     private func windowsScan() async throws -> HostServerScan {
         let host = ScriptedCoreHost(windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .refused)
@@ -156,6 +165,46 @@ struct HostServerSwitchTests {
         #expect(onWork.sessionName == "work")
         #expect(onWork.tmuxPaths == TmuxPaths(executable: Self.tmuxPath, socket: "/tmp/tmux-1000/work"))
         #expect(catalog.machines.first?.servers.compactMap(\.serverKey) == [Self.defaultTUI, Self.defaultTmux, work])
+    }
+
+    /// The record dials the socket the look found, in Rex's own catalog, and
+    /// keeps the Host's name, account and Routes (ADR 0049).
+    @Test func aRexServerStoresTheSocketTheLookFound() async throws {
+        let socket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let tui = record()
+        let catalog = HostStore(volatileHosts: [tui])
+        let rex = HostServerKey(kind: .rex, name: "")
+
+        let on = try await makeSwitch(catalog).turnOn(rex, onHostOf: tui.id, scan: try await rexScan(socket: socket))
+
+        #expect(on.serverKind == .rex)
+        #expect(on.rexSocket?.path == socket)
+        #expect(on.sessionName == "")
+        #expect(on.name == "Studio")
+        #expect(on.routes == tui.routes)
+        #expect(catalog.machines.first?.servers.compactMap(\.serverKey) == [Self.defaultTUI, rex])
+        #expect(catalog.machines.first?.record(of: rex)?.id == on.id)
+    }
+
+    /// A Rex that is not running, or one turned on with no look, has no socket
+    /// to store: the record's connections look it up once Rex runs.
+    @Test func aRexServerTurnedOnWhileStoppedStoresNoSocket() async throws {
+        let held = record(kind: .unconfirmed)
+        let catalog = HostStore(volatileHosts: [held])
+        let switcher = makeSwitch(catalog)
+        let rex = HostServerKey(kind: .rex, name: "")
+
+        let stopped = try await switcher.turnOn(rex, onHostOf: held.id, scan: try await rexScan(socket: nil))
+
+        #expect(stopped.id == held.id)
+        #expect(stopped.serverKind == .rex)
+        #expect(stopped.rexSocket == nil)
+
+        let other = record(address: "build.example")
+        try catalog.add(other)
+        let unlooked = try await switcher.turnOn(rex, onHostOf: other.id)
+        #expect(unlooked.rexSocket == nil)
+        #expect(catalog.machines.count == 2)
     }
 
     @Test func aTmuxServerTurnedOnWithNoLookStoresNoPaths() async throws {
@@ -249,6 +298,7 @@ struct HostServerSwitchTests {
             ServerKind.herdrCore, "herdrCoreHosts",
             "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
         ),
+        (ServerKind.rex, "rexHosts", "The saved Rex Hosts could not be read, so no Rex Host can be added."),
     ])
     func aKindWhoseSavedHostsDidNotReadRefusesInWords(
         kind: ServerKind, defaultsKey: String, words: String

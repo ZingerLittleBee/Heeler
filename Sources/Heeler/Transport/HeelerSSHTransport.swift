@@ -4156,14 +4156,59 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
         }
         return try await channelAdmission.admitCoreLink {
-            do {
-                return try await self.connection.openStreamLocal(
-                    socketPath: socketPath, timeout: self.requestTimeout)
-            } catch SSHError.streamLocalOpenFailed {
-                throw TransportError.streamLocalOpenFailed(path: socketPath)
-            } catch {
-                throw await self.mapOperationError(error)
-            }
+            try await self.openForwardedSocket(socketPath)
         }
+    }
+
+    private func openForwardedSocket(_ socketPath: String) async throws -> any HeelerSSHAPIChannel {
+        do {
+            return try await connection.openStreamLocal(socketPath: socketPath, timeout: requestTimeout)
+        } catch SSHError.streamLocalOpenFailed {
+            throw TransportError.streamLocalOpenFailed(path: socketPath)
+        } catch {
+            throw await mapOperationError(error)
+        }
+    }
+}
+
+// MARK: - What a Rex Host uses of this connection
+/// Chat's reads are the Chat Host files above, and a staging is the one
+/// under Attachment staging, as on every other Server Kind.
+extension HeelerSSHTransport: RexHostConnection {
+    /// The control link holds the events slot, as a core link does.
+    func openRexControlChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
+        try await openCoreLinkChannel(socketPath: socketPath)
+    }
+
+    func openRexDataChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        return try await channelAdmission.admitAttachLink {
+            try await self.openForwardedSocket(socketPath)
+        }
+    }
+
+    /// One bounded exec that tests a file and lists sockets.
+    func runRexSocketCheck(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "Rex Hosts"), deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_REX_SOCKET_CHECK_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    /// The folder is made only as the last part of a directory that is there:
+    /// an Agent's own directory is the program's to make. The file goes as a
+    /// Host Helper's copy of it does, a 0600 temporary file renamed into place.
+    func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
+        guard RemoteFilePath.isAcceptable(folder), folder.hasSuffix("/\(HostHelperScript.extensionFolderName)") else {
+            throw TransportError.invalidDirectoryPath(path: folder)
+        }
+        let timeout = requestTimeout
+        try await withHostFileClient(path: folder) { client in
+            guard try await client.fileStatus(at: folder, timeout: timeout) == nil else { return }
+            try await client.createDirectory(at: folder, permissions: 0o755, timeout: timeout)
+        }
+        try await replaceHostHelperFile(
+            contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
     }
 }

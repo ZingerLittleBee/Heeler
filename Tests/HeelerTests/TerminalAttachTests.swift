@@ -1650,7 +1650,10 @@ struct TerminalAttachTests {
     /// the next one — measured on device at 18,871 updates in a few seconds,
     /// with the app wedged for as long as the terminal stayed on screen.
     /// Terminal output schedules its own snapshot (see
-    /// `renderedOutputReportsViewportTextToTheHost`); nothing else may.
+    /// `renderedOutputReportsViewportTextToTheHost`), and so does a grid
+    /// change, which moves what the viewport shows (see
+    /// `TerminalSizeNoticeTests.aGridChangeWithoutOutputMovesWhereTheOutputEnds`);
+    /// an update that leaves the grid as it is may not.
     @MainActor
     @Test(.timeLimit(.minutes(1)))
     func aSwiftUIUpdateDoesNotReportTheViewportBack() async throws {
@@ -1665,9 +1668,13 @@ struct TerminalAttachTests {
             /// Some state the terminal is sized by, exactly as the keyboard
             /// inset is when the keyboard comes and goes.
             let fontSize: Float
+            /// Changes every round, so a round that keeps the size is still
+            /// an update.
+            var round = 0
 
             var body: some View {
                 counters.updates += 1
+                _ = round
                 var screen = TerminalScreenView(feed: feed)
                 screen.onViewportTextChanged = { _ in counters.reports += 1 }
                 screen.keyboardControl = keyboardControl
@@ -1679,10 +1686,10 @@ struct TerminalAttachTests {
         let counters = Counters()
         let keyboardControl = TerminalKeyboardControl()
         let feed = TerminalByteFeed()
-        func harness(fontSize: Float) -> Harness {
+        func harness(fontSize: Float, round: Int = 0) -> Harness {
             Harness(
                 counters: counters, keyboardControl: keyboardControl,
-                feed: feed, fontSize: fontSize)
+                feed: feed, fontSize: fontSize, round: round)
         }
         let controller = UIHostingController(rootView: harness(fontSize: 13))
         let window = try await makeTestWindow(
@@ -1698,16 +1705,32 @@ struct TerminalAttachTests {
             controller.view.layoutIfNeeded()
             await Task.yield()
         }
-        // Long enough for a snapshot one of those updates had scheduled to fire.
+        // Long enough for a snapshot one of those grids had scheduled to fire.
         try await Task.sleep(for: .milliseconds(200))
-
-        // Every one of those rounds reached the terminal, and not one of them
-        // asked it for its viewport.
+        // The first layout's grid and each new one may have been reported,
+        // never each update, and the reports fed no further ones.
         #expect(counters.updates > rounds)
         #expect(keyboardControl.terminal != nil, "the terminal never took an update")
         #expect(
-            counters.reports == 0,
-            "a SwiftUI update reported the viewport \(counters.reports) times")
+            counters.reports <= rounds + 1,
+            "\(rounds) grid changes reported the viewport \(counters.reports) times")
+
+        let updatesAtSize = counters.updates
+        let reportsAtSize = counters.reports
+        for round in 1...rounds {
+            controller.rootView = harness(fontSize: 13, round: round)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            await Task.yield()
+        }
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Every one of those rounds reached the terminal at the size it had,
+        // and not one of them asked it for its viewport.
+        #expect(counters.updates >= updatesAtSize + rounds)
+        #expect(
+            counters.reports == reportsAtSize,
+            "a SwiftUI update reported the viewport \(counters.reports - reportsAtSize) times")
     }
 
     @MainActor

@@ -6,7 +6,7 @@ Show a Pairing Code on the machine and scan it in Heeler. The Host is added with
 
 ## Before you start
 
-- A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. A machine that runs herdr-core or tmux without herdr pairs too, with one command: skip to [Pair a machine without herdr](#pair-a-machine-without-herdr). Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
+- A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. A machine that runs herdr-core, tmux, or Rex without herdr pairs too, with one command: skip to [Pair a machine without herdr](#pair-a-machine-without-herdr). Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
 - Your iPhone or iPad on the same network as the machine, such as the same Wi-Fi, or connected to the same VPN. Pairing doesn't use the networks in Heeler's **Settings > Overlay Networks**; you can add those afterwards for [use away from home](#use-it-away-from-home).
 - About two minutes: a Pairing Code works once and expires after two minutes.
 
@@ -70,7 +70,7 @@ Leave the popup open and don't press any keys while you scan. Any key except `c`
 2. Allow camera access and, if iOS asks, access to devices on your local network. Then point the camera at the QR code.
 3. Pairing starts right away and Heeler shows each step as it completes. There is no fingerprint to compare: the code carries it.
 
-4. When pairing finishes, Heeler looks at the machine and lists what it runs: **Herdr TUI**, and **herdr-core** and each tmux server if the machine has them. Leave the ones you want checked, name the Host if you like, and tap **Add Host with 1 Server** (the number follows what you checked).
+4. When pairing finishes, Heeler looks at the machine and lists what it runs: **Herdr TUI**, and **herdr-core**, each tmux server, and **Rex** if the machine has them. Leave the ones you want checked, name the Host if you like, and tap **Add Host with 1 Server** (the number follows what you checked).
 
 If you can't use the camera, press `c` in the popup. On a Mac this copies the code; get it onto your iPhone or iPad (for example with Universal Clipboard) and tap **Paste Pairing Code** in **Scan to Pair**. On Linux, `c` prints the code below the QR code instead: send it to your iPhone or iPad, for example in a note or message to yourself, then copy it there and paste it the same way.
 
@@ -94,7 +94,7 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 
 **Run on: Mac or Linux**
 
-A machine that runs herdr-core or tmux and no herdr has no plugin to show the code. Turn on SSH as in [step 1](#1-turn-on-ssh), then run this in a terminal on the machine, as the account Heeler should sign in to. It needs [Node.js](https://nodejs.org/) 20 or newer and a Heeler version after 0.1.20:
+A machine that runs herdr-core, tmux, or Rex and no herdr has no plugin to show the code. Turn on SSH as in [step 1](#1-turn-on-ssh), then run this in a terminal on the machine, as the account Heeler should sign in to. It needs [Node.js](https://nodejs.org/) 20 or newer and a Heeler version after 0.1.20:
 
 ```sh
 npx -y heeler-pair@latest

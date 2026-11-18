@@ -9,28 +9,68 @@ A remote machine reachable over SSH. The unit a user adds, names, and authentica
 _Avoid_: server, machine, connection
 
 **Server**:
-One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
-session, or a tmux server. Each is on or off on this device, by its switch in
-Host detail. One that is on has its own connection, on the Route its Host's
-connections share (ADR 0058), its own Agents, Terminals, notifications and
-settings, and its own page under Host detail, which says nothing of the
-connection. A look at the Host finds its
+One thing on a Host that holds Agents or Terminals: a Herdr TUI session, a
+herdr-core session, a tmux server, or a Rex server (one per Host at most). Each
+is on or off on this device, by its switch in Host detail. One that is on has
+its own connection, on the Route its Host's connections share (ADR 0058), its
+own Agents, Terminals, notifications and settings, and its own page under Host
+detail, which says nothing of the connection. A look at the Host finds its
 Servers; ones found after the Host was added arrive off. In code, and wherever
-this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
-Server that is on: the catalog still stores one `Host` record for each (ADR
+this glossary says "a herdr-core Host", "a tmux Host" or "a Rex Host", the
+thing meant is one Server that is on: the catalog still stores one `Host` record for each (ADR
 0047).
 _Avoid_: service, backend, instance
 
 **Server Kind**:
 Which kind a Server is: Herdr TUI (the original herdr server), herdr-core (the
-vendor's headless terminal runtime, `hc`), or a tmux server. They share no
-Agents. A herdr-core Server whose core also serves the Herdr desktop app is
-still herdr-core; the app's organization is data it carries, not another kind.
-A Server keeps its kind: neither a connection nor an edit changes it, and
-turning it off and on again makes a new record (ADRs 0031 and 0047). A Pairing
-Code always adds a Herdr TUI Server; herdr-core and tmux Servers are found by a
-look or turned on by name.
+vendor's headless terminal runtime, `hc`), a tmux server, or a Rex server. Rex
+is offered in every build and still experimental for users (ADR 0049). They
+share no Agents. A herdr-core Server whose core also serves the Herdr desktop
+app is still herdr-core; the app's organization is data it carries, not
+another kind. A Server keeps its kind: neither a connection nor an edit
+changes it, and turning it off and on again makes a new record (ADRs 0031 and
+0047). A Pairing Code always adds a Herdr TUI Server; herdr-core and tmux
+Servers are found by a look or turned on by name, and a Rex Server only by a
+look.
 _Avoid_: backend, server type, flavor
+
+**Rex Host**:
+A Host's Rex Server that is on: one Rex server on macOS or Linux, found by the
+Unix socket it listens on and stored with that socket's path. A look lists it
+running where the socket is there, and not running where Rex is installed
+without one; turned on then, it connects once the user starts Rex, since
+Heeler never starts the server and never runs the `rex` command-line tool to
+find it. A terminal running a known agent program is an Agent with its Agent
+Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
+detail, with Chat for Claude Code, Codex, Pi and Oh My Pi, the Composer and
+the terminal. Nothing is installed on the machine for it, except that a Pi or
+Oh My Pi's Chat offers to add Heeler's extension to that Agent's own
+extension folder, and writes it only when the user says so; an Agent whose
+program reports nothing to Rex reads Unknown and has no Stop and no Blocked
+Card. Where Chat is
+offered, its Agents take images and files too, staged over the Host's SSH
+connection as on the other Server Kinds. A Rex Host offers no notifications,
+Live Activities, Usage, Changes or New Agent (ADR 0056).
+Every build offers it; the user guide and the changelog call it experimental
+(ADR 0049). One control connection follows the whole server: every session's
+terminals, kept current by Rex's events and read again after any new
+connection. Another server instance on the socket is another server, as
+with tmux (ADR 0050). A Rex Host's terminals open from the server's own
+redraw, and their size is asked for (ADR 0051). They take input from their
+first paint, one request at a time on the control connection, never sent
+twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
+its own, once per showing, and gives it back once the view stops showing it;
+one whose size another device took meanwhile, or whose take did not go
+through, says so and fits only when the user taps to fit it to the screen
+(ADR 0053).
+_Avoid_: Rex session (for the Host), Rex app (for the server)
+
+**Detached Tab**:
+The Tab, named Detached, that a Rex session's detached terminals share: the
+terminal blocks that belong to the session but to none of its windows. They
+are still the user's terminals, so the Console lists them after the session's
+windows instead of leaving them out (ADR 0050).
+_Avoid_: Detached Terminal, hidden terminal, orphan
 
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
@@ -138,7 +178,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none. On Rex it is the foreground program of a terminal while that program is a known agent program, read by the same rule; a report alone never makes one (ADR 0054).
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -161,7 +201,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs, Subagent transcripts, Swarm side files, and screen task checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs, Subagent transcripts, Swarm side files, and screen task checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the foreground that held the terminal when it was reported still holds it, and is Unknown otherwise, Done included; Rex keeps no turn count, so a finished turn is the report that ended it, and the connection that hears the reports counts the turns that end (ADR 0054). Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -171,7 +211,10 @@ never reports has none. In a herdr-core Terminal it arrives through OSC 7501,
 and the core keeps a program's last report after that program exits, for as
 long as its Terminal runs on. On tmux, Heeler records it on the Pane in the
 same words, from its Claude Code hooks, its Pi and Oh My Pi extensions, or the
-OSC 7501 reports other programs make in their output.
+OSC 7501 reports other programs make in their output. A Rex server keeps it
+per terminal from OSC 7501 too, with the terminal's foreground process at the
+time of the report, and keeps idle, done and error reports after their program
+exits.
 _Avoid_: detected status, agent state
 
 **Status Badge**:
@@ -187,7 +230,9 @@ ordinary shell — a workspace's root pane starts as a shell. Used as an address
 (`pane_id`), never as a layout concept in this app. On Herdr TUI it is herdr's
 pane; on herdr-core each Terminal is one Pane, addressed by the Terminal's
 address; on tmux it is tmux's pane, whose address holds for one run of the tmux
-server: after a restart its Panes are new, even where tmux reuses an id.
+server: after a restart its Panes are new, even where tmux reuses an id. On
+Rex it is a terminal block, addressed by its session and block; blocks that
+are not terminals are not Panes.
 _Avoid_: window, tile
 
 **Tab**:
@@ -195,7 +240,9 @@ An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
 is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
 Workspace, one Terminal's own Tab. A Terminal without desktop labels started
 from inside another, such as a subagent, joins that Terminal's Tab as another
-Pane. On tmux it is a tmux window.
+Pane. On tmux it is a tmux window. On Rex it is a Rex window, its Panes in
+reading order, tiled before floating; a session's detached terminals share
+its Detached Tab.
 _Avoid_: window, page
 
 **Terminal**:
@@ -235,7 +282,9 @@ only while that app runs on the Host; a derived Workspace has no name of its
 own. On tmux it is a tmux session, named and ordered as tmux shows it, and
 Heeler keeps no organization of its own there either; a window several
 sessions share, grouped or linked, shows once, under the one with the lowest
-id, and the sessions Heeler keeps for showing Panes are not Workspaces. New
+id, and the sessions Heeler keeps for showing Panes are not Workspaces. On
+Rex it is a Rex session, named and ordered as Rex shows it; one with no
+terminal is not listed. New
 Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
@@ -271,7 +320,7 @@ Changes never modifies the Checkout.
 _Avoid_: diff, source control, Agent's changes, project changes
 
 **Console**:
-The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
+The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -317,7 +366,9 @@ _Avoid_: row style, status avatar
 One of the three fixed positions in an Agent Row Layout. On Herdr TUI, Row 1
 and Row 2 are herdr rows: they start from herdr's sidebar fields and are what
 Sync from plugin refills. On herdr-core they start from Heeler's own layout and
-also accept the Terminal's labels. Row 3 is Heeler's row, which Sync keeps.
+also accept the Terminal's labels. On a Rex Host, which has no plugin, they
+start from the Workspace and Tab, then the Agent, as its Agents list.
+Row 3 is Heeler's row, which Sync keeps.
 Every slot accepts herdr fields and the Heeler-only fields herdr does not define (Host name,
 Server backend `core` / `tui` / `rex` / `tmux`, Agent Status as text, working directory name, working directory path). Each slot also has a right side
 that ends its line, Heeler's own, which Sync keeps and which alone can hold
@@ -363,7 +414,9 @@ accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
 stop key. On native Windows Send pastes nothing into a Terminal whose shell can
 outlive its Agent, because its foreground would not show the Agent leaving
-(ADR 0035).
+(ADR 0035). On Rex, Send keeps those checks, in tmux's order, as requests to
+the terminal's block on the control connection, one at a time with the open
+terminal's input, and Stop is one Esc (ADRs 0055 and 0056).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
@@ -430,6 +483,15 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
+On Rex, for Claude Code, Codex, Pi and Oh My Pi only, Chat binds the
+conversation as on herdr-core, from what the Host's SSH connection reads
+about the foreground process Rex names, and keeps a choice on this device. A
+Pi or Oh My Pi there is bound from a file Heeler's extension keeps for its
+process, where a label holds it on herdr-core. Its Send, Stop and
+Blocked Card answers are requests to the terminal's block on the control
+connection, never a terminal of Chat's own, and it reads the screen from the
+server's text of it, treating one whose shape is not certain as no screen
+(ADRs 0055 and 0056).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
 offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,
 only for the programs tested there.
@@ -500,8 +562,9 @@ _Avoid_: spend, cost (alone), usage (unqualified), credits
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details
 from the Transcript; answers go through `agent.send_keys` and
-`pane.send_input`, never Attach, and on herdr-core through Chat's own
-attach. A card sends nothing once the dialog has
+`pane.send_input`, never Attach, on herdr-core through Chat's own
+attach, and on Rex through requests on the control connection (ADR 0055).
+A card sends nothing once the dialog has
 changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
 says why instead, since its prompt would act on those keys.
@@ -541,7 +604,12 @@ and the last one to type, resize or come into focus sets the size. tmux has no
 Take Over either: while a device shows a Pane, its window takes the device's
 size, no larger than a terminal of the user's showing the same window, and once
 the device stops showing it tmux sizes the window by its other terminals
-again. libghostty renders it, and direct keyboard
+again. Rex has no Take Over: any viewer may type, and a terminal the device
+shows takes the device's size, before its first paint as it opens and again
+each time it is shown, until the view stops showing it. One whose size another
+device takes while it is shown keeps that size, its lines wider than the view
+wrapping at the view's width, under a notice whose Fit to Screen takes the
+size back (ADR 0053). libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent

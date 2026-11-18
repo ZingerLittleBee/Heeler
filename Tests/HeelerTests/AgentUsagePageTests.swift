@@ -73,6 +73,38 @@ struct AgentUsagePageTests {
         }
     }
 
+    /// With no Host to read, the page asks for one, unless Hosts has Hosts and
+    /// only Rex Servers are on: then it says Rex reports none (ADR 0049).
+    @Test func withOnlyRexOnThePageSaysRexReportsNoUsage() async throws {
+        for hasOnlyRexServersOn in [false, true] {
+            let controller = UIHostingController(rootView:
+                NavigationStack {
+                    AgentUsageDashboard(
+                        entries: [], scopeHostID: .constant(nil), metric: .constant(.cost),
+                        hasOnlyRexServersOn: hasOnlyRexServersOn)
+                }
+                .environment(\.locale, Locale(identifier: "en_US")))
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller)
+            defer { window.isHidden = true }
+            let expected =
+                hasOnlyRexServersOn
+                ? "Usage comes from herdr and tmux Servers. Rex Servers report none." : "Add a Host to read its Usage."
+            let other =
+                hasOnlyRexServersOn
+                ? "Add a Host to read its Usage." : "Usage comes from herdr and tmux Servers. Rex Servers report none."
+            var labels = ""
+            for _ in 0..<40 {
+                controller.view.layoutIfNeeded()
+                labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: ", ")
+                if labels.contains(expected) { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(labels.contains(expected), "Actual labels: \(labels)")
+            #expect(!labels.contains(other), "Actual labels: \(labels)")
+        }
+    }
+
     static func entry(_ store: AgentUsageStore, name: String = "Studio Mac") -> AgentUsageHostEntry {
         AgentUsageHostEntry(id: UUID(), name: name, store: store, isConnected: true)
     }

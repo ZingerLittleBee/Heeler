@@ -199,6 +199,14 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
         [.init(.terminalTitleStripped)], [.init(.directory)],
     ])
 
+    /// Where the rows of a Host of `kind` that follows no plugin start. A Rex
+    /// Host's start from the Workspace and Tab, the Agent, then the
+    /// directory, as its Agents have listed since ADR 0054; any other's from
+    /// `hostWithoutPluginDefault`.
+    static func withoutPlugin(on kind: ServerKind?) -> AgentRowLayout {
+        kind == .rex ? consoleDefault : hostWithoutPluginDefault
+    }
+
     var rowGap: Int
     var rows: [AgentRow]
     var rowsByAgent: [String: [AgentRow]]

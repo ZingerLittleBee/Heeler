@@ -36,7 +36,8 @@ struct HostServerSwitch {
         }
         do {
             let record = try catalog.turnOn(
-                server, onHostOf: member, tmuxPaths: scan?.tmuxPaths(for: server), newRecordID: recordID)
+                server, onHostOf: member, tmuxPaths: scan?.tmuxPaths(for: server),
+                rexSocket: scan?.rexSocket(for: server), newRecordID: recordID)
             if server.kind == .herdrCore, scan?.isNativeWindows == true { noteWindowsCore(record.id) }
             return record
         } catch {
@@ -86,6 +87,8 @@ struct HostServerSwitch {
         case HostStoreError.catalogUnreadable where server.kind == .herdrCore && catalog.coreCatalogLoadError != nil:
             return String(
                 localized: "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added.")
+        case HostStoreError.catalogUnreadable where server.kind == .rex && catalog.rexCatalogLoadError != nil:
+            return String(localized: "The saved Rex Hosts could not be read, so no Rex Host can be added.")
         default:
             return String(localized: "The Server could not be turned on. (\(String(describing: error)))")
         }

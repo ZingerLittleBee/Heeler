@@ -94,7 +94,9 @@ struct ConsoleHostSectionGroup {
     /// Server has something to say (not connected, still loading, out of
     /// sync), or while one can offer something from it, by its kind, so a
     /// Host still being located keeps its place. A Host with neither would
-    /// be a bare header.
+    /// be a bare header, as a connected Rex Host whose terminals are all
+    /// Agents is in Terminals, and one that lists no Agents is in Agents
+    /// (ADR 0054): Rex starts neither.
     func keepsEmptySection(_ states: [ConsoleHostServerState], listsTerminals: Bool) -> Bool {
         let offers = servers.contains {
             listsTerminals ? $0.capabilities.startsTerminals : $0.capabilities.startsAgents

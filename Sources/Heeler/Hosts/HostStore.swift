@@ -22,9 +22,10 @@ enum HostStoreError: Error, Equatable {
 ///
 /// The catalog is stored in parts of one shape. Herdr TUI Hosts and Hosts not
 /// yet confirmed stay in the shared one every build reads. herdr-core Hosts live
-/// in a second one, and tmux Hosts in a third, each with the merged Host order,
-/// that builds before its kind never read, so such a build can neither show one
-/// nor re-save it as another kind (ADRs 0031 and 0044).
+/// in a second one, tmux Hosts in a third and Rex Hosts in a fourth, each with
+/// the merged Host order, that builds before its kind never read, so such a
+/// build can neither show one nor re-save it as another kind (ADRs 0031, 0044
+/// and 0049).
 @MainActor
 @Observable
 final class HostStore {
@@ -36,12 +37,13 @@ final class HostStore {
     /// the one their saved orders are believed in: the kind added last is
     /// written by the newest builds only, so its order names the most Hosts.
     private enum KindCatalog: CaseIterable {
-        case core, tmux
+        case core, tmux, rex
 
         var kind: ServerKind {
             switch self {
             case .core: .herdrCore
             case .tmux: .tmux
+            case .rex: .rex
             }
         }
 
@@ -49,6 +51,7 @@ final class HostStore {
             switch self {
             case .core: "herdrCoreHosts"
             case .tmux: "tmuxHosts"
+            case .rex: "rexHosts"
             }
         }
 
@@ -56,6 +59,7 @@ final class HostStore {
             switch kind {
             case .herdrCore: self = .core
             case .tmux: self = .tmux
+            case .rex: self = .rex
             case .herdrTUI, .unconfirmed: return nil
             }
         }
@@ -162,6 +166,7 @@ final class HostStore {
     private var kindCatalogLoadErrors: [KindCatalog: HostStoreError] = [:]
     var coreCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.core] }
     var tmuxCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.tmux] }
+    var rexCatalogLoadError: HostStoreError? { kindCatalogLoadErrors[.rex] }
     // UserDefaults is documented thread-safe; Sendable modulo that promise.
     @ObservationIgnored private nonisolated(unsafe) let defaults: UserDefaults?
     @ObservationIgnored private let secrets: any SecretStore
@@ -330,10 +335,12 @@ final class HostStore {
     ///
     /// `sessionName` replaces the typed one, for a kind whose detection offered
     /// the name, as a tmux Host's socket is. `tmuxPaths` is what that detection
-    /// resolved, kept only by a tmux Host (ADR 0044).
+    /// resolved, kept only by a tmux Host (ADR 0044), and `rexSocket` the socket
+    /// it found, kept only by a Rex Host (ADR 0049).
     @discardableResult
     func confirmServerKind(
-        _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil
+        _ kind: ServerKind, for id: Host.ID, sessionName: String? = nil, tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil
     ) throws -> Host {
         try ensureCatalogIsWritable()
         guard let index = hosts.firstIndex(where: { $0.id == id }) else {
@@ -358,6 +365,7 @@ final class HostStore {
         confirmed.serverKind = kind
         confirmed.sessionName = kind.storedSessionName(name)
         confirmed.tmuxPaths = kind == .tmux ? tmuxPaths : nil
+        confirmed.rexSocket = kind == .rex ? rexSocket : nil
         hosts[index] = confirmed
         labelServers()
         if let own {
@@ -388,6 +396,23 @@ final class HostStore {
         try replaceEntry(of: host, at: index)
     }
 
+    /// Stores the socket a lookup found for a Rex Host that stored none, as
+    /// when its stored path did not read (ADR 0049). A Host that already holds
+    /// a socket keeps it.
+    func noteRexSocket(_ socket: RexSocket, for id: Host.ID) throws {
+        try ensureCatalogIsWritable()
+        guard let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostStoreError.unknownHost
+        }
+        guard hosts[index].serverKind == .rex else {
+            throw HostStoreError.serverKindChanged
+        }
+        guard hosts[index].rexSocket == nil else { return }
+        var host = hosts[index]
+        host.rexSocket = socket
+        try replaceEntry(of: host, at: index)
+    }
+
     /// The catalog as the Hosts it reaches (ADR 0047).
     var machines: [HostMachine] { HostMachine.grouped(hosts) }
 
@@ -400,10 +425,12 @@ final class HostStore {
     /// `newRecordID`, with the same connection and password. Host key trust lives
     /// outside the catalog, so a caller that sees `HostMachine.needsRecord` puts it
     /// in place under that id first: the record's first connection then finds it.
+    /// `tmuxPaths` and `rexSocket` are what a look read of the Server, kept only
+    /// by a record of their kind.
     @discardableResult
     func turnOn(
         _ server: HostServerKey, onHostOf member: Host.ID, tmuxPaths: TmuxPaths? = nil,
-        newRecordID: Host.ID = UUID()
+        rexSocket: RexSocket? = nil, newRecordID: Host.ID = UUID()
     ) throws -> Host {
         guard let machine = machine(containing: member) else { throw HostStoreError.unknownHost }
         guard server.kind.isConfirmed, server.endpointSocketPath == nil else {
@@ -412,7 +439,7 @@ final class HostStore {
         if let record = machine.record(of: server) { return record }
         if let spare = machine.spareRecord {
             return try confirmServerKind(
-                server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths)
+                server.kind, for: spare.id, sessionName: server.name, tmuxPaths: tmuxPaths, rexSocket: rexSocket)
         }
         if let reason = server.kind.sessionNameRefusal(server.name) {
             throw HostStoreError.sessionNameRefused(reason: reason)
@@ -426,6 +453,7 @@ final class HostStore {
             serverKind: server.kind,
             sessionName: server.name,
             tmuxPaths: tmuxPaths,
+            rexSocket: rexSocket,
             routes: source.routes)
         try add(record, password: source.authMethod == .password ? try password(for: source) : nil)
         return hosts.first { $0.id == record.id } ?? record
@@ -474,25 +502,39 @@ final class HostStore {
         return Set((catalogEntries + kindCatalogEntries.values.joined()).compactMap(\.unknownHostID))
     }
 
-    /// The Hosts the Console, Usage and its pickers show. A Host waiting for its
+    /// The confirmed Hosts: those the Console lists Agents and Terminals for,
+    /// and those Usage and the pickers look Hosts up in. A Host waiting for its
     /// Server Kind is only in the Hosts list.
     var consoleHosts: [Host] {
         hosts.filter(\.serverKind.isConfirmed)
     }
 
-    /// The Hosts Usage and Settings' per-Host pages show: those of a kind
+    /// The Hosts Usage and Settings' Agents & Accounts show: those of a kind
     /// Heeler has a plugin or a Host Helper for.
     var integratedHosts: [Host] {
         hosts.filter(\.serverKind.hasHostIntegrations)
     }
 
-    /// A Host waiting for its Server Kind stays out of Live Activities. Whether a
-    /// herdr-core or tmux Host may show one is its registration's call, see
-    /// `LiveActivityGate`.
+    /// The Hosts Settings › Agent List Fields lays out: every Host whose
+    /// Agent rows the Console lists, a Rex Host's too, since a row layout is
+    /// kept on this device and asks nothing of the Host (ADR 0049).
+    var rowLayoutHosts: [Host] {
+        consoleHosts
+    }
+
+    /// Whether Rex Servers are all that is on: Hosts lists them, and Usage and
+    /// Settings' Agents & Accounts have no Host to read (ADR 0049).
+    var hasOnlyRexServersOn: Bool {
+        integratedHosts.isEmpty && hosts.contains { $0.serverKind == .rex }
+    }
+
+    /// A Host waiting for its Server Kind stays out of Live Activities, and so
+    /// does a Rex Host, whose Agents notify nothing (ADR 0054). Whether a herdr-core or tmux
+    /// Host may show one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
         switch hosts.first(where: { $0.id == id })?.serverKind {
         case .herdrTUI, .herdrCore, .tmux: true
-        case .unconfirmed, nil: false
+        case .rex, .unconfirmed, nil: false
         }
     }
 

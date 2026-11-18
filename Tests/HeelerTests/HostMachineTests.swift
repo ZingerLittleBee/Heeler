@@ -62,6 +62,27 @@ struct HostMachineTests {
         #expect(labels[alone.id] == nil)
     }
 
+    /// A Rex Server is one more Server of its Host: grouped by the connection,
+    /// labelled by its kind where the records would read alike, and badged.
+    @Test func aRexServerBesideAnotherIsOneHost() throws {
+        let tmux = record(kind: .tmux)
+        let rex = Host(
+            name: "Studio", address: "studio.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "/Users/dev/Library/Application Support/rex/server.sock"))
+        let alone = Host(name: "Build", address: "build.example", username: "dev", serverKind: .rex)
+
+        let machines = HostMachine.grouped([rex, alone, tmux])
+        let labels = HostMachine.serverLabels(for: [rex, alone, tmux])
+
+        #expect(machines.map { $0.members.map(\.id) } == [[rex.id, tmux.id], [alone.id]])
+        #expect(machines.first?.record(of: HostServerKey(kind: .rex, name: "")) == rex)
+        #expect(labels[rex.id] == "Rex")
+        #expect(labels[tmux.id] == "tmux")
+        #expect(labels[alone.id] == nil)
+        let row = HostMachineRowPresentation(machine: try #require(machines.first))
+        #expect(row.servers.map(\.label) == ["Rex", "Tmux"])
+    }
+
     @Test func theCatalogNamesEachServerOfAHost() throws {
         let tui = record()
         let store = HostStore(volatileHosts: [tui])
@@ -272,6 +293,25 @@ struct HostMachineTests {
             log.steps == [
                 "revoke \(tmux.id)", "forget key \(tmux.id)", "removed \(tmux.id)", "forget records \(tmux.id)",
             ])
+    }
+
+    /// Turning Rex off removes its record, which ends its connections as any
+    /// removed record does, and leaves the Host's other Servers as they were.
+    @Test func turningRexOffLeavesTheOtherServersAlone() async throws {
+        let tui = record()
+        let store = HostStore(volatileHosts: [tui])
+        let tmux = try store.turnOn(HostServerKey(kind: .tmux, name: "work"), onHostOf: tui.id)
+        let rex = try store.turnOn(HostServerKey(kind: .rex, name: ""), onHostOf: tui.id)
+        let removal = HostRemovalStore(store: store)
+        let log = TurnOffLog()
+
+        await removal.turnOff(rex.id, dependencies: turnOffDependencies(log: log))
+
+        #expect(removal.pendingRequest == nil)
+        #expect(store.hosts.map(\.id) == [tui.id, tmux.id])
+        #expect(store.machines.first?.servers.compactMap { $0.serverKey?.kind } == [.herdrTUI, .tmux])
+        #expect(log.steps.contains("removed \(rex.id)"))
+        #expect(!log.steps.contains { $0.hasSuffix("\(tui.id)") || $0.hasSuffix("\(tmux.id)") })
     }
 
     @Test func turningOffAServerWithANotificationKeyAsksFirst() async throws {

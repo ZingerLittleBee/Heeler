@@ -254,6 +254,74 @@ extension TransportError {
                 summary: String(localized: "This Pane belongs to a tmux server that is gone"),
                 detail: String(localized: "Nothing was sent"),
                 recoverySuggestion: String(localized: "Open it again from the list."))
+        case .rexTerminalOutputUnavailable:
+            TransportErrorPresentation(
+                summary: String(localized: "Rex stopped sending this terminal's output"),
+                detail: nil,
+                recoverySuggestion: String(localized: "Reattach to open it again."))
+        case .rexTerminalHistoryTooLong:
+            TransportErrorPresentation(
+                summary: String(localized: "This terminal's history is too long to show"),
+                detail: nil,
+                recoverySuggestion: String(localized: "Clear its scrollback, then reattach."))
+        case .rexServerGone:
+            TransportErrorPresentation(
+                summary: String(localized: "This Terminal belongs to a Rex server that is gone"),
+                detail: String(localized: "Nothing was sent"),
+                recoverySuggestion: String(localized: "Open it again from the list."))
+        case .rexNotInstalled:
+            TransportErrorPresentation(
+                summary: String(localized: "Rex was not found on this Host"),
+                detail: nil,
+                recoverySuggestion: String(localized: "Install Rex and start it, then check again."))
+        case .rexLookupFailed(let reason):
+            TransportErrorPresentation(
+                summary: String(localized: "Heeler could not look for Rex on this Host"),
+                detail: Self.droppingTrailingPeriods(reason),
+                recoverySuggestion: nil)
+        case .rexServerNotRunning(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex is not running"),
+                detail: socketPath.map { String(localized: "Nothing is listening at \($0)") }
+                    ?? String(localized: "No Rex server socket was found"),
+                recoverySuggestion: String(localized: "Start Rex on the Host, then check again. Heeler does not start it."))
+        case .rexForwardingRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "The SSH server refuses socket forwarding"),
+                detail: String(localized: "Rex is running, but SSH will not open \(socketPath)"),
+                recoverySuggestion:
+                    String(localized:
+                        "Allow stream-local forwarding in the Host's SSH server, then check again."))
+        case .rexSocketUnreachable(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex is not answering"),
+                detail: String(localized:
+                    "SSH could not open \(socketPath): Rex stopped, or the SSH server refuses socket forwarding"),
+                recoverySuggestion:
+                    String(localized:
+                        "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex."))
+        case .rexAccountRefused(let socketPath):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex did not let this account in"),
+                detail: socketPath.map { String(localized: "This account may not use the socket at \($0)") },
+                recoverySuggestion: String(localized: "Connect as the account that runs Rex."))
+        case .rexUnsupportedRevision(let offered):
+            Self.rexRevisionPresentation(offered: offered)
+        case .rexRejected(let code, let message):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex rejected the request"),
+                detail: "\(message) (\(code))",
+                recoverySuggestion: nil)
+        case .rexAnswerUnreadable(let detail):
+            TransportErrorPresentation(
+                summary: String(localized: "Rex sent an answer Heeler cannot read"),
+                detail: Self.droppingTrailingPeriods(detail),
+                recoverySuggestion: String(localized: "Check the Rex version on the Host."))
+        case .rexScreenUnreadable:
+            TransportErrorPresentation(
+                summary: String(localized: "The terminal's screen couldn't be read through Rex"),
+                detail: String(localized: "Nothing was typed"),
+                recoverySuggestion: nil)
         case .gitTimedOut:
             TransportErrorPresentation(
                 summary: String(localized: "Reading Changes timed out"),
@@ -328,6 +396,26 @@ extension TransportError {
     static func displayedChannelDetail(_ detail: String) -> String {
         detail == HerdrCoreLink.closedDetail
             ? String(localized: "The herdr-core link closed.") : detail
+    }
+
+    /// Names the revision this build works with, and which side to update when
+    /// the server named its own.
+    private static func rexRevisionPresentation(offered: Int?) -> TransportErrorPresentation {
+        let supported = RexControlProtocol.apiRevision
+        guard let offered else {
+            return TransportErrorPresentation(
+                summary: String(localized: "This version of Rex is not supported"),
+                detail: String(localized:
+                    "Rex did not offer API revision \(supported), the only one this build of Heeler works with"),
+                recoverySuggestion: nil)
+        }
+        return TransportErrorPresentation(
+            summary: String(localized: "This version of Rex is not supported"),
+            detail: String(localized:
+                "Rex offers API revision \(offered), and this build of Heeler works with revision \(supported) only"),
+            recoverySuggestion: offered < supported
+                ? String(localized: "Update Rex on the Host.")
+                : String(localized: "Update Heeler once a version for this Rex is available."))
     }
 
     /// herdr's own sentence, or a localized detail, may already end in a

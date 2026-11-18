@@ -312,6 +312,10 @@ struct AgentTerminalView: View {
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     /// The Workspace drawer's panel, while the back header's menu owns it.
     @State private var isHeaderDrawerOpen = false
+    /// Where a terminal that keeps its own size, a Rex Agent's, shows the
+    /// notice that another device set it (ADR 0053): away from where the
+    /// output ends.
+    @State private var sizeNoticeEdge: VerticalEdge = .top
     /// Where the message-jump buttons sit, for the drawer handle to clear.
     @State private var messageJumpFrame: CGRect?
     /// Where the Attach Links button sits, for the drawer handle to clear.
@@ -479,10 +483,12 @@ struct AgentTerminalView: View {
         screen.onSizeChanged = { cols, rows in
             attach.viewDidResize(cols: cols, rows: rows)
         }
-        screen.onViewportTextChanged = { text in
+        screen.onViewportTextChanged = { [noticeEdge = $sizeNoticeEdge] text in
             attach.viewportTextDidChange(text)
             messageJump.deliverViewportText(text)
             interactionProbe?.value?.messageJumpDidReceiveViewportText(text)
+            let edge = TerminalSizeNotice.edge(forViewport: text)
+            if edge != noticeEdge.wrappedValue { noticeEdge.wrappedValue = edge }
         }
         screen.onSend = { keystrokes in attach.send(keystrokes) }
         screen.onScroll = { sequence, rows in
@@ -1002,13 +1008,16 @@ struct AgentTerminalView: View {
     /// Direct-to-Composer handoff both are mounted and Direct Input shows.
     private func composerActions(anchorsClose: Bool) -> AgentComposerActions {
         let capabilities = console.capabilities(for: agent.hostID)
+        let removesSavedChat = console.isSavedChat(agent.id)
+        let offers = AgentDetailMenuOffers(
+            capabilities: capabilities, workspaceID: agent.agent.workspaceID, removesSavedChat: removesSavedChat)
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: attach.attachLinks.count,
-            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
-            pasteImage: capabilities.uploads
+            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments
                 ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
-            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
                 ? {
@@ -1017,7 +1026,7 @@ struct AgentTerminalView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: capabilities.startsAgents ? { isStartingAgent = true } : nil,
+            startAgent: offers.newAgent ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: agent.isLinkedWorktree && capabilities.worktrees
@@ -1027,11 +1036,9 @@ struct AgentTerminalView: View {
                         isShowingWorktree = true
                     }
                 } : nil,
-            renameAgent: capabilities.renameAgent
-                ? { isRenamingAgent = true } : nil,
-            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
-                ? { isRenamingWorkspace = true } : nil,
-            closeAgent: capabilities.closeTab
+            renameAgent: offers.renameAgent ? { isRenamingAgent = true } : nil,
+            renameWorkspace: offers.renameWorkspace ? { isRenamingWorkspace = true } : nil,
+            closeAgent: offers.close
                 ? {
                     closeRequest = console.closeRequest(for: agent.id)
                     isConfirmingClose = true
@@ -1045,7 +1052,7 @@ struct AgentTerminalView: View {
                     showChat()
                 }
             },
-            closeConfirmation: anchorsClose && capabilities.closeTab
+            closeConfirmation: anchorsClose && offers.close
                 ? AgentCloseConfirmation(
                     title: title,
                     isPresented: $isConfirmingClose,
@@ -1053,7 +1060,7 @@ struct AgentTerminalView: View {
                     removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
                     closeAgent: { Task { await performClose() } })
                 : nil,
-            removesSavedChat: console.isSavedChat(agent.id))
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that
@@ -1109,6 +1116,17 @@ struct AgentTerminalView: View {
     private var terminalSurface: some View {
         terminalScreen
             .id(attach.terminalID)
+        // A terminal that keeps its own size, a Rex Agent's, says when
+        // another device set it, as its Terminals screen does (ADR 0053).
+        // Over the output, under the floating buttons, the status dialog,
+        // the drawer and the back header.
+        .modifier(TerminalSizeNoticeOverlay(
+            store: attach, palette: themePalette,
+            colorScheme: terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
+            edge: sizeNoticeEdge,
+            top: max(backHeaderTop + AgentDetailHeader.controlSize, terminalTopInset) + 8 - terminalTopInset,
+            bottom: 8, isHidden: isHeaderDrawerOpen))
         // Above alternateScreenBottomRegion; only the buttons take hits —
         // see MessageJumpChromeContainer.
         .overlay {

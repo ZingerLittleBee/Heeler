@@ -85,7 +85,8 @@ struct HostOnboardingView: View {
             hostHelperDidChange: dependencies.hostHelperDidChange,
             harnessEdits: dependencies.harnessEdits,
             noteTmuxPaths: dependencies.noteTmuxPaths,
-            notePlugin: dependencies.notePlugin)
+            notePlugin: dependencies.notePlugin,
+            noteRexSocket: dependencies.noteRexSocket)
     }
 
     /// The page with its sheets, outside `page`'s modifier chain, which

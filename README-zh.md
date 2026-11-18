@@ -9,7 +9,7 @@
 
 **在 iPhone 和 iPad 上掌控你自己机器上运行的编程 Agent。**
 
-支持 [Herdr TUI](https://herdr.dev)、Herdr 桌面端（herdr-core）和 tmux，Rex 即将支持。
+支持 [Herdr TUI](https://herdr.dev)、Herdr 桌面端（herdr-core）和 tmux，对 Rex 的支持为实验性。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -78,7 +78,7 @@ Heeler 是 iPhone 和 iPad 上独立、开源的 Agent 控制台，也是一款 
 | Herdr TUI 0.9.3 及以上 | Windows 原生环境 | [Windows 配置](https://docs.heeler.bybee.dev/zh/windows-setup) |
 | Herdr 桌面端或 herdr-core | macOS、Linux、Windows 原生环境 | [连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core) |
 | tmux 3.3 及以上 | macOS、Linux | [连接 tmux](https://docs.heeler.bybee.dev/zh/tmux) |
-| Rex | 即将支持 | |
+| Rex（实验性，需要 0.1.20 之后的 Heeler） | macOS、Linux | [连接 Rex](https://docs.heeler.bybee.dev/zh/rex) |
 
 ## 添加机器
 
@@ -93,7 +93,7 @@ herdr plugin action invoke heeler.pair
 
 用应用扫描弹出的 Pairing Code，机器即被添加为 Host，地址、host key 指纹和 SSH 密钥一并就绪。机器上没有 herdr、只运行 herdr-core 或 tmux 时，执行 `npx -y heeler-pair@latest` 可以显示同样的 Pairing Code（需要 Node 20 及以上，以及 0.1.20 之后的 Heeler）。[扫码配对教程](https://docs.heeler.bybee.dev/zh/pairing)
 
-**或者输入地址。** 适用于所有后端。在 **Hosts** 中轻点 **+**，输入地址和 SSH 用户，Heeler 会列出这台机器上运行的 Herdr TUI、herdr-core 和每个 tmux 服务器。一个 Host 可以同时带其中的多个。[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core) · [连接 tmux](https://docs.heeler.bybee.dev/zh/tmux) · [Windows 配置](https://docs.heeler.bybee.dev/zh/windows-setup)
+**或者输入地址。** 适用于所有后端。在 **Hosts** 中轻点 **+**，输入地址和 SSH 用户，Heeler 会列出这台机器上运行的 Herdr TUI、herdr-core、每个 tmux 服务器和 Rex。一个 Host 可以同时带其中的多个。[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core) · [连接 tmux](https://docs.heeler.bybee.dev/zh/tmux) · [连接 Rex](https://docs.heeler.bybee.dev/zh/rex) · [Windows 配置](https://docs.heeler.bybee.dev/zh/windows-setup)
 
 **不在同一网络时。** 通过内置的 [Overlay Network](https://docs.heeler.bybee.dev/zh/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/zh/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zh/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/zh/easytier)）、[跳板机](https://docs.heeler.bybee.dev/zh/vps-jump-host-setup)或 [Cloudflare Tunnel](https://docs.heeler.bybee.dev/zh/cloudflare-tunnel) 连接，并给 Host 配置[多条路由](https://docs.heeler.bybee.dev/zh/host-routes)，在家和在外都能连上。
 
@@ -104,6 +104,7 @@ Heeler 只需要 SSH 访问和一个运行中的后端：不改服务器，连�
 - **Herdr TUI**：经 stream-local 转发直连 `herdr.sock`，使用 herdr 的 JSON API，终端运行在 SSH PTY 上。OpenSSH 默认允许这种转发，但 [Fedora 或 RHEL 上的 SELinux](https://docs.heeler.bybee.dev/zh/selinux) 可能会拦截。
 - **herdr-core**：与 core 的套接字之间只有一条分帧链路。
 - **tmux**：通过控制模式按 Pane 接入，与桌面客户端并存，Agent 状态由 Claude Code 钩子上报。
+- **Rex**（实验性）：与已在运行的 Rex 服务器的套接字之间有一条 WebSocket 链路，每个打开的终端另用一条通道。Heeler 绝不会启动 Rex，Rex 上也没有通知、实时活动和 Usage。
 
 在 macOS 和 Linux Host 上，通知、实时活动和 Usage 由 [Heeler 插件](plugin/README.md)（Herdr TUI）或可选的 Host Helper（herdr-core、tmux）提供。[更新插件与 Host Helper](https://docs.heeler.bybee.dev/zh/updates)
 

@@ -338,13 +338,17 @@ extension Host {
     /// (ADR 0023); any other fixed socket path (test fixtures only) counts as
     /// the default session. A herdr-core Host carries its core session's folder
     /// name, and a tmux Host carries `tmux/<socket name>`, which is what the
-    /// Host Helper follows (ADRs 0033 and 0046).
+    /// Host Helper follows (ADRs 0033 and 0046). A Rex Host registers nothing
+    /// (ADR 0049); its `rex/` names no herdr session, should anything ask.
     var notificationSession: String {
         if serverKind == .herdrCore {
             return HerdrCoreSessionName.normalized(sessionName)
         }
         if serverKind == .tmux {
             return "tmux/\(tmuxSocketName)"
+        }
+        if serverKind == .rex {
+            return "rex/"
         }
         if let herdrEndpoint {
             return herdrEndpoint.session

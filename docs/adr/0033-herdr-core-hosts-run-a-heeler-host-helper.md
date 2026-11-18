@@ -193,7 +193,10 @@ that Heeler can read from outside the process.
   folder the install created that is then empty. Both folders are made whether
   or not the program is on the Host yet, so a later install of either works. A
   profile made after the install is offered a repair, and until then it has no
-  extension.
+  extension. (Amended by ADR 0056's update of 2026-11-18: inside a Rex
+  terminal, which has no labels, the same file keeps the session in
+  `heeler-session/<pid>.json` beside its folder. A Rex Host has no Helper, so
+  there Chat writes the file into one Agent's folder when the user asks.)
 - A harness configuration file changes only when the user accepts that one
   change, shown exactly, and every such change can be undone. There are two:
   - OpenCode, offered from Chat when an OpenCode Agent's session cannot be

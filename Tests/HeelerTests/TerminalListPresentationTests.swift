@@ -79,6 +79,179 @@ struct TerminalListProjectionTests {
         #expect(cards.first?.terminals.isEmpty == true)
     }
 
+    private var rex: Host {
+        Host(
+            name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
+    }
+
+    /// A card with no shell holds New Terminal alone. A Rex Host starts no
+    /// terminals, so its session running only Agents, or listing no terminal,
+    /// has nothing to show or offer and is left out of both presentations.
+    /// Another kind's stays, there to hold New Terminal, even while a
+    /// herdr-core Host is still connecting and cannot start one yet.
+    @Test(arguments: [ServerKind.herdrTUI, .herdrCore, .tmux])
+    func aWorkspaceWithNothingToShowOrOfferIsLeftOut(beside kind: ServerKind) throws {
+        let rex = rex
+        let other = Host(name: "other", address: "other.example", username: "dev", serverKind: kind)
+        let list = projection(
+            hosts: [rex, other],
+            terminals: [
+                terminal(host: rex, paneID: "codex", workspaceID: "agents", agent: "codex"),
+                terminal(host: rex, paneID: "shell", workspaceID: "mixed", order: 1),
+                terminal(host: rex, paneID: "claude", workspaceID: "mixed", order: 2, agent: "claude"),
+                terminal(host: other, paneID: "agent", workspaceID: "agents", agent: "claude"),
+            ],
+            workspaces: [
+                rex.id: [
+                    ConsoleWorkspace(id: "agents", label: "agents", order: 0),
+                    ConsoleWorkspace(id: "mixed", label: "mixed", order: 1),
+                    ConsoleWorkspace(id: "bare", label: "bare", order: 2),
+                ],
+                other.id: [ConsoleWorkspace(id: "agents", label: "agents", order: 0)],
+            ],
+            statuses: [rex.id: .connected, other.id: kind == .herdrCore ? .connecting : .connected])
+
+        let cards = list.workspaces()
+        #expect(
+            cards.map(\.id) == [
+                .init(hostID: rex.id, workspaceID: "mixed"), .init(hostID: other.id, workspaceID: "agents"),
+            ])
+        #expect(cards.map(\.terminals.count) == [1, 0])
+        #expect(!HostCapabilities(serverKind: .rex).startsTerminals)
+        #expect(HostCapabilities(serverKind: kind).startsTerminals)
+        let groups = list.hostGroups()
+        #expect(groups.map { $0.workspaces.map(\.workspaceID) } == [["mixed"], ["agents"]])
+        #expect(groups.map(\.terminalCount) == [1, 0])
+    }
+
+    /// A Rex Host whose sessions all run Agents lists no card, so both
+    /// presentations show their empty state: By Host gives it no section,
+    /// which would be a bare header; a search or a filter finds nothing
+    /// either.
+    /// The session's card comes back, collapsed as it was left, once it has a
+    /// shell: its Agent exits to the shell, or a new terminal appears.
+    @Test func aRexSessionRunningOnlyAgentsComesBackWithAShell() throws {
+        let rex = rex
+        let session = TerminalWorkspaceGroup.ID(hostID: rex.id, workspaceID: "agents")
+        func list(_ terminals: [ConsoleTerminal]) -> TerminalListProjection {
+            projection(
+                hosts: [rex], terminals: terminals,
+                workspaces: [rex.id: [ConsoleWorkspace(id: "agents", label: "agents", order: 0)]],
+                statuses: [rex.id: .connected], collapsedWorkspaces: [session])
+        }
+        let codex = terminal(host: rex, paneID: "codex", workspaceID: "agents", agent: "codex")
+        let agentsOnly = list([codex])
+        // What each presentation reads for its empty state.
+        #expect(agentsOnly.workspaces().isEmpty)
+        #expect(agentsOnly.issues().isEmpty)
+        #expect(agentsOnly.hostGroups().isEmpty)
+        #expect(agentsOnly.workspaces(filteredHostIDs: [rex.id]).isEmpty)
+        #expect(agentsOnly.workspaces(searchQuery: "agents").isEmpty)
+        #expect(agentsOnly.hostGroups(searchQuery: "agents").isEmpty)
+
+        let exited = terminal(host: rex, paneID: "codex", workspaceID: "agents")
+        let opened = terminal(host: rex, paneID: "zsh", workspaceID: "agents", tabPosition: 2)
+        for terminals in [[exited], [codex, opened]] {
+            let back = list(terminals)
+            let card = try #require(back.workspaces().first)
+            #expect(card.id == session)
+            #expect(card.headerAccessibilityValue == "1 terminal, Collapsed")
+            let group = try #require(back.hostGroups().first)
+            #expect(group.readiness.text == "Connected")
+            #expect(group.terminalCount == 1)
+            #expect(back.workspaces(searchQuery: "agents").first?.isCollapsed == false)
+        }
+    }
+
+    /// A Host with two Servers on, beside a Host with one, as the catalog
+    /// words them.
+    @MainActor private func twoServerHosts() -> (tui: Host, tmux: Host, build: Host) {
+        let tui = Host(name: "m3", address: "m3.example", username: "dev")
+        let tmux = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
+        let build = Host(name: "Build", address: "build.example", username: "dev", serverKind: .herdrCore)
+        let records = HostStore(volatileHosts: [tui, build, tmux]).consoleHosts
+        let labelled = { (host: Host) in records.first { $0.id == host.id } ?? host }
+        return (labelled(tui), labelled(tmux), labelled(build))
+    }
+
+    /// By Host lists a Host once, by its name, holding every Server's
+    /// Workspaces, a Server after another in catalog order, and counting
+    /// all their shells; each card names the Host alone, and two Workspaces
+    /// named alike on two Servers stay two cards.
+    @MainActor @Test func aHostWithTwoServersIsOneGroupByItsName() throws {
+        let (tui, tmux, build) = twoServerHosts()
+        #expect(tmux.displayName == "m3 · tmux")
+        let list = projection(
+            hosts: [tui, build, tmux],
+            terminals: [
+                terminal(host: tmux, paneID: "t1", workspaceID: "api"),
+                terminal(host: tmux, paneID: "t2", workspaceID: "api", tabPosition: 2),
+                terminal(host: build, paneID: "b1"),
+                terminal(host: tui, paneID: "h1", workspaceID: "api"),
+            ],
+            workspaces: [
+                tui.id: [ConsoleWorkspace(id: "api", label: "api", order: 0)],
+                tmux.id: [ConsoleWorkspace(id: "api", label: "api", order: 0)],
+            ],
+            statuses: [tui.id: .connected, tmux.id: .connected, build.id: .connected],
+            collapsedHosts: [tui.id])
+        let groups = list.hostGroups()
+        #expect(groups.map(\.hostName) == ["m3", "Build"])
+        #expect(groups.map(\.hostIDs) == [[tui.id, tmux.id], [build.id]])
+        let m3 = try #require(groups.first)
+        #expect(m3.hostID == tui.id)
+        #expect(m3.workspaces.map(\.id) == [
+            .init(hostID: tui.id, workspaceID: "api"), .init(hostID: tmux.id, workspaceID: "api"),
+        ])
+        #expect(m3.workspaces.map(\.hostName) == ["m3", "m3"])
+        #expect(m3.terminalCount == 3)
+        #expect(m3.readiness == HostReadiness(text: "Connected", tone: .connected))
+        // Folded as its Herdr TUI Server was when each Server had a section.
+        #expect(m3.isCollapsed)
+        #expect(groups.last?.isCollapsed == false)
+        // By Workspace keeps a Host's Servers together, in catalog order.
+        #expect(list.workspaces().map(\.hostID) == [tui.id, tmux.id, build.id])
+        #expect(list.workspaces().map(\.hostName) == ["m3", "m3", "Build"])
+    }
+
+    /// One Server failing reads on the Host's header, and its row under the
+    /// header names it; a Host with several Servers expands rather than open
+    /// one Server's connection sheet.
+    @MainActor @Test func aFailingServerShowsOnItsHostsGroup() throws {
+        let (tui, tmux, _) = twoServerHosts()
+        let alone = Host.fixture(name: "alone", address: "alone.example")
+        let failure = TransportError.sshUnreachable(detail: "connection refused")
+        let groups = projection(
+            hosts: [tui, tmux, alone],
+            terminals: [terminal(host: tui, paneID: "h1")],
+            statuses: [tui.id: .connected, tmux.id: .failed(failure), alone.id: .failed(failure)]
+        ).hostGroups()
+        let m3 = try #require(groups.first)
+        #expect(m3.readiness.tone == .unavailable)
+        #expect(m3.readiness.text == "Unavailable")
+        #expect(m3.readiness.nameEmphasis == .full)
+        #expect(m3.issues.map(\.hostID) == [tmux.id])
+        #expect(m3.issues.first?.message.hasPrefix("m3 · tmux: ") == true)
+        #expect(m3.terminalCount == 1)
+        #expect(groups.map(\.opensConnectionDetail) == [false, true])
+    }
+
+    /// A Rex Host starts no terminal, so with nothing to list and nothing to
+    /// say it would be a bare header and has no section; connecting or
+    /// failing, it keeps one, as a Host that could start a terminal does.
+    @Test func aRexHostWithNothingToListOrSayHasNoGroup() {
+        let rex = rex
+        let herdr = Host.fixture(name: "herdr", address: "herdr.example")
+        func groups(_ statuses: [Host.ID: EventsSessionStatus]) -> [String] {
+            projection(hosts: [rex, herdr], statuses: statuses).hostGroups().map(\.hostName)
+        }
+        #expect(groups([rex.id: .connected, herdr.id: .connected]) == ["herdr"])
+        #expect(groups([rex.id: .connecting, herdr.id: .connected]) == ["Rex", "herdr"])
+        #expect(groups([rex.id: .failed(.authenticationFailed), herdr.id: .connected]) == ["Rex", "herdr"])
+        #expect(groups([:]) == ["Rex", "herdr"])
+    }
+
     @Test func shellWhoseWorkspaceIsNotYetKnownIsStillListed() {
         let host = Host.fixture()
         let cards = projection(
@@ -404,5 +577,29 @@ struct ConsoleRowLiftTests {
     @Test func anUnmeasuredRowLiftsTheIdealSidebarsCard() {
         #expect(ConsoleRowLift.cardWidth(rowWidth: nil) == ConsoleRowLift.fallbackWidth)
         #expect(ConsoleRowLift.cardWidth(rowWidth: 0) == ConsoleRowLift.fallbackWidth)
+    }
+}
+
+@Suite("Terminal card edges")
+struct TerminalCardEdgesTests {
+    @Test func theLastShellClosesACardWithoutNewTerminal() {
+        let rows = (0..<3).map { TerminalCardEdges.shell(at: $0, of: 3, endsInNewTerminal: false) }
+        #expect(rows.map(\.isFirst) == [true, false, false])
+        #expect(rows.map(\.isLast) == [false, false, true])
+        #expect(
+            TerminalCardEdges.shell(at: 0, of: 1, endsInNewTerminal: false)
+                == TerminalCardEdges(isFirst: true, isLast: true))
+    }
+
+    @Test func newTerminalClosesACardThatOffersIt() {
+        let rows = (0..<2).map { TerminalCardEdges.shell(at: $0, of: 2, endsInNewTerminal: true) }
+        #expect(rows.map(\.isFirst) == [true, false])
+        #expect(rows.map(\.isLast) == [false, false])
+        #expect(
+            TerminalCardEdges.newTerminal(afterShells: 2)
+                == TerminalCardEdges(isFirst: false, isLast: true))
+        #expect(
+            TerminalCardEdges.newTerminal(afterShells: 0)
+                == TerminalCardEdges(isFirst: true, isLast: true))
     }
 }

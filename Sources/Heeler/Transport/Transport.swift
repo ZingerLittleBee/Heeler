@@ -1066,7 +1066,8 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// link health and must not trigger a redial or an automatic retry: the
     /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
-    /// A core mutation may already have run. Never automatically replay it.
+    /// A core mutation, or input written to a Rex block, may already have
+    /// run. Never automatically replay it.
     case coreMutationOutcomeUnknown
     /// No program on the exec's PATH or at the installer's path identifies
     /// itself as herdr-core.
@@ -1113,6 +1114,48 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// server's Pane, and the Host now runs another server, whose pane ids
     /// start over. The tmux Host's `.herdrCoreTerminalGone`.
     case tmuxServerGone
+    /// A Rex terminal's output stopped, and starting its stream again did not
+    /// bring it back (ADR 0051). Reattach opens it afresh.
+    case rexTerminalOutputUnavailable
+    /// A Rex terminal's redraw, its whole history, is too long to paint
+    /// (ADR 0051). Reattaching meets the same history until it is cleared.
+    case rexTerminalHistoryTooLong
+    /// Nothing was sent: the action came from a detail opened on one Rex
+    /// server's terminal, and the Host now runs another server. The Rex
+    /// Host's `.tmuxServerGone`.
+    case rexServerGone
+    /// A Rex Host stores no socket, and looking for one found no Rex on the
+    /// Host (ADR 0049).
+    case rexNotInstalled
+    /// Looking for a Rex Host's socket failed. `reason` is one sentence.
+    case rexLookupFailed(reason: String)
+    /// No Rex server listens at the socket, or none was found. Connecting never
+    /// starts one, and the user starting one is all it takes, so it is retried.
+    case rexServerNotRunning(socketPath: String?)
+    /// A server listens at the socket and SSH still refuses to open it: the SSH
+    /// server does not allow stream-local forwarding.
+    case rexForwardingRefused(socketPath: String)
+    /// SSH refused the socket, and the Host could not say whether a server
+    /// listens there, which leaves both causes open.
+    case rexSocketUnreachable(socketPath: String)
+    /// Rex refused this SSH account, or the account may not use the socket
+    /// found, named when it is a socket's permissions that refuse it.
+    case rexAccountRefused(socketPath: String?)
+    /// Rex does not speak the API revision this build does. `offered` is the
+    /// newest revision it named, nil when it named none. Never retried.
+    case rexUnsupportedRevision(offered: Int?)
+    /// Rex answered a request with an error, in its own words and code. The
+    /// Rex Host's `.apiRejected`, retried for the same reason.
+    case rexRejected(code: String, message: String)
+    /// Rex answered in a shape this build cannot read. The Rex Host's
+    /// `.malformedResponse`. `detail` is one sentence.
+    case rexAnswerUnreadable(String)
+    /// Chat could not read a Rex terminal's screen with certainty: Rex's
+    /// answer showed something this build does not decode, or the grid
+    /// changed under the read (ADR 0055). Nothing was typed. It names no
+    /// version, since a screen showing what this build was never shown says
+    /// nothing about Rex's.
+    case rexScreenUnreadable
     /// A Chat transcript operation exceeded its own deadline. Like
     /// `.gitTimedOut` this says nothing about link health: a slow file read
     /// over a weak link must not redial the Host and rebuild its terminals.
@@ -1156,7 +1199,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // and most of them describe a target that moved, not a broken setup.
         case .sshUnreachable, .timedOut, .cancelled, .channelFailed,
             .attachExited, .apiRejected, .herdrCoreNotRunning, .herdrCoreInventoryStale,
-            .tmuxServerNotRunning:
+            .tmuxServerNotRunning, .rexServerNotRunning, .rexSocketUnreachable, .rexRejected:
             true
         case .authenticationFailed, .tcpForwardingUnavailable,
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
@@ -1169,9 +1212,11 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .herdrCoreSessionNameRefused,
             .herdrCoreForwardingRefused, .herdrCoreTerminalGone,
             .tmuxNotInstalled, .tmuxUpdateRequired, .tmuxPaneGone, .tmuxServerGone, .tmuxStartOnMac,
-            .homeDirectoryUnresolvable, .invalidDirectoryPath,
+            .rexTerminalOutputUnavailable, .rexTerminalHistoryTooLong, .rexServerGone, .rexNotInstalled,
+            .rexLookupFailed, .rexForwardingRefused,
+            .rexAccountRefused, .rexUnsupportedRevision, .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
-            .terminalChannelAlreadyOpen, .malformedResponse:
+            .terminalChannelAlreadyOpen, .malformedResponse, .rexAnswerUnreadable, .rexScreenUnreadable:
             false
         // A Jump Host is retryable exactly when the failure behind it is: a
         // rebooting VPS should reconnect on its own, a rejected key should not.
