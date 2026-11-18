@@ -109,12 +109,16 @@ Jump Host is configured.
 _Avoid_: gateway key, provider key, legacy RSA
 
 **Pairing**:
-The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success produces a working Host, persisted only at that point.
+The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success ends on Add Host's last step, which lists the machine's Servers and saves the Host with the ones the user checks; nothing is persisted before that. A code with a Herdr Endpoint names its one Server instead, and its Host is persisted by the ceremony.
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. The QR image is just its rendering.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. `heeler-pair`, the command for a machine without herdr, produces version 3, a machine code: a version 1 payload that names no Server. The QR image is just its rendering.
 _Avoid_: QR code, invite
+
+**Machine code**:
+A Pairing Code version 3, shown by `heeler-pair` outside any server. It says nothing of what the machine runs, where a code from the pairing plugin vouches for a running Herdr TUI.
+_Avoid_: CLI code, generic code
 
 **Herdr Endpoint**:
 A Host's own herdr instance outside the user's config home, such as one bundled in a desktop app: the absolute path of its API socket and of a launcher that behaves as `herdr` for it. Carried by a Pairing Code v2 and stored on the Host; a Host with one never uses the home-relative session socket or the `herdr` on the SSH PATH.
