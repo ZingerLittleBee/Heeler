@@ -658,14 +658,35 @@ struct AgentComposerView: View {
     private func noticeRow(_ notice: ComposerNotice) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             noticeLabel(notice.refusal.message)
-            if notice.refusal.suggestsTerminal, let openAgentTerminal {
-                Button("Open in Terminal", action: openAgentTerminal)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { noticeActions(notice) }
+                VStack(alignment: .leading, spacing: 6) { noticeActions(notice) }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("composer.notice")
+    }
+
+    @ViewBuilder
+    private func noticeActions(_ notice: ComposerNotice) -> some View {
+        if notice.refusal.suggestsTerminal, let openAgentTerminal {
+            Button("Open in Terminal", action: openAgentTerminal)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        // A command outside the menu may still be one the program runs
+        // without a picker, such as Claude Code's /clear. The send still
+        // reads the input box first, and the terminal is one tap away if
+        // the command opens a menu.
+        if store.canSendAnyway {
+            Button("Send Anyway") {
+                Task { await deliverDraft { await store.sendAnyway(policy: sendPolicy) } }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityHint("Sends the command as typed, though Chat's menu doesn't offer it")
+            .accessibilityIdentifier("composer.sendAnyway")
+        }
     }
 
     /// What a Stop that ended the turn left running, which the terminal can
