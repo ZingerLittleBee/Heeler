@@ -34,6 +34,10 @@ DEV_ONLY="test test-vectors"
 # never on the plugin branch (ADRs 0033 and 0046), so their files never count
 # as plugin changes. Optional: earlier sources lack them.
 HELPER_ONLY="helper claude-code"
+# heeler-pair's npm manifest and README (ADR 0057), which
+# scripts/publish-pair-cli.sh publishes over src and a plugin test reads.
+# Optional likewise.
+NPM_ONLY="pair-cli"
 # Repository tools the plugin tests run, placed where they sit on main.
 TEST_TOOLS="scripts/generate-usage-pricing.mjs"
 
@@ -115,10 +119,10 @@ while IFS= read -r line; do
     name="${line#*$'\t'}"
     if listed "$name" "$SHIPPED"; then
         entries="$entries$line"$'\n'
-    elif listed "$name" "$HELPER_ONLY"; then
+    elif listed "$name" "$HELPER_ONLY $NPM_ONLY"; then
         test_inputs="$test_inputs $name"
     elif ! listed "$name" "$DEV_ONLY"; then
-        die "$PLUGIN_DIR/$name is neither shipped nor dev-only nor helper-only; add it to SHIPPED, DEV_ONLY or HELPER_ONLY in scripts/publish-plugin.sh"
+        die "$PLUGIN_DIR/$name is neither shipped nor dev-only nor helper-only; add it to SHIPPED, DEV_ONLY, HELPER_ONLY or NPM_ONLY in scripts/publish-plugin.sh"
     fi
 done <<<"$listing"
 for name in $SHIPPED; do

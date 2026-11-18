@@ -129,11 +129,20 @@ export function detectTailscaleSSH({ run = runTailscale } = {}) {
  * The checklist warning for a Pairing Code that would send the phone at
  * tailscaled instead of OpenSSH, or null when the selection is fine.
  *
+ * `advice` says how to change the port where that is not `pair.json`:
+ * `heeler-pair` takes it as an argument.
+ *
  * @param {{addresses: string[], sshPort: number,
- *          tailscale: {enabled: boolean, addresses: string[]}}} input
+ *          tailscale: {enabled: boolean, addresses: string[]},
+ *          advice?: string}} input
  * @returns {string | null}
  */
-export function tailscaleSSHConflict({ addresses, sshPort, tailscale }) {
+export function tailscaleSSHConflict({
+  addresses,
+  sshPort,
+  tailscale,
+  advice = "Set ssh_port in pair.json to a port OpenSSH listens on.",
+}) {
   if (!tailscale?.enabled || sshPort !== INTERCEPTED_PORT) return null;
   const owned = new Set((tailscale.addresses ?? []).map(normalize));
   const intercepted = (addresses ?? []).filter((address) => owned.has(normalize(address)));
@@ -141,6 +150,6 @@ export function tailscaleSSHConflict({ addresses, sshPort, tailscale }) {
   return (
     `Tailscale SSH answers port ${INTERCEPTED_PORT} on ${intercepted.join(", ")}.\n` +
     "Pairing there reaches tailscaled, not OpenSSH, and cannot finish.\n" +
-    "Set ssh_port in pair.json to a port OpenSSH listens on."
+    advice
   );
 }
