@@ -502,6 +502,16 @@ final class HostConsoleProjection: ConsoleHostProjection {
         scheduleResync()
     }
 
+    /// herdr's `pane.moved` event resyncs the inventory, and so does this: the
+    /// row lands in its new Workspace without waiting on the event round trip.
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        let moved = try await session.withTransportOnce { transport in
+            try await transport.movePane(PaneMoveParams(paneID: paneID, destination: destination))
+        }
+        scheduleResync()
+        return moved.moveResult.pane.paneID
+    }
+
     /// Whether a Pane is still alive on the Host, probed with a minimal
     /// `pane.read`. A server rejection means the Pane is gone (closed on the
     /// desktop, or the server restarted and lost every tab); a transport

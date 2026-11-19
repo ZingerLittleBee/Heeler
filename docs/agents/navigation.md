@@ -53,6 +53,31 @@ its contract.
   `AgentMarks.xcassets`, and its `AgentStatusAvatar` is the Status Ring that
   leads each `AgentCardView`. Coverage: [AgentKindMarkTests](../../Tests/HeelerTests/AgentKindMarkTests.swift).
 
+- **Copy Pane ID:** `HostCapabilities.copiesPaneID` (Herdr TUI and tmux, whose
+  Pane ids their own command lines take) offers
+  [CopyPaneIDButton](../../Sources/Heeler/Console/CopyPaneIDButton.swift) in both
+  lists' row menus, a Terminal's More menu, and an Agent detail's header menu
+  (`backHeaderActions`, an `AgentDetailHeaderAction` with a subtitle).
+- **Move to Workspace:** `HostCapabilities.movesPanes` (Herdr TUI) offers
+  [MovePaneSheet](../../Sources/Heeler/Console/MovePaneSheet.swift) from the same
+  row menus and the Agent detail's header menu. `ConsoleStore.movePane` sends
+  [`pane.move`](../../Sources/Heeler/Transport/PaneMove.swift) through
+  `HostConsoleProjection.movePane`, carries the pin to the id the Pane has in
+  its new Workspace (`PinnedAgentsStore.movePin`), and returns that id for an
+  open detail to follow. [Compatibility notes](herdr-compatibility.md) record
+  the id change.
+- **Hand Off:** `ConsoleStore.offersHandOff` (a live Agent whose program Chat
+  reads, on a Host that takes uploads) offers
+  [HandOffSheet](../../Sources/Heeler/HandOff/HandOffSheet.swift) from the
+  Agents row menu and the Agent detail's header menu.
+  [HandOffStore](../../Sources/Heeler/HandOff/HandOffStore.swift) reads the
+  conversation through the Agent's `AgentChatStore` as a viewer of its own
+  (`ConsoleStore.handOffSource`, which also loads earlier pages), renders it
+  with [HandOffRecord](../../Sources/Heeler/HandOff/HandOffRecord.swift), and
+  `ConsoleStore.deliverHandOff` stages the file through the receiving Agent's
+  `AgentComposerSession` under the mode's message
+  ([ADR 0060](../adr/0060-hand-off-stages-a-conversation-record.md)).
+
 ## Connection, input, and terminals
 
 - **Conversation title Rename:** [AgentTitleRenameStore](../../Sources/Heeler/Console/AgentTitleRenameStore.swift)

@@ -72,6 +72,18 @@ If Chat can't send something, such as a message starting with `!`, it keeps your
 > [!TIP]
 > On an iPad with a keyboard, press **Return** to send and **Shift-Return** for a new line.
 
+## Hand work to another Agent
+
+When an Agent is stuck or out of usage, or you want another opinion, give its conversation to another Agent on the same Host.
+
+1. Long-press the Agent in **Agents**, or open the **More** menu at the top of the Agent, and tap **Hand Off**.
+2. Choose **Take Over** to have the other Agent carry the work on, or **Second Opinion** to have it review the work.
+3. Pick an Agent, or **New Agent…** to start one in the same directory.
+
+Heeler writes the conversation to a file on the Host, without tool output, and opens the other Agent with a message about that file in its message box. Nothing is sent until you tap **Send**, so you can reword it first.
+
+Hand Off needs an Agent whose conversation Chat can show and a Host that takes files, the same Hosts as **Add File**.
+
 ## Answer a Blocked Agent
 
 When the Agent asks for permission or asks a question, a card takes the place of the message box, with a button for each answer. A tap answers right away, just like pressing the key in the terminal, and can't be undone.

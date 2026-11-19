@@ -10488,6 +10488,28 @@
         }
       }
     },
+    "Ask the Agent to" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントへの依頼内容"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Agent 做什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Agent 做什麼"
+          }
+        }
+      }
+    },
     "Asks the Host again to resize the terminal to fit this screen." : {},
     "Assign one to this device in the EasyTier console." : {
       "localizations" : {
@@ -17576,6 +17598,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "複製節點 ID"
+          }
+        }
+      }
+    },
+    "Copy Pane ID" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペイン ID をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝窗格 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製窗格 ID"
           }
         }
       }
@@ -26468,6 +26512,50 @@
         }
       }
     },
+    "Hand Off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接"
+          }
+        }
+      }
+    },
+    "Hand Off To" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎ先"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接给"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接給"
+          }
+        }
+      }
+    },
     "Harness" : {
       "localizations" : {
         "ja" : {
@@ -27380,6 +27468,28 @@
         }
       }
     },
+    "Heeler could not read this Agent's conversation in time. Open its Chat, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのエージェントの会話を時間内に読み取れませんでした。チャットを開いてから、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 未能及时读取此 Agent 的对话。请打开它的对话视图后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 未能及時讀取此 Agent 的對話。請開啟它的對話檢視後再試一次。"
+          }
+        }
+      }
+    },
     "Heeler could not read this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -27421,6 +27531,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 無法儲存此主機的帳號。請再試一次。"
+          }
+        }
+      }
+    },
+    "Heeler could not write the conversation record on this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのデバイスに会話の記録を書き込めませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法在此设备上写入对话记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法在此裝置上寫入對話記錄。"
           }
         }
       }
@@ -28043,6 +28175,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 不認得這個清單。"
+          }
+        }
+      }
+    },
+    "Heeler does not read this Agent's conversation, so there is nothing to hand off." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのエージェントの会話を読み取らないため、引き継ぐものがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 不读取此 Agent 的对话，因此没有可交接的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 不讀取此 Agent 的對話，因此沒有可交接的內容。"
           }
         }
       }
@@ -28767,6 +28921,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 連線時會嘗試所有路由，主機上的所有伺服器都使用第一個能連上的路由。經由此裝置自身網路的路由會先啟動；之後這類路由一旦可用，Heeler 會切換過去。"
+          }
+        }
+      }
+    },
+    "Heeler writes this conversation to a file on %@ and puts a message about it in that Agent's Composer. Nothing is sent until you send it." : {
+      "comment" : "Hand Off footer. The placeholder is the Host's name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこの会話を %@ 上のファイルに書き出し、そのファイルについてのメッセージを相手のエージェントのコンポーザーに入れます。あなたが送信するまで何も送信されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 会把这段对话写入 %@ 上的一个文件，并在对方 Agent 的输入框里放入一条关于该文件的消息。在你发送之前不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 會把這段對話寫入 %@ 上的一個檔案，並在對方 Agent 的輸入框裡放入一則關於該檔案的訊息。在你傳送之前不會傳送任何內容。"
           }
         }
       }
@@ -31391,6 +31568,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它仍可能完成。再次嘗試前請先檢查終端機。"
+          }
+        }
+      }
+    },
+    "It moves into a new Tab there. What runs in it keeps running." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのワークスペースの新しいタブに移動します。実行中のものはそのまま動き続けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会移入该工作区的新标签页，其中运行的程序继续运行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會移入該工作區的新分頁，其中執行的程式繼續執行。"
           }
         }
       }
@@ -34710,6 +34909,28 @@
         }
       }
     },
+    "Move to Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークスペースに移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移到工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至工作區"
+          }
+        }
+      }
+    },
     "Move up" : {
       "localizations" : {
         "ja" : {
@@ -35317,6 +35538,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「新增 Agent」會在已安裝此 Agent 工具的主機上提供這個預設集。"
+          }
+        }
+      }
+    },
+    "New Agent…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規エージェント…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建 Agent…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 Agent…"
           }
         }
       }
@@ -49081,6 +49324,28 @@
         }
       }
     },
+    "Second Opinion" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セカンドオピニオン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二意见"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二意見"
+          }
+        }
+      }
+    },
     "Secondary" : {
       "comment" : "Agent List Fields: secondary (dimmed) field style",
       "localizations" : {
@@ -55723,6 +55988,50 @@
         }
       }
     },
+    "That Agent is no longer listed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのエージェントはもう一覧にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该 Agent 已不在列表中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該 Agent 已不在列表中。"
+          }
+        }
+      }
+    },
+    "That Agent's Composer is still uploading an attachment. Try again when it has finished." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのエージェントのコンポーザーはまだ添付ファイルをアップロード中です。完了してからもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该 Agent 的输入框仍在上传附件。请等上传完成后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該 Agent 的輸入框仍在上傳附件。請等上傳完成後再試一次。"
+          }
+        }
+      }
+    },
     "That QR code is not a Pairing Code." : {
       "localizations" : {
         "ja" : {
@@ -56563,6 +56872,50 @@
         }
       }
     },
+    "The Agent you pick is asked to carry this work on." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだエージェントに、この作業の続きを依頼します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你选的 Agent 会被要求接着做这项工作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你選的 Agent 會被要求接著做這項工作。"
+          }
+        }
+      }
+    },
+    "The Agent you pick is asked to review this work and say what it would do differently." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだエージェントに、この作業をレビューし、自分ならどう変えるかを述べるよう依頼します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你选的 Agent 会被要求评审这项工作，并说明它会怎样做得不同。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你選的 Agent 會被要求評審這項工作，並說明它會怎樣做得不同。"
+          }
+        }
+      }
+    },
     "The Agent's input box already has text, such as a draft or a message Stop returned. Send or clear it in the terminal first." : {
       "localizations" : {
         "ja" : {
@@ -56893,6 +57246,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "之後 EasyTier 主控台會將此裝置列為新裝置，需要重新指派網路。此網路上的主機之後會重新連線。"
+          }
+        }
+      }
+    },
+    "The Hand Off failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎに失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接失敗：%@"
           }
         }
       }
@@ -57676,6 +58051,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機未及時回應。請檢查連線後再試一次。"
+          }
+        }
+      }
+    },
+    "The Host did not answer in time. The move may still have happened, so check the list before trying again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが時間内に応答しませんでした。移動は完了している可能性があるため、再試行の前にリストを確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未及时响应。移动可能已经完成，请先查看列表再重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未及時回應。移動可能已經完成，請先查看列表再重試。"
           }
         }
       }
@@ -61871,6 +62268,28 @@
         }
       }
     },
+    "The move failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動に失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動失敗：%@"
+          }
+        }
+      }
+    },
     "The named pipe %@ does not exist" : {
       "localizations" : {
         "ja" : {
@@ -65062,6 +65481,28 @@
         }
       }
     },
+    "This Host has no other Workspace." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストにはほかのワークスペースがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台主机没有其他工作区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台主機沒有其他工作區。"
+          }
+        }
+      }
+    },
     "This Host has no plugin fields snapshot, so Heeler's fallback fields were used." : {
       "localizations" : {
         "ja" : {
@@ -65705,6 +66146,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此連線無法讀取「變更」。"
+          }
+        }
+      }
+    },
+    "This conversation has no messages to hand off yet." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会話には、引き継げるメッセージがまだありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这段对话还没有可交接的消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這段對話還沒有可交接的訊息。"
           }
         }
       }
@@ -74585,6 +75048,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr 拒絕了訊息：%@"
+          }
+        }
+      }
+    },
+    "herdr rejected the move: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr は移動を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒绝了移动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒絕了移動：%@"
           }
         }
       }

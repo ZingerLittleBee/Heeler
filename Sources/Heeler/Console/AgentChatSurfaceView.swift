@@ -76,6 +76,8 @@ struct AgentChatSurfaceView: View {
     @State private var isSelectingFile = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
+    @State private var movePaneRequest: MovePaneRequest?
+    @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
@@ -220,7 +222,8 @@ struct AgentChatSurfaceView: View {
             agentID: agent.id,
             isFocused: false,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
-                || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
+                || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
+                || isShowingSkillsPicker
                 || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
                 || closeErrorMessage != nil || isShowingBackgroundWork || isShowingSwarm,
             isOnStage: { @MainActor in isOnStage() },
@@ -249,6 +252,16 @@ struct AgentChatSurfaceView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                // The Agent has a new id in its new Workspace: the detail goes with it.
+                switchToAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
+            })
+        .modifier(
+            HandOffSheetPresenter(request: $handOffRequest, console: console, hosts: hosts) { id in
+                // The Agent that got the Hand Off has it in its Composer, to read and send.
+                switchToAgent(id)
+            })
         .sheet(isPresented: $isStartingAgent) {
             StartAgentView(
                 hosts: hosts,
@@ -2053,6 +2066,27 @@ struct AgentChatSurfaceView: View {
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
                 titleRename = console.titleRenameStore(for: agent)
+            })
+        }
+        if console.offersHandOff(for: agent) {
+            actions.append(AgentDetailHeaderAction(title: "Hand Off", systemImage: HandOffCopy.symbol) {
+                handOffRequest = HandOffRequest(source: agent)
+            })
+        }
+        let offers = AgentDetailMenuOffers(
+            capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
+            removesSavedChat: console.isSavedChat(agent.id))
+        if offers.movePane {
+            actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
+                movePaneRequest = MovePaneRequest(agent: agent)
+            })
+        }
+        if offers.copyPaneID {
+            let paneID = agent.agent.paneID
+            actions.append(AgentDetailHeaderAction(
+                title: "Copy Pane ID", systemImage: PaneIDCopy.symbol, subtitle: paneID
+            ) {
+                PaneIDCopy.copy(paneID)
             })
         }
         return actions

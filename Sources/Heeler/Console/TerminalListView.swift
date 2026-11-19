@@ -25,6 +25,7 @@ struct TerminalListView: View {
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
+    @State private var movePaneRequest: MovePaneRequest?
     @State private var closeFailure: String?
 
     /// Between Workspace cards; the header's own 44-point row already
@@ -50,6 +51,13 @@ struct TerminalListView: View {
             case .byHost: byHost
             }
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                // The Terminal beside the list has a new id in its new
+                // Workspace; the one it left would read as closed.
+                let left = ConsoleTerminal.ID(hostID: request.hostID, paneID: request.paneID)
+                if paneID != request.paneID, selection == .terminal(left) { selection = nil }
+            })
         .alert(pendingCloseScope.confirmationTitle, isPresented: isPresented($pendingClose)) {
             Button(pendingCloseScope.actionTitle, role: .destructive) {
                 confirmClose()
@@ -293,6 +301,14 @@ struct TerminalListView: View {
                         Button("Copy Path", systemImage: "doc.on.doc") {
                             UIPasteboard.general.string = terminal.cwd
                         }
+                    }
+                    if capabilities(of: terminal).movesPanes {
+                        Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
+                            movePaneRequest = MovePaneRequest(terminal: terminal)
+                        }
+                    }
+                    if capabilities(of: terminal).copiesPaneID {
+                        CopyPaneIDButton(paneID: terminal.paneID)
                     }
                 }
                 if capabilities(of: terminal).closeTab {
