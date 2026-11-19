@@ -44950,6 +44950,28 @@
         }
       }
     },
+    "Reading from the Host…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストから読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从主机读取…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從主機讀取…"
+          }
+        }
+      }
+    },
     "Reading herdr fields…" : {
       "localizations" : {
         "ja" : {
@@ -60447,6 +60469,28 @@
       }
     },
     "The connection to Rex ended." : {},
+    "The connection to the Host dropped." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストとの接続が切れました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与主机的连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與主機的連線中斷。"
+          }
+        }
+      }
+    },
     "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected." : {
       "localizations" : {
         "ja" : {

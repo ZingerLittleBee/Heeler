@@ -59,6 +59,13 @@ struct HostFilePreviewView: View {
         switch preview.phase {
         case .loading:
             ProgressView()
+        case .reading(let received, let total):
+            VStack(spacing: 16) {
+                Text("Reading from the Host…")
+                    .font(.headline)
+                HostFileProgressBar(received: received, total: total)
+            }
+            .padding(.horizontal, 40)
         case .copying(let received, let total):
             HostFileCopyingState(kind: preview.kind, received: received, total: total) {
                 preview.cancel()

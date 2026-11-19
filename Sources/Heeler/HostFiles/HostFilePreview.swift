@@ -4,7 +4,8 @@ import Observation
 /// One Host file open in Files. Text is read in place, a megabyte at a time;
 /// anything else is copied to this device first, because the system's
 /// viewers and the share sheet read local files. The copy is removed when
-/// the preview closes.
+/// the preview closes. Either way the file comes in pieces sized to the
+/// link (`HostFilePace`).
 @MainActor
 @Observable
 final class HostFilePreview: Identifiable {
@@ -31,6 +32,8 @@ final class HostFilePreview: Identifiable {
 
     enum Phase: Equatable {
         case loading
+        /// Text on its way, once it is more than one piece.
+        case reading(received: UInt64, total: UInt64)
         case copying(received: UInt64, total: UInt64)
         case text(TextDocument)
         case image(URL)
@@ -70,6 +73,7 @@ final class HostFilePreview: Identifiable {
 
     @ObservationIgnored private let files: ChatHostFiles
     @ObservationIgnored private let copies: HostFileCopies
+    @ObservationIgnored private let pace: HostFilePace
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var exportTask: Task<Void, Never>?
     /// The whole file on this device, once something needed it.
@@ -80,7 +84,7 @@ final class HostFilePreview: Identifiable {
 
     init(
         path: String, name: String, size: UInt64?, modified: Date?,
-        files: ChatHostFiles, copies: HostFileCopies
+        files: ChatHostFiles, copies: HostFileCopies, pace: HostFilePace
     ) {
         self.path = path
         self.name = name
@@ -88,6 +92,7 @@ final class HostFilePreview: Identifiable {
         self.modified = modified
         self.files = files
         self.copies = copies
+        self.pace = pace
         kind = HostFileKind(name: name)
     }
 
@@ -188,10 +193,13 @@ final class HostFilePreview: Identifiable {
                 phase = .failed(String(localized: "Files can't open this path."))
                 return
             }
+            let asked = ContinuousClock.now
             guard let status = try await files.status(path) else {
                 phase = .failed(HostFilesFailure.missing.fileMessage)
                 return
             }
+            // A request with nothing to carry: what the link's delay is now.
+            pace.roundTrip(took: asked.duration(to: .now))
             guard !Task.isCancelled else { return }
             guard status.kind == .regular, let size = status.size else {
                 phase = .failed(String(localized: "This is not a file Files can open."))
@@ -211,7 +219,10 @@ final class HostFilePreview: Identifiable {
                 phase = size <= Self.copyLimit ? .media(try await copyForViewing(size: size)) : .tooLarge
             case .document:
                 phase = size <= Self.copyLimit ? .document(try await copyForViewing(size: size)) : .tooLarge
-            case .markdown, .other, .image:
+            case .image:
+                // Past what the image viewer takes, and not text either.
+                phase = size <= Self.copyLimit ? .noPreview : .tooLarge
+            case .markdown, .other:
                 try await loadText(size: size)
             }
         } catch {
@@ -220,12 +231,13 @@ final class HostFilePreview: Identifiable {
     }
 
     /// A file with no viewer of its own is text when its start reads as
-    /// text, and otherwise something to share or save.
+    /// text, and otherwise something to share or save. Its first piece
+    /// decides, so a file that is not text is not read on to learn so.
     private func loadText(size: UInt64) async throws {
         let window = min(size, Self.textWindow)
-        let start = try await read(from: 0, count: window, size: size)
+        let start = try await read(from: 0, count: window, size: size, while: HostFileText.looksLikeText)
         guard !Task.isCancelled else { return }
-        guard kind != .image, HostFileText.looksLikeText(start) else {
+        guard HostFileText.looksLikeText(start) else {
             phase = size <= Self.copyLimit ? .noPreview : .tooLarge
             return
         }
@@ -258,20 +270,23 @@ final class HostFilePreview: Identifiable {
         }.value
     }
 
-    /// `count` bytes from `offset`, which fails if the file's length moves
-    /// under the read: the pieces would no longer be one file.
-    private func read(from offset: UInt64, count: UInt64, size: UInt64) async throws -> Data {
+    /// `count` bytes from `offset`, a piece at a time, for as long as
+    /// `isWanted` takes what has come. Past the first piece the page shows
+    /// how far the read is.
+    private func read(
+        from offset: UInt64, count: UInt64, size: UInt64,
+        while isWanted: (Data) -> Bool = { _ in true }
+    ) async throws -> Data {
         var data = Data()
-        while UInt64(data.count) < count {
+        while UInt64(data.count) < count, data.isEmpty || isWanted(data) {
             try Task.checkCancellation()
-            let wanted = Int(min(UInt64(HostFileCopy.chunkBytes), count - UInt64(data.count)))
-            let slice = try await files.read(
-                RemoteFileRange(path: path, offset: offset + UInt64(data.count), maxBytes: wanted))
-            guard let length = slice.length else { throw HostFileCopy.Failure.missing }
-            guard length == size, !slice.data.isEmpty, slice.data.count <= wanted else {
-                throw HostFileCopy.Failure.changed
+            data.append(
+                try await HostFileCopy.piece(
+                    of: path, at: offset + UInt64(data.count), upTo: count - UInt64(data.count),
+                    size: size, files: files, pace: pace))
+            if UInt64(data.count) < count {
+                phase = .reading(received: UInt64(data.count), total: count)
             }
-            data.append(slice.data)
         }
         return data
     }
@@ -293,7 +308,7 @@ final class HostFilePreview: Identifiable {
         let destination = try destination()
         do {
             try await HostFileCopy.run(
-                path: path, size: size, files: files, to: destination, progress: progress)
+                path: path, size: size, files: files, pace: pace, to: destination, progress: progress)
         } catch {
             try? FileManager.default.removeItem(at: destination)
             throw error
@@ -328,11 +343,85 @@ final class HostFilePreview: Identifiable {
     }
 }
 
-/// Copies one Host file to this device in pieces, off the main actor.
-enum HostFileCopy {
-    /// One read's size, as Chat's image reads use.
-    static let chunkBytes = 256 << 10
+/// How much of a file one request asks the Host for.
+///
+/// A piece's bytes hold the Host's one connection while they cross it. The
+/// terminal's output waits behind them, and a piece that needs longer than a
+/// request may take never arrives at all. So a piece is what the link carries
+/// in about a second, as the pieces before it measured: no less than a slow
+/// link still finishes, no more than pays on a fast one. Files keeps one pace
+/// while it is open, so the next file starts where the last one got to.
+@MainActor
+final class HostFilePace {
+    static let smallestPiece = 32 << 10
+    static let largestPiece = 256 << 10
+    /// The first piece, before the link has carried anything.
+    static let firstPiece = 64 << 10
+    /// How long one piece's bytes may hold the link.
+    static let linkTime: Duration = .seconds(1)
+    /// A piece asks the Host four things, and one of them carries the file:
+    /// its status, its open, the read and its close.
+    static let requestsInPiece = 4
 
+    private(set) var pieceBytes = HostFilePace.firstPiece
+    /// What a piece costs before its bytes: its requests there and back.
+    private var overhead: Duration?
+
+    /// A request with nothing to carry took this long, as a file opened.
+    /// The quickest one counts: a slower answer waited behind something else
+    /// on the link. One several times slower may also mean the link has
+    /// worsened since the pace was learned, so that file starts no larger
+    /// than a first piece.
+    func roundTrip(took elapsed: Duration) {
+        let cost = elapsed * Self.requestsInPiece
+        if let overhead, cost > overhead * 4 {
+            pieceBytes = min(pieceBytes, Self.firstPiece)
+        }
+        overhead = min(overhead ?? cost, cost)
+    }
+
+    /// A piece of `bytes` arrived `elapsed` after it was asked for.
+    func piece(of bytes: Int, took elapsed: Duration) {
+        // No piece costs more before its bytes than a whole one took.
+        if let overhead, elapsed < overhead { self.overhead = elapsed }
+        // The end of a file, or a short one, says little of the link.
+        guard bytes >= Self.smallestPiece else { return }
+        // With no round trip measured, all of a piece's time is its bytes'.
+        let overhead = self.overhead ?? .zero
+        let carrying = elapsed - overhead
+        // No piece is asked to be more than twice one that arrived, so a
+        // wrong measure cannot ask for one that outlasts its request.
+        let reachable = min(Self.largestPiece, max(pieceBytes, bytes * 2))
+        // Under this the time is the estimate's own error: the link is fast.
+        guard carrying > max(.milliseconds(100), overhead / 4) else {
+            pieceBytes = reachable
+            return
+        }
+        let carried = Double(bytes) * (Self.linkTime / carrying)
+        let fitting = max(Self.smallestPiece, Int(min(Double(reachable), carried)))
+        // One piece measures roughly, and a piece sized by one measure
+        // swings past the link's speed and back. So the pace moves halfway,
+        // unless the link carries under half of it: that is believed at once.
+        pieceBytes = carried < Double(pieceBytes) / 2 ? fitting : (pieceBytes + fitting + 1) / 2
+    }
+
+    /// A piece outlasted its request: the next try asks for the least.
+    func pieceTimedOut() {
+        pieceBytes = Self.smallestPiece
+    }
+
+    /// The Host's connection is a new one, perhaps over another network, so
+    /// the next piece is a first one again. The quickest round trip stays: a
+    /// piece that was crossing as the connection changed then reads as slow,
+    /// and on a slower network the pieces are only smaller than they could be.
+    func reset() {
+        pieceBytes = Self.firstPiece
+    }
+}
+
+/// Reads one Host file in pieces, and copies one to this device, off the
+/// main actor.
+enum HostFileCopy {
     enum Failure: Error, Equatable {
         case missing
         case changed
@@ -345,8 +434,36 @@ enum HostFileCopy {
         }
     }
 
+    /// The next piece of a file from `offset`: what the pace allows, and no
+    /// more than `limit`. It fails if the file's length moved under the
+    /// read, because the pieces would no longer be one file.
+    static func piece(
+        of path: String, at offset: UInt64, upTo limit: UInt64, size: UInt64,
+        files: ChatHostFiles, pace: HostFilePace
+    ) async throws -> Data {
+        let wanted = Int(min(UInt64(await pace.pieceBytes), limit))
+        let asked = ContinuousClock.now
+        let slice: RemoteFileSlice
+        do {
+            slice = try await files.read(RemoteFileRange(path: path, offset: offset, maxBytes: wanted))
+        } catch {
+            switch error {
+            case TransportError.hostFileTimedOut, TransportError.timedOut: await pace.pieceTimedOut()
+            default: break
+            }
+            throw error
+        }
+        let elapsed = asked.duration(to: .now)
+        guard let length = slice.length else { throw Failure.missing }
+        guard length == size, !slice.data.isEmpty, slice.data.count <= wanted else {
+            throw Failure.changed
+        }
+        await pace.piece(of: slice.data.count, took: elapsed)
+        return slice.data
+    }
+
     static func run(
-        path: String, size: UInt64, files: ChatHostFiles, to destination: URL,
+        path: String, size: UInt64, files: ChatHostFiles, pace: HostFilePace, to destination: URL,
         progress: @escaping @MainActor @Sendable (UInt64) -> Void
     ) async throws {
         guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
@@ -357,14 +474,10 @@ enum HostFileCopy {
         var received: UInt64 = 0
         while received < size {
             try Task.checkCancellation()
-            let wanted = Int(min(UInt64(chunkBytes), size - received))
-            let slice = try await files.read(RemoteFileRange(path: path, offset: received, maxBytes: wanted))
-            guard let length = slice.length else { throw Failure.missing }
-            guard length == size, !slice.data.isEmpty, slice.data.count <= wanted else {
-                throw Failure.changed
-            }
-            try handle.write(contentsOf: slice.data)
-            received += UInt64(slice.data.count)
+            let data = try await piece(
+                of: path, at: received, upTo: size - received, size: size, files: files, pace: pace)
+            try handle.write(contentsOf: data)
+            received += UInt64(data.count)
             await progress(received)
         }
         try Task.checkCancellation()

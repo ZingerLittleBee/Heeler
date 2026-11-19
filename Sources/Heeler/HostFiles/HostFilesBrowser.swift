@@ -81,6 +81,10 @@ enum HostFilesFailure: Equatable, Sendable {
             self = .other(String(localized: "The Host refused the read (SFTP status \(status))."))
         case TransportError.hostFileTimedOut, TransportError.timedOut:
             self = .other(String(localized: "The Host did not answer in time."))
+        case TransportError.channelFailed:
+            // The detail names the transport's own failure, which says
+            // nothing to someone reading a file.
+            self = .other(String(localized: "The connection to the Host dropped."))
         case let error as TransportError:
             self = .other(error.presentation.message)
         default:
@@ -269,6 +273,8 @@ final class HostFilesBrowser: Identifiable {
     @ObservationIgnored private var folders: [String: HostFolder] = [:]
     @ObservationIgnored private var followTask: Task<Void, Never>?
     @ObservationIgnored private let copies: HostFileCopies
+    /// How much of a file one request asks for, as this Host's link taught.
+    @ObservationIgnored private let pace = HostFilePace()
 
     init(files: ChatHostFiles, agentDirectory: String, isHostConnected: Bool) {
         self.files = files.finishingEachRequest
@@ -321,7 +327,9 @@ final class HostFilesBrowser: Identifiable {
     func hostConnectionChanged(_ isConnected: Bool) {
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
-        if isConnected { folder(at: currentDirectory).hostReconnected() }
+        guard isConnected else { return }
+        pace.reset()
+        folder(at: currentDirectory).hostReconnected()
     }
 
     func go(to directory: String) {
@@ -417,7 +425,8 @@ final class HostFilesBrowser: Identifiable {
     private func show(_ path: String, name: String, size: UInt64?, modified: Date?) {
         preview?.discard()
         preview = HostFilePreview(
-            path: path, name: name, size: size, modified: modified, files: files, copies: copies)
+            path: path, name: name, size: size, modified: modified, files: files, copies: copies,
+            pace: pace)
     }
 
     private func follow(_ entry: HostFileEntry) {
