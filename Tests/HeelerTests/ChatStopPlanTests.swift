@@ -549,14 +549,15 @@ struct ChatStopPlanTests {
         await panel.waitForEntry()
 
         #expect(await composer.retry(failed.id, policy: policy) == .refused(hold))
-        #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat))
+        #expect(composer.notice == ComposerNotice(refusal: hold, route: .chat, retried: failed.id))
         #expect(composer.messages.map(\.state) == [.failed(reason)])
         await panel.open()
         await work.value
 
         #expect(
             composer.notice
-                == ComposerNotice(refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .chat))
+                == ComposerNotice(
+                    refusal: .inputNotReady(AgyBackgroundTaskStop.sendHoldEnded), route: .chat, retried: failed.id))
         #expect(composer.messages.map(\.state) == [.failed(reason)])
         #expect(ChatComposerEchoes.pending(composer.messages, statuses: [:]).map(\.state) == [.failed(reason)])
     }
