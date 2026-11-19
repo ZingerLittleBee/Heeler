@@ -29,6 +29,8 @@ struct AgentChatSurfaceView: View {
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
     private let showChanges: (() -> Void)?
+    /// Opens Files over this screen; nil hides the menu entry.
+    private let showFiles: (() -> Void)?
     private let workspaceDrawer: WorkspaceTerminalDrawer?
     /// Swaps the detail back to the Agent terminal.
     private let selectSurface: (AgentDetailSurface) -> Void
@@ -148,6 +150,7 @@ struct AgentChatSurfaceView: View {
         isOpeningTerminal: Bool,
         openTerminal: @escaping () -> Void,
         showChanges: (() -> Void)?,
+        showFiles: (() -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer?,
         selectSurface: @escaping (AgentDetailSurface) -> Void
     ) {
@@ -166,6 +169,7 @@ struct AgentChatSurfaceView: View {
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
         self.showChanges = showChanges
+        self.showFiles = showFiles
         self.workspaceDrawer = workspaceDrawer
         self.selectSurface = selectSurface
         // Chat lists only the skills its `/` menu sends, in the menu, the
@@ -2033,6 +2037,9 @@ struct AgentChatSurfaceView: View {
         if let showChanges {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
+        }
+        if let showFiles {
+            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder", perform: showFiles))
         }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
