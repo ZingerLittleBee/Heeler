@@ -47,6 +47,7 @@ export const backends = [
   { name: 'Herdr TUI', body: 'Pair by scanning a QR code.', runs: 'macOS, Linux, Windows' },
   { name: 'Herdr desktop', body: 'Follows your spaces and tabs.', runs: 'herdr-core on macOS, Linux, Windows' },
   { name: 'tmux', body: 'Sessions, windows and panes, alongside your desktop terminal.', runs: '3.3 or newer on macOS and Linux' },
+  { name: 'Rex', body: 'Sessions, windows and terminals, in the same console.', runs: 'Experimental, on macOS and Linux' },
 ];
 
 /** Agents whose conversations Chat can read. */
@@ -68,7 +69,7 @@ export const pairCommands = ['herdr plugin install ZingerLittleBee/Heeler --ref 
 export const faq = [
   {
     q: 'What do I need on the machine?',
-    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, or tmux 3.3 or newer.',
+    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server (experimental).',
   },
   {
     q: 'Do I have to switch to herdr?',
