@@ -658,13 +658,13 @@ struct AgentActivityIslandCard: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .padding(.top, 3)
+                .padding(.top, 2)
             if rows.count > 1 {
                 Text(rows[1])
                     .font(.system(size: 10.5))
                     .foregroundStyle(AgentActivityIslandColor.task)
                     .lineLimit(2)
-                    .padding(.top, 1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.leading, 11)
