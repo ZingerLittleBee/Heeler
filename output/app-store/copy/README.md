@@ -9,10 +9,10 @@ Connect listing text for `scripts/store-shots.py asc`:
 | `keywords.txt` | `keywords` | 100 |
 | `description.txt` | `description` | 4000 |
 
-No listing text existed in the repository before the tmux release: these files
-were newly written from the root `README.md` for tmux support and MUST be
-compared against the live App Store Connect listing before any upload so live
-store edits are not overwritten.
+These files match the listing uploaded for 0.1.21, which names Herdr TUI, the
+Herdr desktop app, tmux and Rex side by side. Compare them against the live App
+Store Connect listing before any upload, so store edits made since are not
+overwritten.
 
 `python3 scripts/test-store-shots.py` checks these character limits so edits
 fail locally before an App Store Connect upload is tried. To preview or apply an

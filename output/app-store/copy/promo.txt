@@ -1,1 +1,1 @@
-Control Claude Code, Codex, and other coding agents over SSH on Herdr TUI, Herdr desktop, herdr-core, or tmux—with native Chat, encrypted alerts, and Usage widgets.
+Leave the desk. Keep your agents. Follow, steer and review the coding agents on your own machines, in Herdr TUI, the Herdr desktop app, tmux, and now Rex.
