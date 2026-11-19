@@ -227,6 +227,10 @@ function validCounts(counts) {
   return true;
 }
 
+// Far above any Unix time in seconds, so a Host that needs the user always
+// outranks one that does not; equals rank by recency.
+const BLOCKED_RELEVANCE_TIER = 10_000_000_000;
+
 /**
  * Build the Live Activity APNs JSON body. The envelope string is embedded
  * as a JSON value without parsing so the relay never inspects ciphertext.
@@ -236,7 +240,10 @@ function buildLiveActivityApnsBody(activity) {
   let aps = `"timestamp":${activity.timestamp},"event":${JSON.stringify(activity.event)},"content-state":{"counts":${countsJson},"envelope":${activity.envelope}}`;
   if (activity.event === "update") {
     const { blocked, working, done } = activity.counts;
-    const relevanceScore = blocked >= 1 ? 3 : working >= 1 ? 2 : done >= 1 ? 1 : 0;
+    const relevanceScore =
+      blocked + working + done === 0
+        ? 0
+        : (blocked >= 1 ? BLOCKED_RELEVANCE_TIER : 0) + activity.timestamp;
     aps += `,"relevance-score":${relevanceScore}`;
   }
   if (activity.staleDate !== undefined) {

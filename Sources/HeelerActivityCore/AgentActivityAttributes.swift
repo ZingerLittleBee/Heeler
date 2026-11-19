@@ -25,12 +25,17 @@ struct AgentActivityAttributes: Codable, Hashable, Sendable {
             var blocked: Int
             var done: Int
 
-            var relevanceScore: Double {
-                if blocked >= 1 { return 3 }
-                if working >= 1 { return 2 }
-                if done >= 1 { return 1 }
-                return 0
+            /// A Host that needs the user outranks every other, and among
+            /// equals the most recently updated wins: the update time, in
+            /// whole seconds, plus a tier far above any time for Blocked.
+            /// The relay derives the same score from its push timestamp.
+            func relevanceScore(at date: Date) -> Double {
+                guard working + blocked + done > 0 else { return 0 }
+                let seconds = date.timeIntervalSince1970.rounded(.down)
+                return blocked > 0 ? Self.blockedRelevanceTier + seconds : seconds
             }
+
+            static let blockedRelevanceTier: Double = 10_000_000_000
         }
 
         /// Cleartext `{v,kid,n,ct}` frame carried inside content-state.

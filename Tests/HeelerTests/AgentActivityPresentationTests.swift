@@ -109,33 +109,101 @@ struct AgentActivityPresentationTests {
         #expect(workingOnly.attentionItems.map(\.count) == [3])
     }
 
-    @Test func islandMarksUseAttentionOrderAndReplaceTheLastSlotOnOverflow() {
-        let mixed = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(mixed.marks.map(\.status) == ["blocked", "done", "working"])
-        #expect(mixed.marks.allSatisfy { !$0.isOverflow })
+    private typealias Counts = AgentActivityAttributes.ContentState.Counts
+    private typealias Compact = AgentActivityIslandCompact
 
-        let seven = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 7, blocked: 0, done: 0)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(seven.marks.count == 4)
-        #expect(seven.marks.dropLast().map(\.status) == ["working", "working", "working"])
-        #expect(seven.marks.last?.isOverflow == true)
-
-        let four = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(four.marks.map(\.status) == ["blocked", "blocked", "done", "working"])
-        #expect(four.marks.allSatisfy { !$0.isOverflow })
-
-        let empty = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 0, blocked: 0, done: 0)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(empty.marks.isEmpty)
+    private func compact(_ counts: Counts, letter: String? = nil, width: CGFloat = 430) -> Compact {
+        AgentActivityIslandCompact(
+            tallies: counts.attentionItems.map { .init(status: $0.status, count: $0.count) },
+            letter: letter, screenWidth: width)
     }
 
-    @Test func islandTileRequiresTwoHostsAndAComputedLabel() {
+    @Test func compactShowsEveryStatusSplitAcrossTheCamera() {
+        let working = compact(.init(working: 2, blocked: 0, done: 0))
+        #expect(working.leading == [.symbol("working")])
+        #expect(working.trailing == [.count("working", 2)])
+
+        let two = compact(.init(working: 0, blocked: 1, done: 2))
+        #expect(two.leading == [.pair("blocked", 1)])
+        #expect(two.trailing == [.pair("done", 2)])
+
+        let three = compact(.init(working: 1, blocked: 1, done: 1))
+        #expect(three.leading == [.pair("blocked", 1), .pair("done", 1)])
+        #expect(three.trailing == [.pair("working", 1)])
+        #expect(three.letter == nil)
+    }
+
+    @Test func compactGathersStatusesLeftOfTheHostLetter() {
+        let one = compact(.init(working: 0, blocked: 1, done: 0), letter: "L")
+        #expect(one.leading == [.pair("blocked", 1)])
+        #expect(one.trailing.isEmpty)
+        #expect(one.letter == "L")
+
+        let two = compact(.init(working: 3, blocked: 0, done: 2), letter: "L")
+        #expect(two.leading == [.pair("done", 2), .pair("working", 3)])
+        #expect(two.trailing.isEmpty)
+
+        let three = compact(.init(working: 1, blocked: 1, done: 1), letter: "MB")
+        #expect(three.leading == [.pair("blocked", 1), .pair("done", 1)])
+        #expect(three.trailing == [.pair("working", 1)])
+        #expect(three.letter == "MB")
+    }
+
+    @Test func compactStepsDownToSmallerSymbolsThenNumbersOnlyAndKeepsTheLetter() {
+        let allThree = Counts(working: 1, blocked: 1, done: 1)
+        #expect(compact(allThree, width: 430).level == .full)
+        #expect(compact(allThree, width: 393).level == .small)
+
+        let big = Counts(working: 15, blocked: 1, done: 12)
+        #expect(compact(big, width: 430).level == .small)
+        let narrow = compact(big, width: 393)
+        #expect(narrow.level == .numbersOnly)
+        #expect(narrow.leading == [.count("blocked", 1), .count("done", 12)])
+        #expect(narrow.trailing == [.count("working", 15)])
+
+        let lettered = compact(.init(working: 15, blocked: 10, done: 12), letter: "MB", width: 393)
+        #expect(lettered.level == .numbersOnly)
+        #expect(lettered.letter == "MB")
+    }
+
+    @Test func compactSidesShareTheWiderSidesWidth() {
+        let level = Compact.Level.full
+        let one = compact(.init(working: 2, blocked: 0, done: 0))
+        #expect(one.sideWidth == level.symbol)
+
+        let lettered = compact(.init(working: 1, blocked: 1, done: 1), letter: "L")
+        let pair = level.symbol + level.symbolGap + level.digit
+        let trailing = pair + level.itemSpacing + level.digit
+        let leading = pair * 2 + level.itemSpacing
+        #expect(lettered.sideWidth == max(leading, trailing))
+    }
+
+    @Test func expandedShowsThreeCardsThenTheAgentsLeftOutByStatus() {
+        let agents = ["blocked", "done", "done", "done", "working"].enumerated().map {
+            agentDetail(paneID: "w1:p\($0.offset)", status: $0.element)
+        }
+        let six = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: agents),
+            counts: .init(working: 2, blocked: 1, done: 3)))
+        #expect(six.cards.map(\.paneID) == ["w1:p0", "w1:p1", "w1:p2"])
+        #expect(six.summary == [.init(status: "done", count: 1), .init(status: "working", count: 2)])
+        #expect(six.isOverflow)
+        #expect(six.total == 6)
+
+        let two = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: Array(agents.prefix(2))),
+            counts: .init(working: 0, blocked: 1, done: 1)))
+        #expect(two.cards.count == 2)
+        #expect(two.summary.isEmpty)
+
+        let countsOnly = AgentActivityIslandExpanded(
+            presentation: .countsOnly(counts: .init(working: 2, blocked: 1, done: 0)))
+        #expect(countsOnly.cards.isEmpty)
+        #expect(countsOnly.summary == [.init(status: "blocked", count: 1), .init(status: "working", count: 2)])
+        #expect(countsOnly.isOverflow == false)
+    }
+
+    @Test func islandLetterRequiresTwoHostsAndAComputedLabel() {
         let oneHost = LiveActivityHostSnapshot(v: 1, hosts: [
             .init(id: "host", name: "Laptop", label: "L"),
         ])
@@ -146,61 +214,28 @@ struct AgentActivityPresentationTests {
         let one = AgentActivityIslandPresentation(
             presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 0)),
             hostID: "host", hostSnapshot: oneHost)
-        #expect(one.hasMultipleHosts == false)
         #expect(one.hostLabel == nil)
-        #expect(one.minimalTileStatus == nil)
+        #expect(one.compact(screenWidth: 430).letter == nil)
         #expect(one.accessibilityLabel == "1 working")
 
         let two = AgentActivityIslandPresentation(
             presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 0)),
             hostID: "host", hostSnapshot: twoHosts)
-        #expect(two.hostLabel == "L")
-        #expect(two.minimalTileStatus == "blocked")
+        #expect(two.compact(screenWidth: 430).letter == "L")
+        #expect(two.tallies == [.init(status: "blocked", count: 1), .init(status: "working", count: 1)])
         #expect(two.accessibilityLabel == "Laptop, 1 needs you, 1 working")
 
-        let missing = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 1)),
-            hostID: "missing", hostSnapshot: twoHosts)
-        #expect(missing.hasMultipleHosts)
-        #expect(missing.hostLabel == nil)
-        #expect(missing.minimalTileStatus == nil)
-    }
-
-    @Test func islandMinimalTileUsesTheMostUrgentCount() {
-        let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
-            .init(id: "host", name: "Laptop", label: "L"),
-            .init(id: "other", name: "Oak4d", label: "O"),
-        ])
-        let cases: [(AgentActivityAttributes.ContentState.Counts, String)] = [
-            (.init(working: 5, blocked: 1, done: 1), "blocked"),
-            (.init(working: 5, blocked: 0, done: 1), "done"),
-            (.init(working: 5, blocked: 0, done: 0), "working"),
-        ]
-        for (counts, status) in cases {
-            let island = AgentActivityIslandPresentation(
-                presentation: .countsOnly(counts: counts), hostID: "host", hostSnapshot: snapshot)
-            #expect(island.minimalTileStatus == status)
-        }
-    }
-
-    @Test func islandMissingLabelsOmitTilesButKeepTheFullAccessibilitySummary() {
         for label in [nil, ""] as [String?] {
             let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
                 .init(id: "host", name: "Laptop", label: label),
                 .init(id: "other", name: "Oak4d", label: "O"),
             ])
-            let island = AgentActivityIslandPresentation(
+            let unlabeled = AgentActivityIslandPresentation(
                 presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
                 hostID: "host", hostSnapshot: snapshot)
-            #expect(island.hostLabel == nil)
-            #expect(island.minimalTileStatus == nil)
-            #expect(island.accessibilityLabel == "Laptop, 2 need you, 1 working, 1 done")
+            #expect(unlabeled.hostLabel == nil)
+            #expect(unlabeled.accessibilityLabel == "Laptop, 2 need you, 1 done, 1 working")
         }
-        let noSnapshot = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(noSnapshot.hostLabel == nil)
-        #expect(noSnapshot.accessibilityLabel == "1 needs you, 1 working, 1 done")
     }
 
     @Test func narrationIncludesStatusForIslandAccessibility() {
@@ -380,8 +415,6 @@ struct AgentActivityPresentationTests {
         #expect(presentation.lockScreenAgents(isStale: true).count == 2)
         #expect(presentation.lockScreenTrailingCaption(isStale: true)
             == "+3 more · May be out of date")
-        #expect(presentation.expandedAgents.count == 2)
-        #expect(presentation.overflowCount == 3)
         let three = configuredPresentation(agentCount: 3)
         #expect(three.lockScreenAgents(isStale: false).count == 2)
         #expect(three.lockScreenAgents(isStale: true).count == 2)

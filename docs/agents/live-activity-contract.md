@@ -262,7 +262,7 @@ update/end/priority signal — nothing else new (PRIVACY.md documents this).
 ```json
 {"aps": {"timestamp": <unix seconds>, "event": "update" | "end",
          "content-state": {"counts": {...}, "envelope": {...}},
-         "relevance-score": <update only: derived from counts>,
+         "relevance-score": <update only: from counts and timestamp>,
          "stale-date": <update only: timestamp + 900>,
          "dismissal-date": <end only: = timestamp, immediate removal>}}
 ```
@@ -272,15 +272,18 @@ Priority 10 only when an agent **newly** entered `blocked`; 5 otherwise.
 Existing 4096-byte pre-check applies; 410/413 verdicts pass through to the
 plugin unchanged (`{"reason": ...}`).
 
-Relevance is derived only from plaintext `counts`, with no count tiebreak.
-The first matching tier sets the score:
+Relevance ranks a Host that needs the user above every other, and otherwise
+the most recently updated Host first. It is derived from plaintext `counts`
+and the push `timestamp` (Unix seconds), with no count tiebreak:
 
 | Condition | Score |
 | --------- | ----- |
-| `blocked >= 1` | 3 |
-| `working >= 1` | 2 |
-| `done >= 1` | 1 |
 | All counts are zero | 0 |
+| `blocked >= 1` | 10000000000 + `timestamp` |
+| Otherwise | `timestamp` |
+
+The plugin sends only when the Host's status map changes, so `timestamp` is
+the time of that Host's latest status change.
 
 Higher scores rank a Host's Live Activity above lower scores on the Lock
 Screen and in the Dynamic Island. The app sets `ActivityContent.relevanceScore`

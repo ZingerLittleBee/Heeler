@@ -3525,6 +3525,47 @@
         }
       }
     },
+    "%lld agents" : {
+      "comment" : "Expanded Dynamic Island header: how many Agents the Host has.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld agent"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld agents"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件のエージェント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个 Agent"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個 Agent"
+          }
+        }
+      }
+    },
     "%lld background tasks stopped" : {
       "comment" : "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted",
       "localizations" : {
@@ -85035,6 +85076,9 @@
           }
         }
       }
+    },
+    "more" : {
+      "comment" : "Ends the expanded Dynamic Island's count of Agents without a card, as in “+1 ✓ +2 ◌ more”."
     },
     "more than %@ file changed" : {
       "localizations" : {
