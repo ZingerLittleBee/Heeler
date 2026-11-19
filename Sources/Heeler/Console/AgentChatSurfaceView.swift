@@ -66,6 +66,8 @@ struct AgentChatSurfaceView: View {
     /// (`edgeHandleReserve`).
     @State private var hasOfferedWorkspaceDrawer = false
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
+    /// Until the Composer has opened; see `condensesBackgroundWork`.
+    @State private var isOpening = true
     /// Bumped to put the Composer's keyboard away before Files covers it.
     @State private var composerKeyboardDismissRequest = 0
     @State private var isConfirmingClose = false
@@ -375,6 +377,7 @@ struct AgentChatSurfaceView: View {
         chatSurface
         .wearsTheme(themeColors)
         .onAppear {
+            isOpening = false
             closer.didReturnToScreen()
             stageExit?.cancel()
             stageExit = nil
@@ -1846,12 +1849,15 @@ struct AgentChatSurfaceView: View {
     /// One line while the Composer is open or a Blocked card stands in its
     /// place: the Composer's own fold, inverted, from what this surface
     /// holds. Focus always moves the keyboard presentation off `.hidden`.
+    /// A Composer that opens on a hardware keyboard is open from the first
+    /// frame, as one that inherits a handoff is.
     private var condensesBackgroundWork: Bool {
         !AgentComposerCollapse.isCollapsed(
             isEnabled: true,
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
-            inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
+            inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil
+                || (isOpening && keyboardHandoff.opensFocused),
             hasInputReplacement: showsBlockedCard,
             keyboardIsLeaving: keyboardIsLeaving)
     }

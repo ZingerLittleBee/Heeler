@@ -553,6 +553,12 @@ struct AgentTerminalView: View {
                 directKeyboardIntent.setWantsKeyboard(true)
                 return true
             }
+            // No handoff, but a hardware keyboard: the terminal opens taking
+            // its keys, as the keyboard button would leave it.
+            if keyboardHandoff.opensFocused {
+                directKeyboardIntent.setWantsKeyboard(true)
+                return true
+            }
             // Same-screen pipeline replacement: reclaim only while Direct
             // Input still owns raised intent. Cold persisted Direct stays down.
             return directKeyboardIntent.wantsKeyboard
@@ -926,6 +932,7 @@ struct AgentTerminalView: View {
         .onChange(of: keyboardControl.isFirstResponder) { _, isUp in
             guard isDirectInput else { return }
             if isUp {
+                keyboardHandoff.keyboardCameUp()
                 // On iPad the tools dock stands without a responder, so a tap
                 // on the terminal's input row asks for the system keyboard.
                 guard usesDirectToolsKeyboard, toolsDockReleasesFocus else { return }
@@ -1774,7 +1781,9 @@ struct AgentTerminalView: View {
         guard isOnStage() else { return }
         if usesDirectToolsKeyboard || keyboardControl.isKeyboardUp {
             hideDirectKeyboard()
+            keyboardHandoff.keyboardWasPutAway()
         } else {
+            keyboardHandoff.keyboardCameUp()
             directKeyboardIntent.setWantsKeyboard(true)
             keyboardControl.requestKeyboard()
         }

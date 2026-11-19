@@ -945,6 +945,110 @@ struct AgentDirectInputTests {
         await owner.leave().value
     }
 
+    /// A hardware keyboard brings no software keyboard to keep off the
+    /// screen, so a cold Direct Input takes its keys as it opens (#646). The
+    /// keyboard button still puts it away, for this Agent and the next.
+    @Test func aHardwareKeyboardOpensColdDirectFocusedUntilPutAway() async throws {
+        let handoff = TerminalKeyboardHandoff(hardwareKeyboard: HardwareKeyboard { true })
+        let (inputMode, cleanup) = try Self.makeInputMode(initial: .direct)
+        defer { cleanup() }
+
+        func open() async throws -> (UIWindow, HeelerTerminalView, AgentTerminalInteractionProbe, AgentAttachStore) {
+            let composer = AgentComposerStore(target: "w1:p1") { _ in
+                Agent(.fixture(paneID: "w1:p1"))
+            }
+            let owner = try await Self.makeLiveAttach(transport: ScriptedTransport())
+            let interactions = AgentTerminalInteractionProbe()
+            let controller = UIHostingController(
+                rootView: Self.makeDetailView(
+                    attachStore: owner,
+                    composer: composer,
+                    inputMode: inputMode,
+                    keyboardHandoff: handoff,
+                    interactionProbe: interactions))
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+                rootViewController: controller)
+            controller.view.layoutIfNeeded()
+            try #require(await Self.eventually {
+                owner.terminalStatus == AttachTerminalStore.Status.live
+                    && interactions.isConnected
+                    && interactions.directInputChromeMountCount == 1
+            })
+            return (window, try #require(Self.terminals(in: controller.view).first), interactions, owner)
+        }
+
+        let (firstWindow, first, interactions, firstOwner) = try await open()
+        try #require(await Self.eventually { first.isFirstResponder })
+
+        #expect(interactions.toggleDirectKeyboard())
+        try #require(await Self.eventually { !first.isFirstResponder })
+        #expect(!handoff.opensFocused)
+        await firstOwner.leave().value
+        firstWindow.isHidden = true
+
+        let (secondWindow, second, later, secondOwner) = try await open()
+        defer { secondWindow.isHidden = true }
+        #expect(!second.isFirstResponder)
+
+        // Raised again, it opens the Agents after focused again.
+        #expect(later.toggleDirectKeyboard())
+        try #require(await Self.eventually { second.isFirstResponder })
+        #expect(handoff.opensFocused)
+        await secondOwner.leave().value
+    }
+
+    /// The Composer a hardware keyboard opened focused hands its keys to
+    /// Direct Input and takes them back, as one a tap focused does.
+    @Test func aHardwareKeyboardsComposerHandsItsKeysToDirectAndBack() async throws {
+        let handoff = TerminalKeyboardHandoff(hardwareKeyboard: HardwareKeyboard { true })
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let owner = try await Self.makeLiveAttach(transport: ScriptedTransport())
+        let (inputMode, cleanup) = try Self.makeInputMode()
+        defer { cleanup() }
+        let interactions = AgentTerminalInteractionProbe()
+        let controller = UIHostingController(
+            rootView: Self.makeDetailView(
+                attachStore: owner,
+                composer: composer,
+                inputMode: inputMode,
+                keyboardHandoff: handoff,
+                interactionProbe: interactions))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+        try #require(await Self.eventually {
+            owner.terminalStatus == AttachTerminalStore.Status.live && interactions.isConnected
+        })
+        let terminal = try #require(Self.terminals(in: controller.view).first)
+        let composerInput: @MainActor () -> UITextView? = {
+            Self.firstView(in: controller.view) {
+                $0 is UITextView && $0.accessibilityLabel == "Message the Agent"
+            } as? UITextView
+        }
+        try #require(await Self.eventually { composerInput()?.isFirstResponder == true })
+
+        #expect(interactions.selectInputMode(.direct))
+        try #require(await Self.eventually {
+            inputMode.mode == AgentInputMode.direct && terminal.isFirstResponder
+        })
+
+        // A switch asked for while the first is still settling is dropped,
+        // so ask until this one takes.
+        try #require(
+            await Self.eventually {
+                if inputMode.mode != AgentInputMode.composer { _ = interactions.selectInputMode(.composer) }
+                return inputMode.mode == AgentInputMode.composer && composerInput()?.isFirstResponder == true
+            },
+            "Direct Input→Composer: mode=\(inputMode.mode), terminal=\(terminal.isFirstResponder)")
+        #expect(!terminal.isFirstResponder)
+        await owner.leave().value
+    }
+
     @Test func coldDirectEntryResumesPausedHeightCapture() async throws {
         let center = NotificationCenter()
         let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 336 }
