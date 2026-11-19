@@ -1,9 +1,10 @@
 // Read or replace App Store Connect assets. Run through `scripts/store-shots.py asc`,
 // which prepends `const ARGS`. Without ARGS.apply, write actions only print their plan.
+// `size` is one size the slot's upload area lists; `section` is the button that unfolds the area.
 const SLOTS = {
-  ipad: { type: "APP_IPAD_PRO_3GEN_129", page: "ipad", input: 0 },
-  iphone: { type: "APP_IPHONE_67", page: "iphone", input: 1 },
-  duo: { type: "APP_IPHONE_DUO", page: "iphone", input: 2 },
+  ipad: { type: "APP_IPAD_PRO_3GEN_129", page: "ipad", size: "2752 × 2064px" },
+  iphone: { type: "APP_IPHONE_67", page: "iphone", size: "1320 × 2868px", section: "iPhone with Dynamic Island (large display)" },
+  duo: { type: "APP_IPHONE_DUO", page: "iphone", size: "2853 × 2007px", section: "iPhone Duo" },
 };
 const CREATIVE = {
   header: { type: "PRODUCT_PAGE_HEADER_ASSET", tab: "Header" },
@@ -55,6 +56,31 @@ async function openMediaManager(slot) {
   if (slot.page === "iphone") return;
   await page.evaluate((tab) => [...document.querySelectorAll("[role=tab], a, button")].find((e) => e.innerText.trim() === tab).click(), "iPad");
   await waitFor(/of 10 App Screenshots/, new RegExp(`media-manager/${slot.page}`));
+}
+
+// An optional set with no images folds its upload area away, which shifts the other inputs.
+// So the input is found by the sizes its area lists, after unfolding the section if need be.
+async function markUploadInput(slot) {
+  for (let i = 0; i < 30; i++) {
+    const count = await page.evaluate(({ size, section }) => {
+      const inputs = [...document.querySelectorAll("input[type=file]")].filter((input) => {
+        for (let node = input.parentElement; node; node = node.parentElement) {
+          // The page writes its sizes with no-break spaces.
+          const text = node.innerText.replace(/\s+/g, " ");
+          if (text.includes("supported sizes include")) return text.includes(size);
+        }
+        return false;
+      });
+      if (inputs.length === 1) inputs[0].setAttribute("data-store-shots", "1");
+      // Only a folded section is clicked, so a slow one is not folded again on the next pass.
+      else if (!inputs.length) [...document.querySelectorAll('button[aria-expanded="false"]')]
+        .find((e) => e.innerText.replace(/\s+/g, " ").trim() === section)?.click();
+      return inputs.length;
+    }, { size: slot.size, section: slot.section ?? "" });
+    if (count === 1) return;
+    await pause(1000);
+  }
+  throw new Error(`No upload input lists ${slot.size}`);
 }
 
 async function findVersion() {
@@ -130,8 +156,8 @@ async function replaceScreenshots({ localization }) {
   await openMediaManager(slot);
   // The page can re-render and drop the mark between the two calls.
   for (let attempt = 1; ; attempt++) {
-    await page.evaluate((index) => document.querySelectorAll("input[type=file]")[index].setAttribute("data-store-shots", "1"), slot.input);
     try {
+      await markUploadInput(slot);
       await page.setInputFiles('input[data-store-shots="1"]', ARGS.files.map((f) => f.path));
       break;
     } catch (error) {
