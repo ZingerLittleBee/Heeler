@@ -205,6 +205,8 @@ struct AgentTerminalView: View {
     private let openTerminal: () -> Void
     /// Opens Changes in place of this screen; nil hides the menu entry.
     private let showChanges: (() -> Void)?
+    /// Opens Files over this screen; nil hides the menu entry.
+    private let showFiles: (() -> Void)?
     /// Opens Changes for a Worktree directory after its sheet has dismissed.
     private let showWorktreeChanges: ((String) -> Void)?
     /// Swaps this screen for Chat in place; nil for an Agent without Chat,
@@ -359,6 +361,7 @@ struct AgentTerminalView: View {
         isOpeningTerminal: Bool = false,
         openTerminal: @escaping () -> Void = {},
         showChanges: (() -> Void)? = nil,
+        showFiles: (() -> Void)? = nil,
         showWorktreeChanges: ((String) -> Void)? = nil,
         showChat: (() -> Void)? = nil,
         session: AgentComposerSession,
@@ -389,6 +392,7 @@ struct AgentTerminalView: View {
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
         self.showChanges = showChanges
+        self.showFiles = showFiles
         self.showWorktreeChanges = showWorktreeChanges
         self.showChat = showChat
         self.session = session
@@ -1295,8 +1299,8 @@ struct AgentTerminalView: View {
         AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
     }
 
-    /// The Workspace's terminals, then Changes at the far end; each only
-    /// where this screen can offer it.
+    /// The Workspace's terminals, then Changes and Files; each only where
+    /// this screen can offer it.
     private var backHeaderActions: [AgentDetailHeaderAction] {
         var actions: [AgentDetailHeaderAction] = []
         if workspaceDrawer != nil {
@@ -1313,6 +1317,15 @@ struct AgentTerminalView: View {
         if let showChanges {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
+        }
+        if let showFiles {
+            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder") {
+                // A menu opened inside the sheet hands the keyboard back to
+                // whatever held it here: it would cover Files and type into
+                // this screen. So Files opens with the keyboard down.
+                hideKeyboard()
+                showFiles()
+            })
         }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
