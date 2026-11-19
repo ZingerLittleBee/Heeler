@@ -395,10 +395,10 @@ struct AgentTitleRenameTests {
         try await withTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: reopenedController
         ) { window in
+            // SwiftUI draws a Form footer itself, so no UILabel holds its text.
             try await waitUntil {
-                Self.views(UILabel.self, in: window).contains {
-                    $0.text == "Saved on this device. Will be sent once the Agent stops."
-                }
+                accessibleElement(
+                    labeled: "Saved on this device. Will be sent once the Agent stops.", in: window) != nil
             }
         }
     }
