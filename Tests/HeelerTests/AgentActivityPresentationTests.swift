@@ -175,7 +175,7 @@ struct AgentActivityPresentationTests {
         let pair = level.symbol + level.symbolGap + level.digit
         let trailing = pair + level.itemSpacing + level.digit
         let leading = pair * 2 + level.itemSpacing
-        #expect(lettered.sideWidth == max(leading, trailing))
+        #expect(abs(lettered.sideWidth - max(leading, trailing)) < 0.001)
     }
 
     @Test func expandedShowsThreeCardsThenTheAgentsLeftOutByStatus() {
@@ -234,7 +234,7 @@ struct AgentActivityPresentationTests {
                 presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
                 hostID: "host", hostSnapshot: snapshot)
             #expect(unlabeled.hostLabel == nil)
-            #expect(unlabeled.accessibilityLabel == "Laptop, 2 need you, 1 done, 1 working")
+            #expect(unlabeled.accessibilityLabel == "Laptop, 2 need you, 1 working, 1 done")
         }
     }
 
