@@ -65,7 +65,7 @@ struct HostSetupGuideView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             } footer: {
-                Text("Heeler connects over SSH to a machine that runs herdr.")
+                Text("Heeler connects over SSH to a machine that runs herdr, tmux or Rex.")
             }
 
             switch platform {

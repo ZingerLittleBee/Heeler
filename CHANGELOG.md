@@ -33,6 +33,7 @@ Entries reference the pull request that made the change.
 - Finish Scan to Pair on Add Host's Servers step. After a Pairing Code enrolls the device, Heeler looks at the machine and lists its Herdr TUI, herdr-core, and tmux Servers for you to turn on, instead of always adding one Herdr TUI Server. Pairing a machine that is already a Host turns the checked Servers on there rather than adding a second entry, replaces a host key that changed since it was added, and reconnects it. A code from a herdr outside `~/.config/herdr` still opens that Server's page. (PR #770)
 - Sort the Agents list by Pin and Agent Status priority (`Blocked` / `Error`, `Done`, `Working`, `Idle`) across every Server Kind, ignoring Herdr TUI's `agent_panel_sort = "spaces"` plugin setting and keeping equal-status rows in stable Server and Workspace order across `All Agents`, `By Host`, `By Workspace`, and Host or Status filters. (PR #762)
 - Say what to do when Codex shows that its conversation is open in another app, instead of only that Chat can't find the input box. Chat holds a message there and says to close the conversation in the other app and press R in the terminal or, when no other app has it, to stop Codex's shared server with `codex app-server daemon stop`, which also ends any other Codex on that server. (#759)
+- Say that a machine can run herdr, tmux or Rex on the empty **Hosts** screen, in the empty Agents sidebar, and at the top of the **Setup Guide**, which named only herdr.
 
 ### Fixed
 
