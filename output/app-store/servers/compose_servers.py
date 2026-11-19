@@ -9,13 +9,17 @@ is repainted.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 HERE = Path(__file__).resolve().parent
 STORE = HERE.parent
+sys.path.insert(0, str(STORE))
+from backdrop import backdrop  # noqa: E402
+
 SF = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
 SLUG = "01a-herdr-tmux-rex.png"
@@ -99,10 +103,6 @@ def footnote(canvas: Image.Image, center: int, y: int, size: int) -> None:
                                 fill=(190, 196, 214, 255), anchor="mm")
 
 
-def textured(path: Path, size: tuple[int, int]) -> Image.Image:
-    return ImageOps.fit(Image.open(path).convert("RGB"), size, method=Image.Resampling.LANCZOS).convert("RGBA")
-
-
 def side_by_side(canvas: Image.Image, row: Image.Image, servers: Image.Image, margin: int, middle: int,
                  radii: tuple[int, int]) -> Image.Image:
     """The Host's row on the left, its Servers on the right, joined by dots."""
@@ -123,8 +123,7 @@ def side_by_side(canvas: Image.Image, row: Image.Image, servers: Image.Image, ma
 def iphone() -> Image.Image:
     hosts = source("iphone-hosts.png", IPHONE)
     host = source("iphone-host.png", IPHONE)
-    canvas = Image.alpha_composite(textured(STORE / "iphone-6.9/assets/background.png", IPHONE),
-                                   Image.new("RGBA", IPHONE, (4, 5, 12, 120)))
+    canvas = backdrop(IPHONE)
     draw = ImageDraw.Draw(canvas)
     draw.line((96, 98, 170, 98), fill=(*ACCENT, 255), width=8)
     draw.text((96, 126), "HEELER FOR IPHONE", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
@@ -152,12 +151,7 @@ def ipad() -> Image.Image:
     size = (2752, 2064)
     hosts = source("ipad-hosts.png", size)
     host = source("ipad-host.png", size)
-    canvas = textured(STORE / "ipad-13/assets/background.png", size)
-    veil = Image.new("RGBA", size)
-    veil_draw = ImageDraw.Draw(veil)
-    for y in range(size[1]):
-        veil_draw.line((0, y, size[0], y), fill=(3, 5, 11, round(68 + 68 * y / size[1])))
-    canvas = Image.alpha_composite(canvas, veil)
+    canvas = backdrop(size)
     draw = ImageDraw.Draw(canvas)
     draw.text((110, 75), "HEELER FOR IPAD", font=font(MONO, 30, "Medium"), fill=(*ACCENT, 255), anchor="lt")
     draw.text((106, 144), HEADLINE, font=font(SF, 112, "Bold"), fill=(250, 250, 253, 255), anchor="lt")

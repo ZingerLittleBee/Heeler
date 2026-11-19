@@ -16,6 +16,9 @@ Compose scripts live with their exports:
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
 | Listing text (`promo`, `keywords`, `description`) | `output/app-store/copy/` | `test-store-shots.py` |
 
+`output/app-store/backdrop.py` draws the graphite background of the iPhone and
+iPad images. The compose scripts need Pillow and NumPy.
+
 ## 1. Start the Agents
 
 ```sh

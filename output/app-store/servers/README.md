@@ -31,7 +31,7 @@ Agent runs on any of them.
 
 ## Regenerate
 
-From the repository root, with Pillow installed:
+From the repository root, with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/servers/compose_servers.py

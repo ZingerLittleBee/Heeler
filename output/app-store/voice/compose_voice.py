@@ -8,13 +8,17 @@ scaled uniformly and masked; no UI is repainted.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 
 HERE = Path(__file__).resolve().parent
 STORE = HERE.parent
+sys.path.insert(0, str(STORE))
+from backdrop import backdrop  # noqa: E402
+
 SF = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
 SLUG = "01b-just-say-it.png"
@@ -97,8 +101,13 @@ def card(canvas: Image.Image, image: Image.Image, xy: tuple[int, int], radius: i
 
 
 def context(canvas: Image.Image, image: Image.Image, xy: tuple[int, int], sides: int = 0) -> None:
-    """The Agent's last reply, fading in from the top, for a sense of place."""
-    layer = image.convert("RGBA")
+    """The Agent's last reply, fading in from the top, for a sense of place.
+
+    It is screened onto the field, so the app's black background adds nothing
+    and no band shows where the piece ends.
+    """
+    under = canvas.crop((xy[0], xy[1], xy[0] + image.width, xy[1] + image.height)).convert("RGB")
+    layer = ImageChops.screen(under, image).convert("RGBA")
     layer.putalpha(edges(image.size, left=sides, right=sides, top=image.height * 4 // 5, bottom=14))
     canvas.alpha_composite(layer, xy)
 
@@ -117,16 +126,11 @@ def footnote(canvas: Image.Image, center: int, y: int, size: int) -> None:
                                 fill=(190, 196, 214, 255), anchor="mm")
 
 
-def textured(path: Path, size: tuple[int, int]) -> Image.Image:
-    return ImageOps.fit(Image.open(path).convert("RGB"), size, method=Image.Resampling.LANCZOS).convert("RGBA")
-
-
 def iphone() -> Image.Image:
     size = (1320, 2868)
     recording = source("iphone-recording.png", size)
     draft = source("iphone-draft.png", size)
-    canvas = Image.alpha_composite(textured(STORE / "iphone-6.9/assets/background.png", size),
-                                   Image.new("RGBA", size, (4, 5, 12, 120)))
+    canvas = backdrop(size)
     draw = ImageDraw.Draw(canvas)
     draw.line((96, 98, 170, 98), fill=(*ACCENT, 255), width=8)
     draw.text((96, 126), "HEELER FOR IPHONE", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
@@ -150,12 +154,7 @@ def ipad() -> Image.Image:
     size = (2752, 2064)
     recording = source("ipad-recording.png", size)
     draft = source("ipad-draft.png", size)
-    canvas = textured(STORE / "ipad-13/assets/background.png", size)
-    veil = Image.new("RGBA", size)
-    veil_draw = ImageDraw.Draw(veil)
-    for y in range(size[1]):
-        veil_draw.line((0, y, size[0], y), fill=(3, 5, 11, round(68 + 68 * y / size[1])))
-    canvas = Image.alpha_composite(canvas, veil)
+    canvas = backdrop(size)
     draw = ImageDraw.Draw(canvas)
     draw.text((110, 75), "HEELER FOR IPAD", font=font(MONO, 30, "Medium"), fill=(*ACCENT, 255), anchor="lt")
     draw.text((106, 144), HEADLINE, font=font(SF, 112, "Bold"), fill=(250, 250, 253, 255), anchor="lt")

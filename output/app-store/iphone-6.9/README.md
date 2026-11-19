@@ -1,8 +1,8 @@
 # Heeler iPhone App Store screenshots
 
 These exports preserve the exact application UI from the committed iPhone
-captures and add deterministic marketing copy over a generated background. The
-order follows the iPhone screens on the landing page.
+captures and add deterministic marketing copy over the landing page's graphite.
+The order follows the iPhone screens on the landing page.
 
 ## Exports
 
@@ -28,14 +28,16 @@ The iPad set is `../ipad-13/`.
 
 ## Provenance
 
-The background was generated with OpenAI image generation as an abstract,
-text-free dark terminal texture. All UI, headlines, subheads, borders, masks,
-and sizing are composed locally by compose_mockups.py; the source screenshots
-are never redrawn by a generative model.
+`../backdrop.py` draws the background: the landing page's neutral graphite, a
+little lighter toward the top edge, with a faint light in each image's accent
+behind the top of the screenshot. It replaced a texture from OpenAI image
+generation in 0.1.21, so nothing in these exports comes from a generative
+model. All UI, headlines, subheads, borders, masks, and sizing are composed
+locally by compose_mockups.py.
 
 ## Regenerate
 
-Run from the repository root with Pillow installed:
+Run from the repository root with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/iphone-6.9/compose_mockups.py

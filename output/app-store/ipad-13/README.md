@@ -39,7 +39,8 @@ exports and is excluded from Git.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,
   rearrange, stretch, or replace any application content.
-- The generated background is shared with `../iphone-6.9/assets/background.png`.
+- `../backdrop.py` draws the background, as it does for iPhone: neutral graphite
+  with a faint light in each image's accent behind the top of the screenshot.
   Headlines, subheads, frame, and shadow are deterministic compositions adapted
   from the existing iPhone renderer and the approved iPad HTML preview.
 - Source and export SHA-256 values, copy, geometry, and format are recorded in
@@ -58,7 +59,7 @@ Connect upload or product-page preview was performed.
 
 ## Regenerate
 
-From the repository root, with Pillow installed:
+From the repository root, with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/ipad-13/compose_mockups.py
