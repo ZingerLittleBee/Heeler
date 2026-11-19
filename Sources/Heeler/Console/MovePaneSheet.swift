@@ -175,9 +175,10 @@ struct MovePaneSheet: View {
                         Text(verbatim: title)
                             .foregroundStyle(Color(uiColor: .label))
                         if let detail {
+                            // A Button's label tints `.secondary`, so name the color.
                             Text(verbatim: detail)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color(uiColor: .secondaryLabel))
                                 .lineLimit(1)
                                 .truncationMode(.head)
                         }
