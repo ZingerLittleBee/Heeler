@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
-"""Compose the Herdr desktop App Store screenshot for iPhone, iPad and iPhone Duo.
+"""Compose the Servers App Store screenshot for iPhone, iPad and iPhone Duo.
 
-Two real captures from a Linux machine running the Herdr desktop app: the Hosts
-list, where it sits beside Herdr TUI Hosts as a herdr-core Host, and the Agents
-list filtered to it, where its spaces read as Workspaces. Pieces are scaled
-uniformly and masked; no UI is repainted.
+Two real captures of one machine that runs Herdr TUI, herdr-core, tmux and Rex:
+the Hosts list, where its row carries a tag per Server, and its Host page,
+where each Server has a switch. Pieces are scaled uniformly and masked; no UI
+is repainted.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 HERE = Path(__file__).resolve().parent
 STORE = HERE.parent
 SF = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
-SLUG = "01a-herdr-desktop-too.png"
+SLUG = "01a-herdr-tmux-rex.png"
 
 ACCENT = (96, 200, 240)
 WHITE = (255, 255, 255)
-HEADLINE = "Herdr Desktop, Too."
-SUBHEAD = "Connect to Herdr TUI, the Herdr desktop app or herdr-core on macOS, Linux and Windows."
-LABEL = "ITS SPACES AND AGENTS"
-FOOTNOTE = "Live terminals, Chat and New Agent work there too."
+HEADLINE = "Herdr, tmux or Rex."
+SUBHEAD = "Add a machine once. Heeler finds every server it runs: Herdr TUI, the Herdr desktop app, tmux and Rex."
+LABEL = "ONE HOST, FOUR SERVERS"
+FOOTNOTE = "Live terminals and Chat on all four."
+
+IPHONE = (1320, 2868)
+# The Hosts list's row, and the Host page from its Servers heading to the footer.
+IPHONE_ROW = (60, 636, 1260, 857)
+IPHONE_SERVERS = (30, 340, 1290, 1664)
 
 Box = tuple[int, int, int, int]
 
@@ -78,13 +83,15 @@ def card(canvas: Image.Image, image: Image.Image, xy: tuple[int, int], radius: i
     return Image.alpha_composite(canvas, outline)
 
 
-def connector(canvas: Image.Image, center: int, top: int, size: int, gap: int) -> None:
+def dots(canvas: Image.Image, start: tuple[int, int], step: tuple[int, int], radius: int) -> None:
     draw = ImageDraw.Draw(canvas)
-    dot = max(4, size // 6)
     for index in range(3):
-        y = top + index * gap * 2 // 3
-        draw.ellipse((center - dot, y - dot, center + dot, y + dot), fill=(*WHITE, 110))
-    draw.text((center, top + gap * 2), LABEL, font=font(MONO, size, "Medium"), fill=(*ACCENT, 255), anchor="mm")
+        x, y = start[0] + step[0] * index, start[1] + step[1] * index
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(*WHITE, 110))
+
+
+def label(canvas: Image.Image, xy: tuple[int, int], size: int, anchor: str) -> None:
+    ImageDraw.Draw(canvas).text(xy, LABEL, font=font(MONO, size, "Medium"), fill=(*ACCENT, 255), anchor=anchor)
 
 
 def footnote(canvas: Image.Image, center: int, y: int, size: int) -> None:
@@ -96,38 +103,55 @@ def textured(path: Path, size: tuple[int, int]) -> Image.Image:
     return ImageOps.fit(Image.open(path).convert("RGB"), size, method=Image.Resampling.LANCZOS).convert("RGBA")
 
 
+def side_by_side(canvas: Image.Image, row: Image.Image, servers: Image.Image, margin: int, middle: int,
+                 radii: tuple[int, int]) -> Image.Image:
+    """The Host's row on the left, its Servers on the right, joined by dots."""
+    row_xy = (margin, middle - row.height // 2)
+    servers_xy = (canvas.width - margin - servers.width, middle - servers.height // 2)
+    canvas = glow(canvas, (row_xy[0] + 300, middle - 260, row_xy[0] + row.width + 100, middle + 320), ACCENT, 150, 110)
+    canvas = card(canvas, row, row_xy, radii[0])
+    canvas = glow(canvas, (servers_xy[0] - 200, servers_xy[1] + 300, servers_xy[0] + 600, servers_xy[1] + 900),
+                  ACCENT, 160, 60)
+    canvas = card(canvas, servers, servers_xy, radii[1])
+    gap_left, gap_right = row_xy[0] + row.width, servers_xy[0]
+    step = (gap_right - gap_left) // 4
+    dots(canvas, (gap_left + step, middle), (step, 0), 6)
+    label(canvas, (row_xy[0] + 8, row_xy[1] - 56), 32, "lm")
+    return canvas
+
+
 def iphone() -> Image.Image:
-    size = (1320, 2868)
-    hosts = source("iphone-hosts.png", size)
-    agents = source("iphone-agents.png", size)
-    canvas = Image.alpha_composite(textured(STORE / "iphone-6.9/assets/background.png", size),
-                                   Image.new("RGBA", size, (4, 5, 12, 120)))
+    hosts = source("iphone-hosts.png", IPHONE)
+    host = source("iphone-host.png", IPHONE)
+    canvas = Image.alpha_composite(textured(STORE / "iphone-6.9/assets/background.png", IPHONE),
+                                   Image.new("RGBA", IPHONE, (4, 5, 12, 120)))
     draw = ImageDraw.Draw(canvas)
     draw.line((96, 98, 170, 98), fill=(*ACCENT, 255), width=8)
-    draw.text((96, 126), "HEELER FOR HERDR", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
+    draw.text((96, 126), "HEELER FOR IPHONE", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
     draw.text((92, 188), HEADLINE, font=font(SF, 91, "Bold"), fill=(250, 250, 253, 255))
-    draw.multiline_text((96, 350), SUBHEAD.replace(" or herdr-core", "\nor herdr-core"), font=font(SF, 37, "Regular"),
+    draw.multiline_text((96, 350), SUBHEAD.replace(": ", ":\n"), font=font(SF, 37, "Regular"),
                         fill=(214, 218, 232, 255), spacing=10)
 
-    # The Hosts card: two Herdr TUI Hosts and the desktop's herdr-core Host.
-    hosts_y = 620
-    canvas = glow(canvas, (700, hosts_y + 300, 1360, hosts_y + 820), ACCENT, 110, 120)
-    canvas = card(canvas, piece(hosts, (60, 625, 1260, 1294), 1.0), (60, hosts_y), 78)
+    row_y = 640
+    row = piece(hosts, IPHONE_ROW, 1.0)
+    canvas = glow(canvas, (640, row_y - 120, 1360, row_y + 380), ACCENT, 110, 120)
+    canvas = card(canvas, row, (60, row_y), 78)
 
-    connector(canvas, size[0] // 2, hosts_y + 770, 30, 50)
+    center = IPHONE[0] // 2
+    dots(canvas, (center, row_y + row.height + 95), (0, 33), 5)
+    label(canvas, (center, row_y + row.height + 195), 30, "mm")
 
-    # The Agents list filtered to the desktop: its spaces, statuses and changes.
-    agents_y = hosts_y + 1010
-    canvas = glow(canvas, (-80, agents_y + 100, 700, agents_y + 760), ACCENT, 130, 70)
-    canvas = card(canvas, piece(agents, (0, 318, 1320, 1204), 0.95), (33, agents_y), 78)
-    footnote(canvas, size[0] // 2, 2690, 36)
+    servers_y = row_y + row.height + 320
+    canvas = glow(canvas, (-80, servers_y + 200, 700, servers_y + 900), ACCENT, 130, 70)
+    canvas = card(canvas, piece(host, IPHONE_SERVERS, 1.0), (30, servers_y), 78)
+    footnote(canvas, center, 2690, 36)
     return canvas
 
 
 def ipad() -> Image.Image:
     size = (2752, 2064)
     hosts = source("ipad-hosts.png", size)
-    agents = source("ipad-agents.png", size)
+    host = source("ipad-host.png", size)
     canvas = textured(STORE / "ipad-13/assets/background.png", size)
     veil = Image.new("RGBA", size)
     veil_draw = ImageDraw.Draw(veil)
@@ -139,55 +163,28 @@ def ipad() -> Image.Image:
     draw.text((106, 144), HEADLINE, font=font(SF, 112, "Bold"), fill=(250, 250, 253, 255), anchor="lt")
     draw.text((110, 290), SUBHEAD, font=font(SF, 41, "Regular"), fill=(211, 214, 225, 255), anchor="lt")
 
-    middle = 1110
-    # The Hosts sheet's card, left; the sidebar filtered to the desktop, right.
-    hosts_piece = piece(hosts, (828, 685, 1924, 1131), 1.32)
-    hosts_xy = (110, middle - hosts_piece.height // 2)
-    canvas = glow(canvas, (hosts_xy[0] + 500, middle - 80, hosts_xy[0] + 1400, middle + 420), ACCENT, 140, 110)
-    canvas = card(canvas, hosts_piece, hosts_xy, 66)
-
-    agents_piece = piece(agents, (0, 62, 640, 640), 1.42)
-    agents_xy = (size[0] - 110 - agents_piece.width, middle - agents_piece.height // 2 + 40)
-    canvas = glow(canvas, (agents_xy[0] - 200, agents_xy[1] + 200, agents_xy[0] + 700, agents_xy[1] + 800),
-                  ACCENT, 160, 60)
-    canvas = card(canvas, agents_piece, agents_xy, 56)
-
-    draw = ImageDraw.Draw(canvas)
-    gap_left, gap_right = hosts_xy[0] + hosts_piece.width, agents_xy[0]
-    for index in range(3):
-        x = gap_left + (gap_right - gap_left) * (index + 1) // 4
-        draw.ellipse((x - 6, middle - 6, x + 6, middle + 6), fill=(*WHITE, 110))
-    draw.text((agents_xy[0] + 8, agents_xy[1] - 56), LABEL, font=font(MONO, 32, "Medium"),
-              fill=(*ACCENT, 255), anchor="lm")
+    # Both pieces are the top of a sheet: the Hosts list, and the Host page down to the Servers footer.
+    canvas = side_by_side(canvas, piece(hosts, (796, 372, 1956, 884), 1.0), piece(host, (796, 372, 1956, 1390), 1.0),
+                          110, 1130, (76, 76))
     footnote(canvas, size[0] // 2, 1930, 38)
     return canvas
 
 
 def duo() -> Image.Image:
     size = (2853, 2007)
-    hosts = source("duo-hosts.png", size)
-    agents = source("duo-agents.png", size)
+    # Folded, the Duo lays these pages out as an iPhone does, so the pieces are the iPhone's.
+    hosts = source("iphone-hosts.png", IPHONE)
+    host = source("iphone-host.png", IPHONE)
     # The other Duo screenshots sit on this near-black field.
     canvas = Image.new("RGBA", size, (3, 4, 10, 255))
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((110, 63, 184, 69), fill=(*ACCENT, 255))
-    draw.text((112, 115), "HEELER FOR HERDR", font=font(MONO, 29, "Medium"), fill=(*ACCENT, 255), anchor="ls")
+    draw.text((112, 115), "HEELER FOR IPHONE", font=font(MONO, 29, "Medium"), fill=(*ACCENT, 255), anchor="ls")
     draw.text((112, 233), HEADLINE, font=font(SF, 103, "Bold"), fill=(250, 250, 253, 255), anchor="ls")
     draw.text((112, 322), SUBHEAD, font=font(SF, 41, "Regular"), fill=(211, 214, 225, 255), anchor="ls")
 
-    # The full-width Hosts card, then the sidebar filtered to the desktop below it.
-    hosts_piece = piece(hosts, (165, 367, 2496, 1036), 0.86)
-    hosts_xy = ((size[0] - hosts_piece.width) // 2, 400)
-    canvas = glow(canvas, (1500, hosts_xy[1] + 200, 2600, hosts_xy[1] + 760), ACCENT, 150, 110)
-    canvas = card(canvas, hosts_piece, hosts_xy, 72)
-
-    connector(canvas, size[0] // 2, hosts_xy[1] + hosts_piece.height + 45, 32, 54)
-
-    agents_piece = piece(agents, (0, 40, 959, 770), 0.9)
-    agents_xy = ((size[0] - agents_piece.width) // 2, hosts_xy[1] + hosts_piece.height + 210)
-    canvas = glow(canvas, (agents_xy[0] - 400, agents_xy[1] + 100, agents_xy[0] + 500, agents_xy[1] + 700),
-                  ACCENT, 160, 60)
-    canvas = card(canvas, agents_piece, agents_xy, 64)
+    canvas = side_by_side(canvas, piece(hosts, IPHONE_ROW, 1.0), piece(host, IPHONE_SERVERS, 0.95),
+                          112, 1070, (78, 74))
     footnote(canvas, size[0] // 2, 1945, 38)
     return canvas
 
