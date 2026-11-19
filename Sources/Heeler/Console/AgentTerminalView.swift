@@ -1319,7 +1319,13 @@ struct AgentTerminalView: View {
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
         }
         if let showFiles {
-            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder", perform: showFiles))
+            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder") {
+                // A menu opened inside the sheet hands the keyboard back to
+                // whatever held it here: it would cover Files and type into
+                // this screen. So Files opens with the keyboard down.
+                hideKeyboard()
+                showFiles()
+            })
         }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {

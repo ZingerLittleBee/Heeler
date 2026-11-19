@@ -66,6 +66,8 @@ struct AgentChatSurfaceView: View {
     /// (`edgeHandleReserve`).
     @State private var hasOfferedWorkspaceDrawer = false
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
+    /// Bumped to put the Composer's keyboard away before Files covers it.
+    @State private var composerKeyboardDismissRequest = 0
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var extensionFlow: HeelersExtensionFlow?
@@ -1157,6 +1159,7 @@ struct AgentChatSurfaceView: View {
             openAgentTerminal: { showAgentTerminal() },
             inputReplacement: blockedCard,
             focusRequest: chat?.blocked.composerFocusRequest ?? 0,
+            keyboardDismissRequest: composerKeyboardDismissRequest,
             collapsesWithoutKeyboard: true,
             keyboardIsLeaving: keyboardIsLeaving,
             interrupt: stopInterrupt)
@@ -2039,7 +2042,13 @@ struct AgentChatSurfaceView: View {
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
         }
         if let showFiles {
-            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder", perform: showFiles))
+            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder") {
+                // A menu opened inside the sheet hands the keyboard back to
+                // whatever held it here: it would cover Files and type into
+                // the message. So Files opens with the keyboard down.
+                composerKeyboardDismissRequest += 1
+                showFiles()
+            })
         }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
