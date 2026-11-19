@@ -24,7 +24,7 @@ WHITE = (255, 255, 255)
 HEADLINE = "Just Say It."
 SUBHEAD = "Speak your prompt. It lands in the Composer, ready to review and send."
 LABEL = "TRANSCRIBED AT THE CARET"
-FOOTNOTE = "Bring your own speech service key."
+FOOTNOTE = "On device, or with your own speech service."
 
 Box = tuple[int, int, int, int]
 
