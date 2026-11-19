@@ -17357,6 +17357,28 @@
         }
       }
     },
+    "Copy Pane ID" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペイン ID をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝窗格 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製窗格 ID"
+          }
+        }
+      }
+    },
     "Copy Path" : {
       "localizations" : {
         "ja" : {

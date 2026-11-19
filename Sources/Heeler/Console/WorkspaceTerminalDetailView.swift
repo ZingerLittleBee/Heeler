@@ -133,6 +133,8 @@ struct WorkspaceTerminalDetailView: View {
                     surfaceRetention: entry.surfaceRetention,
                     title: terminal.displayTitle,
                     backTitle: backTitle,
+                    copyablePaneID: console.capabilities(for: terminal.hostID).copiesPaneID
+                        ? terminal.paneID : nil,
                     workspaceDrawer: workspaceDrawer,
                     keyboardHandoff: keyboardHandoff,
                     backReturnsToAgent: false,

@@ -33,6 +33,8 @@ struct ShellTerminalView: View {
     var surfaceRetention: TerminalSurfaceRetention?
     var title = String(localized: "Terminal")
     var backTitle = String(localized: "Back to Agent")
+    /// The Pane's id for the More menu's Copy Pane ID. Nil hides the entry.
+    var copyablePaneID: String? = nil
     /// Edge-docked Workspace navigation; nil on surfaces with nowhere to route.
     var workspaceDrawer: WorkspaceTerminalDrawer?
     /// Carries the keyboard state in from the screen that opened this
@@ -295,6 +297,7 @@ struct ShellTerminalView: View {
                 onBack: { Task { await goBack() } },
                 canEnterPassword: store.canInsertPassword,
                 onEnterPassword: openPasswordSheet,
+                copyablePaneID: copyablePaneID,
                 isConfirmingClose: $isConfirmingClose,
                 onCloseTerminal: onCloseTerminal == nil
                     ? nil : { closeTerminal() }))
@@ -855,6 +858,8 @@ struct ShellTerminalMoreMenu: View {
     var canEnterPassword = false
     /// Opens the password sheet. Nil hides the entry (previews, tests).
     var onEnterPassword: (() -> Void)? = nil
+    /// The Pane's id for Copy Pane ID. Nil hides the entry.
+    var copyablePaneID: String? = nil
     /// The confirmation hangs off this button, so on iOS 26, where it is a
     /// popover, its arrow points at the menu it came from rather than at
     /// the middle of the screen.
@@ -879,6 +884,9 @@ struct ShellTerminalMoreMenu: View {
                     Label(backTitle, systemImage: "chevron.left")
                 }
                 .disabled(isReturning)
+                if let copyablePaneID {
+                    CopyPaneIDButton(paneID: copyablePaneID)
+                }
                 if onCloseTerminal != nil {
                     Button(role: .destructive) { isConfirmingClose = true } label: {
                         Label("Close Terminal", systemImage: "trash")

@@ -68,6 +68,11 @@ struct HostCapabilities: Equatable, Sendable {
     /// A Host that names a Workspace it creates, such as a tmux session, and
     /// does not also name Tabs. Existing memberwise callers leave it off.
     var namesCreatedWorkspaces = false
+    /// A Pane's id is the server's own, the one its command line takes for the
+    /// Pane (`herdr pane read`, `tmux send-keys -t`), so a row offers to copy
+    /// it. A herdr-core Terminal's address and the id Heeler writes for a Rex
+    /// block (ADR 0050) are not offered: nothing on the machine takes them.
+    var copiesPaneID = false
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -152,7 +157,7 @@ extension HostCapabilities {
                 worktrees: true, uploads: true, composerSend: true, chat: tmuxChatPrograms != nil,
                 tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
-                namesCreatedWorkspaces: true)
+                namesCreatedWorkspaces: true, copiesPaneID: true)
             return
         }
         let offered = serverKind == .herdrTUI
@@ -183,7 +188,8 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
-            hostScripts: !coreOnWindows)
+            hostScripts: !coreOnWindows,
+            copiesPaneID: offered)
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -254,16 +260,19 @@ extension Host {
 struct ConsoleAgentRowOffers: Equatable, Sendable {
     let opensInNewWindow: Bool
     let closes: Bool
+    let copiesPaneID: Bool
 
-    init(opensInNewWindow: Bool, closes: Bool) {
+    init(opensInNewWindow: Bool, closes: Bool, copiesPaneID: Bool = false) {
         self.opensInNewWindow = opensInNewWindow
         self.closes = closes
+        self.copiesPaneID = copiesPaneID
     }
 
     init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
         self.init(
             opensInNewWindow: supportsMultipleWindows && !capabilities.terminalsShowInOneWindow,
-            closes: capabilities.closeTab)
+            closes: capabilities.closeTab,
+            copiesPaneID: capabilities.copiesPaneID)
     }
 }
 
@@ -277,6 +286,8 @@ struct AgentDetailMenuOffers: Equatable, Sendable {
     let attachments: Bool
     let renameAgent: Bool
     let renameWorkspace: Bool
+    /// Not for a saved Chat, whose Pane may be gone by the time its id is used.
+    let copyPaneID: Bool
     /// Close Agent, or Remove Saved Chat, which any Host's saved Chat offers.
     let close: Bool
 
@@ -285,6 +296,7 @@ struct AgentDetailMenuOffers: Equatable, Sendable {
         attachments = capabilities.uploads
         renameAgent = capabilities.renameAgent
         renameWorkspace = capabilities.renameWorkspace(id: workspaceID)
+        copyPaneID = capabilities.copiesPaneID && !removesSavedChat
         close = capabilities.closeTab || removesSavedChat
     }
 }

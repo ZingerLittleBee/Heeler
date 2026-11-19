@@ -1230,6 +1230,7 @@
 		F1896998EA513073CF4EE713 /* PushRegistrationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63F7D63E32AA0C85E9F8FBC /* PushRegistrationStore.swift */; };
 		F1942670E29F7B340860DC8D /* HostStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEC3D31861DABF40C05EE8D /* HostStore.swift */; };
 		F22477BCF1869E1A28EAC68F /* ChatDeliveryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49CD83D83EF72199552659A /* ChatDeliveryPolicyTests.swift */; };
+		F22A29488027C247A55B8482 /* CopyPaneIDButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B28DB7257C87D4E2811C1A7 /* CopyPaneIDButton.swift */; };
 		F260F0578219CD70AAB11F04 /* AgySwarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5D2DCE17D2BCC280D1335B7 /* AgySwarm.swift */; };
 		F271226A2892164D44593BD9 /* plugin-version-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = CD3F97D0C9A6A0BC8FBEE6CD /* plugin-version-v1.json */; };
 		F2A55460F7C60EB474D69647 /* InputShortcutStripRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19E7601C369DC92DCB7704B /* InputShortcutStripRow.swift */; };
@@ -2072,6 +2073,7 @@
 		8AD05613124EA385DF48CF72 /* AgentUsageLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageLimitsTests.swift; sourceTree = "<group>"; };
 		8AD5AC7650CAC6F4DBDDABF8 /* DialogRowScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialogRowScanner.swift; sourceTree = "<group>"; };
 		8B02412C186BA855DFD9379A /* AgentNotificationRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationRoutingTests.swift; sourceTree = "<group>"; };
+		8B28DB7257C87D4E2811C1A7 /* CopyPaneIDButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyPaneIDButton.swift; sourceTree = "<group>"; };
 		8BB54B93940C297518A3440B /* ShellTerminalPasswordFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellTerminalPasswordFill.swift; sourceTree = "<group>"; };
 		8C557145C32D45CA853361D3 /* TmuxPaneAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxPaneAttachTests.swift; sourceTree = "<group>"; };
 		8C5A562F5A01AE08691B8479 /* AttachTerminalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStoreTests.swift; sourceTree = "<group>"; };
@@ -3651,6 +3653,7 @@
 				87812D6B917D5A3180ED65BC /* ConsoleTerminal.swift */,
 				C74A32020C9520EB5629B071 /* ConsoleView.swift */,
 				3F6DD633965A760453A3B42F /* ConsoleWorkspaceCards.swift */,
+				8B28DB7257C87D4E2811C1A7 /* CopyPaneIDButton.swift */,
 				6A0E438CAFD221387D974C00 /* DetailCrossfade.swift */,
 				4D3494B1280AF198398C5AA4 /* EdgeDockLift.swift */,
 				2D6996CA1550E32EE6AC3669 /* GitBranchName.swift */,
@@ -4963,6 +4966,7 @@
 				A7DC2698D649E2E1571BFB7F /* ConsoleWorkspaceCards.swift in Sources */,
 				F71F183E690597E106438E55 /* ContentView.swift in Sources */,
 				E19270A695B322233CEEBB35 /* ConversationReference.swift in Sources */,
+				F22A29488027C247A55B8482 /* CopyPaneIDButton.swift in Sources */,
 				81A789B0D295035EC13B6D68 /* CoreMutationDispatch.swift in Sources */,
 				0272B09CE3B0F295EAD8FC32 /* DemoChatSample.swift in Sources */,
 				5AE19E756AC8746C068E5D59 /* DemoOpenCodeChatSample.swift in Sources */,

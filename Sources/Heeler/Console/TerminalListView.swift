@@ -294,6 +294,9 @@ struct TerminalListView: View {
                             UIPasteboard.general.string = terminal.cwd
                         }
                     }
+                    if capabilities(of: terminal).copiesPaneID {
+                        CopyPaneIDButton(paneID: terminal.paneID)
+                    }
                 }
                 if capabilities(of: terminal).closeTab {
                     Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {

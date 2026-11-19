@@ -53,6 +53,12 @@ its contract.
   `AgentMarks.xcassets`, and its `AgentStatusAvatar` is the Status Ring that
   leads each `AgentCardView`. Coverage: [AgentKindMarkTests](../../Tests/HeelerTests/AgentKindMarkTests.swift).
 
+- **Copy Pane ID:** `HostCapabilities.copiesPaneID` (Herdr TUI and tmux, whose
+  Pane ids their own command lines take) offers
+  [CopyPaneIDButton](../../Sources/Heeler/Console/CopyPaneIDButton.swift) in both
+  lists' row menus, a Terminal's More menu, and an Agent detail's header menu
+  (`backHeaderActions`, an `AgentDetailHeaderAction` with a subtitle).
+
 ## Connection, input, and terminals
 
 - **Conversation title Rename:** [AgentTitleRenameStore](../../Sources/Heeler/Console/AgentTitleRenameStore.swift)

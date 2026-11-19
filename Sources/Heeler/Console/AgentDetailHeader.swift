@@ -451,7 +451,12 @@ private struct AgentDetailHeaderMenuItems: View {
     var body: some View {
         ForEach(actions) { @Sendable action in
             MainActorContent {
-                Button(action.title, systemImage: action.systemImage, action: action.perform)
+                Button(action: action.perform) {
+                    Label(action.title, systemImage: action.systemImage)
+                    if let subtitle = action.subtitle {
+                        Text(verbatim: subtitle)
+                    }
+                }
             }
         }
         Button(
@@ -544,6 +549,8 @@ struct AgentDetailSurfaceSwitch {
 struct AgentDetailHeaderAction: Identifiable {
     let title: LocalizedStringKey
     let systemImage: String
+    /// A second line under the title, such as the id Copy Pane ID copies.
+    var subtitle: String?
     let perform: () -> Void
 
     nonisolated var id: String { systemImage }

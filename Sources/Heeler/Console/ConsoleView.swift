@@ -2285,6 +2285,9 @@ struct ConsoleView: View {
                         startAgentRequest = StartAgentRequest(origin: newAgentOrigin)
                     }
                 }
+                if offers.copiesPaneID, !isSaved {
+                    CopyPaneIDButton(paneID: agent.agent.paneID)
+                }
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
                 if isSaved {

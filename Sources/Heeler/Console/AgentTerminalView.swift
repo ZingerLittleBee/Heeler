@@ -1295,8 +1295,8 @@ struct AgentTerminalView: View {
         AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
     }
 
-    /// The Workspace's terminals, then Changes at the far end; each only
-    /// where this screen can offer it.
+    /// The Workspace's terminals, Changes, then what acts on the Agent's
+    /// name and Pane; each only where this screen can offer it.
     private var backHeaderActions: [AgentDetailHeaderAction] {
         var actions: [AgentDetailHeaderAction] = []
         if workspaceDrawer != nil {
@@ -1317,6 +1317,17 @@ struct AgentTerminalView: View {
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
                 titleRename = console.titleRenameStore(for: agent)
+            })
+        }
+        let offers = AgentDetailMenuOffers(
+            capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
+            removesSavedChat: console.isSavedChat(agent.id))
+        if offers.copyPaneID {
+            let paneID = agent.agent.paneID
+            actions.append(AgentDetailHeaderAction(
+                title: "Copy Pane ID", systemImage: PaneIDCopy.symbol, subtitle: paneID
+            ) {
+                PaneIDCopy.copy(paneID)
             })
         }
         return actions

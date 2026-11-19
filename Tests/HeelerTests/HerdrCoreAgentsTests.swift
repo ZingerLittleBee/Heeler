@@ -557,14 +557,16 @@ struct HerdrCoreAgentsTests {
         #expect(capabilities.newTerminalRequest(workspaceID: "w1", cwd: "") == nil)
     }
 
-    @Test func aHerdrTUIAgentsRowOffersWhatItAlwaysDid() {
+    @Test func aHerdrTUIAgentsRowOffersItsWholeMenu() {
         let capabilities = HostCapabilities(serverKind: .herdrTUI)
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: true)
-                == ConsoleAgentRowOffers(opensInNewWindow: true, closes: true))
+                == ConsoleAgentRowOffers(
+                    opensInNewWindow: true, closes: true, copiesPaneID: true))
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: false)
-                == ConsoleAgentRowOffers(opensInNewWindow: false, closes: true))
+                == ConsoleAgentRowOffers(
+                    opensInNewWindow: false, closes: true, copiesPaneID: true))
     }
 
     // MARK: Agent Row Layout
