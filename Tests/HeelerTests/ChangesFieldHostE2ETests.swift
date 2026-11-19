@@ -103,23 +103,31 @@ enum ChangesFieldCheckout {
     static func verifyReads(on host: ChangesFieldHost) async throws {
         let transport = try await HeelerSSHTransport.connect(settings: host.settings)
         defer { Task { try? await transport.close() } }
+        // The fixture's own scripts are not what the git deadline bounds. The
+        // seed runs some ten git commands in one exec and has outlasted the
+        // ten seconds a read gets on a busy runner, so they go over a
+        // connection with a generous deadline of its own.
+        var scriptSettings = host.settings
+        scriptSettings.gitExecTimeout = .seconds(60)
+        let scripts = try await HeelerSSHTransport.connect(settings: scriptSettings)
+        defer { Task { try? await scripts.close() } }
         // `$HOME` resolves on the Host, so one script serves every account.
         let root = "\"$HOME\"/changes-field-" + UUID().uuidString
         let cleanup = Data("{ rm -rf \(root); } </dev/null\n".utf8)
         do {
-            try await verifyReads(on: host, transport: transport, root: root)
+            try await verifyReads(on: host, transport: transport, scripts: scripts, root: root)
         } catch {
-            _ = try? await transport.runGitScript(cleanup)
+            _ = try? await scripts.runGitScript(cleanup)
             throw error
         }
-        let cleaned = try await transport.runGitScript(cleanup)
+        let cleaned = try await scripts.runGitScript(cleanup)
         #expect(cleaned.exitStatus == 0, "\(host.label): cleanup failed")
     }
 
     private static func verifyReads(
-        on host: ChangesFieldHost, transport: HeelerSSHTransport, root: String
+        on host: ChangesFieldHost, transport: HeelerSSHTransport, scripts: HeelerSSHTransport, root: String
     ) async throws {
-        let seeded = try await transport.runGitScript(seedScript(root: root))
+        let seeded = try await scripts.runGitScript(seedScript(root: root))
         try #require(
             seeded.exitStatus == 0,
             "\(host.label): seed failed: \(String(decoding: seeded.stderr, as: UTF8.self))")
@@ -181,14 +189,14 @@ enum ChangesFieldCheckout {
 
         // Nothing above touched the Checkout: same index inode and bytes, no
         // index write after the seed finished, and neither trap fired.
-        let after = try await transport.runGitScript(afterScript(root: root))
+        let after = try await scripts.runGitScript(afterScript(root: root))
         let afterValues = markedValues(after.stdout)
         #expect(afterValues["INDEX"] == [indexBefore], "\(host.label)")
         #expect(afterValues["REWRITTEN"] == nil, "\(host.label)")
         #expect(afterValues["TRAP"] == nil, "\(host.label)")
 
         // The traps were armed: plain git on this Host fires both.
-        let control = try await transport.runGitScript(controlScript(root: root))
+        let control = try await scripts.runGitScript(controlScript(root: root))
         #expect(
             markedValues(control.stdout)["TRAP"] == ["fsmonitor-ran", "post-index-change-ran"],
             "\(host.label)")
