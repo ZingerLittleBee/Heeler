@@ -129,7 +129,7 @@ def iphone() -> Image.Image:
                                    Image.new("RGBA", size, (4, 5, 12, 120)))
     draw = ImageDraw.Draw(canvas)
     draw.line((96, 98, 170, 98), fill=(*ACCENT, 255), width=8)
-    draw.text((96, 126), "HEELER FOR HERDR", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
+    draw.text((96, 126), "HEELER FOR IPHONE", font=font(MONO, 31, "Medium"), fill=(*ACCENT, 255))
     draw.text((92, 188), HEADLINE, font=font(SF, 91, "Bold"), fill=(250, 250, 253, 255))
     draw.multiline_text((96, 350), SUBHEAD.replace(" ready", "\nready"), font=font(SF, 37, "Regular"),
                         fill=(214, 218, 232, 255), spacing=10)
@@ -181,7 +181,7 @@ def duo() -> Image.Image:
     canvas = Image.new("RGBA", size, (3, 4, 10, 255))
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((110, 63, 184, 69), fill=(*ACCENT, 255))
-    draw.text((112, 115), "HEELER FOR HERDR", font=font(MONO, 29, "Medium"), fill=(*ACCENT, 255), anchor="ls")
+    draw.text((112, 115), "HEELER FOR IPHONE", font=font(MONO, 29, "Medium"), fill=(*ACCENT, 255), anchor="ls")
     draw.text((112, 233), HEADLINE, font=font(SF, 103, "Bold"), fill=(250, 250, 253, 255), anchor="ls")
     draw.text((112, 322), SUBHEAD, font=font(SF, 41, "Regular"), fill=(211, 214, 225, 255), anchor="ls")
 

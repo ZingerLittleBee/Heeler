@@ -196,7 +196,7 @@ def compose(mockup: Mockup, screenshot: Image.Image) -> Path:
 
     overlay_draw.text(
         (96, 126),
-        "HEELER FOR HERDR",
+        "HEELER FOR IPHONE",
         font=kicker_font,
         fill=(*mockup.accent, 255),
         spacing=4,

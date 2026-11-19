@@ -8,6 +8,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from reletter_eyebrow import reletter
+
 ROOT = Path(__file__).parent
 SCREEN_LEFT, SCREEN_TOP, SCREEN_WIDTH, SCREEN_HEIGHT = 371, 440, 2110, 1484
 CORNER_RADIUS = 122
@@ -24,7 +26,8 @@ def screen_mask() -> Image.Image:
 
 
 def main() -> None:
-    template = Image.open(ROOT / "source/frame-template.png").convert("RGB")
+    # The template is an App Store Connect download whose eyebrow still names herdr.
+    template = reletter(Image.open(ROOT / "source/frame-template.png"))
     capture = Image.open(ROOT / "source/01-console-and-chat-capture.png").convert("RGB")
     screen = capture.resize((SCREEN_WIDTH, SCREEN_HEIGHT), Image.LANCZOS)
     template.paste(screen, (SCREEN_LEFT, SCREEN_TOP), screen_mask())
