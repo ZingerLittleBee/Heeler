@@ -1647,6 +1647,7 @@ actor SessionDriver {
                         let chunk = try await readSFTPFileChunk(
                             sftpID: id,
                             fileID: fileID,
+                            wanted: maxBytes - contents.count,
                             deadline: deadline)
                     else { break }
                     contents.append(chunk.prefix(maxBytes - contents.count))
@@ -1757,12 +1758,34 @@ actor SessionDriver {
         }
     }
 
+    /// The most one read hands libssh2 to fill.
+    static let maximumSFTPReadBufferBytes = 64 * 1_024
+    /// The least: under it a range's last bytes would come a few at a time.
+    static let minimumSFTPReadBufferBytes = 1_024
+
+    /// The buffer for one read of a file that `wanted` more bytes are asked
+    /// of; nil reads to the file's end.
+    ///
+    /// libssh2 reads ahead. Every call asks the server for whatever brings
+    /// the bytes requested and not yet handed over up to four buffers, wanted
+    /// or not. A full buffer on each call of a ranged read therefore had the
+    /// server send up to 256 KiB past the range, which crossed the link to be
+    /// dropped: a read from the middle of a long file cost twice its size. A
+    /// quarter of what is still wanted makes the first call request the whole
+    /// range at once and the calls after it request nothing past its end, bar
+    /// the last request's rounding, which is less than one buffer.
+    static func sftpReadBufferBytes(wanted: Int?) -> Int {
+        guard let wanted else { return maximumSFTPReadBufferBytes }
+        return min(maximumSFTPReadBufferBytes, max(minimumSFTPReadBufferBytes, wanted / 4))
+    }
+
     private func readSFTPFileChunk(
         sftpID: UInt64,
         fileID: UInt64,
+        wanted: Int? = nil,
         deadline: ContinuousClock.Instant
     ) async throws -> Data? {
-        let maximumChunkBytes = 64 * 1_024
+        let bufferBytes = Self.sftpReadBufferBytes(wanted: wanted)
         let owner = allocateTransportSendOwner()
 
         while true {
@@ -1782,7 +1805,7 @@ actor SessionDriver {
                 else {
                     throw SSHError.connectionInvalidated
                 }
-                var buffer = [UInt8](repeating: 0, count: maximumChunkBytes)
+                var buffer = [UInt8](repeating: 0, count: bufferBytes)
                 let read = buffer.withUnsafeMutableBytes { bytes -> Int in
                     guard let baseAddress = bytes.baseAddress else { return 0 }
                     return libssh2_sftp_read(
