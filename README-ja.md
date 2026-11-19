@@ -4,7 +4,7 @@
 
 # Heeler
 
-<a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="App Store でダウンロード" height="40" /></a>
+<a href="https://apps.apple.com/us/app/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="App Store でダウンロード" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="TestFlight で入手可能" height="40" /></a>
 
 **ご自身のマシンで動くコーディングエージェントのための、iPhone と iPad のコンソールです。**
@@ -16,7 +16,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-6F42C1?style=flat-square)](LICENSE)
 [![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white&style=flat-square)](https://www.swift.org)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/ios/)
-[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/id6797263135)
 
 <a href="https://trendshift.io/repositories/151670?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/151670" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
@@ -70,7 +70,7 @@ Heeler は、iPhone と iPad で使える独立したオープンソースのエ
 
 ## インストール
 
-[App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) または [TestFlight](https://testflight.apple.com/join/aXSxRn4r) から Heeler をインストールしてください。マシン側では SSH を有効にし、次のいずれかのバックエンドを実行します。
+[App Store](https://apps.apple.com/us/app/id6797263135) または [TestFlight](https://testflight.apple.com/join/aXSxRn4r) から Heeler をインストールしてください。マシン側では SSH を有効にし、次のいずれかのバックエンドを実行します。
 
 | バックエンド | 対応環境 | ガイド |
 | --- | --- | --- |
@@ -124,4 +124,4 @@ Heeler は SwiftUI で作られ、iOS 18+ に対応しています。SSH には�
 
 ## ステータス
 
-[App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) で公開されています。まだすべての国や地域で入手できるわけではありません。入手できない地域では、[TestFlight](https://testflight.apple.com/join/aXSxRn4r) のビルドを引き続き利用できます。まず個人で使うために作られ、日々の利用を通じて形づくられてきたため、粗削りな部分や頻繁な変更があることをご承知おきください。herdr プロジェクトとは提携していません。
+[App Store](https://apps.apple.com/us/app/id6797263135) で公開されています。まだすべての国や地域で入手できるわけではありません。入手できない地域では、[TestFlight](https://testflight.apple.com/join/aXSxRn4r) のビルドを引き続き利用できます。まず個人で使うために作られ、日々の利用を通じて形づくられてきたため、粗削りな部分や頻繁な変更があることをご承知おきください。herdr プロジェクトとは提携していません。
