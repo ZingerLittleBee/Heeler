@@ -74,6 +74,16 @@ below.
   its prompts there, so those lines can include prompts from your other
   Antigravity CLI conversations, in any working folder; Heeler compares and
   discards them, without storing or showing them.
+- **Files.** When you open Files from an Agent, Heeler lists the folders you
+  browse on your Host and reads the files you open, through the SFTP of the
+  same SSH connection. It never changes, creates or deletes anything on the
+  Host. Text is read into memory, up to 1 MB at a time. An image, video,
+  sound or document you open, and any file you share or save, is first copied
+  to a temporary folder on your device. Heeler deletes a copy when you close
+  its preview and the rest when you close Files; a copy left behind because
+  Heeler stopped while Files was open is deleted the next time you open
+  Files, once it is a day old. A file you share or save goes where you send
+  it, and that copy is no longer Heeler's to delete.
 
 - **Overlay Networks.** Network settings are stored locally. Tailscale auth
   keys, EasyTier network secrets, and the device's ZeroTier identity are

@@ -1543,6 +1543,34 @@
         }
       }
     },
+    "%@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ / %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，共 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，共 %2$@"
+          }
+        }
+      }
+    },
     "%@ of %@ · %@" : {
       "comment" : "An Account's share of its program, then the other metric: 72% of Claude Code · 211M tokens",
       "localizations" : {
@@ -3463,6 +3491,29 @@
         }
       }
     },
+    "%lld hidden" : {
+      "comment" : "How many of a folder's items Files is not showing because their names start with a dot.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld項目を非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隐藏 %lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隱藏 %lld 個"
+          }
+        }
+      }
+    },
     "%lld idle" : {
       "comment" : "Live Activity count chip: idle Agents",
       "localizations" : {
@@ -3526,6 +3577,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 張圖片"
+          }
+        }
+      }
+    },
+    "%lld items" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld item"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld items"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld項目"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個項目"
           }
         }
       }
@@ -6375,6 +6466,28 @@
         }
       }
     },
+    "A path on the Host. ~ is the home directory." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上のパス。~ はホームディレクトリです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的路径。~ 表示主目录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的路徑。~ 代表家目錄。"
+          }
+        }
+      }
+    },
     "A rename is already in progress for this Agent." : {
       "localizations" : {
         "ja" : {
@@ -7233,6 +7346,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增網路"
+          }
+        }
+      }
+    },
+    "Add Path to Message" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスをメッセージに追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将路径添加到消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將路徑加入訊息"
           }
         }
       }
@@ -8165,6 +8300,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent %lld"
+          }
+        }
+      }
+    },
+    "Agent Directory" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントのディレクトリ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 目录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 目錄"
           }
         }
       }
@@ -12311,6 +12468,50 @@
         }
       }
     },
+    "Can't Open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開"
+          }
+        }
+      }
+    },
+    "Can't Open This Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開此資料夾"
+          }
+        }
+      }
+    },
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -12578,6 +12779,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已取消"
+          }
+        }
+      }
+    },
+    "Changed %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@に変更"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@更改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@變更"
           }
         }
       }
@@ -18444,6 +18667,28 @@
         }
       }
     },
+    "Couldn't Copy the File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルをコピーできませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法拷贝文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法複製檔案"
+          }
+        }
+      }
+    },
     "Couldn't Load Folders" : {
       "localizations" : {
         "ja" : {
@@ -18510,6 +18755,28 @@
         }
       }
     },
+    "Couldn't Open the File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを開けませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開檔案"
+          }
+        }
+      }
+    },
     "Couldn't Read Changes" : {
       "localizations" : {
         "ja" : {
@@ -18550,6 +18817,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法讀取差異"
+          }
+        }
+      }
+    },
+    "Couldn't Read This Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを読み込めませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取此資料夾"
           }
         }
       }
@@ -19466,6 +19755,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "深色模式主題"
+          }
+        }
+      }
+    },
+    "Date Modified" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更日"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改日期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改日期"
           }
         }
       }
@@ -20979,6 +21290,28 @@
         }
       }
     },
+    "Downloading from the Host…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストからダウンロード中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从主机下载…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從主機下載…"
+          }
+        }
+      }
+    },
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -21509,6 +21842,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "任一回答都會分岔此對話，並將 Grok Build 移到分岔上。對話檢視會留在這裡並暫存訊息，直到你在終端機用 /resume 切換回來。"
+          }
+        }
+      }
+    },
+    "Empty File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空のファイル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白檔案"
+          }
+        }
+      }
+    },
+    "Empty Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空のフォルダ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白資料夾"
           }
         }
       }
@@ -22830,6 +23207,28 @@
         }
       }
     },
+    "Every item here starts with a dot." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここにある項目はすべてドットで始まります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处的项目均以点号开头。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的每個項目都以點開頭。"
+          }
+        }
+      }
+    },
     "Every other Host already uses these fields." : {
       "localizations" : {
         "ja" : {
@@ -23833,6 +24232,72 @@
         }
       }
     },
+    "Files Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」を利用できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法使用「檔案」"
+          }
+        }
+      }
+    },
+    "Files can't open this path." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」ではこのパスを開けません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”无法打开此路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「檔案」無法打開此路徑。"
+          }
+        }
+      }
+    },
+    "Files can't open “%@”. It is not a file or a folder." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」では“%@”を開けません。ファイルでもフォルダでもありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”无法打开“%@”。它既不是文件也不是文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「檔案」無法打開「%@」。它不是檔案也不是資料夾。"
+          }
+        }
+      }
+    },
     "Files of the Host Helper are missing or changed. Repair puts them back." : {
       "localizations" : {
         "ja" : {
@@ -23851,6 +24316,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Host Helper 的檔案遺失或已變更。修復會將它們還原。"
+          }
+        }
+      }
+    },
+    "Files reads this folder when the Host is connected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに接続されると、「ファイル」がこのフォルダを読み込みます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机连接后，“文件”会读取此文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機連線後，「檔案」會讀取此資料夾。"
           }
         }
       }
@@ -23962,6 +24449,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "篩選資料夾"
+          }
+        }
+      }
+    },
+    "Filter this folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを絞り込み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "筛选此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "篩選此資料夾"
           }
         }
       }
@@ -24195,6 +24704,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "收合已完成的輪次"
+          }
+        }
+      }
+    },
+    "Folder Not Found" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダが見つかりません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到資料夾"
           }
         }
       }
@@ -24902,6 +25433,72 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全域"
+          }
+        }
+      }
+    },
+    "Go" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往"
+          }
+        }
+      }
+    },
+    "Go to Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダへ移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往資料夾"
+          }
+        }
+      }
+    },
+    "Go to Folder…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダへ移動…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往文件夹…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往資料夾…"
           }
         }
       }
@@ -26489,6 +27086,28 @@
         }
       }
     },
+    "Heeler can't show this kind of file. Share it or save it to open it in another app. Nothing is copied from the Host until you do." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler ではこの種類のファイルを表示できません。共有または保存すると、ほかのアプリで開けます。それまではホストから何もコピーされません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法显示此类文件。可以共享或存储它，以便在其他 App 中打开。在此之前不会从主机拷贝任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法顯示這類檔案。你可以分享或儲存它，以便在其他 App 中打開。在此之前不會從主機複製任何內容。"
+          }
+        }
+      }
+    },
     "Heeler can't tell where this file's settings belong, so it won't change it." : {
       "localizations" : {
         "ja" : {
@@ -27961,6 +28580,34 @@
         }
       }
     },
+    "Heeler opens files up to %@. This one is %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler opens files up to %1$@. This one is %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler で開けるファイルは %1$@ までです。このファイルは %2$@ です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 最大可打开 %1$@ 的文件。此文件为 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 最大可打開 %1$@ 的檔案。此檔案為 %2$@。"
+          }
+        }
+      }
+    },
     "Heeler reaches the Jump Host through this network without turning on a VPN." : {
       "localizations" : {
         "ja" : {
@@ -28432,6 +29079,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Herdr 的 Agent hook 會回報給這裡指定的窗格，而不是它們所執行的終端機。"
+          }
+        }
+      }
+    },
+    "Hidden Files Only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隠しファイルのみ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅有隐藏文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有隱藏檔案"
           }
         }
       }
@@ -31415,6 +32084,28 @@
         }
       }
     },
+    "Just now" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "たった今"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刚刚"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剛剛"
+          }
+        }
+      }
+    },
     "Keep the phrases you send an Agent over and over, one tap away." : {
       "localizations" : {
         "ja" : {
@@ -32476,6 +33167,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Linger 會在沒有人登入此主機時，讓 Host Helper 持續執行。"
+          }
+        }
+      }
+    },
+    "Link" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連結"
           }
         }
       }
@@ -35496,6 +36209,28 @@
         }
       }
     },
+    "No Matching Items" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致する項目がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有符合的項目"
+          }
+        }
+      }
+    },
     "No Members Yet" : {
       "localizations" : {
         "ja" : {
@@ -35602,6 +36337,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚無節點"
+          }
+        }
+      }
+    },
+    "No Preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューできません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法預覽"
           }
         }
       }
@@ -37798,6 +38555,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 沒有任何程式在監聽"
+          }
+        }
+      }
+    },
+    "Nothing listed here matches “%@”." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに表示されている項目に“%@”と一致するものはありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处列出的项目均不匹配“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡列出的項目都不符合「%@」。"
           }
         }
       }
@@ -40273,6 +41052,28 @@
         }
       }
     },
+    "Opens a preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開預覽"
+          }
+        }
+      }
+    },
     "Opens a secure field for the password prompt on screen" : {
       "localizations" : {
         "ja" : {
@@ -40357,6 +41158,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟終端機動作"
+          }
+        }
+      }
+    },
+    "Opens the folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開資料夾"
           }
         }
       }
@@ -40511,6 +41334,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟此主機的設定。"
+          }
+        }
+      }
+    },
+    "Opens when the download finishes. The copy is removed when you close the preview." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードが終わると開きます。プレビューを閉じるとコピーは削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载完成后打开。关闭预览时会移除该副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載完成後打開。關閉預覽時會移除這份副本。"
           }
         }
       }
@@ -40783,6 +41628,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選填"
+          }
+        }
+      }
+    },
+    "Options" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オプション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選項"
           }
         }
       }
@@ -41737,6 +42604,28 @@
         }
       }
     },
+    "Path" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路徑"
+          }
+        }
+      }
+    },
     "Path unavailable" : {
       "localizations" : {
         "ja" : {
@@ -42224,6 +43113,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "平台"
+          }
+        }
+      }
+    },
+    "Plays when the download finishes. The copy is removed when you close the preview." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードが終わると再生します。プレビューを閉じるとコピーは削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载完成后播放。关闭预览时会移除该副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載完成後播放。關閉預覽時會移除這份副本。"
           }
         }
       }
@@ -44194,6 +45105,28 @@
         }
       }
     },
+    "Reading Folder…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダを読み込み中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取文件夹…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取資料夾…"
+          }
+        }
+      }
+    },
     "Reading OpenCode's conversations needs sqlite3 or python3 on the Host. Install one, then tap Check Again." : {
       "localizations" : {
         "ja" : {
@@ -44256,6 +45189,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "讀取主機檔案失敗。"
+          }
+        }
+      }
+    },
+    "Reading from the Host…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストから読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从主机读取…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從主機讀取…"
           }
         }
       }
@@ -47858,6 +48813,28 @@
         }
       }
     },
+    "Save to Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“ファイル”に保存"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储到“文件”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存到「檔案」"
+          }
+        }
+      }
+    },
     "Saved" : {
       "localizations" : {
         "ja" : {
@@ -49461,6 +50438,50 @@
         }
       }
     },
+    "Share" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享…"
+          }
+        }
+      }
+    },
     "Shell command" : {
       "localizations" : {
         "ja" : {
@@ -49859,6 +50880,28 @@
         }
       }
     },
+    "Show End" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "末尾を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示末尾"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示結尾"
+          }
+        }
+      }
+    },
     "Show Estimated API Cost" : {
       "localizations" : {
         "ja" : {
@@ -49877,6 +50920,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示預估 API 費用"
+          }
+        }
+      }
+    },
+    "Show Hidden Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隠しファイルを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示隐藏文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示隱藏檔案"
           }
         }
       }
@@ -49921,6 +50986,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示側邊欄"
+          }
+        }
+      }
+    },
+    "Show Start" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先頭を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示开头"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示開頭"
           }
         }
       }
@@ -50189,6 +51276,34 @@
         }
       }
     },
+    "Showing %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing %1$lld of %2$lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld項目中%1$lld項目を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 %2$lld 项中的 %1$lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示 %2$lld 個中的 %1$lld 個"
+          }
+        }
+      }
+    },
     "Showing the earlier read. Pull to try again." : {
       "localizations" : {
         "ja" : {
@@ -50211,6 +51326,34 @@
         }
       }
     },
+    "Showing the first %@ of %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing the first %1$@ of %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ のうち先頭の %1$@ を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示前 %1$@，共 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示前 %1$@，共 %2$@。"
+          }
+        }
+      }
+    },
     "Showing the first part of this diff." : {
       "localizations" : {
         "ja" : {
@@ -50229,6 +51372,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示此差異的開頭部分。"
+          }
+        }
+      }
+    },
+    "Showing the last %@ of %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing the last %1$@ of %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ のうち末尾の %1$@ を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示最后 %1$@，共 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示最後 %1$@，共 %2$@。"
           }
         }
       }
@@ -51084,6 +52255,28 @@
         }
       }
     },
+    "Size" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        }
+      }
+    },
     "Sized for another device" : {},
     "Skill" : {
       "localizations" : {
@@ -51422,6 +52615,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "部分變更詳細資料已被截斷。"
+          }
+        }
+      }
+    },
+    "Sort By" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "並び順"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
           }
         }
       }
@@ -57596,6 +58811,28 @@
         }
       }
     },
+    "The Host is not connected. This is the folder as Files last read it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストは接続されていません。「ファイル」が最後に読み込んだフォルダの内容です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未连接。这是“文件”上次读取到的文件夹内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未連線。這是「檔案」上次讀取到的資料夾內容。"
+          }
+        }
+      }
+    },
     "The Host is not ready." : {
       "localizations" : {
         "ja" : {
@@ -57772,6 +59009,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機拒絕該圖片：%@"
+          }
+        }
+      }
+    },
+    "The Host refused the read (SFTP status %llu)." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが読み取りを拒否しました（SFTP ステータス %llu）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了读取（SFTP 状态 %llu）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕了讀取（SFTP 狀態 %llu）。"
           }
         }
       }
@@ -58039,6 +59298,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新讀取主機的終端機"
+          }
+        }
+      }
+    },
+    "The Host's account is not allowed to list it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのアカウントにはこのフォルダを一覧する権限がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的账户无权列出此文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的帳號無權列出此資料夾。"
+          }
+        }
+      }
+    },
+    "The Host's account is not allowed to read this file." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのアカウントにはこのファイルを読み取る権限がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的账户无权读取此文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的帳號無權讀取此檔案。"
           }
         }
       }
@@ -59563,6 +60866,28 @@
       }
     },
     "The connection to Rex ended." : {},
+    "The connection to the Host dropped." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストとの接続が切れました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与主机的连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與主機的連線中斷。"
+          }
+        }
+      }
+    },
     "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected." : {
       "localizations" : {
         "ja" : {
@@ -60004,6 +61329,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檔案在 Heeler 讀取後又變更了，因此沒有寫入任何內容。請重新檢視變更。"
+          }
+        }
+      }
+    },
+    "The file changed on the Host while it was being read. Try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り中にホスト上のファイルが変更されました。もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取过程中主机上的文件发生了变化。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取過程中主機上的檔案有了變動。請再試一次。"
           }
         }
       }
@@ -64290,6 +65637,50 @@
         }
       }
     },
+    "This Host's SSH server offers no SFTP, which Files reads through." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの SSH サーバは SFTP を提供していません。「ファイル」は SFTP 経由で読み取ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的 SSH 服务器未提供 SFTP，而“文件”需要通过它读取。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的 SSH 伺服器未提供 SFTP，而「檔案」需要透過它讀取。"
+          }
+        }
+      }
+    },
+    "This Host's SSH server offers no SFTP, which Files, Chat and attachments all use. Turn on SFTP in the server's settings, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの SSH サーバは SFTP を提供していません。「ファイル」、チャット、添付はいずれも SFTP を使います。サーバの設定で SFTP を有効にしてから、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的 SSH 服务器未提供 SFTP，而“文件”“对话”和附件都要用到它。请在服务器设置中开启 SFTP，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的 SSH 伺服器未提供 SFTP，而「檔案」、對話和附件都需要它。請在伺服器設定中開啟 SFTP，然後再檢查一次。"
+          }
+        }
+      }
+    },
     "This Host's overlay network no longer exists" : {
       "localizations" : {
         "ja" : {
@@ -65401,6 +66792,28 @@
         }
       }
     },
+    "This file is no longer on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルはもうホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件已不在主机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案已不在主機上。"
+          }
+        }
+      }
+    },
     "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent." : {
       "localizations" : {
         "ja" : {
@@ -65508,6 +66921,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此資料夾不含 %@ 的任何檔案。請選擇包含 %@ 的資料夾。"
+          }
+        }
+      }
+    },
+    "This folder holds more than Files lists. Sorting and filtering cover only the items listed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダには「ファイル」が表示できる数より多くの項目があります。並べ替えと絞り込みは表示中の項目だけが対象です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件夹中的项目多于“文件”列出的数量。排序和筛选仅针对已列出的项目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料夾的項目比「檔案」列出的還多。排序與篩選只涵蓋已列出的項目。"
           }
         }
       }
@@ -65640,6 +67075,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這已不是同一個連結的工作樹，未移除任何內容。"
+          }
+        }
+      }
+    },
+    "This is not a file Files can open." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは「ファイル」で開けるファイルではありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是“文件”可以打开的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不是「檔案」可以打開的檔案。"
           }
         }
       }
@@ -66733,6 +68190,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "淺色模式使用 Tomorrow，深色模式使用 Tomorrow Night"
+          }
+        }
+      }
+    },
+    "Too Large to Open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大きすぎて開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件过大，无法打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案太大，無法打開"
           }
         }
       }
@@ -70044,6 +71523,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檢視內容"
+          }
+        }
+      }
+    },
+    "View Rendered" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レンダリング表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看渲染效果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢視排版結果"
+          }
+        }
+      }
+    },
+    "View Source" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソースを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看源码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢視原始碼"
           }
         }
       }
@@ -76113,6 +77636,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」不是節點，例如 tcp://host:11010 或 udp://host:11010。"
+          }
+        }
+      }
+    },
+    "“%@” is not on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”はホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上没有“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上沒有「%@」。"
+          }
+        }
+      }
+    },
+    "“%@” points to something that is no longer on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”のリンク先はもうホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”指向的内容已不在主机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」指向的項目已不在主機上。"
           }
         }
       }

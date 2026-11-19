@@ -76,7 +76,7 @@ its contract.
   with [HandOffRecord](../../Sources/Heeler/HandOff/HandOffRecord.swift), and
   `ConsoleStore.deliverHandOff` stages the file through the receiving Agent's
   `AgentComposerSession` under the mode's message
-  ([ADR 0059](../adr/0059-hand-off-stages-a-conversation-record.md)).
+  ([ADR 0060](../adr/0060-hand-off-stages-a-conversation-record.md)).
 
 ## Connection, input, and terminals
 
@@ -367,6 +367,26 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [perf-trace-summary.py](../../scripts/perf-trace-summary.py) reads the file.
   [performance-tracing.md](performance-tracing.md) is the runbook. Coverage:
   [PerfTraceTests](../../Tests/HeelerTests/PerfTraceTests.swift).
+
+- **Files (a Host's folders, read-only, from an Agent):** `AgentDetailView.showFiles`
+  builds a [HostFilesBrowser](../../Sources/Heeler/HostFiles/HostFilesBrowser.swift)
+  over `ConsoleStore.chatHostFiles(for:)`, offered by
+  `HostCapabilities.offersFiles(directory:)` from both surfaces' header menu.
+  The browser owns the page stack (`path`, one `Route` a folder), each
+  `HostFolder`'s single listing, Go to Folder and the path a message gets;
+  `ChatHostFiles.finishingEachRequest` keeps a cancelled task from dropping a
+  request the Host has yet to answer.
+  [HostFilePreview](../../Sources/Heeler/HostFiles/HostFilePreview.swift)
+  decides how one file opens (text in place, a copy for a viewer, Share and
+  Save to Files) and removes its copy;
+  [HostFileKind](../../Sources/Heeler/HostFiles/HostFileKind.swift) holds the
+  kinds, the text check and the size and time wording.
+  [HostFilesView](../../Sources/Heeler/HostFiles/HostFilesView.swift),
+  [HostFilePreviewView](../../Sources/Heeler/HostFiles/HostFilePreviewView.swift)
+  and [HostFileViewers](../../Sources/Heeler/HostFiles/HostFileViewers.swift)
+  are the sheet, the preview and the system viewers
+  ([ADR 0059](../adr/0059-files-reads-a-hosts-folders-and-changes-nothing.md)).
+  No focused tests yet.
 
 ## Sibling deliverables and generated files
 

@@ -4,7 +4,9 @@ import SwiftUI
 /// Move to Workspace, as an Agent's detail and the rows of both lists name it.
 enum MovePaneCopy {
     static let action = String(localized: "Move to Workspace")
-    static let symbol = "folder"
+    /// Not a folder: Files has that one, and an Agent's menu tells its items
+    /// apart by their symbols.
+    static let symbol = "arrow.up.and.down.and.arrow.left.and.right"
 }
 
 /// What Move to Workspace moves: an Agent's or a Terminal's Pane on one Host.

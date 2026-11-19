@@ -42,6 +42,9 @@ struct AgentDetailView: View {
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
     @State private var changes: AgentChangesPresentation
+    /// Files, open in a sheet over this detail; nil while none is. It holds
+    /// what the sheet has read, so closing the sheet discards it.
+    @State private var files: HostFilesBrowser?
     @State private var retainedAgent: AgentTerminalCache.Entry?
     @State private var retentionOwnerID: UUID
     /// Lives as long as this detail does, which tells the cache whether a
@@ -198,6 +201,48 @@ struct AgentDetailView: View {
     /// the Checkout on the Host, where this Host can run it.
     private var offersChanges: Bool {
         console.capabilities(for: agent.hostID).offersChanges(directory: agent.directory)
+    }
+
+    /// Any Agent with a directory SFTP can list, on a Host not known to be
+    /// a native Windows machine.
+    private var offersFiles: Bool {
+        console.hostPlatforms[agent.hostID] != .nativeWindows
+            && console.capabilities(for: agent.hostID).offersFiles(directory: agent.directory)
+    }
+
+    /// Files open in the Agent's directory, reading over the Host's live
+    /// connection as Chat does.
+    private func showFiles() {
+        guard files == nil, let directory = agent.directory else { return }
+        files = HostFilesBrowser(
+            files: console.chatHostFiles(for: agent.hostID), agentDirectory: directory,
+            isHostConnected: console.hostStatuses[agent.hostID] == .connected)
+    }
+
+    /// Files closed, by its button, a swipe or a path sent to the message:
+    /// what its previews copied to this device goes now.
+    private func closeFiles() {
+        files?.close()
+        files = nil
+    }
+
+    private var filesSheet: Binding<HostFilesBrowser?> {
+        Binding(
+            get: { files },
+            set: { browser in
+                if browser == nil { closeFiles() } else { files = browser }
+            })
+    }
+
+    /// Text chosen elsewhere for the Agent's next message: into the
+    /// terminal while Direct Input shows it, and into the Composer's draft
+    /// otherwise, as Chat always writes.
+    private func insertIntoMessage(_ text: String) {
+        if inputMode.isDirect && effectiveSurface == .terminal {
+            attach.insertReference(text)
+        } else {
+            session.composer.insertIntoDraft(text)
+        }
     }
 
     private var terminalAccess: HostTerminalAccess {
@@ -475,6 +520,7 @@ struct AgentDetailView: View {
                             isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                             openTerminal: { openWorkspaceTerminal() },
                             showChanges: offersChanges ? { changes.open() } : nil,
+                            showFiles: offersFiles ? { showFiles() } : nil,
                             workspaceDrawer: drawer,
                             selectSurface: { selectSurface($0) })
                     }
@@ -504,6 +550,7 @@ struct AgentDetailView: View {
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     showChanges: offersChanges ? { changes.open() } : nil,
+                    showFiles: offersFiles ? { showFiles() } : nil,
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },
@@ -537,6 +584,15 @@ struct AgentDetailView: View {
                 .environment(
                     \.fileDiffTheme,
                     effectiveSurface == .chat ? themeColors : nil)
+        }
+        .sheet(item: filesSheet) { browser in
+            HostFilesView(
+                browser: browser,
+                isHostConnected: console.hostStatuses[agent.hostID] == .connected
+            ) { path in
+                closeFiles()
+                if let text = ChangesReference.insertion(path) { insertIntoMessage(text) }
+            }
         }
         // Open Terminal on an iPhone: a short detour, so Back and the swipe
         // come back to this Agent rather than to the list.
@@ -614,14 +670,7 @@ struct AgentDetailView: View {
             onShowsChanges?(!showsTerminal)
             if showsTerminal {
                 applyTerminalAccess()
-                if let text = changes.takePendingInsertion() {
-                    // Chat always writes through the Composer.
-                    if inputMode.isDirect && effectiveSurface == .terminal {
-                        attach.insertReference(text)
-                    } else {
-                        session.composer.insertIntoDraft(text)
-                    }
-                }
+                if let text = changes.takePendingInsertion() { insertIntoMessage(text) }
             }
         }
         // Availability can move the surface too: Chat appears once the

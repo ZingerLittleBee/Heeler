@@ -55,6 +55,13 @@ struct HostCapabilities: Equatable, Sendable {
         hostScripts && directory != nil
     }
 
+    /// Whether an Agent in this directory offers Files: a path SFTP can
+    /// list. A native Windows machine's directories wait for a test there.
+    func offersFiles(directory: String?) -> Bool {
+        guard let directory, !isNativeWindowsCore else { return false }
+        return RemoteFilePath.isAcceptable(directory)
+    }
+
     func offersChat(for program: ChatProgram) -> Bool {
         chat && chatPrograms?.contains(program) != false
     }
