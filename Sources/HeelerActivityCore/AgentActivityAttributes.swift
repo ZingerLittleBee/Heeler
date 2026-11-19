@@ -35,6 +35,16 @@ struct AgentActivityAttributes: Codable, Hashable, Sendable {
                 return blocked > 0 ? Self.blockedRelevanceTier + seconds : seconds
             }
 
+            /// An update with the same counts keeps the score the activity
+            /// has, so reopening the app or a title change does not make a
+            /// Host look newly changed or undo the relay's push time.
+            func relevanceScore(
+                at date: Date, replacing previous: (counts: Self, score: Double)?
+            ) -> Double {
+                if let previous, previous.counts == self { return previous.score }
+                return relevanceScore(at: date)
+            }
+
             static let blockedRelevanceTier: Double = 10_000_000_000
         }
 

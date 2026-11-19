@@ -283,7 +283,9 @@ and the push `timestamp` (Unix seconds), with no count tiebreak:
 | Otherwise | `timestamp` |
 
 The plugin sends only when the Host's status map changes, so `timestamp` is
-the time of that Host's latest status change.
+the time of that Host's latest status change. The app's own updates keep the
+activity's current score while the counts stay the same, so opening the app
+or a title change does not move a Host ahead.
 
 Higher scores rank a Host's Live Activity above lower scores on the Lock
 Screen and in the Dynamic Island. The app sets `ActivityContent.relevanceScore`

@@ -156,8 +156,10 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         id: String, content: AgentActivityAttributes.ContentState
     ) async {
         guard let activity = activity(id: id) else { return }
-        await activity.update(ActivityContent(
-            state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore(at: Date())))
+        let shown = activity.content
+        let score = content.counts.relevanceScore(
+            at: Date(), replacing: (shown.state.counts, shown.relevanceScore))
+        await activity.update(ActivityContent(state: content, staleDate: nil, relevanceScore: score))
     }
 
     nonisolated private static func pushEnd(

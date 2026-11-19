@@ -68,4 +68,15 @@ struct AgentActivityContentStateTests {
         #expect(olderBlocked > newestWorking)
         #expect(newerDone > olderWorking)
     }
+
+    @Test func updatesThatKeepTheCountsKeepTheirScore() {
+        typealias Counts = AgentActivityAttributes.ContentState.Counts
+        let pushed = Counts(working: 2, blocked: 0, done: 1)
+        let reopened = Date(timeIntervalSince1970: 1_800_000_600)
+
+        #expect(pushed.relevanceScore(at: reopened, replacing: (pushed, 1_800_000_000)) == 1_800_000_000)
+        #expect(Counts(working: 1, blocked: 0, done: 2)
+            .relevanceScore(at: reopened, replacing: (pushed, 1_800_000_000)) == 1_800_000_600)
+        #expect(pushed.relevanceScore(at: reopened, replacing: nil) == 1_800_000_600)
+    }
 }
