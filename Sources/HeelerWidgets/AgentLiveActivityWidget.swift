@@ -443,7 +443,8 @@ struct AgentActivityCompactSide: View {
 
 extension AgentActivityIslandCompact.TextWidths {
     /// The widths the island's fonts draw: semibold system text, with
-    /// monospaced digits for counts, rounded up to whole pixels.
+    /// monospaced digits for counts, plus half a point SwiftUI's text layout
+    /// adds beyond the font's advance, rounded up to whole pixels.
     static let font = Self(
         count: { text, unit in
             measured(text, UIFont.monospacedDigitSystemFont(ofSize: unit, weight: .semibold))
@@ -453,7 +454,7 @@ extension AgentActivityIslandCompact.TextWidths {
     private static func measured(_ text: String, _ font: UIFont) -> CGFloat {
         let line = CTLineCreateWithAttributedString(
             NSAttributedString(string: text, attributes: [.font: font]))
-        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) + 0.5
         return (width * 3).rounded(.up) / 3
     }
 }
