@@ -30748,6 +30748,28 @@
         }
       }
     },
+    "It moves into a new Tab there. What runs in it keeps running." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのワークスペースの新しいタブに移動します。実行中のものはそのまま動き続けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会移入该工作区的新标签页，其中运行的程序继续运行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會移入該工作區的新分頁，其中執行的程式繼續執行。"
+          }
+        }
+      }
+    },
     "Its Agents, Terminals and notifications leave this device, and its Notification Key is deleted from the Keychain." : {},
     "Its first start can take up to 35 seconds." : {
       "localizations" : {
@@ -34015,6 +34037,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移到右側"
+          }
+        }
+      }
+    },
+    "Move to Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークスペースに移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移到工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至工作區"
           }
         }
       }
@@ -56487,6 +56531,28 @@
         }
       }
     },
+    "The Host did not answer in time. The move may still have happened, so check the list before trying again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが時間内に応答しませんでした。移動は完了している可能性があるため、再試行の前にリストを確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未及时响应。移动可能已经完成，请先查看列表再重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未及時回應。移動可能已經完成，請先查看列表再重試。"
+          }
+        }
+      }
+    },
     "The Host did not answer while syncing. Retrying…" : {
       "localizations" : {
         "ja" : {
@@ -60546,6 +60612,28 @@
         }
       }
     },
+    "The move failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動に失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動失敗：%@"
+          }
+        }
+      }
+    },
     "The named pipe %@ does not exist" : {
       "localizations" : {
         "ja" : {
@@ -63733,6 +63821,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此主機沒有 sha256sum 也沒有 shasum，因此 Heeler 無法檢查 Host Helper 的檔案。"
+          }
+        }
+      }
+    },
+    "This Host has no other Workspace." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストにはほかのワークスペースがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台主机没有其他工作区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台主機沒有其他工作區。"
           }
         }
       }
@@ -73084,6 +73194,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr 拒絕了訊息：%@"
+          }
+        }
+      }
+    },
+    "herdr rejected the move: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr は移動を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒绝了移动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒絕了移動：%@"
           }
         }
       }

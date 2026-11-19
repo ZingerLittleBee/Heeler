@@ -562,11 +562,11 @@ struct HerdrCoreAgentsTests {
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: true)
                 == ConsoleAgentRowOffers(
-                    opensInNewWindow: true, closes: true, copiesPaneID: true))
+                    opensInNewWindow: true, closes: true, copiesPaneID: true, moves: true))
         #expect(
             ConsoleAgentRowOffers(capabilities: capabilities, supportsMultipleWindows: false)
                 == ConsoleAgentRowOffers(
-                    opensInNewWindow: false, closes: true, copiesPaneID: true))
+                    opensInNewWindow: false, closes: true, copiesPaneID: true, moves: true))
     }
 
     // MARK: Agent Row Layout

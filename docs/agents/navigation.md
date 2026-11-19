@@ -58,6 +58,14 @@ its contract.
   [CopyPaneIDButton](../../Sources/Heeler/Console/CopyPaneIDButton.swift) in both
   lists' row menus, a Terminal's More menu, and an Agent detail's header menu
   (`backHeaderActions`, an `AgentDetailHeaderAction` with a subtitle).
+- **Move to Workspace:** `HostCapabilities.movesPanes` (Herdr TUI) offers
+  [MovePaneSheet](../../Sources/Heeler/Console/MovePaneSheet.swift) from the same
+  row menus and the Agent detail's header menu. `ConsoleStore.movePane` sends
+  [`pane.move`](../../Sources/Heeler/Transport/PaneMove.swift) through
+  `HostConsoleProjection.movePane`, carries the pin to the id the Pane has in
+  its new Workspace (`PinnedAgentsStore.movePin`), and returns that id for an
+  open detail to follow. [Compatibility notes](herdr-compatibility.md) record
+  the id change.
 
 ## Connection, input, and terminals
 

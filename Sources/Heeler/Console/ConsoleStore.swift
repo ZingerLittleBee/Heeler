@@ -1587,6 +1587,18 @@ final class ConsoleStore {
         try await projection(for: hostID).closePane(paneID)
     }
 
+    /// Moves an Agent's or a Terminal's Pane to another Workspace of its Host
+    /// and answers the id it has there, carrying its pin along. The
+    /// projection's resync brings the row to its new Workspace.
+    func movePane(
+        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination
+    ) async throws -> String {
+        let movedPaneID = try await projection(for: hostID).movePane(paneID, to: destination)
+        pins.movePin(hostID: hostID, from: paneID, to: movedPaneID)
+        rebuild()
+        return movedPaneID
+    }
+
     /// Whether the Console row's close takes the Agent's whole tab: only
     /// when its pane is the tab's last one. Beside other panes (shells
     /// count), only the Agent's own pane closes.

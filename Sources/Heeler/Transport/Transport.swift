@@ -127,6 +127,13 @@ protocol Transport: HostServices, HostNotificationFiles {
     /// id; returns once the server acknowledges.
     func closeTab(_ params: TabTarget) async throws
 
+    /// Moves a Pane into a new Tab of another Workspace, or into a Workspace
+    /// of its own (`pane.move`). What runs in the Pane keeps running; a Pane
+    /// that changes Workspace gets a new id, which the result names. The move
+    /// surfaces in the Console through the normal snapshot/delta machinery (a
+    /// `pane.moved` membership event triggers a re-snapshot).
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse
+
     /// Lists git worktrees for the repository containing `workspaceID`.
     /// Console detail uses this only to obtain branch presentation because
     /// `session.snapshot` already carries repository and checkout identity.
@@ -254,6 +261,10 @@ extension Transport {
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
+
+    func movePane(_ params: PaneMoveParams) async throws -> PaneMoveResponse {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Move to Workspace"))
+    }
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         []

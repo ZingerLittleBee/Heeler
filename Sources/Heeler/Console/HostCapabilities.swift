@@ -73,6 +73,10 @@ struct HostCapabilities: Equatable, Sendable {
     /// it. A herdr-core Terminal's address and the id Heeler writes for a Rex
     /// block (ADR 0050) are not offered: nothing on the machine takes them.
     var copiesPaneID = false
+    /// Move to Workspace: a Pane moves into a new Tab of another Workspace,
+    /// or into a Workspace of its own, with what runs in it. Only Herdr TUI
+    /// serves it (`pane.move`).
+    var movesPanes = false
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
     /// Host that starts none, and for a directory that is not usable, rather
@@ -189,7 +193,8 @@ extension HostCapabilities {
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
             hostScripts: !coreOnWindows,
-            copiesPaneID: offered)
+            copiesPaneID: offered,
+            movesPanes: offered)
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -261,18 +266,21 @@ struct ConsoleAgentRowOffers: Equatable, Sendable {
     let opensInNewWindow: Bool
     let closes: Bool
     let copiesPaneID: Bool
+    let moves: Bool
 
-    init(opensInNewWindow: Bool, closes: Bool, copiesPaneID: Bool = false) {
+    init(opensInNewWindow: Bool, closes: Bool, copiesPaneID: Bool = false, moves: Bool = false) {
         self.opensInNewWindow = opensInNewWindow
         self.closes = closes
         self.copiesPaneID = copiesPaneID
+        self.moves = moves
     }
 
     init(capabilities: HostCapabilities, supportsMultipleWindows: Bool) {
         self.init(
             opensInNewWindow: supportsMultipleWindows && !capabilities.terminalsShowInOneWindow,
             closes: capabilities.closeTab,
-            copiesPaneID: capabilities.copiesPaneID)
+            copiesPaneID: capabilities.copiesPaneID,
+            moves: capabilities.movesPanes)
     }
 }
 
@@ -288,6 +296,8 @@ struct AgentDetailMenuOffers: Equatable, Sendable {
     let renameWorkspace: Bool
     /// Not for a saved Chat, whose Pane may be gone by the time its id is used.
     let copyPaneID: Bool
+    /// Not for a saved Chat: its Host is away, so nothing can be moved.
+    let movePane: Bool
     /// Close Agent, or Remove Saved Chat, which any Host's saved Chat offers.
     let close: Bool
 
@@ -297,6 +307,7 @@ struct AgentDetailMenuOffers: Equatable, Sendable {
         renameAgent = capabilities.renameAgent
         renameWorkspace = capabilities.renameWorkspace(id: workspaceID)
         copyPaneID = capabilities.copiesPaneID && !removesSavedChat
+        movePane = capabilities.movesPanes && !removesSavedChat
         close = capabilities.closeTab || removesSavedChat
     }
 }

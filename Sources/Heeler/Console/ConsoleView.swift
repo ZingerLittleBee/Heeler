@@ -110,6 +110,7 @@ struct ConsoleView: View {
     /// The New Agent sheet while it is up. An item rather than a flag, so
     /// the sheet reads the origin it was opened with.
     @State private var startAgentRequest: StartAgentRequest?
+    @State private var movePaneRequest: MovePaneRequest?
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// The flat lists' summary opened: every Host problem in one sheet.
     @State private var isShowingHostIssues = false
@@ -265,6 +266,10 @@ struct ConsoleView: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                followMovedAgent(request, to: paneID)
+            })
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -1479,6 +1484,14 @@ struct ConsoleView: View {
         }
     }
 
+    /// An Agent moved to another Workspace has a new id there. The detail
+    /// beside the list follows it, as it opens a fresh launch, rather than
+    /// reading the id the Agent left as an Agent that is gone.
+    private func followMovedAgent(_ request: MovePaneRequest, to paneID: String) {
+        guard paneID != request.paneID, notificationRouter.path.last == request.id else { return }
+        selectAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
+    }
+
     private func selectTerminal(_ terminal: ConsoleTerminal) {
         if let agentID = terminal.agentID {
             selectAgent(agentID)
@@ -2283,6 +2296,11 @@ struct ConsoleView: View {
                 if let newAgentOrigin {
                     Button("New Agent", systemImage: "plus") {
                         startAgentRequest = StartAgentRequest(origin: newAgentOrigin)
+                    }
+                }
+                if offers.moves, !isSaved {
+                    Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
+                        movePaneRequest = MovePaneRequest(agent: agent)
                     }
                 }
                 if offers.copiesPaneID, !isSaved {

@@ -281,6 +281,7 @@ struct AgentTerminalView: View {
     @State private var isConfirmingClose = false
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isStartingAgent = false
+    @State private var movePaneRequest: MovePaneRequest?
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var isRenamingAgent = false
@@ -607,7 +608,7 @@ struct AgentTerminalView: View {
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
-                || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
+                || isStartingAgent || movePaneRequest != nil || isManagingSnippets || isShowingSkillsPicker
                 || isRenamingAgent || titleRename != nil || viewingSkill != nil || isRenamingWorkspace
                 || isShowingWorktree || attachLinksOrigin != nil || closeErrorMessage != nil
                 || attach.pendingPaste != nil || attach.pasteErrorMessage != nil
@@ -632,6 +633,11 @@ struct AgentTerminalView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                // The Agent has a new id in its new Workspace: the detail goes with it.
+                switchToAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
+            })
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
             StartAgentView(
@@ -1322,6 +1328,11 @@ struct AgentTerminalView: View {
         let offers = AgentDetailMenuOffers(
             capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
             removesSavedChat: console.isSavedChat(agent.id))
+        if offers.movePane {
+            actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
+                movePaneRequest = MovePaneRequest(agent: agent)
+            })
+        }
         if offers.copyPaneID {
             let paneID = agent.agent.paneID
             actions.append(AgentDetailHeaderAction(

@@ -103,6 +103,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func paneExists(_ paneID: String) async throws -> Bool
     func closePane(_ paneID: String) async throws
     func closeTab(_ tabID: String) async throws
+    /// Moves a Pane to another Workspace and answers the id it has there,
+    /// which differs from `paneID` on a Host whose ids name the Workspace.
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     /// What removing this Worktree would lose, to warn of. Nil where the Host
@@ -259,6 +262,10 @@ extension ConsoleHostProjection {
     func pauseHealthChecks() async {}
 
     func availableTemplates() async throws -> [AgentTemplate] { [] }
+
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Move to Workspace"))
+    }
 
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String { asked }
 
