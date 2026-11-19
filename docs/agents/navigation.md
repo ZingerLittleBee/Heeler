@@ -343,6 +343,26 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [performance-tracing.md](performance-tracing.md) is the runbook. Coverage:
   [PerfTraceTests](../../Tests/HeelerTests/PerfTraceTests.swift).
 
+- **Files (a Host's folders, read-only, from an Agent):** `AgentDetailView.showFiles`
+  builds a [HostFilesBrowser](../../Sources/Heeler/HostFiles/HostFilesBrowser.swift)
+  over `ConsoleStore.chatHostFiles(for:)`, offered by
+  `HostCapabilities.offersFiles(directory:)` from both surfaces' header menu.
+  The browser owns the page stack (`path`, one `Route` a folder), each
+  `HostFolder`'s single listing, Go to Folder and the path a message gets;
+  `ChatHostFiles.finishingEachRequest` keeps a cancelled task from dropping a
+  request the Host has yet to answer.
+  [HostFilePreview](../../Sources/Heeler/HostFiles/HostFilePreview.swift)
+  decides how one file opens (text in place, a copy for a viewer, Share and
+  Save to Files) and removes its copy;
+  [HostFileKind](../../Sources/Heeler/HostFiles/HostFileKind.swift) holds the
+  kinds, the text check and the size and time wording.
+  [HostFilesView](../../Sources/Heeler/HostFiles/HostFilesView.swift),
+  [HostFilePreviewView](../../Sources/Heeler/HostFiles/HostFilePreviewView.swift)
+  and [HostFileViewers](../../Sources/Heeler/HostFiles/HostFileViewers.swift)
+  are the sheet, the preview and the system viewers
+  ([ADR 0059](../adr/0059-files-reads-a-hosts-folders-and-changes-nothing.md)).
+  No focused tests yet.
+
 ## Sibling deliverables and generated files
 
 | Area | Entry and verification |
