@@ -336,7 +336,9 @@ private struct ClaudeDialogReader {
         switch kind {
         case .claudeBash:
             let command = joinRows(sections.content)
-            subject.command = command.isEmpty ? nil : command
+            let matchCommand =
+                command.hasSuffix("…") ? String(command.dropLast()).trimmingCharacters(in: .whitespaces) : command
+            subject.command = matchCommand.isEmpty ? nil : matchCommand
             subject.commandDescription = description.isEmpty ? nil : description
             if !command.isEmpty { body.append(command) }
         case .claudeFetch:
@@ -361,8 +363,10 @@ private struct ClaudeDialogReader {
                 subject.filePath = call.isEmpty ? nil : call
             }
         default:
+            let changes = sections.content.map(\.trimmedText).filter { !$0.isEmpty }
             subject.filePath = description.isEmpty ? nil : description
-            body.append(contentsOf: sections.content.map(\.trimmedText).filter { !$0.isEmpty })
+            subject.changeLines = changes
+            body.append(contentsOf: changes)
         }
         body.append(contentsOf: sections.after)
         return dialog(
@@ -815,12 +819,12 @@ private struct ClaudeDialogReader {
         }
         let dashed = (index..<end).filter { DialogRowScanner.isRule(rows[$0], of: "╌", minimumWidth: fullWidth) }
         guard let open = dashed.first else {
-            return (paragraphs(in: index..<end), [], [])
+            return (paragraphs(in: index..<end, unquoting: true), [], [])
         }
         let close = dashed.dropFirst().first ?? end
-        let content = (open + 1..<close).map { rows[$0] }
-        let after = close < end ? paragraphs(in: close + 1..<end) : []
-        return (paragraphs(in: index..<open), content, after)
+        let content = (open + 1..<close).map { withoutQuoteBar(rows[$0]) }
+        let after = close < end ? paragraphs(in: close + 1..<end, unquoting: true) : []
+        return (paragraphs(in: index..<open, unquoting: true), content, after)
     }
 
     /// The plan's upper box: its title and plan rows, as far as the screen
@@ -884,22 +888,67 @@ private struct ClaudeDialogReader {
         return entries.map(\.text)
     }
 
-    /// Consecutive non-blank rows joined as wrapped text; blank rows and
-    /// rules separate paragraphs.
-    private func paragraphs(in range: Range<Int>) -> [String] {
+    /// Consecutive non-blank rows joined as wrapped text; blank rows, rules,
+    /// quote-bar boundaries and the unattended auto-block banner separate
+    /// paragraphs.
+    private func paragraphs(in range: Range<Int>, unquoting: Bool = false) -> [String] {
         var result: [String] = []
         var current: [ScreenRow] = []
-        for index in range {
-            let row = rows[index]
-            if row.isBlank || isRuleRow(row) {
-                if !current.isEmpty { result.append(joinRows(current)) }
-                current = []
-            } else {
-                current.append(row)
-            }
+        var currentQuoted: Bool?
+        func flush() {
+            guard !current.isEmpty else { return }
+            let joined = joinRows(current)
+            result.append(unquoting ? ClaudeAutoBlockCountdown.normalized(joined) : joined)
+            current = []
+            currentQuoted = nil
         }
-        if !current.isEmpty { result.append(joinRows(current)) }
+        for index in range {
+            let raw = rows[index]
+            if raw.isBlank || isRuleRow(raw) {
+                flush()
+                continue
+            }
+            let row = unquoting ? withoutQuoteBar(raw) : raw
+            let wasQuoted = unquoting && row.text != raw.text
+            if row.isBlank {
+                flush()
+                continue
+            }
+            if let currentQuoted, currentQuoted != wasQuoted {
+                flush()
+            } else if unquoting, ClaudeAutoBlockCountdown.startsBanner(row.trimmedText) {
+                flush()
+            }
+            current.append(row)
+            currentQuoted = wasQuoted
+        }
+        flush()
         return result
+    }
+
+    /// Drops the dim `│ ` border Claude draws to the left of a wrapped
+    /// description, command, URL, prompt or permission reason, keeping each
+    /// run's column so wrapped-word checks still see where the box starts
+    /// and where the row ended.
+    private func withoutQuoteBar(_ row: ScreenRow) -> ScreenRow {
+        guard let indent = row.indent, indent <= 2 else { return row }
+        let rest = row.text(from: indent)
+        guard rest.first == "│" else { return row }
+        let after = rest.dropFirst()
+        guard after.isEmpty || after.first.map(ScreenRow.isBlank) == true,
+            let runIndex = row.runs.firstIndex(where: { $0.column <= indent && indent < $0.endColumn })
+        else { return row }
+        let run = row.runs[runIndex]
+        guard run.style.isDim || run.style.foreground != nil else { return row }
+        var updated = ""
+        var column = run.column
+        for character in run.text {
+            updated.append(column == indent ? " " : character)
+            column += TerminalCellWidth.width(of: character)
+        }
+        var runs = row.runs
+        runs[runIndex] = ScreenRun(text: updated, style: run.style, column: run.column, width: run.width)
+        return ScreenRow(index: row.index, runs: runs)
     }
 
     private func joinRows(_ group: [ScreenRow]) -> String {
@@ -1019,16 +1068,71 @@ private struct ClaudeDialogReader {
     }
 }
 
+/// Claude Code's unattended permission timer (`⚠ Claude Code will
+/// automatically block this request in 1:16, to avoid holding up an
+/// unattended session`, or `in about 2 minutes` in screen-reader mode).
+/// It ticks every second while the same dialog waits, so its remaining
+/// time stays out of the body and fingerprint.
+private enum ClaudeAutoBlockCountdown {
+    static func startsBanner(_ trimmedText: String) -> Bool {
+        var rest = Substring(trimmedText)
+        if let first = rest.first, first == "⚠" || first == "!" {
+            rest = rest.dropFirst()
+            if rest.first == "\u{FE0F}" { rest = rest.dropFirst() }
+            rest = rest.drop(while: \.isWhitespace)
+        }
+        return rest.hasPrefix("Claude Code will automatically")
+            || (trimmedText.first == "⚠" && rest.hasPrefix("Claude Code"))
+    }
+
+    static func normalized(_ text: String) -> String {
+        text.replacing(
+            /Claude Code will automatically block this request in (?:\d+:\d{2}|about \d+ (?:minute|second)s?)/,
+            with: "Claude Code will automatically block this request")
+    }
+}
+
 /// Builds generic-card excerpts for Claude screens.
 enum ClaudeExcerpt {
     static func make(rows: [ScreenRow], footerRows: Set<Int>, numbered: [Int: String], reason: String)
         -> GenericDialogExcerpt
     {
-        let trimmed = rows.drop(while: \.isBlank).reversed().drop(while: \.isBlank).reversed()
-        let fingerprintRows = trimmed.filter { !footerRows.contains($0.index) }.map(\.text)
+        let trimmed = Array(rows.drop(while: \.isBlank).reversed().drop(while: \.isBlank).reversed())
+        let fingerprintRows = Self.fingerprintRows(from: trimmed, footerRows: footerRows)
         return GenericDialogExcerpt(
-            rows: Array(trimmed), numbered: numbered, reason: reason,
+            rows: trimmed, numbered: numbered, reason: reason,
             fingerprint: DialogFingerprint(program: .claude, excerptRows: fingerprintRows))
+    }
+
+    private static func fingerprintRows(from rows: [ScreenRow], footerRows: Set<Int>) -> [String] {
+        let kept = rows.filter { !footerRows.contains($0.index) }
+        var result: [String] = []
+        var index = 0
+        while index < kept.count {
+            let row = kept[index]
+            if ClaudeAutoBlockCountdown.startsBanner(row.trimmedText) {
+                var banner = row.trimmedText
+                index += 1
+                while index < kept.count, !banner.contains("unattended session") {
+                    let next = kept[index]
+                    let text = next.trimmedText
+                    if next.isBlank || Self.stopsBanner(next, trimmedText: text) { break }
+                    banner += " " + text
+                    index += 1
+                }
+                result.append(ClaudeAutoBlockCountdown.normalized(banner))
+                continue
+            }
+            result.append(row.text)
+            index += 1
+        }
+        return result
+    }
+
+    private static func stopsBanner(_ row: ScreenRow, trimmedText: String) -> Bool {
+        if DialogRowScanner.numberedOption(in: row, pointer: "❯") != nil { return true }
+        if trimmedText.hasPrefix("❯ ") || trimmedText.hasPrefix("Do you want to ") { return true }
+        return ["─", "╌", "▔"].contains { DialogRowScanner.isRule(row, of: $0, minimumWidth: 8) }
     }
 }
 

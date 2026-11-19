@@ -157,10 +157,8 @@ private struct BlockedDialogCard: View {
             BlockedCodeBox(text: subject.command ?? card.request?.summary ?? "")
         case .claudeFileEdit, .claudeFileCreate:
             BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")
-            // Between the file's name and the closing question: the change.
-            if dialog.body.count > 2 {
-                BlockedChangeBox(
-                    lines: Array(dialog.body.dropFirst().dropLast()), marksChanges: dialog.kind == .claudeFileEdit)
+            if !subject.changeLines.isEmpty {
+                BlockedChangeBox(lines: subject.changeLines, marksChanges: dialog.kind == .claudeFileEdit)
             }
         case .claudeFileRead:
             BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")

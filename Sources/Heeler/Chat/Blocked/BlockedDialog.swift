@@ -223,6 +223,8 @@ struct DialogSubject: Sendable, Hashable {
     /// Claude Edit/Write: the file as the dialog names it. Codex patch: the
     /// first `Destination:`.
     var filePath: String?
+    /// Claude Edit/Create: the diff or file lines between the dashed rules.
+    var changeLines: [String] = []
     /// Codex patch: every `Destination:`.
     var destinations: [String] = []
     /// Claude WebFetch: the URL.
