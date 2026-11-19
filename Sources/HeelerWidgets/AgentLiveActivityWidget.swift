@@ -1,4 +1,5 @@
 import ActivityKit
+import CoreText
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -434,8 +435,26 @@ struct AgentActivityCompactSide: View {
     private var full: AgentActivityCompactRow {
         AgentActivityCompactRow(
             layout: presentation.compact(
-                screenWidth: screenWidth ?? AgentActivityIslandMetrics.portraitScreenWidth),
+                screenWidth: screenWidth ?? AgentActivityIslandMetrics.portraitScreenWidth,
+                textWidths: .font),
             edge: edge)
+    }
+}
+
+extension AgentActivityIslandCompact.TextWidths {
+    /// The widths the island's fonts draw: semibold system text, with
+    /// monospaced digits for counts, rounded up to whole pixels.
+    static let font = Self(
+        count: { text, unit in
+            measured(text, UIFont.monospacedDigitSystemFont(ofSize: unit, weight: .semibold))
+        },
+        letter: { text, unit in measured(text, UIFont.systemFont(ofSize: unit, weight: .semibold)) })
+
+    private static func measured(_ text: String, _ font: UIFont) -> CGFloat {
+        let line = CTLineCreateWithAttributedString(
+            NSAttributedString(string: text, attributes: [.font: font]))
+        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        return (width * 3).rounded(.up) / 3
     }
 }
 

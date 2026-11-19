@@ -116,8 +116,11 @@ struct AgentActivityIslandPresentation: Equatable, Sendable {
         return phrases.joinedAsPhraseList
     }
 
-    func compact(screenWidth: CGFloat) -> AgentActivityIslandCompact {
-        AgentActivityIslandCompact(tallies: tallies, letter: hostLabel, screenWidth: screenWidth)
+    func compact(
+        screenWidth: CGFloat, textWidths: AgentActivityIslandCompact.TextWidths = .drawing
+    ) -> AgentActivityIslandCompact {
+        AgentActivityIslandCompact(
+            tallies: tallies, letter: hostLabel, screenWidth: screenWidth, textWidths: textWidths)
     }
 }
 
@@ -147,7 +150,6 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
         var symbol: CGFloat { unit * 0.93 }
         var symbolGap: CGFloat { unit * 0.17 }
         var itemSpacing: CGFloat { unit * (showsSymbols ? 0.4 : 0.6) }
-        var digit: CGFloat { unit * 0.6 }
     }
 
     let leading: [Item]
@@ -162,8 +164,27 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
         screenWidth >= 420 ? 58 : 47
     }
 
+    /// Widths of the text runs: a count, or the Host letter, at a size.
+    /// `drawing` is the approved drawings' arithmetic, which picks the level;
+    /// the widget passes the font's real widths, which size the sides.
+    struct TextWidths: Sendable {
+        let count: @Sendable (String, CGFloat) -> CGFloat
+        let letter: @Sendable (String, CGFloat) -> CGFloat
+
+        static let drawing = TextWidths(
+            count: { text, unit in CGFloat(text.count) * unit * 0.6 },
+            letter: { text, unit in
+                text.reduce(0) { width, character in
+                    if character == "M" || character == "W" { return width + unit * 0.82 }
+                    if character.isLowercase { return width + unit * 0.55 }
+                    return width + unit * 0.6
+                }
+            })
+    }
+
     init(
-        tallies: [AgentActivityIslandPresentation.Tally], letter: String?, screenWidth: CGFloat
+        tallies: [AgentActivityIslandPresentation.Tally], letter: String?, screenWidth: CGFloat,
+        textWidths: TextWidths = .drawing
     ) {
         var leading: [Item]
         var trailing: [Item]
@@ -185,7 +206,8 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
         }
         let limit = Self.sideLimit(screenWidth: screenWidth)
         let level = [Level.full, .small, .numbersOnly].first {
-            Self.width(leading: leading, trailing: trailing, letter: letter, at: $0) <= limit
+            Self.width(leading: leading, trailing: trailing, letter: letter, at: $0, text: .drawing)
+                <= limit
         } ?? .numbersOnly
         if !level.showsSymbols {
             leading = leading.map(\.numberOnly)
@@ -195,32 +217,23 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
         self.trailing = trailing
         self.letter = letter
         self.level = level
-        sideWidth = Self.width(leading: leading, trailing: trailing, letter: letter, at: level)
+        sideWidth = Self.width(
+            leading: leading, trailing: trailing, letter: letter, at: level, text: textWidths)
     }
 
     private static func width(
-        leading: [Item], trailing: [Item], letter: String?, at level: Level
+        leading: [Item], trailing: [Item], letter: String?, at level: Level, text: TextWidths
     ) -> CGFloat {
-        var trailingWidth = width(of: trailing, at: level)
+        var trailingWidth = width(of: trailing, at: level, text: text)
         if let letter {
-            trailingWidth += (trailing.isEmpty ? 0 : level.itemSpacing) + letterWidth(letter, at: level)
+            trailingWidth += (trailing.isEmpty ? 0 : level.itemSpacing) + text.letter(letter, level.unit)
         }
-        return max(width(of: leading, at: level), trailingWidth)
+        return max(width(of: leading, at: level, text: text), trailingWidth)
     }
 
-    private static func width(of items: [Item], at level: Level) -> CGFloat {
-        items.reduce(0) { $0 + $1.width(at: level) }
+    private static func width(of items: [Item], at level: Level, text: TextWidths) -> CGFloat {
+        items.reduce(0) { $0 + $1.width(at: level, text: text) }
             + CGFloat(max(0, items.count - 1)) * level.itemSpacing
-    }
-
-    /// The letter is plain text at the numbers' size: wide capitals, narrow
-    /// lowercase, digit width otherwise.
-    static func letterWidth(_ letter: String, at level: Level) -> CGFloat {
-        letter.reduce(0) { width, character in
-            if character == "M" || character == "W" { return width + level.unit * 0.82 }
-            if character.isLowercase { return width + level.unit * 0.55 }
-            return width + level.digit
-        }
     }
 }
 
@@ -238,13 +251,15 @@ extension AgentActivityIslandCompact.Item {
         }
     }
 
-    func width(at level: AgentActivityIslandCompact.Level) -> CGFloat {
+    func width(
+        at level: AgentActivityIslandCompact.Level, text: AgentActivityIslandCompact.TextWidths
+    ) -> CGFloat {
         switch self {
         case .symbol: level.symbol
-        case .count(_, let count): CGFloat(String(count).count) * level.digit
+        case .count(_, let count): text.count(String(count), level.unit)
         case .pair(_, let count):
             (level.showsSymbols ? level.symbol + level.symbolGap : 0)
-                + CGFloat(String(count).count) * level.digit
+                + text.count(String(count), level.unit)
         }
     }
 }

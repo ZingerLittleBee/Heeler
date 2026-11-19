@@ -172,8 +172,9 @@ struct AgentActivityPresentationTests {
         #expect(one.sideWidth == level.symbol)
 
         let lettered = compact(.init(working: 1, blocked: 1, done: 1), letter: "L")
-        let pair = level.symbol + level.symbolGap + level.digit
-        let trailing = pair + level.itemSpacing + level.digit
+        let digit = level.unit * 0.6
+        let pair = level.symbol + level.symbolGap + digit
+        let trailing = pair + level.itemSpacing + digit
         let leading = pair * 2 + level.itemSpacing
         #expect(abs(lettered.sideWidth - max(leading, trailing)) < 0.001)
     }
