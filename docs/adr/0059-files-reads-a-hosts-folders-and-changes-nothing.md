@@ -59,6 +59,20 @@ one page per folder, previews full screen.
   dropped before the Host answers leaves its answer for the next request of
   its kind: with a throttled link, cancelling a download and opening another
   file showed the first file's size on the second.
+- **A file comes in pieces sized to the link.** The Host has one connection,
+  and a piece's bytes hold it while they cross: the terminal's output waits
+  behind them, and a piece that needs longer than a request's 15 seconds never
+  arrives. So a piece is what the link carried in about a second, as the
+  pieces before it measured, between 32 KiB and 256 KiB. The first is 64 KiB,
+  a faster link is believed a doubling at a time, and a piece that times out
+  sends the next try back to 32 KiB. One piece measures roughly, so the pace
+  moves halfway to each measure, except that a link found carrying under half
+  of it is believed at once. The pace is kept while Files is open, so a second
+  file starts where the first got to. It goes back to a first piece when the
+  Host's connection is a new one, and a file that opens with round trips
+  several times slower than the quickest seen starts no larger than that.
+  Text past its first piece shows how far the read is, and a file that is not
+  text is told from its first piece.
 - **Offered on macOS and Linux Hosts.** Every Server Kind there. A native
   Windows Host is left out until Files has been tried on one.
 - **A path can go back to the Agent.** Add Path to Message closes Files and
@@ -93,9 +107,15 @@ one page per folder, previews full screen.
 
 - A folder with more than 1,000 entries shows the first 1,000 by name of what
   the scan reached. Sorting by date or size orders those, not the folder.
-- A large file over a slow link takes long. Each 256 KiB piece is a stat, an
-  open, the reads and a close of its own, and there is no resume: Cancel
-  discards what arrived.
+- A large file over a slow link takes long. Each piece is a stat, an open,
+  the read and a close of its own, about four round trips besides its bytes,
+  and a slow link's small pieces pay them more often: at 15 kB/s with 200 ms
+  each way a 539 kB video took 52 seconds. There is no resume: Cancel discards
+  what arrived.
+- The terminal still waits while a piece crosses: under a second at 250 kB/s,
+  up to about two at 50 kB/s and at 15 kB/s, and nearly five for the first
+  piece at 15 kB/s, before the link is known. A link too slow to carry 32 KiB
+  within a request's deadline opens nothing larger than that.
 - A request cancelled on a stalled link keeps the shared SFTP channel busy
   until it answers or its deadline passes. Chat's reads on that Host wait
   behind it.
