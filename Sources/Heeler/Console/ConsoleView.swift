@@ -111,6 +111,7 @@ struct ConsoleView: View {
     /// the sheet reads the origin it was opened with.
     @State private var startAgentRequest: StartAgentRequest?
     @State private var movePaneRequest: MovePaneRequest?
+    @State private var handOffRequest: HandOffRequest?
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// The flat lists' summary opened: every Host problem in one sheet.
     @State private var isShowingHostIssues = false
@@ -269,6 +270,15 @@ struct ConsoleView: View {
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 followMovedAgent(request, to: paneID)
+            })
+        .modifier(
+            HandOffSheetPresenter(
+                request: $handOffRequest, console: console,
+                hosts: hosts.consoleHosts.offeringNewItem(
+                    listsTerminals: false, capabilities: { console.capabilities(for: $0) })
+            ) { id in
+                // The Agent that got the Hand Off opens, with it in its Composer.
+                selectAgent(id)
             })
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
@@ -2296,6 +2306,11 @@ struct ConsoleView: View {
                 if let newAgentOrigin {
                     Button("New Agent", systemImage: "plus") {
                         startAgentRequest = StartAgentRequest(origin: newAgentOrigin)
+                    }
+                }
+                if console.offersHandOff(for: agent) {
+                    Button(HandOffCopy.action, systemImage: HandOffCopy.symbol) {
+                        handOffRequest = HandOffRequest(source: agent)
                     }
                 }
                 if offers.moves, !isSaved {

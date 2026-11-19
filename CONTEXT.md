@@ -186,7 +186,7 @@ A user-selected image that exists on a Host at a remote path, whether or not the
 _Avoid_: attachment, uploaded image
 
 **Staged File**:
-A user-selected file that exists on a Host at a remote path, whether or not the Agent has used it from a prompt.
+A user-selected file, or the conversation record of a Hand Off, that exists on a Host at a remote path, whether or not the Agent has used it from a prompt.
 _Avoid_: attachment, uploaded file
 
 **Image Attachment**:
@@ -517,6 +517,17 @@ OpenCode by that query, keeping decoded entries, never tool output, in an
 on-device cache; and the Heeler plugin on the Host itself, or on herdr-core and
 tmux the Host Helper, to total Claude Code, Codex, and Antigravity CLI Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
+
+**Hand Off**:
+Giving one Agent's conversation to another Agent on the same Server, or to a
+new one, to carry the work on (**Take Over**) or to review it (**Second
+Opinion**). Heeler writes a conversation record from what Chat read of the
+Transcript, without tool output or reasoning, stages it for the receiving
+Agent as a Staged File, and puts a message that asks for it to be read in that
+Agent's Composer. Nothing is sent: the user sends the draft. Offered for a
+live Agent whose program Chat reads, on a Host that takes uploads (ADR 0059).
+_Avoid_: Handoff (Apple's name for continuing a task on another device),
+transfer, fork, catch-up
 
 **Account**:
 One sign-in of a harness on a Host, identified by the config directory where

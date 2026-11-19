@@ -73,6 +73,18 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 > [!TIP]
 > 在连接了键盘的 iPad 上，按 **Return** 发送，按 **Shift-Return** 换行。
 
+## 把工作交给另一个 Agent
+
+Agent 卡住了、额度用完了，或者你想听听别的意见时，可以把它的对话交给同一台 Host 上的另一个 Agent。
+
+1. 在 **Agents** 中长按这个 Agent，或打开 Agent 顶部的 **More** 菜单，轻点 **Hand Off**。
+2. 选择 **Take Over** 让另一个 Agent 接着做，或选择 **Second Opinion** 让它评审这份工作。
+3. 选一个 Agent，或轻点 **New Agent…** 在同一目录下新开一个。
+
+Heeler 会把对话写成 Host 上的一个文件（不含工具输出），然后打开另一个 Agent，输入框里已经放好一条指向该文件的消息。在你轻点 **Send** 之前不会发送任何内容，你可以先改写这条消息。
+
+Hand Off 需要 Chat 能显示这个 Agent 的对话，并且 Host 能接收文件，也就是支持 **Add File** 的那些 Host。
+
 ## 回答处于 Blocked 状态的 Agent
 
 当 Agent 请求权限或提出问题时，输入框的位置会换成一张卡片，每个答案对应一个按钮。轻点后立即作答，效果和在终端里按键一样，无法撤销。

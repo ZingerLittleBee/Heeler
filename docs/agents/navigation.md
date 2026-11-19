@@ -66,6 +66,17 @@ its contract.
   its new Workspace (`PinnedAgentsStore.movePin`), and returns that id for an
   open detail to follow. [Compatibility notes](herdr-compatibility.md) record
   the id change.
+- **Hand Off:** `ConsoleStore.offersHandOff` (a live Agent whose program Chat
+  reads, on a Host that takes uploads) offers
+  [HandOffSheet](../../Sources/Heeler/HandOff/HandOffSheet.swift) from the
+  Agents row menu and the Agent detail's header menu.
+  [HandOffStore](../../Sources/Heeler/HandOff/HandOffStore.swift) reads the
+  conversation through the Agent's `AgentChatStore` as a viewer of its own
+  (`ConsoleStore.handOffSource`, which also loads earlier pages), renders it
+  with [HandOffRecord](../../Sources/Heeler/HandOff/HandOffRecord.swift), and
+  `ConsoleStore.deliverHandOff` stages the file through the receiving Agent's
+  `AgentComposerSession` under the mode's message
+  ([ADR 0059](../adr/0059-hand-off-stages-a-conversation-record.md)).
 
 ## Connection, input, and terminals
 

@@ -282,6 +282,7 @@ struct AgentTerminalView: View {
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isStartingAgent = false
     @State private var movePaneRequest: MovePaneRequest?
+    @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var isRenamingAgent = false
@@ -608,7 +609,8 @@ struct AgentTerminalView: View {
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
-                || isStartingAgent || movePaneRequest != nil || isManagingSnippets || isShowingSkillsPicker
+                || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
+                || isShowingSkillsPicker
                 || isRenamingAgent || titleRename != nil || viewingSkill != nil || isRenamingWorkspace
                 || isShowingWorktree || attachLinksOrigin != nil || closeErrorMessage != nil
                 || attach.pendingPaste != nil || attach.pasteErrorMessage != nil
@@ -637,6 +639,11 @@ struct AgentTerminalView: View {
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 // The Agent has a new id in its new Workspace: the detail goes with it.
                 switchToAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
+            })
+        .modifier(
+            HandOffSheetPresenter(request: $handOffRequest, console: console, hosts: hosts) { id in
+                // The Agent that got the Hand Off has it in its Composer, to read and send.
+                switchToAgent(id)
             })
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -1323,6 +1330,11 @@ struct AgentTerminalView: View {
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
                 titleRename = console.titleRenameStore(for: agent)
+            })
+        }
+        if console.offersHandOff(for: agent) {
+            actions.append(AgentDetailHeaderAction(title: "Hand Off", systemImage: HandOffCopy.symbol) {
+                handOffRequest = HandOffRequest(source: agent)
             })
         }
         let offers = AgentDetailMenuOffers(
