@@ -217,6 +217,10 @@ struct AgyToolCall: Sendable {
         var tool = ChatToolActivity(
             kind: kind, name: name, title: title, subtitle: subtitle, status: status, note: note,
             questions: questions, callID: entryID.rawValue)
+        // agy's own sentence about the call stands under its command or path.
+        if subtitle != nil, subtitle == toolSummary {
+            tool.subtitleIsProse = true
+        }
         // A diff shows what the call changed, or would change while it waits.
         let changes: ChatFileChanges? =
             switch status {
