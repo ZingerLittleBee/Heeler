@@ -3,21 +3,27 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backdrop import backdrop  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = Path(__file__).resolve().parent / "exports"
 SOURCES_DIR = Path(__file__).resolve().parent / "sources"
-BACKGROUND_PATH = Path(__file__).resolve().parent / "assets" / "background.png"
 
 CANVAS_SIZE = (1320, 2868)
 SCREENSHOT_WIDTH = 1010
 SCREENSHOT_TOP = 646
 SCREENSHOT_RADIUS = 78
+# The accent's light sits behind the top of the screenshot.
+LIGHT_CENTER = (CANVAS_SIZE[0] / 2, SCREENSHOT_TOP + 40)
+LIGHT_RADII = (871, 488)
 
 FONT_PATH = Path("/System/Library/Fonts/SFNS.ttf")
 MONO_FONT_PATH = Path("/System/Library/Fonts/SFNSMono.ttf")
@@ -181,13 +187,10 @@ def source_path(mockup: Mockup) -> Path:
 
 
 def compose(mockup: Mockup, screenshot: Image.Image) -> Path:
-    background = Image.open(BACKGROUND_PATH).convert("RGB")
-    canvas = ImageOps.fit(background, CANVAS_SIZE, method=Image.Resampling.LANCZOS)
+    canvas = backdrop(CANVAS_SIZE, light=(mockup.accent, LIGHT_CENTER, LIGHT_RADII))
     overlay = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
 
-    # Keep the generated texture visible at the edges while giving copy a quiet field.
-    overlay_draw.rectangle((0, 0, CANVAS_SIZE[0], 630), fill=(4, 5, 12, 82))
     overlay_draw.line((96, 98, 170, 98), fill=(*mockup.accent, 255), width=8)
 
     kicker_font = load_font(MONO_FONT_PATH, 31, "Medium")
@@ -196,7 +199,7 @@ def compose(mockup: Mockup, screenshot: Image.Image) -> Path:
 
     overlay_draw.text(
         (96, 126),
-        "HEELER FOR HERDR",
+        "HEELER FOR IPHONE",
         font=kicker_font,
         fill=(*mockup.accent, 255),
         spacing=4,
@@ -215,7 +218,7 @@ def compose(mockup: Mockup, screenshot: Image.Image) -> Path:
         fill=(211, 214, 225, 255),
         spacing=7,
     )
-    canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay)
+    canvas = Image.alpha_composite(canvas, overlay)
 
     screenshot_height = round(screenshot.height * SCREENSHOT_WIDTH / screenshot.width)
     screenshot = screenshot.resize(

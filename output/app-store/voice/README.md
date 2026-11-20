@@ -33,11 +33,12 @@ recorder only existed in a local build and is not in the repository.
 
 ## Regenerate
 
-From the repository root, with Pillow installed:
+From the repository root, with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/voice/compose_voice.py
 ```
 
 The renderer crops and scales the captures uniformly, then masks them. It does
-not redraw any application content.
+not redraw any application content. The reply above the bar is screened onto
+the background, so the app's black adds nothing where the piece ends.

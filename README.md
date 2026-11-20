@@ -4,7 +4,7 @@
 
 # Heeler
 
-<a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="40" /></a>
+<a href="https://apps.apple.com/us/app/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge.svg" alt="Available on TestFlight" height="40" /></a>
 
 **The iPhone and iPad console for the coding agents running on your own machines.**
@@ -16,7 +16,7 @@ Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), a
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-6F42C1?style=flat-square)](LICENSE)
 [![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white&style=flat-square)](https://www.swift.org)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/ios/)
-[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/id6797263135)
 
 <a href="https://trendshift.io/repositories/151670?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/151670" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
@@ -70,7 +70,7 @@ Heeler is an independent, open-source agent console and **herdr mobile client** 
 
 ## Installation
 
-Install Heeler from the [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) or [TestFlight](https://testflight.apple.com/join/aXSxRn4r). The machine needs SSH turned on and one of these backends:
+Install Heeler from the [App Store](https://apps.apple.com/us/app/id6797263135) or [TestFlight](https://testflight.apple.com/join/aXSxRn4r). The machine needs SSH turned on and one of these backends:
 
 | Backend | Runs on | Guide |
 | --- | --- | --- |
@@ -124,7 +124,7 @@ Heeler is SwiftUI on iOS 18+, with SSH from the repository-local `Packages/Heele
 
 ## Status
 
-Released on the [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135).
+Released on the [App Store](https://apps.apple.com/us/app/id6797263135).
 It is not yet available in every country or region; where it is missing, the
 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) build stays available.
 Built for personal use first and shaped by daily driving, so expect rough edges and

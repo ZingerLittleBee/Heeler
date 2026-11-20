@@ -4,7 +4,7 @@
 
 # Heeler
 
-<a href="https://apps.apple.com/us/app/heeler-for-herdr/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
+<a href="https://apps.apple.com/us/app/id6797263135"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-app-store/black/zh-cn?size=250x83" alt="在 App Store 下载" height="40" /></a>
 <a href="https://testflight.apple.com/join/aXSxRn4r"><img src="docs/images/testflight-badge-zh.svg" alt="在 TestFlight 下载" height="40" /></a>
 
 **在 iPhone 和 iPad 上掌控你自己机器上运行的编程 Agent。**
@@ -16,7 +16,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-6F42C1?style=flat-square)](LICENSE)
 [![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white&style=flat-square)](https://www.swift.org)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white&style=flat-square)](https://developer.apple.com/ios/)
-[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+[![App Store](https://img.shields.io/badge/App_Store-available-0D96F6?logo=apple&logoColor=white&style=flat-square)](https://apps.apple.com/us/app/id6797263135)
 
 <a href="https://trendshift.io/repositories/151670?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/151670" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
@@ -70,7 +70,7 @@ Heeler 是 iPhone 和 iPad 上独立、开源的 Agent 控制台，也是一款 
 
 ## 安装
 
-从 [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) 或 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) 安装 Heeler。机器上需要开启 SSH，并运行下面任意一种后端：
+从 [App Store](https://apps.apple.com/us/app/id6797263135) 或 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) 安装 Heeler。机器上需要开启 SSH，并运行下面任意一种后端：
 
 | 后端 | 运行平台 | 教程 |
 | --- | --- | --- |
@@ -124,4 +124,4 @@ Heeler 使用 SwiftUI，面向 iOS 18+，SSH 由仓库内的 `Packages/HeelerSSH
 
 ## 状态
 
-已在 [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135) 上发布；部分国家和地区尚未上架，可以继续使用 [TestFlight](https://testflight.apple.com/join/aXSxRn4r)。以个人日常使用打磨为先，仍有粗糙之处，迭代较快。与 herdr 项目无隶属关系。
+已在 [App Store](https://apps.apple.com/us/app/id6797263135) 上发布；部分国家和地区尚未上架，可以继续使用 [TestFlight](https://testflight.apple.com/join/aXSxRn4r)。以个人日常使用打磨为先，仍有粗糙之处，迭代较快。与 herdr 项目无隶属关系。
