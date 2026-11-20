@@ -132,8 +132,9 @@ one page per folder, previews full screen.
   does not open (`RemoteFilePath.isAcceptable`).
 - Go to Folder works a typed `..` out by name, as a shell's `cd` does, so it
   can differ from the Host's answer across a symbolic link.
-- Each check on a Host without SFTP replaces the Host's connection once,
-  until #596 changes what a refused channel costs.
+- Each Check Again on a Host without SFTP replaces the Host's connection
+  once. Opening Files there again does not: the Host's refusal stands for
+  every connection to it until it is asked again (`HostSFTPRefusal`, #596).
 - After a reconnect only the folder showing is current. The pages under it
   keep the listing they had until they are pulled, and a read that was in
   flight when the connection went ends as a failure with Try Again.
