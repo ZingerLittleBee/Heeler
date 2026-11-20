@@ -55,7 +55,7 @@ actor ZeroTierNetworkNode: OverlayNode {
             case .startFailed(let message), .invalidConfiguration(let message):
                 // A network still joined reports its state live instead.
                 if !joined { lastFailure = message }
-            case .timedOut, .cancelled, .loginRequired, .dialFailed:
+            case .timedOut, .cancelled, .loginRequired, .dialFailed, .invalidDestination:
                 break
             }
             throw error
@@ -130,11 +130,11 @@ actor ZeroTierNetworkNode: OverlayNode {
 
     func dial(host: String, port: UInt16, timeout: Duration) async throws -> OverlayDialedStream {
         guard let address = OverlayAddress.ipLiteral(host) else {
-            throw OverlayError.invalidConfiguration(
+            throw OverlayError.invalidDestination(
                 "ZeroTier hosts must be IP addresses on the network, not names.")
         }
         guard port != 0 else {
-            throw OverlayError.invalidConfiguration("A ZeroTier dial needs a port.")
+            throw OverlayError.invalidDestination("A ZeroTier dial needs a port.")
         }
         let deadline = OverlayDeadline(after: timeout)
         try await start(timeout: deadline.remaining)

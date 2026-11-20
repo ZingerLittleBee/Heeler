@@ -65,11 +65,11 @@ actor TailcatNode: OverlayNode {
 
     func dial(host: String, port: UInt16, timeout: Duration) async throws -> OverlayDialedStream {
         guard port != 0 else {
-            throw OverlayError.invalidConfiguration("A tailcat dial needs a port.")
+            throw OverlayError.invalidDestination("A tailcat dial needs a port.")
         }
         let serverName = Self.normalizedName(configuration.serverName)
         guard Self.normalizedName(host) == serverName else {
-            throw OverlayError.invalidConfiguration(
+            throw OverlayError.invalidDestination(
                 "A tailcat tunnel only reaches the machine running tailcat serve. Use \(serverName) as the address.")
         }
         let deadline = OverlayDeadline(after: timeout)

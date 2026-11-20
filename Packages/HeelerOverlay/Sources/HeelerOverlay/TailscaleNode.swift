@@ -105,7 +105,7 @@ actor TailscaleNode: OverlayNode {
     func dial(host: String, port: UInt16, timeout: Duration) async throws -> OverlayDialedStream {
         let trimmedHost = OverlayAddress.unbracketed(host)
         guard !trimmedHost.isEmpty, port != 0 else {
-            throw OverlayError.invalidConfiguration("A Tailscale dial needs a host and a port.")
+            throw OverlayError.invalidDestination("A Tailscale dial needs a host and a port.")
         }
         let deadline = OverlayDeadline(after: timeout)
         try await start(timeout: deadline.remaining)
