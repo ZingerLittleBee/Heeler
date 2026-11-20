@@ -94,6 +94,7 @@
 		12F6F23F680F99366A2D6072 /* HostProcessReaderWindowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43289E51134F9FF8625A1EF1 /* HostProcessReaderWindowsTests.swift */; };
 		1347F0DDEC91CE9EFBD4C963 /* herdr-core-frames-windows-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = D7986AEFB2416F8754FE42B3 /* herdr-core-frames-windows-v1.json */; };
 		137E72767F36BD5D18022665 /* RexConsoleProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A8F3998ED0247AE46C0C062 /* RexConsoleProjection.swift */; };
+		13B09780CC5D344652A89D6B /* ChatTerminalBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF27665178A19C6409D66FC /* ChatTerminalBlock.swift */; };
 		13D3FF0A9333459385AEC16F /* TerminalSizeNoticeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0CD27692E075E352C7E962 /* TerminalSizeNoticeTests.swift */; };
 		13D6ADF6E19529103D2522DE /* SealedEnvelopeCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE9C95E2AC313465A7B38FD /* SealedEnvelopeCodec.swift */; };
 		1434E4DFE3F39407C858BDD0 /* OpenCodeDialogPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5B82E92BE80C8F0B5B7D65C /* OpenCodeDialogPlanner.swift */; };
@@ -2018,6 +2019,7 @@
 		7C5FB265AFF6961CD0A3C1D9 /* ClaudeProjectKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProjectKey.swift; sourceTree = "<group>"; };
 		7CCE32D8F2A1A12B183B3DA5 /* TerminalKeysKeyboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeysKeyboardTests.swift; sourceTree = "<group>"; };
 		7CF0F9F0EDF8757DC1D275D2 /* TerminalKeyboardInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboardInset.swift; sourceTree = "<group>"; };
+		7CF27665178A19C6409D66FC /* ChatTerminalBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTerminalBlock.swift; sourceTree = "<group>"; };
 		7D7720E920BF4269D3B043D2 /* GitProbeCheckoutRootsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitProbeCheckoutRootsTests.swift; sourceTree = "<group>"; };
 		7D879166A477CE2494AED65E /* AgentUsageWide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageWide.swift; sourceTree = "<group>"; };
 		7D8C7ED93EA20FF003EB8ACE /* InputShortcutStripPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputShortcutStripPresentationTests.swift; sourceTree = "<group>"; };
@@ -2733,6 +2735,7 @@
 				5E84D48903B9E34AE65DEEAD /* ChatRow.swift */,
 				FE31FD98C71EC0A9939EE0AB /* ChatRowBuilder.swift */,
 				1FBA22E3DC0E6C9B5D713C5D /* ChatRowView.swift */,
+				7CF27665178A19C6409D66FC /* ChatTerminalBlock.swift */,
 				57CF1E3AF234B1D2D550EC3F /* ChatTimelineController.swift */,
 				54B6A3DF0F7CCF7FD5A14805 /* ChatTimelineGeometry.swift */,
 				FA5EC2519FB1CE38922A5C93 /* ChatTimelineLayout.swift */,
@@ -4946,6 +4949,7 @@
 				529A33DD861882A86316682C /* ChatSwarmLiveBar.swift in Sources */,
 				9393659C506CE9BCD3F2A960 /* ChatSwarmSheet.swift in Sources */,
 				7436EBBA057E54BFCE70DA0F /* ChatSwarmTimeline.swift in Sources */,
+				13B09780CC5D344652A89D6B /* ChatTerminalBlock.swift in Sources */,
 				78BF7E48D0A205E24E1CBB29 /* ChatTextSettings.swift in Sources */,
 				0D5004AF03F46533BF3B27FA /* ChatTimelineController.swift in Sources */,
 				815BA6026CCD7AD9B4DA496C /* ChatTimelineGeometry.swift in Sources */,

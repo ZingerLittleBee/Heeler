@@ -65,6 +65,8 @@ enum ThemeVeil {
     static let card = Color.primary.opacity(0.04)
     /// A strip on a card: the Composer's Agent strip.
     static let strip = Color.primary.opacity(0.06)
+    /// A control on a card: a Blocked card's answers and its fields.
+    static let control = Color.primary.opacity(0.08)
     /// What is chosen: a selected sidebar row, the chosen Agent's chip.
     static let selection = UIColor { traits in
         UIColor(white: traits.userInterfaceStyle == .dark ? 1 : 0, alpha: 0.08)
