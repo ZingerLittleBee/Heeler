@@ -2796,6 +2796,101 @@ struct BlockedCardStoreTests {
             }
         return ChatTranscript(entries: entries, pendingRequests: pending)
     }
+
+    @Test func aClaudeAutoBlockCountdownDoesNotBlockApprovalOrAmendWhileTicking() async throws {
+        let command =
+            "cd /Users/developer/worktree/Heeler/704 && make test-ci-diagnostic-controls 2>&1 | tail -6; echo "
+            + "\"make status=$?\"; T=$(mktemp -d /private/tmp/claude-501/-Users-developer-Documents-Heeler/"
+            + "89ec3b9a-6cd9-457b-813e-7916029e55da/scratchpad/gate.XXXX); rm -rf $T"
+        let request = Self.bash("toolu_gate", command)
+        let pane = FakePane(ClaudeDialogRows.quotedBashScreen(countdown: "1:16"))
+        let ready = try ScreenFixture.screen("claude-29-c3-after-immediate")
+        let changedMessage = BlockedCardStore.changedMessage
+        let store = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) },
+                typeWhileShowing: { typing, stillShows in
+                    // Simulate herdr-core / tmux / Rex re-reading the screen a
+                    // second later when the countdown has ticked again.
+                    guard stillShows(try await pane.read()) else {
+                        throw HerdrCoreChatTyping.Refusal(message: changedMessage)
+                    }
+                    switch typing {
+                    case .keys(let keys):
+                        await pane.send(keys)
+                    case .paste(let text):
+                        await pane.paste(text)
+                    }
+                }),
+            clock: ManualClock().clock)
+        store.update(transcript: Self.transcript(pending: [request]))
+        store.update(activity: .blocked)
+        await store.refresh()
+
+        guard case .card(let shown) = store.content else {
+            Issue.record("Expected a card, got \(store.content)")
+            return
+        }
+        #expect(shown.request?.callID == "toolu_gate")
+        let initialGeneration = store.dialogGeneration
+        store.isCollapsed = true
+
+        // A watch tick updates the terminal's countdown without resetting the
+        // card's identity or unfolding it.
+        await pane.show(ClaudeDialogRows.quotedBashScreen(countdown: "1:15"))
+        await store.refresh()
+        #expect(store.dialogGeneration == initialGeneration)
+        #expect(store.isCollapsed)
+        store.isCollapsed = false
+
+        // Another second passes before observeBeforeActing, and another before
+        // typeWhileShowing sends the digit.
+        await pane.show(ClaudeDialogRows.quotedBashScreen(countdown: "1:14"))
+        await pane.react(to: ["1"], with: ready)
+        await store.perform(.choose(ordinal: 1))
+
+        #expect(await pane.keys == [["1"]])
+        #expect(store.notice == nil)
+        #expect(store.progress == .ready)
+        #expect(store.history.calls["toolu_gate"] == .allowed)
+
+        // Multi-step Decline with Note also succeeds while the countdown ticks
+        // between every step.
+        let notePane = FakePane(ClaudeDialogRows.quotedBashScreen(countdown: "1:12"))
+        await notePane.react(to: ["down"], with: ClaudeDialogRows.quotedBashScreen(countdown: "1:11", focused: 2))
+        await notePane.react(
+            to: ["tab"],
+            with: ClaudeDialogRows.quotedBashScreen(countdown: "1:10", focused: 2, feedbackOrdinal: 2))
+        let note = "Use a temporary folder under /tmp"
+        let noteStore = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { try await notePane.read() },
+                sendKeys: { keys in
+                    await notePane.send(keys)
+                    if keys == ["enter"] { await notePane.show(ready) }
+                },
+                paste: { text in
+                    await notePane.paste(text)
+                    await notePane.show(
+                        ClaudeDialogRows.quotedBashScreen(
+                            countdown: "1:09", focused: 2, feedbackOrdinal: 2, feedbackText: text))
+                }),
+            clock: ManualClock().clock)
+        noteStore.update(transcript: Self.transcript(pending: [request]))
+        noteStore.update(activity: .blocked)
+        await noteStore.refresh()
+
+        await noteStore.perform(.amend(ordinal: 2, note: note))
+
+        #expect(await notePane.keys == [["down"], ["tab"], ["enter"]])
+        #expect(await notePane.pastes == [note])
+        #expect(noteStore.notice == nil)
+        #expect(noteStore.progress == .ready)
+    }
 }
 
 @MainActor
@@ -3049,6 +3144,44 @@ struct BlockedCardHostedTests {
             #expect(await Self.eventually { Self.labels(in: controller).contains("Send") })
             let field = try #require(Self.textField(in: controller.view), "\(Self.labels(in: controller))")
             #expect(field.placeholder == placeholder)
+        }
+    }
+
+    @Test func aClaudeEditCardHidesAutoBlockCountdownFromItsDiffBox() async throws {
+        let width = 58
+        let dashed = SGR.fg(80, 80, 80) + String(repeating: "╌", count: width) + SGR.reset
+        let warning = SGR.fg(229, 192, 123)
+        let screen = ScreenFixture.synthetic([
+            SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
+            " " + SGR.bold + SGR.claudeAccent + "Edit file" + SGR.reset,
+            " " + SGR.claudeInactive + "q.txt" + SGR.reset,
+            dashed,
+            " 1 -probe",
+            " 1 +probe2",
+            dashed,
+            " " + warning + "⚠ Claude Code will automatically block this request in" + SGR.reset,
+            " " + warning + "1:16, to avoid holding up an unattended session" + SGR.reset,
+            "",
+            " Do you want to make this edit to q.txt?",
+            " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + "1. " + SGR.claudeAccent + "Yes" + SGR.reset,
+            "   " + SGR.claudeInactive + "2. " + SGR.reset + "No",
+            "",
+            " " + SGR.claudeInactive + "Esc to cancel · Tab to amend" + SGR.reset,
+        ])
+        let pane = FakePane(screen)
+        let store = BlockedCardStore(
+            program: .claude,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        try await Self.host(store) { controller in
+            #expect(await Self.eventually { Self.labels(in: controller).contains("Yes") })
+            let labels = Self.labels(in: controller)
+            #expect(!labels.contains(where: { $0.contains("automatically block") }), "\(labels)")
         }
     }
 
