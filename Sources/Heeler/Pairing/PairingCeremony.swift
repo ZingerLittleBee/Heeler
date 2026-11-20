@@ -100,6 +100,22 @@ struct PairingResult: Sendable, Equatable {
     let hostKeyFingerprint: HostKeyFingerprint
 }
 
+/// The machine a completed ceremony enrolled this device on, handed to Add
+/// Host's last step, which looks for its Servers and saves the Host with the
+/// ones the user checks (ADRs 0047 and 0057). Nothing is in the catalog yet.
+struct PairedMachine: Sendable, Equatable {
+    let username: String
+    /// Every address the code offered, the one that answered first. Each
+    /// becomes a Route of the Host (ADR 0022).
+    let addresses: [String]
+    let port: Int
+    /// The key the Host presented, digest-equal to the code's pin.
+    let hostKeyFingerprint: HostKeyFingerprint
+    /// The code was shown inside a running Herdr TUI, so the Host has one
+    /// whether or not the look finds it.
+    let runsHerdrTUI: Bool
+}
+
 /// One line of the Enrollment accept stdout protocol:
 ///
 ///     HERDR-ENROLL:OK:<SHA256:fingerprint>

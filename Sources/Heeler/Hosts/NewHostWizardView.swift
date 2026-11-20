@@ -37,6 +37,22 @@ struct NewHostWizardView: View {
             initialValue: NewHostWizard(catalog: catalog, dependencies: dependencies, prefill: prefill))
     }
 
+    /// Add Host from the step `wizard` is on: Scan to Pair hands over one that
+    /// has already looked for the paired machine's Servers (ADR 0057).
+    init(
+        wizard: NewHostWizard,
+        catalog: HostStore,
+        discoveries: HostServerDiscoveryStore,
+        dependencies: HostOnboardingDependencies,
+        onAdded: @escaping @MainActor (Host.ID) -> Void
+    ) {
+        self.catalog = catalog
+        self.discoveries = discoveries
+        self.dependencies = dependencies
+        self.onAdded = onAdded
+        _wizard = State(initialValue: wizard)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             form
@@ -266,17 +282,32 @@ struct NewHostWizardView: View {
                         .textCase(nil)
                 }
                 Section {
-                    ForEach(scan.missing.map(\.kind), id: \.self) { @Sendable kind in
+                    ForEach(scan.missing, id: \.kind) { @Sendable missing in
                         MainActorContent {
-                            Button {
-                                isShowingSetupGuide = true
-                            } label: {
-                                LabeledContent {
-                                    Text("Setup Guide")
-                                        .foregroundStyle(.tint)
+                            if missing.kind == .rex {
+                                // The Setup Guide sets up herdr. A Rex named
+                                // missing runs already, under an account this
+                                // one cannot use (ADR 0049).
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(missing.kind.displayName)
+                                    if let note = missing.note {
+                                        Text(note)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .accessibilityElement(children: .combine)
+                            } else {
+                                Button {
+                                    isShowingSetupGuide = true
                                 } label: {
-                                    Text(kind.displayName)
-                                        .foregroundStyle(Color.primary)
+                                    LabeledContent {
+                                        Text("Setup Guide")
+                                            .foregroundStyle(.tint)
+                                    } label: {
+                                        Text(missing.kind.displayName)
+                                            .foregroundStyle(Color.primary)
+                                    }
                                 }
                             }
                         }
@@ -295,7 +326,10 @@ struct NewHostWizardView: View {
                     Text("Found on \(wizard.address)")
                         .textCase(nil)
                 } footer: {
-                    if let existing = wizard.existing {
+                    if let existing = wizard.existing, wizard.replacesTrustedKey {
+                        Text(
+                            "\(existing.name) is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before.")
+                    } else if let existing = wizard.existing {
                         Text("\(existing.name) is already in Heeler. Checked servers are turned on there.")
                     } else {
                         Text(

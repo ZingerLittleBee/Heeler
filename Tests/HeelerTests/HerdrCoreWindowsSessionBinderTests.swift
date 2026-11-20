@@ -426,7 +426,7 @@ struct HerdrCoreWindowsSessionBinderTests {
         rig.table = WindowsProcessTable()
         let evidence = try await rig.binder(program).check(try Self.record())
         #expect(evidence == .unavailable(.cannotReadProcessesOnWindows(program)))
-        #expect(!ChatUnavailableReason.cannotReadProcessesOnWindows(program).offersWindowsExtension)
+        #expect(!ChatUnavailableReason.cannotReadProcessesOnWindows(program).offersHeelersExtension)
         #expect(ChatUnavailableReason.cannotReadProcessesOnWindows(program).offersRetry)
     }
 

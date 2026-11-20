@@ -34,6 +34,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private(set) var sidebarRevision: UInt64 = 0
     /// Labels are herdr-core's; a Herdr TUI Pane has none.
     let terminalLabelKeys: [String] = []
+    /// A Herdr TUI inventory names no core, so no detail here ever leaves one,
+    /// and the two answers below are never read.
+    let keepsDetailsToInventory = false
+    var leftInventoryMessage: String { TerminalStatusPresentation.coreGoneMessage }
+    var leftInventoryError: TransportError { .herdrCoreTerminalGone }
     /// Whether the Host's current connection generation has produced a
     /// snapshot. `.connected` arrives before that request completes, so an
     /// empty projection in this window means "unknown", not "no Agents".
@@ -70,6 +75,12 @@ final class HostConsoleProjection: ConsoleHostProjection {
         var phase: Phase = .preparing
     }
 
+    private struct InFlightFocus {
+        let id: UUID
+        let epoch: UInt64
+        let task: Task<Void, any Error>
+    }
+
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
@@ -95,6 +106,8 @@ final class HostConsoleProjection: ConsoleHostProjection {
     private var latestStatusChanges: [
         String: (revision: UInt64, status: AgentStatus)
     ] = [:]
+    private var focusTasks: [String: InFlightFocus] = [:]
+    private var focusedPendingSnapshotPanes: Set<String> = []
     private var hasEnded = false
 
     init(
@@ -226,6 +239,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         guard !hasEnded else { return }
         hasEnded = true
         resyncPending = false
+        cancelFocusTasks()
         resyncTask?.cancel()
         resyncRetryTask?.cancel()
         consumeTask?.cancel()
@@ -488,6 +502,16 @@ final class HostConsoleProjection: ConsoleHostProjection {
         scheduleResync()
     }
 
+    /// herdr's `pane.moved` event resyncs the inventory, and so does this: the
+    /// row lands in its new Workspace without waiting on the event round trip.
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        let moved = try await session.withTransportOnce { transport in
+            try await transport.movePane(PaneMoveParams(paneID: paneID, destination: destination))
+        }
+        scheduleResync()
+        return moved.moveResult.pane.paneID
+    }
+
     /// Whether a Pane is still alive on the Host, probed with a minimal
     /// `pane.read`. A server rejection means the Pane is gone (closed on the
     /// desktop, or the server restarted and lost every tab); a transport
@@ -681,6 +705,10 @@ final class HostConsoleProjection: ConsoleHostProjection {
 
     /// Focus can mark sibling Panes seen too; only a full Host snapshot can
     /// supply the resulting authoritative statuses, including Live Activity.
+    ///
+    /// Owned per Pane and connection epoch on the projection so returning from
+    /// an already-viewed Done Agent does not cancel a focus RPC still queued on
+    /// the SSH session, while disconnect or status changes still cancel it.
     func focusAgent(_ paneID: String) async throws {
         try Task.checkCancellation()
         guard !hasEnded, status == .connected, !isAwaitingSnapshot else {
@@ -691,15 +719,41 @@ final class HostConsoleProjection: ConsoleHostProjection {
                 code: "agent_not_found", message: String(localized: "The Agent is no longer listed."))
         }
         guard agent.agent.status == .done else { throw CancellationError() }
+        if focusedPendingSnapshotPanes.contains(paneID) { return }
         let epoch = snapshotEpoch
-        try await session.withTransportOnce { transport in
-            try Task.checkCancellation()
-            try await transport.focusAgent(AgentTarget(target: paneID))
+        if let existing = focusTasks[paneID], existing.epoch == epoch {
+            try await existing.task.value
+            return
         }
-        // Cancellation cannot undo a delivered focus. A successful reply still
-        // refreshes this connection, even if its detail has since left.
-        guard !hasEnded, snapshotEpoch == epoch else { return }
-        scheduleResync()
+        let id = UUID()
+        let session = session
+        let task = Task<Void, any Error> { @MainActor [weak self] in
+            defer {
+                if self?.focusTasks[paneID]?.id == id {
+                    self?.focusTasks[paneID] = nil
+                }
+            }
+            try Task.checkCancellation()
+            try await session.withTransportOnce { transport in
+                try Task.checkCancellation()
+                try await transport.focusAgent(AgentTarget(target: paneID))
+            }
+            // Cancellation cannot undo a delivered focus. A successful reply still
+            // refreshes this connection, even if its detail has since left.
+            guard let self, !self.hasEnded, self.snapshotEpoch == epoch else { return }
+            self.focusedPendingSnapshotPanes.insert(paneID)
+            self.scheduleResync()
+        }
+        focusTasks[paneID] = InFlightFocus(id: id, epoch: epoch, task: task)
+        try await task.value
+    }
+
+    private func cancelFocusTasks() {
+        for inFlight in focusTasks.values {
+            inFlight.task.cancel()
+        }
+        focusTasks.removeAll(keepingCapacity: true)
+        focusedPendingSnapshotPanes.removeAll(keepingCapacity: true)
     }
 
     /// Renames an Agent (#98); a nil name clears back to the detected kind.
@@ -879,6 +933,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         snapshotEpoch &+= 1
         isAwaitingSnapshot = true
         resyncPending = false
+        cancelFocusTasks()
         resyncRetryTask?.cancel()
         resyncRetryTask = nil
         syncError = nil
@@ -913,6 +968,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
             nextAgents[paneID] = row
         }
         latestStatusChanges.removeAll(keepingCapacity: true)
+        focusedPendingSnapshotPanes.removeAll(keepingCapacity: true)
+        for (paneID, inFlight) in focusTasks where nextAgents[paneID]?.agent.status != .done {
+            inFlight.task.cancel()
+            focusTasks[paneID] = nil
+        }
         isAwaitingSnapshot = false
         agentsByPane = nextAgents
         terminalsByPane = builder.terminalRows(agents: nextAgents, liveChange: liveChange)
@@ -1007,6 +1067,10 @@ final class HostConsoleProjection: ConsoleHostProjection {
         let status = AgentStatus(rawValue: rawStatus)
         statusChangeRevision &+= 1
         latestStatusChanges[paneID] = (statusChangeRevision, status)
+        focusedPendingSnapshotPanes.remove(paneID)
+        if status != .done {
+            focusTasks.removeValue(forKey: paneID)?.task.cancel()
+        }
         guard var row = agentsByPane[paneID] else { return status }
         row.agent.status = status
         agentsByPane[paneID] = row

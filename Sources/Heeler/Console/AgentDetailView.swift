@@ -42,6 +42,9 @@ struct AgentDetailView: View {
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
     @State private var changes: AgentChangesPresentation
+    /// Files, open in a sheet over this detail; nil while none is. It holds
+    /// what the sheet has read, so closing the sheet discards it.
+    @State private var files: HostFilesBrowser?
     @State private var retainedAgent: AgentTerminalCache.Entry?
     @State private var retentionOwnerID: UUID
     /// Lives as long as this detail does, which tells the cache whether a
@@ -200,6 +203,48 @@ struct AgentDetailView: View {
         console.capabilities(for: agent.hostID).offersChanges(directory: agent.directory)
     }
 
+    /// Any Agent with a directory SFTP can list, on a Host not known to be
+    /// a native Windows machine.
+    private var offersFiles: Bool {
+        console.hostPlatforms[agent.hostID] != .nativeWindows
+            && console.capabilities(for: agent.hostID).offersFiles(directory: agent.directory)
+    }
+
+    /// Files open in the Agent's directory, reading over the Host's live
+    /// connection as Chat does.
+    private func showFiles() {
+        guard files == nil, let directory = agent.directory else { return }
+        files = HostFilesBrowser(
+            files: console.chatHostFiles(for: agent.hostID), agentDirectory: directory,
+            isHostConnected: console.hostStatuses[agent.hostID] == .connected)
+    }
+
+    /// Files closed, by its button, a swipe or a path sent to the message:
+    /// what its previews copied to this device goes now.
+    private func closeFiles() {
+        files?.close()
+        files = nil
+    }
+
+    private var filesSheet: Binding<HostFilesBrowser?> {
+        Binding(
+            get: { files },
+            set: { browser in
+                if browser == nil { closeFiles() } else { files = browser }
+            })
+    }
+
+    /// Text chosen elsewhere for the Agent's next message: into the
+    /// terminal while Direct Input shows it, and into the Composer's draft
+    /// otherwise, as Chat always writes.
+    private func insertIntoMessage(_ text: String) {
+        if inputMode.isDirect && effectiveSurface == .terminal {
+            attach.insertReference(text)
+        } else {
+            session.composer.insertIntoDraft(text)
+        }
+    }
+
     private var terminalAccess: HostTerminalAccess {
         console.capabilities(for: agent.hostID)
             .terminalAccess(sceneRouting?.terminalAccess(for: agent.hostID))
@@ -351,8 +396,12 @@ struct AgentDetailView: View {
         }
         // A core Terminal takes any number of viewers, so another window's
         // detail keeps the one it retains, and this one is a viewer of its own.
-        let takesViewers = !console.capabilities(for: agent.hostID).takeOver
-        let sceneID = takesViewers ? sceneRouting?.sceneID : nil
+        // A Rex terminal shows in one window at a time, which the windows
+        // take turns with (ADR 0056); its replacement in the same window
+        // takes its entry over, as a core Terminal's does.
+        let capabilities = console.capabilities(for: agent.hostID)
+        let takesViewers = !capabilities.takeOver && !capabilities.terminalsShowInOneWindow
+        let sceneID = capabilities.takeOver ? nil : sceneRouting?.sceneID
         if takesViewers,
             console.agentTerminals.isHeldByAnotherDetail(
                 agent, ownerID: retentionOwnerID, sceneID: sceneID)
@@ -407,7 +456,7 @@ struct AgentDetailView: View {
             isSceneActive: scenePhase == .active,
             isOnStage: mount.hasAppeared && isOnStage(),
             showsShellTerminal: openTerminal.shell != nil || openTerminal.isOpening
-                || shellRoute != nil)
+                || shellRoute != nil || changes.store != nil)
     }
 
     private func updateFocus() {
@@ -471,6 +520,7 @@ struct AgentDetailView: View {
                             isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                             openTerminal: { openWorkspaceTerminal() },
                             showChanges: offersChanges ? { changes.open() } : nil,
+                            showFiles: offersFiles ? { showFiles() } : nil,
                             workspaceDrawer: drawer,
                             selectSurface: { selectSurface($0) })
                     }
@@ -500,6 +550,7 @@ struct AgentDetailView: View {
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
                     showChanges: offersChanges ? { changes.open() } : nil,
+                    showFiles: offersFiles ? { showFiles() } : nil,
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },
@@ -534,6 +585,15 @@ struct AgentDetailView: View {
                     \.fileDiffTheme,
                     effectiveSurface == .chat ? themeColors : nil)
         }
+        .sheet(item: filesSheet) { browser in
+            HostFilesView(
+                browser: browser,
+                isHostConnected: console.hostStatuses[agent.hostID] == .connected
+            ) { path in
+                closeFiles()
+                if let text = ChangesReference.insertion(path) { insertIntoMessage(text) }
+            }
+        }
         // Open Terminal on an iPhone: a short detour, so Back and the swipe
         // come back to this Agent rather than to the list.
         .navigationDestination(item: shellRouteSelection) { route in
@@ -544,7 +604,7 @@ struct AgentDetailView: View {
             notificationCenter: keyboardInset.notificationCenter,
             complete: completeDeparture))
         .onAppear {
-            mount.hasAppeared = true
+            mount.appear(activity: activity, state: { focusViewingState }, onUpdate: { updateFocus() })
             // A detail mounted afresh covers nothing, whatever the last one
             // in this window left behind.
             sceneRouting?.agentCoverDidChange(agent: shellRoute == nil ? nil : agent.id)
@@ -552,18 +612,24 @@ struct AgentDetailView: View {
             prepareRetainedAgent()
             updateFocus()
         }
-        .modifier(AgentFocusFeed(state: { focusViewingState }, update: { updateFocus() }))
+        .modifier(AgentFocusFeed(
+            mount: mount,
+            activity: activity,
+            state: { focusViewingState },
+            update: { updateFocus() }))
         .onDisappear {
-            mount.hasAppeared = false
-            focus.leave()
-            console.setAgentShown(nil, viewer: presenceToken, scene: sceneRouting?.sceneID)
-            // The router's truth, not SwiftUI's: a spurious disappear, or
-            // Changes pushed over the detail, keeps the upload going.
+            // The router's truth, not SwiftUI's: iPhone can send a spurious
+            // disappear while the detail stays on stage, and then none when
+            // Back really leaves, or push Changes/Shell over the detail.
             let key = presenceKey
             let session = session
-            Task { @MainActor in
-                await Task.yield()
-                guard !isVisible() else { return }
+            let focus = focus
+            let console = console
+            let viewer = presenceToken
+            let sceneID = sceneRouting?.sceneID
+            mount.scheduleExit(isVisible: isVisible) {
+                focus.leave()
+                console.setAgentShown(nil, viewer: viewer, scene: sceneID)
                 session.detailDidDisappear(key)
             }
         }
@@ -604,14 +670,7 @@ struct AgentDetailView: View {
             onShowsChanges?(!showsTerminal)
             if showsTerminal {
                 applyTerminalAccess()
-                if let text = changes.takePendingInsertion() {
-                    // Chat always writes through the Composer.
-                    if inputMode.isDirect && effectiveSurface == .terminal {
-                        attach.insertReference(text)
-                    } else {
-                        session.composer.insertIntoDraft(text)
-                    }
-                }
+                if let text = changes.takePendingInsertion() { insertIntoMessage(text) }
             }
         }
         // Availability can move the surface too: Chat appears once the
@@ -822,10 +881,13 @@ struct AgentDetailView: View {
 /// body it re-evaluated the detail, and the surface the detail builds, with
 /// every Agent's status change.
 private struct AgentFocusFeed: ViewModifier {
+    let mount: AgentDetailMount
+    let activity: AppActivityCoordinator
     let state: @MainActor () -> AgentFocusCoordinator.ViewingState
     let update: @MainActor () -> Void
 
     func body(content: Content) -> some View {
+        let _ = mount.bind(activity: activity, state: state, onUpdate: update)
         content.onChange(of: state()) { update() }
     }
 }
@@ -924,16 +986,115 @@ struct AgentShellRoute: Equatable {
 
 private final class AgentDetailRetentionHolder {}
 
-/// Whether SwiftUI has the detail mounted, for the focus state.
+/// Whether the detail is mounted on stage, for the focus state.
 ///
-/// A push appears the detail, disappears it and appears it again within one
-/// frame. As the detail's own state, each flip re-evaluated the detail's
-/// body and the surface it builds. Here only what reads it follows it
-/// (`AgentFocusFeed`).
+/// A push can appear the detail, disappear it and appear it again within one
+/// frame, or on iPhone send a spurious `onDisappear` ~70 ms after appearing
+/// with no matching `onAppear` (freezing SwiftUI's `.onChange`) and none on
+/// the real Back. Tracking the router's `isVisible()` and `@Observable` focus
+/// inputs here keeps focus and viewer state alive until the detail really leaves.
 @MainActor
 @Observable
-private final class AgentDetailMount {
-    var hasAppeared = false
+final class AgentDetailMount {
+    private struct PendingExit {
+        let isVisible: () -> Bool
+        let onExit: () -> Void
+    }
+
+    private(set) var hasAppeared = false
+    @ObservationIgnored private var stageExit: Task<Void, Never>?
+    @ObservationIgnored private var pendingExit: PendingExit?
+    @ObservationIgnored private var observationGeneration: UInt64 = 0
+    @ObservationIgnored private var activity: AppActivityCoordinator?
+    @ObservationIgnored private var currentState: (() -> AgentFocusCoordinator.ViewingState)?
+    @ObservationIgnored private var currentOnUpdate: (() -> Void)?
+
+    /// Refreshes what a detail on stage observes from its latest body. The
+    /// closures capture the detail, whose state owns this mount, so they are
+    /// held only between `appear` and the exit: a detail that has left is
+    /// evaluated again while it is hidden, and must not take them back.
+    func bind(
+        activity: AppActivityCoordinator,
+        state: @escaping () -> AgentFocusCoordinator.ViewingState,
+        onUpdate: @escaping () -> Void
+    ) {
+        guard hasAppeared else { return }
+        self.activity = activity
+        currentState = state
+        currentOnUpdate = onUpdate
+    }
+
+    func appear(
+        activity: AppActivityCoordinator,
+        state: @escaping () -> AgentFocusCoordinator.ViewingState,
+        onUpdate: @escaping () -> Void
+    ) {
+        stageExit?.cancel()
+        stageExit = nil
+        pendingExit = nil
+        self.activity = activity
+        currentState = state
+        currentOnUpdate = onUpdate
+        hasAppeared = true
+        observationGeneration &+= 1
+        track(generation: observationGeneration)
+    }
+
+    func scheduleExit(
+        isVisible: @escaping () -> Bool,
+        onExit: @escaping () -> Void
+    ) {
+        stageExit?.cancel()
+        stageExit = nil
+        if !isVisible() {
+            pendingExit = nil
+            disappear()
+            onExit()
+            return
+        }
+        pendingExit = PendingExit(isVisible: isVisible, onExit: onExit)
+        stageExit = ChatStageExit.watch(isOnStage: isVisible) { [weak self] in
+            self?.completeExit()
+        }
+    }
+
+    private func completeExit() {
+        guard let exit = pendingExit else { return }
+        pendingExit = nil
+        disappear()
+        exit.onExit()
+    }
+
+    private func disappear() {
+        stageExit?.cancel()
+        stageExit = nil
+        observationGeneration &+= 1
+        hasAppeared = false
+        // Kept past the exit they and this mount hold each other, and with
+        // them the detail's hold on its retained terminal, for good.
+        activity = nil
+        currentState = nil
+        currentOnUpdate = nil
+    }
+
+    private func track(generation: UInt64) {
+        guard hasAppeared, observationGeneration == generation, let currentState else { return }
+        _ = withObservationTracking {
+            _ = activity?.activationCount
+            _ = pendingExit?.isVisible()
+            return currentState()
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.hasAppeared, self.observationGeneration == generation else { return }
+                if let pendingExit = self.pendingExit, !pendingExit.isVisible() {
+                    self.completeExit()
+                    return
+                }
+                self.currentOnUpdate?()
+                self.track(generation: generation)
+            }
+        }
+    }
 }
 
 @MainActor

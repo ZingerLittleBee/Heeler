@@ -28,14 +28,15 @@ struct FoundServer: Hashable, Codable, Identifiable, Sendable {
 /// detection exec, and the kinds it looked for in vain.
 struct HostServerScan: Equatable, Sendable {
     /// A kind the look did not find, with what it saw instead where that says
-    /// more than "not found": a tmux too old to drive.
+    /// more than "not found": a tmux too old to drive, a Rex socket this
+    /// account cannot use.
     struct Missing: Equatable, Sendable {
         let kind: ServerKind
         let note: String?
     }
 
-    let servers: [FoundServer]
-    let missing: [Missing]
+    private(set) var servers: [FoundServer]
+    private(set) var missing: [Missing]
     private let detection: ServerKindDetection
 
     init(_ detection: ServerKindDetection) {
@@ -94,17 +95,55 @@ struct HostServerScan: Equatable, Sendable {
             break
         }
 
+        // A Host has one Rex Server at most: the server on the socket the look
+        // prefers (ADR 0049). Installed and not running, it is found as a
+        // stopped tmux is, since turned on it connects once the user starts
+        // Rex. Rex is named missing only where a socket shows a server this
+        // account cannot use: a machine without Rex shows nothing of it.
+        switch detection.rex {
+        case .socketFound:
+            servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: true, version: nil))
+        case .notRunning:
+            servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: false, version: nil))
+        case .notUsable:
+            missing.append(
+                Missing(kind: .rex, note: String(localized: "Socket found, but this account cannot use it")))
+        case .notInstalled, .unreadable, .unsupported:
+            break
+        }
+
         self.servers = servers
         self.missing = missing
     }
 
     var isNativeWindows: Bool { detection.isNativeWindows }
 
+    /// The same look at a Host known to run Herdr TUI: a Pairing Code shown
+    /// inside one says so (ADR 0057) even where the look found no herdr, as
+    /// from a login shell without it on PATH. Its default session is listed as
+    /// running, which is what such a code has always added.
+    func assumingHerdrTUI() -> HostServerScan {
+        guard !servers.contains(where: { $0.key.kind == .herdrTUI }) else { return self }
+        var scan = self
+        scan.servers.insert(
+            FoundServer(key: HostServerKey(kind: .herdrTUI, name: ""), isRunning: true, version: nil), at: 0)
+        scan.missing.removeAll { $0.kind == .herdrTUI }
+        return scan
+    }
+
     /// What a tmux Server turned on from this look stores: its login shell just
     /// resolved both paths (ADR 0044).
     func tmuxPaths(for server: HostServerKey) -> TmuxPaths? {
         guard server.kind == .tmux else { return nil }
         return detection.tmuxPaths(socketName: server.name)
+    }
+
+    /// What a Rex Server turned on from this look stores: the socket the look
+    /// found a server on. Nil while Rex is not running, which leaves the
+    /// record's connections to look it up (ADR 0049).
+    func rexSocket(for server: HostServerKey) -> RexSocket? {
+        guard server.kind == .rex else { return nil }
+        return detection.rexSocket
     }
 }
 
@@ -122,10 +161,21 @@ final class HostServerDiscoveryStore {
         var lookedAt: Date
     }
 
+    /// An entry's Rex Server, kept under a key of its own as Rex Hosts keep a
+    /// catalog of their own (ADR 0049): a build before Rex reads the shared
+    /// key whole, and one Rex Server in it would lose that build everything
+    /// it remembers.
+    private struct RexShare: Codable {
+        var connection: HostMachine.Connection
+        var found: [FoundServer]
+        var shown: Set<HostServerKey>
+    }
+
     /// The app's own, which every Hosts list and Add Host wizard shares.
     static let shared = HostServerDiscoveryStore()
 
     private static let defaultsKey = "host-server-discoveries"
+    private static let rexDefaultsKey = "host-server-discoveries-rex"
 
     private var entries: [Entry]
     /// When each Host was last looked at in the background, found or not. Not
@@ -136,9 +186,21 @@ final class HostServerDiscoveryStore {
 
     init(defaults: UserDefaults? = .standard) {
         self.defaults = defaults
-        entries =
+        var entries =
             defaults?.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
+        let rexShares =
+            defaults?.data(forKey: Self.rexDefaultsKey)
+            .flatMap { try? JSONDecoder().decode([RexShare].self, from: $0) } ?? []
+        // A Rex Server joins its Host's entry, last as a look lists it. One
+        // whose Host has no entry went with it, in this build or another.
+        for share in rexShares {
+            guard let index = entries.firstIndex(where: { $0.connection == share.connection }) else { continue }
+            let listed = Set(entries[index].found.map(\.key))
+            entries[index].found += share.found.filter { !listed.contains($0.key) }
+            entries[index].shown.formUnion(share.shown)
+        }
+        self.entries = entries
     }
 
     /// The Servers the last look at `host` found, none before the first.
@@ -218,7 +280,25 @@ final class HostServerDiscoveryStore {
     }
 
     private func persist() {
-        guard let defaults, let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: Self.defaultsKey)
+        guard let defaults else { return }
+        var shared = entries
+        var rexShares: [RexShare] = []
+        for index in shared.indices {
+            let found = shared[index].found.filter { $0.key.kind == .rex }
+            let shown = shared[index].shown.filter { $0.kind == .rex }
+            guard !found.isEmpty || !shown.isEmpty else { continue }
+            rexShares.append(RexShare(connection: shared[index].connection, found: found, shown: shown))
+            shared[index].found.removeAll { $0.key.kind == .rex }
+            shared[index].shown.subtract(shown)
+        }
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(shared) {
+            defaults.set(data, forKey: Self.defaultsKey)
+        }
+        if rexShares.isEmpty {
+            defaults.removeObject(forKey: Self.rexDefaultsKey)
+        } else if let data = try? encoder.encode(rexShares) {
+            defaults.set(data, forKey: Self.rexDefaultsKey)
+        }
     }
 }

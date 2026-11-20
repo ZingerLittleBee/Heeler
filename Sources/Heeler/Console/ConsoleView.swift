@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 
 /// The Console home screen (#8): a bottom tab bar over Agents across every
@@ -110,6 +111,8 @@ struct ConsoleView: View {
     /// The New Agent sheet while it is up. An item rather than a flag, so
     /// the sheet reads the origin it was opened with.
     @State private var startAgentRequest: StartAgentRequest?
+    @State private var movePaneRequest: MovePaneRequest?
+    @State private var handOffRequest: HandOffRequest?
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// The flat lists' summary opened: every Host problem in one sheet.
     @State private var isShowingHostIssues = false
@@ -149,7 +152,7 @@ struct ConsoleView: View {
     @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
     /// carries the raised keyboard from one Attach screen to the next.
-    @State private var keyboardHandoff = TerminalKeyboardHandoff()
+    @State private var keyboardHandoff = TerminalKeyboardHandoff(hardwareKeyboard: .system)
     /// Outlives those rebuilds for the same reason. A per-screen inset starts
     /// every switch at zero and only learns the keyboard's height once UIKit
     /// posts the next frame notification, so the terminal that inherits a
@@ -178,11 +181,31 @@ struct ConsoleView: View {
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
     @Environment(\.agentSceneRouting) private var sceneRouting
+    /// Which Hosts hold an older Plugin or Helper than this app carries
+    /// (ADR 0048); nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var hostUpdates: HostUpdatesStore?
 
     var body: some View {
         let _ = PerfTrace.count("ConsoleView.body")
         let _ = contentPass.advance()
         tabs.modifier(ConsoleDetailCoresRetention(cores: detailCores, held: heldDetails))
+            .modifier(
+                HostUpdatesPrompt(
+                    updates: hostUpdates,
+                    // Not over a terminal or a Chat someone may be typing in.
+                    // Beside an iPad's sidebar there is always one on stage.
+                    isAtRoot: usesSidebarNavigation || detailOnStage == nil,
+                    isCovered: { isPresentingOverConsole }))
+    }
+
+    /// The Hosts tab's badge: how many Plugin and Helper updates wait, or a
+    /// mark once one failed and nothing is running.
+    private var hostUpdatesBadge: Text? {
+        switch hostUpdates?.snapshot.badge {
+        case .count(let count): Text(verbatim: "\(count)")
+        case .failed: Text(verbatim: "!")
+        case nil: nil
+        }
     }
 
     private var tabs: some View {
@@ -223,6 +246,7 @@ struct ConsoleView: View {
                 }
                 .id(hostsTabGeneration)
             }
+            .badge(hostUpdatesBadge)
             Tab(value: ConsoleTab.settings) {
                 MainActorContent { settingsView() }
                     .id(settingsTabGeneration)
@@ -237,6 +261,14 @@ struct ConsoleView: View {
         // opened on even when another window picks a different one.
         .onAppear {
             if listTab == nil { listTab = shownListTab }
+            // The window alone, held weakly: the handoff is this view's own
+            // state and must not keep the view.
+            keyboardHandoff.isCovered = { [sceneWindow] in Self.isPresenting(over: sceneWindow) }
+        }
+        // A keyboard just attached is one the user means to type on, whatever
+        // they put away before it.
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in
+            keyboardHandoff.keyboardCameUp()
         }
         // The detail's actions can present these even while the sidebar is hidden.
         .sheet(item: $titleRename) { store in
@@ -244,6 +276,19 @@ struct ConsoleView: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                followMovedAgent(request, to: paneID)
+            })
+        .modifier(
+            HandOffSheetPresenter(
+                request: $handOffRequest, console: console,
+                hosts: hosts.consoleHosts.offeringNewItem(
+                    listsTerminals: false, capabilities: { console.capabilities(for: $0) })
+            ) { id in
+                // The Agent that got the Hand Off opens, with it in its Composer.
+                selectAgent(id)
+            })
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -293,7 +338,7 @@ struct ConsoleView: View {
                     hosts: hosts.consoleHosts.offeringNewItem(
                         listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
                     console: console,
-                    initialHostID: hostFilter.count == 1 ? hostFilter.first : nil
+                    initialHostID: newTerminalHostID
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -398,10 +443,14 @@ struct ConsoleView: View {
                 isSettingsTabSelected = false
             }
         }
-        // Drop removed Hosts without losing remaining selections. Removing
-        // the last selected Host falls back to All Hosts.
+        // Drop removed Hosts without losing remaining selections, and give a
+        // selected Host every Server it has on. Removing the last selected
+        // Host, or all Hosts but one, falls back to All Hosts.
         .onChange(of: hosts.consoleHosts, initial: true) { _, consoleHosts in
-            guard hosts.catalogLoadError == nil, hosts.coreCatalogLoadError == nil else { return }
+            guard hosts.catalogLoadError == nil,
+                hosts.coreCatalogLoadError == nil,
+                hosts.tmuxCatalogLoadError == nil
+            else { return }
             listPresentation.pruneHostFilter(keeping: consoleHosts)
         }
         .environment(\.consoleCommandRegistry, commandRegistry)
@@ -480,6 +529,7 @@ struct ConsoleView: View {
             harnessEdits: console,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
+            reconnectHost: { await reconnectMachine($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
             origin: origin,
             onDone: onDone)
@@ -498,6 +548,8 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.integratedHosts,
+            rowLayoutHosts: hosts.rowLayoutHosts,
+            hasOnlyRexServersOn: hosts.hasOnlyRexServersOn,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
             onDone: onDone)
@@ -583,7 +635,7 @@ struct ConsoleView: View {
                     AgentUsageDashboard(
                         entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
-                        allowsColumns: true)
+                        allowsColumns: true, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
                         .navigationTitle(
                             usageScope.wrappedValue.flatMap { id in usageEntries.first { $0.id == id }?.name }
                                 ?? String(localized: "All Hosts"))
@@ -597,7 +649,7 @@ struct ConsoleView: View {
         } else {
             AgentUsageTabView(
                 entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
-                limitsRequested: $usageLimitsRequested)
+                limitsRequested: $usageLimitsRequested, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
         }
     }
 
@@ -605,6 +657,7 @@ struct ConsoleView: View {
     private var usageSidebarFooter: some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
+                .overlay(alignment: .topTrailing) { SidebarIconBadge(label: hostUpdatesBadge) }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
         }
@@ -1030,6 +1083,10 @@ struct ConsoleView: View {
             // the split view's it would rebuild both columns with each
             // status change.
             MainActorContent { content }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { agentHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
                     focus: $focusedSearch, tab: .agents,
@@ -1051,6 +1108,10 @@ struct ConsoleView: View {
                         onShowHostIssues: { isShowingHostIssues = true },
                         onNewTerminal: { isStartingTerminal = true })
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { terminalHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
                     focus: $focusedSearch, tab: .terminals,
@@ -1062,8 +1123,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// A filter is meaningless with a single Host.
-    private var filtersByHost: Bool { hosts.consoleHosts.count > 1 }
+    /// A filter is meaningless with a single Host, however many Servers it
+    /// has on.
+    private var filtersByHost: Bool { Self.hostFilterChoices(in: hosts).count > 1 }
 
     private func offersFilters(for tab: ConsoleTab) -> Bool {
         !hosts.consoleHosts.isEmpty && (tab == .agents || filtersByHost)
@@ -1090,7 +1152,7 @@ struct ConsoleView: View {
 
     private func filterChoices(for tab: ConsoleTab) -> some View {
         ConsoleListFilterChoices(
-            hosts: hosts.consoleHosts, hostFilter: hostFilterBinding,
+            hosts: Self.hostFilterChoices(in: hosts), hostFilter: hostFilterBinding,
             agentStatuses: tab == .agents ? listPresentation : nil,
             counts: statusFilterCounts)
             .presentationCompactAdaptation(.popover)
@@ -1260,6 +1322,7 @@ struct ConsoleView: View {
     private func sidebarFooter(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
+                .overlay(alignment: .topTrailing) { SidebarIconBadge(label: hostUpdatesBadge) }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
             // A menu's pointer target is its own, not its button style's
@@ -1409,6 +1472,10 @@ struct ConsoleView: View {
     /// nowhere: a sheet or alert from Hosts, Settings or a list. An active
     /// search field presents on some layouts too, and is not cover.
     private var isPresentingOverConsole: Bool {
+        Self.isPresenting(over: sceneWindow)
+    }
+
+    private static func isPresenting(over sceneWindow: WindowReference?) -> Bool {
         guard let presented = sceneWindow?.window?.rootViewController?.presentedViewController
         else { return false }
         return !(presented is UISearchController)
@@ -1442,6 +1509,14 @@ struct ConsoleView: View {
             selectedTerminal = nil
             notificationRouter.path = [id]
         }
+    }
+
+    /// An Agent moved to another Workspace has a new id there. The detail
+    /// beside the list follows it, as it opens a fresh launch, rather than
+    /// reading the id the Agent left as an Agent that is gone.
+    private func followMovedAgent(_ request: MovePaneRequest, to paneID: String) {
+        guard paneID != request.paneID, notificationRouter.path.last == request.id else { return }
+        selectAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
     }
 
     private func selectTerminal(_ terminal: ConsoleTerminal) {
@@ -1788,7 +1863,7 @@ struct ConsoleView: View {
         ContentUnavailableView {
             Label("No Hosts", systemImage: "server.rack")
         } description: {
-            Text("Add a machine that runs herdr to see its Agents and Terminals here.")
+            Text("Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here.")
         } actions: {
             Button("Add Host") { presentHosts() }
                 .buttonStyle(.borderedProminent)
@@ -1799,15 +1874,37 @@ struct ConsoleView: View {
     }
 
     @ViewBuilder
-    private func agentHostIssueRows(_ issues: [ConsoleHostStatusPresentation]) -> some View {
-        if !issues.isEmpty {
-            // On the Agent rows' edges and, as they are, without rules.
-            ConsoleHostIssueList(
-                issues: issues, onOpenHost: { openHostIssue($0) },
-                onShowAll: { isShowingHostIssues = true })
-                .modifier(ListRowVerticalInsets(0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+    private var agentHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: listPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true }
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
+        }
+    }
+
+    @ViewBuilder
+    private var terminalHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: terminalPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleTerminalHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true },
+                accessibilityID: "terminals.hostIssues.badge"
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
         }
     }
 
@@ -1852,9 +1949,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private func flatAgentListRows(filtered: [ConsoleAgent]) -> some View {
-        MainActorContent {
-            agentHostIssueRows(visibleHostIssues)
-        }
         let keys = makeAgentRowKeys(
             for: filtered, pass: contentPass.number,
             qualifiers: agentTitleQualifiers, saved: console.savedChatEntries)
@@ -1867,20 +1961,6 @@ struct ConsoleView: View {
 
     @ViewBuilder
     private var workspaceAgentListRows: some View {
-        MainActorContent {
-            let issues = visibleHostIssues
-            if !issues.isEmpty {
-                Section {
-                    // Off the cards, on the page: out to the cards' edges, as
-                    // in the Terminals list's By Workspace.
-                    ConsoleHostIssueList(
-                        issues: issues, onOpenHost: { openHostIssue($0) },
-                        onShowAll: { isShowingHostIssues = true })
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                }
-            }
-        }
         let qualifiers = agentTitleQualifiers
         let saved = console.savedChatEntries
         let pass = contentPass.number
@@ -2139,15 +2219,12 @@ struct ConsoleView: View {
         let pass = contentPass.number
         ForEach(sections) { @Sendable section in
             MainActorContent {
-                let opensDetail = connectionDetail(for: section.hostID) != nil
+                // A Host with several Servers expands whatever one of them
+                // says: the others may have Agents to show, while Host
+                // connection conditions float in the bottom-trailing corner.
+                let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
                 Section {
                     if !section.isCollapsed && !opensDetail {
-                        // As in the Terminals tab: an expanded Host with a
-                        // condition says what it is before any Agents it lists.
-                        if let issue = section.statusPresentation {
-                            ConsoleHostIssueRow(issue: issue) { openHostIssue($0) }
-                                .listRowSeparator(.hidden)
-                        }
                         let keys = makeAgentRowKeys(
                             for: section.agents, pass: pass,
                             qualifiers: qualifiers, saved: saved)
@@ -2165,7 +2242,7 @@ struct ConsoleView: View {
                         if opensDetail {
                             openHostIssue(section.hostID)
                         } else {
-                            toggleHostSection(section.hostID)
+                            toggleHostSection(section.hostIDs)
                         }
                     }
                     .textCase(nil)
@@ -2256,6 +2333,19 @@ struct ConsoleView: View {
                     Button("New Agent", systemImage: "plus") {
                         startAgentRequest = StartAgentRequest(origin: newAgentOrigin)
                     }
+                }
+                if console.offersHandOff(for: agent) {
+                    Button(HandOffCopy.action, systemImage: HandOffCopy.symbol) {
+                        handOffRequest = HandOffRequest(source: agent)
+                    }
+                }
+                if offers.moves, !isSaved {
+                    Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
+                        movePaneRequest = MovePaneRequest(agent: agent)
+                    }
+                }
+                if offers.copiesPaneID, !isSaved {
+                    CopyPaneIDButton(paneID: agent.agent.paneID)
                 }
                 // Asks first, like the swipe. A menu item can be destructive:
                 // the row stays put until the close succeeds.
@@ -2469,17 +2559,18 @@ struct ConsoleView: View {
             set: { listPresentation.select($0) })
     }
 
-    private func toggleHostSection(_ hostID: Host.ID) {
+    /// Folds or unfolds a Host, given its Servers' records.
+    private func toggleHostSection(_ hostIDs: [Host.ID]) {
         // A search opens every Host holding a match, so a toggle then would
         // change nothing on screen, only what the list returns to after.
         guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
         if reduceMotion {
-            listPresentation.toggleCollapsed(hostID)
+            listPresentation.toggleCollapsed(hostIDs)
         } else {
             withAnimation(.snappy) {
-                listPresentation.toggleCollapsed(hostID)
+                listPresentation.toggleCollapsed(hostIDs)
             }
         }
     }
@@ -2550,18 +2641,64 @@ struct ConsoleView: View {
         return filteredHostIssues
     }
 
+    private var visibleTerminalHostIssues: [ConsoleHostStatusPresentation] {
+        guard terminalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+            .issues(filteredHostIDs: hostFilter)
+    }
+
     /// Every Host problem under the Host filter, as the flat lists show
     /// them outside a search, and as their summary's sheet lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
-        guard !hostFilter.isEmpty else { return hostIssues }
-        return hostIssues.filter { hostFilter.contains($0.hostID) }
+        Self.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
+    }
+
+    static func filteredHostIssues(
+        hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
+    ) -> [ConsoleHostStatusPresentation] {
+        let issues = console.hostIssues(for: hosts.consoleHosts)
+        guard !hostFilter.isEmpty else { return issues }
+        return issues.filter { hostFilter.contains($0.hostID) }
+    }
+
+    /// The Hosts the lists' filter offers: each Host once, in the Hosts tab's
+    /// order, when any of its Servers is on. Choosing one shows every Server
+    /// it has on (ADR 0047).
+    static func hostFilterChoices(in hosts: HostStore) -> [HostMachine] {
+        let listed = Set(hosts.consoleHosts.map(\.id))
+        return hosts.machines.filter { $0.isSelected(by: listed) }
+    }
+
+    /// The Hosts the filter selects, each once.
+    private var filteredHosts: [HostMachine] {
+        let filter = hostFilter
+        guard !filter.isEmpty else { return [] }
+        return hosts.machines.filter { $0.isSelected(by: filter) }
     }
 
     /// The one selected Host's name, which the empty state names; empty for
     /// several Hosts, or one no longer listed.
     private var filteredHostName: String {
-        guard hostFilter.count == 1 else { return "" }
-        return hosts.consoleHosts.first(where: { hostFilter.contains($0.id) })?.displayName ?? ""
+        let filtered = filteredHosts
+        guard filtered.count == 1 else { return "" }
+        return filtered.first?.name ?? ""
+    }
+
+    private var newTerminalHostID: Host.ID? {
+        Self.newTerminalHostID(
+            offered: hosts.consoleHosts.offeringNewItem(
+                listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
+            filteredTo: filteredHosts)
+    }
+
+    /// Where the New Terminal sheet starts with the filter on one Host: that
+    /// Host's first Server in `offered`. When the Host has more than one, the
+    /// sheet's Server picker offers the rest.
+    static func newTerminalHostID(offered: [Host], filteredTo filtered: [HostMachine]) -> Host.ID? {
+        guard filtered.count == 1, let host = filtered.first else { return nil }
+        return offered.first { host.contains($0.id) }?.id
     }
 
     private struct HostsTabRequest {
@@ -2576,12 +2713,6 @@ struct ConsoleView: View {
         let origin: ConsoleTab?
     }
 
-    /// One actionable status per Host. A disconnected session takes priority;
-    /// otherwise a connected Host can still have a failing snapshot RPC.
-    private var hostIssues: [ConsoleHostStatusPresentation] {
-        console.hostIssues(for: hosts.consoleHosts)
-    }
-
     /// How the Console's sheets present, resolved against this view.
     private var sheetPresentation: ConsoleSheetPresentation {
         ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
@@ -2590,8 +2721,13 @@ struct ConsoleView: View {
     private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
         -> some View
     {
-        ConsoleHostIssuesSheet(
-            issues: filteredHostIssues,
+        let sheetIssues =
+            shownListTab == .terminals && currentTab == .terminals
+            ? terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+                .issues(filteredHostIDs: hostFilter)
+            : filteredHostIssues
+        return ConsoleHostIssuesSheet(
+            issues: sheetIssues,
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,
             onOpenHost: { id in
@@ -2690,6 +2826,18 @@ struct ConsoleView: View {
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
     }
+
+    /// Host detail's Reconnect: the Host's Servers dial again together, on
+    /// whichever route wins (ADR 0058). A second press while one is being
+    /// served does nothing.
+    private func reconnectMachine(_ machine: HostMachine) async {
+        let servers = Set(machine.servers.map(\.id))
+        guard manualReconnectInFlightHostIDs.isDisjoint(with: servers) else { return }
+        manualReconnectInFlightHostIDs.formUnion(servers)
+        await console.reconnect(machine)
+        try? await Task.sleep(for: .milliseconds(1_200))
+        manualReconnectInFlightHostIDs.subtract(servers)
+    }
 }
 
 extension ToolbarContent {
@@ -2736,7 +2884,8 @@ struct ConsoleListFilterChoices: View {
         case fits, moreBelow, atEnd
     }
 
-    let hosts: [Host]
+    /// Each Host once, by its own name: choosing it shows all of its Servers.
+    let hosts: [HostMachine]
     @Binding var hostFilter: Set<Host.ID>
     let agentStatuses: ConsoleListPresentationStore?
     let counts: [ConsoleAgentStatusFilter: Int]
@@ -2754,12 +2903,8 @@ struct ConsoleListFilterChoices: View {
                         choice(String(localized: "All Hosts"), selected: hostFilter.isEmpty) { hostFilter.removeAll() }
                         ForEach(hosts) { @Sendable host in
                             MainActorContent {
-                                choice(host.displayName, selected: hostFilter.contains(host.id)) {
-                                    if hostFilter.contains(host.id) {
-                                        hostFilter.remove(host.id)
-                                    } else {
-                                        hostFilter.insert(host.id)
-                                    }
+                                choice(host.name, selected: host.isSelected(by: hostFilter)) {
+                                    hostFilter = host.toggled(in: hostFilter)
                                 }
                             }
                         }
@@ -3000,6 +3145,66 @@ private struct SidebarListShown: ViewModifier {
     }
 }
 
+/// The Hosts tab's badge, on the icon that stands in for the tab beside an
+/// iPad's sidebar.
+private struct SidebarIconBadge: View {
+    let label: Text?
+
+    var body: some View {
+        if let label {
+            label
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .frame(minWidth: 16, minHeight: 16)
+                .background(.red, in: Capsule())
+                .offset(x: -3, y: 3)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Shows Updates once after an app update brought a newer Plugin or Helper
+/// than the Hosts hold (ADR 0048). It waits for a window that is clear: a
+/// list or a tab's own page, with nothing presented over it.
+private struct HostUpdatesPrompt: ViewModifier {
+    let updates: HostUpdatesStore?
+    let isAtRoot: Bool
+    /// Whether the window presents something already, asked as late as can be.
+    let isCovered: @MainActor () -> Bool
+    @State private var isShowing = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var isDue: Bool {
+        updates?.isPromptDue == true && isAtRoot && scenePhase == .active
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $isShowing) {
+                if let updates { HostUpdatesView(store: updates, isPrompt: true) }
+            }
+            // A sheet going away changes nothing this can observe, so it looks
+            // again until the window is clear.
+            .task(id: isDue) {
+                while isDue, !Task.isCancelled {
+                    if !isCovered() {
+                        present()
+                        return
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+    }
+
+    /// The first window to get here shows it; the others find it shown.
+    private func present() {
+        guard let updates, updates.isPromptDue else { return }
+        updates.promptDidShow()
+        isShowing = true
+    }
+}
+
 /// An iPad sidebar's bare buttons and menus, in its bar and at its foot:
 /// symbols as bar buttons draw them, each with a bar button's hit area.
 private struct SidebarIconButtonStyle: ButtonStyle {
@@ -3093,7 +3298,8 @@ struct MissingAgentPresentation: Equatable {
         /// Standing Failure.
         case hostFailed
         /// The Host is Connected, but its first snapshot for this connection
-        /// has not landed yet.
+        /// has not landed yet, or it lists the Pane without having said what
+        /// holds it.
         case hostLoadingAgents
         case paneGone
     }
@@ -3132,6 +3338,7 @@ struct MissingAgentPresentation: Equatable {
         hostStatuses: [Host.ID: EventsSessionStatus],
         hosts: [Host],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
+        panesAwaitingForeground: Set<ConsoleAgent.ID> = [],
         hostStandingFailures: [Host.ID: TransportError] = [:]
     ) {
         let host = hosts.first { $0.id == agentID.hostID }
@@ -3176,7 +3383,7 @@ struct MissingAgentPresentation: Equatable {
         case .failed(let failure):
             (cause, title, systemImage, message) = applyFailed(failure)
         case .connected:
-            if hostsAwaitingSnapshot.contains(agentID.hostID) {
+            if hostsAwaitingSnapshot.contains(agentID.hostID) || panesAwaitingForeground.contains(agentID) {
                 cause = .hostLoadingAgents
                 title = String(localized: "Loading Agents…")
                 systemImage = "hourglass"
@@ -3227,6 +3434,7 @@ struct MissingAgentPresentation: Equatable {
             hostStatuses: console.hostStatuses,
             hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
+            panesAwaitingForeground: console.panesAwaitingForeground,
             hostStandingFailures: console.hostStandingFailures)
     }
 }
@@ -3276,13 +3484,7 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
         let needsFilteredIssues = !hostIssuesLastFailures.isEmpty || isShowingHostIssues
         let filteredIssues: [ConsoleHostStatusPresentation] =
             if needsFilteredIssues {
-                if hostFilter.isEmpty {
-                    console.hostIssues(for: hosts.consoleHosts)
-                } else {
-                    console.hostIssues(for: hosts.consoleHosts).filter {
-                        hostFilter.contains($0.hostID)
-                    }
-                }
+                ConsoleView.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
             } else {
                 []
             }
@@ -3376,7 +3578,7 @@ private struct ConsoleHostSectionHeaderView: View {
         Button(action: onToggle) {
             HStack(spacing: 8) {
                 HostStatusGlyph(tone: presentation.readiness.tone)
-                Text(presentation.hostDisplayName)
+                Text(presentation.hostName)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(presentation.readiness.nameEmphasis.color)
                     .lineLimit(1)

@@ -107,6 +107,8 @@ test("the generator deterministically trims source prices and preserves explicit
     "claude-example": { mode: "chat", input_cost_per_token: 0.000001, output_cost_per_token: 0.000004,
       cache_creation_input_token_cost: 0.00000125, cache_read_input_token_cost: 0.0000001,
       provider_specific_entry: { us: 1.1, fast: 6 } },
+    "gemini/gemini-4-carbon": { mode: "chat", input_cost_per_token: 0.000002, output_cost_per_token: 0.00001,
+      cache_read_input_token_cost: 0.0000001 },
     "gpt-image-example": { mode: "image_generation", input_cost_per_token: 9, output_cost_per_token: 9 },
     "other-model": { mode: "chat", input_cost_per_token: 9, output_cost_per_token: 9 },
   }));
@@ -116,7 +118,8 @@ test("the generator deterministically trims source prices and preserves explicit
   result = run(); assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(output, "utf8"), first);
   const table = JSON.parse(first);
-  assert.deepEqual(Object.keys(table.models), ["claude-example", "gpt-example", "gpt-output-only-flex"]);
+  assert.deepEqual(Object.keys(table.models), ["claude-example", "gemini-4-carbon", "gpt-example", "gpt-output-only-flex"]);
+  assert.deepEqual(table.models["gemini-4-carbon"], { base: { input: 0.000002, output: 0.00001, cacheRead: 0.0000001 } });
   assert.equal(table.models["claude-example"].fast.input, 0.000006);
   assert.equal(table.models["claude-example"].fast.cacheWrite, 0.0000075);
   // Priority maps to Fast and flex to Flex, each with only the categories the

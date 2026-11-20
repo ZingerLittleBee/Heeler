@@ -1,6 +1,29 @@
 import Foundation
 import Observation
 
+/// One Host in a launch sheet's Host picker: the Host's name alone, and the
+/// Servers it offers there (ADR 0047).
+struct LaunchHostChoice: Identifiable, Equatable, Sendable {
+    let id: HostMachine.Connection
+    let name: String
+    let servers: [Host]
+
+    static func grouped(_ hosts: [Host]) -> [Self] {
+        var seen: Set<Host.ID> = []
+        let unique = hosts.filter { seen.insert($0.id).inserted }
+        return HostMachine.grouped(unique).map { machine in
+            Self(
+                id: machine.id,
+                name: machine.members.compactMap(\.sharedHostName).first ?? machine.name,
+                servers: machine.members)
+        }
+    }
+
+    static func serverLabel(for server: Host) -> String {
+        server.serverKey?.label ?? server.serverKind.displayName
+    }
+}
+
 /// The new-agent flow's form logic (#12, User Story 8): pick a Host, pick a
 /// launch target (an existing Workspace, or a new one at a remote directory),
 /// detect and select an installed Agent, parse its native arguments, and
@@ -37,9 +60,11 @@ final class StartAgentStore {
         case failed(String)
     }
 
-    /// What the form's Agent picker can hold.
+    /// What the form's Agent picker can hold. Choosing a preset jumps the
+    /// picker to that preset's harness and selects the preset.
     enum AgentChoice: Hashable {
         case kind(SupportedAgentKind)
+        case preset(LaunchPreset.ID)
         case template(AgentTemplate)
     }
 
@@ -95,8 +120,10 @@ final class StartAgentStore {
         }
     }
 
-    /// The Hosts the user can dispatch to — the Host picker's options.
+    /// The Servers the user can dispatch to, grouped into `hostChoices`.
     let hosts: [Host]
+    /// Each Host once, by its name alone, holding the Servers it offers here.
+    let hostChoices: [LaunchHostChoice]
 
     /// Non-nil when the flow was opened from an agent rather than the
     /// Console: Host, workspace, and working directory are already decided,
@@ -108,6 +135,9 @@ final class StartAgentStore {
             // A workspace belongs to one Host; switching Hosts drops a stale
             // pick so it can never target the wrong session.
             if selectedHostID != oldValue {
+                if origin == nil, let selectedHostID, hosts.contains(where: { $0.id == selectedHostID }) {
+                    recents.rememberHost(selectedHostID)
+                }
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
                 selectedAgentKind = nil
@@ -123,6 +153,40 @@ final class StartAgentStore {
                 worktreeBase = ""
             }
         }
+    }
+
+    var selectedHostChoice: LaunchHostChoice? {
+        guard let selectedHostID else { return nil }
+        return hostChoices.first { choice in
+            choice.servers.contains { $0.id == selectedHostID }
+        }
+    }
+
+    var serversForSelectedHost: [Host] {
+        selectedHostChoice?.servers ?? []
+    }
+
+    /// Shown only when the selected Host offers more than one Server here.
+    var offersServerChoice: Bool {
+        serversForSelectedHost.count > 1
+    }
+
+    var selectedHostConnection: HostMachine.Connection? {
+        get { selectedHostChoice?.id }
+        set {
+            guard let newValue else {
+                selectedHostID = nil
+                return
+            }
+            selectHost(newValue)
+        }
+    }
+
+    func selectHost(_ connection: HostMachine.Connection) {
+        guard let choice = hostChoices.first(where: { $0.id == connection }),
+            selectedHostChoice?.id != connection
+        else { return }
+        selectedHostID = recents.preferredHostID(in: choice.servers) ?? choice.servers.first?.id
     }
 
     /// The existing Workspace the agent starts in: what the user picked, else
@@ -169,21 +233,34 @@ final class StartAgentStore {
         didSet {
             if selectedAgentKind != nil { selectedTemplate = nil }
             // Another harness leaves the preset behind.
-            if let selectedPreset, selectedPreset.kind != selectedAgentKind { selectedPresetID = nil }
+            if selectedPresetID != nil,
+                selectedPreset == nil || selectedPreset?.kind != selectedAgentKind
+            {
+                selectedPresetID = nil
+            }
         }
     }
     /// The Launch Preset the Agent starts from (#622); nil starts the
     /// harness as the form describes it. Picking one picks its harness.
     var selectedPresetID: LaunchPreset.ID? {
         didSet {
-            if let selectedPreset, selectedAgentKind != selectedPreset.kind { selectedAgentKind = selectedPreset.kind }
+            guard selectedPresetID != nil else { return }
+            guard let selectedPreset else {
+                selectedPresetID = nil
+                return
+            }
+            if selectedAgentKind != selectedPreset.kind {
+                selectedAgentKind = selectedPreset.kind
+            }
         }
     }
     /// The Template selected in place of a kind.
     var selectedTemplate: AgentTemplate? {
         didSet { if selectedTemplate != nil { selectedAgentKind = nil } }
     }
-    /// Either one, as the form's picker holds it.
+    /// Either one, as the form's picker holds it. Choosing a preset from the
+    /// menu selects both the preset and its harness, so the picker reads back
+    /// as `.kind(preset.kind)`.
     var selectedAgent: AgentChoice? {
         get {
             selectedTemplate.map(AgentChoice.template) ?? selectedAgentKind.map(AgentChoice.kind)
@@ -191,6 +268,7 @@ final class StartAgentStore {
         set {
             switch newValue {
             case .kind(let kind): selectedAgentKind = kind
+            case .preset(let id): selectedPresetID = id
             case .template(let template): selectedTemplate = template
             case nil:
                 selectedAgentKind = nil
@@ -331,7 +409,9 @@ final class StartAgentStore {
         self.offersConnectedWorktrees = offersConnectedWorktrees
         self.presetsProvider = presets
         self.accountVariable = accountVariable
+        let hostChoices = LaunchHostChoice.grouped(hosts)
         self.hosts = hosts
+        self.hostChoices = hostChoices
         self.origin = origin
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
@@ -344,8 +424,12 @@ final class StartAgentStore {
         self.isAgentListed = isAgentListed
         self.programExit = programExit
         self.recents = recents
-        // Pre-select when there is no choice to make.
-        self.selectedHostID = origin?.hostID ?? (hosts.count == 1 ? hosts.first?.id : nil)
+        // Origin wins; else the Server last chosen here; else the one Host's
+        // first Server when there is only one Host.
+        self.selectedHostID =
+            origin?.hostID
+            ?? recents.preferredHostID(in: hosts)
+            ?? (hostChoices.count == 1 ? hostChoices.first?.servers.first?.id : nil)
     }
 
     /// Whether the fresh-worktree variant is offered. An origin launch is
@@ -431,14 +515,22 @@ final class StartAgentStore {
         return Self.defaultAgentName(base: base, taken: taken)
     }
 
-    /// The presets of the harnesses the selected Host has.
+    /// The presets of the harnesses the selected Host has, offered in the
+    /// Agent picker to jump straight to a preset and its harness.
     var availablePresets: [LaunchPreset] {
         presetsProvider().filter { availableAgentKinds.contains($0.kind) }
     }
 
+    /// The presets for the currently selected harness, offered by the Preset
+    /// picker so another harness's presets never appear under it.
+    var selectedAgentPresets: [LaunchPreset] {
+        guard let selectedAgentKind else { return [] }
+        return availablePresets.filter { $0.kind == selectedAgentKind }
+    }
+
     var selectedPreset: LaunchPreset? {
         guard let selectedPresetID else { return nil }
-        return presetsProvider().first { $0.id == selectedPresetID }
+        return availablePresets.first { $0.id == selectedPresetID }
     }
 
     /// A preset's name as an Agent name when herdr accepts it lowercased
@@ -522,6 +614,7 @@ final class StartAgentStore {
     func discoverAgents() async {
         availableAgentKinds = []
         selectedAgentKind = nil
+        selectedPresetID = nil
         availableTemplates = []
         selectedTemplate = nil
         guard let hostID = selectedHostID else {
@@ -670,6 +763,9 @@ final class StartAgentStore {
                         template: template.name, name: agentName, workspaceID: workspaceID,
                         cwd: origin?.cwd, newWorkspace: newWorkspace, worktree: worktree),
                     hostID)
+            }
+            if origin == nil {
+                recents.rememberHost(hostID)
             }
             if case .newWorkspace = destination {
                 recents.rememberWorkspace(agent.workspaceID, for: hostID)

@@ -206,6 +206,9 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     private let herdrRead: HerdrRead
     /// What detection's tmux probe prints between its markers; nil prints none.
     private let tmuxProbe: [String]?
+    /// What a Rex probe prints between its markers, in detection or alone; nil
+    /// prints none.
+    private let rexProbe: [String]?
     private let detectionFailure: TransportError?
     private var processRead: ProcessRead
     private var isProcessReadHeld = false
@@ -292,6 +295,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         windowsLocator: [String]? = nil,
         locator: [String] = locatorLines(), locatorStatus: Int32 = 0, shellBanner: Data = Data(),
         herdrRead: HerdrRead = .notInstalled, tmuxProbe: [String]? = tmuxLines(),
+        rexProbe: [String]? = nil,
         detectionFailure: TransportError? = nil,
         helper: ScriptedHelperHost = ScriptedHelperHost(),
         start: StartResponse = .fresh, channelAfterStart: Channel? = nil,
@@ -305,6 +309,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
         self.channelAfterStart = channelAfterStart
         self.herdrRead = herdrRead
         self.tmuxProbe = tmuxProbe
+        self.rexProbe = rexProbe
         self.detectionFailure = detectionFailure
         self.locator = locator
         self.locatorStatus = locatorStatus
@@ -424,10 +429,16 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             case .answers(let output): (0, output)
             case .fails(let status, let output): (status, output)
             }
-        var printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+        var printed = ""
+        if body.contains("herdr-tui begin") {
+            printed += "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+        }
         if let tmuxProbe, body.contains("\(nonce) tmux begin") {
             printed += (["", "\(nonce) tmux begin"] + tmuxProbe + ["", "\(nonce) tmux end"])
                 .joined(separator: "\n") + "\n"
+        }
+        if let rexProbe, let rex = Self.rexNonce(in: body) {
+            printed += (["", "\(rex) rex begin"] + rexProbe + ["", "\(rex) rex end"]).joined(separator: "\n") + "\n"
         }
         if body.contains("__session=") {
             printed += (["\(nonce) begin"] + locator + ["\(nonce) end"]).joined(separator: "\n") + "\n"
@@ -441,6 +452,24 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             let end = script[start...].firstIndex(of: "'")
         else { return "" }
         return String(script[start..<end])
+    }
+
+    /// The nonce a Rex probe's begin marker carries, nil when the script has none.
+    private static func rexNonce(in script: String) -> String? {
+        guard let marker = script.range(of: " rex begin'") else { return nil }
+        let head = script[..<marker.lowerBound]
+        guard let quote = head.lastIndex(of: "'") else { return nil }
+        return String(head[head.index(after: quote)...])
+    }
+
+    /// What a Rex probe prints between its markers: the kernel, whether Rex is
+    /// installed, and each socket as `(path, own, usable)`.
+    static func rexLines(
+        kernel: String = "Darwin", installed: Bool = true, sockets: [(String, Bool, Bool)] = []
+    ) -> [String] {
+        ["kernel \(kernel)"]
+            + sockets.map { "socket \($0.1 ? 1 : 0) \($0.2 ? 1 : 0) \($0.0)" }
+            + (installed ? ["installed"] : [])
     }
 
     func openCoreLinkChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {

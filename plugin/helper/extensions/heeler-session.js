@@ -1,15 +1,17 @@
 // Heeler's extension for Pi and Oh My Pi (ADR 0033). The Host Helper copies this
-// one file into each program's extension folder, or on native Windows the app
-// writes it there, and those programs load every session on the Host through it,
-// so outside a herdr-core Terminal or a tmux Pane it does nothing at all
-// (ADR 0046). It imports only Node built-ins, since it runs from that folder.
+// one file into each program's extension folder, or the app writes it there when
+// the user asks (native Windows, and a Rex Host's Chat), and those programs load
+// every session on the Host through it, so outside a herdr-core Terminal, a tmux
+// Pane (ADR 0046) or a Rex terminal (ADR 0056) it does nothing at all. It imports
+// only Node built-ins, since it runs from that folder.
 
 import { execFile } from "node:child_process";
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Where Chat looks for the session (ADR 0034). The value is a JSON object. */
 const SESSION_LABEL = "heeler.session";
@@ -27,6 +29,10 @@ const STATUS_MESSAGE_LIMIT = 512;
 const TMUX_STATUS_OPTION = "@heeler-status";
 const TMUX_SESSION_OPTION = "@heeler-session";
 const TMUX_TIMEOUT_MS = 2000;
+/** Beside this extension's own folder: where a Rex terminal's session goes, one file per process (ADR 0056). */
+const REX_SESSION_FOLDER = "heeler-session";
+/** A folder nothing tidied for long is still looked through only this far. */
+const REX_SWEEP_LIMIT = 256;
 /** Programs known to report done, so their idle ends no turn (tmux-heeler-status-v1.json). */
 export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build"]);
 
@@ -148,7 +154,9 @@ export default async function heelerSession(program) {
   const terminal = process.env.HC_TERMINAL_ID;
   if (!terminal) {
     const pane = tmuxPane(process.env);
-    if (pane) await reportToTmux(program, pane);
+    if (pane) return reportToTmux(program, pane);
+    const file = rexSessionFile(process.env);
+    if (file) await reportToRex(program, file);
     return;
   }
   const socket = process.env.HC_TERMINAL_SOCKET;
@@ -430,4 +438,134 @@ async function reportToTmux(program, target) {
     }
   };
   for (const event of ["session_start", "session_switch", "session_branch"]) program.on(event, reportSession);
+}
+
+// MARK: Rex terminals (ADR 0056)
+
+/**
+ * Where this process's session goes inside a Rex terminal, or null outside one:
+ * `<agent directory>/heeler-session/<pid>.json`, beside the `extensions` folder
+ * this file was loaded from, which is where Chat reads it. Rex gives every
+ * program in a terminal `REX_SESSION` and `REX_BLOCK` (rex-compatibility.md). A
+ * tmux inside the terminal hands them on to its Panes, whose programs are not
+ * the terminal's own, so `TMUX` leaves this inert.
+ */
+export function rexSessionFile(env, extension = import.meta.url) {
+  if (!env.REX_SESSION || !env.REX_BLOCK || env.TMUX) return null;
+  try {
+    const folder = dirname(fileURLToPath(extension));
+    return basename(folder) === "extensions" ? join(dirname(folder), REX_SESSION_FOLDER, `${process.pid}.json`) : null;
+  } catch {
+    return null;
+  }
+}
+
+// One after another, so an older session never lands last.
+let rexWrites = Promise.resolve();
+
+/** Settles once every write asked for so far has finished. */
+export function rexWritesSettled() {
+  return rexWrites;
+}
+
+/** Whether another process's file may go: only when the system says no such process is left. */
+function hasGone(pid) {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error.code === "ESRCH";
+  }
+}
+
+/** A process that ended without its farewell left its file behind, and nothing else removes it. */
+async function sweepRexSessions(folder) {
+  for (const name of (await readdir(folder)).slice(0, REX_SWEEP_LIMIT)) {
+    const pid = Number(/^(\d+)\.json(?:\.tmp)?$/.exec(name)?.[1]);
+    if (pid && pid !== process.pid && hasGone(pid)) await rm(join(folder, name), { force: true });
+  }
+}
+
+/** On the process itself, since a program may load the extension again and one listener is enough. */
+const REX_EXIT_REMOVAL = Symbol.for("heeler.session.rex.exit-removal");
+
+/**
+ * Takes the file away as the process ends, whatever ended it short of a kill:
+ * Oh My Pi quits without a `session_shutdown` that says `quit` (Rex
+ * compatibility), and the file is this process's alone.
+ */
+function removeAtExit(path) {
+  if (process[REX_EXIT_REMOVAL]) return;
+  process[REX_EXIT_REMOVAL] = true;
+  process.once("exit", () => {
+    for (const left of [path, `${path}.tmp`]) {
+      try {
+        rmSync(left, { force: true });
+      } catch {
+        // The next session's sweep takes it.
+      }
+    }
+  });
+}
+
+/**
+ * Inside a Rex terminal: the session, as the label says it on herdr-core, in a
+ * file of this process's own, and the status of a Pi that cannot report it. Rex
+ * keeps nothing a program could name its session in, so Chat reads the file
+ * over SFTP and holds it against the process it found in the terminal.
+ */
+async function reportToRex(program, path) {
+  const folder = dirname(path);
+  let reported;
+  let swept = false;
+  let quit = false;
+  const reportSession = (_event, context) => {
+    try {
+      if (quit || !holdsTheTerminal(context)) return;
+      removeAtExit(path);
+      const session = context.sessionManager.getSessionId();
+      const file = context.sessionManager.getSessionFile();
+      const current = `${session}\n${file}`;
+      if (reported === current) return;
+      reported = current;
+      const notWritten = () => {
+        if (reported === current) reported = undefined;
+      };
+      // Not returned: the program awaits its handlers, and a slow disk must never hold it up.
+      rexWrites = rexWrites
+        .then(async () => {
+          ownStart ??= await processStart(process.pid);
+          // Chat holds the file against the process's start, so one without it names nothing.
+          if (!ownStart || quit) return notWritten();
+          await mkdir(folder, { recursive: true, mode: 0o700 });
+          if (!swept) {
+            swept = true;
+            await sweepRexSessions(folder).catch(() => {});
+          }
+          const value = { session, ...(file ? { file } : {}), pid: process.pid, start: ownStart };
+          // Whole or not at all: Chat may read at any moment.
+          await writeFile(`${path}.tmp`, JSON.stringify(value), { mode: 0o600 });
+          if (quit) return rm(`${path}.tmp`, { force: true });
+          await rename(`${path}.tmp`, path);
+        })
+        .catch(notWritten);
+    } catch {
+      // Nothing here is worth disturbing the program for.
+    }
+  };
+  for (const event of ["session_start", "session_switch", "session_branch"]) program.on(event, reportSession);
+  program.on("session_shutdown", (event, context) => {
+    if (event.reason !== "quit" || !holdsTheTerminal(context)) return;
+    quit = true;
+    try {
+      // At once, since the process may be gone before a queued removal runs.
+      rmSync(path, { force: true });
+    } catch {
+      // The next session's sweep takes it.
+    }
+  });
+
+  if (process.env.PI_PROGRAM_STATUS !== "0" && isBeforeProgramStatus(await piVersion())) {
+    reportStatus(program, writeStatus);
+  }
 }

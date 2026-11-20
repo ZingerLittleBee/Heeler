@@ -1,5 +1,10 @@
 # Pair new devices through a herdr plugin with a one-time Bootstrap Key
 
+Amended by [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md):
+`heeler-pair` shows the same Pairing Code on a machine without herdr, and a
+completed ceremony hands the machine to Add Host's last step, which saves the
+Host with the Servers the user checks.
+
 New-device onboarding previously required carrying the Device Key's public half to the server out of band, plus manual Host entry and a TOFU fingerprint prompt. herdr is a third-party project, so the server side cannot live in herdr core; its plugin system (`herdr plugin install owner/repo/subdir`, unsandboxed, full CLI access) is the extension surface we control. We decided Pairing is the primary onboarding path: a herdr plugin renders a Pairing Code in a herdr popup pane, the app scans it, connects with the embedded Bootstrap Key, performs Enrollment through a forced command, then reconnects with the Device Key. The Host is persisted only after the full ceremony succeeds.
 
 Decisions fixed during design:

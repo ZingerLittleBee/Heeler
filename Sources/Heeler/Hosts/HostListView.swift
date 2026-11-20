@@ -121,6 +121,7 @@ extension HostRemovalDependencies {
             forgetHostRecords: { id in
                 await knownHosts.forgetHost(id)
                 recentLaunches.forgetWorkspace(for: id)
+                recentLaunches.forgetHost(id)
             },
             copyHostKeyTrust: { source, record in
                 await knownHosts.copyTrust(from: source, to: record)
@@ -280,7 +281,10 @@ struct HostListView: View {
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
     private let retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)?
-    /// Stops a Host's connection attempt instead of waiting for its timeout.
+    /// Host detail's Reconnect: every Server of the Host dials again, on one
+    /// route (ADR 0058).
+    private let reconnectHost: (@MainActor @Sendable (HostMachine) async -> Void)?
+    /// Stops a Server's connection attempt instead of waiting for its timeout.
     private let stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)?
     /// Where `initialHostID` was opened from. Its detail's back button goes
     /// back there instead of to this list.
@@ -293,6 +297,9 @@ struct HostListView: View {
     private let discoveries: HostServerDiscoveryStore
     @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
     @Environment(\.hostRemovalDependencies) private var removalDependencies
+    /// Which Hosts hold an older Plugin or Helper; nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var updates: HostUpdatesStore?
+    @State private var updatesRequest: HostUpdatesRequest?
     @State private var isAddingHost = false
     @State private var editingHost: Host?
     /// A record of the Host the wizard just added, while its row is lit.
@@ -329,6 +336,7 @@ struct HostListView: View {
         harnessEdits: ConsoleStore? = nil,
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
+        reconnectHost: (@MainActor @Sendable (HostMachine) async -> Void)? = nil,
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil,
         discoveries: HostServerDiscoveryStore = .shared,
@@ -350,14 +358,14 @@ struct HostListView: View {
         self.harnessEdits = harnessEdits
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
+        self.reconnectHost = reconnectHost
         self.stopConnecting = stopConnecting
         self.origin = origin
         self.onDone = onDone
         // On the stack from the first frame, so the requested detail never
         // renders with the list's back button first.
         _path = State(
-            initialValue: Self.requestedRoute(initialHostID, opensHostHelper: opensHostHelper, in: store)
-                .map { [$0] } ?? [])
+            initialValue: Self.requestedPath(initialHostID, opensHostHelper: opensHostHelper, in: store))
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -376,7 +384,7 @@ struct HostListView: View {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
-                        Text("Add a machine that runs herdr to get started.")
+                        Text("Add a machine that runs herdr, tmux or Rex to get started.")
                     } actions: {
                         // Scan to Pair is the primary add-Host action; the
                         // manual form is the fallback (ADR 0007).
@@ -391,11 +399,18 @@ struct HostListView: View {
                     List {
                         if store.coreCatalogLoadError != nil {
                             Section {
-                                Label(
-                                    String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added."),
-                                    systemImage: "externaldrive.badge.exclamationmark")
+                                Label {
+                                    Text(
+                                        String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added.")
+                                    )
+                                    .font(.footnote)
+                                } icon: {
+                                    Image(systemName: "externaldrive.badge.exclamationmark")
+                                        .foregroundStyle(.orange)
+                                }
                             }
                         }
+                        updatesCard
                         ForEach(HostListEntry.grouped(entries)) { @Sendable section in
                             MainActorContent {
                                 let isCollapsed = isCollapsed(section.group)
@@ -410,10 +425,15 @@ struct HostListView: View {
                                         group: section.group, count: section.entries.count,
                                         isCollapsed: isCollapsed
                                     ) { toggle(section.group) }
+                                    .listRowInsets(
+                                        EdgeInsets(top: 6, leading: 0, bottom: 4, trailing: 0))
                                 }
                             }
                         }
                     }
+                    .listStyle(.insetGrouped)
+                    .listSectionSpacing(.compact)
+                    .contentMargins(.top, 4, for: .scrollContent)
                     .readableColumnPage()
                 }
             }
@@ -461,11 +481,16 @@ struct HostListView: View {
                     navigateToPendingOnboardingHostIfNeeded()
                 }
             ) {
-                // A successful Pairing lands on its Server's page, whose
-                // preflight is the only place its first connection can be
-                // trusted (session discovery included).
-                PairingScanView(catalog: store) { paired in
+                // A successful Pairing ends on Add Host's last step and comes
+                // back here, to the new row (ADR 0057). A code with a Herdr
+                // Endpoint lands on its one Server's page instead, whose
+                // preflight proves its launcher answers.
+                PairingScanView(
+                    catalog: store, discoveries: discoveries, dependencies: onboardingDependencies
+                ) { paired in
                     pendingOnboardingHostID = paired.id
+                } onAdded: { member in
+                    pointOut(member)
                 } onAddManually: {
                     manualFallbackRequested = true
                 }
@@ -496,14 +521,13 @@ struct HostListView: View {
             // A caller that keeps this view's identity across requests
             // still lands on the new one.
             .onChange(of: initialHostID) { _, id in
-                if let route = Self.requestedRoute(id, opensHostHelper: opensHostHelper, in: store) {
-                    path = [route]
-                }
+                let requested = Self.requestedPath(id, opensHostHelper: opensHostHelper, in: store)
+                if !requested.isEmpty { path = requested }
             }
             .onChange(of: store.hosts.map(\.id)) { _, records in
                 // A Server turned off from its own page has no page left.
                 path.removeAll { route in
-                    if case .server(let id, _, _) = route { !records.contains(id) } else { false }
+                    if case .server(let id, _) = route { !records.contains(id) } else { false }
                 }
                 discoveries.retain(store.machines.map(\.id))
             }
@@ -511,6 +535,7 @@ struct HostListView: View {
         }
         // Over whichever page is up: Host detail and a Server's page ask too.
         .modifier(HostRemovalAlerts(removal: removal))
+        .modifier(HostUpdatesSheet(store: updates, request: $updatesRequest))
         // Covers Host detail too.
         .readableColumn()
     }
@@ -521,9 +546,9 @@ struct HostListView: View {
         case .host(let member, let isRequested):
             HostMachineDetailView(
                 catalog: store, member: member, discoveries: discoveries, removal: removal,
-                dependencies: onboardingDependencies, serverState: { serverPresentation($0) })
+                dependencies: onboardingDependencies, console: consoleLink)
                 .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
-        case .server(let id, let isRequested, let opensHostHelper):
+        case .server(let id, let opensHostHelper):
             if let host = store.hosts.first(where: { $0.id == id }) {
                 // Keyed by the record's id: onboarding restarts itself for a
                 // Host edited underneath.
@@ -533,41 +558,58 @@ struct HostListView: View {
                     usage: usageStore?(id),
                     openUsage: openUsage.map { open in { open(id) } },
                     connectionStatus: connectionStatuses[id],
-                    connectedRouteID: routeIDs[id],
                     syncIssue: syncIssues[id],
                     coreEnvironmentNotice: coreEnvironmentNotices[id],
                     harnessEdits: harnessEdits,
                     isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                     retryConnection: retryAction(for: id),
-                    stopConnecting: stopAction(for: id),
-                    turnOff: {
-                        let dependencies = removalDependencies
-                        Task { await removal.turnOff(id, dependencies: dependencies) }
-                    },
-                    // Opened from elsewhere, it has no Host detail behind it.
-                    openHost: isRequested ? { path.append(.host(id)) } : nil,
                     opensHostHelper: opensHostHelper,
                     dependencies: onboardingDependencies)
                     .id(id)
-                    .modifier(ReturnToOrigin(origin: isRequested ? origin : nil))
             } else {
                 ContentUnavailableView("Host removed", systemImage: "server.rack")
             }
         }
     }
 
-    /// Where a request for one catalog record lands: a Server's own page, or
-    /// Host detail for the record of a Host with no Server on.
-    private static func requestedRoute(
-        _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore
-    ) -> HostDetailDestination? {
-        guard let id, let record = store.hosts.first(where: { $0.id == id }) else { return nil }
-        guard record.serverKind.isConfirmed else { return .host(id, isRequested: true) }
-        return .server(id, isRequested: true, opensHostHelper: opensHostHelper)
+    /// Where a request for one catalog record lands: the Server's own page
+    /// over its Host's detail, or Host detail alone for the record of a Host
+    /// with no Server on. A Server's page says nothing of the connection and
+    /// has no switch, so its Host is always the page behind it (ADR 0058).
+    /// `isRequested` marks a page opened from elsewhere, whose Host detail
+    /// goes back there.
+    private static func requestedPath(
+        _ id: Host.ID?, opensHostHelper: Bool, in store: HostStore, isRequested: Bool = true
+    ) -> [HostDetailDestination] {
+        guard let id, let record = store.hosts.first(where: { $0.id == id }) else { return [] }
+        let host = HostDetailDestination.host(id, isRequested: isRequested)
+        guard record.serverKind.isConfirmed else { return [host] }
+        return [host, .server(id, opensHostHelper: opensHostHelper)]
+    }
+
+    /// The Console's connections, as Host detail reads them.
+    private var consoleLink: HostConsoleLink {
+        var link = HostConsoleLink(
+            statuses: connectionStatuses,
+            standingFailures: standingFailures,
+            routeIDs: routeIDs,
+            syncIssues: syncIssues,
+            manualReconnects: manualReconnectInFlightHostIDs,
+            reconnect: reconnectHost,
+            retry: retryConnection)
+        if let stopConnecting {
+            link.stopConnecting = { (machine: HostMachine) async in
+                for server in machine.servers {
+                    await stopConnecting(server.id)
+                }
+            }
+        }
+        return link
     }
 
     private var entries: [HostListEntry] {
-        store.machines.map { machine in
+        let updates = updates?.snapshot
+        return store.machines.map { machine in
             HostListEntry(
                 machine: machine,
                 presentation: HostMachineRowPresentation(
@@ -577,18 +619,22 @@ struct HostListView: View {
                     latencies: latencies,
                     syncIssues: syncIssues,
                     canRetry: retryConnection != nil),
-                unseen: discoveries.unseen(on: machine).map(\.key.label))
+                unseen: discoveries.unseen(on: machine).map(\.key.badgeLabel),
+                updateTag: updates?.tag(for: machine.id))
         }
     }
 
-    private func serverPresentation(_ record: Host) -> HostRowPresentation {
-        HostRowPresentation(
-            host: record,
-            status: connectionStatuses[record.id],
-            standingFailure: standingFailures[record.id],
-            latency: latencies[record.id],
-            syncIssue: syncIssues[record.id],
-            canRetry: retryConnection != nil)
+    /// Over the groups: the updates the Hosts wait on, and one button for all
+    /// of them (ADR 0048). Gone once every Host is up to date.
+    @ViewBuilder
+    private var updatesCard: some View {
+        if let updates, let card = updates.snapshot.card {
+            Section {
+                HostUpdatesCard(card: card, updateAll: { updates.updateAll() }, open: { updatesRequest = HostUpdatesRequest() })
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 14))
+                    .listRowBackground(ListCard.fill)
+            }
+        }
     }
 
     /// The Hosts the Console has a connection to. A look for new Servers goes
@@ -655,22 +701,24 @@ struct HostListView: View {
         // and pointer hover; a borderless Retry keeps its own target in it,
         // and VoiceOver offers it as one of the row's actions.
         NavigationLink(value: HostDetailDestination.host(machine.representative.id)) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 12) {
-                    HostMachineRowHeadline(presentation: entry.presentation)
-                    if isRemoving {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityHidden(true)
-                    } else if !stopped.isEmpty {
-                        HostRetryButton(isBusy: isRetrying) { retry(stopped.map(\.id)) }
-                    }
+            HStack(alignment: .center, spacing: 12) {
+                HostStatusGlyph(tone: entry.presentation.tone)
+                    .fixedSize()
+                HostMachineRowContent(
+                    presentation: entry.presentation, unseen: entry.unseen,
+                    updateTag: entry.updateTag, showsTrailing: !isRemoving && stopped.isEmpty)
+                if isRemoving {
+                    ProgressView()
+                        .controlSize(.small)
+                        .fixedSize()
+                        .accessibilityHidden(true)
+                } else if !stopped.isEmpty {
+                    HostRetryButton(isBusy: isRetrying) { retry(stopped.map(\.id)) }
+                        .fixedSize()
                 }
-                // Under the name, clear of the glyph.
-                chips.padding(.leading, 32)
             }
-            .padding(.vertical, 2)
         }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 14))
         .disabled(isRemoving)
         .accessibilityValue(
             isRemoving ? Text("Removing") : isRetrying ? Text("Connecting") : Text(chips.spokenSummary))
@@ -714,9 +762,7 @@ struct HostListView: View {
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
-        if let route = Self.requestedRoute(id, opensHostHelper: false, in: store) {
-            path.append(route.fromTheList)
-        }
+        path += Self.requestedPath(id, opensHostHelper: false, in: store, isRequested: false)
     }
 
     private func retryAction(
@@ -726,12 +772,6 @@ struct HostListView: View {
         return { await retryConnection(id) }
     }
 
-    private func stopAction(
-        for id: Host.ID
-    ) -> (@MainActor @Sendable () async -> Void)? {
-        guard let stopConnecting else { return nil }
-        return { await stopConnecting(id) }
-    }
 }
 
 /// One page pushed from the Hosts list (ADR 0047).
@@ -740,17 +780,9 @@ enum HostDetailDestination: Hashable {
     /// request is marked in the route itself, not inferred from where it sits
     /// on the stack, so it knows where Back goes from its first render.
     case host(Host.ID, isRequested: Bool = false)
-    /// One Server's page, by its record. `opensHostHelper` opens the Host
-    /// Helper sheet over it on arrival.
-    case server(Host.ID, isRequested: Bool = false, opensHostHelper: Bool = false)
-
-    /// The same page as the list itself opens it: Back returns to the list.
-    var fromTheList: Self {
-        switch self {
-        case .host(let id, _): .host(id)
-        case .server(let id, _, let opensHostHelper): .server(id, opensHostHelper: opensHostHelper)
-        }
-    }
+    /// One Server's page, by its record, over its Host's detail.
+    /// `opensHostHelper` opens the Host Helper sheet over it on arrival.
+    case server(Host.ID, opensHostHelper: Bool = false)
 }
 
 /// The confirmation before a Host goes or a Server is turned off, and the
@@ -882,6 +914,8 @@ struct HostListEntry: Identifiable, Equatable {
     /// Labels of the Servers found on the Host that the user has not been
     /// shown yet.
     var unseen: [String] = []
+    /// What the Host's Plugin and Helper updates are up to, nil with none.
+    var updateTag: HostUpdatesSnapshot.Tag?
 
     var id: HostMachine.ID { machine.id }
 
@@ -912,18 +946,29 @@ private struct HostGroupHeader: View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
                 Text(group.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.secondary)
+                    .truncationMode(.tail)
                 Text(count, format: .number)
-                    .foregroundStyle(.tertiary)
+                    .font(.footnote.weight(.medium).monospacedDigit())
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 12)
+                    .fixedSize()
             }
+            .lineLimit(1)
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .textCase(nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             count == 1
@@ -1027,7 +1072,7 @@ private struct HostRetryButton: View {
     let action: () -> Void
 
     /// The disc grows with the glyph, which follows Dynamic Type.
-    @ScaledMetric(relativeTo: .subheadline) private var discSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .footnote) private var discSize: CGFloat = 28
 
     var body: some View {
         // Inert while busy but still hit: a tap on the spinner must not fall
@@ -1037,7 +1082,7 @@ private struct HostRetryButton: View {
             // Small and light: a stopped Host's reason is the row's point,
             // and three prominent buttons in a row shout over it.
             Image(systemName: "arrow.clockwise")
-                .font(.subheadline.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(Self.glyph)
                 .opacity(isBusy ? 0 : 1)
                 .overlay {
@@ -1047,9 +1092,11 @@ private struct HostRetryButton: View {
                 // Gray on gray: the stopped Host's red reason stays the one
                 // color in the row.
                 .background(Self.disc, in: Circle())
-                // The full 44-point target around the smaller circle.
-                .frame(width: max(44, discSize), height: max(44, discSize))
+                // Generous hit target without inflating compact row height.
+                .frame(width: max(36, discSize), height: max(36, discSize))
                 .contentShape(Rectangle())
+                .padding(.vertical, -4)
+                .padding(.horizontal, -2)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("Retry")

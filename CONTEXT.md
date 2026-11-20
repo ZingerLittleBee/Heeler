@@ -5,30 +5,72 @@ A native iOS agent console for Herdr TUI, herdr-core and tmux. One context: the 
 ## Language
 
 **Host**:
-A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes and its account.
+A remote machine reachable over SSH. The unit a user adds, names, and authenticates against. It is reached on one or more Routes, and its host key is trusted once for all of them. A Host lists its Servers, and the ones switched on are what this device connects to; a Host may have none on (ADR 0047). Host detail is the Host's page: its Servers with a switch each, its Routes with the state of its connection and its Reconnect, and its account.
 _Avoid_: server, machine, connection
 
 **Server**:
-One thing on a Host that holds Agents: a Herdr TUI session, a herdr-core
-session, or a tmux server. Each is on or off on this device (Show in Heeler).
-One that is on has its own connection, Agents, Terminals, notifications and
-settings, and its own page under Host detail. A look at the Host finds its
+One thing on a Host that holds Agents or Terminals: a Herdr TUI session, a
+herdr-core session, a tmux server, or a Rex server (one per Host at most). Each
+is on or off on this device, by its switch in Host detail. One that is on has
+its own connection, on the Route its Host's connections share (ADR 0058), its
+own Agents, Terminals, notifications and settings, and its own page under Host
+detail, which says nothing of the connection. A look at the Host finds its
 Servers; ones found after the Host was added arrive off. In code, and wherever
-this glossary says "a herdr-core Host" or "a tmux Host", the thing meant is one
-Server that is on: the catalog still stores one `Host` record for each (ADR
+this glossary says "a herdr-core Host", "a tmux Host" or "a Rex Host", the
+thing meant is one Server that is on: the catalog still stores one `Host` record for each (ADR
 0047).
 _Avoid_: service, backend, instance
 
 **Server Kind**:
 Which kind a Server is: Herdr TUI (the original herdr server), herdr-core (the
-vendor's headless terminal runtime, `hc`), or a tmux server. They share no
-Agents. A herdr-core Server whose core also serves the Herdr desktop app is
-still herdr-core; the app's organization is data it carries, not another kind.
-A Server keeps its kind: neither a connection nor an edit changes it, and
-turning it off and on again makes a new record (ADRs 0031 and 0047). A Pairing
-Code always adds a Herdr TUI Server; herdr-core and tmux Servers are found by a
-look or turned on by name.
+vendor's headless terminal runtime, `hc`), a tmux server, or a Rex server. Rex
+is offered in every build and still experimental for users (ADR 0049). They
+share no Agents. A herdr-core Server whose core also serves the Herdr desktop
+app is still herdr-core; the app's organization is data it carries, not
+another kind. A Server keeps its kind: neither a connection nor an edit
+changes it, and turning it off and on again makes a new record (ADRs 0031 and
+0047). A Pairing Code always adds a Herdr TUI Server; herdr-core and tmux
+Servers are found by a look or turned on by name, and a Rex Server only by a
+look.
 _Avoid_: backend, server type, flavor
+
+**Rex Host**:
+A Host's Rex Server that is on: one Rex server on macOS or Linux, found by the
+Unix socket it listens on and stored with that socket's path. A look lists it
+running where the socket is there, and not running where Rex is installed
+without one; turned on then, it connects once the user starts Rex, since
+Heeler never starts the server and never runs the `rex` command-line tool to
+find it. A terminal running a known agent program is an Agent with its Agent
+Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
+detail, with Chat for Claude Code, Codex, Pi and Oh My Pi, the Composer and
+the terminal. Nothing is installed on the machine for it, except that a Pi or
+Oh My Pi's Chat offers to add Heeler's extension to that Agent's own
+extension folder, and writes it only when the user says so; an Agent whose
+program reports nothing to Rex reads Unknown and has no Stop and no Blocked
+Card. Where Chat is
+offered, its Agents take images and files too, staged over the Host's SSH
+connection as on the other Server Kinds. A Rex Host offers no notifications,
+Live Activities, Usage, Changes or New Agent (ADR 0056).
+Every build offers it; the user guide and the changelog call it experimental
+(ADR 0049). One control connection follows the whole server: every session's
+terminals, kept current by Rex's events and read again after any new
+connection. Another server instance on the socket is another server, as
+with tmux (ADR 0050). A Rex Host's terminals open from the server's own
+redraw, and their size is asked for (ADR 0051). They take input from their
+first paint, one request at a time on the control connection, never sent
+twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
+its own, once per showing, and gives it back once the view stops showing it;
+one whose size another device took meanwhile, or whose take did not go
+through, says so and fits only when the user taps to fit it to the screen
+(ADR 0053).
+_Avoid_: Rex session (for the Host), Rex app (for the server)
+
+**Detached Tab**:
+The Tab, named Detached, that a Rex session's detached terminals share: the
+terminal blocks that belong to the session but to none of its windows. They
+are still the user's terminals, so the Console lists them after the session's
+windows instead of leaving them out (ADR 0050).
+_Avoid_: Detached Terminal, hidden terminal, orphan
 
 **tmux server**:
 The tmux server a tmux Host targets, on macOS or Linux, named by its socket
@@ -50,10 +92,13 @@ _Avoid_: herdr-app (its executable), desktop (alone)
 One way to reach a Host: an address and port, optionally resolved from a Jump
 Host, with the first hop optionally carried by an Overlay Network. A Host lists
 its Routes in order; the first is its primary Route, the address shown for it.
-Every connection races the Host's Routes and keeps the first that reaches the
-Host, Routes over the device's own network a moment ahead of the rest — no
-rule picks a Route by Wi-Fi name or location (ADR 0022). A Route that reaches a
-machine presenting another key fails; it is not the Host.
+A Host's connections hold one Route. The first to dial races the Host's Routes
+and keeps the first that reaches the Host, Routes over the device's own network
+a moment ahead of the rest, and the Host's other Servers follow it. No rule
+picks a Route by Wi-Fi name or location (ADR 0022). A Host on a Route through
+an Overlay Network or a Jump Host moves to a direct Route that comes into
+reach, when the device's network changes or the app returns (ADR 0058). A Route
+that reaches a machine presenting another key fails; it is not the Host.
 _Avoid_: path, connection, profile
 
 **Jump Host**:
@@ -114,12 +159,16 @@ Jump Host is configured.
 _Avoid_: gateway key, provider key, legacy RSA
 
 **Pairing**:
-The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success produces a working Host, persisted only at that point.
+The full new-device ceremony: scan a Pairing Code, connect with its Bootstrap Key, complete Enrollment, then reconnect with the Device Key. Success ends on Add Host's last step, which lists the machine's Servers and saves the Host with the ones the user checks; nothing is persisted before that. A code with a Herdr Endpoint names its one Server instead, and its Host is persisted by the ceremony.
 _Avoid_: scan to connect, binding
 
 **Pairing Code**:
-The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. The QR image is just its rendering.
+The versioned pairing payload (candidate addresses, host key fingerprint, Bootstrap Key, expiry). The pairing plugin produces version 1, or version 2 for a herdr outside the user's config home; version 2, also produced by an app that bundles its own herdr, carries a Herdr Endpoint. `heeler-pair`, the command for a machine without herdr, produces version 3, a machine code: a version 1 payload that names no Server. The QR image is just its rendering.
 _Avoid_: QR code, invite
+
+**Machine code**:
+A Pairing Code version 3, shown by `heeler-pair` outside any server. It says nothing of what the machine runs, where a code from the pairing plugin vouches for a running Herdr TUI.
+_Avoid_: CLI code, generic code
 
 **Herdr Endpoint**:
 A Host's own herdr instance outside the user's config home, such as one bundled in a desktop app: the absolute path of its API socket and of a launcher that behaves as `herdr` for it. Carried by a Pairing Code v2 and stored on the Host; a Host with one never uses the home-relative session socket or the `herdr` on the SSH PATH.
@@ -134,7 +183,7 @@ The server-side step of Pairing: the forced command appends the Device Key's pub
 _Avoid_: install key, authorization
 
 **Agent**:
-A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none.
+A coding agent process (claude, codex, ...) running in a Pane or a Terminal. The primary object of the app. On Herdr TUI it is what herdr's detection reports. On herdr-core it is the foreground program of a Terminal while that program is a known agent program, or any program but a shell while the Terminal carries a Program Status from a program Heeler does not know. A status from a known program counts only while that program holds the foreground, and a shell in the foreground ends the Agent, whatever was reported last. On native Windows, whose foreground stays the Terminal's first process, a `-NoExit` PowerShell counts as that shell while the Terminal's title is that PowerShell's own path. On tmux it is the foreground program of a Pane while that program is a known agent program; a shell in the foreground ends the Agent, and a Pane whose program has exited hosts none. On Rex it is the foreground program of a terminal while that program is a known agent program, read by the same rule; a report alone never makes one (ADR 0054).
 _Avoid_: bot, task, session
 
 **Staged Image**:
@@ -142,7 +191,7 @@ A user-selected image that exists on a Host at a remote path, whether or not the
 _Avoid_: attachment, uploaded image
 
 **Staged File**:
-A user-selected file that exists on a Host at a remote path, whether or not the Agent has used it from a prompt.
+A user-selected file, or the conversation record of a Hand Off, that exists on a Host at a remote path, whether or not the Agent has used it from a prompt.
 _Avoid_: attachment, uploaded file
 
 **Image Attachment**:
@@ -157,7 +206,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies even while Subagents, Workflows, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected Transcript read confirms non-stale running Background Work, without replacing Chat's underlying foreground activity. Blocked means the agent is waiting for human input; Error, herdr-core and tmux only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI, whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running, Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript, SFTP task logs, Subagent transcripts, Swarm side files, and screen task checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the foreground that held the terminal when it was reported still holds it, and is Unknown otherwise, Done included; Rex keeps no turn count, so a finished turn is the report that ended it, and the connection that hears the reports counts the turns that end (ADR 0054). A Claude Code there keeps reporting working after its turn ended while commands it put in the background still run; Heeler reads that report as done, so the turn counts as finished. Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -167,7 +216,10 @@ never reports has none. In a herdr-core Terminal it arrives through OSC 7501,
 and the core keeps a program's last report after that program exits, for as
 long as its Terminal runs on. On tmux, Heeler records it on the Pane in the
 same words, from its Claude Code hooks, its Pi and Oh My Pi extensions, or the
-OSC 7501 reports other programs make in their output.
+OSC 7501 reports other programs make in their output. A Rex server keeps it
+per terminal from OSC 7501 too, with the terminal's foreground process at the
+time of the report, and keeps idle, done and error reports after their program
+exits.
 _Avoid_: detected status, agent state
 
 **Status Badge**:
@@ -183,7 +235,9 @@ ordinary shell — a workspace's root pane starts as a shell. Used as an address
 (`pane_id`), never as a layout concept in this app. On Herdr TUI it is herdr's
 pane; on herdr-core each Terminal is one Pane, addressed by the Terminal's
 address; on tmux it is tmux's pane, whose address holds for one run of the tmux
-server: after a restart its Panes are new, even where tmux reuses an id.
+server: after a restart its Panes are new, even where tmux reuses an id. On
+Rex it is a terminal block, addressed by its session and block; blocks that
+are not terminals are not Panes.
 _Avoid_: window, tile
 
 **Tab**:
@@ -191,7 +245,9 @@ An ordered member of a Workspace that holds one or more Panes. On Herdr TUI it
 is herdr's tab. On herdr-core it is a Herdr desktop tab, or, in a derived
 Workspace, one Terminal's own Tab. A Terminal without desktop labels started
 from inside another, such as a subagent, joins that Terminal's Tab as another
-Pane. On tmux it is a tmux window.
+Pane. On tmux it is a tmux window. On Rex it is a Rex window, its Panes in
+reading order, tiled before floating; a session's detached terminals share
+its Detached Tab.
 _Avoid_: window, page
 
 **Terminal**:
@@ -231,7 +287,9 @@ only while that app runs on the Host; a derived Workspace has no name of its
 own. On tmux it is a tmux session, named and ordered as tmux shows it, and
 Heeler keeps no organization of its own there either; a window several
 sessions share, grouped or linked, shows once, under the one with the lowest
-id, and the sessions Heeler keeps for showing Panes are not Workspaces. New
+id, and the sessions Heeler keeps for showing Panes are not Workspaces. On
+Rex it is a Rex session, named and ordered as Rex shows it; one with no
+terminal is not listed. New
 Agent can start in an existing Workspace, a new Worktree of one, or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
@@ -266,18 +324,30 @@ same Checkout shows the same Changes, never "what this Agent changed". Viewing
 Changes never modifies the Checkout.
 _Avoid_: diff, source control, Agent's changes, project changes
 
+**Files**:
+A read-only look at the folders and files on an Agent's Host, opened from
+Agent detail and starting in the Agent's directory. It belongs to the Host, as
+Changes belongs to the Checkout: it shows whatever the Host's account can
+read, never "the files this Agent made", and marks an item changed in the last
+ten minutes without saying who changed it. Viewing Files never changes the
+Host. A file opened in a viewer, shared or saved is first copied to this
+device, and the copy goes when its preview or Files closes (ADR 0059).
+_Avoid_: file manager, SFTP browser, downloads, Agent's files
+
 **Console**:
-The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Workspace sections are scoped to their Host and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
+The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
 The ordered rows of fields that identify an Agent in the Console and its
 switcher. Each Herdr TUI Host follows its herdr plugin's fields until the user
 saves that Host's own layout, which may start from a Sync from plugin copy or
-from another Host's layout, applied to every Host from that Host's page; Herdr
-TUI has no user-facing default layout. A herdr-core Host has no plugin and
-starts from Heeler's own: the terminal's title, then its directory. Fields only
-herdr's plugin supplies, such as its tokens, do not apply there, and the
+from another Host's layout, applied to every Host from that Host's page; when
+no plugin snapshot is available, it falls back to Heeler's own two-row default.
+A Host without a plugin (herdr-core, tmux, or Rex) starts from Heeler's own
+two-row default: `terminal_title_stripped` with `host` on the right on Row 1,
+then `workspace` with `changes` on the right on Row 2. Fields only herdr's
+plugin supplies, such as its tokens, do not apply there, and on herdr-core the
 Terminal's labels are offered as fields. The Console shows at most three rows, as
 three fixed Row Slots, and every Agent on a Host shares them: herdr's
 per-kind `rows_by_agent` overrides are decoded but never applied. herdr's
@@ -312,15 +382,17 @@ _Avoid_: row style, status avatar
 **Row Slot**:
 One of the three fixed positions in an Agent Row Layout. On Herdr TUI, Row 1
 and Row 2 are herdr rows: they start from herdr's sidebar fields and are what
-Sync from plugin refills. On herdr-core they start from Heeler's own layout and
-also accept the Terminal's labels. Row 3 is Heeler's row, which Sync keeps.
+Sync from plugin refills. On Hosts without a plugin (herdr-core, tmux, and
+Rex), or when no plugin snapshot is available, Row 1 starts from
+`terminal_title_stripped` and Row 2 from `workspace`; herdr-core slots also
+accept the Terminal's labels.
+Row 3 is Heeler's row, empty until configured, which Sync keeps.
 Every slot accepts herdr fields and the Heeler-only fields herdr does not define (Host name,
-Agent Status as text, working directory name, working directory path). Each slot also has a right side
+Server backend `core` / `tui` / `rex` / `tmux`, Agent Status as text, working directory name, working directory path). Each slot also has a right side
 that ends its line, Heeler's own, which Sync keeps and which alone can hold
 the Status Badge and the Checkout's Changes totals; a field sits on one side
-of a slot at most. Until a Host's layout chooses its right sides, the Console
-places them: the Host name ends the first line under the title, and the
-totals the last.
+of a slot at most. Until a Host's layout chooses its right sides, Row 1 ends
+with the Host name and Row 2 with the Changes totals.
 Titles, the switcher, and Live Activities read only the left sides. Slots are
 never added, moved, or deleted; an empty slot renders nothing.
 _Avoid_: extra row, custom row
@@ -359,7 +431,9 @@ accepts a bracketed paste, and otherwise says so. A Send with no answer has an
 unknown outcome and is never repeated. Stop there presses the Terminal's own
 stop key. On native Windows Send pastes nothing into a Terminal whose shell can
 outlive its Agent, because its foreground would not show the Agent leaving
-(ADR 0035).
+(ADR 0035). On Rex, Send keeps those checks, in tmux's order, as requests to
+the terminal's block on the control connection, one at a time with the open
+terminal's input, and Stop is one Esc (ADRs 0055 and 0056).
 While Agent Status is Working and the draft is blank, Send becomes Stop: the
 program's Stop keys (one Esc; in Chat, two for OpenCode, whose first Esc only
 arms its interrupt, or Ctrl+C in Grok Build, whose turns Esc doesn't stop),
@@ -426,6 +500,15 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
+On Rex, for Claude Code, Codex, Pi and Oh My Pi only, Chat binds the
+conversation as on herdr-core, from what the Host's SSH connection reads
+about the foreground process Rex names, and keeps a choice on this device. A
+Pi or Oh My Pi there is bound from a file Heeler's extension keeps for its
+process, where a label holds it on herdr-core. Its Send, Stop and
+Blocked Card answers are requests to the terminal's block on the control
+connection, never a terminal of Chat's own, and it reads the screen from the
+server's text of it, treating one whose shape is not certain as no screen
+(ADRs 0055 and 0056).
 The choice between Chat and the terminal is app-wide, Terminal by default. Not
 offered on native Windows Herdr TUI Hosts; on native Windows herdr-core Hosts,
 only for the programs tested there.
@@ -446,9 +529,20 @@ Antigravity CLI, herdr names the conversation id, whose folder Chat finds
 under `~/.gemini/antigravity-cli/brain`. The session
 herdr reports names it; on herdr-core, the session Chat bound (ADR 0034). Heeler only reads it: the app over SFTP, or for
 OpenCode by that query, keeping decoded entries, never tool output, in an
-on-device cache; and the Heeler plugin on the Host itself, or on herdr-core the
-Host Helper, to total Claude Code and Codex Token Usage (ADR 0028).
+on-device cache; and the Heeler plugin on the Host itself, or on herdr-core and
+tmux the Host Helper, to total Claude Code, Codex, and Antigravity CLI Token Usage (ADR 0028).
 _Avoid_: log, history file, session file
+
+**Hand Off**:
+Giving one Agent's conversation to another Agent on the same Server, or to a
+new one, to carry the work on (**Take Over**) or to review it (**Second
+Opinion**). Heeler writes a conversation record from what Chat read of the
+Transcript, without tool output or reasoning, stages it for the receiving
+Agent as a Staged File, and puts a message that asks for it to be read in that
+Agent's Composer. Nothing is sent: the user sends the draft. Offered for a
+live Agent whose program Chat reads, on a Host that takes uploads (ADR 0060).
+_Avoid_: Handoff (Apple's name for continuing a task on another device),
+transfer, fork, catch-up
 
 **Account**:
 One sign-in of a harness on a Host, identified by the config directory where
@@ -457,7 +551,7 @@ Account** per harness: the directory the harness uses in herdr's own
 environment, or on herdr-core in the core's. The user may add more Accounts for any harness by choosing their
 directories in Settings › Agents & Accounts, the one place Accounts are kept;
 Heeler may suggest directories that look like one, but counts none until the
-user adds it. Usage reads the Accounts of Claude Code and Codex, Chat searches
+user adds it. Usage reads the Accounts of Claude Code, Codex, and Antigravity CLI, Chat searches
 every harness's Accounts for a Transcript, and Launch Presets start an Agent
 in one. A harness's **Folder Variable** (such as `CLAUDE_CONFIG_DIR` or
 `CODEX_HOME`) is what points it at an Account; Heeler knows some and the user
@@ -476,16 +570,16 @@ every Host that has that folder and is untouched when an Account is removed
 _Avoid_: alias, profile, template
 
 **Usage Limits**:
-The windows a Claude Code or Codex Account may use before the service slows
+The windows a Claude Code, Codex, or Antigravity CLI Account may use before the service slows
 or stops it, such as five hours or a week, each with the share used and when
 it resets, as the service reports them for each Account on a Host. They
 describe the Account, not the Host or an Agent, and are never merged across
 Accounts. Claude Code's are read only when the user turns them on for that
-Host (ADR 0028).
+Host; Antigravity CLI's are on by default per Host and can be turned off (ADR 0028).
 _Avoid_: quota, rate limit (in copy), plan usage, billing
 
 **Token Usage**:
-The tokens a Host's Claude Code and Codex Transcripts record over at most the
+The tokens a Host's Claude Code, Codex, and Antigravity CLI Transcripts record over at most the
 last 30 days, by program, Account, day, model and working directory, with the
 estimated cost of those tokens at API list prices. It counts only what the
 Transcripts of the Host's Accounts still hold, and is never an Account's Usage
@@ -496,22 +590,29 @@ _Avoid_: spend, cost (alone), usage (unqualified), credits
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details
 from the Transcript; answers go through `agent.send_keys` and
-`pane.send_input`, never Attach, and on herdr-core through Chat's own
-attach. A card sends nothing once the dialog has
+`pane.send_input`, never Attach, on herdr-core through Chat's own
+attach, and on Rex through requests on the control connection (ADR 0055).
+A card sends nothing once the dialog has
 changed and never resends. A dialog it cannot read gets a generic card with
 the Agent controls. OpenCode Blocked with no dialog on screen gets a card that
 says why instead, since its prompt would act on those keys.
 _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Background Work**:
-The Subagents, Workflows and non-daemon background commands an Agent runs in
-the background (Claude Code Subagents and Workflows; Antigravity CLI Subagents,
-Workflows and background commands), which Chat lists over the Composer from
-their launch and end records in the Transcript and, for a Claude Code Workflow,
-its journal beside it. Running work comes first; finished work stays until the
-user's next prompt. Chat only shows it and stops none of it. A Subagent is one
-background agent; a Workflow is a script that runs many and is listed as one
-row with its agents done when its journal records them.
+The Subagents, Workflows and background commands an Agent runs in the
+background (Claude Code Subagents, Workflows, background commands and
+Monitors; Antigravity CLI Subagents, Workflows and non-daemon background
+commands), which Chat lists over the Composer from their launch and end
+records in the Transcript and, for a Claude Code Workflow, its journal and run
+file beside it. Claude Code records nothing that tells a server from a command
+that will end, so each of its background commands is listed. Running work comes first; finished work
+stays listed until the user's next prompt, and the strip over the Composer hides
+once both the foreground turn and all Background Work have ended. Chat only
+shows it and stops none of it. A Subagent is one background agent; a Workflow is
+a script that runs many and is listed as one row with its agents done when its
+journal records them. An Antigravity CLI native **Swarm** (`brain/<id>/.system_generated/swarm`)
+shows in its own Swarm Live Bar above the Composer and opens a three-tab sheet
+(Board, Members and Overview) with read-only worker sub-conversation peeks.
 _Avoid_: background task, task list, jobs
 
 **Turn**:
@@ -533,7 +634,12 @@ and the last one to type, resize or come into focus sets the size. tmux has no
 Take Over either: while a device shows a Pane, its window takes the device's
 size, no larger than a terminal of the user's showing the same window, and once
 the device stops showing it tmux sizes the window by its other terminals
-again. libghostty renders it, and direct keyboard
+again. Rex has no Take Over: any viewer may type, and a terminal the device
+shows takes the device's size, before its first paint as it opens and again
+each time it is shown, until the view stops showing it. One whose size another
+device takes while it is shown keeps that size, its lines wider than the view
+wrapping at the view's width, under a notice whose Fit to Screen takes the
+size back (ADR 0053). libghostty renders it, and direct keyboard
 input and PTY resize go straight to the remote terminal — no Composer, no
 Agent semantics, no notification routing. Where the detail is pushed over the
 list (iPhone, or a compact iPad window), Open Terminal pushes it over Agent
@@ -645,6 +751,17 @@ Heeler's extensions for Pi and Oh My Pi, which tell Chat their session, placed
 in those programs' own extension folders and removed with it (ADR 0033).
 _Avoid_: daemon, plugin (on herdr-core), agent
 
+**Updates**:
+The page that lists, Host by Host, the Heeler plugin on each Herdr TUI Server
+and the Host Helper wherever the app carries a newer version than the Host
+holds. A card above the Hosts list, a badge on the Hosts tab and a tag on the
+Host's row count them. Each Server is asked what it holds once as it connects.
+Update All starts every listed update at once without the sheets a first
+install goes through, and only for what is already installed. A failed update
+stays listed with why: nothing changed, the Host gave no answer and was read
+again, or the Helper needs Repair (ADR 0048).
+_Avoid_: upgrades, app update (the App Store's), sync
+
 **Notification Key**:
 The symmetric key generated on device and stored on a Host during Notification Registration; encrypts Agent Notification content end to end so the Push Relay cannot read it.
 _Avoid_: shared secret, push key
@@ -720,10 +837,10 @@ it.
 It exists so Host Connection Status can report running work honestly without
 the app withdrawing the explanation at the moment the user is reading it: a
 Host re-proved on a foreground return is Connecting, and every status-derived
-surface but the Server's page keeps presenting the Standing Failure until the
-activation answers. The Server's page, where the user asks for Reconnect, reads only
-Connecting… once the activation begins, since there the old failure read as the
-new attempt's own. The failure remains stored and continues to render on Agent
+surface but Host detail's Routes keeps presenting the Standing Failure until the
+activation answers. Host detail's Routes, where the user asks for Reconnect, show
+only that the Host is connecting once the activation begins, since there the old
+failure read as the new attempt's own. The failure remains stored and continues to render on Agent
 detail, the Console, and the Hosts list.
 Only a failure that reached Failed becomes standing. A retryable failure inside
 a recovery cycle does not, because nothing stopped and Reconnecting already
@@ -751,7 +868,7 @@ instruction misstates who has to act and invites a restart that discards the
 attempt already running — so Reconnecting shows the Summary, and, where the
 surface is about one Host's connection health rather than about the Agents, the
 Detail with it. A Hosts list row names a problem by its Summary alone, beside
-Retry once the Host stops; Host detail names it against the Server that stopped, and that Server's page shows the rest. A first-hop failure is presented against the Jump Host; where no
+Retry once the Host stops; Host detail names a failure of the connection under its Routes, each Route with its own reason, and a Server's own failure against that Server, whose checks show the rest (ADR 0058). A first-hop failure is presented against the Jump Host; where no
 Jump-Host-directed text exists, the Suggestion is dropped rather than aimed at
 the wrong machine.
 This replaces Connection Guidance, whose name promised an instruction that the
@@ -760,12 +877,13 @@ _Avoid_: Connection Guidance, error message, connection error, retry hint,
 actionable error
 
 **Reconnect Request**:
-A user's explicit Reconnect press on a Server's page, and the brief window in which
-the app shows that press being served. It is feedback about a request, not a
-Host Connection Status: it is never derived from the status and never changes
-it, an automatic Reconnecting is not a Reconnect Request, and a press in flight
-suppresses that page's failure footer while driving the button's own
-progress (#160).
+A user's explicit Reconnect press in Host detail, which dials every Server of
+the Host that is on, and the brief window in which the app shows that press
+being served. It is feedback about a request, not a Host Connection Status: it
+is never derived from the status and never changes it, an automatic
+Reconnecting is not a Reconnect Request, and a press in flight suppresses the
+Routes' marks and failure footer while driving the header's own progress
+(#160, ADR 0058).
 _Avoid_: retry, reconnecting, manual reconnect state
 
 **Background Grace Period**:

@@ -66,6 +66,7 @@
         @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
         @State private var hostRemoval: HostRemovalDependencies
+        @State private var hostUpdates: HostUpdatesStore
         @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
         /// Off, with process-local settings: the mic shows as in the app, and
         /// nothing reaches the Keychain or a speech service.
@@ -92,12 +93,17 @@
             _liveActivities = State(initialValue: composition.liveActivities)
             _activity = State(initialValue: composition.activity)
             _hostRemoval = State(initialValue: composition.hostRemoval)
+            _hostUpdates = State(initialValue: composition.hostUpdates)
         }
 
         private var terminal: TerminalSettings {
             TerminalSettings(
                 themes: terminalThemes, zoom: terminalZoom, fonts: terminalFonts,
                 snippets: snippets)
+        }
+
+        private var reachableHosts: Set<Host.ID> {
+            Set(hosts.hosts.map(\.id).filter(console.canReachNotificationFiles))
         }
 
         var body: some View {
@@ -120,7 +126,10 @@
             .environment(\.diffLayoutSettings, diffLayout)
             .environment(\.hostOnboardingDependencies, DemoScreenshotFixture.onboardingDependencies)
             .environment(\.hostRemovalDependencies, hostRemoval)
+            .environment(hostUpdates)
             .environment(voiceInput)
+            // The app reads a Host's plugin as its connection comes up.
+            .task(id: reachableHosts) { await hostUpdates.hostsDidConnect(Array(reachableHosts)) }
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
@@ -156,6 +165,10 @@
         /// The app's removal over the demo stores: its Notification Keys are
         /// volatile, so removing a demo Host never touches the Keychain.
         let hostRemoval: HostRemovalDependencies
+        /// The app's updates over the demo Hosts, where nothing is ever run:
+        /// an update ends as the Host was. The prompt is left out, since every
+        /// launch starts from fresh settings and would raise it.
+        let hostUpdates: HostUpdatesStore
 
         static func make() -> DemoScreenshotComposition {
             let defaults = DemoScreenshotFixture.makeDefaults()
@@ -219,7 +232,12 @@
                 hostRemoval: HostRemovalDependencies.app(
                     console: console, notificationPreferences: notificationPreferences,
                     liveActivities: liveActivities,
-                    knownHosts: DemoScreenshotFixture.onboardingDependencies.knownHosts))
+                    knownHosts: DemoScreenshotFixture.onboardingDependencies.knownHosts),
+                hostUpdates: HostUpdatesStore(
+                    hosts: { [weak hosts] in hosts?.hosts ?? [] },
+                    isReachable: { [weak console] in console?.canReachNotificationFiles($0) == true },
+                    work: .app(console: console, dialing: DemoScreenshotFixture.onboardingDependencies),
+                    defaults: defaults))
         }
     }
 
@@ -272,14 +290,14 @@
         /// One Host per plugin state, named for it. Only with
         /// `DemoScreenshotMode.pluginStatesArgument`.
         static let pluginStates: [(name: String, plugin: Result<HeelerPluginInstallation?, TransportError>)] = [
-            ("Plugin current (0.9.0)", .success(HeelerPluginInstallation(version: "0.9.0"))),
-            ("Plugin newer than app (0.10.0)",
-             .success(HeelerPluginInstallation(pluginRoot: pluginRoot, version: "0.10.0"))),
+            ("Plugin current (0.10.0)", .success(HeelerPluginInstallation(version: "0.10.0"))),
+            ("Plugin newer than app (0.11.0)",
+             .success(HeelerPluginInstallation(pluginRoot: pluginRoot, version: "0.11.0"))),
             ("Plugin outdated (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0"))),
             ("Plugin outdated (0.4.0)", .success(HeelerPluginInstallation(version: "0.4.0"))),
             ("Plugin outdated (0.3.0)", .success(HeelerPluginInstallation(version: "0.3.0"))),
             ("Plugin not installed", .success(nil)),
-            ("Plugin disabled (0.9.0)", .success(HeelerPluginInstallation(version: "0.9.0", isEnabled: false))),
+            ("Plugin disabled (0.10.0)", .success(HeelerPluginInstallation(version: "0.10.0", isEnabled: false))),
             ("Plugin disabled + outdated (0.5.0)",
              .success(HeelerPluginInstallation(version: "0.5.0", isEnabled: false))),
             ("Plugin under legacy name + current disabled (0.3.0)",
@@ -287,12 +305,12 @@
                 pluginID: "herdr-mobile.pairing", version: "0.3.0", disabledCurrentIDSource: .github))),
             ("Plugin under legacy name (0.3.0)",
              .success(HeelerPluginInstallation(pluginID: "herdr-mobile.pairing", version: "0.3.0"))),
-            ("Plugin with legacy leftover (0.9.0)",
-             .success(HeelerPluginInstallation(version: "0.9.0", leftoverLegacyIDs: ["herdr-mobile.pairing"]))),
+            ("Plugin with legacy leftover (0.10.0)",
+             .success(HeelerPluginInstallation(version: "0.10.0", leftoverLegacyIDs: ["herdr-mobile.pairing"]))),
             ("Plugin linked locally (0.5.0)", .success(HeelerPluginInstallation(version: "0.5.0", source: .local))),
-            ("Plugin linked locally (0.9.0)", .success(HeelerPluginInstallation(version: "0.9.0", source: .local))),
+            ("Plugin linked locally (0.10.0)", .success(HeelerPluginInstallation(version: "0.10.0", source: .local))),
             ("Plugin manifest unreadable",
-             .success(HeelerPluginInstallation(version: "0.9.0", hasManifestWarning: true))),
+             .success(HeelerPluginInstallation(version: "0.10.0", hasManifestWarning: true))),
             ("Plugin on Windows", .failure(.hostFeatureUnavailable(feature: "The Heeler plugin"))),
             ("Plugin read failed", .failure(.timedOut)),
             // Reads Usage without Claude Code Accounts.
@@ -1232,12 +1250,16 @@
         private struct Profile {
             let claudeDays: [Int]
             let codexDays: [Int]
+            let agyDays: [Int]
             let claudeModels: [String]
             let codexModels: [String]
+            let agyModels: [String]
             let claudeDirectories: [String]
             let codexDirectories: [String]
+            let agyDirectories: [String]
             let claudePercents: (Double, Double)
             let codexPercents: (Double, Double)
+            let agyPercents: (Double, Double)
             let home: String
         }
 
@@ -1257,11 +1279,18 @@
                 12, 0, 0, 18, 25, 9, 31, 14, 0, 22, 27, 35, 19, 16, 4, 0, 26, 30, 21, 33,
                 24, 8, 0, 29, 38, 27, 34, 22, 31, 17,
             ],
+            agyDays: [
+                8, 0, 0, 11, 15, 7, 19, 10, 0, 14, 18, 21, 13, 9, 3, 0, 16, 20, 14, 22,
+                15, 6, 0, 18, 24, 17, 21, 14, 19, 12,
+            ],
             claudeModels: ["claude-opus-4-5", "claude-sonnet-4-5"],
             codexModels: ["gpt-5.3-codex"],
+            agyModels: ["gemini-4-carbon-high", "gemini-4-hydrogen-medium"],
             claudeDirectories: ["/Users/demo/src/storefront", "/Users/demo/src/payments-api"],
             codexDirectories: ["/Users/demo/src/payments-api", "/Users/demo/src/product-docs"],
-            claudePercents: (34, 61), codexPercents: (22, 47), home: DemoChatSample.home)
+            agyDirectories: ["/Users/demo/src/storefront", "/Users/demo/src/product-docs"],
+            claudePercents: (34, 61), codexPercents: (22, 47), agyPercents: (18, 36),
+            home: DemoChatSample.home)
 
         private static let build = Profile(
             claudeDays: [
@@ -1272,11 +1301,18 @@
                 30, 41, 58, 47, 26, 19, 22, 35, 29, 24, 31, 27, 18, 33, 61, 72, 49, 30, 21, 25,
                 28, 34, 26, 19, 23, 38, 55, 63, 42, 36,
             ],
+            agyDays: [
+                9, 12, 16, 14, 8, 6, 7, 11, 9, 8, 10, 9, 6, 11, 18, 22, 15, 9, 7, 8,
+                9, 11, 8, 6, 7, 12, 17, 19, 13, 11,
+            ],
             claudeModels: ["claude-sonnet-4-5", "claude-haiku-4-5"],
             codexModels: ["gpt-5.3-codex", "gpt-5.2"],
+            agyModels: ["gemini-4-carbon-high", "gemini-4-hydrogen-medium"],
             claudeDirectories: ["/home/builder/ci/infra", "/srv/builds/mobile"],
             codexDirectories: ["/home/builder/ci/api-gateway", "/srv/builds/mobile"],
-            claudePercents: (48, 39), codexPercents: (26, 48), home: "/home/builder")
+            agyDirectories: ["/home/builder/ci/infra", "/srv/builds/mobile"],
+            claudePercents: (48, 39), codexPercents: (26, 48), agyPercents: (31, 44),
+            home: "/home/builder")
 
         /// The studio Host's other Claude Code directories. `claude-2` runs
         /// closer to its limits than the Default Account.
@@ -1387,7 +1423,8 @@
 
         /// `accounts` nil reports as a plugin before Accounts would.
         static func report(
-            timeZone identifier: String, claudeLimits: Bool, hostID: Host.ID? = nil,
+            timeZone identifier: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, includesAgy: Bool = true, hostID: Host.ID? = nil,
             accounts: UsageAccountFile? = UsageAccountFile(), now: Date = Date()
         ) throws -> AgentUsageReport {
             let profile = hostID == DemoScreenshotFixture.buildHostID ? build : studio
@@ -1485,6 +1522,47 @@
                     totals: profile.codexDays.map { $0 * 7_000 }, costPerToken: 0.000_000_9, day: day,
                     models: profile.codexModels, directories: profile.codexDirectories),
             ]
+            var programs: [[String: Any]] = [claude, codex]
+            if includesAgy {
+                let agyTokenUsage = tokenUsage(
+                    totals: profile.agyDays.map { $0 * 6_000 }, costPerToken: 0.000_000_7, day: day,
+                    models: profile.agyModels, directories: profile.agyDirectories)
+                let agyUsageLimits: [String: Any] = agyLimits
+                    ? [
+                        "state": "ok", "source": "service",
+                        "observedAt": timestamp.string(from: now.addingTimeInterval(-90)),
+                        "windows": [
+                            [
+                                "id": "gemini_5h", "label": "Gemini · 5-hour", "durationMinutes": 300,
+                                "usedPercent": profile.agyPercents.0,
+                                "resetsAt": timestamp.string(from: now.addingTimeInterval(2.5 * 3_600)),
+                                "expired": false,
+                            ],
+                            [
+                                "id": "claude_weekly", "label": "Claude & GPT · Weekly",
+                                "durationMinutes": 10_080,
+                                "usedPercent": profile.agyPercents.1,
+                                "resetsAt": timestamp.string(from: now.addingTimeInterval(5 * 86_400)),
+                                "expired": false,
+                            ],
+                        ],
+                    ]
+                    : ["state": "disabled"]
+                var agy: [String: Any] = [
+                    "program": "agy",
+                    "usageLimits": agyUsageLimits,
+                    "tokenUsage": agyTokenUsage,
+                ]
+                if accounts != nil {
+                    agy["accounts"] = [[
+                        "id": UsageAccountFile.defaultAccountID, "isDefault": true,
+                        "name": NSNull(), "directory": profile.home + "/.gemini/antigravity-cli",
+                        "state": "ok", "tokenUsage": agyTokenUsage, "usageLimits": agyUsageLimits,
+                    ]]
+                    agy["accountSuggestions"] = [[String: Any]]()
+                }
+                programs.append(agy)
+            }
             let object: [String: Any] = [
                 "version": 1, "runtime": "recorded",
                 "generatedAt": timestamp.string(from: now),
@@ -1495,9 +1573,10 @@
                     "coveredThrough": timestamp.string(from: now.addingTimeInterval(-60)),
                     "skippedArchives": 0, "unreadableFiles": 0,
                 ],
-                "programs": [claude, codex],
+                "programs": programs,
             ]
-            return try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+            let decoded = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+            return codexLimits ? decoded : decoded.hidingCodexLimits()
         }
 
         private static func tokenUsage(
@@ -1588,7 +1667,8 @@
         }
 
         func readAgentUsage(
-            timeZone: String, claudeLimits: Bool, pluginRoot: String
+            timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, pluginRoot: String
         ) async throws -> AgentUsageReport {
             let version = try profile.plugin.get()?.parsedVersion
             var accounts: UsageAccountFile?
@@ -1596,8 +1676,10 @@
                 let data = await usageAccountFileData()
                 accounts = (try? UsageAccountFile.decode(data)) ?? UsageAccountFile()
             }
+            let includesAgy = version.map(HeelerPluginFeature.antigravityUsage.isSupported) ?? true
             return try DemoUsageSample.report(
-                timeZone: timeZone, claudeLimits: claudeLimits, hostID: hostID, accounts: accounts)
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, includesAgy: includesAgy, hostID: hostID, accounts: accounts)
         }
 
         private func usageAccountFileData() async -> Data? {

@@ -7,7 +7,8 @@ import Observation
 /// the Agent List Fields screen can edit inline and persist immediately.
 /// Hosts without a saved choice show their herdr fields, or Heeler's
 /// fallback when the plugin has none. A Host that does not follow a plugin
-/// starts from Heeler's own fields and never asks for plugin fields.
+/// starts from Heeler's own fields for its kind (`withoutPlugin`) and never
+/// asks for plugin fields.
 @MainActor
 @Observable
 final class AgentListFieldsEditor {
@@ -34,6 +35,7 @@ final class AgentListFieldsEditor {
     let snapshots: HerdrSidebarSnapshotStore
     private let fetch: Fetch
     private let followsPlugin: @MainActor (Host.ID) -> Bool
+    private let withoutPlugin: @MainActor (Host.ID) -> AgentRowLayout
     private(set) var isEditing = false
     private(set) var drafts: [Host.ID: AgentRowLayout] = [:]
     private(set) var syncStates: [Host.ID: SyncState] = [:]
@@ -44,12 +46,25 @@ final class AgentListFieldsEditor {
         layouts: AgentRowLayoutStore,
         snapshots: HerdrSidebarSnapshotStore,
         fetch: @escaping Fetch,
-        followsPlugin: @escaping @MainActor (Host.ID) -> Bool = { _ in true }
+        followsPlugin: @escaping @MainActor (Host.ID) -> Bool = { _ in true },
+        withoutPlugin: @escaping @MainActor (Host.ID) -> AgentRowLayout = { _ in .hostWithoutPluginDefault }
     ) {
         self.layouts = layouts
         self.snapshots = snapshots
         self.fetch = fetch
         self.followsPlugin = followsPlugin
+        self.withoutPlugin = withoutPlugin
+    }
+
+    /// The editor Settings › Agent List Fields opens on the Console's
+    /// layouts: a Host that follows no plugin starts from the rows the
+    /// Console starts it from (`ConsoleStore.rowLayoutWithoutPlugin`).
+    convenience init(console: ConsoleStore) {
+        self.init(
+            layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
+            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) },
+            followsPlugin: { [console] hostID in console.capabilities(for: hostID).syncLayoutFromPlugin },
+            withoutPlugin: { [console] hostID in console.rowLayoutWithoutPlugin(for: hostID) })
     }
 
     /// The Console's layout for this Host, or its draft while editing.
@@ -57,7 +72,7 @@ final class AgentListFieldsEditor {
         if isEditing, let draft = drafts[hostID] { return draft }
         return layouts.resolvedLayout(
             for: hostID, pluginSnapshot: snapshots.snapshot(for: hostID),
-            followsPlugin: followsPlugin(hostID))
+            followsPlugin: followsPlugin(hostID), withoutPlugin: withoutPlugin(hostID))
     }
 
     func source(for hostID: Host.ID) -> LayoutSource {
@@ -257,7 +272,7 @@ final class AgentListFieldsEditor {
                 ? String(localized: "Replaced with plugin fields.")
                 : AgentListFieldsCopy.syncDiagnostics)
         case .loaded(nil):
-            drafts[hostID] = kept(AgentRowLayout.heelerDefault.withHeelerRow(thirdRow))
+            drafts[hostID] = kept(AgentRowLayout.consoleDefault.withHeelerRow(thirdRow))
             syncStates[hostID] = .filled(
                 String(localized: "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
         case .unavailable:

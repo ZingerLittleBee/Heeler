@@ -89,6 +89,22 @@
       "notice": "LobeIcons-MIT.txt"
     },
     {
+      "id": "PiMark",
+      "displayName": "Pi (Agent program mark)",
+      "version": null,
+      "source": "https://pi.dev/logo.svg (https://github.com/badlogic/pi-mono)",
+      "spdx": "MIT",
+      "notice": "Pi-MIT.txt"
+    },
+    {
+      "id": "OhMyPiMark",
+      "displayName": "Oh My Pi (Agent program mark)",
+      "version": null,
+      "source": "https://omp.sh/favicon.svg (https://github.com/can1357/oh-my-pi)",
+      "spdx": "MIT",
+      "notice": "OhMyPi-MIT.txt"
+    },
+    {
       "id": "Lucide",
       "displayName": "Lucide (Bot icon)",
       "version": "a04f228cd01185e09c188b7227b9600c08c565ec",

@@ -18,12 +18,14 @@ struct PairingFailure: Equatable, Sendable {
 }
 
 /// Drives Scan to Pair (#62, #66, #204): turns strings recognized by the QR
-/// scanner or pasted from the clipboard into a parsed Pairing Code, runs
-/// the ceremony through the injected `PairingConnector`, and persists the
-/// Host only after the verified reconnect, with its fingerprint pinned so
-/// preflight never TOFU-prompts. Camera capture and pasteboard access stay
-/// in the view layer; everything downstream of the scanned string is
-/// testable here with scripted connector fakes.
+/// scanner or pasted from the clipboard into a parsed Pairing Code and runs
+/// the ceremony through the injected `PairingConnector`. After the verified
+/// reconnect it hands the machine to Add Host's last step, which looks for
+/// its Servers and saves the Host (ADR 0057). A code with a Herdr Endpoint
+/// names its one Server, so that Host is persisted here, with its
+/// fingerprint pinned so preflight never TOFU-prompts. Camera capture and
+/// pasteboard access stay in the view layer; everything downstream of the
+/// scanned string is testable here with scripted connector fakes.
 @MainActor
 @Observable
 final class PairingScanStore {
@@ -38,9 +40,14 @@ final class PairingScanStore {
     private(set) var step: PairingStep?
     /// The last attempt's failure, with its recovery options.
     private(set) var failure: PairingFailure?
-    /// The persisted Host, set only after the verified reconnect succeeded.
-    /// The view hands it to the same preflight a manually added Host enters.
+    /// The Host persisted for a code with a Herdr Endpoint, set only after
+    /// the verified reconnect succeeded. The view hands it to the same
+    /// preflight a manually added Host enters.
     private(set) var pairedHost: Host?
+    /// The machine any other code enrolled this device on, set only after the
+    /// verified reconnect succeeded. The view hands it to Add Host's last
+    /// step; nothing is saved here.
+    private(set) var pairedMachine: PairedMachine?
 
     @ObservationIgnored private let catalog: HostStore
     @ObservationIgnored private let connector: any PairingConnector
@@ -94,7 +101,7 @@ final class PairingScanStore {
     /// a call while an attempt runs, or after one succeeded, does nothing.
     /// Calling it again after a retryable failure is the Try Again action.
     func pair() async {
-        guard let code = attemptCode, !isPairing, pairedHost == nil else { return }
+        guard let code = attemptCode, !isPairing, pairedHost == nil, pairedMachine == nil else { return }
         isPairing = true
         failure = nil
         attemptGeneration += 1
@@ -138,7 +145,8 @@ final class PairingScanStore {
                 enrolledViaBootstrap = true
             }
             failure = Self.failure(
-                for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap)
+                for: error, isConfigOnly: code.bootstrap == nil && !enrolledViaBootstrap,
+                source: code.source)
             return
         } catch is CancellationError {
             // The scan sheet went away mid-ceremony; nobody is left to tell.
@@ -155,17 +163,28 @@ final class PairingScanStore {
         // address that answered is its first route and every other candidate
         // the code offered follows as a route of its own (ADR 0022), so the
         // Host stays reachable from the networks the user picked them for.
-        // The fingerprint pin lands with it, so preflight connects without a
-        // TOFU prompt whichever route answers.
-        // The Herdr Endpoint comes from the scanned code, not the ceremony.
-        let hostID = UUID()
         let addresses =
             [result.address] + code.addresses.filter { $0 != result.address }
+        guard let endpoint = code.endpoint else {
+            // Which Servers the Host has is for a look to find and the user
+            // to choose (ADR 0057): Add Host's last step saves it.
+            pairedMachine = PairedMachine(
+                username: result.username, addresses: addresses, port: result.port,
+                hostKeyFingerprint: result.hostKeyFingerprint,
+                runsHerdrTUI: code.source == .herdrPlugin)
+            return
+        }
+
+        // A Herdr Endpoint is one Herdr TUI Server that no look can find, so
+        // its Host is saved here. The fingerprint pin lands with it, so
+        // preflight connects without a TOFU prompt whichever route answers.
+        // The endpoint comes from the scanned code, not the ceremony.
+        let hostID = UUID()
         let host = Host(
             id: hostID,
             username: result.username,
             authMethod: .deviceKey,
-            herdrEndpoint: code.endpoint,
+            herdrEndpoint: endpoint,
             routes: addresses.enumerated().map { index, address in
                 // The first route takes the Host's id, as a Host saved
                 // before routes does.
@@ -195,6 +214,7 @@ final class PairingScanStore {
         scanFailureMessage = nil
         failure = nil
         pairedHost = nil
+        pairedMachine = nil
     }
 
     // MARK: Failure copy
@@ -202,10 +222,13 @@ final class PairingScanStore {
     private static let expiredCopy =
         String(localized: "This Pairing Code has expired. Generate a new one on the computer and scan it.")
 
+    /// The copy names what the user does on the computer, which depends on
+    /// what showed the code: herdr's plugin or `heeler-pair`.
     private static func failure(
-        for error: PairingCeremonyError, isConfigOnly: Bool
+        for error: PairingCeremonyError, isConfigOnly: Bool, source: PairingCode.Source
     ) -> PairingFailure {
-        switch error {
+        let isMachine = source == .machine
+        return switch error {
         case .hostUnreachable:
             PairingFailure(
                 step: .reach,
@@ -214,12 +237,16 @@ final class PairingScanStore {
         case .tailscaleSSH(let addresses, let port):
             PairingFailure(
                 step: .reach,
-                message: String(localized: "Tailscale SSH answers port \(port) at \(addresses.joined(separator: ", ")), not OpenSSH, so this device cannot be enrolled there. On the computer, set ssh_port in the pairing plugin's pair.json to a port OpenSSH listens on, then generate a new Pairing Code."),
+                message: isMachine
+                    ? String(localized: "Tailscale SSH answers port \(port) at \(addresses.joined(separator: ", ")), not OpenSSH, so this device cannot be enrolled there. On the computer, run heeler-pair again with --port set to a port OpenSSH listens on, then scan the new Pairing Code.")
+                    : String(localized: "Tailscale SSH answers port \(port) at \(addresses.joined(separator: ", ")), not OpenSSH, so this device cannot be enrolled there. On the computer, set ssh_port in the pairing plugin's pair.json to a port OpenSSH listens on, then generate a new Pairing Code."),
                 canRetry: false)
         case .bootstrapRejected:
             PairingFailure(
                 step: .authenticate,
-                message: String(localized: "The Host rejected this Pairing Code. It may have been used already, expired, or its popup was closed. Generate a new Pairing Code on the computer and scan it."),
+                message: isMachine
+                    ? String(localized: "The Host rejected this Pairing Code. It may have been used already, expired, or heeler-pair was closed. Run heeler-pair on the computer again and scan the new Pairing Code.")
+                    : String(localized: "The Host rejected this Pairing Code. It may have been used already, expired, or its popup was closed. Generate a new Pairing Code on the computer and scan it."),
                 canRetry: false)
         case .enrollmentRefused(.expired):
             PairingFailure(step: .enroll, message: expiredCopy, canRetry: false)
@@ -231,7 +258,9 @@ final class PairingScanStore {
         case .enrollmentRefused(.invalidKey):
             PairingFailure(
                 step: .enroll,
-                message: String(localized: "The Host did not accept this device's key. Try again; if it keeps failing, update the app and the pairing plugin so they match."),
+                message: isMachine
+                    ? String(localized: "The Host did not accept this device's key. Try again; if it keeps failing, update the app and run the latest heeler-pair.")
+                    : String(localized: "The Host did not accept this device's key. Try again; if it keeps failing, update the app and the pairing plugin so they match."),
                 canRetry: true)
         case .enrollmentRefused(.noInput):
             PairingFailure(
@@ -241,12 +270,16 @@ final class PairingScanStore {
         case .enrollmentRefused(.unrecognized(let code)):
             PairingFailure(
                 step: .enroll,
-                message: String(localized: "The Host refused Enrollment (\(code)). Update the app and the pairing plugin so they match, then generate a new Pairing Code."),
+                message: isMachine
+                    ? String(localized: "The Host refused Enrollment (\(code)). Update the app, then run the latest heeler-pair on the computer and scan the new Pairing Code.")
+                    : String(localized: "The Host refused Enrollment (\(code)). Update the app and the pairing plugin so they match, then generate a new Pairing Code."),
                 canRetry: false)
         case .enrollmentUnanswered:
             PairingFailure(
                 step: .enroll,
-                message: String(localized: "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that the pairing plugin is installed and that OpenSSH, not another SSH server, answers this port, then generate a new Pairing Code."),
+                message: isMachine
+                    ? String(localized: "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that OpenSSH, not another SSH server, answers this port, then run heeler-pair on the computer again.")
+                    : String(localized: "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that the pairing plugin is installed and that OpenSSH, not another SSH server, answers this port, then generate a new Pairing Code."),
                 canRetry: false)
         case .enrollmentFailed:
             PairingFailure(
@@ -256,7 +289,9 @@ final class PairingScanStore {
         case .verificationFailed where isConfigOnly:
             PairingFailure(
                 step: .verify,
-                message: String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in herdr instead."),
+                message: isMachine
+                    ? String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or run heeler-pair there again.")
+                    : String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in herdr instead."),
                 canRetry: false)
         case .verificationFailed:
             PairingFailure(
@@ -269,21 +304,23 @@ final class PairingScanStore {
     private static func message(for error: PairingCodeError) -> String {
         switch error {
         case .badPrefix:
-            String(localized: "That QR code is not a herdr Pairing Code.")
+            String(localized: "That QR code is not a Pairing Code.")
         case .unsupportedVersion(let found):
             String(localized: "This Pairing Code uses version \(found), which this app does not understand. Update Heeler, then scan it again.")
         case .badEncoding, .badPayload:
-            String(localized: "The Pairing Code could not be read. Regenerate it in herdr and scan again.")
+            String(localized: "The Pairing Code could not be read. Generate a new one on the computer and scan again.")
         }
     }
 }
 
 extension PairingCode {
-    /// The same Host coordinates and Herdr Endpoint without the Bootstrap
-    /// Key: what a retry needs once Enrollment has already landed on the Host.
+    /// The same Host coordinates, Herdr Endpoint and source without the
+    /// Bootstrap Key: what a retry needs once Enrollment has already landed
+    /// on the Host.
     fileprivate var withoutBootstrap: PairingCode {
         PairingCode(
             addresses: addresses, port: port, username: username,
-            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint)
+            hostKeyFingerprint: hostKeyFingerprint, bootstrap: nil, endpoint: endpoint,
+            source: source)
     }
 }

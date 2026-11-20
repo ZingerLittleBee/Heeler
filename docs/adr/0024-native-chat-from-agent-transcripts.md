@@ -324,16 +324,25 @@ agy's model sometimes ends a turn itself seconds after sending a command
 to the background or starting a Subagent, saying it waits for it. Because
 agy's `PreInvocation` hook reports the Agent Idle as soon as that foreground
 turn finishes, `ConsoleStore` promotes an Idle or Done Antigravity CLI Agent's
-displayed Agent Status to Working while a live connected transcript read
-confirms non-stale running Background Work (Subagents, Workflows, or non-daemon
+displayed Agent Status to Working while a live connected read confirms
+non-stale running Background Work (Subagents, Workflows, or non-daemon
 background commands), and `AgentChatStore` keeps polling gently at its idle
 interval even while Chat is hidden until that Background Work finishes so the
-Console returns to Idle on time. `AgentChatStore` itself still tracks the
-Host's underlying reported status so idle permission dialogs, echo clocks, and
-turn headers stay accurate; Chat's `/tasks` Stop follow-through runs only when
-a foreground turn was actually Working at the tap, so background work after a
-completed turn runs to its end unless the user ends a command in the terminal
-with `/tasks` and `k`. The terminal's own Stop stays one Esc.
+Console returns to Idle on time. Because Antigravity CLI writes nothing to the
+main transcript while a background task or Subagent runs silently for hours —
+nor when a task is killed in `/tasks`, a Subagent finishes after an interrupted
+parent turn, or `agy` exits before the next prompt — `AgentChatStore` also
+follows SFTP `tasks/task-<N>.log` stats and each Subagent's own
+`transcript_full.jsonl` (`AgyBackgroundWorkFollower`) and checks `AgyScreen`
+(the running-task strip and footer count, `/tasks` panel rows, an unobstructed
+idle input box with no running tasks, or `agy`'s exit line, re-polling the
+transcript once before retiring an item as stopped so a concurrent completion
+record wins). `AgentChatStore` itself still tracks the Host's underlying
+reported status so idle permission dialogs, echo clocks, and turn headers stay
+accurate; Chat's `/tasks` Stop follow-through runs only when a foreground turn
+was actually Working at the tap, so background work after a completed turn runs
+to its end unless the user ends a command in the terminal with `/tasks` and
+`k`. The terminal's own Stop stays one Esc.
 
 ## Entry and the terminal
 
@@ -542,6 +551,13 @@ request, under rules that stand in for the screen the user cannot see:
   pointer to the menu or the terminal. OpenCode names a custom command by its
   file's path (`/git/commit`) and runs a message that starts with one, so
   there a leading `/word` with a slash in it is refused too.
+  That refusal also offers Send Anyway, which sends the same draft once as
+  typed, for a command the program runs without a picker, such as Claude
+  Code's `/clear`, or `/restart` while an update is ready. Only the menu
+  check is skipped: every other rule here, the screen read and the delivery
+  check still apply, so a command that opens a menu holds the next send
+  until the terminal closes it. The menu still offers no such command, so
+  Chat keeps no list of built-ins that goes stale with each program.
 - Invisible characters are removed and exactly one trailing space is appended,
   so a final `/name` or `@path` cannot leave a completion popup open when
   Enter arrives. Oh My Pi's and OpenCode's `/compact` are the exceptions:
@@ -838,13 +854,22 @@ an approval; an answer that showed no effect waits for its call's result.
 
 ## Background Work
 
-Claude Code's terminal lists background agents and Workflows under its input
-box while they run, and Antigravity CLI runs Subagents, Workflows and
+Claude Code's terminal lists background agents, Workflows and shells under
+its input box while they run, and Antigravity CLI runs Subagents, Workflows and
 non-daemon background commands past the end of a turn while its prompt sits
 Idle. Chat lists that Background Work over the Composer: for Claude Code, a
 Subagent the Agent tool started in the background and a Workflow, from their
-launch results in the transcript and the `<task-notification>` that reports
-each one's end; for Antigravity CLI, an `invoke_subagent` Subagent (ended by
+launch results in the transcript and the `<task-notification>`, `TaskStop`,
+`agents_killed`, `turn_duration` pending counts, or Workflow `<runId>.json`
+state file that reports each one's end, and a background command: a Bash or
+PowerShell call whose result names a `backgroundTaskId` (asked to run there,
+timed out, or moved there while it ran) and a Monitor, ended by its
+`<task-notification>`, a `TaskStop`, or for a Monitor the closing event the
+program writes in place of an end (`[Monitor expired after …]`, or any event
+at its deadline). Claude Code records no flag that tells a server meant to
+outlive the turn from a command that will end, so every background command
+is listed, and `agents_killed` and the `turn_duration` counts, which speak of
+agents and Workflows, end none; for Antigravity CLI, an `invoke_subagent` Subagent (ended by
 the Subagent's `[Message]` reply, a `system` error message, `manage_subagents`
 kill or a server-restart notice, and resumed when `send_message` revives it)
 and a non-daemon `run_command` or `run_workflow` background task (ended by its
@@ -854,14 +879,27 @@ name, its Subagent type, `"Command"` or the phase its Workflow is in, how long
 it has run, and for a Claude Code Workflow the agents done of those started.
 Agent counts come from the Workflow's journal while it runs, read beside the
 transcript a few journals per poll, and from its notification once it ends. A
-running Subagent or background command writes nothing Chat follows beyond
-status checks recorded in the transcript (`manage_subagents`, `manage_task`),
-so it shows its time until it ends.
+Claude Code Subagent writes nothing Chat follows beyond status checks recorded
+in the transcript, so it shows its time until it ends. A Claude Code
+background command writes its output to a file the launch result names
+(`<tasks>/<task id>.output`), which Chat stats, never reads, at most once
+every 30 seconds while the command runs, so one that still writes after hours
+keeps reading as running; a Monitor's events in the transcript are the same
+sign. Neither says a command ended, which only the transcript does. For Antigravity CLI,
+Chat also stats `tasks/task-<N>.log`, follows each Subagent's own
+`transcript_full.jsonl` (settling a Subagent whose parent turn was interrupted
+once its own turn has stayed idle for five seconds), and reads `AgyScreen` to
+keep multi-hour live tasks ticking and retire killed or exited work without
+waiting for the next prompt.
 
-Running work comes first. Finished work stays, with its time and the counts
-its notification reported, until the user's next prompt. The strip shows
-three rows and "+N more", and condenses to one line while the Composer is open
-or a Blocked card stands in its place, so the conversation keeps its room.
+Running work comes first. Unfinished rows that are paused or quiet (`Not
+updating` or `No updates since …`) sit in a separate `Not updating` section of
+the sheet rather than under `Running`. Finished work stays in the list, with its
+time and the counts its notification reported, until the user's next prompt,
+while the strip over the Composer hides once both the foreground turn and all
+Background Work have ended. The strip
+shows three rows and "+N more", and condenses to one line while the Composer is
+open or a Blocked card stands in its place, so the conversation keeps its room.
 Every row opens a sheet listing all of it as structured activity cards in
 `AgentStatusPalette` colors (leading with the human summary alongside status
 and kind badges, placing commands in a recessed two-line terminal box that
@@ -875,8 +913,8 @@ running Background Work rows stop their clocks and say they are not updating.
 Running work
 with no sign of it for longer than such work runs, two hours since a
 Workflow started or its journal last changed, or three hours since a Subagent
-started, says when it was last seen instead of running, and no longer holds
-the faster reads. Times use the Host's clock, so a Host running ahead of the
+started or a background command started or last wrote, says when it was last
+seen instead of running, and no longer holds the faster reads. Times use the Host's clock, so a Host running ahead of the
 phone reads zero.
 
 The list is rebuilt from the loaded lines on every read, but a launch can sit
@@ -1116,7 +1154,11 @@ no Attach at all.
     it yet.
   - Claude Code's session registry (`~/.claude/sessions/<pid>.json`) as a
     second Blocked signal. Cards follow herdr's Blocked, and an open
-    AskUserQuestion call for the question pages herdr reports idle.
+    AskUserQuestion call for the question pages herdr reports idle. Its
+    `status` also reads `shell` while the session sits idle with a
+    background command still running, and `idle` once none is, which would
+    confirm or retire a listed command; a Herdr TUI Host names no pid to
+    read the file by, and the folder is never listed.
   - Skill sources the Skills probe misses: Claude Code's `.claude/commands`,
     Codex's built-in, `/etc/codex/skills`, plugin and nested `.agents/skills`
     skills. Claude Code's built-in skills are compiled into the program and
@@ -1134,3 +1176,8 @@ no Attach at all.
     Subagent's progress; teammates; and a Claude Code Subagent resumed through
     SendMessage, which stays listed as finished while it runs again and
     takes its next end's counts when that arrives.
+  - A Claude Code background command whose end the transcript never
+    records, which stays listed as not updating; the commands a Subagent
+    put in the background, which its own file shows as finished calls; and
+    a persistent Monitor's end other than by its notification or a
+    `TaskStop`.

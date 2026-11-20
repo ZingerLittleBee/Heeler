@@ -60,7 +60,8 @@ async function configDirectoryOf(pid, variable, deadline) {
  * `pidOf(deadline)` gives the Agent's process, or null.
  */
 export async function noteAgentDirectory({ stateDir, session, paneId, program, pidOf, now = Date.now() }) {
-  const { variable } = USAGE_PROGRAMS[program];
+  const variable = USAGE_PROGRAMS[program]?.variable;
+  if (!variable) return;
   const path = agentsPath(stateDir, program);
   const pane = JSON.stringify([session, paneId]);
   const agents = readAgents(path, now);

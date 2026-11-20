@@ -164,6 +164,9 @@ enum SkillSourceCatalog {
                 SkillSource(
                     root: .home, relativePath: ".gemini/config/skills",
                     layout: .skillDirectories),
+                SkillSource(
+                    root: .home, relativePath: ".gemini/antigravity-cli/builtin/skills",
+                    layout: .skillDirectories),
             ]
         case .cline:
             // Skills only, shipped in Cline 3.48 and invoked `/skill-name`.

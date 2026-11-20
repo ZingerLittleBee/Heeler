@@ -13,7 +13,8 @@ extension ChatUnavailableReason {
         case .compressed: String(localized: "Conversation Compressed")
         case .unsupportedSession, .unsupportedFormat, .sessionStore: String(localized: "Conversation Not Readable")
         case .startScreen: String(localized: "Not in This Conversation")
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded,
+            .cannotTellSessionOnRex:
             String(localized: "Can't Tell the Conversation")
         case .transcriptOff: String(localized: "Transcript Saving Is Off")
         case .codexSharedDaemon:
@@ -103,6 +104,19 @@ extension ChatUnavailableReason {
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
         case .cannotReadProcessesOnWindows:
             String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler couldn't read this Agent's process on the Host, which happens when herdr-core and the SSH session run at different elevation, or when PowerShell runs in constrained language mode.")
+        case .cannotTellSessionOnRex(let program, let extensionInPlace):
+            // One whole text per combination, so each language joins its
+            // sentences its own way. Oh My Pi also binds without the extension.
+            switch (extensionInPlace, program == .omp) {
+            case (false, false):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again.")
+            case (false, true):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message.")
+            case (true, false):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this \(program.chatName) hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+            case (true, true):
+                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this \(program.chatName) hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message.")
+            }
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
         case .codexSharedDaemon:
@@ -220,7 +234,8 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             String(localized: "\(program.chatName) is on its home screen.")
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded:
+        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded,
+            .cannotTellSessionOnRex:
             saved
                 ? String(localized: "Chat can't tell which conversation this Agent is in now. Showing saved messages.")
                 : String(localized: "Chat can't tell which conversation this Agent is in now.")
@@ -241,10 +256,15 @@ extension ChatUnavailableReason {
         self == .cannotTellSession(.opencode)
     }
 
-    /// A Pi or Oh My Pi on a native Windows core Host, which has no Helper to bring the
-    /// extension that names its session (ADR 0033).
-    var offersWindowsExtension: Bool {
-        self == .cannotTellSessionOnWindows(.pi) || self == .cannotTellSessionOnWindows(.omp)
+    /// A Pi or Oh My Pi with no Helper to bring the extension that names its session:
+    /// on a native Windows core Host (ADR 0033), and in a Rex terminal whose
+    /// extension folder holds none that reports there (ADR 0056).
+    var offersHeelersExtension: Bool {
+        switch self {
+        case .cannotTellSessionOnWindows(let program): program.namesItsSessionThroughHeelersExtension
+        case .cannotTellSessionOnRex(_, let extensionInPlace): !extensionInPlace
+        default: false
+        }
     }
 
     /// Whether looking again could find something the user may have fixed.
@@ -252,7 +272,7 @@ extension ChatUnavailableReason {
         switch self {
         case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .noConversationYet,
             .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff,
-            .codexSharedDaemon:
+            .codexSharedDaemon, .cannotTellSessionOnRex:
             true
         case .sessionStore(_, let problem): problem.isRetryable
         default: false
@@ -606,7 +626,7 @@ struct ChatUnavailableView: View {
     private var hasSettlingAction: Bool {
         chooseConversation != nil
             || (reviewEdit != nil && reason.offersOpenCodePluginEdit)
-            || (addExtension != nil && reason.offersWindowsExtension)
+            || (addExtension != nil && reason.offersHeelersExtension)
     }
 
     @ViewBuilder private var capsuleActions: some View {
@@ -620,10 +640,10 @@ struct ChatUnavailableView: View {
                 .buttonStyle(ChatUnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
                 .accessibilityIdentifier("chat.unavailable.openCodeEdit")
         }
-        if let addExtension, reason.offersWindowsExtension {
+        if let addExtension, reason.offersHeelersExtension {
             Button(action: addExtension) { Text("Add Heeler's Extension…") }
                 .buttonStyle(ChatUnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
-                .accessibilityIdentifier("chat.unavailable.windowsExtension")
+                .accessibilityIdentifier("chat.unavailable.addExtension")
         }
         Button(action: showAgentTerminal) { Text(AgentDetailSurface.terminal.showTitle) }
             .buttonStyle(ChatUnavailableCapsuleStyle(prominence: hasSettlingAction ? .secondary : .primary))

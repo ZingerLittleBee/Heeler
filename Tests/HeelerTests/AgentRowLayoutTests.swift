@@ -18,8 +18,13 @@ struct AgentRowLayoutTests {
 
     @Test func consoleShapeDropsStateIconAndKeepsThreeRowSlots() throws {
         #expect(AgentRowLayout.maximumConsoleRows == 3)
-        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.workspace, .tab], [.agent], [.directory]])
+        #expect(AgentRowLayout.consoleDefault.rows.map { $0.map(\.token) } == [[.terminalTitleStripped], [.workspace]])
+        #expect(AgentRowLayout.defaultTrailing.map { $0.map(\.token) } == [[.host], [.changes], []])
+        #expect(AgentRowLayout.consoleDefault.effectiveTrailing.map { $0.map(\.token) } == [[.host], [.changes], []])
         #expect(AgentRowLayout.consoleDefault.rowGap == 0 && AgentRowLayout.consoleDefault.rowsByAgent.isEmpty)
+        for kind: ServerKind? in [.herdrCore, .tmux, .rex, nil] {
+            #expect(AgentRowLayout.withoutPlugin(on: kind) == .consoleDefault)
+        }
         let color = try #require(HexColor("#abc"))
         let wide = AgentRowLayout(
             rows: [
@@ -45,12 +50,14 @@ struct AgentRowLayoutTests {
         #expect(AgentRowLayoutResolver.resolve(hostLayout: wide, pluginSnapshot: nil) == console)
         #expect(
             AgentRowLayoutResolver.resolve(
-                hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == console)
+                hostLayout: nil, pluginSnapshot: AgentRowLayoutSnapshot(layout: wide)) == wide.withHeelerRow())
         #expect(AgentRowToken(rawValue: "state_icon") == .stateIcon)
+        #expect(AgentRowToken(rawValue: "backend") == .backend)
+        #expect(AgentRowToken.backend.rawValue == "backend")
         #expect(AgentRowToken(rawValue: "path") == .path)
         #expect(AgentRowToken.path.rawValue == "path")
         #expect(AgentRowToken(rawValue: "status_badge") == .statusBadge)
-        #expect(AgentRowToken.heelerBuiltins == [.host, .status, .directory, .path])
+        #expect(AgentRowToken.heelerBuiltins == [.host, .backend, .status, .directory, .path])
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(AgentRowToken.herdrBuiltins.contains(.stateText))
     }

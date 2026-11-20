@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 6
+    static let revision = 7
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -63,7 +63,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             // A result sent to the background tells the model how to follow
             // its task; it is no output (`AgyToolCall.activity`).
             guard step.status != .running else { return nil }
-            return .preview(AgyToolCall.preview(of: step, kind: tool.kind))
+            return .preview(AgyToolCall.preview(of: step, kind: tool.kind, name: tool.name))
         case .systemMessage:
             if let end = Self.taskEnd(in: step) {
                 return .preview(AgyToolCall.preview(ofTaskResult: end.result))
@@ -133,6 +133,42 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
     /// The notice agy adds to a conversation resumed after it restarted.
     static let restartNotice = "[Notice] All your subagents and background tasks have been stopped due to server restart"
 
+    /// `<conv>/task-<step>` in a result agy sent to the background.
+    static func backgroundTaskID(in body: String) -> String? {
+        guard let start = body.range(of: "background task with task id: ") else { return nil }
+        let id = body[start.upperBound...].prefix { !$0.isWhitespace }
+        return id.isEmpty ? nil : String(id)
+    }
+
+    /// `conversationId` in `invoke_subagent`'s `Created the following subagent:` JSON block.
+    static func launchedSubagentID(in body: String) -> String? {
+        let normalized = AgyToolCall.normalized(body)
+        guard normalized.hasPrefix("Created the following subagent:"),
+            let brace = normalized.firstIndex(of: "{"),
+            let data = normalized[brace...].data(using: .utf8),
+            let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+            let id = value["conversationId"]?.stringValue, !id.isEmpty
+        else { return nil }
+        return id
+    }
+
+    /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
+    static func jsonArray(in body: String) -> [JSONValue] {
+        let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
+        let start: String.Index
+        if normalized.hasPrefix("[") {
+            start = normalized.startIndex
+        } else if let line = normalized.range(of: "\n[") {
+            start = normalized.index(after: line.lowerBound)
+        } else {
+            return []
+        }
+        guard let data = normalized[start...].data(using: .utf8),
+            case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return [] }
+        return items
+    }
+
     // MARK: Projection
 
     /// The turn the latest prompt, or a background task's end, opened.
@@ -145,6 +181,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// A planner response without tool calls, or a `/compact` prompt's
         /// checkpoint, came last.
         var hasReply = false
+        /// A `swarm_wait` call finished with `DONE` in the latest batch,
+        /// parking the turn cleanly on the swarm board without a text reply.
+        var isParkedOnSwarmWait = false
         let isCompact: Bool
         /// The calls it made, by position in `calls`.
         var calls: [Int] = []
@@ -152,6 +191,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         var lastStep: AgyStep?
 
         var hasSteps: Bool { lastStep != nil }
+        var hasSettled: Bool { hasReply || isParkedOnSwarmWait }
     }
 
     private struct Projection {
@@ -219,7 +259,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         }
 
         mutating func finish() -> ChatTranscript {
-            if let open, open.hasReply {
+            if let open, open.hasSettled {
                 close(open, ending: .completed, interruptedNotice: false)
             } else if let open {
                 // agy writes nothing on Esc, so a turn Stop just ended reads
@@ -258,7 +298,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// completed; without one, Esc, Ctrl+C or a declined call ended it.
         private mutating func closeForNextPrompt() {
             guard let open else { return }
-            if open.hasReply {
+            if open.hasSettled {
                 close(open, ending: .completed, interruptedNotice: false)
             } else if open.hasSteps {
                 let declined = open.calls.last.map { calls[$0].isDeclined } ?? false
@@ -306,6 +346,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 place(.assistant(ChatAssistantMessage(text: text)), id: Self.id(step, "text"), step)
             }
             for (position, call) in step.calls.enumerated() {
+                if AgyToolCall.swarmTools.contains(call.name) {
+                    transcript.hasSwarmActivity = true
+                }
                 let entryID = Self.id(step, "tool:\(position)")
                 let index = calls.count
                 calls.append(AgyToolCall(entryID: entryID, call: call, offset: step.offset, createdAt: step.createdAt))
@@ -315,6 +358,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 place(.tool(placeholder), id: entryID, step)
             }
             open?.hasReply = step.calls.isEmpty
+            open?.isParkedOnSwarmWait = false
         }
 
         private mutating func readResult(_ step: AgyStep) {
@@ -384,6 +428,8 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 readManageSubagents(callIndex: index, result: step)
             case "manage_task":
                 readManageTask(callIndex: index, result: step)
+            case "swarm_wait":
+                open?.isParkedOnSwarmWait = true
             default:
                 break
             }
@@ -548,6 +594,17 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 }
             }
             guard let text = step.systemMessageText, text.hasPrefix(AgyTranscriptReducer.restartNotice) else {
+                if let text = step.systemMessageText,
+                    text.hasPrefix("[swarm] ") || text.hasPrefix("[board] ")
+                        || text.hasPrefix("You have just started. Your assignment")
+                {
+                    transcript.hasSwarmActivity = true
+                    if let open, open.hasSettled {
+                        close(open, ending: .completed, interruptedNotice: false)
+                        self.open = OpenTurn(
+                            turn: nil, isAboveWindow: false, startedAt: step.createdAt, isCompact: false)
+                    }
+                }
                 // Messages from other agents and reminders are the agent's
                 // context, not the conversation.
                 return
@@ -689,41 +746,16 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             }
         }
 
-        /// `<conv>/task-<step>` in a result agy sent to the background.
         static func backgroundTaskID(in body: String) -> String? {
-            guard let start = body.range(of: "background task with task id: ") else { return nil }
-            let id = body[start.upperBound...].prefix { !$0.isWhitespace }
-            return id.isEmpty ? nil : String(id)
+            AgyTranscriptReducer.backgroundTaskID(in: body)
         }
 
-        /// `conversationId` in `invoke_subagent`'s `Created the following subagent:` JSON block.
         static func launchedSubagentID(in body: String) -> String? {
-            let normalized = AgyToolCall.normalized(body)
-            guard normalized.hasPrefix("Created the following subagent:"),
-                let brace = normalized.firstIndex(of: "{"),
-                let data = normalized[brace...].data(using: .utf8),
-                let value = try? JSONDecoder().decode(JSONValue.self, from: data),
-                let id = value["conversationId"]?.stringValue, !id.isEmpty
-            else { return nil }
-            return id
+            AgyTranscriptReducer.launchedSubagentID(in: body)
         }
 
-        /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
         static func jsonArray(in body: String) -> [JSONValue] {
-            let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
-            let start: String.Index?
-            if normalized.hasPrefix("[") {
-                start = normalized.startIndex
-            } else if let line = normalized.range(of: "\n[") {
-                start = normalized.index(after: line.lowerBound)
-            } else {
-                start = nil
-            }
-            guard let start,
-                let data = normalized[start...].data(using: .utf8),
-                case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
-            else { return [] }
-            return items
+            AgyTranscriptReducer.jsonArray(in: body)
         }
 
         private static func taskWorkID(_ taskID: String) -> String { "agy:task:\(taskID)" }

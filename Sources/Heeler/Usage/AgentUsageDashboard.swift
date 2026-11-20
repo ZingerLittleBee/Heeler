@@ -59,11 +59,14 @@ struct AgentUsageDashboard: View {
     /// An iPad's detail column lays the page out in two columns when it
     /// has the width for them.
     var allowsColumns = false
+    /// Hosts has Hosts, and only Rex Servers are on: there is no Host to add,
+    /// only none that reports Usage.
+    var hasOnlyRexServersOn = false
 
     init(
         entries: [AgentUsageHostEntry], scopeHostID: Binding<Host.ID?>, metric: Binding<AgentUsageMetric>,
         showsLimits: Binding<Bool> = .constant(false), limitsRequested: Binding<Bool> = .constant(false),
-        allowsColumns: Bool = false
+        allowsColumns: Bool = false, hasOnlyRexServersOn: Bool = false
     ) {
         self.entries = entries
         _scopeHostID = scopeHostID
@@ -71,6 +74,7 @@ struct AgentUsageDashboard: View {
         _showsLimits = showsLimits
         _limitsRequested = limitsRequested
         self.allowsColumns = allowsColumns
+        self.hasOnlyRexServersOn = hasOnlyRexServersOn
     }
 
     @State private var range = AgentUsageRange.last30Days
@@ -323,22 +327,37 @@ struct AgentUsageDashboard: View {
     // MARK: Usage Limits
 
     private func limitsSection(_ scope: AgentUsageScope) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(String(localized: "Usage Limits"), detail: scope.included.count > 1 ? String(localized: "per Host") : nil) {
+        let chips = AgentUsageLimitChip.chips(in: scope)
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(
+                String(localized: "Usage Limits"),
+                detail: scope.included.count > 1 && !chips.isEmpty ? String(localized: "per Host") : nil
+            ) {
                 Button("Details") { isShowingLimits = true }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AgentUsageLimitChip.chips(in: scope)) { chip in
-                        Button { isShowingLimits = true } label: {
-                            AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            if chips.isEmpty {
+                Button { isShowingLimits = true } label: {
+                    Text("Usage Limits are off.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 16)
+                .buttonStyle(.plain)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(chips) { chip in
+                            Button { isShowingLimits = true } label: {
+                                AgentUsageLimitChipView(chip: chip, showsHost: scope.included.count > 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.horizontal, -16)
             }
-            .padding(.horizontal, -16)
         }
         .padding(.top, 22)
     }
@@ -764,7 +783,9 @@ struct AgentUsageDashboard: View {
 
     private func message(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if entries.isEmpty {
+            if entries.isEmpty, hasOnlyRexServersOn {
+                Text("Usage comes from herdr and tmux Servers. Rex Servers report none.")
+            } else if entries.isEmpty {
                 Text("Add a Host to read its Usage.")
             } else if let entry = scopedEntries.first, scopedEntries.count == 1, entry.isConnected {
                 AgentUsageContent(state: entry.store.state)

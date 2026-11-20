@@ -36,6 +36,9 @@ struct AgentChatSource: Sendable {
     var onAgyConversationBound: (@MainActor @Sendable (_ root: String?, _ rootID: String?) -> Void)? = nil
     /// Notifies listeners when live non-stale Background Work starts or stops holding active pace.
     var onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
+    /// Notifies listeners when a Chat becomes visible so in-flight background
+    /// prefetches of other Agents on the same Host can yield the SFTP channel.
+    var onDidBecomeVisible: (@MainActor @Sendable () -> Void)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -131,6 +134,19 @@ final class AgentChatStore {
         /// evidence just after: Grok Build its `active_sessions.json` row, and Oh
         /// My Pi without its extension the open of its session file (ADR 0034).
         var lateEvidenceCheck: [ChatProgram: TimeInterval] = [.grok: 3, .omp: 10]
+        /// On a Rex Host, how long after a check that couldn't tell which
+        /// conversation a Pi or Oh My Pi is in Chat checks again, one wait after
+        /// another: Heeler's extension names the conversation in a file just
+        /// after the program starts, and Rex announces nothing when it does
+        /// (ADR 0056). They count from the last check anything else asked for.
+        var unannouncedEvidenceChecks: [TimeInterval] = [2, 4, 8]
+        /// How often Chat reads an Antigravity CLI pane's screen to confirm or
+        /// retire running Background Work while Chat is visible vs hidden.
+        var agyBackgroundTaskScreenCheckVisible: TimeInterval = 15
+        var agyBackgroundTaskScreenCheckHidden: TimeInterval = 30
+        /// How long an Antigravity CLI subagent's own transcript stays idle
+        /// before standing in for a missing parent `SYSTEM_MESSAGE`.
+        var agySubagentIdleSettle: TimeInterval = 5
         var backgroundWorkStaleness = ChatBackgroundWork.Staleness()
     }
 
@@ -192,6 +208,12 @@ final class AgentChatStore {
 
     let agentID: ConsoleAgent.ID
     let program: ChatProgram
+    /// Built timeline rows, Markdown memos, and measured row heights kept
+    /// across surface mounts while this Agent's Chat store lives.
+    let timeline = ChatTimelineModel()
+    /// Pre-parsed Swarm Board Markdown memos and measured card heights kept
+    /// across Swarm tab switches and sheet presentations.
+    let swarmBoard = ChatSwarmBoardModel()
     /// The conversation as last read, or why there is none.
     private(set) var conversation: ChatConversationSnapshot
     /// Whether a Chat view is showing this conversation.
@@ -208,10 +230,28 @@ final class AgentChatStore {
     /// The Subagents, Workflows, and background commands the conversation's
     /// program runs beside it, as last read.
     private(set) var backgroundWork = ChatBackgroundWork()
+    /// Antigravity CLI's native Swarm (`members.json`, `board.jsonl`, member
+    /// transcripts, and narrator `view.json`), as last read.
+    private(set) var agySwarm: AgySwarmSnapshot?
+    /// Isolated boolean for `ChatTurnSignals.isBackgroundWorkRunning` so 1-second
+    /// Swarm / Background Work progress updates do not invalidate `AgentChatSurfaceView`.
+    private(set) var isBackgroundWorkRunningForTurns = false
 
-    /// Whether a live read on a connected Host shows non-stale Background Work still running.
+    /// Whether a visible Chat is still confirming its initial transcript open
+    /// or filling its initial screen, so background prefetches and secondary
+    /// Host reads yield the SFTP channel until the screen settles.
+    var isPerformingForegroundInitialLoad: Bool {
+        guard isVisible, !isSuspended, isHostConnected else { return false }
+        if olderRequest == .automatic { return true }
+        if conversation.isFromCache, conversation.readFailure == nil { return true }
+        if case .locating = conversation.phase, conversation.readFailure == nil { return true }
+        return false
+    }
+
+    /// Whether a live read on a connected Host shows non-stale Background Work
+    /// or Swarm task workers still running.
     var hasRunningBackgroundWork: Bool {
-        isHostConnected && backgroundWork.holdsActivePace
+        isHostConnected && (backgroundWork.holdsActivePace || agySwarm?.holdsActivePace == true)
     }
     /// Codex's visible model catalog (`models_cache.json` on the Host, or
     /// built-in presets before a cache file exists).
@@ -257,6 +297,9 @@ final class AgentChatStore {
     /// is due. Only a running loop, which a Chat on screen keeps, takes it; one
     /// overdue when Chat opens is the check opening makes anyway.
     @ObservationIgnored private var lateEvidenceCheckAt: Date?
+    /// How many of `Timing.unannouncedEvidenceChecks` were taken since a check
+    /// that an event, the user or opening Chat asked for.
+    @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     @ObservationIgnored private let source: AgentChatSource
     /// The pane as a Blocked card types into it: on a herdr-core Host, each
     /// step only while the process read last still holds the terminal.
@@ -415,6 +458,12 @@ final class AgentChatStore {
     /// offset within one layout of the file. The value is when the send
     /// that took it was delivered.
     @ObservationIgnored private var claimedPrompts: [String: Date] = [:]
+    /// Image paths carried by sends that claimed prompts in the current
+    /// conversation, keyed by the same claim key as ``claimedPrompts``.
+    @ObservationIgnored private var claimedPromptImages: [String: [String]] = [:]
+    /// Monotonic bump when ``claimedPromptImages`` enriches transcript entries
+    /// without a new engine snapshot.
+    @ObservationIgnored private var claimedImageRevision = 0
     @ObservationIgnored private var claimedGeneration = 0
     @ObservationIgnored private var claimedLayout = 0
     @ObservationIgnored private var skillNames: Set<String> = []
@@ -428,6 +477,18 @@ final class AgentChatStore {
     @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
     /// What each listed Workflow's journal showed, by the Workflow's id.
     @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
+    /// Live SFTP end-of-run evidence for Claude Code Workflows.
+    @ObservationIgnored private var claudeWorkflowEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    /// When each running Claude Code background command last wrote its
+    /// output file, from SFTP.
+    @ObservationIgnored private var claudeCommandEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    /// Live SFTP and screen evidence for Antigravity CLI Background Work.
+    @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    @ObservationIgnored private var rawAgySwarm: AgySwarmSnapshot?
+    @ObservationIgnored private var needsAgyScreenCheck = true
+    @ObservationIgnored private var lastAgyScreenCheck: Date?
+    @ObservationIgnored private var agyScreenCheckUnavailable = false
     @ObservationIgnored private var loadedCodexCatalogScope: String?
     @ObservationIgnored private var codexCatalogTask: Task<Void, Never>?
 
@@ -524,6 +585,8 @@ final class AgentChatStore {
         isVisible = true
         needsAgentRefresh = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
+        source.onDidBecomeVisible?()
         refreshCodexModelCatalogIfNeeded()
         if isWatchingWhileHidden {
             isWatchingWhileHidden = false
@@ -560,6 +623,7 @@ final class AgentChatStore {
         consecutiveAgentRefreshLinkFailures = 0
         needsAgentRefresh = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
         refreshCodexModelCatalogIfNeeded()
         startLoop()
         blocked.resume()
@@ -570,9 +634,38 @@ final class AgentChatStore {
         viewers.removeAll()
         isVisible = false
         stopLoop()
+        timeline.reset()
+        swarmBoard.reset()
         blocked.end()
         backgroundWork = ChatBackgroundWork()
+        rawAgySwarm = nil
+        agySwarm = nil
+        if isBackgroundWorkRunningForTurns { isBackgroundWorkRunningForTurns = false }
         notifyRunningBackgroundWorkIfNeeded()
+    }
+
+    private func warmTimelineFromPrefetch() async {
+        guard !isVisible, !conversation.transcript.entries.isEmpty else { return }
+        let transcript = conversation.transcript
+        let markedEntries = outputs.marking(blocked.history.marking(transcript.entries))
+        let foldsFinishedTurns =
+            (UserDefaults.standard.object(forKey: ChatFoldSettings.defaultsKey) as? Bool) ?? true
+        var isReady = !transcript.entries.isEmpty
+        if case .locating = conversation.phase {} else { isReady = true }
+        let signals = ChatTurnSignals(
+            activity: ChatAgentActivity(agent.status),
+            isBackgroundWorkRunning: isBackgroundWorkRunningForTurns,
+            foldsFinishedTurns: foldsFinishedTurns,
+            isLive: isHostConnected && !conversation.isFromCache,
+            olderAwaitsUser: conversation.olderAwaitsUser)
+        timeline.updateIfNeeded(
+            conversation: conversationGeneration,
+            input: ChatTimelineInput(entries: markedEntries, pending: [], older: conversation.older),
+            turns: transcript.turns,
+            precedingTurnEnd: transcript.precedingTurnEnd,
+            signals: signals,
+            isReady: isReady)
+        await timeline.settled()
     }
 
     /// Warms the local document once after a fresh Host snapshot, without
@@ -605,6 +698,9 @@ final class AgentChatStore {
                 self.pollsBeforeNextOlderPage = true
                 await self.step()
                 await self.engine?.save(force: true)
+                if !Task.isCancelled {
+                    await self.warmTimelineFromPrefetch()
+                }
             }
             guard self.loopID == id else { return }
             self.loop = nil
@@ -636,7 +732,13 @@ final class AgentChatStore {
         guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
             throw ChatImagePreviewError.invalidPath
         }
-        return resolved
+        return RemoteFilePath.windowsForSFTP(resolved)
+    }
+
+    /// Whether a user request for earlier history can start right now.
+    var canLoadOlder: Bool {
+        guard case .following = conversation.phase else { return false }
+        return conversation.older == .available || isFailedOlder
     }
 
     /// Reads above the oldest message shown, a page per turn of the loop, for
@@ -678,21 +780,48 @@ final class AgentChatStore {
         }
     }
 
+    /// Reads the tail window of one Antigravity CLI Swarm member's full
+    /// transcript for the Swarm sheet's read-only worker conversation peek.
+    func loadSwarmWorkerTranscript(
+        conversationID: String, isWorking: Bool
+    ) async -> Result<ChatTranscript, ChatToolOutputFailure> {
+        guard program == .agy, case .following = conversation.phase, isHostConnected, let engine else {
+            return .failure(.notFollowing)
+        }
+        return await engine.agySwarmTranscript(of: conversationID, isWorking: isWorking)
+    }
+
     /// The Console's Host status changed. Rows expanded while it was not
     /// connected are read once it is.
     func hostConnectionChanged(_ isConnected: Bool) {
         thumbnails.hostConnectionChanged(isConnected)
         guard isConnected != isHostConnected else { return }
         isHostConnected = isConnected
-        notifyRunningBackgroundWorkIfNeeded()
+        refreshBackgroundWork()
         guard isConnected else {
             if isWatchingWhileHidden { stopLoop() }
             return
         }
-        // Whatever happened meanwhile sent no event this Chat saw.
+        // Whatever happened meanwhile sent no event this Chat saw, and opens
+        // that failed while offline backed off against no Host rather than a
+        // missing transcript.
+        if agentRefreshFailure != nil || consecutiveAgentRefreshLinkFailures > 0 {
+            consecutiveAgentRefreshLinkFailures = 0
+            needsAgentRefresh = true
+        }
+        switch conversation.phase {
+        case .locating, .unavailable(.notFound):
+            nextOpen = nil
+            failedOpens = 0
+        default:
+            break
+        }
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
-        if isVisible || hasPrefetched {
+        if isVisible {
+            wake()
+            startLoop()
+        } else if hasPrefetched {
             startLoop()
         }
         let waiting = waitingOutputs
@@ -718,17 +847,28 @@ final class AgentChatStore {
 
     /// Looks for the transcript again now, after a failure or an
     /// unavailable state the user may have fixed, such as a program shown
-    /// on its home screen that shows the conversation again.
+    /// on its home screen that shows the conversation again, or a Host
+    /// whose SSH server refused SFTP and now offers it.
     func retry() {
+        source.files.retrySFTP()
         needsAgentRefresh = true
         nextOpen = nil
         failedOpens = 0
         screenCheckRequested = true
         needsLaunchCheck = true
+        needsAgyScreenCheck = true
         loadedCodexCatalogScope = nil
         refreshCodexModelCatalogIfNeeded()
         retryRequests += 1
         isRetrying = true
+        wake()
+    }
+
+    /// Wakes Chat for a fresh Antigravity CLI screen check, such as right
+    /// after Stop's `/tasks` follow-through ends background commands.
+    func noteAgyBackgroundWorkMayHaveChanged() {
+        guard program == .agy else { return }
+        needsAgyScreenCheck = true
         wake()
     }
 
@@ -897,6 +1037,8 @@ final class AgentChatStore {
         if identityChanged {
             forgetStaleSession()
             evidenceReason = nil
+            agyScreenCheckUnavailable = false
+            needsAgyScreenCheck = true
             sessionEvidenceMayHaveChanged()
         }
         let reported = resolveReported(next.agentSession)
@@ -921,6 +1063,7 @@ final class AgentChatStore {
         noteActivity(activity)
         notePickGuardActivity(from: previous, to: activity)
         idleSince = activity == .idle ? now() : nil
+        if activity == .idle { needsAgyScreenCheck = true }
         lateEvidenceCheckAt =
             activity == .idle && source.sessionEvidence != nil
             ? timing.lateEvidenceCheck[program].map { now().addingTimeInterval($0) } : nil
@@ -961,6 +1104,7 @@ final class AgentChatStore {
         }
         await restoreIfNeeded()
         guard !Task.isCancelled else { return }
+        if needsAgentRefresh { unannouncedEvidenceChecksTaken = 0 }
         if let due = lateEvidenceCheckAt, now() >= due {
             lateEvidenceCheckAt = nil
             if evidenceReason != nil { needsAgentRefresh = true }
@@ -1010,7 +1154,9 @@ final class AgentChatStore {
             }
             polled = true
         } else if openIsDue {
-            snapshot = await engine.open(directories: directories, context: context, lostAMessage: hasLostAMessage)
+            snapshot = await engine.open(
+                directories: directories, context: context, lostAMessage: hasLostAMessage,
+                requiresLiveBody: hasUnsettledSends)
             if !Task.isCancelled, engine === self.engine { scheduleNextOpen(after: snapshot) }
             opened = true
         } else {
@@ -1050,11 +1196,37 @@ final class AgentChatStore {
         judgePickGuard()
         guard engine === self.engine, !isAwaitingSession else { return }
         // A journal read adds a deadline of its own, so a round whose
-        // transcript read failed leaves the journals for later.
-        if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
+        // transcript read failed or that is still paging older history leaves
+        // the journals for once paging settles.
+        if olderRequest == nil, polled, case .following = snapshot.phase, snapshot.readFailure == nil {
             let progress = await engine.followWorkflows()
             if engine === self.engine { workflowProgress = progress }
+            if program == .claude {
+                let workflowEnds = await engine.followClaudeWorkflowEnds()
+                if engine === self.engine {
+                    claudeWorkflowEvidence = stampingEndPromptOffsets(workflowEnds, previous: claudeWorkflowEvidence)
+                }
+                let commandOutputs = await engine.followClaudeCommandOutputs()
+                if engine === self.engine { claudeCommandEvidence = commandOutputs }
+            }
         }
+        if olderRequest == nil, program == .agy, polled || opened,
+            case .following = snapshot.phase, snapshot.readFailure == nil
+        {
+            let fileEvidence = await engine.followAgyBackgroundWork()
+            if engine === self.engine {
+                agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+            }
+            let swarm = await engine.followAgySwarm()
+            if engine === self.engine {
+                rawAgySwarm = swarm
+            }
+        }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+        if olderRequest == nil {
+            await checkAgyBackgroundWorkScreen(from: engine)
+        }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         refreshBackgroundWork()
         // After the transcript, which never waits on it.
         guard !Task.isCancelled else { return }
@@ -1199,7 +1371,7 @@ final class AgentChatStore {
         }
         // herdr can report the Agent idle while its program still runs
         // work in the background.
-        if backgroundWork.holdsActivePace { return active }
+        if backgroundWork.holdsActivePace || agySwarm?.holdsActivePace == true { return active }
         return timing.idleInterval
     }
 
@@ -1336,6 +1508,7 @@ final class AgentChatStore {
             } else {
                 awaitSession(reason)
             }
+            scheduleUnannouncedEvidenceCheck(after: reason)
         case .pickUnconfirmed(let reason):
             evidenceReason = reason
             if program == .agy {
@@ -1358,6 +1531,17 @@ final class AgentChatStore {
                 showUnavailable()
             }
         }
+    }
+
+    /// The next of `Timing.unannouncedEvidenceChecks`, while any is left: what a
+    /// Pi or Oh My Pi's extension keeps on a Rex Host arrives with no event, so
+    /// nothing else would bring the check that reads it.
+    private func scheduleUnannouncedEvidenceCheck(after reason: ChatUnavailableReason) {
+        guard case .cannotTellSessionOnRex = reason,
+            unannouncedEvidenceChecksTaken < timing.unannouncedEvidenceChecks.count
+        else { return }
+        lateEvidenceCheckAt = now().addingTimeInterval(timing.unannouncedEvidenceChecks[unannouncedEvidenceChecksTaken])
+        unannouncedEvidenceChecksTaken += 1
     }
 
     /// Nothing the check found names a session. Whatever Chat has been showing stays
@@ -1503,7 +1687,7 @@ final class AgentChatStore {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
             .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
             .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon):
+            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon), .unavailable(.cannotTellSessionOnRex):
             true
         default: false
         }
@@ -1616,6 +1800,7 @@ final class AgentChatStore {
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
+        claimedImageRevision = 0
         olderRequest = nil
         pollsBeforeNextOlderPage = false
         needsRelocate = false
@@ -1626,7 +1811,17 @@ final class AgentChatStore {
         outputs = ChatToolOutputs()
         waitingOutputs = []
         workflowProgress = [:]
+        claudeWorkflowEvidence = [:]
+        claudeCommandEvidence = [:]
+        agyFileEvidence = [:]
+        agyScreenEvidence = [:]
+        rawAgySwarm = nil
+        agySwarm = nil
+        swarmBoard.reset()
+        needsAgyScreenCheck = true
+        lastAgyScreenCheck = nil
         backgroundWork = ChatBackgroundWork()
+        if isBackgroundWorkRunningForTurns { isBackgroundWorkRunningForTurns = false }
         hasReadLive = false
         notifyRunningBackgroundWorkIfNeeded()
         if target == nil {
@@ -1656,12 +1851,15 @@ final class AgentChatStore {
     }
 
     private func makeEngine(_ reference: ConversationReference) -> ChatConversationEngine {
-        ChatConversationEngine(
+        var agyLimits = AgyBackgroundWorkFollower.Limits()
+        agyLimits.subagentIdleSettle = timing.agySubagentIdleSettle
+        return ChatConversationEngine(
             reference: reference,
             cacheKey: ChatCacheKey(
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
                 coreScope: source.coreScope),
             files: source.files, cache: source.cache, adapter: source.adapter,
+            agyBackgroundWorkLimits: agyLimits,
             transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
             sessionMayPrecedeItsStore: source.sessionEvidence != nil, now: now)
     }
@@ -1952,7 +2150,7 @@ final class AgentChatStore {
         else { return nil }
         switch reason {
         case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
-            .transcriptOff, .codexSharedDaemon:
+            .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
             sessionEvidenceMayHaveChanged()
             return Self.cannotTellSessionReason(program)
         default:
@@ -2057,13 +2255,15 @@ final class AgentChatStore {
         else { return }
         let span = PerfTrace.begin("chat.store.apply")
         defer { PerfTrace.end(span) }
-        if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
         transcriptReadFailure = snapshot.readFailure
         var next = snapshot
+        next.revision &+= claimedImageRevision
+        _ = applyClaimedPromptImages(to: &next.transcript, layoutGeneration: next.layoutGeneration)
         next.readFailure = transcriptReadFailure ?? agentRefreshFailure
         if isAwaitingSession { next.phase = .unavailable(awaitingReason) }
         if olderRequest != nil, next.older == .available { next.older = .loading }
+        if next.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         conversation = next
         // A prompt the transcript recorded since: the terminal is back in
         // this conversation.
@@ -2121,11 +2321,208 @@ final class AgentChatStore {
         let next =
             hasReadLive
             ? ChatBackgroundWork(
-                transcript: conversation.transcript, progress: workflowProgress, isLive: isLive, now: now(),
+                transcript: conversation.transcript, progress: workflowProgress,
+                evidence: mergedBackgroundWorkEvidence(), isLive: isLive, now: now(),
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
+        let nextSwarm: AgySwarmSnapshot?
+        if hasReadLive, var raw = rawAgySwarm {
+            let effectiveLive = isLive && isHostConnected
+            if !effectiveLive {
+                raw.isLive = false
+                raw.systemAlerts = []
+                for index in raw.members.indices where !raw.members[index].isKilled {
+                    raw.members[index].status = .waiting
+                    raw.members[index].isStuck = false
+                    raw.members[index].activity = nil
+                    raw.members[index].failure = nil
+                }
+            }
+            nextSwarm = raw
+        } else {
+            nextSwarm = nil
+        }
+        if nextSwarm != agySwarm {
+            agySwarm = nextSwarm
+            swarmBoard.warm(swarm: nextSwarm)
+        }
+        let nextRunningForTurns =
+            next.rows.contains { $0.isRunning && !$0.isStale } || nextSwarm?.holdsActivePace == true
+        if nextRunningForTurns != isBackgroundWorkRunningForTurns {
+            isBackgroundWorkRunningForTurns = nextRunningForTurns
+        }
         notifyRunningBackgroundWorkIfNeeded()
+    }
+
+    private func mergedBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
+        switch program {
+        case .claude:
+            // A Workflow's run file and a command's output file never share
+            // an id.
+            return claudeWorkflowEvidence.merging(claudeCommandEvidence) { $0.merging($1) }
+        case .agy:
+            var merged = agyFileEvidence
+            for (id, screen) in agyScreenEvidence {
+                merged[id] = merged[id]?.merging(screen) ?? screen
+            }
+            return merged
+        default:
+            return [:]
+        }
+    }
+
+    private func stampingEndPromptOffsets(
+        _ incoming: [String: ChatBackgroundWorkEvidence],
+        previous: [String: ChatBackgroundWorkEvidence]
+    ) -> [String: ChatBackgroundWorkEvidence] {
+        let prompt = conversation.transcript.latestPromptOffset ?? 0
+        var stamped: [String: ChatBackgroundWorkEvidence] = [:]
+        for (id, var entry) in incoming {
+            if entry.endedState != nil {
+                if let prior = previous[id], prior.endedState != nil, prior.endedAt == entry.endedAt {
+                    entry.endPromptOffset = prior.endPromptOffset ?? prompt
+                } else {
+                    entry.endPromptOffset = prompt
+                }
+            }
+            stamped[id] = entry
+        }
+        return stamped
+    }
+
+    /// Reads the Antigravity CLI pane's screen when needed to confirm silent
+    /// long-running tasks stay alive or to retire tasks/subagents that ended
+    /// on the Host without writing a `SYSTEM_MESSAGE` yet.
+    private func checkAgyBackgroundWorkScreen(from engine: ChatConversationEngine) async {
+        guard program == .agy,
+            isHostConnected,
+            !agyScreenCheckUnavailable,
+            case .following = conversation.phase,
+            !conversation.isFromCache,
+            conversation.readFailure == nil
+        else { return }
+
+        let listedItems = conversation.transcript.listedBackgroundWork
+        var runningByID: [String: ChatBackgroundWorkItem] = [:]
+        for item in listedItems where item.state == .running {
+            runningByID[item.id] = item
+        }
+        agyScreenEvidence = agyScreenEvidence.compactMapValues { existing in
+            existing
+        }.filter { id, _ in
+            runningByID[id] != nil
+        }
+        for (id, item) in runningByID {
+            if let latestStart = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max(),
+                let endedAt = agyScreenEvidence[id]?.endedAt,
+                endedAt < latestStart
+            {
+                agyScreenEvidence[id]?.endedState = nil
+                agyScreenEvidence[id]?.endedAt = nil
+                agyScreenEvidence[id]?.endPromptOffset = nil
+            }
+        }
+
+        let mergedBefore = mergedBackgroundWorkEvidence()
+        let unresolved = listedItems.filter { item in
+            guard item.state == .running,
+                item.id.hasPrefix("agy:task:") || item.id.hasPrefix("agy:subagent:")
+            else { return false }
+            guard mergedBefore[item.id]?.endedState != nil else { return true }
+            guard let endedAt = mergedBefore[item.id]?.endedAt,
+                let start = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
+            else { return false }
+            return endedAt < start
+        }
+        guard !unresolved.isEmpty else {
+            needsAgyScreenCheck = false
+            return
+        }
+
+        let date = now()
+        let interval = isVisible ? timing.agyBackgroundTaskScreenCheckVisible : timing.agyBackgroundTaskScreenCheckHidden
+        let intervalElapsed = lastAgyScreenCheck.map { date.timeIntervalSince($0) >= interval } ?? true
+        let isAgentIdle = ChatAgentActivity(agent.status) == .idle
+        let hasTask = unresolved.contains { $0.id.hasPrefix("agy:task:") }
+        let hasAgingTask = unresolved.contains { item in
+            guard item.id.hasPrefix("agy:task:") else { return false }
+            let lastSeen = [item.launchedAt, item.lastActivityAt, mergedBefore[item.id]?.lastSeenAt]
+                .compactMap(\.self).max()
+            guard let lastSeen else { return true }
+            let limit =
+                item.kind == .workflow
+                ? timing.backgroundWorkStaleness.workflowQuiet
+                : timing.backgroundWorkStaleness.subagentRun
+            return date.timeIntervalSince(lastSeen) >= limit / 2
+        }
+        let hasQuietSubagent = unresolved.contains { item in
+            guard item.id.hasPrefix("agy:subagent:") else { return false }
+            let lastSeen = [item.launchedAt, item.lastActivityAt, mergedBefore[item.id]?.lastSeenAt]
+                .compactMap(\.self).max()
+            guard let lastSeen else { return true }
+            return date.timeIntervalSince(lastSeen) >= timing.agyBackgroundTaskScreenCheckHidden
+        }
+
+        let shouldCheck: Bool
+        if needsAgyScreenCheck && (hasTask || hasQuietSubagent) && (isAgentIdle || hasAgingTask) {
+            shouldCheck = true
+        } else if intervalElapsed && isAgentIdle && (hasTask || hasQuietSubagent) {
+            shouldCheck = true
+        } else if intervalElapsed && hasAgingTask {
+            shouldCheck = true
+        } else {
+            shouldCheck = false
+        }
+        guard shouldCheck else { return }
+
+        let screen: ANSIScreen
+        do {
+            screen = try await source.screen.readScreen()
+        } catch {
+            guard !Task.isCancelled else { return }
+            if case .hostFeatureUnavailable? = error as? TransportError {
+                agyScreenCheckUnavailable = true
+                needsAgyScreenCheck = false
+            }
+            return
+        }
+        guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+
+        let checkDate = now()
+        needsAgyScreenCheck = false
+        lastAgyScreenCheck = checkDate
+        let agy = AgyScreen(screen)
+        var freshEvidence = agy.backgroundWorkEvidence(for: unresolved, at: checkDate)
+        guard !freshEvidence.isEmpty else { return }
+
+        if freshEvidence.values.contains(where: { $0.endedState != nil }) {
+            // Re-poll once before recording an ended state so a task or
+            // subagent that just wrote its `SYSTEM_MESSAGE` takes its real
+            // outcome from the transcript instead of `.stopped`.
+            let repolled = await engine.poll(context: projectionContext)
+            guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
+            apply(repolled, from: engine)
+            matchSends()
+            let stillRunning = conversation.transcript.listedBackgroundWork.filter { $0.state == .running }
+            freshEvidence = agy.backgroundWorkEvidence(for: stillRunning, at: checkDate)
+        }
+
+        let promptOffset = conversation.transcript.latestPromptOffset ?? 0
+        for (id, observed) in freshEvidence {
+            var current = agyScreenEvidence[id] ?? ChatBackgroundWorkEvidence()
+            if let seenAt = observed.lastSeenAt {
+                current.lastSeenAt = [current.lastSeenAt, seenAt].compactMap(\.self).max()
+            }
+            if let endedState = observed.endedState {
+                if current.endedState == nil || current.endedAt != observed.endedAt {
+                    current.endPromptOffset = promptOffset
+                }
+                current.endedState = endedState
+                current.endedAt = observed.endedAt
+            }
+            agyScreenEvidence[id] = current
+        }
     }
 
     private func notifyRunningBackgroundWorkIfNeeded() {
@@ -2149,6 +2546,17 @@ final class AgentChatStore {
     /// none rather than waiting for its first message.
     private var hasLostAMessage: Bool {
         sends.contains { $0.generation == conversationGeneration && sendStatuses[$0.id] == .overdue }
+    }
+
+    /// Whether Composer messages still wait to be matched against live
+    /// `recordedPrompts`, so `open` reads the live tail body instead of
+    /// confirming from cached entries alone.
+    private var hasUnsettledSends: Bool {
+        sends.contains { send in
+            guard send.deliveredAt != nil, !send.isOrphan else { return false }
+            let status = sendStatuses[send.id]
+            return status != .recorded && status != .abandoned
+        }
     }
 
     private func scheduleNextOpen(after snapshot: ChatConversationSnapshot) {
@@ -2217,6 +2625,7 @@ final class AgentChatStore {
             claimedGeneration = conversationGeneration
             claimedLayout = layout
             claimedPrompts = [:]
+            claimedPromptImages = [:]
         }
         struct Candidate {
             let claim: String
@@ -2232,7 +2641,8 @@ final class AgentChatStore {
             candidate(offset: prompt.offset, entryID: prompt.entryID).map {
                 (
                     candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
-                    imagePaths: prompt.pastedImagePaths
+                    rawText: prompt.text, imagePaths: prompt.pastedImagePaths,
+                    hasUnresolvedImagePlaceholders: prompt.hasUnresolvedImagePlaceholders
                 )
             }
         }
@@ -2283,6 +2693,7 @@ final class AgentChatStore {
                     isAfter(prompt.candidate) && claimedPrompts[prompt.candidate.claim].map { $0 > deliveredAt } ?? true
                 }
             }
+            var matchedImagePaths: [String] = []
             var match = recorded.first { $0.key == send.key && isOpen($0.candidate) }?.candidate
             // A compaction recorded after a prompt recorded since the send
             // is a later `/compact`'s, however long this one stays in the
@@ -2300,13 +2711,29 @@ final class AgentChatStore {
                     guard let paths = prompt.imagePaths, isOpen(prompt.candidate) else { return false }
                     return paths.isEmpty || paths.contains(path)
                 }?.candidate
+                if match != nil, ChatImagePath.hasImageExtension(path) {
+                    matchedImagePaths = [path]
+                }
             }
             // The program may move image paths on lines of their own ahead
             // of the text and drop the line breaks after them
-            // (`[Image #1]what…`), so the restored record differs from the send.
+            // (`[Image #1]what…`), so the restored record differs from the
+            // send; while queued or absorbed mid-turn without source notes,
+            // the record still holds `[Image #N]` placeholders.
             if match == nil, let text = source.adapter.pastedImageEcho(send.text) {
                 let key = source.adapter.echoKey(text)
-                match = recorded.first { $0.key == key && isOpen($0.candidate) }?.candidate
+                let paths = source.adapter.pastedImagePaths(send.text)
+                match = recorded.first { prompt in
+                    guard isOpen(prompt.candidate) else { return false }
+                    if prompt.key == key { return true }
+                    guard prompt.hasUnresolvedImagePlaceholders, !paths.isEmpty else { return false }
+                    let substituted = ChatRecordedPrompt.replacingImagePlaceholders(
+                        in: prompt.rawText, with: paths)
+                    return substituted != prompt.rawText && source.adapter.echoKey(substituted) == key
+                }?.candidate
+                if match != nil {
+                    matchedImagePaths = paths
+                }
             }
             if match == nil, extendedSends.contains(send.id) {
                 let text = String(Self.squeezed(send.text))
@@ -2314,6 +2741,9 @@ final class AgentChatStore {
             }
             if let match {
                 claimedPrompts[match.claim] = deliveredAt
+                if !matchedImagePaths.isEmpty {
+                    claimedPromptImages[match.claim] = matchedImagePaths
+                }
                 statuses[send.id] = .recorded
             } else if misdirectedSends.contains(send.id) {
                 statuses[send.id] =
@@ -2346,6 +2776,10 @@ final class AgentChatStore {
             }
         }
         if statuses != sendStatuses { sendStatuses = statuses }
+        if applyClaimedPromptImages(to: &conversation.transcript, layoutGeneration: layout) {
+            claimedImageRevision &+= 1
+            conversation.revision &+= 1
+        }
         // The send that raised the concern was recorded here after all.
         if let concern = sessionConcern, statuses[concern.raisedBy] == .recorded { sessionConcern = nil }
         // Only an awaiting send's clock still decides anything, so spells
@@ -2361,6 +2795,46 @@ final class AgentChatStore {
             needsRelocate = true
             wake()
         }
+    }
+
+    /// Fills in pasted image paths on bubbles whose transcript records do not
+    /// name them yet (a Claude Code `enqueue` while queued, or a mid-turn
+    /// `queued_command` attachment). Returns whether any entry changed.
+    private func applyClaimedPromptImages(to transcript: inout ChatTranscript, layoutGeneration: Int) -> Bool {
+        guard !claimedPromptImages.isEmpty,
+            claimedGeneration == conversationGeneration,
+            source.adapter.echoesByEntry || claimedLayout == layoutGeneration
+        else { return false }
+
+        let byEntry = source.adapter.echoesByEntry
+        var pathsByEntry: [ChatEntryID: [String]] = [:]
+        for prompt in transcript.recordedPrompts {
+            guard let entryID = prompt.entryID else { continue }
+            let claim = byEntry ? entryID.rawValue : "@\(prompt.offset)"
+            if let paths = claimedPromptImages[claim], !paths.isEmpty {
+                pathsByEntry[entryID] = paths
+            }
+        }
+        guard !pathsByEntry.isEmpty else { return false }
+
+        var changed = false
+        for index in transcript.entries.indices {
+            let entryID = transcript.entries[index].id
+            guard let paths = pathsByEntry[entryID],
+                case .user(var message) = transcript.entries[index].content,
+                message.imagePaths.isEmpty
+            else { continue }
+            let sourceText = message.command?.arguments ?? message.text
+            let placeholderCount = sourceText.matches(of: #/\[Image #[0-9]+\]/#).count
+            guard placeholderCount == paths.count else { continue }
+            message.imagePaths = paths
+            if message.imageCount < paths.count {
+                message.imageCount = paths.count
+            }
+            transcript.entries[index].content = .user(message)
+            changed = true
+        }
+        return changed
     }
 
     /// Opens a busy spell when herdr reports the Agent Working or Blocked,

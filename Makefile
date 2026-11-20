@@ -30,7 +30,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts testflight-notes testflight-beta
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin pair-cli clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts testflight-notes testflight-beta
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -66,6 +66,10 @@ build-ci-app: ## Compile the committed app, extensions and test bundle without r
 		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
 		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
 		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+
+.PHONY: pack-ci-app-products
+pack-ci-app-products: ## Archive build-ci-app's products for full verification's app workers
+	tar -czf '$(CURDIR)/.ci/app-products.tar.gz' -C '$(CURDIR)/.ci/app-derived' Build/Products
 
 .PHONY: build-ci-package
 build-ci-package: ## Compile HeelerSSH and its tests without running tests or booting a Simulator
@@ -293,6 +297,9 @@ publish upload bump:
 # Phony as well: plugin/ is a directory, so make would call the target up to date.
 plugin: ## Publish plugin/ from origin/main to the plugin branch (SOURCE=<rev> DRY_RUN=1 YES=1)
 	@SOURCE='$(SOURCE)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish-plugin.sh
+
+pair-cli: ## Publish heeler-pair from origin/main to npm (SOURCE=<rev> DRY_RUN=1 YES=1)
+	@SOURCE='$(SOURCE)' DRY_RUN='$(DRY_RUN)' YES='$(YES)' scripts/publish-pair-cli.sh
 
 clean: ## Remove local build products
 	rm -rf build

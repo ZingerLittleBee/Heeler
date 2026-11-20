@@ -2,13 +2,14 @@ import SwiftUI
 
 /// Host detail (ADR 0047): the Servers found on a Host, each switched on or
 /// off, then how the Host is reached. A Server that is on leads to its own
-/// page; one that is off is only a switch.
+/// page; one that is off is only a switch. The connection is the Host's: its
+/// Servers share one route, shown and reconnected here (ADR 0058).
 struct HostMachineDetailView: View {
     let catalog: HostStore
     let discoveries: HostServerDiscoveryStore
     let removal: HostRemovalStore
-    /// How a Server that is on reads, from the Console's connection to it.
-    let serverState: @MainActor (Host) -> HostRowPresentation
+    /// The Console's connections to the Host's Servers.
+    let console: HostConsoleLink
 
     private let dependencies: HostOnboardingDependencies
     /// A record of the Host. Records come and go with its Servers, so the page
@@ -20,6 +21,9 @@ struct HostMachineDetailView: View {
     @State private var scanner: HostServerScanner
     /// What this visit's last look found.
     @State private var scan: HostServerScan?
+    /// Counts the looks that reached the Host, each of which may bring its
+    /// connection back (ADR 0058).
+    @State private var looksThatReached = 0
     /// The Servers that were new when the page opened or turned up since. The
     /// list stops pointing at them once they are seen here; this page keeps
     /// pointing until it closes.
@@ -31,7 +35,11 @@ struct HostMachineDetailView: View {
     @State private var isAddingByName = false
     @State private var isShowingSetupGuide = false
     @State private var isConfirmingHostKeyReplacement = false
+    /// Updates, opened on the item whose failed row asked why.
+    @State private var updatesRequest: HostUpdatesRequest?
     @Environment(\.hostRemovalDependencies) private var removalDependencies
+    /// What Heeler installed on the Host; nil in previews and tests.
+    @Environment(HostUpdatesStore.self) private var updates: HostUpdatesStore?
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -40,13 +48,13 @@ struct HostMachineDetailView: View {
         discoveries: HostServerDiscoveryStore,
         removal: HostRemovalStore,
         dependencies: HostOnboardingDependencies,
-        serverState: @escaping @MainActor (Host) -> HostRowPresentation
+        console: HostConsoleLink = HostConsoleLink()
     ) {
         self.catalog = catalog
         self.discoveries = discoveries
         self.removal = removal
         self.dependencies = dependencies
-        self.serverState = serverState
+        self.console = console
         _anchor = State(initialValue: member)
         _connection = State(initialValue: catalog.machine(containing: member)?.id)
         _scanner = State(initialValue: HostServerScanner(dependencies: dependencies))
@@ -69,7 +77,28 @@ struct HostMachineDetailView: View {
         .onChange(of: catalog.hosts) { follow() }
         // A Host reached another way is another Host to look at.
         .task(id: connection) { await look() }
+        // The Console never asks about a key, so a dial it stopped at one is
+        // answered by a look, which asks (ADR 0058). A key the user just
+        // declined is not asked about again until they look themselves.
+        .onChange(of: connectionAsksForKey) { _, asks in
+            guard asks, !scanner.isLooking, !lastLookWasDeclined else { return }
+            Task { await look() }
+        }
+        // Decided here, where the Console's word is current: the look that
+        // counted may have begun long before it ended.
+        .onChange(of: looksThatReached) {
+            guard let machine else { return }
+            Task { await console.redialAfterLook(at: machine) }
+        }
         .onDisappear { scanner.cancel() }
+    }
+
+    private var connectionAsksForKey: Bool {
+        machine.map { console.lookFollowUp(of: $0).asksForKey } ?? false
+    }
+
+    private var lastLookWasDeclined: Bool {
+        if case .failed(let failure) = scanner.phase { failure.isDeclinedTrust } else { false }
     }
 
     /// Keeps hold of the Host through a change to its records, and leaves once
@@ -86,12 +115,17 @@ struct HostMachineDetailView: View {
     private func page(_ machine: HostMachine) -> some View {
         List {
             serversSection(machine)
+            routesSection(machine)
             if let replacement = scanner.pendingHostKeyReplacement {
                 HostKeyReplacementSection(replacement: replacement) {
                     isConfirmingHostKeyReplacement = true
                 }
             }
-            routesSection(machine)
+            if let updates {
+                HostUpdatesSection(store: updates, machine: machine) { item in
+                    updatesRequest = HostUpdatesRequest(item: item)
+                }
+            }
             accountSection(machine)
             Section {
                 Button("Remove Host", role: .destructive) {
@@ -113,6 +147,7 @@ struct HostMachineDetailView: View {
                 catalog: catalog, machine: machine, scan: scan, isEditing: $isEditing,
                 isAddingByName: $isAddingByName, isShowingSetupGuide: $isShowingSetupGuide,
                 turnOn: { turnOn($0) }))
+        .modifier(HostUpdatesSheet(store: updates, request: $updatesRequest))
         .alert("Trust this Host?", isPresented: fingerprintAlertPresented, presenting: scanner.pendingFingerprint) { _ in
             Button("Trust") { scanner.confirmFingerprint(trusted: true) }
             Button("Don't Trust", role: .cancel) { scanner.confirmFingerprint(trusted: false) }
@@ -177,7 +212,7 @@ struct HostMachineDetailView: View {
         rows += found.filter { !listed.contains($0.key) }.map {
             ServerRow(id: .server($0.key), key: $0.key, record: nil, found: $0)
         }
-        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux]
+        let kinds: [ServerKind] = [.herdrTUI, .herdrCore, .tmux, .rex]
         return rows.sorted { lhs, rhs in
             let left = (
                 kinds.firstIndex(of: lhs.key.kind) ?? kinds.count, lhs.key.distinguishingName ?? "",
@@ -217,7 +252,8 @@ struct HostMachineDetailView: View {
         } header: {
             serversHeader
         } footer: {
-            Text("Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off.")
+            Text(
+                "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on \(machine.name). Servers it finds later arrive switched off.")
         }
     }
 
@@ -256,7 +292,7 @@ struct HostMachineDetailView: View {
                 // the link, not in it, so each is its own target and VoiceOver
                 // reads both.
                 NavigationLink(value: HostDetailDestination.server(record.id)) {
-                    serverTitle(row, state: serverState(record))
+                    serverTitle(row, state: console.stateLine(of: record, found: row.found))
                 }
                 .navigationLinkIndicatorVisibility(.hidden)
                 .accessibilityIdentifier("hosts.host.serverPage.\(name)")
@@ -282,32 +318,27 @@ struct HostMachineDetailView: View {
         }
     }
 
-    private func serverTitle(_ row: ServerRow, state: HostRowPresentation?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    /// Under a Server's name: its own state. While it is off, what the last
+    /// look saw of it. The connection is the Host's, in Routes (ADR 0058).
+    private func serverTitle(_ row: ServerRow, state: HostServerStateLine?) -> some View {
+        let line = if let state { state.text } else { row.found?.stateLine ?? String(localized: "Off") }
+        return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(row.key.label)
                 if row.record == nil, newServers.contains(row.key) {
                     HostRouteTag(text: String(localized: "New"), tint: .blue)
                 }
             }
-            Text(stateLine(row, state: state))
-                .font(.subheadline)
-                .foregroundStyle(state?.isProblem == true ? Color.red : Color.secondary)
-                // A reason with its attempt count is longer than the switch
-                // leaves room for on one line.
-                .lineLimit(2)
+            if let line {
+                Text(line)
+                    .font(.subheadline)
+                    .foregroundStyle(state?.isProblem == true ? Color.red : Color.secondary)
+                    // A reason is longer than the switch leaves room for on
+                    // one line.
+                    .lineLimit(2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Under a Server's name: the Console's connection while it is on, what
-    /// the last look saw while it is off.
-    private func stateLine(_ row: ServerRow, state: HostRowPresentation?) -> String {
-        guard let state else { return row.found?.stateLine ?? String(localized: "Off") }
-        guard state.group == .connected else { return state.detail }
-        if state.tone == .warning { return state.detail }
-        let connected = String(localized: "Connected")
-        return state.trailing.map { "\(connected) · \($0)" } ?? connected
     }
 
     private func isOn(_ row: ServerRow) -> Binding<Bool> {
@@ -323,25 +354,38 @@ struct HostMachineDetailView: View {
             })
     }
 
+    @ViewBuilder
     private func missingRow(_ missing: HostServerScan.Missing) -> some View {
-        Button {
-            isShowingSetupGuide = true
-        } label: {
-            LabeledContent {
-                Text("Setup Guide")
-                    .foregroundStyle(.tint)
+        if missing.kind == .rex {
+            // The Setup Guide sets up herdr. A Rex named missing runs already,
+            // under an account this one cannot use (ADR 0049).
+            missingLabel(title: missing.kind.displayName, note: missing.note)
+                .accessibilityElement(children: .combine)
+        } else {
+            Button {
+                isShowingSetupGuide = true
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    // A color, not the hierarchical style: inside a button that
-                    // one is a shade of the tint.
-                    Text("\(missing.kind.displayName) not found")
-                        .foregroundStyle(Color.secondary)
-                    if let note = missing.note {
-                        Text(note)
-                            .font(.footnote)
-                            .foregroundStyle(Color.secondary)
-                    }
+                LabeledContent {
+                    Text("Setup Guide")
+                        .foregroundStyle(.tint)
+                } label: {
+                    missingLabel(
+                        title: String(localized: "\(missing.kind.displayName) not found"), note: missing.note)
                 }
+            }
+        }
+    }
+
+    private func missingLabel(title: String, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // A color, not the hierarchical style: inside a button that
+            // one is a shade of the tint.
+            Text(title)
+                .foregroundStyle(Color.secondary)
+            if let note {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(Color.secondary)
             }
         }
     }
@@ -372,19 +416,19 @@ struct HostMachineDetailView: View {
     // MARK: Connection
 
     private func routesSection(_ machine: HostMachine) -> some View {
-        let routes = machine.representative.routes
-        return Section {
-            ForEach(routes) { @Sendable route in
-                HostRouteRow(route: HostRouteDraft(route: route))
-            }
-        } header: {
-            Text("Routes")
-        } footer: {
-            if routes.count > 1 {
-                Text(
-                    String(localized: "Heeler tries every route each time it connects and keeps the first that reaches the Host."))
-            }
-        }
+        HostRoutesSection(
+            routes: machine.representative.routes,
+            presentation: console.routes(of: machine),
+            reconnect: action(console.reconnect, on: machine),
+            stopConnecting: action(console.stopConnecting, on: machine))
+    }
+
+    /// One of the Console's Host actions as a button's, for this Host.
+    private func action(
+        _ run: (@MainActor @Sendable (HostMachine) async -> Void)?, on machine: HostMachine
+    ) -> (@MainActor () -> Void)? {
+        guard let run else { return nil }
+        return { Task { await run(machine) } }
     }
 
     private func accountSection(_ machine: HostMachine) -> some View {
@@ -411,6 +455,7 @@ struct HostMachineDetailView: View {
         discoveries.note(found, on: machine.id)
         newServers.formUnion(discoveries.unseen(on: machine).map(\.key))
         discoveries.markShown(on: machine.id)
+        looksThatReached += 1
     }
 
     private func turnOn(_ server: HostServerKey) {
@@ -456,7 +501,9 @@ private struct HostMachineDetailSheets: ViewModifier {
 }
 
 /// Turns on a Server a look cannot find: a session or socket by a name the
-/// user knows, running or not.
+/// user knows, running or not. Rex is not among the kinds: a Host's one Rex
+/// Server has no name to type, and a look lists it wherever Rex is installed
+/// (ADR 0049).
 private struct HostServerNameSheet: View {
     let machine: HostMachine
     let isNativeWindows: Bool

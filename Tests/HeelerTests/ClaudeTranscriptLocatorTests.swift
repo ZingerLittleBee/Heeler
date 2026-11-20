@@ -315,12 +315,19 @@ struct ClaudeTranscriptLocatorTests {
 
     @Test func workflowJournalsSitInsideTheSessionDirectory() {
         let transcript = "\(Self.projects)/-k/\(Self.sessionID).jsonl"
+        let journal = ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_2d6c7df2-dc3")
         #expect(
-            ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_2d6c7df2-dc3")
-                == "\(Self.projects)/-k/\(Self.sessionID)/subagents/workflows/wf_2d6c7df2-dc3/journal.jsonl")
+            journal == "\(Self.projects)/-k/\(Self.sessionID)/subagents/workflows/wf_2d6c7df2-dc3/journal.jsonl")
+        #expect(
+            journal.flatMap(ClaudeTranscriptLocation.workflowRunFile(forJournalPath:))
+                == "\(Self.projects)/-k/\(Self.sessionID)/workflows/wf_2d6c7df2-dc3.json")
         #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_../x") == nil)
         #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: transcript, runID: "wf_a\u{0}b") == nil)
         #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: "relative/s.jsonl", runID: "wf_1") == nil)
         #expect(ClaudeTranscriptLocation.workflowJournalPath(transcriptPath: "/x/s.json", runID: "wf_1") == nil)
+        #expect(
+            ClaudeTranscriptLocation.workflowRunFile(
+                forJournalPath: "\(Self.projects)/-k/\(Self.sessionID)/subagents/workflows/../x/journal.jsonl") == nil)
+        #expect(ClaudeTranscriptLocation.workflowRunFile(forJournalPath: "relative/subagents/workflows/wf_1/journal.jsonl") == nil)
     }
 }

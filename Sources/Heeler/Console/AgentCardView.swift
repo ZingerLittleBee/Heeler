@@ -4,8 +4,8 @@ import UIKit
 /// The shared Agent Row Layout leads each card, after the Agent's program
 /// mark inside a ring that shows its status; Heeler Pin follows Row 1, and
 /// each row's right side ends its line (`AgentCardLines`): by default the
-/// Host name ends the first additional row and the Checkout's Changes
-/// totals the last. On a Workspace card Row 1 reads one way whether the Agent
+/// Host name ends Row 1 and the Checkout's Changes totals end Row 2. On a
+/// Workspace card Row 1 reads one way whether the Agent
 /// shares its checkout's or stands under the title alone: a size under a
 /// list row's, in the regular weight beside the card's semibold titles.
 /// Fields retain their emphasis using accessible semantic colors; plugin
@@ -354,9 +354,8 @@ struct AgentCardPresentation: Equatable, Sendable {
     /// The row slots with fields that all show nothing here: a field the
     /// surrounding list already shows, or one with no value.
     let emptiedSlots: Set<Int>
-    /// Each row slot's right side, or nil where the list places the Host
-    /// and the totals (`AgentCardLines`).
-    let trailing: [[AgentCardTrailing]]?
+    /// Each row slot's right side (`layout.effectiveTrailing`, rendered).
+    let trailing: [[AgentCardTrailing]]
     /// Whether the row's lead is the program's own mark, which names the
     /// Agent as its kind word would.
     let isMarked: Bool
@@ -413,7 +412,7 @@ struct AgentCardPresentation: Equatable, Sendable {
 
     /// `namesAgent` for the whole card, right sides included.
     var cardNamesAgent: Bool {
-        namesAgent(inFirst: rows.count) || (trailing ?? []).joined().contains { entry in
+        namesAgent(inFirst: rows.count) || trailing.joined().contains { entry in
             guard case .fields(let tokens) = entry else { return false }
             return tokens.contains { $0.token == .agent }
         }
@@ -455,11 +454,10 @@ enum AgentCardTrailing: Equatable, Sendable {
 /// anything, on either side. A row whose fields all show nothing gives way:
 /// its right side ends the line above, while a row configured empty keeps
 /// its line for its right side. Under a heading, Row 1's status badge ends the
-/// heading's line, which names the Agent as Row 1 would. A layout that
-/// leaves its right side to the list gets today's places: the Host ends the
-/// first line under the title, the totals the last, and the Host and the
-/// totals share a line of their own when there is none. A saved entry always shows its Host, whose tone stands in for a
-/// status.
+/// heading's line, which names the Agent as Row 1 would. By default
+/// (`AgentRowLayout.defaultTrailing`) the Host ends Row 1 and the Checkout's
+/// Changes totals end Row 2. A saved entry always shows its Host, whose tone
+/// stands in for a status.
 struct AgentCardLines: Equatable, Sendable {
     struct Line: Equatable, Sendable {
         var leading: [RenderedToken]
@@ -487,39 +485,30 @@ struct AgentCardLines: Equatable, Sendable {
                 }
             }
         }
-        if var trailing = presentation.trailing {
-            let leading = Dictionary(
-                zip(presentation.slots, presentation.rows), uniquingKeysWith: { first, _ in first })
-            let titleSlot = headingTakesTitle ? -1 : presentation.slots.first ?? 0
-            let slotCount = max(trailing.count, (presentation.slots.last ?? 0) + 1)
-            if headingTakesTitle, let row = trailing.first, row.contains(.statusBadge) {
-                title = shown([.statusBadge])
-                trailing[0] = row.filter { $0 != .statusBadge }
+        var trailing = presentation.trailing
+        let leading = Dictionary(
+            zip(presentation.slots, presentation.rows), uniquingKeysWith: { first, _ in first })
+        let titleSlot = headingTakesTitle ? -1 : presentation.slots.first ?? 0
+        let slotCount = max(trailing.count, (presentation.slots.last ?? 0) + 1)
+        if headingTakesTitle, let row = trailing.first, row.contains(.statusBadge) {
+            title = shown([.statusBadge])
+            trailing[0] = row.filter { $0 != .statusBadge }
+        }
+        title += trailing.prefix(titleSlot + 1).flatMap(shown)
+        for slot in titleSlot + 1..<max(titleSlot + 1, slotCount) {
+            let line = Line(
+                leading: leading[slot] ?? [],
+                trailing: trailing.indices.contains(slot) ? shown(trailing[slot]) : [])
+            if line.leading.isEmpty, line.trailing.isEmpty { continue }
+            guard line.leading.isEmpty, presentation.emptiedSlots.contains(slot) else {
+                details.append(line)
+                continue
             }
-            title += trailing.prefix(titleSlot + 1).flatMap(shown)
-            for slot in titleSlot + 1..<max(titleSlot + 1, slotCount) {
-                let line = Line(
-                    leading: leading[slot] ?? [],
-                    trailing: trailing.indices.contains(slot) ? shown(trailing[slot]) : [])
-                if line.leading.isEmpty, line.trailing.isEmpty { continue }
-                guard line.leading.isEmpty, presentation.emptiedSlots.contains(slot) else {
-                    details.append(line)
-                    continue
-                }
-                if details.isEmpty {
-                    title += line.trailing
-                } else {
-                    details[details.count - 1].trailing += line.trailing
-                }
+            if details.isEmpty {
+                title += line.trailing
+            } else {
+                details[details.count - 1].trailing += line.trailing
             }
-        } else {
-            details = (headingTakesTitle ? presentation.rows : Array(presentation.rows.dropFirst()))
-                .map { Line(leading: $0, trailing: []) }
-            if details.isEmpty, showsHost || showsTotals {
-                details = [Line(leading: [], trailing: [])]
-            }
-            if showsHost, !details.isEmpty { details[0].trailing.append(.host) }
-            if showsTotals, !details.isEmpty { details[details.count - 1].trailing.append(.changes) }
         }
         if requiresHost, !places(.host) {
             if details.isEmpty { details = [Line(leading: [], trailing: [])] }

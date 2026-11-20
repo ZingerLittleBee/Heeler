@@ -7,11 +7,13 @@ struct AgentUsageTabView: View {
     @Binding var scopeHostID: Host.ID?
     @Binding var metric: AgentUsageMetric
     @Binding var limitsRequested: Bool
+    var hasOnlyRexServersOn = false
 
     var body: some View {
         NavigationStack {
             AgentUsageDashboard(
-                entries: entries, scopeHostID: $scopeHostID, metric: $metric, limitsRequested: $limitsRequested)
+                entries: entries, scopeHostID: $scopeHostID, metric: $metric, limitsRequested: $limitsRequested,
+                hasOnlyRexServersOn: hasOnlyRexServersOn)
                 .navigationTitle("Usage")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {

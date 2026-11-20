@@ -8,10 +8,7 @@ struct AgentListFieldsSettingsView: View {
     init(console: ConsoleStore, hosts: [Host]) {
         self.console = console
         self.hosts = hosts
-        _editor = State(initialValue: AgentListFieldsEditor(
-            layouts: console.rowLayouts, snapshots: console.sidebarSnapshots,
-            fetch: { [console] hostID in await console.refreshSidebarLayout(for: hostID) },
-            followsPlugin: { [console] hostID in console.capabilities(for: hostID).syncLayoutFromPlugin }))
+        _editor = State(initialValue: AgentListFieldsEditor(console: console))
     }
 
     var body: some View {
@@ -192,7 +189,8 @@ struct AgentListFieldsHostDetailView: View {
                 .foregroundStyle(.tertiary)
                 .textCase(.uppercase)
             AgentListFieldsPreview(
-                layout: layout, hostName: host.displayName, followsPlugin: followsPlugin,
+                layout: layout, hostName: host.hostName, backend: host.serverKind.agentBackend,
+                followsPlugin: followsPlugin,
                 kind: AgentListFieldsPreview.kind(onHost: host.id, among: console.agents))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -236,7 +234,7 @@ struct AgentListFieldsHostDetailView: View {
     }
 
     private var slotsNote: some View {
-        Text(AgentListFieldsCopy.rowSlots(followsPlugin: followsPlugin))
+        Text(AgentListFieldsCopy.rowSlots(followsPlugin: followsPlugin, serverKind: host.serverKind))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -641,9 +639,18 @@ enum AgentListFieldsCopy {
     static let rowSlots =
         String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
 
-    static func rowSlots(followsPlugin: Bool) -> String {
+    /// Hosts without a plugin start from Heeler's two-row default; only
+    /// herdr-core Terminals carry labels.
+    static func rowSlots(followsPlugin: Bool, serverKind: ServerKind? = nil) -> String {
         guard !followsPlugin else { return rowSlots }
-        return String(localized: "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
+        guard serverKind == nil || serverKind == .herdrCore else {
+            return String(
+                localized: "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.",
+                comment: "Agent List Fields footer when the Host has no herdr plugin and no Terminal labels")
+        }
+        return String(
+            localized: "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.",
+            comment: "Agent List Fields footer when the Host has no herdr plugin")
     }
 }
 

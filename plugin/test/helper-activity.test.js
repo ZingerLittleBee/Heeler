@@ -242,13 +242,13 @@ suite("an update to a registered activity token", () => {
   });
 
   test("a layout with a Terminal label keeps its other fields and shows the label", async () => {
-    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }], [{ token: "directory" }, { token: "path" }]] };
+    const layout = { rows: [[{ token: "agent" }, { token: "label:team.owner" }, { token: "backend" }], [{ token: "directory" }, { token: "path" }]] };
     register(entry(KEY_A, ALERT_A, ACTIVITY_A, { live: { row_layout: layout } }));
     await connected([agent("t1", { cwd: "/work/Heeler", labels: { "team.owner": "ana" } })]);
     await pushes(ACTIVITY_A, 1);
 
     assert.deepEqual(opened(lastTo(ACTIVITY_A), KEY_A).agents[0].rows, [
-      [{ text: "claude" }, { text: " · " }, { text: "ana" }],
+      [{ text: "claude" }, { text: " · " }, { text: "ana" }, { text: " · " }, { text: "core" }],
       [{ text: "Heeler" }, { text: " · " }, { text: "/work/Heeler" }],
     ]);
   });

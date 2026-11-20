@@ -353,8 +353,34 @@ final class ShellTerminalStore {
         _ = input.confirmPaste()
     }
 
+    /// Whether what the view sends can reach the pane now: the session is live
+    /// and took the view's input. A Rex terminal's does from its first paint
+    /// (ADR 0052).
+    var takesInput: Bool { terminal.status == .live && input.isEnabled && input.liveGeneration != nil }
+
+    /// How the terminal's size stands with a server that keeps its own, such
+    /// as a Rex Host's: what it shows, what this view asked for, and who owns it.
+    var sizeReport: TerminalSizeReport? { terminal.sizeReport }
+
+    /// What the view says while the terminal shows at a size another device
+    /// set (ADR 0053); nil when there is nothing to say.
+    var sizeNotice: TerminalSizeNotice? { terminal.sizeNotice }
+
+    /// Takes the terminal's size for this view, at the user's tap.
+    func takeTerminalSize() { terminal.takeSize() }
+
+    /// Keeps the size the other device set, and hides the notice.
+    func dismissSizeNotice() { terminal.dismissSizeNotice() }
+
+    /// The scene went to the background: a size the view took is given back.
+    func sceneDidEnterBackground() { terminal.sceneDidEnterBackground() }
+
+    /// The scene came back from the background: the terminal still on its
+    /// screen is shown again, and takes the size again (ADR 0053).
+    func sceneDidBecomeActive() { terminal.sceneDidBecomeActive() }
+
     /// Whether a password typed into the sheet can reach the pane now.
-    var canInsertPassword: Bool { terminal.status == .live && input.isEnabled }
+    var canInsertPassword: Bool { takesInput }
 
     /// See `TerminalInputController.insertSecret`.
     func insertPassword(_ password: String) -> Bool {
@@ -461,6 +487,9 @@ final class ShellTerminalStore {
         replacementID &+= 1
         let replacementID = replacementID
         isReplacing = true
+        // Before the stop below gets its turn: a showing that began just
+        // now, as the screen came back, takes nothing for the old attach.
+        terminal.willBeReplaced()
         enqueueLifecycleTransition { [weak self] in
             guard let self else { return }
             guard self.replacementID == replacementID else { return }
@@ -478,6 +507,7 @@ final class ShellTerminalStore {
                 takeover: self.takeover,
                 viewer: .resumed,
                 isViewed: previous.isViewed,
+                sizeShowing: previous.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -524,6 +554,7 @@ final class ShellTerminalStore {
                 terminalID: self.identity.terminalID,
                 takeover: self.takeover,
                 isViewed: self.terminal.isViewed,
+                sizeShowing: self.terminal.sizeShowing,
                 input: self.input,
                 transportGeneration: self.transportGeneration,
                 runTerminal: self.runTerminal,
@@ -595,6 +626,7 @@ final class ShellTerminalStore {
         takeover: Bool,
         viewer: TerminalViewerRole = .interactive,
         isViewed: Bool = true,
+        sizeShowing: AttachTerminalStore.SizeShowing = AttachTerminalStore.SizeShowing(),
         input: TerminalInputController,
         transportGeneration: UInt64?,
         runTerminal: @escaping TerminalSessionRunner,
@@ -608,6 +640,7 @@ final class ShellTerminalStore {
             takeover: takeover,
             viewer: viewer,
             isViewed: isViewed,
+            sizeShowing: sizeShowing,
             input: input,
             transportGeneration: transportGeneration,
             transportReady: transportReady,

@@ -62,6 +62,27 @@ struct HostMachineTests {
         #expect(labels[alone.id] == nil)
     }
 
+    /// A Rex Server is one more Server of its Host: grouped by the connection,
+    /// labelled by its kind where the records would read alike, and badged.
+    @Test func aRexServerBesideAnotherIsOneHost() throws {
+        let tmux = record(kind: .tmux)
+        let rex = Host(
+            name: "Studio", address: "studio.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "/Users/dev/Library/Application Support/rex/server.sock"))
+        let alone = Host(name: "Build", address: "build.example", username: "dev", serverKind: .rex)
+
+        let machines = HostMachine.grouped([rex, alone, tmux])
+        let labels = HostMachine.serverLabels(for: [rex, alone, tmux])
+
+        #expect(machines.map { $0.members.map(\.id) } == [[rex.id, tmux.id], [alone.id]])
+        #expect(machines.first?.record(of: HostServerKey(kind: .rex, name: "")) == rex)
+        #expect(labels[rex.id] == "Rex")
+        #expect(labels[tmux.id] == "tmux")
+        #expect(labels[alone.id] == nil)
+        let row = HostMachineRowPresentation(machine: try #require(machines.first))
+        #expect(row.servers.map(\.label) == ["Rex", "Tmux"])
+    }
+
     @Test func theCatalogNamesEachServerOfAHost() throws {
         let tui = record()
         let store = HostStore(volatileHosts: [tui])
@@ -161,6 +182,27 @@ struct HostMachineTests {
         #expect(decoded.displayName == "Studio")
     }
 
+    @Test func everyServerCarriesItsHostsNameWithoutStoringIt() throws {
+        let unnamed = record(name: "", kind: .tmux, session: "work")
+        let firstNamed = record(name: "Studio")
+        let namedApart = record(name: "Studio sockets", kind: .herdrCore)
+        let other = record(name: "Build", address: "build.example")
+        let store = HostStore(volatileHosts: [unnamed, firstNamed, namedApart, other])
+
+        #expect(store.hosts.map(\.hostName) == ["Studio", "Studio", "Studio", "Build"])
+        #expect(store.hosts[0].sharedHostName == "Studio")
+        #expect(store.hosts[1].sharedHostName == nil)
+        #expect(store.hosts[2].sharedHostName == "Studio")
+        #expect(store.hosts[3].sharedHostName == nil)
+
+        let decoded = try JSONDecoder().decode(Host.self, from: JSONEncoder().encode(store.hosts[2]))
+        #expect(decoded.sharedHostName == nil)
+        #expect(decoded.hostName == "Studio sockets")
+
+        try store.remove(firstNamed.id)
+        #expect(store.hosts.map(\.hostName) == ["Studio sockets", "Studio sockets", "Build"])
+    }
+
     // MARK: Holding a Host with no Server on
 
     @Test func theRecordHoldingAHostKeepsItsNameConnectionAndPassword() throws {
@@ -251,6 +293,25 @@ struct HostMachineTests {
             log.steps == [
                 "revoke \(tmux.id)", "forget key \(tmux.id)", "removed \(tmux.id)", "forget records \(tmux.id)",
             ])
+    }
+
+    /// Turning Rex off removes its record, which ends its connections as any
+    /// removed record does, and leaves the Host's other Servers as they were.
+    @Test func turningRexOffLeavesTheOtherServersAlone() async throws {
+        let tui = record()
+        let store = HostStore(volatileHosts: [tui])
+        let tmux = try store.turnOn(HostServerKey(kind: .tmux, name: "work"), onHostOf: tui.id)
+        let rex = try store.turnOn(HostServerKey(kind: .rex, name: ""), onHostOf: tui.id)
+        let removal = HostRemovalStore(store: store)
+        let log = TurnOffLog()
+
+        await removal.turnOff(rex.id, dependencies: turnOffDependencies(log: log))
+
+        #expect(removal.pendingRequest == nil)
+        #expect(store.hosts.map(\.id) == [tui.id, tmux.id])
+        #expect(store.machines.first?.servers.compactMap { $0.serverKey?.kind } == [.herdrTUI, .tmux])
+        #expect(log.steps.contains("removed \(rex.id)"))
+        #expect(!log.steps.contains { $0.hasSuffix("\(tui.id)") || $0.hasSuffix("\(tmux.id)") })
     }
 
     @Test func turningOffAServerWithANotificationKeyAsksFirst() async throws {

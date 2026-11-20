@@ -14,14 +14,33 @@ protocol TransportConnector: Sendable {
     /// nothing else, and connecting starts no server (ADR 0044).
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport
 
+    /// Dials a Rex Host: SSH, a channel to its server's socket, and the control
+    /// link's hello, carrying `previous`'s reconnect token when there is one.
+    /// With no socket in `settings` it looks for one first. It never runs
+    /// `rex`, and connecting starts no server (ADR 0049).
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport
+
     /// Dials an unconfirmed Host for the one exec that detects its Server Kind.
     /// It reaches SSH and nothing past it, so no server starts (ADR 0031).
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection
+
+    /// Which of `candidates`, indices into the settings' routes, reaches the
+    /// Host's trusted key first; nil when none does. It signs in nowhere and
+    /// keeps no connection (ADR 0058).
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int?
 }
 
 extension TransportConnector {
+    /// A connector that cannot look says no route is in reach, so a Host
+    /// stays on the route it holds.
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int? {
+        nil
+    }
+
     func connectForDetection(
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
@@ -35,6 +54,17 @@ extension TransportConnector {
 
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "tmux Hosts"))
+    }
+
+    func connectRex(
+        settings: SSHTransportSettings, resuming _: RexControlLink?
+    ) async throws -> any RexTransport {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Rex Hosts"))
+    }
+
+    /// Dials a Rex Host as a new client.
+    func connectRex(settings: SSHTransportSettings) async throws -> any RexTransport {
+        try await connectRex(settings: settings, resuming: nil)
     }
 }
 
@@ -60,6 +90,10 @@ struct SSHTransportConnector: TransportConnector {
         try await HeelerSSHTransport.connect(settings: settings)
     }
 
+    func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int? {
+        await HeelerSSHTransport.reachableRoute(among: candidates, settings: settings)
+    }
+
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
         HerdrCoreSSHTransport(
             connection: try await HeelerSSHTransport.connect(settings: settings),
@@ -71,6 +105,14 @@ struct SSHTransportConnector: TransportConnector {
             connection: try await HeelerSSHTransport.connect(settings: settings),
             socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
     }
+
+    func connectRex(
+        settings: SSHTransportSettings, resuming previous: RexControlLink?
+    ) async throws -> any RexTransport {
+        try await RexSSHTransport.connect(
+            over: try await HeelerSSHTransport.connect(settings: settings), socket: settings.rexSocket,
+            resuming: previous)
+    }
 }
 
 extension SSHTransportSettings {
@@ -79,12 +121,16 @@ extension SSHTransportSettings {
     /// to the race, and the Host's key is trusted by Host, whichever route
     /// reaches it (ADR 0022). `overlays` resolves each route's Overlay
     /// Network, if it names one; the route itself fails the dial when that
-    /// network has since been removed.
+    /// network has since been removed. The race runs only while no connection
+    /// to the Host stands: `routeLeases` keeps the route they hold (ADR 0058).
+    /// `sftpRefusals` keeps the Host's refusal of SFTP past one connection.
     init(
         host: Host,
         credentials: SSHCredentials,
         hostKeyPolicy: HostKeyPolicy,
-        overlays: OverlayNetworkRuntime = .shared
+        overlays: OverlayNetworkRuntime = .shared,
+        routeLeases: HostRouteLeases = .shared,
+        sftpRefusals: HostSFTPRefusals = .shared
     ) {
         self.init(
             routes: host.routes.map { route in
@@ -111,10 +157,13 @@ extension SSHTransportSettings {
             hostKeyPolicy: hostKeyPolicy,
             hostKeyTrust: .host(host.id),
             socket: host.socketLocation)
+        routeLease = HostRouteLease(host: HostMachine.Connection(host), leases: routeLeases)
+        sftpRefusal = sftpRefusals.refusal(for: HostMachine.Connection(host))
         serverKind = host.serverKind
         coreSessionName = HerdrCoreSessionName.normalized(host.sessionName)
         tmuxSocketName = host.tmuxSocketName
         tmuxPaths = host.storedTmuxPaths
+        rexSocket = host.rexSocket
         // A Pairing Code v2 endpoint (ADR 0023) replaces the `herdr` on the
         // SSH PATH for every herdr exec; `socket` already names its socket.
         if let endpoint = host.herdrEndpoint,

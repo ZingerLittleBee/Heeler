@@ -6,16 +6,23 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backdrop import backdrop  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parent
 SIZE = (2752, 2064)
 SHOT_SIZE = (2112, 1584)
 SHOT_ORIGIN = (320, 428)
+# The accent's light sits behind the top of the screenshot, flat enough to leave the headline on graphite.
+LIGHT_CENTER = (SIZE[0] / 2, SHOT_ORIGIN[1] + 40)
+LIGHT_RADII = (1500, 320)
 FONT = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
 
@@ -88,16 +95,7 @@ def compose(item: Mockup) -> dict:
     if source.width * SHOT_SIZE[1] != source.height * SHOT_SIZE[0]:
         raise ValueError("The screenshot must retain its original aspect ratio")
 
-    background = ImageOps.fit(
-        Image.open(ROOT / "assets/background.png").convert("RGB"), SIZE,
-        method=Image.Resampling.LANCZOS,
-    ).convert("RGBA")
-    # Match the approved preview's quiet text field and darker lower background.
-    veil = Image.new("RGBA", SIZE)
-    veil_draw = ImageDraw.Draw(veil)
-    for y in range(SIZE[1]):
-        veil_draw.line((0, y, SIZE[0], y), fill=(3, 5, 11, round(68 + 68 * y / SIZE[1])))
-    canvas = Image.alpha_composite(background, veil)
+    canvas = backdrop(SIZE, light=(item.accent, LIGHT_CENTER, LIGHT_RADII))
     draw = ImageDraw.Draw(canvas)
     draw.text((110, 75), "HEELER FOR IPAD", font=font(MONO, 30, "Medium"),
               fill=(*item.accent, 255), anchor="lt")

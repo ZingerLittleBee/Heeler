@@ -292,8 +292,32 @@ struct AgentUsageWidgetRefreshTests {
         // The worker's refresh finishes within the task's re-reads.
         #expect(await refresh.read(host, true) == .available(complete))
         #expect(await transport.agentUsageClaudeLimits == [true, true])
+        #expect(await transport.agentUsageCodexLimits == [true, true])
         #expect(await transport.isClosed)
         #expect(connector.connects.withLock { $0 } == 1)
+
+        // A Host whose Codex limits are turned off forwards codexLimits = false
+        // and hides any cached Codex reading in the widget snapshot.
+        let suite = "codex-widget-refresh-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(false, forKey: AgentUsageStore.codexLimitsPreferenceKey(for: host.id))
+        let (publisher, directory) = try Self.publisher()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let optedOutTransport = ScriptedTransport()
+        await optedOutTransport.setHeelerPlugin(.success(.init(pluginRoot: "/plugins/heeler", version: "0.10.0")))
+        await optedOutTransport.setAgentUsage(.success(complete))
+        let optedOutRefresh = AgentUsageBackgroundRefresh.live(
+            connector: RecordingConnector(transport: optedOutTransport),
+            knownHosts: InMemoryKnownHostsStore(),
+            credentials: HostCredentialsProvider(
+                deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                secrets: InMemorySecretStore()),
+            defaults: defaults)
+        await optedOutRefresh.run(hosts: [host], publisher: publisher, isUsageEnabled: { true })
+        #expect(await optedOutTransport.agentUsageCodexLimits == [false])
+        #expect(Self.snapshot(directory)?.host(host.id)?.limits.first { $0.program == "codex" }?.windows == [])
 
         // Overlay Network routes stay down in the background.
         var overlayOnly = host
@@ -349,7 +373,7 @@ struct AgentUsageWidgetRefreshTests {
 
         #expect(state == .available(try AgentUsageFixture.report()))
         let limits = await helper.steps.compactMap { step -> Bool? in
-            guard case .usageQuery(_, let limits, _) = step else { return nil }
+            guard case .usageQuery(_, let limits, _, _, _) = step else { return nil }
             return limits
         }
         #expect(limits == [true])

@@ -219,21 +219,28 @@ enum ClaudeUserText: Sendable, Equatable {
     }
 }
 
-/// A `<task-notification>`: a background task (usually an async subagent)
-/// stopped.
+/// A `<task-notification>`: a background task (an async subagent, a
+/// Workflow, a background command or a Monitor) stopped, or a Monitor
+/// reported an event.
 struct ClaudeTaskNotification: Sendable, Equatable {
     var summary: String?
-    /// `completed`, `failed`, `killed`, `stopped`, …
+    /// `completed`, `failed`, `killed`, `stopped`, …; nil on a Monitor event.
     var status: String?
-    /// The tool call that launched the task.
+    /// The tool call that launched the task; a Monitor event names none.
     var toolUseID: String?
     var taskID: String?
     var result: String?
     var usage: ChatBackgroundWorkItem.Usage?
+    /// A Monitor event's text: one or more lines its source wrote, or the
+    /// program's own note that the Monitor expired.
+    var event: String?
+    /// Where the task wrote its output, on the Host.
+    var outputFile: String?
 
     init(
         summary: String? = nil, status: String? = nil, toolUseID: String? = nil, taskID: String? = nil,
-        result: String? = nil, usage: ChatBackgroundWorkItem.Usage? = nil
+        result: String? = nil, usage: ChatBackgroundWorkItem.Usage? = nil, event: String? = nil,
+        outputFile: String? = nil
     ) {
         self.summary = summary
         self.status = status
@@ -241,6 +248,8 @@ struct ClaudeTaskNotification: Sendable, Equatable {
         self.taskID = taskID
         self.result = result
         self.usage = usage
+        self.event = event
+        self.outputFile = outputFile
     }
 
     init(_ text: String) {
@@ -250,7 +259,31 @@ struct ClaudeTaskNotification: Sendable, Equatable {
         self.init(
             summary: field("summary"), status: field("status"), toolUseID: field("tool-use-id"),
             taskID: field("task-id"), result: field("result"),
-            usage: Self.usageText(in: text).map(Self.usage))
+            usage: Self.usageText(in: text).map(Self.usage), event: field("event"),
+            outputFile: field("output-file"))
+    }
+
+    /// A Monitor's event rather than a task's end: it carries `<event>` and
+    /// no `<status>` (Claude Code 2.1.327).
+    var isMonitorEvent: Bool { status == nil && event != nil }
+
+    /// What each note Claude Code writes as a Monitor's last event starts
+    /// with, where no end with a `<status>` follows: `[Monitor expired after
+    /// …]`, `[Monitor timed out …]` and `[Monitor stopped …]` (2.1.327).
+    static let monitorClosingPrefix = "[Monitor "
+    /// The closing note of a Monitor the program stopped, as for too much
+    /// output.
+    static let monitorStoppedPrefix = "[Monitor stopped"
+
+    /// The exit code a background command's or Monitor's end names:
+    /// `completed (exit code 0)`, `failed with exit code 1`, `(exit 3)`.
+    var exitCode: Int? {
+        guard let summary else { return nil }
+        for marker in ["exit code ", "(exit "] {
+            guard let range = summary.range(of: marker, options: .backwards) else { continue }
+            if let code = Int(summary[range.upperBound...].prefix { $0.isNumber }) { return code }
+        }
+        return nil
     }
 
     /// The program writes `<usage>` after `<result>`, the agent's own report,

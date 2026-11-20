@@ -55,8 +55,9 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
 }
 
 /// One Workspace card: its ordinary shell panes, in tab order, then New
-/// Terminal. Agent panes stay on the Agents tab, so a Workspace running only
-/// Agents holds New Terminal alone.
+/// Terminal where its Host starts terminals. Agent panes stay on the Agents
+/// tab, so a Workspace running only Agents holds New Terminal alone, and on a
+/// Host that starts none it would hold nothing and is not listed.
 struct TerminalWorkspaceGroup: Identifiable, Equatable {
     /// Workspace ids are opaque and scoped to their Host.
     struct ID: Hashable, Sendable {
@@ -84,6 +85,25 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
     }
 }
 
+/// Which ends of a By Host Workspace card a row closes. That plain list draws
+/// no cards, so each row rounds its own slice: the first row the top, the
+/// last the bottom. New Terminal ends a card where its Host starts terminals;
+/// otherwise the last shell does, as the grouped By Workspace list closes it.
+struct TerminalCardEdges: Equatable {
+    let isFirst: Bool
+    let isLast: Bool
+
+    /// The shell at `index` of a card listing `count` shells.
+    static func shell(at index: Int, of count: Int, endsInNewTerminal: Bool) -> Self {
+        Self(isFirst: index == 0, isLast: !endsInNewTerminal && index == count - 1)
+    }
+
+    /// New Terminal, after the card's `shellCount` shells.
+    static func newTerminal(afterShells shellCount: Int) -> Self {
+        Self(isFirst: shellCount == 0, isLast: true)
+    }
+}
+
 /// A count of shells as the Terminals list words it.
 enum TerminalCount {
     static func text(_ count: Int) -> String {
@@ -91,18 +111,29 @@ enum TerminalCount {
     }
 }
 
-/// One Host section of the By Host presentation.
+/// One Host section of the By Host presentation: a Host as the Hosts tab
+/// shows it, holding the Workspaces of every Server it has on (ADR 0047).
 struct TerminalHostGroup: Identifiable, Equatable {
+    /// The first Server's record, which stands for the Host where one id is
+    /// asked for: the Hosts tab opens the Host from any of them.
     let hostID: Host.ID
+    /// The Host's name alone, whichever of its Servers are listed.
     let hostName: String
+    /// The Servers listed, in catalog order, `hostID`'s first.
+    let servers: [ConsoleHostServerState]
     let readiness: HostReadiness
-    let issue: ConsoleHostStatusPresentation?
-    /// A failing Host opens its connection sheet instead of expanding.
+    /// A failing Host opens its connection sheet instead of expanding. Only
+    /// a Host with one Server on: one with more expands, and each Server's
+    /// problem opens its own sheet from its row.
     let opensConnectionDetail: Bool
+    /// Each Server's Workspaces in its own order, Server after Server.
     let workspaces: [TerminalWorkspaceGroup]
     let isCollapsed: Bool
 
     var id: Host.ID { hostID }
+    var hostIDs: [Host.ID] { servers.map(\.hostID) }
+    /// The Servers' conditions, in their order.
+    var issues: [ConsoleHostStatusPresentation] { servers.compactMap(\.issue) }
     var terminalCount: Int { workspaces.reduce(0) { $0 + $1.terminals.count } }
 }
 
@@ -195,49 +226,67 @@ struct TerminalListProjection {
     var collapsedWorkspaces: Set<TerminalWorkspaceGroup.ID> = []
     var collapsedHosts: Set<Host.ID> = []
 
-    /// Every Workspace card, Host catalog order first, then herdr's
-    /// Workspace order. A query keeps matching shells only and drops cards
-    /// left empty; without one, an empty Workspace stays listed.
+    /// Every Workspace card, in the Hosts tab's order of Hosts with a Host's
+    /// Servers together in catalog order, then each Server's Workspace
+    /// order. A Workspace is one Server's, so two of the same name on two
+    /// Servers of a Host are two cards, both under the Host's name. A query
+    /// keeps matching shells only and drops cards left empty; without one,
+    /// an empty Workspace stays listed where its card offers New Terminal.
     func workspaces(filteredHostIDs: Set<Host.ID> = [], searchQuery: String = "")
         -> [TerminalWorkspaceGroup]
     {
-        visibleHosts(filteredHostIDs).flatMap { workspaces(on: $0, searchQuery: searchQuery) }
+        visibleGroups(filteredHostIDs).flatMap(\.servers)
+            .flatMap { workspaces(on: $0, searchQuery: searchQuery) }
     }
 
-    /// A query drops Hosts without a match, whatever their state, as the
-    /// Agents list does, and opens every Host so no match hides behind a
-    /// collapsed one.
+    /// One group per Host, by its name, in the Hosts tab's order. A query
+    /// drops Hosts without a match, whatever their state, as the Agents list
+    /// does, and opens every Host so no match hides behind a collapsed one.
+    /// Without one, a Host with no Workspace to list stays while it has
+    /// something to say or could start a terminal, and otherwise would be a
+    /// bare header.
     func hostGroups(filteredHostIDs: Set<Host.ID> = [], searchQuery: String = "")
         -> [TerminalHostGroup]
     {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return visibleHosts(filteredHostIDs).compactMap { host in
-            let workspaces = workspaces(on: host, searchQuery: searchQuery)
-            if isSearching && workspaces.isEmpty { return nil }
+        return visibleGroups(filteredHostIDs).compactMap { group in
+            guard let first = group.servers.first else { return nil }
+            let cards = group.servers.flatMap { workspaces(on: $0, searchQuery: searchQuery) }
+            let servers = group.servers.map { host in
+                ConsoleHostServerState(
+                    hostID: host.id, connectionStatus: hostStatuses[host.id],
+                    isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id), issue: issue(for: host))
+            }
+            if cards.isEmpty
+                && (isSearching || !group.keepsEmptySection(servers, listsTerminals: true))
+            {
+                return nil
+            }
             return TerminalHostGroup(
-                hostID: host.id,
-                hostName: host.displayName,
-                readiness: readiness(for: host, isEmpty: workspaces.isEmpty),
-                issue: issue(for: host),
-                opensConnectionDetail: HostConnectionDetailPresentation(
-                    host: host, status: hostStatuses[host.id],
-                    standingFailure: hostStandingFailures[host.id]) != nil,
-                workspaces: workspaces,
-                isCollapsed: !isSearching && collapsedHosts.contains(host.id))
+                hostID: first.id,
+                hostName: group.name,
+                servers: servers,
+                readiness: ConsoleHostSectionHeaderPresentation.readiness(
+                    servers: servers, isEmpty: cards.isEmpty, inventoryNoun: "Terminals"),
+                opensConnectionDetail: group.servers.count == 1
+                    && HostConnectionDetailPresentation(
+                        host: first, status: hostStatuses[first.id],
+                        standingFailure: hostStandingFailures[first.id]) != nil,
+                workspaces: cards,
+                // Folded while any of its Servers is, as the Agents list reads it.
+                isCollapsed: !isSearching && group.servers.contains { collapsedHosts.contains($0.id) })
         }
     }
 
-    /// Host problems in catalog order, for the By Workspace presentation,
-    /// which has no Host headers to carry them.
+    /// Host problems, one per Server, in the order of the cards, for the By
+    /// Workspace presentation, which has no Host headers to carry them.
     func issues(filteredHostIDs: Set<Host.ID> = []) -> [ConsoleHostStatusPresentation] {
-        visibleHosts(filteredHostIDs).compactMap(issue(for:))
+        visibleGroups(filteredHostIDs).flatMap(\.servers).compactMap(issue(for:))
     }
 
-    private func visibleHosts(_ filteredHostIDs: Set<Host.ID>) -> [Host] {
-        var seen: Set<Host.ID> = []
-        return hosts.filter {
-            (filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id)) && seen.insert($0.id).inserted
-        }
+    private func visibleGroups(_ filteredHostIDs: Set<Host.ID>) -> [ConsoleHostSectionGroup] {
+        ConsoleHostSectionGroup.grouping(
+            hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) })
     }
 
     private func workspaces(on host: Host, searchQuery: String) -> [TerminalWorkspaceGroup] {
@@ -256,8 +305,15 @@ struct TerminalListProjection {
         for shell in shells where !ordered.contains(where: { $0.id == shell.workspaceID }) {
             ordered.append((shell.workspaceID, nil))
         }
+        // A card with no shell holds New Terminal alone, so where the Host
+        // never starts terminals it has nothing to show or offer, as a Rex
+        // session whose terminals all run Agents (ADR 0054). Read from the
+        // Host's kind rather than its connection, so a herdr-core card keeps
+        // its place while the core is still being located.
+        let offersNewTerminal = host.capabilities.startsTerminals
         return ordered.compactMap { id, workspace in
             let all = shellsByWorkspace[id] ?? []
+            if all.isEmpty && !offersNewTerminal { return nil }
             let matching = needle.isEmpty ? all : all.filter { $0.matchesSearch(needle) }
             if !needle.isEmpty && matching.isEmpty { return nil }
             let label = (workspace?.label ?? all.first?.workspaceLabel)?
@@ -265,7 +321,7 @@ struct TerminalListProjection {
             let groupID = TerminalWorkspaceGroup.ID(hostID: host.id, workspaceID: id)
             return TerminalWorkspaceGroup(
                 hostID: host.id,
-                hostName: host.displayName,
+                hostName: host.hostName,
                 workspaceID: id,
                 title: label.flatMap { $0.isEmpty ? nil : $0 } ?? String(localized: "Workspace \(id)"),
                 terminals: matching,
@@ -294,15 +350,6 @@ struct TerminalListProjection {
             standingFailure: hostStandingFailures[host.id],
             isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
             syncError: hostSyncErrors[host.id],
-            inventoryNoun: "Terminals")
-    }
-
-    private func readiness(for host: Host, isEmpty: Bool) -> HostReadiness {
-        ConsoleHostSectionHeaderPresentation.readiness(
-            connectionStatus: hostStatuses[host.id],
-            isAwaitingSnapshot: hostsAwaitingSnapshot.contains(host.id),
-            statusSeverity: issue(for: host)?.severity,
-            isEmpty: isEmpty,
             inventoryNoun: "Terminals")
     }
 }
@@ -372,8 +419,15 @@ final class TerminalListPresentationStore {
             forKey: Self.collapsedWorkspacesDefaultsKey)
     }
 
-    func toggleCollapsed(_ hostID: Host.ID) {
-        if collapsedHosts.remove(hostID) == nil { collapsedHosts.insert(hostID) }
+    /// Unfolds the Host whose Servers have the records `hostIDs`, folded while
+    /// any of them is, by dropping them all, or folds it by holding them all,
+    /// as the Agents list does.
+    func toggleCollapsed(_ hostIDs: [Host.ID]) {
+        if hostIDs.contains(where: collapsedHosts.contains) {
+            collapsedHosts.subtract(hostIDs)
+        } else {
+            collapsedHosts.formUnion(hostIDs)
+        }
         defaults.set(
             collapsedHosts.map(\.uuidString).sorted(),
             forKey: Self.collapsedHostsDefaultsKey)

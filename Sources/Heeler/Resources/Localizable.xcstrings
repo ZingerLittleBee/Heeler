@@ -4,9 +4,6 @@
     "" : {
       "shouldTranslate" : false
     },
-    " %@" : {
-      "shouldTranslate" : false
-    },
     " (no newline)" : {
       "localizations" : {
         "ja" : {
@@ -87,6 +84,35 @@
     },
     "%@ %@" : {
       "shouldTranslate" : false
+    },
+    "%@ %@ keeps working on %@." : {
+      "comment" : "Under a failed update. Arguments: Heeler Plugin or Host Helper, the version the Host holds, the Host's name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ keeps working on %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ では %1$@ %2$@ が引き続き動作します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ 上的 %1$@ %2$@ 仍可继续使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%3$@ 上的 %1$@ %2$@ 仍可繼續使用。"
+          }
+        }
+      }
     },
     "%@ (%@)" : {
       "shouldTranslate" : false
@@ -1046,6 +1072,7 @@
       }
     },
     "%@ is already in Heeler. Checked servers are turned on there." : {},
+    "%@ is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before." : {},
     "%@ is no longer a Template on this Host, so nothing started. Detect Again refreshes the list." : {
       "localizations" : {
         "ja" : {
@@ -1516,6 +1543,34 @@
         }
       }
     },
+    "%@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ / %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，共 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，共 %2$@"
+          }
+        }
+      }
+    },
     "%@ of %@ · %@" : {
       "comment" : "An Account's share of its program, then the other metric: 72% of Claude Code · 211M tokens",
       "localizations" : {
@@ -1742,6 +1797,7 @@
         }
       }
     },
+    "%@ signs in once per Host; Usage Limits are shown on the Default Account." : {},
     "%@ staged" : {
       "localizations" : {
         "ja" : {
@@ -2097,6 +2153,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 經由 %@，透過 %@"
+          }
+        }
+      }
+    },
+    "%@ was not updated." : {
+      "comment" : "Argument: Heeler Plugin or Host Helper.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は更新されませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未更新。"
           }
         }
       }
@@ -2790,6 +2869,47 @@
         }
       }
     },
+    "%lld Hosts have older ones." : {
+      "comment" : "Closes the Updates prompt's opening line. Argument: how many Hosts hold an older Plugin or Helper.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Host has an older one."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Hosts have older ones."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストに古いバージョンがあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的版本较旧。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的版本較舊。"
+          }
+        }
+      }
+    },
     "%lld Hosts not connected" : {
       "localizations" : {
         "ja" : {
@@ -2830,6 +2950,169 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 台主機尚未就緒"
+          }
+        }
+      }
+    },
+    "%lld Updates" : {
+      "comment" : "Tag after a Host's name on the Hosts list. Argument: how many Plugin and Helper updates wait there.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Update"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 %lld 件"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個更新"
+          }
+        }
+      }
+    },
+    "%lld Updates Available" : {
+      "comment" : "Title of the card over the Hosts list. Argument: how many Plugin and Helper updates wait.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Update Available"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates Available"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の更新があります"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个可用更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個可用更新"
+          }
+        }
+      }
+    },
+    "%lld Updates Failed" : {
+      "comment" : "Title of the card over the Hosts list once updates failed. Argument: how many.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Update Failed"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Updates Failed"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の更新に失敗しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个更新失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個更新失敗"
+          }
+        }
+      }
+    },
+    "%lld active" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld active"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld active"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 稼働中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個執行中"
           }
         }
       }
@@ -3208,6 +3491,29 @@
         }
       }
     },
+    "%lld hidden" : {
+      "comment" : "How many of a folder's items Files is not showing because their names start with a dot.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld項目を非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隐藏 %lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隱藏 %lld 個"
+          }
+        }
+      }
+    },
     "%lld idle" : {
       "comment" : "Live Activity count chip: idle Agents",
       "localizations" : {
@@ -3271,6 +3577,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 張圖片"
+          }
+        }
+      }
+    },
+    "%lld items" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld item"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld items"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld項目"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個項目"
           }
         }
       }
@@ -3524,6 +3870,24 @@
                 }
               }
             }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件が入力待ち"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个待处理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個待處理"
           }
         }
       }
@@ -3993,6 +4357,46 @@
         }
       }
     },
+    "%lld posts" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld post"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld posts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 則訊息"
+          }
+        }
+      }
+    },
     "%lld pt" : {
       "shouldTranslate" : false
     },
@@ -4129,6 +4533,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 個執行中，%@，%lld / %lld 個 Agent 已完成"
+          }
+        }
+      }
+    },
+    "%lld steps" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld step"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld steps"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ステップ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 步"
           }
         }
       }
@@ -4328,6 +4772,46 @@
         }
       }
     },
+    "%lld waiting" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld waiting"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld waiting"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个等待中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個等待中"
+          }
+        }
+      }
+    },
     "%lld working" : {
       "comment" : "Count of a Host's Agents by status, including Live Activity summaries and accessibility labels.",
       "localizations" : {
@@ -4505,6 +4989,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "+%lld 個 · 可能不是最新"
+          }
+        }
+      }
+    },
+    "+%lld unread" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "+%lld unread"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "+%lld unread"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 未讀"
           }
         }
       }
@@ -5126,6 +5650,84 @@
     "=" : {
       "shouldTranslate" : false
     },
+    "@%@ has shown no recent progress" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ はしばらく進捗がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ 近期没有新进展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ 近期沒有新進展"
+          }
+        }
+      }
+    },
+    "@%@ hit model limit · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "@%1$@ hit model limit · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ がモデル制限に達しました · %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 触发模型限额 · %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 觸發模型限額 · %2$@"
+          }
+        }
+      }
+    },
+    "@%@ step failed · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "@%1$@ step failed · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ のステップが失敗しました · %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 步骤执行失败 · %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%1$@ 步驟執行失敗 · %2$@"
+          }
+        }
+      }
+    },
     "A Host already uses this machine" : {
       "localizations" : {
         "ja" : {
@@ -5148,28 +5750,7 @@
         }
       }
     },
-    "A Host’s Claude Code or Codex Usage Limits and when they reset." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストの Claude Code / Codex の使用量制限と、そのリセット時期を表示します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主机的 Claude Code 或 Codex 用量限额及其重置时间。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主機的 Claude Code 或 Codex 用量上限與重設時間。"
-          }
-        }
-      }
-    },
+    "A Host’s Claude Code, Codex, or Antigravity Usage Limits and when they reset." : {},
     "A Shell Terminal on this Host is open in another Heeler window, and input continues there. Close it to use the terminal here." : {
       "localizations" : {
         "ja" : {
@@ -5773,6 +6354,7 @@
         }
       }
     },
+    "A message was too large for the connection to Rex. If this keeps happening, check the Rex version on the Host." : {},
     "A moon is not valid. Fix it in Advanced." : {
       "localizations" : {
         "ja" : {
@@ -5880,6 +6462,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此主機的帳號是由較新版本的 Heeler 儲存的。請更新 Heeler 後再變更。"
+          }
+        }
+      }
+    },
+    "A path on the Host. ~ is the home directory." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上のパス。~ はホームディレクトリです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的路径。~ 表示主目录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的路徑。~ 代表家目錄。"
           }
         }
       }
@@ -6259,6 +6863,7 @@
         }
       }
     },
+    "Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none." : {},
     "Accounts are not available on this Host." : {
       "localizations" : {
         "ja" : {
@@ -6299,6 +6904,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "致謝"
+          }
+        }
+      }
+    },
+    "Active" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稼働中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活跃"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活躍"
           }
         }
       }
@@ -6789,6 +7416,28 @@
         }
       }
     },
+    "Add Path to Message" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスをメッセージに追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将路径添加到消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將路徑加入訊息"
+          }
+        }
+      }
+    },
     "Add Route" : {
       "localizations" : {
         "ja" : {
@@ -6988,46 +7637,46 @@
         }
       }
     },
-    "Add a machine that runs herdr to get started." : {
+    "Add a machine that runs herdr, tmux or Rex to get started." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "始めるには、herdr を実行しているマシンを追加してください。"
+            "value" : "始めるには、herdr、tmux、または Rex を実行しているマシンを追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加一台运行 herdr 的主机以开始使用。"
+            "value" : "添加一台运行 herdr、tmux 或 Rex 的主机以开始使用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr 的機器即可開始使用。"
+            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器即可開始使用。"
           }
         }
       }
     },
-    "Add a machine that runs herdr to see its Agents and Terminals here." : {
+    "Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
+            "value" : "herdr、tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加运行 herdr 的电脑，即可在此查看其 Agent 和终端。"
+            "value" : "添加运行 herdr、tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr 的機器，就能在這裡看到它的 Agent 與終端機。"
+            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
           }
         }
       }
@@ -7232,6 +7881,28 @@
         }
       }
     },
+    "Add swarm worker" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ワーカーを追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 Swarm 成员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 Swarm 成員"
+          }
+        }
+      }
+    },
     "Add the Host" : {
       "localizations" : {
         "ja" : {
@@ -7338,6 +8009,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加入第 %lld 列"
+          }
+        }
+      }
+    },
+    "Add to This Folder" : {},
+    "Add worker @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカー @%@ を追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加成员 @%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增成員 @%@"
           }
         }
       }
@@ -7672,6 +8366,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent %lld"
+          }
+        }
+      }
+    },
+    "Agent Directory" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントのディレクトリ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 目录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 目錄"
           }
         }
       }
@@ -8506,6 +9222,28 @@
         }
       }
     },
+    "All Up to Date" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて最新です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部已是最新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部已是最新"
+          }
+        }
+      }
+    },
     "All background agents stopped" : {
       "comment" : "Title of a notification when all background agents have been stopped.",
       "isCommentAutoGenerated" : true,
@@ -9155,6 +9893,7 @@
         }
       }
     },
+    "Antigravity" : {},
     "Antigravity CLI has exited. Start it again in the terminal first." : {},
     "Antigravity CLI hit an error" : {},
     "Antigravity CLI is waiting for a second key press (“%@”). Finish it in the terminal first." : {
@@ -9196,6 +9935,29 @@
     },
     "Antigravity CLI's note field is open on another row. Finish it in the terminal." : {},
     "Antigravity CLI's note field is open, so a digit would be typed into it. Answer in the terminal." : {},
+    "Antigravity CLI's swarm board is open in the terminal. Press Esc there first." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルで Antigravity CLI の Swarm ボードが開いています。先にターミナルで Esc を押してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "终端中正打开着 Antigravity CLI 的 Swarm 面板，请先在终端按 Esc 退出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終端機中正開啟著 Antigravity CLI 的 Swarm 面板，請先在終端機按 Esc 退出。"
+          }
+        }
+      }
+    },
+    "Antigravity limits" : {},
     "Any local branch is kept." : {
       "localizations" : {
         "ja" : {
@@ -9548,6 +10310,50 @@
         }
       }
     },
+    "Archive channel #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル #%@ をアーカイブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档频道 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封存頻道 #%@"
+          }
+        }
+      }
+    },
+    "Archive swarm channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルをアーカイブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封存 Swarm 頻道"
+          }
+        }
+      }
+    },
     "Are you sure you want to also close this workspace? It is the workspace's last tab." : {
       "comment" : "Confirmation message for an unnamed Workspace's last tab.",
       "localizations" : {
@@ -9748,6 +10554,29 @@
         }
       }
     },
+    "Ask the Agent to" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントへの依頼内容"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Agent 做什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Agent 做什麼"
+          }
+        }
+      }
+    },
+    "Asks the Host again to resize the terminal to fit this screen." : {},
     "Assign one to this device in the EasyTier console." : {
       "localizations" : {
         "ja" : {
@@ -9789,6 +10618,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請在 EasyTier 主控台中為它指派最多 8 個網路，且子網路各不相同：主機會連到其位址或名稱所在的那個網路。Heeler 只會對外連線，並捨棄它們的監聽器。"
+          }
+        }
+      }
+    },
+    "Assignment (#%lld)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タスク指示 (#%lld)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务简报 (#%lld)"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任務簡報 (#%lld)"
+          }
+        }
+      }
+    },
+    "Assignments and findings posted by swarm members appear here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm メンバーが投稿したタスク指示や調査結果がここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 成员发布的任务分配与进展会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 成員發佈的任務分配與進展會顯示在這裡。"
           }
         }
       }
@@ -9946,6 +10819,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %lld 次嘗試"
+          }
+        }
+      }
+    },
+    "Attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要注意"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需關注"
           }
         }
       }
@@ -10951,6 +11846,28 @@
         }
       }
     },
+    "Board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボード"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息板"
+          }
+        }
+      }
+    },
     "Both machines must accept the same password; separate passwords are not supported." : {
       "localizations" : {
         "ja" : {
@@ -11256,6 +12173,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "明細"
+          }
+        }
+      }
+    },
+    "Brief" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "简报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "簡報"
           }
         }
       }
@@ -11595,6 +12534,50 @@
         }
       }
     },
+    "Can't Open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開"
+          }
+        }
+      }
+    },
+    "Can't Open This Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開此資料夾"
+          }
+        }
+      }
+    },
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -11613,6 +12596,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法顯示此對話"
+          }
+        }
+      }
+    },
+    "Can't Show Worker Conversation" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカーの会話を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示成员对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法顯示成員對話"
           }
         }
       }
@@ -11844,6 +12849,28 @@
         }
       }
     },
+    "Changed %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@に変更"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@更改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@變更"
+          }
+        }
+      }
+    },
     "Changed while loading" : {
       "localizations" : {
         "ja" : {
@@ -12018,6 +13045,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "變更 Heeler 外掛"
+          }
+        }
+      }
+    },
+    "Channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "頻道"
           }
         }
       }
@@ -12294,6 +13343,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again." : {
       "localizations" : {
         "ja" : {
@@ -12384,6 +13435,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this %@ hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {
       "comment" : "Chat explanation; %@ is Pi or Oh My Pi",
       "localizations" : {
@@ -12651,6 +13704,28 @@
         }
       }
     },
+    "Check swarm status" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm の状態を確認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Swarm 状态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Swarm 狀態"
+          }
+        }
+      }
+    },
     "Check that the Host is awake and reachable, then verify its address and port." : {
       "localizations" : {
         "ja" : {
@@ -12761,6 +13836,7 @@
         }
       }
     },
+    "Check the Rex version on the Host." : {},
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -13826,6 +14902,30 @@
         }
       }
     },
+    "Clear its scrollback, then reattach." : {},
+    "Clear text" : {
+      "comment" : "Accessibility label for the button that clears the rename text field.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストを消去"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除文本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除文字"
+          }
+        }
+      }
+    },
     "Close" : {
       "localizations" : {
         "ja" : {
@@ -14565,6 +15665,28 @@
         }
       }
     },
+    "Codex limits" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex の制限"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 限额"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 用量上限"
+          }
+        }
+      }
+    },
     "Codex offers only an answer or a skip here." : {
       "localizations" : {
         "ja" : {
@@ -14609,6 +15731,7 @@
         }
       }
     },
+    "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app‑server daemon stop frees it, ending any other Codex on that server." : {},
     "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume %@, and pick the conversation in Codex's list. %@" : {
       "localizations" : {
         "ja" : {
@@ -15307,6 +16430,7 @@
       }
     },
     "Connect" : {},
+    "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -16214,6 +17338,28 @@
         }
       }
     },
+    "Coordinator" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コーディネーター"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "協調者"
+          }
+        }
+      }
+    },
     "Copied" : {
       "localizations" : {
         "ja" : {
@@ -16412,6 +17558,28 @@
         }
       }
     },
+    "Copy Details" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝详情"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製詳細資料"
+          }
+        }
+      }
+    },
     "Copy Hunk" : {
       "localizations" : {
         "ja" : {
@@ -16496,6 +17664,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "複製節點 ID"
+          }
+        }
+      }
+    },
+    "Copy Pane ID" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペイン ID をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝窗格 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製窗格 ID"
           }
         }
       }
@@ -17543,6 +18733,28 @@
         }
       }
     },
+    "Couldn't Copy the File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルをコピーできませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法拷贝文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法複製檔案"
+          }
+        }
+      }
+    },
     "Couldn't Load Folders" : {
       "localizations" : {
         "ja" : {
@@ -17609,6 +18821,28 @@
         }
       }
     },
+    "Couldn't Open the File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを開けませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開檔案"
+          }
+        }
+      }
+    },
     "Couldn't Read Changes" : {
       "localizations" : {
         "ja" : {
@@ -17653,6 +18887,28 @@
         }
       }
     },
+    "Couldn't Read This Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを読み込めませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取此資料夾"
+          }
+        }
+      }
+    },
     "Couldn't Remove Worktree" : {
       "localizations" : {
         "ja" : {
@@ -17675,6 +18931,7 @@
         }
       }
     },
+    "Couldn't fit to this screen" : {},
     "Couldn't load output: %@" : {
       "localizations" : {
         "ja" : {
@@ -17879,6 +19136,28 @@
     "Courier New" : {
       "shouldTranslate" : false
     },
+    "Create channel #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネル #%@ を作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建频道 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立頻道 #%@"
+          }
+        }
+      }
+    },
     "Create one in the tailnet's admin console under Settings › Keys. Heeler keeps it in the Keychain and signs in with it again after a sign-out." : {
       "localizations" : {
         "ja" : {
@@ -17897,6 +19176,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 tailnet 的管理主控台中，前往 Settings › Keys 建立一組。Heeler 會將它存放在鑰匙圈，登出後會再用它重新登入。"
+          }
+        }
+      }
+    },
+    "Create swarm channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルを作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立 Swarm 頻道"
           }
         }
       }
@@ -18524,6 +19825,28 @@
         }
       }
     },
+    "Date Modified" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更日"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改日期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改日期"
+          }
+        }
+      }
+    },
     "Dawn in Light Mode, the classic in Dark Mode" : {
       "localizations" : {
         "ja" : {
@@ -18653,6 +19976,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "日期以 %@ 顯示。"
+          }
+        }
+      }
+    },
+    "Decisions & Blockers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "判断事項とブロッカー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待决策与阻塞项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待決策與阻礙項"
           }
         }
       }
@@ -19105,6 +20450,29 @@
         }
       }
     },
+    "Describe what the swarm should work on after /swarm." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/swarm の後に Swarm に取り組ませる内容を入力してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 /swarm 后描述需要 Swarm 协作完成的任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 /swarm 後描述需要 Swarm 協作完成的任務。"
+          }
+        }
+      }
+    },
+    "Detached" : {},
     "Detached HEAD" : {
       "localizations" : {
         "ja" : {
@@ -19988,6 +21356,28 @@
         }
       }
     },
+    "Downloading from the Host…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストからダウンロード中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从主机下载…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從主機下載…"
+          }
+        }
+      }
+    },
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -20518,6 +21908,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "任一回答都會分岔此對話，並將 Grok Build 移到分岔上。對話檢視會留在這裡並暫存訊息，直到你在終端機用 /resume 切換回來。"
+          }
+        }
+      }
+    },
+    "Empty File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空のファイル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白檔案"
+          }
+        }
+      }
+    },
+    "Empty Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空のフォルダ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白資料夾"
           }
         }
       }
@@ -21839,6 +23273,28 @@
         }
       }
     },
+    "Every item here starts with a dot." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここにある項目はすべてドットで始まります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处的项目均以点号开头。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的每個項目都以點開頭。"
+          }
+        }
+      }
+    },
     "Every other Host already uses these fields." : {
       "localizations" : {
         "ja" : {
@@ -21857,6 +23313,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "其他所有主機已在使用這些欄位。"
+          }
+        }
+      }
+    },
+    "Every server on %@ uses the first route that reaches it. Heeler moves to a direct route when one comes into reach." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上のすべてのサーバーは、最初にホストへ到達した経路を使用します。直接の経路に到達できるようになると、Heeler はその経路に切り替えます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有服务器都使用最先连上主机的那条线路。有直连线路可达时，Heeler 会切换过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有伺服器都使用第一個能連到主機的路由。有直接連線的路由可用時，Heeler 會切換過去。"
           }
         }
       }
@@ -22130,6 +23608,7 @@
         }
       }
     },
+    "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there." : {},
     "Expired" : {
       "localizations" : {
         "ja" : {
@@ -22819,6 +24298,72 @@
         }
       }
     },
+    "Files Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」を利用できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法使用「檔案」"
+          }
+        }
+      }
+    },
+    "Files can't open this path." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」ではこのパスを開けません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”无法打开此路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「檔案」無法打開此路徑。"
+          }
+        }
+      }
+    },
+    "Files can't open “%@”. It is not a file or a folder." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」では“%@”を開けません。ファイルでもフォルダでもありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“文件”无法打开“%@”。它既不是文件也不是文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「檔案」無法打開「%@」。它不是檔案也不是資料夾。"
+          }
+        }
+      }
+    },
     "Files of the Host Helper are missing or changed. Repair puts them back." : {
       "localizations" : {
         "ja" : {
@@ -22837,6 +24382,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Host Helper 的檔案遺失或已變更。修復會將它們還原。"
+          }
+        }
+      }
+    },
+    "Files reads this folder when the Host is connected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに接続されると、「ファイル」がこのフォルダを読み込みます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机连接后，“文件”会读取此文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機連線後，「檔案」會讀取此資料夾。"
           }
         }
       }
@@ -22952,6 +24519,28 @@
         }
       }
     },
+    "Filter this folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダを絞り込み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "筛选此文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "篩選此資料夾"
+          }
+        }
+      }
+    },
     "Filtered" : {
       "comment" : "VoiceOver value of the filter button when a filter is on.",
       "localizations" : {
@@ -22993,6 +24582,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在區域網路中尋找"
+          }
+        }
+      }
+    },
+    "Find servers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーを探す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找伺服器"
           }
         }
       }
@@ -23095,6 +24706,8 @@
         }
       }
     },
+    "Fit to Screen" : {},
+    "Fitting to this screen…" : {},
     "Fix it in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -23157,6 +24770,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "收合已完成的輪次"
+          }
+        }
+      }
+    },
+    "Folder Not Found" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダが見つかりません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到資料夾"
           }
         }
       }
@@ -23864,6 +25499,72 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全域"
+          }
+        }
+      }
+    },
+    "Go" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往"
+          }
+        }
+      }
+    },
+    "Go to Folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダへ移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往資料夾"
+          }
+        }
+      }
+    },
+    "Go to Folder…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダへ移動…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往文件夹…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往資料夾…"
           }
         }
       }
@@ -24877,6 +26578,50 @@
         }
       }
     },
+    "Hand Off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接"
+          }
+        }
+      }
+    },
+    "Hand Off To" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎ先"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接给"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接給"
+          }
+        }
+      }
+    },
     "Harness" : {
       "localizations" : {
         "ja" : {
@@ -24921,6 +26666,93 @@
         }
       }
     },
+    "Heeler %@ carries Heeler Plugin %@ and Host Helper %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Plugin and Helper versions it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Heeler Plugin %2$@ and Host Helper %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Heeler プラグイン %2$@ と Host Helper %3$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Heeler 插件 %2$@ 和 Host Helper %3$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Heeler 外掛 %2$@ 和 Host Helper %3$@。"
+          }
+        }
+      }
+    },
+    "Heeler %@ carries Heeler Plugin %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Plugin version it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Heeler Plugin %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Heeler プラグイン %2$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Heeler 插件 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Heeler 外掛 %2$@。"
+          }
+        }
+      }
+    },
+    "Heeler %@ carries Host Helper %@." : {
+      "comment" : "Opens the Updates prompt. Arguments: the app's version, then the Helper version it carries.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler %1$@ carries Host Helper %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ には Host Helper %2$@ が含まれています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 附带 Host Helper %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler %1$@ 內附 Host Helper %2$@。"
+          }
+        }
+      }
+    },
     "Heeler Plugin" : {
       "localizations" : {
         "ja" : {
@@ -24939,6 +26771,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 外掛"
+          }
+        }
+      }
+    },
+    "Heeler Plugin on %lld Hosts" : {
+      "comment" : "Under the updates card's title: only plugins have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler Plugin on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Heeler Plugin on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストの Heeler プラグイン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的 Heeler 插件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的 Heeler 外掛"
           }
         }
       }
@@ -25279,6 +27152,28 @@
         }
       }
     },
+    "Heeler can't show this kind of file. Share it or save it to open it in another app. Nothing is copied from the Host until you do." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler ではこの種類のファイルを表示できません。共有または保存すると、ほかのアプリで開けます。それまではホストから何もコピーされません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法显示此类文件。可以共享或存储它，以便在其他 App 中打开。在此之前不会从主机拷贝任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法顯示這類檔案。你可以分享或儲存它，以便在其他 App 中打開。在此之前不會從主機複製任何內容。"
+          }
+        }
+      }
+    },
     "Heeler can't tell where this file's settings belong, so it won't change it." : {
       "localizations" : {
         "ja" : {
@@ -25417,24 +27312,24 @@
         }
       }
     },
-    "Heeler connects over SSH to a machine that runs herdr." : {
+    "Heeler connects over SSH to a machine that runs herdr, tmux or Rex." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は herdr を実行するマシンへ SSH 経由で接続します。"
+            "value" : "Heeler は herdr、tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 通过 SSH 连接到运行 herdr 的机器。"
+            "value" : "Heeler 通过 SSH 连接到运行 herdr、tmux 或 Rex 的机器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 透過 SSH 連線到執行 herdr 的機器。"
+            "value" : "Heeler 透過 SSH 連線到執行 herdr、tmux 或 Rex 的機器。"
           }
         }
       }
@@ -25572,6 +27467,7 @@
         }
       }
     },
+    "Heeler could not look for Rex on this Host" : {},
     "Heeler could not reach this Host's systemd user manager to ask about the service. %@" : {
       "localizations" : {
         "ja" : {
@@ -25616,6 +27512,50 @@
         }
       }
     },
+    "Heeler could not read the Host's plugin, so nothing changed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はホストのプラグインを読み取れなかったため、変更は行われていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法读取主机的插件，因此未做任何更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法讀取主機的外掛，因此未做任何變更。"
+          }
+        }
+      }
+    },
+    "Heeler could not read this Agent's conversation in time. Open its Chat, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのエージェントの会話を時間内に読み取れませんでした。チャットを開いてから、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 未能及时读取此 Agent 的对话。请打开它的对话视图后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 未能及時讀取此 Agent 的對話。請開啟它的對話檢視後再試一次。"
+          }
+        }
+      }
+    },
     "Heeler could not read this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -25638,6 +27578,7 @@
         }
       }
     },
+    "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -25660,6 +27601,29 @@
         }
       }
     },
+    "Heeler could not write the conversation record on this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのデバイスに会話の記録を書き込めませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法在此设备上写入对话记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法在此裝置上寫入對話記錄。"
+          }
+        }
+      }
+    },
+    "Heeler could not write the request to Rex." : {},
     "Heeler couldn't add the extension. Nothing more was written." : {
       "localizations" : {
         "ja" : {
@@ -26281,6 +28245,28 @@
         }
       }
     },
+    "Heeler does not read this Agent's conversation, so there is nothing to hand off." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのエージェントの会話を読み取らないため、引き継ぐものがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 不读取此 Agent 的对话，因此没有可交接的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 不讀取此 Agent 的對話，因此沒有可交接的內容。"
+          }
+        }
+      }
+    },
     "Heeler does not type into a multi-select question's Other row." : {
       "localizations" : {
         "ja" : {
@@ -26460,6 +28446,7 @@
         }
       }
     },
+    "Heeler finds Rex on macOS and Linux Hosts only." : {},
     "Heeler hasn't found this conversation's transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -26659,6 +28646,34 @@
         }
       }
     },
+    "Heeler opens files up to %@. This one is %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler opens files up to %1$@. This one is %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler で開けるファイルは %1$@ までです。このファイルは %2$@ です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 最大可打开 %1$@ 的文件。此文件为 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 最大可打開 %1$@ 的檔案。此檔案為 %2$@。"
+          }
+        }
+      }
+    },
     "Heeler reaches the Jump Host through this network without turning on a VPN." : {
       "localizations" : {
         "ja" : {
@@ -26814,7 +28829,7 @@
         }
       }
     },
-    "Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off." : {},
+    "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on %@. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
         "ja" : {
@@ -26926,50 +28941,80 @@
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host." : {
+    "Heeler tried all %lld routes and none reached %@. Check that it is awake and on a network this device can reach." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler tried all %1$lld routes and none reached %2$@. Check that it is awake and on a network this device can reach."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを採用します。"
+            "value" : "Heeler は %1$lld 本の経路をすべて試しましたが、%2$@ には到達できませんでした。起動中であること、このデバイスから到達できるネットワーク上にあることを確認してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。"
+            "value" : "Heeler 尝试了全部 %1$lld 条线路，都无法连接到 %2$@。请确认它已唤醒，并且所在的网络可从此设备访问。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。"
+            "value" : "Heeler 嘗試了全部 %1$lld 條路由，都無法連到 %2$@。請確認它處於喚醒狀態，且所在的網路可從此裝置連上。"
           }
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later." : {
+    "Heeler tries every route when it connects, and every server on the Host uses the first that reaches it. Routes over this device's own network start first, and Heeler moves to one of them when it comes into reach." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを維持します。このデバイス自身のネットワークを使う経路が最初に開始し、残りは少し後に開始します。"
+            "value" : "Heeler は接続時にすべての経路を試み、ホスト上のすべてのサーバーが最初に到達した経路を使用します。このデバイス自身のネットワークを使う経路が最初に開始し、後からそのような経路に到達できるようになると、Heeler はそちらに切り替えます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。使用此设备自身网络的线路会最先开始尝试，其余线路稍后开始。"
+            "value" : "Heeler 连接时会尝试所有线路，主机上的所有服务器都使用最先连上的那条。使用此设备自身网络的线路会最先开始尝试；之后这类线路一旦可达，Heeler 会切换过去。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。經由此裝置自身網路的路由會先啟動，其餘的稍後啟動。"
+            "value" : "Heeler 連線時會嘗試所有路由，主機上的所有伺服器都使用第一個能連上的路由。經由此裝置自身網路的路由會先啟動；之後這類路由一旦可用，Heeler 會切換過去。"
           }
         }
       }
     },
+    "Heeler writes this conversation to a file on %@ and puts a message about it in that Agent's Composer. Nothing is sent until you send it." : {
+      "comment" : "Hand Off footer. The placeholder is the Host's name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこの会話を %@ 上のファイルに書き出し、そのファイルについてのメッセージを相手のエージェントのコンポーザーに入れます。あなたが送信するまで何も送信されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 会把这段对话写入 %@ 上的一个文件，并在对方 Agent 的输入框里放入一条关于该文件的消息。在你发送之前不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 會把這段對話寫入 %@ 上的一個檔案，並在對方 Agent 的輸入框裡放入一則關於該檔案的訊息。在你傳送之前不會傳送任何內容。"
+          }
+        }
+      }
+    },
+    "Heeler's extension for this Agent" : {},
     "Heeler's extension in %@" : {
       "comment" : "Feature unavailable when Heeler's extension could not be written. %@ is the folder.",
       "localizations" : {
@@ -27100,6 +29145,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Herdr 的 Agent hook 會回報給這裡指定的窗格，而不是它們所執行的終端機。"
+          }
+        }
+      }
+    },
+    "Hidden Files Only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隠しファイルのみ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅有隐藏文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有隱藏檔案"
+          }
+        }
+      }
+    },
+    "Hide" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏"
           }
         }
       }
@@ -27667,6 +29756,47 @@
         }
       }
     },
+    "Host Helper on %lld Hosts" : {
+      "comment" : "Under the updates card's title: only Helpers have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Host Helper on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Host Helper on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストの Host Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的 Host Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的 Host Helper"
+          }
+        }
+      }
+    },
     "Host Helper: %@. %@ %@" : {
       "localizations" : {
         "ja" : {
@@ -28043,6 +30173,28 @@
         }
       }
     },
+    "How to Update Manually" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動で更新する方法"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手动更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何手動更新"
+          }
+        }
+      }
+    },
     "Hunks" : {
       "localizations" : {
         "ja" : {
@@ -28287,6 +30439,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "圖片"
+          }
+        }
+      }
+    },
+    "Image #%@" : {
+      "comment" : "Short label shown in a sent Chat message bubble in place of a staged image's temporary Host path, numbered in order within the message (e.g. Image #1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像#%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片#%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片#%@"
           }
         }
       }
@@ -28538,24 +30713,46 @@
         }
       }
     },
-    "In Hosts, tap Scan to Pair and point the camera at the code." : {
+    "In Hosts, tap Scan to Pair and point the camera at the code, then choose the machine's servers." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「ホスト」で「スキャンしてペアリング」をタップし、カメラでコードをかざしてください。"
+            "value" : "「ホスト」で「スキャンしてペアリング」をタップし、カメラでコードをかざしてから、マシンのサーバーを選んでください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在“主机”中，轻点“扫码配对”并将相机对准二维码。"
+            "value" : "在“主机”中，轻点“扫码配对”并将相机对准二维码，然后选择这台机器上的服务器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在「主機」頁面中點一下「掃描以配對」，並將相機對準代碼。"
+            "value" : "在「主機」頁面中點一下「掃描以配對」，將相機對準代碼，然後選擇這台機器上的伺服器。"
+          }
+        }
+      }
+    },
+    "In This App" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアプリ内"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 App 内置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 App 內建"
           }
         }
       }
@@ -28990,6 +31187,7 @@
         }
       }
     },
+    "Install Rex and start it, then check again." : {},
     "Install Tailscale on your Mac and sign in with the same account. It appears here, ready to add as a Host." : {
       "localizations" : {
         "ja" : {
@@ -29436,6 +31634,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它仍可能完成。再次嘗試前請先檢查終端機。"
+          }
+        }
+      }
+    },
+    "It moves into a new Tab there. What runs in it keeps running." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのワークスペースの新しいタブに移動します。実行中のものはそのまま動き続けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会移入该工作区的新标签页，其中运行的程序继续运行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會移入該工作區的新分頁，其中執行的程式繼續執行。"
           }
         }
       }
@@ -29930,6 +32150,28 @@
         }
       }
     },
+    "Just now" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "たった今"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刚刚"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剛剛"
+          }
+        }
+      }
+    },
     "Keep the phrases you send an Agent over and over, one tap away." : {
       "localizations" : {
         "ja" : {
@@ -29952,6 +32194,7 @@
         }
       }
     },
+    "Keeps the size the other device set." : {},
     "Kept in this device's Keychain and sent only with recordings to %@." : {
       "localizations" : {
         "ja" : {
@@ -29998,6 +32241,28 @@
       }
     },
     "Key Fingerprint" : {},
+    "Key Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主な更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵動態"
+          }
+        }
+      }
+    },
     "Keyboard" : {
       "comment" : "Agent input mode segment",
       "localizations" : {
@@ -30906,28 +33171,6 @@
         }
       }
     },
-    "Limits off" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制限オフ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限额已关闭"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "限額已關閉"
-          }
-        }
-      }
-    },
     "Line counts unavailable" : {
       "localizations" : {
         "ja" : {
@@ -30994,6 +33237,28 @@
         }
       }
     },
+    "Link" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連結"
+          }
+        }
+      }
+    },
     "Linked Worktree" : {
       "localizations" : {
         "ja" : {
@@ -31012,6 +33277,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已連結的工作樹"
+          }
+        }
+      }
+    },
+    "List swarm channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネル一覧"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 頻道"
+          }
+        }
+      }
+    },
+    "List swarm models" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm モデル一覧"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出 Swarm 模型"
           }
         }
       }
@@ -31636,6 +33945,28 @@
         }
       }
     },
+    "Loading worker conversation…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカーの会話を読み込み中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载成员对话…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入成員對話…"
+          }
+        }
+      }
+    },
     "Loading…" : {
       "localizations" : {
         "ja" : {
@@ -31880,6 +34211,28 @@
         }
       }
     },
+    "Main Chat" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メインチャット"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主對話"
+          }
+        }
+      }
+    },
     "Manage Snippets" : {
       "localizations" : {
         "ja" : {
@@ -31898,6 +34251,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理片語"
+          }
+        }
+      }
+    },
+    "Manage swarm channels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm チャンネルを管理"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理 Swarm 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理 Swarm 頻道"
           }
         }
       }
@@ -32214,6 +34589,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "指標"
+          }
+        }
+      }
+    },
+    "Milestones" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイルストーン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里程碑"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里程碑"
           }
         }
       }
@@ -32578,6 +34975,28 @@
         }
       }
     },
+    "Move to Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークスペースに移動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移到工作区"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至工作區"
+          }
+        }
+      }
+    },
     "Move up" : {
       "localizations" : {
         "ja" : {
@@ -32890,6 +35309,28 @@
         }
       }
     },
+    "Needs attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要確認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需關注"
+          }
+        }
+      }
+    },
     "Needs sign-in" : {
       "localizations" : {
         "ja" : {
@@ -33163,6 +35604,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「新增 Agent」會在已安裝此 Agent 工具的主機上提供這個預設集。"
+          }
+        }
+      }
+    },
+    "New Agent…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規エージェント…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建 Agent…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 Agent…"
           }
         }
       }
@@ -33635,6 +36098,28 @@
         }
       }
     },
+    "No Board Posts Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ投稿がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無訊息板動態"
+          }
+        }
+      }
+    },
     "No Conversations Found" : {
       "localizations" : {
         "ja" : {
@@ -33790,6 +36275,28 @@
         }
       }
     },
+    "No Matching Items" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致する項目がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有符合的項目"
+          }
+        }
+      }
+    },
     "No Members Yet" : {
       "localizations" : {
         "ja" : {
@@ -33900,6 +36407,28 @@
         }
       }
     },
+    "No Preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューできません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法預覽"
+          }
+        }
+      }
+    },
     "No Results for “%@”" : {
       "comment" : "Empty state when a search finds nothing. %@ is the search text.",
       "localizations" : {
@@ -33923,6 +36452,7 @@
         }
       }
     },
+    "No Rex server socket was found" : {},
     "No Skills" : {
       "localizations" : {
         "ja" : {
@@ -33985,6 +36515,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚無片語"
+          }
+        }
+      }
+    },
+    "No Steps Recorded Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだステップがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无执行步骤"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無執行步驟"
           }
         }
       }
@@ -34496,6 +37048,28 @@
         }
       }
     },
+    "No new board messages." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいボード投稿はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无新的消息板动态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無新的訊息板動態。"
+          }
+        }
+      }
+    },
     "No newline at end of file" : {
       "localizations" : {
         "ja" : {
@@ -34720,6 +37294,28 @@
         }
       }
     },
+    "No progress" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進捗なし"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无进展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無進展"
+          }
+        }
+      }
+    },
     "No recent updates" : {
       "comment" : "Background Work row",
       "localizations" : {
@@ -34834,6 +37430,28 @@
         }
       }
     },
+    "No swarm activity is available for this conversation." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会話には表示できる Swarm アクティビティがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前对话暂无可显示的 Swarm 协作动态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前對話暫無可顯示的 Swarm 協作動態。"
+          }
+        }
+      }
+    },
     "No tmux server answers on the default socket" : {
       "localizations" : {
         "ja" : {
@@ -34896,6 +37514,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有 tmux 伺服器在執行"
+          }
+        }
+      }
+    },
+    "No transcript updates for over 10 minutes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 分以上トランスクリプトの更新がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已超过 10 分钟没有新的执行记录更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已超過 10 分鐘沒有新的執行記錄更新。"
           }
         }
       }
@@ -35985,6 +38625,28 @@
         }
       }
     },
+    "Nothing listed here matches “%@”." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに表示されている項目に“%@”と一致するものはありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处列出的项目均不匹配“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡列出的項目都不符合「%@」。"
+          }
+        }
+      }
+    },
     "Nothing recorded in the last 30 days." : {
       "localizations" : {
         "ja" : {
@@ -36051,6 +38713,7 @@
         }
       }
     },
+    "Nothing was typed" : {},
     "Nothing was written." : {
       "localizations" : {
         "ja" : {
@@ -36384,7 +39047,6 @@
         }
       }
     },
-    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {
@@ -36670,6 +39332,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Mac 上，請到「系統設定」›「一般」›「共享」開啟「遠端登入」。在 Linux 上，請執行 OpenSSH 伺服器。"
+          }
+        }
+      }
+    },
+    "On a machine that runs herdr-core or tmux without herdr, run this one instead." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr がなく herdr-core または tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器上没有 herdr、只运行 herdr-core 或 tmux 时，改为运行这条命令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器上沒有 herdr、只執行 herdr-core 或 tmux 時，請改為執行這個指令。"
           }
         }
       }
@@ -37360,6 +40044,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟頁面"
+          }
+        }
+      }
+    },
+    "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットでボードを見るには入力欄の上にある Swarm バーを開いてください。/swarm board を使う場合はターミナルを開いてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请点击输入框上方的 Swarm 状态栏在聊天中查看消息板，或切换到终端运行 /swarm board。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請點選輸入框上方的 Swarm 狀態列在聊天中查看訊息板，或切換到終端機執行 /swarm board。"
           }
         }
       }
@@ -38345,6 +41051,28 @@
         }
       }
     },
+    "Opens Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「更新」を開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“更新”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟「更新」"
+          }
+        }
+      }
+    },
     "Opens a large preview of the image" : {
       "comment" : "Accessibility hint on a Composer image pill.",
       "localizations" : {
@@ -38408,6 +41136,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此工作區開啟新的 shell 分頁"
+          }
+        }
+      }
+    },
+    "Opens a preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開預覽"
           }
         }
       }
@@ -38500,6 +41250,28 @@
         }
       }
     },
+    "Opens the folder" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダを開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開資料夾"
+          }
+        }
+      }
+    },
     "Opens the image" : {
       "localizations" : {
         "ja" : {
@@ -38540,6 +41312,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在瀏覽器中開啟此網路以授權這部裝置"
+          }
+        }
+      }
+    },
+    "Opens the swarm board and member status." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードとメンバーの状態を開きます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Swarm 消息板与成员状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 Swarm 訊息板與成員狀態。"
           }
         }
       }
@@ -38628,6 +41422,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟此主機的設定。"
+          }
+        }
+      }
+    },
+    "Opens when the download finishes. The copy is removed when you close the preview." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードが終わると開きます。プレビューを閉じるとコピーは削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载完成后打开。关闭预览时会移除该副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載完成後打開。關閉預覽時會移除這份副本。"
           }
         }
       }
@@ -38900,6 +41716,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選填"
+          }
+        }
+      }
+    },
+    "Options" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オプション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選項"
           }
         }
       }
@@ -39321,6 +42159,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "覆蓋網路「%@」需要登入。請開啟登入連結，然後重新執行檢查。"
+          }
+        }
+      }
+    },
+    "Overview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "概要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總覽"
           }
         }
       }
@@ -39854,6 +42714,28 @@
         }
       }
     },
+    "Path" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路徑"
+          }
+        }
+      }
+    },
     "Path unavailable" : {
       "localizations" : {
         "ja" : {
@@ -40345,6 +43227,28 @@
         }
       }
     },
+    "Plays when the download finishes. The copy is removed when you close the preview." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードが終わると再生します。プレビューを閉じるとコピーは削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载完成后播放。关闭预览时会移除该副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載完成後播放。關閉預覽時會移除這份副本。"
+          }
+        }
+      }
+    },
     "Plugin %@ is available. This plugin is linked from a local checkout; update that checkout to %@ or newer." : {
       "localizations" : {
         "ja" : {
@@ -40363,6 +43267,69 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "外掛 %@ 已推出。此外掛連結自本機的 checkout；請將該 checkout 更新到 %@ 以上版本。"
+          }
+        }
+      }
+    },
+    "Plugin & Helper" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プラグインと Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件与 Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外掛與 Helper"
+          }
+        }
+      }
+    },
+    "Plugin and Helper on %lld Hosts" : {
+      "comment" : "Under the updates card's title: plugins and Helpers have updates. Argument: on how many Hosts.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Plugin and Helper on %lld Host"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Plugin and Helper on %lld Hosts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台のホストのプラグインと Helper"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主机上的插件和 Helper"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 台主機上的外掛和 Helper"
           }
         }
       }
@@ -40412,46 +43379,46 @@
         }
       }
     },
-    "Point the camera at the Pairing Code shown by herdr." : {
+    "Point the camera at the Pairing Code shown on the computer." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr が表示するペアリングコードにカメラを向けてください。"
+            "value" : "コンピューターに表示されたペアリングコードにカメラを向けてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将相机对准 herdr 显示的配对码。"
+            "value" : "将相机对准电脑上显示的配对码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請將相機對準 herdr 顯示的配對碼。"
+            "value" : "請將相機對準電腦上顯示的配對碼。"
           }
         }
       }
     },
-    "Point the camera at the code. The machine is added as a Host." : {
+    "Point the camera at the code, then choose the machine's servers. The machine is added as a Host." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "カメラでコードをかざしてください。マシンがホストとして追加されます。"
+            "value" : "カメラでコードをかざしてから、マシンのサーバーを選んでください。マシンがホストとして追加されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将相机对准二维码，即可将该机器添加为主机。"
+            "value" : "将相机对准二维码，然后选择这台机器上的服务器，即可将该机器添加为主机。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請將相機對準代碼，這台機器會被加入為主機。"
+            "value" : "請將相機對準代碼，然後選擇這台機器上的伺服器，這台機器會被加入為主機。"
           }
         }
       }
@@ -40521,6 +43488,116 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可能不完整。%@。"
+          }
+        }
+      }
+    },
+    "Post to #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ に投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布到 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈到 #%@"
+          }
+        }
+      }
+    },
+    "Post to swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードに投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布到 Swarm 消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈到 Swarm 訊息板"
+          }
+        }
+      }
+    },
+    "Posted as #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld として投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发布为 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已發佈為 #%lld"
+          }
+        }
+      }
+    },
+    "Posting to the board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードに投稿中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发布到消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在發佈到訊息板"
+          }
+        }
+      }
+    },
+    "Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息"
           }
         }
       }
@@ -41520,6 +44597,28 @@
         }
       }
     },
+    "Quota" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上限"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "限额"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "限額"
+          }
+        }
+      }
+    },
     "Quotes and backslash escapes are supported.\ne.g. %@" : {
       "localizations" : {
         "ja" : {
@@ -41895,6 +44994,50 @@
         }
       }
     },
+    "Read swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードを読む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取 Swarm 消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取 Swarm 訊息板"
+          }
+        }
+      }
+    },
+    "Read swarm board since #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 以降の Swarm ボードを読む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取 #%lld 之后的消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取 #%lld 之後的訊息板"
+          }
+        }
+      }
+    },
     "Read the code" : {
       "localizations" : {
         "ja" : {
@@ -41935,6 +45078,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "閱讀隱私詳細資料"
+          }
+        }
+      }
+    },
+    "Read-only view of this worker's sub-conversation. Send messages in the main Chat to guide the coordinator." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このワーカーのサブ会話の読み取り専用ビューです。指示を送るにはメインチャットからコーディネーターに送信してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页面为该成员子对话的只读视图；如需引导协作，请在主对话中向协调者发送消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此頁面為該成員子對話的唯讀檢視；如需引導協作，請在主對話中向協調者傳送訊息。"
           }
         }
       }
@@ -42050,6 +45215,28 @@
         }
       }
     },
+    "Reading Folder…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダを読み込み中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取文件夹…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取資料夾…"
+          }
+        }
+      }
+    },
     "Reading OpenCode's conversations needs sqlite3 or python3 on the Host. Install one, then tap Check Again." : {
       "localizations" : {
         "ja" : {
@@ -42116,6 +45303,28 @@
         }
       }
     },
+    "Reading from the Host…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストから読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从主机读取…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從主機讀取…"
+          }
+        }
+      }
+    },
     "Reading herdr fields…" : {
       "localizations" : {
         "ja" : {
@@ -42139,6 +45348,28 @@
       }
     },
     "Reading the Agent's screen" : {},
+    "Reading the board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードを読み込み中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取消息板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取訊息板"
+          }
+        }
+      }
+    },
     "Reading the conversation timed out" : {
       "localizations" : {
         "ja" : {
@@ -42250,6 +45481,7 @@
         }
       }
     },
+    "Reattach to open it again." : {},
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -43539,6 +46771,29 @@
         }
       }
     },
+    "Rename After Agent Stops?" : {
+      "comment" : "Alert title confirming that a title rename will be saved locally and sent once the running Agent stops.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの停止後に名前を変更しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Agent 停止后重命名？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Agent 停止後重新命名？"
+          }
+        }
+      }
+    },
     "Rename Agent" : {
       "localizations" : {
         "ja" : {
@@ -44273,6 +47528,7 @@
         }
       }
     },
+    "Resizes the terminal to fit this screen. Other devices show it at this size until you leave it." : {},
     "Resolving the Host's home directory timed out." : {
       "localizations" : {
         "ja" : {
@@ -44740,6 +47996,36 @@
         }
       }
     },
+    "Rex Hosts" : {},
+    "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
+    "Rex did not finish opening the connection." : {},
+    "Rex did not let this account in" : {},
+    "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
+    "Rex dropped the connection because too many events were waiting for Heeler." : {},
+    "Rex installed" : {},
+    "Rex is not answering" : {},
+    "Rex is not running" : {},
+    "Rex is running, but SSH will not open %@" : {},
+    "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rex offers API revision %1$lld, and this build of Heeler works with revision %2$lld only"
+          }
+        }
+      }
+    },
+    "Rex refused the connection with HTTP status %lld." : {},
+    "Rex rejected the request" : {},
+    "Rex sent an answer Heeler cannot read" : {},
+    "Rex server running" : {},
+    "Rex stopped sending this terminal's output" : {},
+    "Rex was not found on this Host" : {},
+    "Rex's answer could not be read." : {},
+    "Rex's session list could not be read." : {},
+    "Rex's status named no server instance." : {},
+    "Rex's terminal modes could not be read." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {
@@ -44849,6 +48135,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "右側欄位，第 %lld 個，共 %lld 個：%@，次要樣式"
+          }
+        }
+      }
+    },
+    "Risks" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リスク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "风险项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "風險項"
           }
         }
       }
@@ -45078,25 +48386,48 @@
         }
       }
     },
-    "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "comment" : "Agent List Fields footer when the Host has no herdr plugin",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行 1 はターミナルのタイトルから、行 2 はそのディレクトリから始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 行初始使用终端标题，第 2 行初始使用其目录。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 列以終端機的標題為起點，第 2 列以它的目錄為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+          }
+        }
+      }
+    },
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+      "comment" : "Agent List Fields footer when the Host has no herdr plugin and no Terminal labels",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
           }
         }
       }
@@ -45502,6 +48833,7 @@
         }
       }
     },
+    "SSH could not open %@: Rex stopped, or the SSH server refuses socket forwarding" : {},
     "SSH unavailable" : {
       "localizations" : {
         "ja" : {
@@ -45590,6 +48922,51 @@
         }
       }
     },
+    "Save and Don’t Show Again" : {
+      "comment" : "Alert button that queues a title rename until the Agent stops and suppresses this confirmation next time.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存して次回から表示しない"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存且下次不再提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存且下次不再顯示"
+          }
+        }
+      }
+    },
+    "Save to Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“ファイル”に保存"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储到“文件”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存到「檔案」"
+          }
+        }
+      }
+    },
     "Saved" : {
       "localizations" : {
         "ja" : {
@@ -45630,6 +49007,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法讀取已儲存的欄位"
+          }
+        }
+      }
+    },
+    "Saved on this device. Will be sent once the Agent stops." : {
+      "comment" : "Footer shown in the Rename sheet when a title is queued locally until the running Agent stops.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスに保存されました。エージェントが停止すると自動的に送信されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存在本设备上，将在 Agent 停止后自动发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存在此裝置上，將在 Agent 停止後自動傳送。"
           }
         }
       }
@@ -46056,6 +49456,28 @@
         }
       }
     },
+    "Second Opinion" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セカンドオピニオン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二意见"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第二意見"
+          }
+        }
+      }
+    },
     "Secondary" : {
       "comment" : "Agent List Fields: secondary (dimmed) field style",
       "localizations" : {
@@ -46391,6 +49813,7 @@
         }
       }
     },
+    "Send Anyway" : {},
     "Send Back" : {
       "localizations" : {
         "ja" : {
@@ -46546,6 +49969,7 @@
         }
       }
     },
+    "Sends the command as typed, though Chat's menu doesn't offer it" : {},
     "Sends this key directly to the Agent" : {
       "localizations" : {
         "ja" : {
@@ -46701,28 +50125,6 @@
         }
       }
     },
-    "Server Kind" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバーの種類"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器类型"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "伺服器類型"
-          }
-        }
-      }
-    },
     "Server Kind detection" : {
       "localizations" : {
         "ja" : {
@@ -46813,6 +50215,28 @@
         }
       }
     },
+    "Server backend (core, tui, rex, tmux)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーバックエンド（core、tui、rex、tmux）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务端后端（core、tui、rex、tmux）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器後端（core、tui、rex、tmux）"
+          }
+        }
+      }
+    },
     "Servers" : {},
     "Service" : {
       "localizations" : {
@@ -46854,28 +50278,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "服務失敗"
-          }
-        }
-      }
-    },
-    "Session" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "セッション"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作階段"
           }
         }
       }
@@ -47164,6 +50566,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定指南"
+          }
+        }
+      }
+    },
+    "Share" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享…"
           }
         }
       }
@@ -47566,6 +51012,28 @@
         }
       }
     },
+    "Show End" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "末尾を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示末尾"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示結尾"
+          }
+        }
+      }
+    },
     "Show Estimated API Cost" : {
       "localizations" : {
         "ja" : {
@@ -47584,6 +51052,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示預估 API 費用"
+          }
+        }
+      }
+    },
+    "Show Hidden Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隠しファイルを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示隐藏文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示隱藏檔案"
           }
         }
       }
@@ -47632,6 +51122,28 @@
         }
       }
     },
+    "Show Start" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先頭を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示开头"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示開頭"
+          }
+        }
+      }
+    },
     "Show Terminals" : {
       "localizations" : {
         "ja" : {
@@ -47676,6 +51188,28 @@
         }
       }
     },
+    "Show full brief" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示の全文を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开完整简报"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展開完整簡報"
+          }
+        }
+      }
+    },
     "Show iOS keyboard" : {
       "localizations" : {
         "ja" : {
@@ -47698,7 +51232,6 @@
         }
       }
     },
-    "Show in Heeler" : {},
     "Show keyboard" : {
       "localizations" : {
         "ja" : {
@@ -47717,6 +51250,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示鍵盤"
+          }
+        }
+      }
+    },
+    "Show less" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折りたたむ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起"
           }
         }
       }
@@ -47853,6 +51408,34 @@
         }
       }
     },
+    "Showing %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing %1$lld of %2$lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld項目中%1$lld項目を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 %2$lld 项中的 %1$lld 项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示 %2$lld 個中的 %1$lld 個"
+          }
+        }
+      }
+    },
     "Showing the earlier read. Pull to try again." : {
       "localizations" : {
         "ja" : {
@@ -47875,6 +51458,34 @@
         }
       }
     },
+    "Showing the first %@ of %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing the first %1$@ of %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ のうち先頭の %1$@ を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示前 %1$@，共 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示前 %1$@，共 %2$@。"
+          }
+        }
+      }
+    },
     "Showing the first part of this diff." : {
       "localizations" : {
         "ja" : {
@@ -47893,6 +51504,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示此差異的開頭部分。"
+          }
+        }
+      }
+    },
+    "Showing the last %@ of %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing the last %1$@ of %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ のうち末尾の %1$@ を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示最后 %1$@，共 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示最後 %1$@，共 %2$@。"
           }
         }
       }
@@ -47937,6 +51576,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示上一次的回報。下拉可重試。"
+          }
+        }
+      }
+    },
+    "Shown at %lld columns by %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shown at %1$lld columns by %2$lld rows"
           }
         }
       }
@@ -48293,6 +51942,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示此主機的連線詳細資料。"
+          }
+        }
+      }
+    },
+    "Shows why the update failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新が失敗した理由を表示します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示更新失败的原因"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示更新失敗的原因"
           }
         }
       }
@@ -48716,6 +52387,29 @@
         }
       }
     },
+    "Size" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大小"
+          }
+        }
+      }
+    },
+    "Sized for another device" : {},
     "Skill" : {
       "localizations" : {
         "ja" : {
@@ -49033,29 +52727,8 @@
         }
       }
     },
-    "Socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ソケット"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Socket"
-          }
-        }
-      }
-    },
     "Socket (blank for default)" : {},
+    "Socket found, but this account cannot use it" : {},
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -49074,6 +52747,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "部分變更詳細資料已被截斷。"
+          }
+        }
+      }
+    },
+    "Sort By" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "並び順"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
           }
         }
       }
@@ -49255,6 +52950,28 @@
         }
       }
     },
+    "Stall" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停滞"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受阻"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受阻"
+          }
+        }
+      }
+    },
     "Star on GitHub" : {
       "localizations" : {
         "ja" : {
@@ -49343,6 +53060,8 @@
         }
       }
     },
+    "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex." : {},
+    "Start Rex on the Host, then check again. Heeler does not start it." : {},
     "Start herdr-core" : {
       "localizations" : {
         "ja" : {
@@ -50180,6 +53899,28 @@
         }
       }
     },
+    "Stop swarm worker" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ワーカーを停止"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 Swarm 成员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 Swarm 成員"
+          }
+        }
+      }
+    },
     "Stop went, but the Agent still shows Working." : {
       "localizations" : {
         "ja" : {
@@ -50220,6 +53961,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已送出停止，但主機沒有回報 Agent 是否仍在執行。請查看終端機。"
+          }
+        }
+      }
+    },
+    "Stop worker @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワーカー @%@ を停止"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止成员 @%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止成員 @%@"
           }
         }
       }
@@ -50562,6 +54325,28 @@
         }
       }
     },
+    "Stuck" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停滞"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡住"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "卡住"
+          }
+        }
+      }
+    },
     "Subagent" : {
       "localizations" : {
         "ja" : {
@@ -50698,6 +54483,50 @@
         }
       }
     },
+    "Subscribe to #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ を購読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱 #%@"
+          }
+        }
+      }
+    },
+    "Subscribe to channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネルを購読"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱頻道"
+          }
+        }
+      }
+    },
     "Summarize the conversation to free up context" : {
       "localizations" : {
         "ja" : {
@@ -50742,6 +54571,94 @@
         }
       }
     },
+    "Swarm" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm"
+          }
+        }
+      }
+    },
+    "Swarm Section" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm セクション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 分栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 分欄"
+          }
+        }
+      }
+    },
+    "Swarm Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm 無法使用"
+          }
+        }
+      }
+    },
+    "Swarm: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm：%@"
+          }
+        }
+      }
+    },
     "Swipe horizontally to switch keyboard pages" : {
       "localizations" : {
         "ja" : {
@@ -50760,6 +54677,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "左右滑動可切換鍵盤頁面"
+          }
+        }
+      }
+    },
+    "Switch model for @%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ のモデルを切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换 @%@ 的模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換 @%@ 的模型"
+          }
+        }
+      }
+    },
+    "Switch swarm model" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm モデルを切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换 Swarm 模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換 Swarm 模型"
           }
         }
       }
@@ -51301,6 +55262,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tailscale"
+          }
+        }
+      }
+    },
+    "Tailscale SSH answers port %lld at %@, not OpenSSH, so this device cannot be enrolled there. On the computer, run heeler-pair again with --port set to a port OpenSSH listens on, then scan the new Pairing Code." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tailscale SSH answers port %1$lld at %2$@, not OpenSSH, so this device cannot be enrolled there. On the computer, run heeler-pair again with --port set to a port OpenSSH listens on, then scan the new Pairing Code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale SSH は %2$@ のポート %1$lld に答えます。OpenSSH ではないため、このデバイスをそこで登録することはできません。コンピューターで、--port に OpenSSH がリッスンしているポートを指定して heeler-pair をもう一度実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 的端口 %1$lld 由 Tailscale SSH 响应，而非 OpenSSH，因此无法在该端口注册此设备。请在电脑上重新运行 heeler-pair，并用 --port 指定 OpenSSH 监听的端口，然后扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale SSH 在 %2$@ 的連接埠 %1$lld 上回應，而不是 OpenSSH，因此無法在那裡註冊此裝置。請在電腦上重新執行 heeler-pair，並用 --port 指定 OpenSSH 所監聽的連接埠，然後掃描新的配對碼。"
           }
         }
       }
@@ -52131,24 +56120,68 @@
         }
       }
     },
-    "That QR code is not a herdr Pairing Code." : {
+    "That Agent is no longer listed." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その QR コードは herdr のペアリングコードではありません。"
+            "value" : "そのエージェントはもう一覧にありません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该二维码不是 herdr 配对码。"
+            "value" : "该 Agent 已不在列表中。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "該 QR code 不是 herdr 配對碼。"
+            "value" : "該 Agent 已不在列表中。"
+          }
+        }
+      }
+    },
+    "That Agent's Composer is still uploading an attachment. Try again when it has finished." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのエージェントのコンポーザーはまだ添付ファイルをアップロード中です。完了してからもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该 Agent 的输入框仍在上传附件。请等上传完成后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該 Agent 的輸入框仍在上傳附件。請等上傳完成後再試一次。"
+          }
+        }
+      }
+    },
+    "That QR code is not a Pairing Code." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その QR コードはペアリングコードではありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该二维码不是配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該 QR code 不是配對碼。"
           }
         }
       }
@@ -52971,6 +57004,50 @@
         }
       }
     },
+    "The Agent you pick is asked to carry this work on." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだエージェントに、この作業の続きを依頼します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你选的 Agent 会被要求接着做这项工作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你選的 Agent 會被要求接著做這項工作。"
+          }
+        }
+      }
+    },
+    "The Agent you pick is asked to review this work and say what it would do differently." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだエージェントに、この作業をレビューし、自分ならどう変えるかを述べるよう依頼します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你选的 Agent 会被要求评审这项工作，并说明它会怎样做得不同。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你選的 Agent 會被要求評審這項工作，並說明它會怎樣做得不同。"
+          }
+        }
+      }
+    },
     "The Agent's input box already has text, such as a draft or a message Stop returned. Send or clear it in the terminal first." : {
       "localizations" : {
         "ja" : {
@@ -53305,6 +57382,28 @@
         }
       }
     },
+    "The Hand Off failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引き継ぎに失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交接失敗：%@"
+          }
+        }
+      }
+    },
     "The Heeler plugin" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -53461,6 +57560,7 @@
         }
       }
     },
+    "The Host Helper asks Antigravity on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in." : {},
     "The Host Helper asks Claude Code on this computer for your plan limits. Neither the Helper nor Heeler handles your sign-in. This automated use is not officially supported." : {
       "localizations" : {
         "ja" : {
@@ -53775,6 +57875,28 @@
         }
       }
     },
+    "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that OpenSSH, not another SSH server, answers this port, then run heeler-pair on the computer again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのペアリングコードを受け入れましたが、ペアリングコマンドが応答せずに終了しました。このポートで応答しているのが他の SSH サーバーではなく OpenSSH であることを確認してから、コンピューターで heeler-pair をもう一度実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机已接受此配对码，但配对命令未返回响应便已结束。请确认响应该端口的是 OpenSSH 而非其他 SSH 服务器，然后在电脑上重新运行 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機接受了此配對碼，但其配對指令結束時沒有回應。請確認由 OpenSSH（而不是其他 SSH 伺服器）回應此連接埠，然後在電腦上重新執行 heeler-pair。"
+          }
+        }
+      }
+    },
     "The Host accepted this Pairing Code, but its pairing command ended without answering. Check that the pairing plugin is installed and that OpenSSH, not another SSH server, answers this port, then generate a new Pairing Code." : {
       "comment" : "Pairing failure",
       "localizations" : {
@@ -53932,6 +58054,50 @@
         }
       }
     },
+    "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or run heeler-pair there again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストがデバイス鍵を受け入れなかったため、まだ承認されていません。ホストにこのデバイスの authorized_keys 行を追加するか、ホストで heeler-pair をもう一度実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未接受设备密钥，说明此设备尚未在主机上获得授权。请在主机上添加此设备的 authorized_keys 行，或在主机上重新运行 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機不接受裝置金鑰，因此尚未在那裡取得授權。請在主機上加入此裝置的 authorized_keys 行，或在主機上重新執行 heeler-pair。"
+          }
+        }
+      }
+    },
+    "The Host did not accept this device's key. Try again; if it keeps failing, update the app and run the latest heeler-pair." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのデバイスの鍵を承認しませんでした。再試行し、繰り返すようならアプリを更新して最新の heeler-pair を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未接受此设备的密钥。请重试；如果仍然失败，请更新 App 并运行最新版的 heeler-pair。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機不接受此裝置的金鑰。請重試；若持續失敗，請更新 App 並執行最新版的 heeler-pair。"
+          }
+        }
+      }
+    },
     "The Host did not accept this device's key. Try again; if it keeps failing, update the app and the pairing plugin so they match." : {
       "localizations" : {
         "ja" : {
@@ -54017,6 +58183,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機未及時回應。請檢查連線後再試一次。"
+          }
+        }
+      }
+    },
+    "The Host did not answer in time. The move may still have happened, so check the list before trying again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが時間内に応答しませんでした。移動は完了している可能性があるため、再試行の前にリストを確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未及时响应。移动可能已经完成，请先查看列表再重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未及時回應。移動可能已經完成，請先查看列表再重試。"
           }
         }
       }
@@ -54373,6 +58561,28 @@
         }
       }
     },
+    "The Host did not finish in time. Heeler is reading what is installed there now." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが時間内に完了しませんでした。Heeler が現在インストールされている内容を読み取っています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未及时完成操作。Heeler 正在读取主机上当前安装的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未及時完成。Heeler 正在讀取主機上目前安裝的內容。"
+          }
+        }
+      }
+    },
     "The Host did not finish in time. The change may still complete there, so run the checks again in a minute." : {
       "localizations" : {
         "ja" : {
@@ -54461,6 +58671,7 @@
         }
       }
     },
+    "The Host didn't answer. The size may still change." : {},
     "The Host does not accept RSA-SHA2-512" : {
       "localizations" : {
         "ja" : {
@@ -54732,6 +58943,28 @@
         }
       }
     },
+    "The Host is not connected. This is the folder as Files last read it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストは接続されていません。「ファイル」が最後に読み込んだフォルダの内容です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未连接。这是“文件”上次读取到的文件夹内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機未連線。這是「檔案」上次讀取到的資料夾內容。"
+          }
+        }
+      }
+    },
     "The Host is not ready." : {
       "localizations" : {
         "ja" : {
@@ -54777,6 +59010,7 @@
         }
       }
     },
+    "The Host isn't connected right now." : {},
     "The Host plugin probe failed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -54818,6 +59052,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機拒絕註冊（%@）。請更新 App 和配對外掛，讓兩者相符，然後產生新的配對碼。"
+          }
+        }
+      }
+    },
+    "The Host refused Enrollment (%@). Update the app, then run the latest heeler-pair on the computer and scan the new Pairing Code." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストは登録を拒否しました（%@）。アプリを更新してから、コンピューターで最新の heeler-pair を実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了注册（%@）。请更新 App，然后在电脑上运行最新版的 heeler-pair 并扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕註冊（%@）。請更新 App，然後在電腦上執行最新版的 heeler-pair 並掃描新的配對碼。"
           }
         }
       }
@@ -54885,6 +59141,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機拒絕該圖片：%@"
+          }
+        }
+      }
+    },
+    "The Host refused the read (SFTP status %llu)." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが読み取りを拒否しました（SFTP ステータス %llu）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了读取（SFTP 状态 %llu）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕了讀取（SFTP 狀態 %llu）。"
           }
         }
       }
@@ -54978,6 +59256,28 @@
         }
       }
     },
+    "The Host rejected this Pairing Code. It may have been used already, expired, or heeler-pair was closed. Run heeler-pair on the computer again and scan the new Pairing Code." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはこのペアリングコードを拒否しました。すでに使用されたか、期限切れか、heeler-pair が閉じられた可能性があります。コンピューターで heeler-pair をもう一度実行し、新しいペアリングコードをスキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机拒绝了此配对码。该配对码可能已被使用、已过期，或 heeler-pair 已被关闭。请在电脑上重新运行 heeler-pair 并扫描新的配对码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機拒絕了此配對碼。它可能已被使用、已過期，或 heeler-pair 已關閉。請在電腦上重新執行 heeler-pair 並掃描新的配對碼。"
+          }
+        }
+      }
+    },
     "The Host rejected this Pairing Code. It may have been used already, expired, or its popup was closed. Generate a new Pairing Code on the computer and scan it." : {
       "comment" : "Pairing failure",
       "localizations" : {
@@ -55067,6 +59367,7 @@
         }
       }
     },
+    "The Host turned down the new size." : {},
     "The Host's Address and Port are resolved from the Jump Host, usually through a loopback-only reverse tunnel. %@ You confirm each machine's host key fingerprint independently on first connect." : {
       "localizations" : {
         "ja" : {
@@ -55129,6 +59430,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新讀取主機的終端機"
+          }
+        }
+      }
+    },
+    "The Host's account is not allowed to list it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのアカウントにはこのフォルダを一覧する権限がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的账户无权列出此文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的帳號無權列出此資料夾。"
+          }
+        }
+      }
+    },
+    "The Host's account is not allowed to read this file." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのアカウントにはこのファイルを読み取る権限がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的账户无权读取此文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的帳號無權讀取此檔案。"
           }
         }
       }
@@ -55707,24 +60052,24 @@
         }
       }
     },
-    "The Pairing Code could not be read. Regenerate it in herdr and scan again." : {
+    "The Pairing Code could not be read. Generate a new one on the computer and scan again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ペアリングコードを読み取れませんでした。herdr で再生成してから再スキャンしてください。"
+            "value" : "ペアリングコードを読み取れませんでした。コンピューターで新しいコードを生成してから再スキャンしてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取配对码。请在 herdr 中重新生成后再扫描。"
+            "value" : "无法读取配对码。请在电脑上重新生成后再扫描。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法讀取配對碼。請在 herdr 中重新產生後再掃描一次。"
+            "value" : "無法讀取配對碼。請在電腦上重新產生後再掃描一次。"
           }
         }
       }
@@ -55795,6 +60140,7 @@
         }
       }
     },
+    "The Rex socket found has a path Heeler cannot use." : {},
     "The SSH connection is closed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -56533,6 +60879,57 @@
         }
       }
     },
+    "The connection ended or the Host took too long, and Heeler could not read what is installed there now. Try again once the Host is connected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が終わったか、ホストの処理に時間がかかりすぎたため、Heeler は現在インストールされている内容を読み取れませんでした。ホストが接続されてから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已断开或主机耗时过长，Heeler 无法读取主机上当前安装的内容。请在主机连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已中斷或主機花費太久，Heeler 無法讀取主機上目前安裝的內容。請在主機連線後再試一次。"
+          }
+        }
+      }
+    },
+    "The connection ended or the Host took too long, and it still has %@ %@. The update may still finish there, so check again in a minute." : {
+      "comment" : "Arguments: Heeler Plugin or Host Helper, then the version the Host holds.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The connection ended or the Host took too long, and it still has %1$@ %2$@. The update may still finish there, so check again in a minute."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が終わったか、ホストの処理に時間がかかりすぎました。ホストはまだ %1$@ %2$@ のままです。更新はホスト側で完了する可能性があるため、1分後にもう一度確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已断开或主机耗时过长，主机上仍是 %1$@ %2$@。更新可能仍会在主机上完成，请一分钟后再检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已中斷或主機花費太久，主機上仍是 %1$@ %2$@。更新可能仍會在主機上完成，請一分鐘後再檢查。"
+          }
+        }
+      }
+    },
     "The connection failed unexpectedly. (%@)" : {
       "comment" : "Preflight hint; %@ is the channel failure detail",
       "localizations" : {
@@ -56618,6 +61015,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "連線已暫停，直到 Heeler 變為使用中。"
+          }
+        }
+      }
+    },
+    "The connection to Rex ended." : {},
+    "The connection to the Host dropped." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストとの接続が切れました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与主机的连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與主機的連線中斷。"
           }
         }
       }
@@ -57063,6 +61483,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檔案在 Heeler 讀取後又變更了，因此沒有寫入任何內容。請重新檢視變更。"
+          }
+        }
+      }
+    },
+    "The file changed on the Host while it was being read. Try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り中にホスト上のファイルが変更されました。もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取过程中主机上的文件发生了变化。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取過程中主機上的檔案有了變動。請再試一次。"
           }
         }
       }
@@ -58002,6 +62444,28 @@
         }
       }
     },
+    "The move failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動に失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動失敗：%@"
+          }
+        }
+      }
+    },
     "The named pipe %@ does not exist" : {
       "localizations" : {
         "ja" : {
@@ -58494,6 +62958,7 @@
         }
       }
     },
+    "The plugin asks Antigravity on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in." : {},
     "The plugin asks Claude Code on this computer for your plan limits. Neither the plugin nor Heeler handles your sign-in. This automated use is not officially supported." : {
       "localizations" : {
         "ja" : {
@@ -59117,6 +63582,7 @@
         }
       }
     },
+    "The request was larger than Rex accepts, so it was not sent." : {},
     "The response has neither a result nor an error." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -59274,6 +63740,7 @@
         }
       }
     },
+    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {
@@ -60138,6 +64605,7 @@
         }
       }
     },
+    "The terminal's screen couldn't be read through Rex" : {},
     "The top of Oh My Pi's panel is off screen." : {
       "localizations" : {
         "ja" : {
@@ -60785,6 +65253,28 @@
         }
       }
     },
+    "Thinking" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考過程"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考过程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考過程"
+          }
+        }
+      }
+    },
     "This Account was already removed. Refresh Usage to see the current list." : {
       "localizations" : {
         "ja" : {
@@ -60825,6 +65315,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這個 Agent 沒有工作目錄。"
+          }
+        }
+      }
+    },
+    "This Agent is currently running. Your new title will be saved on this device and sent automatically once the Agent stops." : {
+      "comment" : "Alert message explaining that a rename saved while an Agent is running will be sent automatically once it stops.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このエージェントは現在実行中です。新しいタイトルはこのデバイスに保存され、エージェントが停止すると自動的に送信されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Agent 正在运行。新标题将先保存在本设备上，并在 Agent 停止后自动发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個 Agent 目前正在執行。新標題將先儲存在此裝置上，並在 Agent 停止後自動傳送。"
           }
         }
       }
@@ -61188,6 +65701,28 @@
         }
       }
     },
+    "This Host has no other Workspace." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストにはほかのワークスペースがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台主机没有其他工作区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台主機沒有其他工作區。"
+          }
+        }
+      }
+    },
     "This Host has no plugin fields snapshot, so Heeler's fallback fields were used." : {
       "localizations" : {
         "ja" : {
@@ -61322,6 +65857,50 @@
         }
       }
     },
+    "This Host's SSH server offers no SFTP, which Files reads through." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの SSH サーバは SFTP を提供していません。「ファイル」は SFTP 経由で読み取ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的 SSH 服务器未提供 SFTP，而“文件”需要通过它读取。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的 SSH 伺服器未提供 SFTP，而「檔案」需要透過它讀取。"
+          }
+        }
+      }
+    },
+    "This Host's SSH server offers no SFTP, which Files, Chat and attachments all use. Turn on SFTP in the server's settings, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの SSH サーバは SFTP を提供していません。「ファイル」、チャット、添付はいずれも SFTP を使います。サーバの設定で SFTP を有効にしてから、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机的 SSH 服务器未提供 SFTP，而“文件”“对话”和附件都要用到它。请在服务器设置中开启 SFTP，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機的 SSH 伺服器未提供 SFTP，而「檔案」、對話和附件都需要它。請在伺服器設定中開啟 SFTP，然後再檢查一次。"
+          }
+        }
+      }
+    },
     "This Host's overlay network no longer exists" : {
       "localizations" : {
         "ja" : {
@@ -61435,6 +66014,8 @@
     "This Pane belongs to a tmux server that is gone" : {},
     "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
     "This Pane is gone" : {},
+    "This Terminal belongs to a Rex server that is gone" : {},
+    "This Terminal belongs to a Rex server that is gone. Open it again from the list." : {},
     "This Terminal belongs to a core that is gone" : {
       "localizations" : {
         "ja" : {
@@ -61567,6 +66148,8 @@
         }
       }
     },
+    "This account may not use the socket at %@" : {},
+    "This action on a Rex Host" : {},
     "This action on a tmux Host" : {
       "localizations" : {
         "ja" : {
@@ -61805,6 +66388,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此連線無法讀取「變更」。"
+          }
+        }
+      }
+    },
+    "This conversation has no messages to hand off yet." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会話には、引き継げるメッセージがまだありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这段对话还没有可交接的消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這段對話還沒有可交接的訊息。"
           }
         }
       }
@@ -62429,6 +67034,28 @@
         }
       }
     },
+    "This file is no longer on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルはもうホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件已不在主机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案已不在主機上。"
+          }
+        }
+      }
+    },
     "This file is over the 8 MiB limit on a native Windows Host. Nothing was sent." : {
       "localizations" : {
         "ja" : {
@@ -62536,6 +67163,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此資料夾不含 %@ 的任何檔案。請選擇包含 %@ 的資料夾。"
+          }
+        }
+      }
+    },
+    "This folder holds more than Files lists. Sorting and filtering cover only the items listed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このフォルダには「ファイル」が表示できる数より多くの項目があります。並べ替えと絞り込みは表示中の項目だけが対象です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件夹中的项目多于“文件”列出的数量。排序和筛选仅针对已列出的项目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料夾的項目比「檔案」列出的還多。排序與篩選只涵蓋已列出的項目。"
           }
         }
       }
@@ -62668,6 +67317,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這已不是同一個連結的工作樹，未移除任何內容。"
+          }
+        }
+      }
+    },
+    "This is not a file Files can open." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは「ファイル」で開けるファイルではありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是“文件”可以打开的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不是「檔案」可以打開的檔案。"
           }
         }
       }
@@ -62892,6 +67563,7 @@
         }
       }
     },
+    "This paste is too large to send to a Rex terminal in one piece. Paste less at a time." : {},
     "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain." : {
       "localizations" : {
         "ja" : {
@@ -63294,6 +67966,7 @@
         }
       }
     },
+    "This terminal's history is too long to show" : {},
     "This text contains control characters a terminal would read as commands. Remove them and try again." : {
       "localizations" : {
         "ja" : {
@@ -63312,6 +67985,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此文字含有終端機會當成指令讀取的控制字元。請移除後再試一次。"
+          }
+        }
+      }
+    },
+    "This version of Rex is not supported" : {},
+    "This worker hasn't written any steps to its transcript yet." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このワーカーはまだトランスクリプトにステップを記録していません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该成员尚未写入任何执行步骤记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該成員尚未寫入任何執行步驟記錄。"
           }
         }
       }
@@ -63446,6 +68142,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標題"
+          }
+        }
+      }
+    },
+    "Title swarm" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm に名前を設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm"
+          }
+        }
+      }
+    },
+    "Title swarm “%@”" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm を「%@」に設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm 为“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "命名 Swarm 為「%@」"
           }
         }
       }
@@ -63714,6 +68454,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "淺色模式使用 Tomorrow，深色模式使用 Tomorrow Night"
+          }
+        }
+      }
+    },
+    "Too Large to Open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大きすぎて開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件过大，无法打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案太大，無法打開"
           }
         }
       }
@@ -64818,6 +69580,50 @@
         }
       }
     },
+    "Unsubscribe from #%@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%@ の購読を解除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消订阅 #%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消訂閱 #%@"
+          }
+        }
+      }
+    },
+    "Unsubscribe from channel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャンネルの購読を解除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消订阅频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消訂閱頻道"
+          }
+        }
+      }
+    },
     "Untracked" : {
       "comment" : "Changes list group title and file change kind",
       "localizations" : {
@@ -64859,6 +69665,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上方向鍵"
+          }
+        }
+      }
+    },
+    "Up to Date" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是最新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是最新"
           }
         }
       }
@@ -64908,6 +69736,50 @@
         }
       }
     },
+    "Update All" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部更新"
+          }
+        }
+      }
+    },
+    "Update Failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新に失敗"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新失敗"
+          }
+        }
+      }
+    },
     "Update Heeler" : {
       "localizations" : {
         "ja" : {
@@ -64930,6 +69802,7 @@
         }
       }
     },
+    "Update Heeler once a version for this Rex is available." : {},
     "Update Heeler to read this Host's Usage format." : {
       "localizations" : {
         "ja" : {
@@ -64997,6 +69870,7 @@
         }
       }
     },
+    "Update Rex on the Host." : {},
     "Update and Turn On" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
@@ -65016,6 +69890,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新並啟用"
+          }
+        }
+      }
+    },
+    "Update available" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新があります"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有可用更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有可用更新"
           }
         }
       }
@@ -65244,6 +70140,36 @@
         }
       }
     },
+    "Update waiting its turn" : {
+      "comment" : "On a Plugin or Helper row: its update starts after another on the same Host.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Waiting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中"
+          }
+        }
+      }
+    },
     "Updated" : {
       "comment" : "A file a command changed",
       "localizations" : {
@@ -65286,6 +70212,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新於 %@"
+          }
+        }
+      }
+    },
+    "Updated at #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 時点で更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新至 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新至 #%lld"
           }
         }
       }
@@ -65336,6 +70284,101 @@
         }
       }
     },
+    "Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新"
+          }
+        }
+      }
+    },
+    "Updates for Your Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机的更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機的更新"
+          }
+        }
+      }
+    },
+    "Updating" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中"
+          }
+        }
+      }
+    },
+    "Updating %lld of %lld…" : {
+      "comment" : "Arguments: which update is running, then how many were started.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Updating %1$lld of %2$lld…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 件中 %1$lld 件目を更新中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新第 %1$lld 个，共 %2$lld 个…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新第 %1$lld 個，共 %2$lld 個…"
+          }
+        }
+      }
+    },
     "Updating session…" : {
       "localizations" : {
         "ja" : {
@@ -65354,6 +70397,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在更新工作階段…"
+          }
+        }
+      }
+    },
+    "Updating…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新中…"
           }
         }
       }
@@ -65692,6 +70757,7 @@
         }
       }
     },
+    "Usage comes from herdr and tmux Servers. Rex Servers report none." : {},
     "Usage comes with the Host Helper, which is not available on native Windows yet." : {
       "localizations" : {
         "ja" : {
@@ -65710,6 +70776,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用量功能隨 Host Helper 提供，而 Host Helper 目前尚不支援原生 Windows。"
+          }
+        }
+      }
+    },
+    "Usage counts Antigravity from plugin %@; this Host has %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Usage counts Antigravity from plugin %1$@; this Host has %2$@."
           }
         }
       }
@@ -66737,6 +71813,50 @@
         }
       }
     },
+    "View Rendered" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レンダリング表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看渲染效果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢視排版結果"
+          }
+        }
+      }
+    },
+    "View Source" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソースを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看源码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢視原始碼"
+          }
+        }
+      }
+    },
     "Voice Input" : {
       "localizations" : {
         "ja" : {
@@ -66865,6 +71985,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請等標題重新命名完成後，再送出輸入。"
+          }
+        }
+      }
+    },
+    "Wait on swarm board" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swarm ボードの更新を待機"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Swarm 消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Swarm 訊息板動態"
+          }
+        }
+      }
+    },
+    "Wait on swarm board after #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#%lld 以降のボード更新を待機"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 #%lld 之后的消息板动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 #%lld 之後的訊息板動態"
           }
         }
       }
@@ -67116,6 +72280,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待圖片…"
+          }
+        }
+      }
+    },
+    "Waiting for posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿を待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待消息板新动态"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待訊息板新動態"
           }
         }
       }
@@ -67408,6 +72594,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每週 · Sonnet"
+          }
+        }
+      }
+    },
+    "What Heeler installed on %@. Newer versions arrive with updates to the app." : {
+      "comment" : "Under Host detail's Plugin & Helper section. Argument: the Host's name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler が %@ にインストールしたものです。新しいバージョンはアプリの更新とともに届きます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在 %@ 上安装的内容。新版本会随 App 更新一同提供。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在 %@ 上安裝的內容。新版本會隨 App 更新一併提供。"
           }
         }
       }
@@ -67967,6 +73176,28 @@
         }
       }
     },
+    "Workstreams" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークストリーム"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流"
+          }
+        }
+      }
+    },
     "Worktree" : {
       "localizations" : {
         "ja" : {
@@ -68364,6 +73595,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你主機的來源 IP 位址，與任何網路請求相同。"
+          }
+        }
+      }
+    },
+    "Your Hosts are up to date." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはすべて最新です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的主机均已是最新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的主機皆已是最新。"
           }
         }
       }
@@ -70081,6 +75334,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr 拒絕了訊息：%@"
+          }
+        }
+      }
+    },
+    "herdr rejected the move: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr は移動を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒绝了移动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 拒絕了移動：%@"
           }
         }
       }
@@ -72691,6 +77966,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」不是節點，例如 tcp://host:11010 或 udp://host:11010。"
+          }
+        }
+      }
+    },
+    "“%@” is not on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”はホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上没有“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上沒有「%@」。"
+          }
+        }
+      }
+    },
+    "“%@” points to something that is no longer on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”のリンク先はもうホスト上にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”指向的内容已不在主机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」指向的項目已不在主機上。"
           }
         }
       }

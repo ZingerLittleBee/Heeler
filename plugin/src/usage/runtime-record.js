@@ -14,9 +14,10 @@ const PROXY_NAMES = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "
   "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "CODEX_CA_CERTIFICATE"];
 export const ENVIRONMENT_NAMES = ["PATH", "HOME", "USER", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", ...PROXY_NAMES];
 
-function executableOnPath(name, path) {
+export function executableOnPath(name, path) {
   if (typeof path !== "string") return null;
   for (const directory of path.split(delimiter)) {
+    if (!directory) continue;
     const candidate = resolve(directory, name);
     try {
       if (!statSync(candidate).isFile()) continue;
@@ -27,6 +28,26 @@ function executableOnPath(name, path) {
     }
   }
   return null;
+}
+
+/**
+ * Antigravity CLI's default installer writes `~/.antigravity/bin/agy`, which a
+ * non-login daemon or launchd service may not carry on its `PATH`.
+ */
+export function agySearchPath(env) {
+  const fallback = typeof env?.HOME === "string" && isAbsolute(env.HOME) ? join(env.HOME, ".antigravity", "bin") : null;
+  const parts = [env?.PATH, fallback].filter(Boolean);
+  return parts.length > 0 ? parts.join(delimiter) : null;
+}
+
+/**
+ * The recorded `agy` executable, falling back to `runtime.env` for a
+ * `runtime.json` written before 0.10.0 (`runtime.agy === undefined`).
+ */
+export function agyExecutable(runtime) {
+  if (typeof runtime?.agy === "string" && isAbsolute(runtime.agy)) return runtime.agy;
+  if (runtime?.agy === null) return null;
+  return executableOnPath("agy", agySearchPath(runtime?.env));
 }
 
 function writeAtomic(path, contents) {
@@ -46,6 +67,7 @@ export function writeUsageRuntime(env, { configDir, stateDir, node, herdr }) {
     node,
     codex: executableOnPath("codex", env.PATH),
     claude: executableOnPath("claude", env.PATH),
+    agy: executableOnPath("agy", agySearchPath(env)),
     herdr,
     env: Object.fromEntries(ENVIRONMENT_NAMES.map((name) => [name, env[name] ?? null])),
     stateDir,

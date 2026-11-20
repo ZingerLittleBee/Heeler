@@ -1,9 +1,9 @@
 import Foundation
 
 /// Field names. herdr sidebar.json builtins and `$custom` plugin keys, plus
-/// Heeler-only names (`host`, `status`, `directory`, `path`, and the right
-/// side's `status_badge` and `changes`) that exist in the app layout, not as
-/// authored plugin fields. A herdr-core Terminal's labels are fields too, as
+/// Heeler-only names (`host`, `backend`, `status`, `directory`, `path`, and the
+/// right side's `status_badge` and `changes`) that exist in the app layout, not
+/// as authored plugin fields. A herdr-core Terminal's labels are fields too, as
 /// `label:<key>`.
 ///
 /// `state_icon` still parses so herdr snapshots and older saved layouts keep
@@ -13,7 +13,7 @@ import Foundation
 enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     case stateIcon, stateText, workspace, tab, pane, agent
     case terminalTitle, terminalTitleStripped
-    case host, status, directory, path, statusBadge, changes
+    case host, backend, status, directory, path, statusBadge, changes
     case custom(String)
     case label(String)
 
@@ -24,7 +24,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
     ]
 
     static let heelerBuiltins: [Self] = [
-        .host, .status, .directory, .path,
+        .host, .backend, .status, .directory, .path,
     ]
 
     static let builtins: [Self] = herdrBuiltins + heelerBuiltins
@@ -55,6 +55,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case "terminal_title": self = .terminalTitle
         case "terminal_title_stripped": self = .terminalTitleStripped
         case "host": self = .host
+        case "backend": self = .backend
         case "status": self = .status
         case "directory": self = .directory
         case "path": self = .path
@@ -89,6 +90,7 @@ enum AgentRowToken: RawRepresentable, Codable, Hashable, Sendable {
         case .terminalTitle: "terminal_title"
         case .terminalTitleStripped: "terminal_title_stripped"
         case .host: "host"
+        case .backend: "backend"
         case .status: "status"
         case .directory: "directory"
         case .path: "path"
@@ -182,34 +184,49 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     static let maximumTokensPerRow = 16
     /// Console row slots: Row 1 and Row 2 follow herdr, Row 3 is Heeler's.
     static let maximumConsoleRows = 3
-    /// herdr's default sidebar rows without `machine`, used when a Host has
-    /// no snapshot. herdr 0.9.0 and later add `machine` after `state_icon`,
-    /// which Heeler does not render. Still carries `state_icon`; the Console
-    /// never does.
+    /// herdr's default sidebar rows without `machine`, used when a `sidebar.json`
+    /// snapshot omits `sidebar.agents`. herdr 0.9.0 and later add `machine`
+    /// after `state_icon`, which Heeler does not render. Still carries
+    /// `state_icon`; the Console never does.
     static let heelerDefault = AgentRowLayout(rows: [
         [.init(.stateIcon), .init(.workspace), .init(.tab)], [.init(.agent)],
     ])
-    /// Fallback sidebar fields with Heeler's default directory row.
-    static let consoleDefault = heelerDefault.withHeelerRow()
-    /// Where a Host with no plugin starts: the terminal's title, then its
-    /// directory.
+    /// Where Heeler starts when a Host follows no plugin or has no plugin
+    /// snapshot: two rows, `terminal_title_stripped` (with `host` on the right)
+    /// then `workspace` (with `changes` on the right).
     static let hostWithoutPluginDefault = AgentRowLayout(rows: [
-        [.init(.terminalTitleStripped)], [.init(.directory)],
+        [.init(.terminalTitleStripped)], [.init(.workspace)],
     ])
+    /// Fallback Console layout when a Host has no saved choice and no plugin
+    /// snapshot.
+    static let consoleDefault = hostWithoutPluginDefault
+
+    /// Where the rows of a Host of `kind` that follows no plugin start.
+    static func withoutPlugin(on kind: ServerKind?) -> AgentRowLayout {
+        hostWithoutPluginDefault
+    }
 
     var rowGap: Int
     var rows: [AgentRow]
     var rowsByAgent: [String: [AgentRow]]
     /// The fields that end each Console row slot on the right, index-aligned
     /// with the slots. Heeler's own: herdr never sends them, and Sync from
-    /// plugin keeps them. Nil leaves the right side to the list
-    /// (`AgentCardLines`), which ends the first line under the title with
-    /// the Host and the last with the Checkout's Changes totals.
+    /// plugin keeps them. Nil uses `defaultTrailing` (Host on Row 1, Changes
+    /// totals on Row 2).
     var trailing: [AgentRow]?
 
-    /// What the editor shows, and starts from, for a layout whose right
-    /// side the list places.
-    static let defaultTrailing: [AgentRow] = [[], [.init(.host)], [.init(.changes)]]
+    /// What the Console and the editor start from for a layout whose right
+    /// side was not saved: Host on Row 1, Changes totals on Row 2.
+    static let defaultTrailing: [AgentRow] = [[.init(.host)], [.init(.changes)], []]
+
+    /// Each Console row slot's right side: `trailing` where chosen, else
+    /// `defaultTrailing` less any field the slot already holds on the left.
+    var effectiveTrailing: [AgentRow] {
+        trailing ?? Self.defaultTrailing.enumerated().map { slot, defaults in
+            let left = rows.indices.contains(slot) ? rows[slot] : []
+            return defaults.filter { field in !left.contains { $0.token == field.token } }
+        }
+    }
 
     init(
         rows: [AgentRow], rowGap: Int = 0, rowsByAgent: [String: [AgentRow]] = [:],
@@ -254,8 +271,8 @@ struct AgentRowLayout: Codable, Equatable, Sendable {
     }
 
     /// Import only herdr's first two rows. The third belongs to Heeler;
-    /// new layouts show the directory, while sync supplies the user's row.
-    func withHeelerRow(_ thirdRow: AgentRow = [.init(.directory)]) -> AgentRowLayout {
+    /// new layouts keep it empty, while sync supplies the user's row.
+    func withHeelerRow(_ thirdRow: AgentRow = []) -> AgentRowLayout {
         var imported = normalizedForConsole()
         imported.rows = Array(AgentRowSlot.slotRows(imported.rows).prefix(AgentRowSlot.herdrRowCount))
             + [thirdRow]
@@ -344,7 +361,7 @@ enum AgentPanelSort: String, Codable, Sendable {
 /// Read-only normalized plugin snapshot. Unknown token names are removed
 /// individually (`AgentRowLayout.Lenient`); malformed structure or an
 /// unsupported version is absent.
-struct AgentRowLayoutSnapshot: Equatable, Sendable {
+struct AgentRowLayoutSnapshot: Codable, Equatable, Sendable {
     let layout: AgentRowLayout
     let agentPanelSort: AgentPanelSort
     let diagnostics: [String]
@@ -353,6 +370,19 @@ struct AgentRowLayoutSnapshot: Equatable, Sendable {
         self.layout = layout
         self.agentPanelSort = agentPanelSort
         self.diagnostics = diagnostics
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case layout
+        case agentPanelSort
+        case diagnostics
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        layout = try container.decode(AgentRowLayout.Lenient.self, forKey: .layout).layout
+        agentPanelSort = try container.decodeIfPresent(AgentPanelSort.self, forKey: .agentPanelSort) ?? .spaces
+        diagnostics = try container.decodeIfPresent([String].self, forKey: .diagnostics) ?? []
     }
 
     static func decode(_ data: Data?) -> Self? {

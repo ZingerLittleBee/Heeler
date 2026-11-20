@@ -452,6 +452,16 @@ struct HeelerPluginPresentationTests {
         #expect(requirements.allSatisfy { $0.note.contains(version) })
     }
 
+    /// Plugin 0.10.0 adds Antigravity Usage and Usage Limits.
+    @Test func antigravityUsageNeedsPlugin0100() {
+        #expect(HeelerPluginFeature.antigravityUsage.minimumVersion == PluginVersion(0, 10, 0))
+        #expect(!HeelerPluginFeature.antigravityUsage.isSupported(by: PluginVersion(0, 9, 0)))
+        #expect(HeelerPluginFeature.antigravityUsage.isSupported(by: PluginVersion(0, 10, 0)))
+        #expect(
+            HeelerPluginFeature.antigravityUsage.requirementNote(installed: PluginVersion(0, 9, 0))
+                == "Usage counts Antigravity from plugin 0.10.0; this Host has 0.9.0.")
+    }
+
     /// Plugin 0.9.0 counts Codex Accounts in Usage (#621).
     @Test func codexAccountsNeedPlugin090() {
         #expect(HeelerPluginFeature.codexAccounts.minimumVersion == PluginVersion(0, 9, 0))
@@ -477,7 +487,7 @@ struct HeelerPluginPresentationTests {
         #expect(notice.message.contains("0.7.1 → 0.8.0"))
         #expect(notice.notes == ["Claude Code Accounts need plugin 0.8.0 or newer; this Host has 0.7.1."])
         #expect(
-            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.9.0"))
+            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.10.0"))
                 .requirements(for: HeelerPluginFeature.allCases).isEmpty)
     }
 

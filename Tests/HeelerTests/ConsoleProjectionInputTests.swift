@@ -284,6 +284,9 @@ private final class ScriptedInputProjection: ConsoleHostProjection {
     var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     var sidebarRevision: UInt64 = 0
     var terminalLabelKeys: [String] = []
+    let keepsDetailsToInventory = false
+    let leftInventoryMessage = TerminalStatusPresentation.coreGoneMessage
+    let leftInventoryError = TransportError.herdrCoreTerminalGone
 
     init(host: Host, offersSend: Bool, stop: Stop = .none, offersChatTyping: Bool = false) {
         self.host = host

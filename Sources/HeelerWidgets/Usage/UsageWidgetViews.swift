@@ -97,23 +97,9 @@ struct UsageWidgetView: View {
                 UsageWidgetUpdated(readAt: scope.updatedAt, now: entry.date)
             }
             HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 0) {
-                    UsageFigure(summary: total, metric: entry.metric, size: 30)
-                    Text(metricName)
-                        .font(.caption).foregroundStyle(.secondary)
-                    if entry.metric == .cost {
-                        Text(UsageWidgetText.tokens(total.tokens, locale: locale))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 4)
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(scope.programs) { program in
-                            UsageProgramRow(
-                                program: program.program, name: program.name,
-                                value: UsageWidgetText.value(program.summary(entry.range), metric: entry.metric, locale: locale))
-                                .font(.caption)
-                        }
-                    }
+                ViewThatFits(in: .vertical) {
+                    mediumSummary(scope, total: total, compact: false)
+                    mediumSummary(scope, total: total, compact: true)
                 }
                 .frame(width: 160, alignment: .leading)
                 UsageAreaChart(scope: scope, metric: entry.metric, dates: scope.chartDates(entry.range), weekdays: false)
@@ -121,6 +107,34 @@ struct UsageWidgetView: View {
         }
         .lineLimit(1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func mediumSummary(
+        _ scope: UsageWidgetScope, total: UsageWidgetSnapshot.Summary, compact: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            UsageFigure(summary: total, metric: entry.metric, size: compact ? 24 : 30)
+            if compact {
+                Text(entry.metric == .cost ? UsageWidgetText.tokens(total.tokens, locale: locale) : metricName)
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text(metricName)
+                    .font(.caption).foregroundStyle(.secondary)
+                if entry.metric == .cost {
+                    Text(UsageWidgetText.tokens(total.tokens, locale: locale))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: compact ? 2 : 4)
+            VStack(alignment: .leading, spacing: compact ? 1 : 2) {
+                ForEach(scope.programs) { program in
+                    UsageProgramRow(
+                        program: program.program, name: program.name,
+                        value: UsageWidgetText.value(program.summary(entry.range), metric: entry.metric, locale: locale))
+                        .font(.caption)
+                }
+            }
+        }
     }
 
     private func large(_ scope: UsageWidgetScope) -> some View {
@@ -140,10 +154,10 @@ struct UsageWidgetView: View {
                 .padding(.top, 6)
             Text("\(metricName) · \(entry.metric == .cost ? UsageWidgetText.tokens(total.tokens, locale: locale) : UsageWidgetText.estimated(total.cost, locale: locale))")
                 .font(.footnote).foregroundStyle(.secondary)
-            // The chart takes whatever the rows leave, so one Host's two
-            // rows do not leave the bottom empty.
+            // The chart takes whatever the rows leave, so one Host's rows
+            // do not leave the bottom empty while All Hosts still fits.
             UsageAreaChart(scope: scope, metric: entry.metric, dates: dates, weekdays: dates.count <= 7)
-                .frame(minHeight: 104, maxHeight: .infinity)
+                .frame(minHeight: 84, maxHeight: .infinity)
                 .padding(.top, 12)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(scope.programs) { program in
@@ -426,7 +440,7 @@ struct UsageLimitsWidgetView: View {
     @ViewBuilder
     private func large(_ host: UsageWidgetSnapshot.Host) -> some View {
         let layout = UsageLimitsLayout.large(host.limits)
-        if layout == .pairs || host.limits.contains(where: { $0.account != nil }) {
+        if layout == .pairs || host.limits.count > 2 || host.limits.contains(where: { $0.account != nil }) {
             VStack(alignment: .leading, spacing: 0) {
                 largeHeader(host)
                 UsageLimitsStack(entries: host.limits, now: now, layout: layout)
@@ -581,6 +595,7 @@ struct UsageLimitsWidgetView: View {
         switch entry.program {
         case "claude": "Claude Code"
         case "codex": "Codex"
+        case "agy": "Antigravity"
         case let program?: program
         case nil: String(localized: "Usage Limits")
         }
@@ -996,9 +1011,9 @@ struct UsageLimitsLine: View {
     }
 }
 
-/// A large widget's entries once a Host has Claude Code Accounts: up to
-/// three keep four windows each with their countdowns inline; more, or
-/// what does not fit, take two windows each side by side.
+/// A large widget's entries once a Host has three programs or Accounts: up
+/// to three keep four windows each with their countdowns inline while they
+/// fit; more, or what does not fit, take two windows each side by side.
 struct UsageLimitsStack: View {
     let entries: [UsageWidgetSnapshot.Limits]
     let now: Date
@@ -1304,7 +1319,7 @@ struct UsageAreaChart: View {
                     .foregroundStyle(UsageWidgetColor.program(band.program, mode: renderingMode))
                     .lineStyle(StrokeStyle(
                         lineWidth: 1.5, lineJoin: .round,
-                        dash: renderingMode != .fullColor && band.program != "claude" ? [3, 2] : []))
+                        dash: renderingMode == .fullColor ? [] : UsageWidgetColor.dash(band.program)))
             }
         }
         .chartLegend(.hidden)
@@ -1366,8 +1381,22 @@ struct UsageAreaChart: View {
 /// them to one accent.
 enum UsageWidgetColor {
     static func program(_ program: String, mode: WidgetRenderingMode) -> Color {
-        guard mode == .fullColor else { return program == "claude" ? .primary : .primary.opacity(0.55) }
+        guard mode == .fullColor else {
+            return switch program {
+            case "claude": .primary
+            case "codex": .primary.opacity(0.6)
+            default: .primary.opacity(0.38)
+            }
+        }
         return AgentUsageStyle.color(for: program)
+    }
+
+    static func dash(_ program: String) -> [CGFloat] {
+        switch program {
+        case "claude": []
+        case "codex": [3, 2]
+        default: [1.5, 2]
+        }
     }
 }
 

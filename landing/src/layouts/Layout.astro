@@ -1,8 +1,8 @@
 ---
 import SiteFooter from '../components/SiteFooter.astro';
 import SiteHeader from '../components/SiteHeader.astro';
-import '../styles/substrate/index.css';
-import '../styles/landing.css';
+import '../styles/substrate/tokens/fonts.css';
+import '../styles/site.css';
 
 interface Props {
   title: string;
@@ -15,6 +15,7 @@ const { title, description, noindex = false } = Astro.props;
 const path = Astro.url.pathname.replace(/(\/index)?\.html$/, '') || '/';
 const canonical = new URL(path, Astro.site);
 const ogImage = new URL('/social-card.jpg', Astro.site);
+const home = path === '/';
 const imageAlt = 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. Claude Code, Codex, SSH.';
 ---
 
@@ -32,7 +33,7 @@ const imageAlt = 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. 
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#0b0c0e" />
     <meta name="color-scheme" content="dark" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Heeler" />
@@ -51,14 +52,21 @@ const imageAlt = 'Heeler Agent List on iPhone. Your agents. On iPhone and iPad. 
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={imageAlt} />
     <meta name="generator" content={Astro.generator} />
+    <!-- Styles that hide content for an entrance apply only once scripts are known to run. -->
+    <script is:inline>
+      document.documentElement.classList.add('js');
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('is-still');
+    </script>
     <slot name="head" />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-    <SiteHeader />
-    <main id="main">
+    <SiteHeader home={home} />
+    <main id="main" class:list={{ lp: home, home }}>
       <slot />
     </main>
-    <SiteFooter />
+    <SiteFooter home={home} />
+    <script>
+      import '../scripts/header';
+    </script>
   </body>
 </html>

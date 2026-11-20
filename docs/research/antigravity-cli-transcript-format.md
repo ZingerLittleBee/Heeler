@@ -617,7 +617,39 @@ and says what still runs (ADR 0024).
 Chat's `/` menu offers agy's skills as `/name`, except one named like a
 built-in command and one whose frontmatter says
 `disable-slash-command: true`, which agy keeps for the model and hides from
-its `/` popup and from `/name` (agy's changelog, 1.1.12).
+its `/` popup and from `/name` (agy's changelog, 1.1.12). Built-in skills live
+under `~/.gemini/antigravity-cli/builtin/skills` (including `native_swarm`
+whose frontmatter `name` is `swarm`, while helper skills such as
+`swarm_monitor`, `swarm_narrator` and `swarm_pane` set
+`disable-slash-command: true`).
+
+## Native Swarm (`agy` 1.5.9, 2026-11-17)
+
+Live probe on macOS against herdr 0.9.5 (`agy` 1.5.9):
+
+- On-disk Swarm files sit under `brain/<coordinator-id>/.system_generated/swarm/`:
+  `swarm.json` (`{version, backend, swarm_id, created_at}`), `members.json`
+  (`{title, members}`), append-only `board.jsonl`
+  (`{seq, agent, text, time, kind?, channel?, control?}`), and optional
+  `view.json` (or `brain/<narrator-id>/swarm_view/view.json`) written by a
+  `narrator` role worker.
+- Only the coordinator holds `~/.gemini/antigravity-cli/presence/<id>.lock`.
+  Workers run inside the coordinator process and fire herdr's `PreInvocation`
+  hook with their own `conversationId`. A worker spawned after another member
+  already posted can receive a low-priority `[swarm] new board message`
+  (`sender=<sibling-worker>`) at step 0 before step 1's
+  `You have just started. Your assignment…` (`sender=<coordinator>`), so
+  `AgyTranscriptLocator` prefers `You have just started.` over board wakeups.
+- Swarm tool calls (`swarm`, `post_message`, `read_board`, `swarm_wait`) run
+  synchronously (`DONE`), never `RUNNING` with a `task-<N>` id, and repeat
+  `Created At:` / `Completed At:` headers twice at the top of `content`. A
+  turn that ends on `swarm_wait` `DONE` is parked waiting for board posts, not
+  interrupted.
+- Under the input box's bottom rule, `agy` 1.5.9 draws `● Swarm(<title>) …`
+  and `● Agent(<name>) …` rows before a closing rule, and appends
+  `· N subagent(s)` to the footer's model string. `/swarm board` opens a
+  full-screen interactive TUI view (`Swarm board "…"` /
+  `tab switch pane · … · esc back`) that `Esc` exits.
 
 ## Open questions
 

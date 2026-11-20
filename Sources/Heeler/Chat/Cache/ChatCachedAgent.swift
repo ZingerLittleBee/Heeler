@@ -11,8 +11,14 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
     let kind: String
     let name: String?
     let title: String
+    let terminalTitle: String?
+    let terminalTitleStripped: String?
     let paneTitle: String?
     var agentSession: AgentSessionInfo?
+    let tokens: [String: String]
+    /// A client-resolved conversation title (such as Antigravity CLI's
+    /// `.pbtxt` annotation title) kept until SFTP resolves the live session.
+    var conversationTitle: String?
     let cwd: String
     let foregroundCwd: String?
     let workspaceLabel: String?
@@ -22,7 +28,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
     let workspaceTabCount: Int
     let snapshotOrder: Int?
 
-    init(_ agent: ConsoleAgent) {
+    init(_ agent: ConsoleAgent, conversationTitle: String? = nil) {
         hostID = agent.hostID
         paneID = agent.agent.paneID
         terminalID = agent.agent.terminalID
@@ -31,8 +37,12 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
         kind = agent.agent.kind
         name = agent.agent.name
         title = agent.agent.title
+        terminalTitle = agent.agent.terminalTitle
+        terminalTitleStripped = agent.agent.terminalTitleStripped
         paneTitle = agent.agent.paneTitle
         agentSession = agent.agent.agentSession
+        tokens = agent.agent.tokens
+        self.conversationTitle = conversationTitle
         cwd = agent.agent.cwd
         foregroundCwd = agent.directory
         workspaceLabel = agent.workspaceLabel
@@ -43,15 +53,51 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
         snapshotOrder = agent.snapshotOrder
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case hostID, paneID, terminalID, workspaceID, tabID, kind, name, title
+        case terminalTitle, terminalTitleStripped, paneTitle, agentSession, tokens, conversationTitle
+        case cwd, foregroundCwd, workspaceLabel, tabLabel, paneLabel
+        case tabPosition, workspaceTabCount, snapshotOrder
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hostID = try container.decode(UUID.self, forKey: .hostID)
+        paneID = try container.decode(String.self, forKey: .paneID)
+        terminalID = try container.decode(String.self, forKey: .terminalID)
+        workspaceID = try container.decode(String.self, forKey: .workspaceID)
+        tabID = try container.decode(String.self, forKey: .tabID)
+        kind = try container.decode(String.self, forKey: .kind)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        title = try container.decode(String.self, forKey: .title)
+        terminalTitle = try container.decodeIfPresent(String.self, forKey: .terminalTitle)
+        terminalTitleStripped = try container.decodeIfPresent(String.self, forKey: .terminalTitleStripped)
+        paneTitle = try container.decodeIfPresent(String.self, forKey: .paneTitle)
+        agentSession = try container.decodeIfPresent(AgentSessionInfo.self, forKey: .agentSession)
+        tokens = try container.decodeIfPresent([String: String].self, forKey: .tokens) ?? [:]
+        conversationTitle = try container.decodeIfPresent(String.self, forKey: .conversationTitle)
+        cwd = try container.decode(String.self, forKey: .cwd)
+        foregroundCwd = try container.decodeIfPresent(String.self, forKey: .foregroundCwd)
+        workspaceLabel = try container.decodeIfPresent(String.self, forKey: .workspaceLabel)
+        tabLabel = try container.decodeIfPresent(String.self, forKey: .tabLabel)
+        paneLabel = try container.decodeIfPresent(String.self, forKey: .paneLabel)
+        tabPosition = try container.decodeIfPresent(Int.self, forKey: .tabPosition)
+        workspaceTabCount = try container.decode(Int.self, forKey: .workspaceTabCount)
+        snapshotOrder = try container.decodeIfPresent(Int.self, forKey: .snapshotOrder)
+    }
+
     func consoleAgent(for host: Host) -> ConsoleAgent {
         ConsoleAgent(
-            hostID: host.id, hostName: host.displayName,
+            hostID: host.id, hostName: host.hostName,
             agent: Agent(
                 terminalID: terminalID, kind: kind, title: title, status: .unknown,
                 workspaceID: workspaceID, tabID: tabID, paneID: paneID, cwd: cwd,
-                revision: 0, name: name, paneTitle: paneTitle, agentSession: agentSession,
+                revision: 0, name: name,
+                terminalTitle: terminalTitle, terminalTitleStripped: terminalTitleStripped,
+                paneTitle: paneTitle, agentSession: agentSession, tokens: tokens,
                 foregroundCwd: foregroundCwd),
             workspaceLabel: workspaceLabel, repositoryCheckout: nil,
+            backend: host.serverKind.agentBackend,
             hostUsername: host.username, tabLabel: tabLabel, tabPosition: tabPosition,
             workspaceTabCount: workspaceTabCount, snapshotOrder: snapshotOrder,
             paneLabel: paneLabel)
@@ -99,11 +145,13 @@ struct ChatCachedWorkspace: Codable, Equatable, Sendable {
 /// Host without one falls back to the primary route, as directories were
 /// compared before Routes.
 struct ChatAgentDirectory: Codable, Equatable, Sendable {
-    /// What a directory gives the Console: the saved entries and the
-    /// Workspace structure they were listed in.
+    /// What a directory gives the Console: the saved entries, the Workspace
+    /// structure they were listed in, and the Host's last plugin sidebar
+    /// snapshot.
     struct Contents: Equatable, Sendable {
         var agents: [ChatCachedAgent] = []
         var workspaces: [ChatCachedWorkspace] = []
+        var sidebarSnapshot: AgentRowLayoutSnapshot? = nil
     }
 
     var formatVersion = 1
@@ -111,6 +159,8 @@ struct ChatAgentDirectory: Codable, Equatable, Sendable {
     let agents: [ChatCachedAgent]
     /// Nil in directories saved before the structure was kept.
     let workspaces: [ChatCachedWorkspace]?
+    /// Nil when the Host has no plugin snapshot or before snapshots were kept.
+    let sidebarSnapshot: AgentRowLayoutSnapshot?
 
     struct HostIdentity: Codable, Equatable, Sendable {
         let id: UUID
@@ -165,6 +215,7 @@ struct ChatAgentDirectory: Codable, Equatable, Sendable {
         self.host = HostIdentity(host, hostKeys: hostKeys)
         agents = contents.agents.filter { $0.isValid(for: host) }
         workspaces = contents.workspaces
+        sidebarSnapshot = contents.sidebarSnapshot
     }
 
     func belongs(to host: Host, hostKeys: Set<Data>) -> Bool {
@@ -173,7 +224,10 @@ struct ChatAgentDirectory: Codable, Equatable, Sendable {
 
     func contents(for host: Host, hostKeys: Set<Data>) -> Contents {
         guard belongs(to: host, hostKeys: hostKeys) else { return Contents() }
-        return Contents(agents: agents.filter { $0.isValid(for: host) }, workspaces: workspaces ?? [])
+        return Contents(
+            agents: agents.filter { $0.isValid(for: host) },
+            workspaces: workspaces ?? [],
+            sidebarSnapshot: sidebarSnapshot)
     }
 
     /// The digests of the host keys the device trusts for `hostID`, read

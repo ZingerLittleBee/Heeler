@@ -4,9 +4,11 @@
 Compiles Sources/Heeler/Hosts/ServerKindDetectionScript.swift and the locator it
 wraps with a small driver, then feeds the script it builds to each POSIX shell
 found here, on standard input as an exec does, and hands the output to the Swift
-parser. Fake `herdr`, `hc`, `herdr-core` and `tmux` programs record every call,
-and every run gets a `TMUX_TMPDIR` inside its own temporary root, so these tests
-never touch a real server. Needs swiftc; uses only Python's standard library.
+parser. Fake `herdr`, `hc`, `herdr-core`, `tmux`, `rex` and `uname` programs
+record every call, and every run gets a `TMUX_TMPDIR` inside its own temporary
+root, so these tests never touch a real server. Rex is looked for by its socket
+files alone, and its CLI never runs. Needs swiftc; uses only Python's standard
+library.
 """
 
 import json
@@ -28,6 +30,7 @@ SOURCES = [
     ROOT / "Sources/Heeler/Transport/Tmux/TmuxProbe.swift",
     ROOT / "Sources/Heeler/Transport/Tmux/TmuxVersion.swift",
     ROOT / "Sources/Heeler/Transport/Tmux/TmuxSocketName.swift",
+    ROOT / "Sources/Heeler/Transport/Rex/RexProbe.swift",
     ROOT / "scripts/fixtures/herdr-core-tool-stubs.swift",
     ROOT / "scripts/fixtures/string-localized-shim.swift",
 ]
@@ -61,6 +64,10 @@ case "parse":
         "tmuxVersion": parsed.tmux?.versionLine,
         "tmuxDirectory": parsed.tmux?.directory,
         "tmuxSockets": parsed.tmux?.sockets,
+        "rexRead": parsed.rex != nil,
+        "rexKernel": parsed.rex?.kernel,
+        "rexInstalled": parsed.rex?.isInstalled,
+        "rexSockets": parsed.rex?.sockets.map { [$0.path, $0.isOwn, $0.isUsable] as [Any] },
     ]
     let json = try JSONSerialization.data(
         withJSONObject: result.mapValues { $0 ?? NSNull() }, options: [.sortedKeys])
@@ -152,11 +159,13 @@ class DetectionTestCase(unittest.TestCase):
             "TMUX_TMPDIR": str(self.tmux_tmp),
         }
 
-    def detect(self, shell: list[str], session: str = "work", banner: bytes = b"") -> dict:
+    def detect(
+        self, shell: list[str], session: str = "work", banner: bytes = b"", extra_env: dict | None = None,
+    ) -> dict:
         script = subprocess.run(
-            [str(self.binary), "script", session, HERDR_READ], check=True, capture_output=True
+            [str(self.binary), "script", session, HERDR_READ], check=True, capture_output=True,
         ).stdout
-        env = self.env()
+        env = {**self.env(), **(extra_env or {})}
         result = subprocess.run(shell, input=script, env=env, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
         parsed = subprocess.run(
@@ -179,6 +188,8 @@ class FindingTests(DetectionTestCase):
                 self.assertTrue(found["located"])
                 self.assertIsNone(found["executable"])
                 self.assertTrue(found["tmuxRead"])
+                # Every run looks for Rex too, in the same exec, and calls nothing.
+                self.assertTrue(found["rexRead"])
         self.assertEqual(self.called(), [])
 
     def test_all_three_answer_in_one_run(self) -> None:
@@ -305,6 +316,109 @@ class FindingTests(DetectionTestCase):
         for cut in (whole.split(end)[0], whole.split(status)[0]):
             parsed = subprocess.run([str(self.binary), "parse", "work"], input=cut, capture_output=True)
             self.assertEqual(parsed.returncode, 66)
+
+
+class RexTests(DetectionTestCase):
+    """Rex is found by its socket files alone, and its CLI never runs (ADR 0049)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # A `rex` that would record any run, and a kernel the test chooses.
+        self.program(self.path_dir / "rex", "exit 0")
+
+    def kernel(self, name: str) -> None:
+        self.program(self.path_dir / "uname", f"printf '%s\\n' '{name}'")
+
+    def listen(self, path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(path))
+        listener.close()
+        return path
+
+    def assert_rex_never_ran(self) -> None:
+        self.assertFalse([call for call in self.called() if call.startswith("rex ")])
+
+    def test_a_mac_socket_with_spaces_in_its_path_is_found(self) -> None:
+        self.kernel("Darwin")
+        sock = self.listen(self.home / "Library/Application Support/rex/server.sock")
+        self.herdr(self.path_dir)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertEqual(found["rexKernel"], "Darwin")
+                self.assertTrue(found["rexInstalled"])
+                self.assertEqual(found["rexSockets"], [[str(sock), True, True]])
+                # The other reads are unchanged beside it.
+                self.assertEqual(found["status"], 0)
+                self.assertTrue(found["located"])
+        self.assert_rex_never_ran()
+
+    def test_linux_looks_in_order_and_names_the_accounts_own_server_first(self) -> None:
+        self.kernel("Linux")
+        runtime = self.listen(self.root / "r d/server.sock")
+        xdg = self.listen(self.root / "x/rex/server.sock")
+        state = self.listen(self.home / ".local/state/rex/run/server.sock")
+        env = {"REX_RUNTIME_DIR": str(runtime.parent), "XDG_RUNTIME_DIR": str(xdg.parent.parent)}
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell, extra_env=env)
+                self.assertEqual(found["rexKernel"], "Linux")
+                self.assertTrue(found["rexInstalled"])
+                self.assertEqual(
+                    [entry[0] for entry in found["rexSockets"]], [str(runtime), str(xdg), str(state)])
+        self.assert_rex_never_ran()
+
+    def test_installed_but_not_running_finds_no_socket(self) -> None:
+        self.kernel("Linux")
+        # A regular file where a socket would be is not one.
+        stale = self.home / ".local/state/rex/run/server.sock"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertTrue(found["rexInstalled"])
+                self.assertEqual(found["rexSockets"], [])
+        self.assert_rex_never_ran()
+
+    def test_nothing_there_reads_as_not_installed(self) -> None:
+        (self.path_dir / "rex").unlink()
+        # Linux's places, since a Mac running these tests may have the Rex app.
+        self.kernel("Linux")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertTrue(found["rexRead"])
+                self.assertFalse(found["rexInstalled"])
+                self.assertEqual(found["rexSockets"], [])
+
+    def test_an_unrelated_rex_command_is_not_rex(self) -> None:
+        # Other software ships a `rex` command; only Rex's own places count.
+        self.kernel("Linux")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell)
+                self.assertTrue(found["rexRead"])
+                self.assertFalse(found["rexInstalled"])
+        self.assert_rex_never_ran()
+
+    def test_a_socket_the_account_cannot_write_is_not_usable(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("root may write any socket")
+        self.kernel("Darwin")
+        sock = self.listen(self.home / "Library/Application Support/rex/server.sock")
+        sock.chmod(0o400)
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.assertEqual(self.detect(shell)["rexSockets"], [[str(sock), True, False]])
+
+    def test_a_relative_runtime_directory_is_not_looked_in(self) -> None:
+        self.kernel("Linux")
+        for shell in shells():
+            with self.subTest(shell=shell):
+                found = self.detect(shell, extra_env={"REX_RUNTIME_DIR": "relative"})
+                self.assertEqual(found["rexSockets"], [])
 
 
 if __name__ == "__main__":

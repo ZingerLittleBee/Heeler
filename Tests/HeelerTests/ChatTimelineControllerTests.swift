@@ -1975,6 +1975,89 @@ struct ChatTimelineControllerTests {
         }
     }
 
+    @Test func holdingTopJumpPauses500msGivesFeedbackAndLoadsEarlierPagesUntilReleased() async throws {
+        var loadCalls = 0
+        var feedbackCalls = 0
+        let controller = ChatTimelineController(actions: ChatTimelineActions(
+            loadOlder: { loadCalls += 1 },
+            topJumpLoadFeedback: { feedbackCalls += 1 }))
+        let builder = ChatRowBuilder()
+        let initial = await builder.rows(
+            for: ChatTimelineInput(entries: Self.entries(40..<80), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(initial))
+            await Self.settle(controller)
+            let view = controller.timeline
+
+            let holdStartedAt = ContinuousClock.now
+            controller.jumpToTop()
+            controller.setHoldingTopJump(true)
+            let firstLoadDeadline = ContinuousClock.now + .seconds(3)
+            while ContinuousClock.now < firstLoadDeadline, loadCalls == 0 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(loadCalls == 1)
+            #expect(feedbackCalls == 1)
+            #expect(ContinuousClock.now - holdStartedAt >= .milliseconds(450))
+            #expect(controller.olderPullPhase == .requested)
+            #expect(controller.canJumpToPreviousUserMessage)
+
+            let secondPage = await builder.rows(
+                for: ChatTimelineInput(entries: Self.entries(20..<80), older: .available))
+            let secondPageAppliedAt = ContinuousClock.now
+            controller.apply(Self.state(secondPage, revision: 2))
+            let secondLoadDeadline = ContinuousClock.now + .seconds(3)
+            while ContinuousClock.now < secondLoadDeadline, loadCalls < 2 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(loadCalls == 2)
+            #expect(feedbackCalls == 2)
+            #expect(ContinuousClock.now - secondPageAppliedAt >= .milliseconds(450))
+            #expect(abs(view.contentOffset.y - view.minOffsetY) <= 1)
+
+            controller.setHoldingTopJump(false)
+            let startReached = await builder.rows(
+                for: ChatTimelineInput(entries: Self.entries(0..<80), older: .reachedStart))
+            controller.apply(Self.state(startReached, revision: 3))
+            controller.jumpToTop()
+            let finalTopDeadline = ContinuousClock.now + .seconds(2)
+            while ContinuousClock.now < finalTopDeadline, abs(view.contentOffset.y - view.minOffsetY) > 1 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            await Self.settle(controller)
+            #expect(!controller.canJumpToPreviousUserMessage)
+            #expect(loadCalls == 2)
+            #expect(feedbackCalls == 2)
+        }
+    }
+
+    @Test func releasingTopJumpBeforePauseEndsCancelsLoadAndFeedback() async throws {
+        var loadCalls = 0
+        var feedbackCalls = 0
+        let controller = ChatTimelineController(actions: ChatTimelineActions(
+            loadOlder: { loadCalls += 1 },
+            topJumpLoadFeedback: { feedbackCalls += 1 }))
+        let rows = await ChatRowBuilder().rows(
+            for: ChatTimelineInput(entries: Self.entries(20..<60), older: .available))
+        try await withTestWindow(frame: Self.frame, rootViewController: controller) { _ in
+            controller.apply(Self.state(rows))
+            await Self.settle(controller)
+            let view = controller.timeline
+            Self.drag(controller, to: view.minOffsetY)
+            await Self.settle(controller)
+
+            controller.jumpToTop()
+            controller.setHoldingTopJump(true)
+            try await Task.sleep(for: .milliseconds(50))
+            controller.setHoldingTopJump(false)
+            try await Task.sleep(for: .milliseconds(600))
+
+            #expect(loadCalls == 0)
+            #expect(feedbackCalls == 0)
+            #expect(controller.olderPullPhase == .idle)
+        }
+    }
+
     // MARK: Helpers
 
     private static func foldState(
@@ -2212,6 +2295,38 @@ struct ChatTimelineModelTests {
         #expect(model.state.generation == generation + 1)
         #expect(model.state.rows.isEmpty)
         #expect(!model.state.isReady)
+    }
+
+    @Test func updateIfNeededSkipsIdenticalRequestAndUpdatesSignalsSynchronously() async {
+        let model = ChatTimelineModel()
+        let entries = ChatTimelineControllerTests.entries(0..<3)
+        let input = ChatTimelineInput(entries: entries)
+        let cachedSignals = ChatTurnSignals(activity: .idle, foldsFinishedTurns: true, isLive: false)
+        model.updateIfNeeded(conversation: 1, input: input, signals: cachedSignals, isReady: true)
+        await model.settled()
+
+        let revisionAfterBuild = model.state.revision
+        let generation = model.state.generation
+        let rowID = ChatRowID.entry(entries[0].id)
+        let measured = ChatMeasuredHeight(height: 84, width: 390, contentSizeCategory: "L|system", revision: 1)
+        model.recordMeasuredHeight(measured, for: rowID, generation: generation)
+        #expect(model.measuredHeights[rowID] == measured)
+
+        // Identical feed on surface re-mount is a no-op.
+        model.updateIfNeeded(conversation: 1, input: input, signals: cachedSignals, isReady: true)
+        #expect(model.state.revision == revisionAfterBuild)
+
+        // Signal-only change (e.g. cache confirmed live) updates synchronously on MainActor
+        // without waiting on the async row builder.
+        let liveSignals = ChatTurnSignals(activity: .idle, foldsFinishedTurns: true, isLive: true)
+        model.updateIfNeeded(conversation: 1, input: input, signals: liveSignals, isReady: true)
+        #expect(model.state.revision == revisionAfterBuild + 1)
+        #expect(model.state.signals == liveSignals)
+        #expect(model.measuredHeights[rowID] == measured)
+
+        model.reset()
+        #expect(model.state.rows.isEmpty)
+        #expect(model.measuredHeights.isEmpty)
     }
 }
 
@@ -2513,6 +2628,29 @@ struct ChatRowViewTests {
         let ran = ChatToolActivity(kind: .command, name: "Bash", title: "true", status: .succeeded)
         let ranLabels = try await Self.labels(of: ran, isExpanded: true)
         #expect(ranLabels.contains { $0.contains("No output.") }, "\(ranLabels)")
+    }
+
+    @Test func aToolRowWithoutExpandableContentHidesItsDisclosure() async throws {
+        let shortInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "sleep 30", status: .interrupted)
+        let multiLineInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "cd /tmp\nsleep 30", status: .interrupted)
+        let notedInterrupted = ChatToolActivity(
+            kind: .command, name: "Bash", title: "sleep 30", status: .interrupted, note: "Stopped in the background")
+
+        #expect(!shortInterrupted.hasExpandableDetails)
+        #expect(!multiLineInterrupted.hasExpandableDetails)
+        #expect(notedInterrupted.hasExpandableDetails)
+
+        let shortRow = ChatRow(id: .entry(ChatEntryID("short")), content: .tool(shortInterrupted), revision: 1, topSpacing: 0)
+        let notedRow = ChatRow(id: .entry(ChatEntryID("noted")), content: .tool(notedInterrupted), revision: 1, topSpacing: 0)
+        let (shortImage, shortHeight, _) = try await Self.renderRow(shortRow, width: 402, scale: 2)
+        let (notedImage, notedHeight, _) = try await Self.renderRow(notedRow, width: 402, scale: 2)
+        let shortInk = try #require(Self.inkBounds(in: shortImage, xRange: 0..<402, yRange: 0..<shortHeight, scale: 2))
+        let notedInk = try #require(Self.inkBounds(in: notedImage, xRange: 0..<402, yRange: 0..<notedHeight, scale: 2))
+        // Both rows have identical leading icon + "sleep 30" + "Interrupted" badge;
+        // only `notedRow` adds the trailing `chevron.right` (~10pt wider ink).
+        #expect(notedInk.maxX > shortInk.maxX + 6, "short maxX=\(shortInk.maxX), noted maxX=\(notedInk.maxX)")
     }
 
     @Test func inlineRowsShareAlignedIconColumnAndDetailIndent() async throws {

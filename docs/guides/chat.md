@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), or [tmux](tmux.md#chat), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code, Codex, Pi, and Oh My Pi only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
 
 ## Set up the Host
 
@@ -65,12 +65,24 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi, OpenCode, and Antigravity CLI need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
-- **Images and files.** On Herdr TUI and herdr-core Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+- **Images and files.** On Herdr TUI, herdr-core, tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 
 > [!TIP]
 > On an iPad with a keyboard, press **Return** to send and **Shift-Return** for a new line.
+
+## Hand work to another Agent
+
+When an Agent is stuck or out of usage, or you want another opinion, give its conversation to another Agent on the same Host.
+
+1. Long-press the Agent in **Agents**, or open the **More** menu at the top of the Agent, and tap **Hand Off**.
+2. Choose **Take Over** to have the other Agent carry the work on, or **Second Opinion** to have it review the work.
+3. Pick an Agent, or **New Agent…** to start one in the same directory.
+
+Heeler writes the conversation to a file on the Host, without tool output, and opens the other Agent with a message about that file in its message box. Nothing is sent until you tap **Send**, so you can reword it first.
+
+Hand Off needs an Agent whose conversation Chat can show and a Host that takes files, the same Hosts as **Add File**.
 
 ## Answer a Blocked Agent
 

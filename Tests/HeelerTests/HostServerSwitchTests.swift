@@ -27,6 +27,10 @@ private actor ListedKnownHosts: KnownHostsStore {
     func forgetHost(_ id: UUID) {
         stored[HostKeyTrust.hostKey(id).host] = nil
     }
+
+    func replaceTrust(ofHost id: UUID, with fingerprints: [HostKeyFingerprint]) {
+        stored[HostKeyTrust.hostKey(id).host] = fingerprints
+    }
 }
 
 @MainActor
@@ -80,6 +84,15 @@ struct HostServerSwitchTests {
     private func linuxScan(sockets: [String] = ["default", "work"]) async throws -> HostServerScan {
         let host = ScriptedCoreHost(
             tmuxProbe: ScriptedCoreHost.tmuxLines(executable: Self.tmuxPath, sockets: sockets), channel: .refused)
+        return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
+    }
+
+    /// One look at a Mac with Rex installed, its server on `socket` while that
+    /// is set.
+    private func rexScan(socket: String?) async throws -> HostServerScan {
+        let host = ScriptedCoreHost(
+            rexProbe: ScriptedCoreHost.rexLines(sockets: socket.map { [($0, true, true)] } ?? []),
+            channel: .refused)
         return HostServerScan(try await ServerKindDetection.run(over: host, session: ""))
     }
 
@@ -152,6 +165,46 @@ struct HostServerSwitchTests {
         #expect(onWork.sessionName == "work")
         #expect(onWork.tmuxPaths == TmuxPaths(executable: Self.tmuxPath, socket: "/tmp/tmux-1000/work"))
         #expect(catalog.machines.first?.servers.compactMap(\.serverKey) == [Self.defaultTUI, Self.defaultTmux, work])
+    }
+
+    /// The record dials the socket the look found, in Rex's own catalog, and
+    /// keeps the Host's name, account and Routes (ADR 0049).
+    @Test func aRexServerStoresTheSocketTheLookFound() async throws {
+        let socket = "/Users/dev/Library/Application Support/rex/server.sock"
+        let tui = record()
+        let catalog = HostStore(volatileHosts: [tui])
+        let rex = HostServerKey(kind: .rex, name: "")
+
+        let on = try await makeSwitch(catalog).turnOn(rex, onHostOf: tui.id, scan: try await rexScan(socket: socket))
+
+        #expect(on.serverKind == .rex)
+        #expect(on.rexSocket?.path == socket)
+        #expect(on.sessionName == "")
+        #expect(on.name == "Studio")
+        #expect(on.routes == tui.routes)
+        #expect(catalog.machines.first?.servers.compactMap(\.serverKey) == [Self.defaultTUI, rex])
+        #expect(catalog.machines.first?.record(of: rex)?.id == on.id)
+    }
+
+    /// A Rex that is not running, or one turned on with no look, has no socket
+    /// to store: the record's connections look it up once Rex runs.
+    @Test func aRexServerTurnedOnWhileStoppedStoresNoSocket() async throws {
+        let held = record(kind: .unconfirmed)
+        let catalog = HostStore(volatileHosts: [held])
+        let switcher = makeSwitch(catalog)
+        let rex = HostServerKey(kind: .rex, name: "")
+
+        let stopped = try await switcher.turnOn(rex, onHostOf: held.id, scan: try await rexScan(socket: nil))
+
+        #expect(stopped.id == held.id)
+        #expect(stopped.serverKind == .rex)
+        #expect(stopped.rexSocket == nil)
+
+        let other = record(address: "build.example")
+        try catalog.add(other)
+        let unlooked = try await switcher.turnOn(rex, onHostOf: other.id)
+        #expect(unlooked.rexSocket == nil)
+        #expect(catalog.machines.count == 2)
     }
 
     @Test func aTmuxServerTurnedOnWithNoLookStoresNoPaths() async throws {
@@ -245,6 +298,7 @@ struct HostServerSwitchTests {
             ServerKind.herdrCore, "herdrCoreHosts",
             "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
         ),
+        (ServerKind.rex, "rexHosts", "The saved Rex Hosts could not be read, so no Rex Host can be added."),
     ])
     func aKindWhoseSavedHostsDidNotReadRefusesInWords(
         kind: ServerKind, defaultsKey: String, words: String
@@ -307,5 +361,34 @@ struct HostServerSwitchTests {
         #expect(await trustedKey(for: tui.id, in: knownHosts) == Self.trusted)
         // Another Host is another machine, with a key of its own to show.
         #expect(await trustedKey(for: elsewhere.id, in: knownHosts) == nil)
+    }
+
+    /// A rebuilt machine may show a key of another algorithm than the one a
+    /// record trusted. The old one goes: kept beside the new, it would still
+    /// be taken from whoever holds it.
+    @Test func pairingAgainLeavesEveryRecordOnlyTheKeysTheCodePinned() async throws {
+        let tui = record()
+        let tmux = record(kind: .tmux)
+        let elsewhere = record(address: "build.example")
+        let catalog = HostStore(volatileHosts: [tui, tmux, elsewhere])
+        let suiteName = "pair-again-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let knownHosts = try #require(UserDefaultsKnownHostsStore(suiteName: suiteName))
+        let retired = HostKeyFingerprint(digest: Data("retired-host-key".utf8), algorithm: "ecdsa-sha2-nistp256")
+        let pinned = HostKeyFingerprint(digest: Data("pinned-host-key".utf8), algorithm: "ssh-ed25519")
+        let paired = UUID()
+        await trust(retired, for: tui.id, in: knownHosts)
+        await trust(retired, for: elsewhere.id, in: knownHosts)
+        await trust(pinned, for: paired, in: knownHosts)
+
+        await makeSwitch(catalog, knownHosts: knownHosts).pairAgain(hostOf: tui.id, trusting: paired)
+
+        for id in [tui.id, tmux.id] {
+            let key = HostKeyTrust.hostKey(id)
+            #expect(await knownHosts.fingerprints(host: key.host, port: key.port) == [pinned])
+        }
+        let other = HostKeyTrust.hostKey(elsewhere.id)
+        #expect(await knownHosts.fingerprints(host: other.host, port: other.port) == [retired])
     }
 }

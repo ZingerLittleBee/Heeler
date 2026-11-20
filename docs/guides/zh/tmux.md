@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/tmux.md at a76a7a53 -->
+<!-- Translated from docs/guides/tmux.md at 4732ddb2 -->
 # 连接 tmux
 
 通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是其 Host 的一个 Server，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
@@ -16,7 +16,7 @@ Heeler 在连接或检查时绝不会启动 tmux 服务端。
 
 ### 1. 连接
 
-1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。[扫码配对](pairing.md)始终添加 Herdr TUI Server。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。也可以改为[扫描配对码](pairing.md#配对没有-herdr-的机器)，这样会跳过本步骤，直接进入[选择 Server](#2-选择-server)。
 2. 输入 **Address** 和 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
 3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
 4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
@@ -38,13 +38,13 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | 同时检测到 tmux 与 Herdr TUI 或 herdr-core | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
 | 未检测到正在运行的服务端 | 仍然添加该 Host。启动 tmux，打开该 Host，轻点 **Scan Again**，然后开启 **tmux**。 |
 
-每个 Server 在 Host 页面上都有一个开关。轻点已开启的 Server 可打开它自己的页面，其中有它的连接、检查项和 Host Helper。要在某个 socket 的服务端运行之前开启它，请在 Host 页面上轻点 **Add by Name…**，选择 **tmux**，输入 `-L <name>` 的 socket 名称（留空表示 `default`），然后轻点 **Turn On**。不支持手动输入自定义 socket 文件路径（`tmux -S <path>`）。
+每个 Server 在 Host 页面上都有一个开关。轻点已开启的 Server 可打开它自己的页面，其中有它的检查项和 Host Helper。连接属于 Host，显示在 **Routes** 下。要在某个 socket 的服务端运行之前开启它，请在 Host 页面上轻点 **Add by Name…**，选择 **tmux**，输入 `-L <name>` 的 socket 名称（留空表示 `default`），然后轻点 **Turn On**。不支持手动输入自定义 socket 文件路径（`tmux -S <path>`）。
 
 | 该 Host 的页面 | Add by Name |
 | --- | --- |
-| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、Routes 和 Account"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
+| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示正在运行且开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、标出在用路由的 Routes 和 Plugin & Helper"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
 
-**成功的标志是**该 Host 所在的行显示绿色的 **tmux** 标签，且该 Server 的页面将 **Server Kind** 显示为带版本号的 `tmux`，**Socket** 显示你的 socket 名称，**tmux server running** 检查通过。
+**成功的标志是**该 Host 所在的行显示绿色的 **tmux** 标签，该 Host 的页面将 tmux 列为带版本号的 **Running**，且该 Server 的页面上 **tmux server running** 检查通过。
 
 <a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
 

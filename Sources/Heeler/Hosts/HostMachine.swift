@@ -5,7 +5,8 @@ import Foundation
 struct HostServerKey: Hashable, Codable, Sendable {
     let kind: ServerKind
     /// The session or socket name, as the kind stores it. Blank is Herdr TUI's
-    /// default session.
+    /// default session, and Rex's only Server: a Host has one, whatever socket
+    /// its record holds (ADR 0049).
     let name: String
     /// The socket of a Pairing Code endpoint (ADR 0023), which is a herdr of
     /// its own beside the one on the SSH PATH.
@@ -23,7 +24,8 @@ struct HostServerKey: Hashable, Codable, Sendable {
         case .herdrTUI: name.isEmpty ? nil : name
         case .herdrCore: name == HerdrCoreSessionName.normalized("") ? nil : name
         case .tmux: name == TmuxSocketName.defaultName ? nil : name
-        case .unconfirmed: nil
+        // A Host has one Rex Server, which names no session (ADR 0049).
+        case .rex, .unconfirmed: nil
         }
     }
 
@@ -164,5 +166,19 @@ struct HostMachine: Identifiable, Hashable, Sendable {
             }
         }
         return labels
+    }
+
+    /// The Host's name for each record that would not give it by its own
+    /// `machineName`: one the user named apart before it was one Host with
+    /// the others, or left unnamed beside a named one.
+    static func sharedNames(for hosts: [Host]) -> [Host.ID: String] {
+        var names: [Host.ID: String] = [:]
+        for machine in grouped(hosts) {
+            let name = machine.name
+            for record in machine.members where record.machineName != name {
+                names[record.id] = name
+            }
+        }
+        return names
     }
 }

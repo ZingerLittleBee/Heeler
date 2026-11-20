@@ -1391,7 +1391,7 @@ struct AgentCardChangesTotalsTests {
         agent: Agent(
             terminalID: "term_a", kind: "claude", title: "Fix the flaky test",
             status: .idle, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
-            cwd: "/work/proj", revision: 3),
+            cwd: "/work/proj", revision: 3, terminalTitleStripped: "Fix the flaky test"),
         workspaceLabel: "proj",
         repositoryCheckout: nil)
 
@@ -1424,11 +1424,14 @@ struct AgentCardChangesTotalsTests {
         return node.value(forKey: "accessibilityIdentifier") as? String
     }
 
-    /// With one row after Row 1, as here, the totals end that row just after
-    /// the Host, on the Host's line.
+    /// Placed together on a row's right side, the totals follow just after
+    /// the Host on that line.
     @Test func theTotalsFollowTheHostOnItsLine() async throws {
         let store = try await Self.store(added: 12, removed: 7)
-        let (controller, window) = try await Self.host(store, width: 402)
+        let layout = AgentRowLayout(
+            rows: [[.init(.workspace)], [.init(.agent)]],
+            trailing: [[], [.init(.host), .init(.changes)], []])
+        let (controller, window) = try await Self.host(store, width: 402, layout: layout)
         defer { window.isHidden = true }
         let root: UIView = controller.view
         let label = "Changes: 12 lines added, 7 lines removed"
@@ -1447,9 +1450,11 @@ struct AgentCardChangesTotalsTests {
     /// built the file counts in #471. A row closure isolated to the main
     /// actor traps there, so a regression crashes this test.
     @Test func buildsAdditionalRowsOffTheMainThread() async throws {
-        let card = AgentCardView(agent: Self.agent, layout: .consoleDefault)
+        let threeRows = AgentRowLayout(
+            rows: [[.init(.terminalTitleStripped)], [.init(.workspace)], [.init(.directory)]])
+        let card = AgentCardView(agent: Self.agent, layout: threeRows)
         let lines = AgentCardLines(
-            presentation: AgentCardPresentation(agent: Self.agent, layout: .consoleDefault),
+            presentation: AgentCardPresentation(agent: Self.agent, layout: threeRows),
             headingTakesTitle: false, showsHost: true, showsTotals: true).details
         try #require(lines.count > 1)
         let line = UncheckedSendable(value: card.detailLineViews(lines).content)
@@ -1467,29 +1472,33 @@ struct AgentCardChangesTotalsTests {
         }.value
     }
 
-    /// A layout that leaves its right side to the list keeps today's
-    /// places: the Host ends the first line under the title and the totals
-    /// the last, both on a line of their own under a title alone, and
-    /// Row 1's line under a heading.
-    @Test func theListPlacesTheRightSideNoLayoutChose() {
+    /// A layout that leaves its right side unsaved uses `defaultTrailing`:
+    /// the Host ends Row 1 (the title, or Row 1's line under a heading) and
+    /// the totals end Row 2.
+    @Test func defaultTrailingPlacesHostOnRowOneAndTotalsOnRowTwo() {
         let presentation = AgentCardPresentation(agent: Self.agent, layout: .consoleDefault)
         let lines = AgentCardLines(
             presentation: presentation, headingTakesTitle: false, showsHost: true, showsTotals: true)
-        #expect(lines.title.isEmpty)
+        #expect(lines.title == [.host])
         #expect(lines.details.map(\.leading) == Array(presentation.rows.dropFirst()))
-        #expect(lines.details.map(\.trailing) == [[.host], [.changes]])
+        #expect(lines.details.map(\.trailing) == [[.changes]])
 
         let titleOnly = AgentCardPresentation(agent: Self.agent, layout: AgentRowLayout(rows: [[.init(.workspace)]]))
-        func details(heading: Bool, host: Bool, totals: Bool) -> [AgentCardLines.Line] {
+        func placed(heading: Bool, host: Bool, totals: Bool) -> AgentCardLines {
             AgentCardLines(
-                presentation: titleOnly, headingTakesTitle: heading, showsHost: host, showsTotals: totals
-            ).details
+                presentation: titleOnly, headingTakesTitle: heading, showsHost: host, showsTotals: totals)
         }
-        #expect(details(heading: false, host: true, totals: true) == [.init(leading: [], trailing: [.host, .changes])])
-        #expect(details(heading: false, host: false, totals: true) == [.init(leading: [], trailing: [.changes])])
-        #expect(details(heading: false, host: false, totals: false).isEmpty)
-        #expect(details(heading: true, host: true, totals: true)
-            == [.init(leading: titleOnly.rows[0], trailing: [.host, .changes])])
+        #expect(placed(heading: false, host: true, totals: true).title == [.host])
+        #expect(placed(heading: false, host: true, totals: true).details == [.init(leading: [], trailing: [.changes])])
+        #expect(placed(heading: false, host: false, totals: true).title.isEmpty)
+        #expect(placed(heading: false, host: false, totals: true).details == [.init(leading: [], trailing: [.changes])])
+        #expect(placed(heading: false, host: true, totals: false).title == [.host])
+        #expect(placed(heading: false, host: true, totals: false).details.isEmpty)
+        #expect(placed(heading: false, host: false, totals: false).details.isEmpty)
+        #expect(placed(heading: true, host: true, totals: true).details == [
+            .init(leading: titleOnly.rows[0], trailing: [.host]),
+            .init(leading: [], trailing: [.changes]),
+        ])
     }
 
     /// The status badge ends the line a layout puts it on; under a heading,
@@ -1529,7 +1538,7 @@ struct AgentCardChangesTotalsTests {
             trailing: [[.init(.status)], [.init(.host)], [.init(.changes)]])
         let presentation = AgentCardPresentation(agent: Self.agent, layout: layout)
         #expect(presentation.slots == [1])
-        let status = try #require(presentation.trailing?[0].first)
+        let status = try #require(presentation.trailing[0].first)
         #expect(status == .fields([RenderedToken(token: .status, text: "Idle", fg: nil, bold: nil, dim: nil)]))
         func lines(heading: Bool = false, shows: Bool = true) -> AgentCardLines {
             AgentCardLines(
@@ -1548,44 +1557,32 @@ struct AgentCardChangesTotalsTests {
     }
 
     /// A row left empty gives way to the next, its right side included. A
-    /// checkout's card names the directory, so a row of only that field
-    /// leaves the totals to end the line above rather than a line of their
-    /// own. A row configured empty still gets its line (above).
+    /// checkout's card names the Workspace, so Row 2 of only `workspace`
+    /// leaves the totals to end Row 1 rather than a line of their own. A row
+    /// configured empty still gets its line (above).
     @Test func theRightSideOfARowLeftEmptyEndsTheLineAbove() {
-        let layout = AgentRowLayout(
-            rows: [[.init(.workspace)], [.init(.agent)], [.init(.directory)]],
-            trailing: AgentRowLayout.defaultTrailing)
         let hidden = AgentCardPresentation(
-            agent: Self.agent, layout: layout, hiding: [.workspace, .host, .directory])
+            agent: Self.agent, layout: .consoleDefault, hiding: [.workspace, .host])
         func lines(_ presentation: AgentCardPresentation, heading: Bool = true) -> AgentCardLines {
             AgentCardLines(
                 presentation: presentation, headingTakesTitle: heading, showsHost: false, showsTotals: true)
         }
         #expect(lines(hidden).details == [.init(leading: hidden.rows[0], trailing: [.changes])])
-
-        // Nothing above it under the card's own title: it ends that line.
-        let alone = AgentCardPresentation(
-            agent: Self.agent, layout: AgentRowLayout(
-                rows: [[.init(.workspace)], [.init(.directory)]], trailing: [[], [.init(.changes)]]),
-            hiding: [.directory])
-        #expect(lines(alone, heading: false).title == [.changes])
-        #expect(lines(alone, heading: false).details.isEmpty)
+        #expect(lines(hidden, heading: false).title == [.changes])
+        #expect(lines(hidden, heading: false).details.isEmpty)
 
         // With its field showing, the row keeps its line.
-        let shown = AgentCardPresentation(agent: Self.agent, layout: layout, hiding: [.workspace, .host])
+        let shown = AgentCardPresentation(agent: Self.agent, layout: .consoleDefault, hiding: [.host])
         #expect(lines(shown).details.last == .init(leading: shown.rows[1], trailing: [.changes]))
         #expect(lines(shown).details.count == 2)
     }
 
-    /// A checkout's card, whose directory field the card already shows,
-    /// ends the Agent's line with the totals and adds no line for them.
+    /// A checkout's card, whose Workspace field the card already shows,
+    /// ends Row 1's line with the totals and adds no line for them.
     @Test func aCheckoutsCardEndsTheAgentsLineWithTheTotals() async throws {
         let store = try await Self.store(added: 115, removed: 0)
-        let layout = AgentRowLayout(
-            rows: [[.init(.workspace)], [.init(.agent)], [.init(.directory)]],
-            trailing: AgentRowLayout.defaultTrailing)
         let card = AgentCardView(
-            agent: Self.agent, layout: layout, changes: store,
+            agent: Self.agent, layout: .consoleDefault, changes: store,
             hiddenTokens: [.workspace, .host, .directory],
             heading: AgentCardHeading(title: ConsoleCheckoutTitle(title: "worktree"), systemImage: "arrow.triangle.branch"),
             showsHost: false, lead: .card)
@@ -1604,7 +1601,7 @@ struct AgentCardChangesTotalsTests {
         defer { window.isHidden = true }
         controller.view.layoutIfNeeded()
         let root: UIView = controller.view
-        let agentLine = try #require(AccessibilityProbe.frame(labeled: "claude", in: root))
+        let agentLine = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
         let totals = try #require(AccessibilityProbe.frame(
             labeled: "Changes: 115 lines added, 0 lines removed", in: root))
         #expect(abs(totals.midY - agentLine.midY) <= 2, "\(totals) and \(agentLine) sit on different lines")
@@ -1664,26 +1661,32 @@ struct AgentCardChangesTotalsTests {
         #expect(totals.minY >= host.maxY - 0.5, "\(totals) does not sit below \(host)")
     }
 
-    /// With more rows, the Host ends the first one after Row 1 and the
-    /// totals end the last.
-    @Test func theHostEndsTheFirstDetailLineAndTheTotalsTheLast() async throws {
+    /// Under the default two-row layout, Row 1 puts `terminal_title_stripped`
+    /// on the left and `host` on the right, and Row 2 puts `workspace` on the
+    /// left and `changes` on the right.
+    @Test func defaultTwoRowCardPlacesTitleAndHostThenWorkspaceAndTotals() async throws {
         let store = try await Self.store(added: 12, removed: 7)
         let (controller, window) = try await Self.host(
             store, width: 402, layout: .consoleDefault)
         defer { window.isHidden = true }
         let root: UIView = controller.view
+        let rowOne = try #require(AccessibilityProbe.frame(labeled: "Fix the flaky test", in: root))
+        let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
+        let rowTwo = try #require(AccessibilityProbe.frame(labeled: "proj", in: root))
         let totals = try #require(AccessibilityProbe.frame(
             labeled: "Changes: 12 lines added, 7 lines removed", in: root))
-        let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
-        let rowOne = try #require(AccessibilityProbe.frame(labeled: "proj", in: root))
-        #expect(host.minY >= rowOne.maxY - 0.5, "\(host) does not sit below \(rowOne)")
+        #expect(abs(host.midY - rowOne.midY) <= 2, "\(host) and \(rowOne) sit on different lines")
+        #expect(rowOne.maxX <= host.minX, "\(host) overlaps \(rowOne)")
+        #expect(abs(totals.midY - rowTwo.midY) <= 2, "\(totals) and \(rowTwo) sit on different lines")
+        #expect(rowTwo.maxX <= totals.minX, "\(totals) overlaps \(rowTwo)")
+        #expect(rowTwo.minY >= rowOne.maxY - 0.5, "\(rowTwo) does not sit below \(rowOne)")
         #expect(totals.minY >= host.maxY - 0.5, "\(totals) does not sit below \(host)")
     }
 
     /// A card too narrow for the exact totals shows the shortened ones, and
-    /// VoiceOver still hears them exactly. The narrow card's text is 166
+    /// VoiceOver still hears them exactly. The narrow card's text is 124
     /// points wide, past its 34-point avatar and the 12-point gap.
-    @Test(arguments: [(CGFloat(402), "agent-row-changes.exact"), (212, "agent-row-changes.compact")])
+    @Test(arguments: [(CGFloat(402), "agent-row-changes.exact"), (170, "agent-row-changes.compact")])
     func largeTotalsShortenOnlyWhereTheExactOnesDoNotFit(width: CGFloat, form: String) async throws {
         let store = try await Self.store(added: 1_234_567, removed: 1_234_567)
         let (controller, window) = try await Self.host(store, width: width)

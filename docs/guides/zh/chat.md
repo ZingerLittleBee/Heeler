@@ -1,9 +1,9 @@
-<!-- Translated from docs/guides/chat.md at d56d0c0f -->
+<!-- Translated from docs/guides/chat.md at ac238220 -->
 # 在 Chat 中使用 Agent
 
 在 iPhone 或 iPad 上通过 Heeler 的原生 Chat 使用 Claude Code 和 Codex。你可以阅读对话并通过 SSH 回复，Agent 继续在 Host 上运行。
 
-你需要一台运行 herdr、[herdr-core](herdr-core.md#chat) 或 [tmux](tmux.md#chat) 的 Host，并在上面运行受支持的编程 Agent（Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 或 Antigravity CLI）。
+你需要一台运行 herdr、[herdr-core](herdr-core.md#chat)、[tmux](tmux.md#chat) 或 [Rex](rex.md#chat)（仅限 Claude Code、Codex、Pi 和 Oh My Pi）的 Host，并在上面运行受支持的编程 Agent（Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 或 Antigravity CLI）。
 
 ## 配置 Host
 
@@ -66,12 +66,24 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi、OpenCode 和 Antigravity CLI 要等这一轮结束。
 - **停止。** Agent 工作时，如果输入框是空的，**Send** 会变成 **Stop**。轻点它可以中断这一轮。
 - **命令。** 输入 `/` 可以选择 `/compact` 或 Agent 的技能。其他命令（例如 `/model`）请在终端中运行。
-- **图片和文件。** 在 Herdr TUI 和 herdr-core Host 上，轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
+- **图片和文件。** 在 Herdr TUI、herdr-core、tmux 和 Rex Host 上，轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
 
 如果 Chat 不能发送某条消息（例如以 `!` 开头的消息），它会保留你的文字，并在输入框下方说明原因。
 
 > [!TIP]
 > 在连接了键盘的 iPad 上，按 **Return** 发送，按 **Shift-Return** 换行。
+
+## 把工作交给另一个 Agent
+
+Agent 卡住了、额度用完了，或者你想听听别的意见时，可以把它的对话交给同一台 Host 上的另一个 Agent。
+
+1. 在 **Agents** 中长按这个 Agent，或打开 Agent 顶部的 **More** 菜单，轻点 **Hand Off**。
+2. 选择 **Take Over** 让另一个 Agent 接着做，或选择 **Second Opinion** 让它评审这份工作。
+3. 选一个 Agent，或轻点 **New Agent…** 在同一目录下新开一个。
+
+Heeler 会把对话写成 Host 上的一个文件（不含工具输出），然后打开另一个 Agent，输入框里已经放好一条指向该文件的消息。在你轻点 **Send** 之前不会发送任何内容，你可以先改写这条消息。
+
+Hand Off 需要 Chat 能显示这个 Agent 的对话，并且 Host 能接收文件，也就是支持 **Add File** 的那些 Host。
 
 ## 回答处于 Blocked 状态的 Agent
 

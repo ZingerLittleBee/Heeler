@@ -10,14 +10,21 @@ struct ChatBackgroundWorkStrip: View {
     let work: ChatBackgroundWork
     let isHostConnected: Bool
     let isCondensed: Bool
+    /// Whether finished rows still show once no unfinished Background Work
+    /// remains (for example while the foreground turn is still running).
+    var showsFinishedWork = true
     /// Opens the sheet at a row's id, or at no row.
     let open: (String?) -> Void
 
     @Environment(\.locale) private var locale
     @Environment(\.calendar) private var calendar
 
+    private var showsStrip: Bool {
+        !work.rows.isEmpty && (showsFinishedWork || work.hasUnfinished)
+    }
+
     var body: some View {
-        if !work.rows.isEmpty {
+        if showsStrip {
             // Only a running row's time moves, so only then does it tick.
             if presentation(at: .now).ticks {
                 TimelineView(.periodic(from: .now, by: 1)) { context in

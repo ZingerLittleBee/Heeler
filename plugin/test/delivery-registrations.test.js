@@ -16,6 +16,8 @@ import {
   registeredSessions,
 } from "../src/delivery/registrations.js";
 
+const pushTokens = JSON.parse(readFileSync(new URL("../test-vectors/push-token-v1.json", import.meta.url), "utf8"));
+
 const KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
 const KEY_TEXT = KEY.toString("base64url");
 const TOKEN_A = "a".repeat(64);
@@ -130,12 +132,27 @@ suite("Live Activity device reads", () => {
     assert.equal(device.rowLayout, null);
   });
 
-  test("skips a missing registration, an implausible token and another session", () => {
+  // The Push Relay holds its tokens to the same vector
+  // (relay/test/worker.test.js): one side alone would drop what the other
+  // lets through, as both did to a 256-character token (#415).
+  for (const [verdict, cases] of [["reads", pushTokens.accepted], ["skips", pushTokens.rejected]]) {
+    for (const { name, unit, count } of cases) {
+      test(`${verdict} ${name}`, () => {
+        const token = unit.repeat(count);
+        writeRegistrations({ v: 1, devices: [liveEntry({ token })] });
+        assert.deepEqual(
+          readLiveActivityDevices(dir, "").map((device) => device.token),
+          verdict === "reads" ? [token] : [],
+        );
+      });
+    }
+  }
+
+  test("skips a missing registration and another session", () => {
     writeRegistrations({
       v: 1,
       devices: [
         alertEntry(),
-        liveEntry({ token: "NOT-HEX" }),
         liveEntry({}, { session: "work" }),
         liveEntry({}, { key: "c2hvcnQ" }),
       ],

@@ -27,6 +27,8 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// end, which throws the rows out by far more than the row changed, so
     /// rows above the reader's keep their heights until the list is back.
     var isPastEnd: () -> Bool = { false }
+    var onMeasure: ((ChatRowID, ChatMeasuredHeight) -> Void)?
+    var onForgetMeasurements: ((Set<ChatRowID>) -> Void)?
     /// Room at the trailing edge that rows end short of, for chrome that
     /// floats over it. The list itself still runs to the edge, so a drag
     /// that starts there scrolls it and its scroll bar stays at the edge.
@@ -80,10 +82,19 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         invalidateLayout()
     }
 
+    /// Seeds row measurements remembered from an earlier mount of the same
+    /// conversation so the initial layout pass uses measured heights.
+    func seedMeasurements(_ saved: [ChatRowID: ChatMeasuredHeight]) {
+        for (id, entry) in saved where measured[id] == nil {
+            measured[id] = entry
+        }
+    }
+
     /// Drops measurements for rows no longer shown, so the cache follows the
     /// conversation instead of growing with it.
     func forgetMeasurements(keeping kept: Set<ChatRowID>) {
         measured = measured.filter { kept.contains($0.key) }
+        onForgetMeasurements?(kept)
     }
 
     override func prepare() {
@@ -231,8 +242,10 @@ final class ChatTimelineLayout: UICollectionViewLayout {
 
     private func record(_ height: CGFloat, at index: Int) {
         guard let id = id(at: index), let info = rowInfo(id) else { return }
-        measured[id] = ChatMeasuredHeight(
+        let entry = ChatMeasuredHeight(
             height: height, width: width, contentSizeCategory: contentSizeCategory, revision: info.revision)
+        measured[id] = entry
+        onMeasure?(id, entry)
     }
 
     private func estimatedHeight(for id: ChatRowID) -> CGFloat {

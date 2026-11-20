@@ -81,14 +81,15 @@ struct AgentRowRendererTests {
         let agent = kindAgent("claude")
         #expect(AgentRowRenderer.render(layout: layout, agent: agent, omittingMarkedKind: true)
             .map { $0.map(\.text).joined() } == ["Heeler", "claude"])
-        let trailing = try #require(
-            AgentRowRenderer.renderTrailing(layout: layout, agent: agent, omittingMarkedKind: true))
+        let trailing = AgentRowRenderer.renderTrailing(layout: layout, agent: agent, omittingMarkedKind: true)
         #expect(trailing[0] == [.host])
         #expect(trailing[1] == [.fields([RenderedToken(token: .workspace, text: "Heeler", fg: nil, bold: nil, dim: nil)])])
         #expect(trailing[2] == [.host, .statusBadge, .changes])
-        let kept = try #require(AgentRowRenderer.renderTrailing(layout: layout, agent: agent))
+        let kept = AgentRowRenderer.renderTrailing(layout: layout, agent: agent)
         #expect(kept[0] == [.fields([RenderedToken(token: .agent, text: "claude", fg: nil, bold: nil, dim: nil)]), .host])
-        #expect(AgentRowRenderer.renderTrailing(layout: AgentRowLayout(rows: layout.rows), agent: agent) == nil)
+        #expect(
+            AgentRowRenderer.renderTrailing(layout: AgentRowLayout(rows: layout.rows), agent: agent)
+                == [[.host], [.changes], []])
     }
 
     /// A CLI Agent whose launch directory and SSH account are the only things
@@ -192,18 +193,37 @@ struct AgentRowRendererTests {
         #expect(AgentRowRenderer.render(layout: emptyOverride, agent: agent()).isEmpty)
     }
 
-    @Test func heelerOnlyFieldsRenderHostStatusDirectoryAndPath() {
+    @Test func heelerOnlyFieldsRenderHostBackendStatusDirectoryAndPath() {
         let withCwd = ConsoleAgent(
             hostID: UUID(), hostName: "Studio Mac",
             agent: Agent(
                 terminalID: "term", kind: "claude", title: "Fix", status: .idle,
                 workspaceID: "w", tabID: "t", paneID: "p", cwd: "/work/heeler", revision: 1),
-            workspaceLabel: nil, repositoryCheckout: nil)
-        let layout = AgentRowLayout(rows: [[.init(.host), .init(.status), .init(.directory), .init(.path)]])
+            workspaceLabel: nil, repositoryCheckout: nil, backend: .tmux)
+        let layout = AgentRowLayout(rows: [[.init(.host), .init(.backend), .init(.status), .init(.directory), .init(.path)]])
         #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).map { $0.map(\.text).joined() }
-                == ["Studio Mac · Idle · heeler · /work/heeler"])
+                == ["Studio Mac · tmux · Idle · heeler · /work/heeler"])
         #expect(AgentRowRenderer.render(layout: layout, agent: withCwd).flatMap { $0.compactMap(\.token) }
-                == [.host, .status, .directory, .path])
+                == [.host, .backend, .status, .directory, .path])
+
+        for (backend, expected) in [
+            (AgentBackend.core, "core"),
+            (AgentBackend.tui, "tui"),
+            (AgentBackend.rex, "rex"),
+            (AgentBackend.tmux, "tmux"),
+        ] {
+            var sample = withCwd
+            sample = ConsoleAgent(
+                hostID: sample.hostID, hostName: sample.hostName, agent: sample.agent,
+                workspaceLabel: nil, repositoryCheckout: nil, backend: backend)
+            #expect(AgentRowRenderer.render(layout: AgentRowLayout(rows: [[.init(.backend)]]), agent: sample)
+                .map { $0.map(\.text).joined() } == [expected])
+        }
+        #expect(ServerKind.herdrCore.agentBackend == .core)
+        #expect(ServerKind.herdrTUI.agentBackend == .tui)
+        #expect(ServerKind.tmux.agentBackend == .tmux)
+        #expect(ServerKind.rex.agentBackend == .rex)
+        #expect(ServerKind.unconfirmed.agentBackend == nil)
 
         let empty = ConsoleAgent(
             hostID: UUID(), hostName: "  ",

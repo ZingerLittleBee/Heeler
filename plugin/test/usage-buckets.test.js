@@ -6,7 +6,7 @@ const claude = { accounts: [{ id: "default", isDefault: true, name: null, direct
 
 function snapshotFor(timestamps) {
   return { complete: true, coveredSince: Date.parse(timestamps[0]), buckets: timestamps.flatMap(timestamp =>
-    ["claude", "codex"].flatMap(program =>
+    ["claude", "codex", "agy"].flatMap(program =>
       [{ model: "model" }, { directory: "/project" }].map(dimension => ({
         timestamp, program, ...dimension,
         tokens: { input: 1, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 1 },
@@ -117,6 +117,12 @@ test("Codex reports each Account's Token Usage and Usage Limits, its total the c
   const added = reportFromSnapshot({ ...snapshot, countedCodexAccounts: ["default"], usageLimits: { codex: reading(20) } }, "UTC", true, now, false,
     { ...claude, programs: { codex } }).programs[1].accounts[1];
   assert.deepEqual([added.tokenUsage.state, added.usageLimits], ["ok", { state: "unavailable", reason: "notReadYet" }]);
+
+  // Turning off Codex limits reports disabled for Default and readable added Accounts while preserving Token Usage.
+  const disabled = reportFromSnapshot(snapshot, "UTC", false, now, false, { ...claude, codexLimits: false, programs: { codex } }).programs[1];
+  assert.equal(disabled.tokenUsage.totals.today.tokens.total, 15);
+  assert.deepEqual(disabled.usageLimits, { state: "disabled" });
+  assert.deepEqual(disabled.accounts.map(account => account.usageLimits), [{ state: "disabled" }, { state: "disabled" }, undefined]);
 });
 
 test("without Codex Accounts, the Codex entry lists only its Default Account beside what it reported before", () => {
@@ -128,4 +134,31 @@ test("without Codex Accounts, the Codex entry lists only its Default Account bes
   assert.deepEqual(program, before);
   assert.deepEqual(accounts, [{ ...codex.accounts[0], tokenUsage: before.tokenUsage, usageLimits: before.usageLimits }]);
   assert.deepEqual(accountSuggestions, []);
+});
+
+test("Antigravity sums counted Accounts, marks added Accounts singleSignIn, and hides limits when disabled", () => {
+  const now = Date.parse("2026-03-09T12:00:00Z");
+  const bucket = (tokens, account) => ({ timestamp: Date.parse("2026-03-09T10:00:00Z"), program: "agy", model: "gemini-3.8-flash",
+    ...(account === undefined ? {} : { account }), tokens: { input: tokens, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, total: tokens },
+    estimatedCostUSD: 0, unpricedTokens: 0 });
+  const reading = { state: "ok", source: "service", plan: "Google AI Pro", observedAt: "2026-03-09T11:00:00Z",
+    windows: [{ id: "gemini:5h", label: "Gemini · 5-hour", durationMinutes: 300, usedPercent: 18, resetsAt: null, expired: false }] };
+  const agy = { accounts: [
+    { id: "default", isDefault: true, name: null, directory: "/home/u/.gemini/antigravity-cli", state: "ok" },
+    { id: "alt00001", isDefault: false, name: "alt", directory: "/home/u/.gemini/antigravity-cli-alt", state: "ok" },
+  ], suggestions: [{ directory: "/home/u/.gemini/antigravity-cli-2", name: "antigravity-cli-2", source: "home" }] };
+  const snapshot = { complete: true, buckets: [bucket(12), bucket(8, "alt00001")],
+    countedAgyAccounts: ["default", "alt00001"], errors: {}, usageLimits: { agy: reading } };
+
+  const enabled = reportFromSnapshot(snapshot, "UTC", false, now, false, { ...claude, programs: { agy } }).programs[2];
+  assert.equal(enabled.program, "agy");
+  assert.equal(enabled.tokenUsage.totals.today.tokens.total, 20);
+  assert.equal(enabled.usageLimits.windows[0].usedPercent, 18);
+  assert.equal(enabled.accounts[0].usageLimits.windows[0].usedPercent, 18);
+  assert.deepEqual(enabled.accounts[1].usageLimits, { state: "unavailable", reason: "singleSignIn" });
+  assert.deepEqual(enabled.accountSuggestions, agy.suggestions);
+
+  const disabled = reportFromSnapshot(snapshot, "UTC", false, now, false, { ...claude, programs: { agy }, agyLimits: false }).programs[2];
+  assert.deepEqual(disabled.usageLimits, { state: "disabled" });
+  assert.deepEqual(disabled.accounts.map(account => account.usageLimits), [{ state: "disabled" }, { state: "disabled" }]);
 });

@@ -6,7 +6,8 @@ import Foundation
 ///
 /// `herdrRead` runs first, in a subshell of its own, so its PATH never reaches
 /// the locator. The tmux probe follows, in another, through the login shell
-/// (ADR 0044). No part starts a server.
+/// (ADR 0044), and the Rex probe in a third, which only tests files (ADR 0049).
+/// No part starts a server.
 enum ServerKindDetectionScript {
     /// What one run printed, before anyone decides what it means.
     struct Output: Equatable, Sendable {
@@ -17,6 +18,9 @@ enum ServerKindDetectionScript {
         /// Nil on native Windows, where no probe runs, and when the probe's part
         /// did not read, which says nothing of the other two.
         var tmux: TmuxProbe.Report?
+        /// Nil on native Windows, where no probe runs, and when the Rex part
+        /// did not read.
+        var rex: RexProbe.Report?
     }
 
     static func script(session: String, nonce: String, herdrRead: String) -> Data {
@@ -32,6 +36,7 @@ enum ServerKindDetectionScript {
             )
 
             """.utf8)
+        script.append(Data(RexProbe.script(nonce: nonce).utf8))
         if let locator = try? HerdrCoreLocator.script(session: session, nonce: nonce) {
             script.append(locator)
         } else {
@@ -82,6 +87,7 @@ enum ServerKindDetectionScript {
             herdrStatus: status,
             herdrOutput: Data(lines[(begin + 1)..<statusLine].joined(separator: [UInt8(ascii: "\n")])),
             location: location,
-            tmux: platform == .nativeWindows ? nil : try? TmuxProbe.parse(stdout: stdout, nonce: nonce))
+            tmux: platform == .nativeWindows ? nil : try? TmuxProbe.parse(stdout: stdout, nonce: nonce),
+            rex: platform == .nativeWindows ? nil : try? RexProbe.parse(stdout: stdout, nonce: nonce))
     }
 }

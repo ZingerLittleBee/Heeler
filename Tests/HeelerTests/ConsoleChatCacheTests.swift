@@ -187,6 +187,139 @@ struct ConsoleChatCacheTests {
         #expect(await cache.loadAgentDirectory(for: host).workspaces.map(\.branch) == [.named("main")])
     }
 
+    @Test func coldOfflineSavedChatsKeepPluginLayoutSortAndAllRowFieldsBeforeAndAfterConnecting() async throws {
+        let host = Host.fixture(name: "Studio Mac")
+        let cache = VolatileChatTranscriptCache()
+        let sidebarData = Data(
+            #"""
+            {
+              "v": 1,
+              "agent_panel_sort": "spaces",
+              "sidebar": {
+                "agents": {
+                  "row_gap": 1,
+                  "rows": [
+                    [{"token": "terminal_title_stripped"}],
+                    [{"token": "$branch", "dim": true}, {"token": "terminal_title"}, {"token": "pane"}]
+                  ]
+                }
+              }
+            }
+            """#.utf8)
+        let firstWire = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1,
+            tabID: "w1:t1", terminalID: "term-2", workspaceID: "w1", agent: "claude",
+            agentSession: AgentSessionInfo(
+                agent: "claude", kind: .id, source: "herdr:claude", value: Self.sessionA),
+            cwd: "/Users/dev/work/heeler",
+            terminalTitle: "◑ Cache row layout fields",
+            terminalTitleStripped: "Cache row layout fields",
+            title: "Main pane",
+            tokens: ["branch": "feat/cache-fields"])
+        let secondWire = AgentInfo(
+            agentStatus: .working, focused: false, paneID: "w1:p1", revision: 2,
+            tabID: "w1:t2", terminalID: "term-1", workspaceID: "w1", agent: "codex",
+            agentSession: AgentSessionInfo(
+                agent: "codex", kind: .id, source: "herdr:codex", value: Self.sessionB),
+            cwd: "/Users/dev/work/heeler",
+            terminalTitle: "◐ Audit sidebar snapshot",
+            terminalTitleStripped: "Audit sidebar snapshot",
+            title: "Review pane",
+            tokens: ["branch": "feat/sidebar"])
+        let snapshot = SessionSnapshot.fixture(
+            agents: [firstWire, secondWire],
+            workspaces: [.fixture(workspaceID: "w1", label: "heeler")])
+        let liveTransport = ScriptedTransport(snapshot: snapshot)
+        await liveTransport.setSidebarLayout(sidebarData)
+
+        let firstLaunch = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: cache) {
+            _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { liveTransport }, keepalive: nil)
+        }
+        firstLaunch.setHosts([host])
+        await firstLaunch.resume()
+        try await Self.waitUntil {
+            firstLaunch.agents.count == 2
+                && firstLaunch.sidebarSnapshots.snapshot(for: host.id) != nil
+                && firstLaunch.cachedChats.agents(on: host).count == 2
+                && firstLaunch.cachedChats.sidebarSnapshot(on: host) != nil
+        }
+        await firstLaunch.cachedChats.settled()
+        let liveLayout = firstLaunch.rowLayout(for: host.id)
+        let liveOrder = firstLaunch.agents.map(\.id)
+        let liveCards = firstLaunch.agents.map {
+            AgentCardPresentation(agent: $0, layout: liveLayout, leadsWithMark: true)
+        }
+        await firstLaunch.suspend()
+
+        let reachability = HostReachability()
+        let secondTransport = ScriptedTransport(snapshot: snapshot)
+        await secondTransport.setSidebarLayout(sidebarData)
+        let sidebarGate = ScriptedTransportCallGate()
+        await secondTransport.gateNextSidebarLayoutRead(sidebarGate)
+        let relaunched = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: cache) {
+            _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { try await reachability.connect(secondTransport) },
+                reconnectPolicy: ReconnectPolicy(
+                    initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(20)),
+                keepalive: nil)
+        }
+        defer { relaunched.setHosts([]) }
+        relaunched.setHosts([host])
+        await relaunched.resume()
+        await relaunched.cachedChats.settled()
+
+        // Live inventory sorts by status priority (working before idle), ignoring
+        // `agent_panel_sort = "spaces"`; offline saved entries carry no live status
+        // (`status == .unknown`) so they keep `snapshotOrder` while preserving the
+        // cached layout, rowGap, and every rendered field.
+        #expect(
+            liveOrder == [
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2"),
+            ])
+        let cachedLayout = relaunched.rowLayout(for: host.id)
+        #expect(cachedLayout == liveLayout)
+        #expect(cachedLayout.rowGap == 1)
+        #expect(
+            relaunched.chatDisplayAgents.map(\.id) == [
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2"),
+                ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"),
+            ])
+        let cachedCards = relaunched.chatDisplayAgents.map {
+            AgentCardPresentation(agent: $0, layout: cachedLayout, leadsWithMark: true)
+        }
+        #expect(cachedCards == Array(liveCards.reversed()))
+        #expect(cachedCards.first?.headline == "Cache row layout fields")
+        #expect(
+            cachedCards.first?.additionalRows == [
+                "feat/cache-fields · ◑ Cache row layout fields · Main pane",
+            ])
+        #expect(cachedCards.last?.headline == "Audit sidebar snapshot")
+        #expect(
+            cachedCards.last?.additionalRows == [
+                "feat/sidebar · ◐ Audit sidebar snapshot · Review pane",
+            ])
+
+        // Session snapshot lands while sidebar.json is still loading: layout does not revert.
+        await reachability.comeOnline()
+        await sidebarGate.waitForEntry()
+        #expect(relaunched.agents.map(\.id) == liveOrder)
+        #expect(relaunched.rowLayout(for: host.id) == liveLayout)
+        await sidebarGate.open()
+        try await Self.waitUntil { relaunched.sidebarSnapshots.snapshot(for: host.id) != nil }
+        #expect(relaunched.rowLayout(for: host.id) == liveLayout)
+
+        // Removing sidebar.json on the Host clears the cached snapshot once read.
+        await secondTransport.setSidebarLayout(nil)
+        await relaunched.refreshSidebarLayouts()
+        await relaunched.cachedChats.settled()
+        #expect(relaunched.rowLayout(for: host.id) == .consoleDefault)
+        #expect(relaunched.cachedChats.sidebarSnapshot(on: host) == nil)
+    }
+
     @Test func coldOfflineSavedChatReadsAsItsHostsHeader() async throws {
         let host = Host(address: "offline.invalid", username: "reader")
         let cache = VolatileChatTranscriptCache()
@@ -523,6 +656,46 @@ struct ConsoleChatCacheTests {
         directory.confirm(Self.agent(host: host, session: Self.sessionA).agent, for: replacement, on: host)
         await directory.settled()
         #expect(directory.agents(on: host).isEmpty)
+    }
+
+    @Test func chatHostFilesCachesAccountDirectoriesUntilAccountsChange() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        var initialFile = UsageAccountFile()
+        _ = try initialFile.add(
+            directory: "/home/dev/.claude-work", name: "Work", defaultDirectory: "/home/dev/.claude",
+            for: .claude)
+        await transport.setUsageAccountFile(try initialFile.encoded())
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10), chatCache: VolatileChatTranscriptCache()) {
+            _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await Self.waitUntil { console.hostStatuses[host.id] == .connected }
+
+        let files = console.chatHostFiles(for: host.id)
+        let first = try await files.accountDirectories(.claude)
+        let readsAfterFirst = await transport.usageAccountFileReads
+        let second = try await files.accountDirectories(.claude)
+        let third = try await files.accountDirectories(.claude)
+
+        #expect(first == ["/home/dev/.claude-work"])
+        #expect(second == first)
+        #expect(third == first)
+        #expect(await transport.usageAccountFileReads == readsAfterFirst)
+
+        // Mutating accounts through HostAccountsStore invalidates the cached directories.
+        var updatedFile = initialFile
+        _ = try updatedFile.add(
+            directory: "/home/dev/.claude-personal", name: "Personal", defaultDirectory: "/home/dev/.claude",
+            for: .claude)
+        await transport.setUsageAccountFile(try updatedFile.encoded())
+        _ = await console.hostAccountsStore(for: host.id).setVariable("CLAUDE_CONFIG_DIR", for: .claude)
+
+        let refreshed = try await files.accountDirectories(.claude)
+        #expect(refreshed == ["/home/dev/.claude-work", "/home/dev/.claude-personal"])
     }
 
     private static func agent(

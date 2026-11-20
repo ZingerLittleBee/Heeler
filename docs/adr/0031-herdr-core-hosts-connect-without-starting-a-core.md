@@ -10,6 +10,10 @@ is one Host, and a Server's kind is set when it is turned on instead of being
 confirmed in Host detail. What this ADR calls a Host is one such Server's
 record, which still never changes kind.
 
+Amended by [ADR 0057](0057-heeler-pair-pairs-a-machine-without-herdr.md):
+a Pairing Code no longer always adds a Herdr TUI Host. Pairing ends on Add
+Host's last step, where a herdr-core Server is turned on like any other.
+
 herdr-core (`hc`) is the vendor's headless terminal runtime. It shares no
 Agents with Herdr TUI, has no workspaces, tabs, or plugins, and speaks its own
 JSON-RPC 2.0 protocol, which switches to a framed multiplex after

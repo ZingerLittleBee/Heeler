@@ -1,7 +1,7 @@
 {
-  "pricingVersion": "2026-10-30",
+  "pricingVersion": "2026-11-15",
   "source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-  "sourceSHA256": "57b13f6a6971d32d740d997d2307380a0f525aa839e746eade4d35a23671d159",
+  "sourceSHA256": "3b5829b9df6a8d32f5ad44f8ec09001b0c31ac8553734a160d0fb0ba95573889",
   "license": "MIT",
   "models": {
     "claude-fable-5": {
@@ -18,6 +18,20 @@
         "output": 0.00005,
         "cacheRead": 2.5e-7,
         "cacheWrite": 0.0000125
+      }
+    },
+    "claude-fable-5-2": {
+      "base": {
+        "input": 0.000008,
+        "output": 0.00004,
+        "cacheRead": 2e-7,
+        "cacheWrite": 0.00001
+      },
+      "fast": {
+        "input": 0.000016,
+        "output": 0.00008,
+        "cacheRead": 4e-7,
+        "cacheWrite": 0.00002
       }
     },
     "claude-haiku-4-5": {
@@ -67,6 +81,20 @@
         "output": 0.00005,
         "cacheRead": 2.5e-7,
         "cacheWrite": 0.0000125
+      }
+    },
+    "claude-mythos-5-2": {
+      "base": {
+        "input": 0.000008,
+        "output": 0.00004,
+        "cacheRead": 2e-7,
+        "cacheWrite": 0.00001
+      },
+      "fast": {
+        "input": 0.000016,
+        "output": 0.00008,
+        "cacheRead": 4e-7,
+        "cacheWrite": 0.00002
       }
     },
     "claude-mythos-preview": {
@@ -222,6 +250,488 @@
         "output": 0.00001,
         "cacheRead": 1e-7,
         "cacheWrite": 0.0000025
+      }
+    },
+    "gemini-2.5-computer-use-preview-10-2025": {
+      "base": {
+        "input": 0.00000125,
+        "output": 0.00001
+      },
+      "longContext": {
+        "threshold": 200000,
+        "base": {
+          "input": 0.0000025,
+          "output": 0.000015
+        }
+      }
+    },
+    "gemini-2.5-flash": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 3e-8
+      },
+      "fast": {
+        "input": 5.4e-7,
+        "output": 0.0000045,
+        "cacheRead": 5.4e-8
+      },
+      "flex": {
+        "input": 1.5e-7,
+        "output": 0.00000125,
+        "cacheRead": 3e-8
+      }
+    },
+    "gemini-2.5-flash-lite": {
+      "base": {
+        "input": 1e-7,
+        "output": 4e-7,
+        "cacheRead": 1e-8
+      },
+      "fast": {
+        "input": 1.8e-7,
+        "output": 7.2e-7,
+        "cacheRead": 1.8e-8
+      },
+      "flex": {
+        "input": 5e-8,
+        "output": 2e-7,
+        "cacheRead": 1e-8
+      }
+    },
+    "gemini-2.5-flash-lite-preview-09-2025": {
+      "base": {
+        "input": 1e-7,
+        "output": 4e-7,
+        "cacheRead": 1e-8
+      }
+    },
+    "gemini-2.5-flash-preview-09-2025": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 3e-8
+      }
+    },
+    "gemini-2.5-pro": {
+      "base": {
+        "input": 0.00000125,
+        "output": 0.00001,
+        "cacheRead": 1.25e-7
+      },
+      "fast": {
+        "input": 0.00000225,
+        "output": 0.000018,
+        "cacheRead": 2.25e-7
+      },
+      "flex": {
+        "input": 6.25e-7,
+        "output": 0.000005,
+        "cacheRead": 1.25e-7
+      },
+      "longContext": {
+        "threshold": 200000,
+        "base": {
+          "input": 0.0000025,
+          "output": 0.000015,
+          "cacheRead": 2.5e-7
+        },
+        "fast": {
+          "input": 0.0000045,
+          "output": 0.000027,
+          "cacheRead": 4.5e-7
+        },
+        "flex": {
+          "input": 0.00000125,
+          "output": 0.0000075
+        }
+      }
+    },
+    "gemini-2.5-pro-preview-tts": {
+      "base": {
+        "input": 0.000001,
+        "output": 0.00002,
+        "cacheRead": 1.25e-7
+      }
+    },
+    "gemini-3-flash-preview": {
+      "base": {
+        "input": 5e-7,
+        "output": 0.000003,
+        "cacheRead": 5e-8
+      },
+      "fast": {
+        "input": 9e-7,
+        "output": 0.0000054,
+        "cacheRead": 9e-8
+      },
+      "flex": {
+        "input": 2.5e-7,
+        "output": 0.0000015
+      }
+    },
+    "gemini-3.1-flash-lite": {
+      "base": {
+        "input": 2.5e-7,
+        "output": 0.0000015,
+        "cacheRead": 2.5e-8
+      },
+      "fast": {
+        "input": 4.5e-7,
+        "output": 0.0000027,
+        "cacheRead": 4.5e-8
+      },
+      "flex": {
+        "input": 1.25e-7,
+        "output": 7.5e-7,
+        "cacheRead": 1.25e-8
+      }
+    },
+    "gemini-3.1-flash-lite-preview": {
+      "base": {
+        "input": 2.5e-7,
+        "output": 0.0000015,
+        "cacheRead": 2.5e-8
+      }
+    },
+    "gemini-3.1-pro-preview": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.000012,
+        "cacheRead": 2e-7
+      },
+      "fast": {
+        "input": 0.0000036,
+        "output": 0.0000216,
+        "cacheRead": 3.6e-7
+      },
+      "flex": {
+        "input": 0.000001,
+        "output": 0.000006
+      },
+      "longContext": {
+        "threshold": 200000,
+        "base": {
+          "input": 0.000004,
+          "output": 0.000018,
+          "cacheRead": 4e-7
+        },
+        "fast": {
+          "input": 0.0000072,
+          "output": 0.0000324,
+          "cacheRead": 7.2e-7
+        },
+        "flex": {
+          "input": 0.000002,
+          "output": 0.000009
+        }
+      }
+    },
+    "gemini-3.1-pro-preview-customtools": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.000012,
+        "cacheRead": 2e-7
+      },
+      "longContext": {
+        "threshold": 200000,
+        "base": {
+          "input": 0.000004,
+          "output": 0.000018,
+          "cacheRead": 4e-7
+        }
+      }
+    },
+    "gemini-3.5-flash": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.000009,
+        "cacheRead": 1.5e-7
+      },
+      "fast": {
+        "input": 0.0000027,
+        "output": 0.0000162,
+        "cacheRead": 2.7e-7
+      },
+      "flex": {
+        "input": 7.5e-7,
+        "output": 0.0000045,
+        "cacheRead": 7.5e-8
+      }
+    },
+    "gemini-3.5-flash-lite": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 3e-8
+      },
+      "fast": {
+        "input": 5.4e-7,
+        "output": 0.0000045,
+        "cacheRead": 5.4e-8
+      },
+      "flex": {
+        "input": 1.5e-7,
+        "output": 0.00000125,
+        "cacheRead": 1.5e-8
+      }
+    },
+    "gemini-3.6-flash": {
+      "base": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 7.5e-8
+      },
+      "fast": {
+        "input": 0.00000135,
+        "output": 0.00000675,
+        "cacheRead": 1.35e-7
+      },
+      "flex": {
+        "input": 3.75e-7,
+        "output": 0.000001875,
+        "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-3.7-flash": {
+      "base": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 7.5e-8
+      },
+      "fast": {
+        "input": 0.00000135,
+        "output": 0.00000675,
+        "cacheRead": 1.35e-7
+      },
+      "flex": {
+        "input": 3.75e-7,
+        "output": 0.000001875,
+        "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-3.8-flash": {
+      "base": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 7.5e-8
+      },
+      "fast": {
+        "input": 0.00000135,
+        "output": 0.00000675,
+        "cacheRead": 1.35e-7
+      },
+      "flex": {
+        "input": 3.75e-7,
+        "output": 0.000001875,
+        "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-3.8-flash-cyber": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.0000075,
+        "cacheRead": 1.5e-7
+      },
+      "fast": {
+        "input": 0.0000027,
+        "output": 0.0000135,
+        "cacheRead": 2.7e-7
+      },
+      "flex": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 7.5e-8
+      }
+    },
+    "gemini-4-argon": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.00001,
+        "cacheRead": 1e-7
+      },
+      "fast": {
+        "input": 0.0000036,
+        "output": 0.000018,
+        "cacheRead": 1.8e-7
+      },
+      "flex": {
+        "input": 0.000001,
+        "output": 0.000005,
+        "cacheRead": 5e-8
+      }
+    },
+    "gemini-4-carbon": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.00001,
+        "cacheRead": 1e-7
+      },
+      "fast": {
+        "input": 0.0000036,
+        "output": 0.000018,
+        "cacheRead": 1.8e-7
+      },
+      "flex": {
+        "input": 0.000001,
+        "output": 0.000005,
+        "cacheRead": 5e-8
+      }
+    },
+    "gemini-4-hydrogen": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.0000075,
+        "cacheRead": 7.5e-8
+      },
+      "fast": {
+        "input": 0.0000027,
+        "output": 0.0000135,
+        "cacheRead": 1.35e-7
+      },
+      "flex": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-exp-1114": {
+      "base": {
+        "input": 0,
+        "output": 0
+      },
+      "longContext": {
+        "threshold": 128000,
+        "base": {
+          "input": 0,
+          "output": 0
+        }
+      }
+    },
+    "gemini-exp-1206": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 3e-8
+      }
+    },
+    "gemini-flash-latest": {
+      "base": {
+        "input": 7.5e-7,
+        "output": 0.00000375,
+        "cacheRead": 7.5e-8
+      },
+      "fast": {
+        "input": 0.00000135,
+        "output": 0.00000675,
+        "cacheRead": 1.35e-7
+      },
+      "flex": {
+        "input": 3.75e-7,
+        "output": 0.000001875,
+        "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-flash-lite-latest": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 3e-8
+      },
+      "fast": {
+        "input": 5.4e-7,
+        "output": 0.0000045,
+        "cacheRead": 5e-8
+      },
+      "flex": {
+        "input": 1.5e-7,
+        "output": 0.00000125,
+        "cacheRead": 2e-8
+      }
+    },
+    "gemini-gemma-2-27b-it": {
+      "base": {
+        "input": 3.5e-7,
+        "output": 0.00000105
+      }
+    },
+    "gemini-gemma-2-9b-it": {
+      "base": {
+        "input": 3.5e-7,
+        "output": 0.00000105
+      }
+    },
+    "gemini-omni-1.1-flash": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.000009
+      }
+    },
+    "gemini-omni-1.2-flash": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.000009
+      }
+    },
+    "gemini-omni-flash-preview": {
+      "base": {
+        "input": 0.0000015,
+        "output": 0.000009
+      }
+    },
+    "gemini-pro-latest": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.000012,
+        "cacheRead": 2e-7
+      },
+      "fast": {
+        "input": 0.0000036,
+        "output": 0.0000216,
+        "cacheRead": 3.6e-7
+      },
+      "flex": {
+        "input": 0.000001,
+        "output": 0.000006,
+        "cacheRead": 2e-7
+      },
+      "longContext": {
+        "threshold": 200000,
+        "base": {
+          "input": 0.000004,
+          "output": 0.000018,
+          "cacheRead": 4e-7
+        },
+        "fast": {
+          "input": 0.0000072,
+          "output": 0.0000324,
+          "cacheRead": 7.2e-7
+        },
+        "flex": {
+          "input": 0.000002,
+          "output": 0.000009,
+          "cacheRead": 4e-7
+        }
+      }
+    },
+    "gemini-robotics-er-1.5-preview": {
+      "base": {
+        "input": 3e-7,
+        "output": 0.0000025,
+        "cacheRead": 0
+      }
+    },
+    "gemini-robotics-er-2-preview": {
+      "base": {
+        "input": 0.000001,
+        "output": 0.000005,
+        "cacheRead": 1e-7
+      }
+    },
+    "gemini-robotics-er-2-streaming-preview": {
+      "base": {
+        "input": 0.000001,
+        "output": 0.000005
       }
     },
     "gpt-3.5-turbo": {
@@ -1236,6 +1746,29 @@
         }
       }
     },
+    "gpt-6-astra-law": {
+      "base": {
+        "input": 0.00001,
+        "output": 0.00005,
+        "cacheRead": 0.000001
+      }
+    },
+    "gpt-6-cyber": {
+      "base": {
+        "input": 0.00002,
+        "output": 0.0001,
+        "cacheRead": 0.000002,
+        "cacheWrite": 0.000025
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.00004,
+          "output": 0.00015,
+          "cacheRead": 0.000004
+        }
+      }
+    },
     "gpt-6-luna": {
       "base": {
         "input": 1e-7,
@@ -1274,6 +1807,23 @@
           "output": 3.75e-7,
           "cacheRead": 1e-8,
           "cacheWrite": 1.25e-7
+        }
+      }
+    },
+    "gpt-6-rosalind": {
+      "base": {
+        "input": 0.000015,
+        "output": 0.000075,
+        "cacheRead": 0.0000015,
+        "cacheWrite": 0.00001875
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.00003,
+          "output": 0.0001125,
+          "cacheRead": 0.000003,
+          "cacheWrite": 0.0000375
         }
       }
     },

@@ -29,11 +29,14 @@ struct AgentChatSurfaceView: View {
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
     private let showChanges: (() -> Void)?
+    /// Opens Files over this screen; nil hides the menu entry.
+    private let showFiles: (() -> Void)?
     private let workspaceDrawer: WorkspaceTerminalDrawer?
     /// Swaps the detail back to the Agent terminal.
     private let selectSurface: (AgentDetailSurface) -> Void
 
-    @State private var timeline = ChatTimelineModel()
+    @State private var fallbackTimeline = ChatTimelineModel()
+    private var activeTimeline: ChatTimelineModel { chat?.timeline ?? fallbackTimeline }
     @State private var skillsStore: SkillsPaneStore?
     @State private var closer: ClosePaneStore
     /// This view's token with the Chat store, which follows the
@@ -53,6 +56,7 @@ struct AgentChatSurfaceView: View {
     @State private var previousMessageRequest = 0
     @State private var nextMessageRequest = 0
     @State private var topJumpRequest = 0
+    @State private var isHoldingTopJump = false
     @State private var canJumpToPreviousMessage = false
     @State private var followRequest = 0
     @State private var collapseRequest = 0
@@ -62,14 +66,20 @@ struct AgentChatSurfaceView: View {
     /// (`edgeHandleReserve`).
     @State private var hasOfferedWorkspaceDrawer = false
     @State private var composerKeyboardPresentation: AgentComposerKeyboardPresentation = .hidden
+    /// Until the Composer has opened; see `condensesBackgroundWork`.
+    @State private var isOpening = true
+    /// Bumped to put the Composer's keyboard away before Files covers it.
+    @State private var composerKeyboardDismissRequest = 0
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
-    @State private var windowsExtensionFlow: HerdrCoreWindowsExtensionFlow?
+    @State private var extensionFlow: HeelersExtensionFlow?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
+    @State private var movePaneRequest: MovePaneRequest?
+    @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
@@ -99,6 +109,7 @@ struct AgentChatSurfaceView: View {
     /// it lists nothing.
     @State private var backgroundWorkHeight: CGFloat = 0
     @State private var isShowingBackgroundWork = false
+    @State private var isShowingSwarm = false
     @State private var isChoosingConversation = false
     /// The row the Background Work sheet opened from.
     @State private var backgroundWorkFocus: String?
@@ -145,6 +156,7 @@ struct AgentChatSurfaceView: View {
         isOpeningTerminal: Bool,
         openTerminal: @escaping () -> Void,
         showChanges: (() -> Void)?,
+        showFiles: (() -> Void)? = nil,
         workspaceDrawer: WorkspaceTerminalDrawer?,
         selectSurface: @escaping (AgentDetailSurface) -> Void
     ) {
@@ -163,6 +175,7 @@ struct AgentChatSurfaceView: View {
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
         self.showChanges = showChanges
+        self.showFiles = showFiles
         self.workspaceDrawer = workspaceDrawer
         self.selectSurface = selectSurface
         // Chat lists only the skills its `/` menu sends, in the menu, the
@@ -211,9 +224,10 @@ struct AgentChatSurfaceView: View {
             agentID: agent.id,
             isFocused: false,
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
-                || isStartingAgent || isManagingSnippets || isShowingSkillsPicker
+                || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
+                || isShowingSkillsPicker
                 || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
-                || closeErrorMessage != nil || isShowingBackgroundWork,
+                || closeErrorMessage != nil || isShowingBackgroundWork || isShowingSwarm,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
             inputMode: .composer))
@@ -240,6 +254,16 @@ struct AgentChatSurfaceView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                // The Agent has a new id in its new Workspace: the detail goes with it.
+                switchToAgent(ConsoleAgent.ID(hostID: request.hostID, paneID: paneID))
+            })
+        .modifier(
+            HandOffSheetPresenter(request: $handOffRequest, console: console, hosts: hosts) { id in
+                // The Agent that got the Hand Off has it in its Composer, to read and send.
+                switchToAgent(id)
+            })
         .sheet(isPresented: $isStartingAgent) {
             StartAgentView(
                 hosts: hosts,
@@ -273,6 +297,14 @@ struct AgentChatSurfaceView: View {
                     ChatBackgroundWorkSheet(
                         chat: chat, isHostConnected: isHostConnected, focus: backgroundWorkFocus,
                         sheetPresentation: $0)
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingSwarm) {
+            if let chat {
+                ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) {
+                    ChatSwarmSheet(
+                        chat: chat, isHostConnected: isHostConnected, sheetPresentation: $0)
                 }
             }
         }
@@ -345,6 +377,7 @@ struct AgentChatSurfaceView: View {
         chatSurface
         .wearsTheme(themeColors)
         .onAppear {
+            isOpening = false
             closer.didReturnToScreen()
             stageExit?.cancel()
             stageExit = nil
@@ -366,6 +399,7 @@ struct AgentChatSurfaceView: View {
             // says whether Chat really left.
             stageExit?.cancel()
             stageExit = ChatStageExit.watch(isOnStage: isOnStage) { [chat, viewerID, composer] in
+                isHoldingTopJump = false
                 chat?.hide(viewerID)
                 composer.voice.composerDidLeaveScreen()
                 answerSwitch(false)
@@ -377,7 +411,7 @@ struct AgentChatSurfaceView: View {
             defer { PerfTrace.end(span) }
             let transcript = chat?.conversation.transcript
             let entries = feed.history.marking(transcript?.entries ?? [])
-            timeline.update(
+            activeTimeline.updateIfNeeded(
                 conversation: feed.generation,
                 input: ChatTimelineInput(entries: feed.outputs.marking(entries), pending: feed.pending, older: feed.older),
                 turns: transcript?.turns ?? [], precedingTurnEnd: transcript?.precedingTurnEnd, signals: feed.signals,
@@ -581,16 +615,18 @@ struct AgentChatSurfaceView: View {
         HStack(alignment: .bottom, spacing: 0) {
             Spacer(minLength: 0)
             ChatCollapseTrajectoryButton(
-                isVisible: presentation == .timeline && timeline.state.isReady && canCollapseTrajectory
+                isVisible: presentation == .timeline && activeTimeline.state.isReady && canCollapseTrajectory
             ) {
                 collapseRequest += 1
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapseControlHeight = $0 }
             ChatMessageJumpControl(
-                showsPrevious: presentation == .timeline && timeline.state.isReady && canJumpToPreviousMessage,
-                showsLatest: presentation == .timeline && timeline.state.isReady && !isFollowing,
+                showsPrevious: presentation == .timeline && activeTimeline.state.isReady
+                    && (canJumpToPreviousMessage || isHoldingTopJump),
+                showsLatest: presentation == .timeline && activeTimeline.state.isReady && !isFollowing,
                 jumpPrevious: { previousMessageRequest += 1 },
                 jumpTop: { topJumpRequest += 1 },
+                jumpTopHoldingChanged: { isHoldingTopJump = $0 },
                 jumpNext: { nextMessageRequest += 1 },
                 jumpLatest: { jumpRequest += 1 })
         }
@@ -622,10 +658,13 @@ struct AgentChatSurfaceView: View {
     private var conversation: some View {
         ZStack(alignment: .top) {
             ChatTimelineView(
-                state: timeline.state, jumpRequest: jumpRequest,
+                state: activeTimeline.state,
+                timelineModel: activeTimeline,
+                jumpRequest: jumpRequest,
                 previousMessageRequest: previousMessageRequest,
                 nextMessageRequest: nextMessageRequest,
                 topJumpRequest: topJumpRequest,
+                isHoldingTopJump: isHoldingTopJump,
                 followRequest: followRequest,
                 collapseRequest: collapseRequest,
                 topObstruction: topInset + headerObstruction + bannerHeight,
@@ -749,9 +788,9 @@ struct AgentChatSurfaceView: View {
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
-                addExtension: { windowsExtensionFlow = console.windowsExtensionFlow(for: agent.id, keepingTo: session.corePin) })
-            .sheet(item: $windowsExtensionFlow) { flow in
-                HerdrCoreWindowsExtensionSheet(flow: flow)
+                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) })
+            .sheet(item: $extensionFlow) { flow in
+                HeelersExtensionSheet(flow: flow)
             }
         case .disconnected:
             ContentUnavailableView(
@@ -947,7 +986,7 @@ struct AgentChatSurfaceView: View {
         // while Antigravity CLI's Background Work promotes the Console row.
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(chat.agent.status),
-            isBackgroundWorkRunning: chat.backgroundWork.rows.contains { $0.isRunning && !$0.isStale },
+            isBackgroundWorkRunning: chat.isBackgroundWorkRunningForTurns,
             foldsFinishedTurns: foldsFinishedTurns,
             isLive: ChatTurnSignals.isLive(hostStatus: console.hostStatuses[agent.hostID], conversation: conversation),
             olderAwaitsUser: conversation.olderAwaitsUser)
@@ -960,6 +999,7 @@ struct AgentChatSurfaceView: View {
     private var timelineActions: ChatTimelineActions {
         ChatTimelineActions(
             loadOlder: { chat?.loadOlder() },
+            canLoadOlder: { chat?.canLoadOlder ?? false },
             loadOlderAutomatically: { chat?.loadOlder(automatic: true) },
             followingChanged: { isFollowing = $0 },
             firstPositionedLayout: { detailCrossfade?.contentDidAppear() },
@@ -1135,6 +1175,7 @@ struct AgentChatSurfaceView: View {
             openAgentTerminal: { showAgentTerminal() },
             inputReplacement: blockedCard,
             focusRequest: chat?.blocked.composerFocusRequest ?? 0,
+            keyboardDismissRequest: composerKeyboardDismissRequest,
             collapsesWithoutKeyboard: true,
             keyboardIsLeaving: keyboardIsLeaving,
             interrupt: stopInterrupt)
@@ -1142,8 +1183,31 @@ struct AgentChatSurfaceView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Yields briefly while a visible Chat is confirming its initial transcript
+    /// or filling the first screen, so secondary SSH execs (`readAgentScreen`,
+    /// `claudePermissionLaunch`, `agy models`) do not contend with the initial
+    /// SFTP transcript open.
+    private func waitForInitialTranscriptLoad() async {
+        guard let chat else { return }
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !Task.isCancelled, ContinuousClock.now < deadline, chat.isPerformingForegroundInitialLoad {
+            do {
+                try await Task.sleep(for: .milliseconds(25))
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Runs a Host script, so only where the Host runs them.
     private func loadAgyModels() async {
-        guard program == .agy, console.isHostReadyForInput(agent.hostID) else { return }
+        guard program == .agy, console.capabilities(for: agent.hostID).hostScripts,
+            console.isHostReadyForInput(agent.hostID)
+        else { return }
+        if agyModels.isEmpty {
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, console.isHostReadyForInput(agent.hostID) else { return }
+        }
         if let models = try? await console.fetchAgyModels(on: agent.hostID), !models.isEmpty {
             agyModels = models
         }
@@ -1357,6 +1421,10 @@ struct AgentChatSurfaceView: View {
         case .claude:
             session.settingOverrides.refreshPermissionLaunch(nil, liveMode: nil)
             guard status == .idle || status == .done, console.isHostReadyForInput(agent.hostID) else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
+                console.isHostReadyForInput(agent.hostID)
+            else { return }
             var mode: String?
             for attempt in 0..<10 {
                 let screen = try? await readAgentScreen()
@@ -1379,6 +1447,10 @@ struct AgentChatSurfaceView: View {
             session.settingOverrides.refreshPermissionLaunch(launch, liveMode: mode)
         case .agy:
             guard console.isHostReadyForInput(agent.hostID) else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
+                console.isHostReadyForInput(agent.hostID)
+            else { return }
             let attempts = (status == .idle || status == .done) ? 10 : 1
             for attempt in 0..<attempts {
                 let screen = try? await readAgentScreen()
@@ -1404,6 +1476,11 @@ struct AgentChatSurfaceView: View {
             }
         case .codex:
             guard status == .idle || status == .done,
+                console.isHostReadyForInput(agent.hostID),
+                chat?.conversation.transcript.model == nil
+            else { return }
+            await waitForInitialTranscriptLoad()
+            guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
                 console.isHostReadyForInput(agent.hostID),
                 chat?.conversation.transcript.model == nil
             else { return }
@@ -1697,11 +1774,18 @@ struct AgentChatSurfaceView: View {
         let composer = composer
         return {
             guard chat.agent.status == .working else { return nil }
-            return AgyBackgroundTaskStop.followThrough(
-                reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
-                    ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
-                },
-                io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            guard
+                let followThrough = AgyBackgroundTaskStop.followThrough(
+                    reading: AgyBackgroundTaskStop.Transcript(chat: chat) {
+                        ChatComposerEchoes.awaitsRecord(composer.messages, statuses: chat.sendStatuses)
+                    },
+                    io: chat.screenIO, mayContinue: { !composer.messages.contains { $0.state == .sending } })
+            else { return nil }
+            return {
+                let notice = await followThrough()
+                chat.noteAgyBackgroundWorkMayHaveChanged()
+                return notice
+            }
         }
     }
 
@@ -1747,7 +1831,10 @@ struct AgentChatSurfaceView: View {
         VStack(spacing: 0) {
             if let chat, presentation == .timeline {
                 BackgroundWorkInset(
-                    chat: chat, isHostConnected: isHostConnected, isCondensed: condensesBackgroundWork
+                    chat: chat,
+                    isHostConnected: isHostConnected,
+                    isCondensed: condensesBackgroundWork,
+                    openSwarm: { isShowingSwarm = true }
                 ) { focus in
                     backgroundWorkFocus = focus
                     isShowingBackgroundWork = true
@@ -1762,12 +1849,15 @@ struct AgentChatSurfaceView: View {
     /// One line while the Composer is open or a Blocked card stands in its
     /// place: the Composer's own fold, inverted, from what this surface
     /// holds. Focus always moves the keyboard presentation off `.hidden`.
+    /// A Composer that opens on a hardware keyboard is open from the first
+    /// frame, as one that inherits a handoff is.
     private var condensesBackgroundWork: Bool {
         !AgentComposerCollapse.isCollapsed(
             isEnabled: true,
             isInputFocused: false,
             keyboardPresentation: composerKeyboardPresentation,
-            inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil,
+            inheritsKeyboard: keyboardHandoff.mode(for: agent.id) != nil
+                || (isOpening && keyboardHandoff.opensFocused),
             hasInputReplacement: showsBlockedCard,
             keyboardIsLeaving: keyboardIsLeaving)
     }
@@ -1787,14 +1877,17 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerActions: AgentComposerActions {
-        let capabilities = console.capabilities(for: agent.hostID)
+        let removesSavedChat = console.isSavedChat(agent.id)
+        let offers = AgentDetailMenuOffers(
+            capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
+            removesSavedChat: removesSavedChat)
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: capabilities.uploads ? { isSelectingPhoto = true } : nil,
-            pasteImage: capabilities.uploads
+            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments
                 ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
-            addFile: capabilities.uploads ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {
@@ -1803,26 +1896,28 @@ struct AgentChatSurfaceView: View {
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
             showChanges: showChanges,
-            startAgent: { isStartingAgent = true },
+            startAgent: offers.newAgent ? { isStartingAgent = true } : nil,
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
             showWorktreeDetails: nil,
-            renameAgent: capabilities.renameAgent ? { isRenamingAgent = true } : nil,
-            renameWorkspace: capabilities.renameWorkspace(id: agent.agent.workspaceID)
-                ? { isRenamingWorkspace = true } : nil,
-            closeAgent: {
-                closeRequest = console.closeRequest(for: agent.id)
-                isConfirmingClose = true
-            },
+            renameAgent: offers.renameAgent ? { isRenamingAgent = true } : nil,
+            renameWorkspace: offers.renameWorkspace ? { isRenamingWorkspace = true } : nil,
+            closeAgent: offers.close
+                ? {
+                    closeRequest = console.closeRequest(for: agent.id)
+                    isConfirmingClose = true
+                } : nil,
             backToConsole: { backToConsole() },
             showAgentTerminal: { showAgentTerminal() },
-            closeConfirmation: AgentCloseConfirmation(
-                title: title,
-                isPresented: $isConfirmingClose,
-                request: closeRequest,
-                removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
-                closeAgent: { Task { await performClose() } }),
-            removesSavedChat: console.isSavedChat(agent.id))
+            closeConfirmation: offers.close
+                ? AgentCloseConfirmation(
+                    title: title,
+                    isPresented: $isConfirmingClose,
+                    request: closeRequest,
+                    removeSavedChat: { if console.removeSavedChat(agent) { onClosed() } },
+                    closeAgent: { Task { await performClose() } })
+                : nil,
+            removesSavedChat: removesSavedChat)
     }
 
     /// The More menu's Back to Console: the sidebar beside a detail that
@@ -1965,9 +2060,39 @@ struct AgentChatSurfaceView: View {
             actions.append(AgentDetailHeaderAction(
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
         }
+        if let showFiles {
+            actions.append(AgentDetailHeaderAction(title: "Files", systemImage: "folder") {
+                // A menu opened inside the sheet hands the keyboard back to
+                // whatever held it here: it would cover Files and type into
+                // the message. So Files opens with the keyboard down.
+                composerKeyboardDismissRequest += 1
+                showFiles()
+            })
+        }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
                 titleRename = console.titleRenameStore(for: agent)
+            })
+        }
+        if console.offersHandOff(for: agent) {
+            actions.append(AgentDetailHeaderAction(title: "Hand Off", systemImage: HandOffCopy.symbol) {
+                handOffRequest = HandOffRequest(source: agent)
+            })
+        }
+        let offers = AgentDetailMenuOffers(
+            capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
+            removesSavedChat: console.isSavedChat(agent.id))
+        if offers.movePane {
+            actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
+                movePaneRequest = MovePaneRequest(agent: agent)
+            })
+        }
+        if offers.copyPaneID {
+            let paneID = agent.agent.paneID
+            actions.append(AgentDetailHeaderAction(
+                title: "Copy Pane ID", systemImage: PaneIDCopy.symbol, subtitle: paneID
+            ) {
+                PaneIDCopy.copy(paneID)
             })
         }
         return actions
@@ -1996,11 +2121,29 @@ private struct BackgroundWorkInset: View {
     let chat: AgentChatStore
     let isHostConnected: Bool
     let isCondensed: Bool
+    let openSwarm: () -> Void
     let open: (String?) -> Void
 
     var body: some View {
-        ChatBackgroundWorkStrip(
-            work: chat.backgroundWork, isHostConnected: isHostConnected, isCondensed: isCondensed, open: open)
+        VStack(spacing: 0) {
+            if let swarm = chat.agySwarm {
+                ChatSwarmLiveBar(
+                    swarm: swarm,
+                    isCondensed: isCondensed,
+                    open: openSwarm)
+            }
+            let work = chat.backgroundWork
+            let showsFinished = work.showsFinishedInStrip(
+                agentStatus: chat.agent.status,
+                isHostConnected: isHostConnected,
+                turns: chat.conversation.transcript.turns)
+            ChatBackgroundWorkStrip(
+                work: work,
+                isHostConnected: isHostConnected,
+                isCondensed: isCondensed,
+                showsFinishedWork: showsFinished,
+                open: open)
+        }
     }
 }
 

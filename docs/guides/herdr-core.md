@@ -14,7 +14,7 @@ Heeler never starts a core when connecting or checking. Start the Herdr desktop 
 
 ### 1. Connect
 
-1. In **Hosts**, tap **+**, or **Add Manually** when empty. A Pairing Code always adds a Herdr TUI Server.
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. On a Mac or Linux machine you can [scan a Pairing Code](pairing.md#pair-a-machine-without-herdr) instead, which skips this step and goes straight to [choosing the Servers](#2-choose-the-servers).
 2. Enter the **Address** and your SSH **User**. **More Options** has the port, a Jump Host and an overlay network.
 3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
 4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
@@ -36,13 +36,13 @@ Heeler looks once without starting anything and lists what the machine runs:
 | No herdr-core | Add the Host anyway. Start the core, open the Host, tap **Scan Again**, and turn on **herdr-core**. |
 | A core started with `HC_SESSION=<name>` | Add the Host, open it, tap **Add by Name…**, choose **herdr-core**, type the name, and tap **Turn On**. |
 
-Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its connection, checks and Host Helper.
+Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its checks and Host Helper. The connection is the Host's, under **Routes**.
 
 | The Host's page | Add by Name |
 | --- | --- |
-| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux with their switches on, Scan Again, Add by Name…, Routes, and Account"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
+| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux running with their switches on, Scan Again, Add by Name…, Routes with the route in use, and Plugin & Helper"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
 
-**It worked if** the Host's row shows a green **herdr-core** tag, and the Server's page shows **Server Kind** as herdr-core with the version and **herdr-core running** passing.
+**It worked if** the Host's row shows a green **herdr-core** tag, the Host's page lists herdr-core as **Running** with its version, and the Server's page shows **herdr-core running** passing.
 
 <a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, tmux, and herdr-core"></a>
 

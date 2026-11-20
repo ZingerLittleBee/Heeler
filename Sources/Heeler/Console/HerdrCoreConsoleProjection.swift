@@ -1422,6 +1422,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         memory.coreID(for: host.id)
     }
 
+    /// A Terminal belongs to its core: another core may give out its address.
+    var keepsDetailsToInventory: Bool { true }
+
+    var leftInventoryMessage: String { TerminalStatusPresentation.coreGoneMessage }
+
+    var leftInventoryError: TransportError { .herdrCoreTerminalGone }
+
     /// Whether what keeps to `pin` still means this inventory's Terminals.
     func admits(_ pin: TerminalCorePin) -> Bool {
         inventoryCore.map(pin.admits) ?? true

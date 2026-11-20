@@ -17,10 +17,12 @@ struct ConsoleHostSectionHeaderPresentationTests {
     ) -> ConsoleHostSection {
         ConsoleHostSection(
             hostID: host.id,
-            hostDisplayName: host.displayName,
-            connectionStatus: status,
-            isAwaitingSnapshot: isAwaitingSnapshot,
-            statusPresentation: statusPresentation,
+            hostName: host.hostName,
+            servers: [
+                ConsoleHostServerState(
+                    hostID: host.id, connectionStatus: status, isAwaitingSnapshot: isAwaitingSnapshot,
+                    issue: statusPresentation)
+            ],
             agents: agents,
             isCollapsed: isCollapsed,
             statusCounts: statusCounts)
@@ -140,6 +142,55 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(header.accessibilityLabel.hasPrefix("studio, Sync issue"))
     }
 
+    /// A Host with two Servers on reads as the Hosts tab reads it: any
+    /// connected Server makes the Host header Connected (each other Server's
+    /// problem is its own row beneath), and only when none is connected does
+    /// the Server that most needs the user speak for the header.
+    @Test func aHostWithTwoServersReadsConnectedWhileAnyServerIsConnected() throws {
+        let tmux = Host.fixture(name: "studio")
+        let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
+        let failed = try #require(ConsoleHostStatusPresentation(host: host, status: .failed(failure), syncError: nil))
+        func header(_ servers: [ConsoleHostServerState], agents: [ConsoleAgent] = []) -> ConsoleHostSectionHeaderPresentation {
+            ConsoleHostSectionHeaderPresentation(
+                section: ConsoleHostSection(
+                    hostID: host.id, hostName: "studio", servers: servers, agents: agents,
+                    isCollapsed: false, statusCounts: .init(agents: agents)))
+        }
+        let connected = ConsoleHostServerState(
+            hostID: tmux.id, connectionStatus: .connected, isAwaitingSnapshot: false, issue: nil)
+        let failing = ConsoleHostServerState(
+            hostID: host.id, connectionStatus: .failed(failure), isAwaitingSnapshot: false, issue: failed)
+        let working = consoleAgent(paneID: "p1", status: .working)
+
+        let both = header([failing, connected], agents: [working])
+        #expect(both.readiness.text == "Connected")
+        #expect(both.readiness.tone == .connected)
+        #expect(both.readiness.nameEmphasis == .full)
+        #expect(both.accessibilityLabel.hasPrefix("studio, Connected"))
+
+        let reconnecting = ConsoleHostServerState(
+            hostID: host.id, connectionStatus: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
+            isAwaitingSnapshot: false, issue: nil)
+        let retrying = header([connected, reconnecting], agents: [working]).readiness
+        #expect(retrying.text == "Connected")
+        #expect(retrying.tone == .connected)
+        #expect(retrying.nameEmphasis == .full)
+        // With no Server reachable, the worst Server speaks and dims the name.
+        let noneConnected = header([failing, reconnecting]).readiness
+        #expect(noneConnected.text == "Unavailable")
+        #expect(noneConnected.tone == .unavailable)
+        #expect(noneConnected.nameEmphasis == .dimmed)
+        // All connected reads Connected, and No Agents only when the whole
+        // Host lists none.
+        let alsoConnected = ConsoleHostServerState(
+            hostID: host.id, connectionStatus: .connected, isAwaitingSnapshot: false, issue: nil)
+        #expect(header([alsoConnected, connected], agents: [working]).readiness.text == "Connected")
+        #expect(header([alsoConnected, connected]).readiness.text == "No Agents")
+        let paused = ConsoleHostServerState(
+            hostID: host.id, connectionStatus: .suspended, isAwaitingSnapshot: false, issue: nil)
+        #expect(header([paused, connected], agents: [working]).readiness.text == "Connected")
+    }
+
     @Test func aHostNameRecedesAsItsConnectionFails() {
         #expect(HostReadiness(text: "Connected", tone: .connected).nameEmphasis == .full)
         #expect(HostReadiness(text: "Sync issue", tone: .warning).nameEmphasis == .full)
@@ -239,12 +290,22 @@ struct ConsoleListPresentationRoutingTests {
                 visibleIssueCount: 0,
                 presentationMode: .grouped,
                 projectedSectionCount: 1) == .rows)
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 1, filteredHostName: nil, filteredAgentCount: 0, visibleIssueCount: 0,
+                presentationMode: .grouped, projectedSectionCount: 0) == .noAgents)
+        #expect(
+            ConsoleAgentsSurface(
+                hostCount: 2, filteredHostName: "studio", filteredAgentCount: 0, visibleIssueCount: 0,
+                presentationMode: .grouped, projectedSectionCount: 0) == .noAgentsOnHost("studio"))
     }
 
-    @Test func hostIssuePlacementFollowsPresentationMode() {
-        #expect(ConsoleHostIssuePlacement(mode: .flat) == .flatIssueRows)
-        #expect(ConsoleHostIssuePlacement(mode: .grouped) == .sectionHeaders)
-        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .flatIssueRows)
+    @Test func hostIssuePlacementFloatsInEveryPresentationMode() {
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.flat) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.grouped) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.byWorkspace) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: TerminalListPresentationMode.byWorkspace) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: TerminalListPresentationMode.byHost) == .floatingCorner)
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {

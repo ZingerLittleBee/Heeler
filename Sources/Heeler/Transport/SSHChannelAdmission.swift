@@ -19,6 +19,11 @@ actor SSHChannelAdmission {
         case attach
     }
 
+    enum Priority: Sendable {
+        case normal
+        case interactive
+    }
+
     struct Limits: Sendable, Equatable {
         let ordinaryForwarding: Int
         let events: Int
@@ -51,6 +56,7 @@ actor SSHChannelAdmission {
     private struct Waiter {
         let id: UInt64
         let channelClass: ChannelClass
+        let priority: Priority
         let continuation: CheckedContinuation<Void, any Error>
     }
 
@@ -78,9 +84,10 @@ actor SSHChannelAdmission {
 
     func withChannel<Value: Sendable>(
         _ channelClass: ChannelClass,
+        priority: Priority = .normal,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        let lease = try await acquire(channelClass)
+        let lease = try await acquire(channelClass, priority: priority)
         do {
             let value = try await operation()
             await lease.release()
@@ -91,7 +98,10 @@ actor SSHChannelAdmission {
         }
     }
 
-    func acquire(_ channelClass: ChannelClass) async throws -> SSHChannelAdmissionLease {
+    func acquire(
+        _ channelClass: ChannelClass,
+        priority: Priority = .normal
+    ) async throws -> SSHChannelAdmissionLease {
         try Task.checkCancellation()
         nextRequestID &+= 1
         let requestID = nextRequestID
@@ -113,6 +123,7 @@ actor SSHChannelAdmission {
                     waiters.append(Waiter(
                         id: requestID,
                         channelClass: channelClass,
+                        priority: priority,
                         continuation: continuation))
                 }
             }
@@ -137,7 +148,23 @@ actor SSHChannelAdmission {
     func admitCoreLink(
         open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel
     ) async throws -> any HeelerSSHAPIChannel {
-        let lease = try await acquire(.events)
+        try await admitLink(.events, open: open)
+    }
+
+    /// One Attach's forwarded channel under an attach slot, as a Rex Host's
+    /// data link is beside its control link in the events slot (ADR 0049).
+    /// The slot stays taken until the channel closes.
+    func admitAttachLink(
+        open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel
+    ) async throws -> any HeelerSSHAPIChannel {
+        try await admitLink(.attach, open: open)
+    }
+
+    private func admitLink(
+        _ channelClass: ChannelClass,
+        open: @escaping @Sendable () async throws -> any HeelerSSHAPIChannel
+    ) async throws -> any HeelerSSHAPIChannel {
+        let lease = try await acquire(channelClass)
         do {
             return AdmittedCoreLinkChannel(channel: try await open(), lease: lease)
         } catch {
@@ -213,11 +240,20 @@ actor SSHChannelAdmission {
     }
 
     private func resumeEligibleWaiters() {
-        while let index = waiters.firstIndex(where: { canAcquire($0.channelClass) }) {
+        while let index = nextEligibleWaiterIndex() {
             let waiter = waiters.remove(at: index)
             increment(waiter.channelClass)
             waiter.continuation.resume()
         }
+    }
+
+    private func nextEligibleWaiterIndex() -> Int? {
+        if let interactive = waiters.firstIndex(where: {
+            $0.priority == .interactive && canAcquire($0.channelClass)
+        }) {
+            return interactive
+        }
+        return waiters.firstIndex(where: { canAcquire($0.channelClass) })
     }
 
     private func canAcquire(_ channelClass: ChannelClass) -> Bool {
@@ -259,7 +295,8 @@ actor SSHChannelAdmission {
     }
 }
 
-/// A core link's channel with the slot it was admitted under.
+/// A long-lived forwarded channel, such as a core link, with the slot it was
+/// admitted under.
 private struct AdmittedCoreLinkChannel: HeelerSSHAPIChannel {
     let channel: any HeelerSSHAPIChannel
     let lease: SSHChannelAdmissionLease

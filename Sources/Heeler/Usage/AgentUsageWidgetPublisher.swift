@@ -188,7 +188,7 @@ extension UsageWidgetSnapshot.Limits {
             self.init(
                 program: card.program, name: name, account: account, accountID: accountID, message: reason,
                 isLastReading: false, source: nil, observedAt: nil, windows: [])
-        case .claudeToggle:
+        case .claudeToggle, .codexToggle, .agyToggle:
             return nil
         }
     }

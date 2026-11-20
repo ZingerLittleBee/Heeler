@@ -78,7 +78,7 @@ struct HostAccountsStoreTests {
         #expect(store.suggestions(for: .amp).isEmpty)
         #expect(store.variable(for: .amp) == "AMP_HOME")
         // Harnesses with Accounts come after the ones Usage reads.
-        #expect(store.shownKinds == [.claude, .codex, .amp])
+        #expect(store.shownKinds == [.claude, .codex, .antigravity, .amp])
     }
 
     /// The Host's file is the list: another device's rename, addition or

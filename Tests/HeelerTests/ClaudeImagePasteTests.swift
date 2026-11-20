@@ -39,4 +39,17 @@ struct ClaudeImagePasteTests {
         #expect(ClaudeImagePaste.recordedText("'/tmp/a shot.png'\nhello") == "/tmp/a shot.pnghello")
         #expect(ClaudeImagePaste.recordedText(#"/tmp/a\ shot.PNG"# + "\nhello") == "/tmp/a shot.PNGhello")
     }
+
+    @Test func parseExtractsImagePathsInPlaceholderOrder() {
+        let staged = "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.0puL6rLo/stage-ab86ed77/image.jpg"
+        #expect(
+            ClaudeImagePaste.parse("\(staged) ")
+                == ClaudeImagePaste.Paste(imagePaths: [staged], recordedText: staged))
+        #expect(
+            ClaudeImagePaste.parse("看看这个报错\n\(staged) /tmp/second.png ")
+                == ClaudeImagePaste.Paste(
+                    imagePaths: [staged, "/tmp/second.png"],
+                    recordedText: "\(staged) /tmp/second.png看看这个报错"))
+        #expect(ClaudeImagePaste.parse("看看这个报错 \(staged) ") == nil)
+    }
 }

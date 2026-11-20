@@ -88,6 +88,13 @@ struct SSHTransportSettings: Sendable {
     /// Where the Host's own key is trusted: by endpoint, or by the catalog
     /// Host every route reaches. Jump Hosts are always trusted by endpoint.
     var hostKeyTrust: HostKeyTrust = .endpoint
+    /// The catalog Host this connection is one of several to. Its dials then
+    /// take the one route those connections hold instead of each racing for
+    /// itself (ADR 0058). nil races every time.
+    var routeLease: HostRouteLease? = nil
+    /// The catalog Host's answer about SFTP, which outlives this connection
+    /// (#596). nil keeps a refusal to the one connection.
+    var sftpRefusal: HostSFTPRefusal? = nil
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
     /// Explicit server selection; no fallback from a refused legacy socket.
@@ -98,6 +105,9 @@ struct SSHTransportSettings: Sendable {
     /// (ADR 0044).
     var tmuxSocketName = TmuxSocketName.defaultName
     var tmuxPaths: TmuxPaths?
+    /// A Rex Host's server socket; nil sends connecting to look for it first
+    /// (ADR 0049).
+    var rexSocket: RexSocket?
     /// The launcher of the Host's herdr endpoint (Pairing Code v2, ADR 0023).
     /// When set, the session list, plugin list, and plugin config-dir
     /// commands are its builders, and the wake and attach execs run it in

@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// What the timeline is built from.
-struct ChatTimelineInput: Sendable {
+struct ChatTimelineInput: Equatable, Sendable {
     var entries: [ChatEntry]
     var pending: [ChatPendingEcho]
     var older: ChatOlderHistory

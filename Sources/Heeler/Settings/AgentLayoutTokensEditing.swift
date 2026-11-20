@@ -82,17 +82,13 @@ struct AgentLayoutFieldOffer: Equatable {
 /// Host. Editing an empty slot beyond the layout's last row pads the layout
 /// with empty rows up to it. A field sits on one side of a slot at most.
 enum AgentLayoutTokensEditing {
-    /// One side's rows. A layout that leaves its right side to the list
-    /// edits from that side's defaults, less any field its left side
-    /// already holds in the slot; the first change saves them.
+    /// One side's rows. A layout that leaves its right side unsaved edits
+    /// from `defaultTrailing`, less any field its left side already holds in
+    /// the slot; the first change saves them.
     static func rows(_ side: AgentRowSide, of layout: AgentRowLayout) -> [AgentRow] {
         switch side {
         case .leading: layout.rows
-        case .trailing:
-            layout.trailing ?? AgentRowLayout.defaultTrailing.enumerated().map { slot, defaults in
-                let left = row(slot, in: layout.rows)
-                return defaults.filter { field in !left.contains { $0.token == field.token } }
-            }
+        case .trailing: layout.effectiveTrailing
         }
     }
 
@@ -213,6 +209,8 @@ enum AgentLayoutTokensEditing {
             String(localized: "Terminal title without the Agent prefix")
         case .host:
             String(localized: "Host name")
+        case .backend:
+            String(localized: "Server backend (core, tui, rex, tmux)")
         case .status:
             String(localized: "Agent Status as text")
         case .directory:

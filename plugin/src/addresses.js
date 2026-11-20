@@ -130,8 +130,10 @@ export function candidateAddresses(
  *
  * @param {ReturnType<typeof candidateAddresses>} candidates
  * @param {string[]} configured
+ * @param {string} [source] where they were configured, shown in place of an
+ *   interface name: `heeler-pair` takes them as arguments
  */
-export function withConfiguredAddresses(candidates, configured) {
+export function withConfiguredAddresses(candidates, configured, source = "pair.json") {
   if (configured.length === 0) return candidates;
   const family = (address) => ({ 4: "IPv4", 6: "IPv6" })[isIP(address)] ?? "name";
   const listed = new Set(configured);
@@ -139,7 +141,7 @@ export function withConfiguredAddresses(candidates, configured) {
     ...configured.map((address) => ({
       address,
       family: family(address),
-      interfaceName: "pair.json",
+      interfaceName: source,
       preChecked: true,
     })),
     ...candidates

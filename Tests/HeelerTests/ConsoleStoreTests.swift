@@ -300,7 +300,7 @@ struct ConsoleStoreTests {
         #expect(store.capabilities(for: tui.id) == HostCapabilities(
             startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
             composerSend: true, chat: true, tabNames: true, closeTab: true,
-            syncLayoutFromPlugin: true))
+            syncLayoutFromPlugin: true, copiesPaneID: true, movesPanes: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
         // Nothing is known of this core Host's platform before its first attempt.
         #expect(store.capabilities(for: core.id) == HostCapabilities(
@@ -370,6 +370,53 @@ struct ConsoleStoreTests {
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(await condition(), comment)
+    }
+
+    /// A Host's Servers share its route, so one of them losing its link asks
+    /// the others at once instead of at their next keepalive (ADR 0058).
+    @Test func aServerLosingItsLinkAsksTheHostsOtherServers() async throws {
+        let first = Host(address: "box.example", username: "dev")
+        let second = Host(address: "box.example", username: "dev", sessionName: "work")
+        let elsewhere = Host(address: "other.example", username: "dev")
+        let transports = [
+            first.id: ScriptedTransport(), second.id: ScriptedTransport(),
+            elsewhere.id: ScriptedTransport(),
+        ]
+        let store = makeStore(transports: transports)
+        store.setHosts([first, second, elsewhere])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("every Server connects") {
+            [first, second, elsewhere].allSatisfy { store.hostStatuses[$0.id] == .connected }
+        }
+        let sibling = try #require(transports[second.id])
+        let stranger = try #require(transports[elsewhere.id])
+        let siblingPings = await sibling.pingCount
+        let strangerPings = await stranger.pingCount
+
+        await transports[first.id]?.failEventStream(.sshUnreachable(detail: "link down"))
+
+        try await waitUntil("the Host's other Server is asked") {
+            await sibling.pingCount > siblingPings
+        }
+        #expect(await stranger.pingCount == strangerPings)
+    }
+
+    /// A network change asks every live connection whether it survived
+    /// (ADR 0058).
+    @Test func aNetworkChangeAsksEveryLiveConnection() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport()
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Host connects") { store.hostStatuses[host.id] == .connected }
+        let pings = await transport.pingCount
+
+        await store.networkPathDidChange()
+
+        try await waitUntil("the connection is asked") { await transport.pingCount > pings }
     }
 
     @Test func aLaunchReadsTheCurrentAccountVariableAndRefusesAReadFailure() async throws {
@@ -665,6 +712,109 @@ struct ConsoleStoreTests {
         }
     }
 
+    @Test func agyMultiHourSilentBackgroundCommandStaysWorkingWhenScreenShowsTaskAndIdlesWhenCleared() async throws {
+        let host = Host.fixture()
+        let agySessionID = "88f562e4-129f-4e43-87dc-be2f661d5644"
+        let agyInfo = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "agy",
+            agentSession: AgentSessionInfo(
+                agent: ChatProgram.agy.sessionNaming.agent,
+                kind: .id,
+                source: ChatProgram.agy.sessionNaming.source,
+                value: agySessionID),
+            cwd: "/home/dev/proj")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [agyInfo]))
+        let files = VirtualHostFiles()
+        let agyPath = "/home/dev/.gemini/antigravity-cli/brain/\(agySessionID)/.system_generated/logs/transcript_full.jsonl"
+        let pythonCmd = "python3 -c '\nimport subprocess, time\nsubprocess.run([\"python3\", \"scripts/scratch.py\"])\n'"
+        let steps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nRun scratch watcher\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object([
+                        "CommandLine": .string(pythonCmd),
+                        "IsDaemon": .bool(false),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(agySessionID, task: 2, "Run scratch watcher")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Running in background."),
+        ]
+        await files.write(AgyToolActivityTests.jsonl(steps), at: agyPath)
+        await transport.scriptChat(files: files.hostFiles(), agent: Agent(agyInfo))
+
+        // Pane screen shows the background task strip and `1 task(s)` footer 3h 53m after launch.
+        let rule = String(repeating: "\u{2500}", count: 62)
+        let coloredRunningANSI = [
+            "\u{001B}[38;5;8m\(rule)\u{001B}[0m",
+            "\u{001B}[38;5;12m>\u{001B}[0m",
+            "\u{001B}[38;5;8m\(rule)\u{001B}[0m",
+            "  \u{25CF} [16:00:42] python3 -c ' import subprocess, t... running",
+            "\u{001B}[38;5;8m\(rule)\u{001B}[0m",
+            "? for shortcuts       Gemini 3.1 Pro \u{00B7} high \u{00B7} 1 task(s) \u{00B7} /tasks",
+        ].joined(separator: "\n")
+        await transport.setPaneText(coloredRunningANSI, paneID: "w1:p1")
+
+        // 3h 53m after step 2 (`16:22:00Z`), well past the 3-hour transcript silence limit:
+        let fixedNow = try #require(ISO8601DateFormatter().date(from: "2026-11-07T20:15:00Z"))
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(10),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatTiming: AgentChatStore.Timing(
+                activeInterval: .milliseconds(15), idleInterval: .milliseconds(15),
+                agyBackgroundTaskScreenCheckVisible: 0.02, agyBackgroundTaskScreenCheckHidden: 0.02),
+            chatNow: { fixedNow })
+        defer { store.setHosts([]) }
+        let agyID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1")
+
+        var observedStatuses: [AgentStatus?] = []
+        let observer = Task { @MainActor in
+            for await update in store.agentStatusUpdates(for: agyID) {
+                observedStatuses.append(update.status)
+            }
+        }
+        defer { observer.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("multi-hour silent background command confirmed by screen promotes Console to Working") {
+            store.agents.first(where: { $0.id == agyID })?.agent.status == .working
+        }
+        #expect(store.detailAgent(for: agyID)?.agent.status == .working)
+        try await waitUntil("Composer status stream receives Working") {
+            observedStatuses.last == .some(.working)
+        }
+
+        let agyRow = try #require(store.agents.first(where: { $0.id == agyID }))
+        let chat = try #require(store.chatStore(for: agyRow, program: .agy))
+        #expect(chat.hasRunningBackgroundWork)
+        #expect(chat.backgroundWork.rows.map(\.isStale) == [false])
+
+        // Once the task leaves the idle screen (e.g., killed via `/tasks` -> `k`),
+        // Console and Composer return to Idle without waiting for a prompt.
+        let idleEmptyANSI = try ChatFixture.text("screens/agy/agy-185-idle-after-tasks-62x46.ansi")
+        await transport.setPaneText(idleEmptyANSI, paneID: "w1:p1")
+        chat.noteAgyBackgroundWorkMayHaveChanged()
+
+        try await waitUntil("cleared screen task returns Console status to Idle") {
+            store.agents.first(where: { $0.id == agyID })?.agent.status == .idle
+        }
+        #expect(store.detailAgent(for: agyID)?.agent.status == .idle)
+        try await waitUntil("Composer status stream returns to Idle") {
+            observedStatuses.last == .some(.idle)
+        }
+    }
+
     /// Each read of a conversation an adapter reads by query is an exec on
     /// the Host, and the prefetch key changes with every status: only an
     /// open Chat reads it (ADR 0025).
@@ -856,6 +1006,7 @@ struct ConsoleStoreTests {
         await knownHosts.setFingerprint(
             HostKeyFingerprint(publicKeyBlob: Data("key".utf8)), host: trust.host, port: trust.port)
         let recents = RecentLaunchStore(defaults: defaults)
+        recents.rememberHost(host.id)
         recents.rememberWorkspace("w1", for: host.id)
         let dependencies = HostRemovalDependencies.app(
             console: console, notificationPreferences: preferences,
@@ -876,6 +1027,8 @@ struct ConsoleStoreTests {
         #expect(file.devices.isEmpty)
         #expect(await knownHosts.fingerprints(host: trust.host, port: trust.port).isEmpty)
         #expect(recents.workspaceID(for: host.id) == nil)
+        #expect(recents.preferredHostID(in: [host]) == nil)
+        #expect(defaults.object(forKey: "recent-host-ids") == nil)
         #expect(defaults.object(forKey: "live-activity.enabled-hosts") == nil)
 
         // What the app model's catalog observer does next.
@@ -2442,6 +2595,71 @@ struct ConsoleStoreTests {
         #expect(await transport.agentFocuses.isEmpty)
     }
 
+    @Test func leavingDetailWhileFocusIsQueuedStillDeliversFocusAndResnapshots() async throws {
+        let host = Host.fixture()
+        let paneID = "w1N:p5H"
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: paneID, status: .done)]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Done Agent should arrive") {
+            store.agents.first?.agent.status == .done
+        }
+        await store.refreshSidebarLayouts()
+
+        let focusGate = ScriptedTransportCallGate()
+        await transport.gateNextFocus(using: focusGate)
+        await transport.setSnapshot(.fixture(agents: [.fixture(paneID: paneID, status: .idle)]))
+
+        // Viewer task starts focusAgent, then gets cancelled as the user navigates Back.
+        let viewerTask = Task {
+            try await store.focusAgent(paneID, on: host.id)
+        }
+        await focusGate.waitForEntry()
+        viewerTask.cancel()
+
+        // Re-entry while still queued coalesces onto the same in-flight RPC.
+        let reentryTask = Task {
+            try await store.focusAgent(paneID, on: host.id)
+        }
+        try await Task.sleep(for: .milliseconds(15))
+        await focusGate.open()
+        try await reentryTask.value
+
+        #expect(await transport.agentFocuses == [AgentTarget(target: paneID)])
+        try await waitUntil("the row should transition from Done to Idle") {
+            store.agents.first?.agent.status == .idle
+        }
+    }
+
+    @Test func hostSuspendCancelsQueuedProjectionFocusBeforeDispatch() async throws {
+        let host = Host.fixture()
+        let paneID = "w1N:p5H"
+        let transport = ScriptedTransport(
+            snapshot: .fixture(agents: [.fixture(paneID: paneID, status: .done)]))
+        let store = makeStore(transports: [host.id: transport])
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the Done Agent should arrive") {
+            store.agents.first?.agent.status == .done
+        }
+
+        let focusGate = ScriptedTransportCallGate()
+        await transport.gateNextFocus(using: focusGate)
+        let viewerTask = Task {
+            try await store.focusAgent(paneID, on: host.id)
+        }
+        await focusGate.waitForEntry()
+        viewerTask.cancel()
+        await store.suspend()
+        await focusGate.open()
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(await transport.agentFocuses.isEmpty)
+    }
+
     @Test func renameAgentForwardsItsParamsAndResnapshots() async throws {
         // agent.rename (#98): the params reach the Host's transport, and the
         // new name lands via one explicit resync — pane.updated is not a
@@ -3382,7 +3600,7 @@ struct ConsoleStoreTests {
 /// Hands out scripted transports in order, one per `connect`, so tests can
 /// drive SSH-level replacement deterministically.
 /// A Host that refuses every connection until the test brings it up.
-private actor HostReachability {
+actor HostReachability {
     private var isOnline = false
 
     func comeOnline() { isOnline = true }

@@ -56,6 +56,8 @@ struct Input: Decodable {
     var keeping: [String]?
     var timeZone: String?
     var claudeLimits: Bool?
+    var codexLimits: Bool?
+    var agyLimits: Bool?
     var session: String?
     var tmuxSocket: String?
     var storedPaths: String?
@@ -101,10 +103,13 @@ case "usageQuery":
     if let tmuxSocket = input.tmuxSocket {
         step = .tmuxUsageQuery(
             timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false,
+            codexLimits: input.codexLimits ?? true, agyLimits: input.agyLimits ?? true,
             socket: tmuxSocket, storedPaths: input.storedPaths)
     } else {
         step = .usageQuery(
-            timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false, session: input.session ?? "")
+            timeZone: input.timeZone ?? "", claudeLimits: input.claudeLimits ?? false,
+            codexLimits: input.codexLimits ?? true, agyLimits: input.agyLimits ?? true,
+            session: input.session ?? "")
     }
 case "refreshTmuxPaths":
     step = .refreshTmuxPaths(socket: input.tmuxSocket ?? "", storedPaths: input.storedPaths ?? "")
@@ -1081,9 +1086,13 @@ class UsageQueryTests(HelperScriptCase):
 
     def query(
         self, shell: str = "/bin/sh", session: str = "work", limits: bool = False,
+        codex_limits: bool = True, agy_limits: bool = True,
         tmux_socket: str | None = None, stored_paths: str | None = None,
     ) -> tuple[str, str]:
-        kwargs = {"timeZone": "Asia/Kolkata", "claudeLimits": limits}
+        kwargs = {
+            "timeZone": "Asia/Kolkata", "claudeLimits": limits,
+            "codexLimits": codex_limits, "agyLimits": agy_limits,
+        }
         if tmux_socket is not None:
             kwargs["tmuxSocket"] = tmux_socket
             if stored_paths is not None:
@@ -1163,6 +1172,40 @@ printf '{{}}\\n'
         calls = self.log.read_text().splitlines()
         self.assertNotIn("--claude-limits", calls[0])
         self.assertTrue(calls[1].endswith("--claude-limits"))
+
+    def test_omits_antigravity_limits_only_when_turned_off_and_supported(self) -> None:
+        self.installed(query="x\n")
+        self.record(f"""#!/bin/sh
+printf '%s\\n' "$*" >> "{self.log}"
+printf '{{}}\\n'
+""")
+        self.query(agy_limits=False)
+        (self.helper_dir / "app/usage-query.js").write_text('case "--no-agy-limits":\n')
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.log.write_text("")
+                self.query(shell, agy_limits=True)
+                self.query(shell, agy_limits=False)
+                calls = self.log.read_text().splitlines()
+                self.assertNotIn("--no-agy-limits", calls[0])
+                self.assertTrue(calls[1].endswith("--no-agy-limits"))
+
+    def test_omits_codex_limits_only_when_turned_off_and_supported(self) -> None:
+        self.installed(query="x\n")
+        self.record(f"""#!/bin/sh
+printf '%s\\n' "$*" >> "{self.log}"
+printf '{{}}\\n'
+""")
+        self.query(codex_limits=False)
+        (self.helper_dir / "app/usage-query.js").write_text('case "--no-codex-limits":\n')
+        for shell in shells():
+            with self.subTest(shell=shell):
+                self.log.write_text("")
+                self.query(shell, codex_limits=True)
+                self.query(shell, codex_limits=False)
+                calls = self.log.read_text().splitlines()
+                self.assertNotIn("--no-codex-limits", calls[0])
+                self.assertTrue(calls[1].endswith("--no-codex-limits"))
 
     def test_follows_xdg_data_home_and_ignores_a_relative_one(self) -> None:
         data = self.root / "data"

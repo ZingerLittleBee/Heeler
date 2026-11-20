@@ -3,7 +3,7 @@ import { optionalText } from "./display-text.js";
 
 const BUILTINS = new Set([
   "state_icon", "state_text", "workspace", "tab", "pane", "agent",
-  "terminal_title", "terminal_title_stripped", "host", "status", "directory", "path",
+  "terminal_title", "terminal_title_stripped", "host", "backend", "status", "directory", "path",
 ]);
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -110,6 +110,7 @@ export function renderActivityRows(layout, agent, { hostName, workspaceLabels, t
       case "terminal_title": return agent.terminal_title;
       case "terminal_title_stripped": return agent.terminal_title_stripped ?? strippedSidebarTitle(agent.terminal_title);
       case "host": return hostName.trim();
+      case "backend": return "backend" in agent ? optionalText(agent.backend) : "tui";
       case "status": {
         const status = agent.agent_status.toLowerCase();
         return status.charAt(0).toUpperCase() + status.slice(1);

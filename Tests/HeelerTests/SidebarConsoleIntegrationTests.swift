@@ -117,52 +117,184 @@ struct SidebarConsoleIntegrationTests {
         return labels
     }
 
-    @Test func priorityUsesRecencyThenSnapshotOrderAndPinStillLeads() {
+    @Test func statusPriorityThenSnapshotOrderHoldsAndPinStillLeads() {
         let host = Host.fixture()
-        let old = row(host, pane: "old", status: .done, order: 0, sequence: 1)
-        let recent = row(host, pane: "recent", status: .done, order: 2, sequence: 7)
-        let tied = row(host, pane: "tied", status: .done, order: 1, sequence: 7)
+        let firstDone = row(host, pane: "firstDone", status: .done, order: 0, sequence: 1)
+        let laterDone = row(host, pane: "laterDone", status: .done, order: 2, sequence: 7)
+        let middleDone = row(host, pane: "middleDone", status: .done, order: 1, sequence: 7)
         let blocked = row(host, pane: "blocked", status: .blocked, order: 3, sequence: 0)
-        let rows = [old, recent, tied, blocked]
-        #expect(rows.consoleSorted(sortByHost: [host.id: .priority]).map(\.agent.paneID)
-            == ["blocked", "tied", "recent", "old"])
-        #expect(rows.consoleSorted(sortByHost: [host.id: .spaces]).map(\.agent.paneID)
-            == ["old", "tied", "recent", "blocked"])
-        #expect(rows.consoleSorted(sortByHost: [host.id: .spaces]) {
-            $0.id == recent.id ? 0 : nil
-        }.map(\.agent.paneID) == ["recent", "old", "tied", "blocked"])
+        let rows = [laterDone, firstDone, middleDone, blocked]
+        #expect(rows.consoleSorted().map(\.agent.paneID)
+            == ["blocked", "firstDone", "middleDone", "laterDone"])
+        #expect(rows.consoleSorted {
+            $0.id == laterDone.id ? 0 : nil
+        }.map(\.agent.paneID) == ["laterDone", "blocked", "firstDone", "middleDone"])
     }
 
-    @Test func mixedHostPoliciesHaveOneStableOrderAcrossInputPermutations() {
-        let alpha = Host.fixture(name: "alpha")
+    @Test func statusPriorityAcrossHostsAndServersHasOneStableOrderAcrossInputPermutations() {
+        let m3TUI = Host(name: "m3", address: "m3.example", username: "dev")
+        let m3Tmux = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
         let beta = Host.fixture(name: "beta")
-        let a0 = row(alpha, pane: "a0", status: .idle, order: 0)
-        let a1 = row(alpha, pane: "a1", status: .blocked, order: 1)
-        let b0 = row(beta, pane: "b0", status: .idle, order: 0)
-        let b1 = row(beta, pane: "b1", status: .blocked, order: 1)
-        let rows = [a0, a1, b0, b1]
-        let policies: [Host.ID: AgentPanelSort] = [alpha.id: .spaces, beta.id: .priority]
+        let tuiIdle = row(m3TUI, pane: "tui-idle", status: .idle, order: 0)
+        let tmuxWorking = row(m3Tmux, pane: "tmux-working", status: .working, order: 0)
+        let tuiWorking = row(m3TUI, pane: "tui-working", status: .working, order: 1)
+        let betaBlocked = row(beta, pane: "beta-blocked", status: .blocked, order: 0)
+        let rows = [tuiIdle, tmuxWorking, tuiWorking, betaBlocked]
+        let serverOrder: [Host.ID: Int] = [m3TUI.id: 0, m3Tmux.id: 1, beta.id: 2]
         for a in rows.indices {
             for b in rows.indices where b != a {
                 for c in rows.indices where c != a && c != b {
                     let d = rows.indices.first { $0 != a && $0 != b && $0 != c }!
                     let permutation = [rows[a], rows[b], rows[c], rows[d]]
-                    #expect(permutation.consoleSorted(sortByHost: policies).map(\.agent.paneID)
-                        == ["a0", "a1", "b1", "b0"])
-                    #expect(permutation.consoleSorted(sortByHost: policies) {
-                        $0.id == b0.id ? 0 : nil
-                    }.map(\.agent.paneID) == ["b0", "a0", "a1", "b1"])
+                    #expect(permutation.consoleSorted(serverOrder: serverOrder).map(\.agent.paneID)
+                        == ["beta-blocked", "tui-working", "tmux-working", "tui-idle"])
+                    #expect(permutation.consoleSorted(serverOrder: serverOrder) {
+                        $0.id == tuiIdle.id ? 0 : nil
+                    }.map(\.agent.paneID) == ["tui-idle", "beta-blocked", "tui-working", "tmux-working"])
                 }
             }
         }
     }
 
-    @Test func consoleBorrowsConnectionsAndKeepsRowsSortAndGroupingIndependent() async throws {
+    /// A Rex Agent takes its place in the same order as the other kinds':
+    /// Blocked, Done (a finished turn this device has not looked at), Working,
+    /// Idle, then Unknown, as `RexAgentRule` and `RexTurnState` read each
+    /// terminal, whatever order Rex lists them in. The flat list, the Host
+    /// filter, By Host and By Workspace agree, for a Host whose one Server is
+    /// Rex and for one with a Herdr TUI Server on beside it, and a Pin on a
+    /// Rex Agent leads as any Pin does.
+    @Test func rexAgentsTakeTheirPlaceInTheOneStatusPriorityOrder() async throws {
+        let suite = "sidebar-rex-order-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let socket = RexSocket(path: "/run/user/1000/rex/server.sock")
+        let m3TUI = Host(name: "m3", address: "m3.example", username: "dev")
+        let m3Rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex, rexSocket: socket)
+        let lab = Host(name: "lab", address: "lab.example", username: "dev", serverKind: .rex, rexSocket: socket)
+        let records = HostStore(volatileHosts: [m3TUI, m3Rex, lab]).consoleHosts
+        #expect(records.map(\.id) == [m3TUI.id, m3Rex.id, lab.id])
+
+        let tui = ScriptedTransport(snapshot: .fixture(
+            agents: [
+                .fixture(paneID: "tui-working", status: .working, workspaceID: "w-api"),
+                .fixture(paneID: "tui-done", status: .done, workspaceID: "w-web"),
+                .fixture(paneID: "tui-idle", status: .idle, workspaceID: "w-api"),
+            ],
+            workspaces: [.fixture(workspaceID: "w-api", label: "api"), .fixture(workspaceID: "w-web", label: "web")]))
+        /// One window of Codex terminals, each named for what its record
+        /// reads, holding the record its last report left, or none.
+        func rexSession(_ id: String, label: String, _ terminals: [(name: String, state: String?)])
+            -> FakeRexWorld.Session
+        {
+            let blocks = terminals.enumerated().map { index, terminal in
+                var block = FakeRexWorld.Block.running("block:\(terminal.name)", program: "codex")
+                block.label = terminal.name
+                block.processID = 5100 + index
+                block.status = terminal.state.map { block.record($0, app: "codex") }
+                return block
+            }
+            func tiled(_ ids: ArraySlice<String>) -> FakeRexWorld.Layout {
+                let first = FakeRexWorld.Layout.block(ids[ids.startIndex])
+                return ids.count == 1 ? first : .split(first, tiled(ids.dropFirst()))
+            }
+            return FakeRexWorld.Session(
+                id: id, label: label, activeWindowID: "window:a",
+                windows: [
+                    FakeRexWorld.Window(
+                        id: "window:a", label: "agents",
+                        layers: [FakeRexWorld.Layer(layout: tiled(blocks.map(\.id)[...]), blocks: blocks)])
+                ])
+        }
+        // A first sight of done is a turn this device has not looked at.
+        let m3World = FakeRexWorld(sessions: [
+            rexSession("session:studio", label: "studio", [
+                ("rex-idle", "idle"), ("rex-working", "working"), ("rex-unknown", nil), ("rex-done", "done"),
+                ("rex-blocked", "blocked"),
+            ])
+        ])
+        let labWorld = FakeRexWorld(
+            instanceID: "instance-0002",
+            sessions: [rexSession("session:bench", label: "bench", [("lab-working", "working"), ("lab-done", "done")])])
+        let m3Server = FakeRexServer()
+        await m3World.install(on: m3Server)
+        let labServer = FakeRexServer()
+        await labWorld.install(on: labServer)
+        let rexConnections = Mutex([
+            m3Rex.id: ScriptedRexHost(control: [.server(m3Server)]),
+            lab.id: ScriptedRexHost(control: [.server(labServer)]),
+        ])
+        let store = ConsoleStore(
+            pins: PinnedAgentsStore(defaults: defaults), rowLayouts: AgentRowLayoutStore(defaults: defaults),
+            makeSession: { host, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: {
+                    guard host.id == m3TUI.id else { throw TransportError.cancelled }
+                    return tui
+                }, keepalive: nil)
+            },
+            makeRexSession: { host in
+                RexHostSession(storedSocket: host.rexSocket) { socket, previous in
+                    guard let connection = rexConnections.withLock({ $0.removeValue(forKey: host.id) }) else {
+                        throw TransportError.sshUnreachable(detail: "no more scripted connections")
+                    }
+                    return try await RexSSHTransport.connect(
+                        over: connection, socket: socket, resuming: previous, options: .testing)
+                }
+            })
+        defer { store.setHosts([]) }
+        store.setHosts(records)
+        await store.resume()
+
+        func name(_ agent: ConsoleAgent) -> String { agent.agent.name ?? agent.agent.paneID }
+        let statuses: [String: AgentStatus] = [
+            "rex-blocked": .blocked, "rex-done": .done, "rex-working": .working, "rex-idle": .idle,
+            "rex-unknown": .unknown, "lab-done": .done, "lab-working": .working,
+            "tui-done": .done, "tui-working": .working, "tui-idle": .idle,
+        ]
+        try await waitForConsole(store) {
+            Dictionary(store.agents.map { (name($0), $0.agent.status) }) { first, _ in first } == statuses
+        }
+        let backends: [AgentBackend: Int] = Dictionary(grouping: store.agents.compactMap(\.backend)) { $0 }
+            .mapValues(\.count)
+        #expect(backends == [.rex: 7, .tui: 3])
+
+        // Status first; a Host's name, then the catalog's Server order, for equals.
+        let ordered = [
+            "rex-blocked", "lab-done", "tui-done", "rex-done", "lab-working", "tui-working", "rex-working",
+            "tui-idle", "rex-idle", "rex-unknown",
+        ]
+        #expect(store.agents.map(name) == ordered)
+        #expect(store.chatDisplayAgents.map(name) == ordered)
+        let m3 = Set([m3TUI.id, m3Rex.id])
+        let m3Ordered = ordered.filter { !$0.hasPrefix("lab-") }
+        #expect(store.chatDisplayAgents.filter { m3.contains($0.hostID) }.map(name) == m3Ordered)
+        #expect(store.chatDisplayAgents.filter { $0.hostID == lab.id }.map(name) == ["lab-done", "lab-working"])
+
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+        let byHost = presentation.sections(hosts: records, console: store)
+        #expect(byHost.map(\.hostName) == ["m3", "lab"])
+        #expect(byHost.map { $0.agents.map(name) } == [m3Ordered, ["lab-done", "lab-working"]])
+        // A Workspace follows its first Agent in that order, across the Host's Servers.
+        let cards = presentation.workspaceSections(hosts: records, console: store)
+        #expect(cards.map(\.title) == ["studio", "web", "api", "bench"])
+        #expect(cards.map(\.hostName) == ["m3", "m3", "m3", "lab"])
+        #expect(cards.map { $0.agents.map(name) } == [
+            ["rex-blocked", "rex-done", "rex-working", "rex-idle", "rex-unknown"], ["tui-done"],
+            ["tui-working", "tui-idle"], ["lab-done", "lab-working"],
+        ])
+
+        let unknown = try #require(store.agents.first { name($0) == "rex-unknown" })
+        store.togglePin(hostID: m3Rex.id, paneID: unknown.agent.paneID)
+        #expect(store.agents.map(name) == ["rex-unknown"] + Array(ordered.dropLast()))
+        #expect(presentation.sections(hosts: records, console: store).first?.agents.map(name)
+            == ["rex-unknown"] + Array(m3Ordered.dropLast()))
+    }
+
+    @Test func consoleBorrowsConnectionsIgnoresPluginSpacesSortAndKeepsGroupingIndependent() async throws {
         let suite = "sidebar-console-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let alpha = Host.fixture(name: "alpha")
-        let beta = Host.fixture(name: "beta")
+        let alpha = Host.fixture(name: "alpha", address: "alpha.example")
+        let beta = Host.fixture(name: "beta", address: "beta.example")
         let a = ScriptedTransport(snapshot: .fixture(agents: [
             .fixture(paneID: "a0", status: .idle), .fixture(paneID: "a1", status: .blocked),
         ]))
@@ -186,11 +318,12 @@ struct SidebarConsoleIntegrationTests {
         store.setHosts([alpha, beta])
         await store.resume()
         try await waitForSnapshots(store, hosts: [alpha.id, beta.id])
-        #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
+        // Plugin `agent_panel_sort = "spaces"` never overrides status-priority ordering.
+        #expect(store.agents.map(\.agent.paneID) == ["a1", "b1", "a0", "b0"])
         #expect(connects.withLock { $0 } == 2)
         let plugin = store.rowLayout(for: alpha.id)
         // herdr's rows_by_agent is decoded but never applied in the Console.
-        #expect(plugin.rows == [[.init(.terminalTitleStripped)], [], [.init(.directory)]])
+        #expect(plugin.rows == [[.init(.terminalTitleStripped)], [], []])
         #expect(plugin.rowsByAgent.isEmpty)
         let first = try #require(store.agents.first)
         #expect(AgentCardPresentation(agent: first, layout: plugin).headline == "Task")
@@ -204,16 +337,16 @@ struct SidebarConsoleIntegrationTests {
         #expect(observed.withLock { $0 })
         #expect(store.rowLayout(for: alpha.id).rows.isEmpty)
         #expect(store.rowLayout(for: beta.id).rows == [[.init(.agent)]])
-        #expect(store.agents.map(\.agent.paneID) == ["a0", "a1", "b1", "b0"])
+        #expect(store.agents.map(\.agent.paneID) == ["a1", "b1", "a0", "b0"])
         let switcher = TerminalAgentSwitcherItem(
             agent: first, pins: store.pins, layout: store.rowLayout(for: alpha.id))
         #expect(switcher.title == "claude")
         let presentation = ConsoleListPresentationStore(defaults: defaults)
         presentation.select(.grouped)
         #expect(presentation.sections(hosts: [alpha, beta], agents: store.agents).map { $0.agents.map(\.agent.paneID) }
-            == [["a0", "a1"], ["b1", "b0"]])
+            == [["a1", "a0"], ["b1", "b0"]])
         store.togglePin(hostID: beta.id, paneID: "b0")
-        #expect(store.agents.first?.agent.paneID == "b0")
+        #expect(store.agents.map(\.agent.paneID) == ["b0", "a1", "b1", "a0"])
         await a.setSidebarLayout(try snapshot(sort: "priority"))
         await store.refreshSidebarLayouts()
         #expect(store.agents.map(\.agent.paneID) == ["b0", "a1", "b1", "a0"])
@@ -253,7 +386,7 @@ struct SidebarConsoleIntegrationTests {
         #expect(store.rowLayout(for: host.id) == .consoleDefault)
     }
 
-    @Test func statusEventsRefreshRecencyAndLiteralRowsWithOneCoalescedFollowUp() async throws {
+    @Test func statusEventsReorderByStatusKeepSnapshotOrderAndRefreshLiteralRowsWithOneCoalescedFollowUp() async throws {
         let suite = "sidebar-live-\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -270,7 +403,7 @@ struct SidebarConsoleIntegrationTests {
         try await waitForSnapshots(store, hosts: [host.id])
         try await transport.waitForLiveSubscription(containing: [.pane(.agentStatusChanged, paneID: "a")])
         await store.refreshSidebarLayouts()
-        #expect(store.agents.map(\.agent.paneID) == ["b", "a"])
+        #expect(store.agents.map(\.agent.paneID) == ["a", "b"])
         try store.rowLayouts.setLayout(.init(rows: [
             [.init(.terminalTitleStripped)], [.init(.custom("note")), .init(.terminalTitle)],
         ]), for: host.id)
@@ -283,13 +416,13 @@ struct SidebarConsoleIntegrationTests {
         #expect(await transport.emit(.agentStatusChanged(paneID: "a", status: .working)))
         await firstRead.waitForEntry()
         let countAtEntry = await transport.snapshotFetchCount
-        try await waitForConsole(store) { store.agents.first(where: { $0.agent.paneID == "a" })?.agent.status == .working }
+        try await waitForConsole(store) { store.agents.map(\.agent.paneID) == ["b", "a"] }
 
         await transport.setSnapshot(.fixture(agents: [
             metadata(pane: "a", status: .done, sequence: 4, title: "Task B", note: "**literal** [link](url)"), b,
         ]))
         #expect(await transport.emit(.agentStatusChanged(paneID: "a", status: .done)))
-        try await waitForConsole(store) { store.agents.first(where: { $0.agent.paneID == "a" })?.agent.status == .done }
+        try await waitForConsole(store) { store.agents.map(\.agent.paneID) == ["a", "b"] }
         #expect(await transport.snapshotFetchCount == countAtEntry)
         await firstRead.open()
         try await waitForConsole(store) { store.agents.first?.agent.stateChangeSeq == 4 }
@@ -421,14 +554,17 @@ struct SidebarConsoleIntegrationTests {
     }
 
     private func waitForConsole(_ store: ConsoleStore, until ready: () -> Bool) async throws {
-        while !ready() {
+        while true {
             try Task.checkCancellation()
             let changes = AsyncStream<Void>.makeStream()
-            withObservationTracking {
-                _ = store.agents
-                _ = store.hostConnectionGenerations
+            let isReady = withObservationTracking {
+                ready()
             } onChange: {
                 changes.continuation.yield(())
+            }
+            if isReady {
+                changes.continuation.finish()
+                return
             }
             var iterator = changes.stream.makeAsyncIterator()
             let change = await iterator.next()
@@ -446,7 +582,7 @@ struct SidebarConsoleIntegrationTests {
     }
 
     private func row(_ host: Host, pane: String, status: AgentStatus, order: Int, sequence: Int = 0) -> ConsoleAgent {
-        ConsoleAgent(hostID: host.id, hostName: host.displayName,
+        ConsoleAgent(hostID: host.id, hostName: host.hostName,
                      agent: Agent(terminalID: "t", kind: "claude", title: "", status: status,
                                   workspaceID: "w", tabID: "t", paneID: pane, cwd: "", revision: 1,
                                   stateChangeSeq: sequence),
@@ -484,8 +620,8 @@ struct SidebarConsoleIntegrationTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        let healthy = Host(name: "Healthy", address: "healthy.example", username: "dev")
-        let flaky = Host(name: "Flaky", address: "flaky.example", username: "dev")
+        let healthy = Host.fixture(name: "Healthy", address: "healthy.example")
+        let flaky = Host.fixture(name: "Flaky", address: "flaky.example")
         let healthyTransport = ScriptedTransport(snapshot: .fixture(agents: [
             .fixture(paneID: "a1", workspaceID: "w1", title: "Alpha"),
             .fixture(paneID: "a2", workspaceID: "w1", title: "Beta"),
@@ -525,12 +661,12 @@ struct SidebarConsoleIntegrationTests {
         }
 
         let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
-        let lastMode = UserDefaults.standard.object(forKey: "console-list.mode")
+        let lastMode = UserDefaults.standard.object(forKey: "console-list.presentation-mode")
         UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
-        UserDefaults.standard.removeObject(forKey: "console-list.mode")
+        UserDefaults.standard.removeObject(forKey: "console-list.presentation-mode")
         defer {
             UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab")
-            UserDefaults.standard.set(lastMode, forKey: "console-list.mode")
+            UserDefaults.standard.set(lastMode, forKey: "console-list.presentation-mode")
         }
 
         let composition = DemoScreenshotComposition.make()
@@ -560,6 +696,9 @@ struct SidebarConsoleIntegrationTests {
             controller.view.layoutIfNeeded()
         }
         #expect(Self.totalListItems(in: controller.view) == 2)
+        await store.sidebarSnapshots.waitForPendingReads()
+        try await Task.sleep(for: .milliseconds(30))
+        controller.view.layoutIfNeeded()
 
         // Start counting ConsoleView evaluations after initial settle.
         var counts: [String: Int] = [:]
@@ -569,36 +708,50 @@ struct SidebarConsoleIntegrationTests {
         defer { PerfTrace.testCountObserver = nil }
 
         // Drop the flaky Host and let it fail + retry across multiple attempts:
-        // the issue banner row appears (total items 2 -> 3), while ConsoleView.body,
-        // ConsoleView.content, and existing Agent rows never re-evaluate.
+        // the floating corner badge mounts outside the List (total list items stay 2),
+        // while ConsoleView.body, ConsoleView.content, and existing Agent rows never re-evaluate.
         await flakyFirst.setConnectionAlive(false)
         await flakyFirst.failEventStream(.sshUnreachable(detail: "offline"))
         let failDeadline = ContinuousClock.now + .seconds(3)
         while (await flakyConnector.failedAttempts < 2
-            || Self.totalListItems(in: controller.view) != 3),
+            || !Self.hasCornerIssueBadge(in: controller.view)),
             ContinuousClock.now < failDeadline
         {
             try await Task.sleep(for: .milliseconds(20))
             controller.view.layoutIfNeeded()
         }
         #expect(await flakyConnector.failedAttempts >= 2)
-        #expect(Self.totalListItems(in: controller.view) == 3)
+        #expect(Self.hasCornerIssueBadge(in: controller.view))
+        #expect(Self.totalListItems(in: controller.view) == 2)
 
-        // Recover the flaky Host: the issue banner disappears cleanly (3 -> 2 items),
-        // still with zero ConsoleView.body / ConsoleView.content / agentRow rebuilds.
+        // Recover the flaky Host: the floating corner badge disappears cleanly,
+        // list items remain 2 throughout, with zero ConsoleView.body / content / agentRow rebuilds.
         await flakyConnector.allowRecovery()
         let recoverDeadline = ContinuousClock.now + .seconds(3)
-        while (!store.hostIssues.isEmpty || Self.totalListItems(in: controller.view) != 2),
+        while (!store.hostIssues.isEmpty || Self.hasCornerIssueBadge(in: controller.view)),
             ContinuousClock.now < recoverDeadline
         {
             try await Task.sleep(for: .milliseconds(20))
             controller.view.layoutIfNeeded()
         }
         #expect(store.hostIssues.isEmpty)
+        #expect(!Self.hasCornerIssueBadge(in: controller.view))
         #expect(Self.totalListItems(in: controller.view) == 2)
+        await store.sidebarSnapshots.waitForPendingReads()
+        try await Task.sleep(for: .milliseconds(30))
+        controller.view.layoutIfNeeded()
         #expect(counts["ConsoleView.body", default: 0] == 0)
         #expect(counts["ConsoleView.content", default: 0] == 0)
         #expect(counts["ConsoleView.agentRow", default: 0] == 0)
+    }
+
+    private static func hasCornerIssueBadge(in root: UIView) -> Bool {
+        let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+        return accessibleElements(in: root).contains { node in
+            guard node.responds(to: getter) else { return false }
+            return node.value(forKey: "accessibilityIdentifier") as? String
+                == "agents.hostIssues.badge"
+        }
     }
 
     private static func totalListItems(in root: UIView) -> Int? {

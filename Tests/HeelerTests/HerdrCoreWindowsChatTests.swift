@@ -345,7 +345,7 @@ struct HerdrCoreWindowsChatTests {
         try await Self.until("the reason") {
             chat.conversation.phase == .unavailable(.cannotTellSessionOnWindows(.pi))
         }
-        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.pi).offersWindowsExtension)
+        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.pi).offersHeelersExtension)
         await fixture.scripted.waitForMethod("terminal.label")
         fixture.finish()
     }
@@ -553,11 +553,11 @@ struct HerdrCoreWindowsChatTests {
     }
 
     @Test func theOfferShowsOnlyForPiAndOhMyPi() {
-        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.pi).offersWindowsExtension)
-        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.omp).offersWindowsExtension)
-        #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.claude).offersWindowsExtension)
-        #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.grok).offersWindowsExtension)
-        #expect(!ChatUnavailableReason.cannotTellSession(.pi).offersWindowsExtension)
+        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.pi).offersHeelersExtension)
+        #expect(ChatUnavailableReason.cannotTellSessionOnWindows(.omp).offersHeelersExtension)
+        #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.claude).offersHeelersExtension)
+        #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.grok).offersHeelersExtension)
+        #expect(!ChatUnavailableReason.cannotTellSession(.pi).offersHeelersExtension)
     }
 
     @Test func theUnavailableStateShowsTheOfferAsRendered() async throws {

@@ -67,7 +67,7 @@ final class HostAccountsStore {
     }
 
     /// The harnesses Usage reads, listed whether or not they have Accounts.
-    nonisolated static let usageKinds: [SupportedAgentKind] = [.claude, .codex]
+    nonisolated static let usageKinds: [SupportedAgentKind] = [.claude, .codex, .antigravity]
 
     let hostID: Host.ID
     private(set) var loadState: LoadState = .idle

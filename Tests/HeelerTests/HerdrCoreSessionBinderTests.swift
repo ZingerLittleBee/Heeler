@@ -80,8 +80,16 @@ actor ScriptedProcessTable {
         if request.readsArguments {
             fact.arguments = .value(Set(request.argumentsAmong).intersection(process.argv))
             if request.preservesArgumentOrder, !process.argv.isEmpty {
-                fact.argumentVector = .value(process.argv.map {
-                    request.argumentsAmong.contains($0) ? $0 : $0.hasPrefix("-") ? "-" : ""
+                // As the reader keeps them: an asked long option's name before
+                // its `=`, never the value.
+                fact.argumentVector = .value(process.argv.map { argument in
+                    if request.argumentsAmong.contains(argument) { return argument }
+                    if argument.hasPrefix("--"), let equals = argument.firstIndex(of: "="),
+                        request.argumentsAmong.contains(String(argument[..<equals]))
+                    {
+                        return String(argument[...equals])
+                    }
+                    return argument.hasPrefix("-") ? "-" : ""
                 })
             }
         }

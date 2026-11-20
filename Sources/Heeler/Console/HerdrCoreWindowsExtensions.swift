@@ -30,10 +30,12 @@ enum HerdrCoreWindowsExtensions {
     }
 }
 
-/// The confirmation's state: which folders, then the writes.
+/// The confirmation's state: which folders, then the writes. A Rex Host's Chat
+/// offers the same extension through it, into the one folder its Agent loads
+/// from (ADR 0056).
 @MainActor
 @Observable
-final class HerdrCoreWindowsExtensionFlow: Identifiable {
+final class HeelersExtensionFlow: Identifiable {
     enum Phase: Equatable {
         case locating
         case ready(folders: [String])
@@ -43,13 +45,18 @@ final class HerdrCoreWindowsExtensionFlow: Identifiable {
     }
 
     private(set) var phase = Phase.locating
+    /// What the sheet says under the folders before anything is written, where
+    /// the usual words would not fit.
+    let readyFooter: String?
     private let locate: @MainActor () async throws -> [String]
     private let write: @MainActor ([String]) async throws -> Void
 
     init(
+        readyFooter: String? = nil,
         locate: @escaping @MainActor () async throws -> [String],
         write: @escaping @MainActor ([String]) async throws -> Void
     ) {
+        self.readyFooter = readyFooter
         self.locate = locate
         self.write = write
     }
@@ -82,11 +89,11 @@ final class HerdrCoreWindowsExtensionFlow: Identifiable {
 }
 
 /// Names each folder before anything is written.
-struct HerdrCoreWindowsExtensionSheet: View {
-    @State private var flow: HerdrCoreWindowsExtensionFlow
+struct HeelersExtensionSheet: View {
+    @State private var flow: HeelersExtensionFlow
     @Environment(\.dismiss) private var dismiss
 
-    init(flow: HerdrCoreWindowsExtensionFlow) {
+    init(flow: HeelersExtensionFlow) {
         _flow = State(initialValue: flow)
     }
 
@@ -114,9 +121,13 @@ struct HerdrCoreWindowsExtensionSheet: View {
         case .ready(let folders):
             folderSection(
                 folders,
-                footer: String(localized: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host. The extension only tells Chat which conversation a session is in."))
+                footer: flow.readyFooter
+                    ?? String(localized: "Expect Pi and Oh My Pi to load what is in these folders for every session on this Host. The extension only tells Chat which conversation a session is in."))
             Section {
-                Button("Add to \(folders.count) Folders") {
+                Button(
+                    folders.count == 1
+                        ? String(localized: "Add to This Folder") : String(localized: "Add to \(folders.count) Folders")
+                ) {
                     Task { await flow.confirm() }
                 }
                 .accessibilityIdentifier("chat.windowsExtension.confirm")

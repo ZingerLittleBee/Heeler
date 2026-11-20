@@ -6,9 +6,15 @@ import Foundation
 /// everything before it demonstrably worked, everything after it is unknown.
 enum PreflightCheck: CaseIterable, Sendable {
     /// The checks a Host of this kind runs, in order. A tmux Host speaks no
-    /// protocol of Heeler's: its version is part of being installed.
+    /// protocol of Heeler's: its version is part of being installed. A Rex
+    /// Host needs no shell setup: its checks reach the server's socket and say
+    /// hello, which changes nothing on the server (ADR 0049).
     static func cases(for serverKind: ServerKind) -> [PreflightCheck] {
-        serverKind == .tmux ? allCases.filter { $0 != .protocolCompatible } : allCases
+        switch serverKind {
+        case .tmux: allCases.filter { $0 != .protocolCompatible }
+        case .rex: allCases.filter { $0 != .remoteEnvironment }
+        case .herdrTUI, .herdrCore, .unconfirmed: allCases
+        }
     }
 
     /// SSH reachable, credentials accepted, host key trusted.
@@ -34,6 +40,8 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.serverRunning, .herdrCore): String(localized: "herdr-core running")
         case (.herdrInstalled, .tmux): String(localized: "tmux installed")
         case (.serverRunning, .tmux): String(localized: "tmux server running")
+        case (.herdrInstalled, .rex): String(localized: "Rex installed")
+        case (.serverRunning, .rex): String(localized: "Rex server running")
         case (.protocolCompatible, _): String(localized: "protocol compatible")
         }
     }
@@ -159,7 +167,8 @@ struct PreflightReport: Equatable, Sendable {
         case .coreMutationOutcomeUnknown:
             check = .connection
             hint = String(localized: "The Host did not confirm the action. Check its state before trying again.")
-        case .herdrCoreInventoryStale, .herdrCoreTerminalGone, .tmuxPaneGone, .tmuxServerGone:
+        case .herdrCoreInventoryStale, .herdrCoreTerminalGone, .tmuxPaneGone, .tmuxServerGone, .rexServerGone,
+            .rexTerminalOutputUnavailable, .rexTerminalHistoryTooLong, .rexScreenUnreadable:
             // Preflight has no inventory; keep the closed taxonomy total.
             check = .connection
             hint = error.presentation.message
@@ -182,6 +191,15 @@ struct PreflightReport: Equatable, Sendable {
             hint = error.presentation.message
         case .tmuxServerNotRunning, .tmuxStartOnMac:
             check = .serverRunning
+            hint = error.presentation.message
+        case .rexNotInstalled, .rexLookupFailed:
+            check = .herdrInstalled
+            hint = error.presentation.message
+        case .rexServerNotRunning, .rexForwardingRefused, .rexSocketUnreachable, .rexAccountRefused, .rexRejected:
+            check = .serverRunning
+            hint = error.presentation.message
+        case .rexUnsupportedRevision, .rexAnswerUnreadable:
+            check = .protocolCompatible
             hint = error.presentation.message
         case .gitTimedOut:
             // Preflight never reads Changes; keep the closed taxonomy total.

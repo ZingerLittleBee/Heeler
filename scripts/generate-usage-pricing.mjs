@@ -35,9 +35,11 @@ function tier(entry, suffix = "") {
 }
 function fromLiteLLM(source) {
   const models = {};
-  for (const name of Object.keys(source).sort()) {
-    const entry = source[name];
-    if (!/^(claude-|gpt-)/.test(name) || !["chat", "responses"].includes(entry.mode)) continue;
+  for (const rawName of Object.keys(source)) {
+    const entry = source[rawName];
+    const name = rawName.startsWith("gemini/gemini-") ? rawName.slice("gemini/".length) : rawName;
+    if (rawName !== name && Object.hasOwn(source, name)) continue;
+    if (!/^(claude-|gpt-|gemini-)/.test(name) || !["chat", "responses"].includes(entry.mode)) continue;
     const model = tier(entry);
     if (!model) continue;
     const thresholds = Object.keys(entry).map(key => /^input_cost_per_token_above_(\d+)k_tokens$/.exec(key)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
@@ -50,12 +52,12 @@ function fromLiteLLM(source) {
     }
     models[name] = model;
   }
-  return models;
+  return Object.fromEntries(Object.entries(models).sort(([a], [b]) => a.localeCompare(b, "en")));
 }
 function fromModelsDev(source) {
   const models = {};
-  for (const provider of ["anthropic", "openai"]) for (const [name, entry] of Object.entries(source[provider]?.models || {})) {
-    if (!/^(claude-|gpt-)/.test(name) || !valid(entry.cost?.input) || !valid(entry.cost?.output)) continue;
+  for (const provider of ["anthropic", "openai", "google"]) for (const [name, entry] of Object.entries(source[provider]?.models || {})) {
+    if (!/^(claude-|gpt-|gemini-)/.test(name) || !valid(entry.cost?.input) || !valid(entry.cost?.output)) continue;
     const convert = cost => Object.fromEntries([["input", cost.input], ["output", cost.output], ["cacheRead", cost.cache_read], ["cacheWrite", cost.cache_write]].filter(([, value]) => valid(value)).map(([key, value]) => [key, Number((value / 1_000_000).toPrecision(15))]));
     const model = { base: convert(entry.cost) };
     const thresholds = Object.keys(entry.cost).filter(key => /^context_over_\d+k$/.test(key));

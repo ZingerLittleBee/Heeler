@@ -1,14 +1,14 @@
-<!-- Translated from docs/guides/pairing.md at d65d8b36 -->
+<!-- Translated from docs/guides/pairing.md at 25c500b6 -->
 
 # 扫码配对 Host
 
-扫描配对码，通过 SSH 将 iPhone 或 iPad 连接到 herdr Host，随后就能在 Heeler 中查看 Claude Code、Codex 和其他编程 Agent 的状态。
+扫描配对码，通过 SSH 将 iPhone 或 iPad 连接到 Host，随后就能在 Heeler 中查看 Claude Code、Codex 和其他编程 Agent 的状态。
 
-在运行 herdr 的机器上显示配对码（Pairing Code），再用 Heeler 扫描。Host 添加后，密钥和指纹都已配置好，无需填写任何表单。
+在机器上显示配对码（Pairing Code），再用 Heeler 扫描。Host 添加后，密钥和指纹都已配置好，无需填写任何表单。
 
 ## 开始之前
 
-- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。如需使用 herdr-core 或 tmux Host，请按[连接 herdr-core](herdr-core.md) 或[连接 tmux](tmux.md) 手动添加。
+- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 herdr、只运行 herdr-core、tmux 或 Rex 时，也能用一条命令配对：请直接跳到[配对没有 herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
 - iPhone 或 iPad 与这台机器处于同一网络（例如同一个 Wi-Fi），或连接到同一个 VPN。配对不会使用 Heeler 中 **Settings > Overlay Networks** 里的网络；这些网络可以在配对完成后再添加，用于[外出时使用](#外出时使用)。
 - 预留约两分钟：配对码只能使用一次，两分钟后失效。
 
@@ -72,7 +72,7 @@ herdr plugin action invoke heeler.pair
 2. 允许访问相机；如果 iOS 询问，也请允许访问本地网络中的设备。然后将相机对准二维码。
 3. 配对会立即开始，Heeler 会逐项显示每个步骤的完成情况。无需核对指纹：配对码中已包含指纹。
 
-配对完成后，Heeler 会打开新添加的 **Herdr TUI** Server 页面并运行检查。
+4. 配对完成后，Heeler 会查看这台机器并列出它运行的 Server：**Herdr TUI**，以及机器上有的 **herdr-core**、每个 tmux 服务端和 **Rex**。保留想要的勾选项，需要的话给 Host 起个名字，然后轻点 **Add Host with 1 Server**（数字随勾选的数量变化）。
 
 如果无法使用相机，请在弹窗中按 `c`。在 Mac 上，这会复制配对码；把它传到 iPhone 或 iPad 上（例如通过通用剪贴板），然后在 **Scan to Pair** 中轻点 **Paste Pairing Code**。在 Linux 上，按 `c` 会在二维码下方打印配对码：把它发送到 iPhone 或 iPad（例如发到自己的备忘录或消息中），在设备上复制后按同样方式粘贴。
 
@@ -80,15 +80,37 @@ herdr plugin action invoke heeler.pair
 
 弹窗会显示 **Device paired** 以及刚刚添加的密钥。如果你刚才并没有配对设备，请按 `r` 撤销该密钥。按其他任意键关闭弹窗。
 
-**成功的标志是** 弹窗显示 **Device paired**，且该 Host 在 Heeler 中的检查全部通过，Agent 或终端能够正常加载。
+**成功的标志是** 弹窗显示 **Device paired**，该 Host 出现在 **Hosts** 中，Agent 或终端能够正常加载。
 
 ## 配对之后
 
 - 打开 **Agents** 查看已连接 Host 上的编程 Agent，再打开某个 Agent 使用它的终端或 [Chat](chat.md)。
 - Host 会以你的用户名和这台机器的地址命名。如需重命名，请从 **Hosts** 中打开它并轻点 **Edit**。
 - Heeler 使用这台设备的 Device Key（设备密钥）登录。如需配对另一台 iPhone 或 iPad，请在那台设备上重复步骤 3 和步骤 4。
-- 如果这台机器已经在 **Hosts** 中，再次配对会把它再添加一次：新增一个条目，或者在两者的连接方式相同时，成为同一个 Host 下的第二个 **Herdr TUI** Server。在不再需要的条目上向左轻扫并轻点 **Remove**，或在 Host 页面上关闭多余的 Server。
+- 如果这台机器已经在 **Hosts** 中，且用户名和地址都相同，再次配对不会新增条目：最后一步会说明这一点，并在该 Host 上打开你勾选的 Server。地址不同时会新增一个条目，在不再需要的条目上向左轻扫并轻点 **Remove**。
+- 再次配对还能修复提示 **The host key changed** 的 Host（例如机器重装之后），或丢失了这台设备密钥的 Host。主机密钥变了时最后一步会说明，完成后 Heeler 信任新 Pairing Code 里的密钥并重新连接该 Host。
+- 没有勾选的 Server，或之后才启动的 Server，可以在 Host 页面上用开关打开。
 - 如需在 iPhone 或 iPad 上收到 Agent 等待处理（**Blocked**）或任务完成（**Done**）的通知，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后在 **Hosts** 下打开该 Host 的开关。
+
+## 配对没有 herdr 的机器
+
+**运行位置：Mac 或 Linux**
+
+只运行 herdr-core、tmux 或 Rex、没有 herdr 的机器没有插件可以显示配对码。按[步骤 1](#1-开启-ssh) 开启 SSH，然后以 Heeler 要登录的账户，在这台机器的终端中运行下面的命令。需要 [Node.js](https://nodejs.org/) 20 或更高版本，以及 0.1.20 之后的 Heeler 版本：
+
+```sh
+npx -y heeler-pair@latest
+```
+
+`npx` 会下载并运行这条命令，不会留下任何安装内容。它显示的界面与弹窗相同：勾选 iPhone 或 iPad 能访问到的地址，按 Enter，然后按[步骤 4](#4-在-heeler-中扫码) 扫描二维码。Heeler 会列出在这台机器上找到的 Server，例如 **herdr-core** 和 **tmux**。尚未运行的 Server 可以之后在 Host 页面上打开。
+
+机器位于端口映射之后时，直接用参数传入 iPhone 或 iPad 实际访问的地址和端口，无需编写 `pair.json`：
+
+```sh
+npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
+```
+
+这些 Server 上的 Agent Notifications、Live Activity 和 Usage 需要 Host Helper，Heeler 会在每个 Server 的页面上提供安装入口，参见[连接 herdr-core](herdr-core.md#host-helper) 和[连接 tmux](tmux.md#host-helper)。
 
 ## 外出时使用
 
@@ -121,7 +143,7 @@ herdr plugin action invoke heeler.pair
 | 现象 | 处理方法 |
 | --- | --- |
 | 终端显示 **no herdr server is running** | 先运行 `herdr`，再在它的某个窗格中运行该命令。 |
-| 二维码底部显示不全 | 调大 herdr 窗口或缩小终端字号，然后按 `q` 并重新运行该命令。 |
+| 二维码底部显示不全，或显示 **This terminal is too small for the Pairing Code.** | 调大窗口或缩小终端字号。如果二维码没有自动出现，请按 `q` 并重新运行该命令。 |
 | **No SSH host key found under /etc/ssh.**（弹窗） | 开启“远程登录”（Remote Login），或运行 `sudo ssh-keygen -A`，然后重新运行该命令。 |
 | **No routable network address found.**（弹窗） | 将机器连接到 Wi-Fi、以太网或 VPN，然后重新运行该命令。 |
 | 弹窗中没有 iPhone 或 iPad 能访问到的地址，例如只有 `172.17.x.x` 这样的容器地址 | herdr 位于端口映射或 NAT 之后。按[通过端口映射配对](#通过端口映射配对)的说明，把 iPhone 或 iPad 能访问到的地址写入 `pair.json`，然后重新运行该命令。 |

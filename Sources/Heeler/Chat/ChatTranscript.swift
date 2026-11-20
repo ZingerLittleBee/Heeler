@@ -365,6 +365,22 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
         }
     }
 
+    /// Whether expanding the row reveals a detail block beneath its header.
+    var hasExpandableDetails: Bool {
+        if let subtitle, !subtitle.isEmpty { return true }
+        if let note, !note.isEmpty { return true }
+        if !questions.isEmpty { return true }
+        if showsDiffAsOutput, fileChanges != nil { return true }
+        if preview != nil { return true }
+        if let outputRead {
+            switch outputRead {
+            case .loading, .failed, .unavailable: return true
+            case .read: return ran
+            }
+        }
+        return ran
+    }
+
     // `preview`, `cardAnswer`, `outputRead` and `isNotUpdating` are
     // deliberately absent: decoding leaves them unset.
     private enum CodingKeys: String, CodingKey {
@@ -1006,18 +1022,32 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     /// not say (Claude Code's enqueue). Nil for any other prompt. A send of
     /// one path matches such a prompt when it names one of them.
     var pastedImagePaths: [String]?
+    /// Whether `text` still holds `[Image #N]` placeholders because the
+    /// record has not named their files yet (a Claude Code `enqueue`, or a
+    /// `queued_command` absorbed mid-turn without source notes).
+    var hasUnresolvedImagePlaceholders: Bool
 
-    init(offset: UInt64, text: String, entryID: ChatEntryID? = nil, pastedImagePaths: [String]? = nil) {
+    init(
+        offset: UInt64, text: String, entryID: ChatEntryID? = nil, pastedImagePaths: [String]? = nil,
+        hasUnresolvedImagePlaceholders: Bool = false
+    ) {
         self.offset = offset
         self.text = text
         self.entryID = entryID
         self.pastedImagePaths = pastedImagePaths
+        self.hasUnresolvedImagePlaceholders = hasUnresolvedImagePlaceholders
     }
 
     /// Whether `text` is one `[Image #N]` placeholder and nothing else.
     static func isImagePlaceholder(_ text: String) -> Bool {
         guard let pattern = try? Regex(#"\[Image #[0-9]+\]"#) else { return false }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).wholeMatch(of: pattern) != nil
+    }
+
+    /// Whether `text` contains at least one `[Image #N]` placeholder.
+    static func containsImagePlaceholder(_ text: String) -> Bool {
+        guard let pattern = try? Regex(#"\[Image #[0-9]+\]"#) else { return false }
+        return text.contains(pattern)
     }
 
     /// The path a sent text names when it is exactly one path, the way
@@ -1173,6 +1203,13 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     /// Where a Workflow records its agents, on the Host; nil when it is
     /// not where Chat may read.
     var journalPath: String?
+    /// Where a Claude Code background command writes its output, on the
+    /// Host, whose modification time is a sign it still runs; nil when the
+    /// transcript does not say.
+    var outputPath: String?
+    /// Claude Code's id for a background command's task, which a stop or a
+    /// Monitor's closing event names in place of the launching call.
+    var taskID: String?
     var launchOffset: UInt64
     /// Where the record that says it ended starts.
     var endOffset: UInt64?
@@ -1185,8 +1222,8 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
 
     init(
         id: String, kind: Kind, title: String, subtitle: String? = nil, state: State = .running,
-        journalPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil, launchedAt: Date? = nil,
-        lastActivityAt: Date? = nil, endedAt: Date? = nil, usage: Usage? = nil
+        journalPath: String? = nil, outputPath: String? = nil, launchOffset: UInt64, endOffset: UInt64? = nil,
+        launchedAt: Date? = nil, lastActivityAt: Date? = nil, endedAt: Date? = nil, usage: Usage? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -1194,6 +1231,7 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
         self.subtitle = subtitle
         self.state = state
         self.journalPath = journalPath
+        self.outputPath = outputPath
         self.launchOffset = launchOffset
         self.endOffset = endOffset
         self.launchedAt = launchedAt
@@ -1256,6 +1294,15 @@ struct ChatBackgroundWorkEnd: Equatable, Sendable {
         self.endedAt = endedAt
         self.usage = usage
     }
+}
+
+/// How many running Background Work items of `kind` launched above
+/// `windowStart` can still be running at `end.offset`, once in-window active
+/// items are counted against a turn-end record's pending count.
+struct ChatTurnPendingAllowance: Equatable, Sendable {
+    var kind: ChatBackgroundWorkItem.Kind
+    var carriedSlots: Int
+    var end: ChatBackgroundWorkEnd
 }
 
 /// A command Antigravity CLI sent to a background task, as the transcript
@@ -1338,11 +1385,15 @@ struct ChatTranscript: Equatable, Sendable {
     /// lines.
     var latestPromptOffset: UInt64?
     /// Every end the loaded lines record, by the launching call's id,
-    /// including ends of work launched above them.
+    /// including ends of work launched above them. An end that names only
+    /// a Claude Code background command's task is filed by that task's id.
     var backgroundWorkEnds: [String: ChatBackgroundWorkEnd]
     /// The first record among the loaded lines that stopped all Background
     /// Work, which ends work launched above them with no end of its own.
     var backgroundWorkStop: ChatBackgroundWorkEnd?
+    /// Pending-count caps recorded at turn boundaries inside a tail window,
+    /// retiring excess running work carried from above `windowStart`.
+    var backgroundWorkTurnCaps: [ChatTurnPendingAllowance]
     /// The turns the loaded lines open, oldest first. Entries above the
     /// first belong to a turn opened above the loaded lines.
     var turns: [ChatTurn]
@@ -1358,6 +1409,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// ends after its Esc (ADR 0024). The next prompt closes the turn and
     /// empties it.
     var openTurnBackgroundCommands: [ChatBackgroundCommand] = []
+    /// Antigravity CLI: whether the loaded lines record native Swarm tools or
+    /// board wakeups, which prompts the engine to follow `.system_generated/swarm`.
+    var hasSwarmActivity = false
 
     init(
         entries: [ChatEntry] = [], title: String? = nil, needsOlderHistory: Bool = false,
@@ -1366,6 +1420,7 @@ struct ChatTranscript: Equatable, Sendable {
         diagnostics: ChatTranscriptDiagnostics = ChatTranscriptDiagnostics(),
         backgroundWork: [ChatBackgroundWorkItem] = [], latestPromptOffset: UInt64? = nil,
         backgroundWorkEnds: [String: ChatBackgroundWorkEnd] = [:], backgroundWorkStop: ChatBackgroundWorkEnd? = nil,
+        backgroundWorkTurnCaps: [ChatTurnPendingAllowance] = [],
         turns: [ChatTurn] = [], precedingTurnEnd: ChatTurnEnd? = nil,
         unrecordedEntryIDs: Set<ChatEntryID> = []
     ) {
@@ -1380,6 +1435,7 @@ struct ChatTranscript: Equatable, Sendable {
         self.latestPromptOffset = latestPromptOffset
         self.backgroundWorkEnds = backgroundWorkEnds
         self.backgroundWorkStop = backgroundWorkStop
+        self.backgroundWorkTurnCaps = backgroundWorkTurnCaps
         self.turns = turns
         self.precedingTurnEnd = precedingTurnEnd
         self.unrecordedEntryIDs = unrecordedEntryIDs
@@ -1405,14 +1461,37 @@ struct ChatTranscript: Equatable, Sendable {
         _ earlier: [ChatBackgroundWorkItem], launchedBefore windowStart: UInt64, latestPromptOffset earlierPrompt: UInt64?
     ) {
         let loaded = Set(backgroundWork.map(\.id))
-        let carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
+        var carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
             var item = item
-            if let end = backgroundWorkEnds[item.id], end.offset > (item.endOffset ?? item.launchOffset) {
+            // A record that ends a command can name only its task.
+            let end = backgroundWorkEnds[item.id] ?? item.taskID.flatMap { backgroundWorkEnds[$0] }
+            if let end, end.offset > (item.endOffset ?? item.launchOffset) {
+                // A later carrier restates a command's end, which came
+                // when the first one did.
+                let firstEndedAt = item.kind == .command && item.state == end.state ? item.endedAt : nil
                 item.apply(end)
-            } else if item.state == .running, let stop = backgroundWorkStop {
+                item.endedAt = [firstEndedAt, item.endedAt].compactMap(\.self).min()
+            } else if item.state == .running, item.kind != .command, let stop = backgroundWorkStop {
+                // Claude Code's `agents_killed` says nothing of a command.
                 item.apply(stop)
             }
             return item
+        }
+        for cap in backgroundWorkTurnCaps {
+            let activeIndices = carried.indices.filter { index in
+                let item = carried[index]
+                guard item.kind == cap.kind else { return false }
+                if item.state == .running { return true }
+                return (item.endOffset ?? 0) > cap.end.offset
+            }
+            let excess = activeIndices.count - max(0, cap.carriedSlots)
+            guard excess > 0 else { continue }
+            var retired = 0
+            for index in activeIndices where carried[index].state == .running {
+                carried[index].apply(cap.end)
+                retired += 1
+                if retired == excess { break }
+            }
         }
         backgroundWork = carried + backgroundWork
         if latestPromptOffset == nil { latestPromptOffset = earlierPrompt }

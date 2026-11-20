@@ -1,5 +1,13 @@
 import Foundation
 
+/// The Server backend an Agent runs under, as the `backend` row field renders it.
+enum AgentBackend: String, Codable, Hashable, Sendable, CaseIterable {
+    case core
+    case tui
+    case rex
+    case tmux
+}
+
 /// One row of the Console (#8): an Agent joined with its Host identity and
 /// workspace context. The Console can group these rows by Host or Workspace.
 struct ConsoleAgent: Identifiable, Sendable, Equatable {
@@ -12,6 +20,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
 
     let hostID: Host.ID
     let hostName: String
+    let backend: AgentBackend?
     /// SSH account name, used only for conservative presentation of standard
     /// macOS/Linux home paths as `~`. The actual remote path stays unchanged.
     let hostUsername: String?
@@ -66,6 +75,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
         agent: Agent,
         workspaceLabel: String?,
         repositoryCheckout: RepositoryCheckout?,
+        backend: AgentBackend? = nil,
         hostUsername: String? = nil,
         tabLabel: String? = nil,
         tabPosition: Int? = nil,
@@ -76,6 +86,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     ) {
         self.hostID = hostID
         self.hostName = hostName
+        self.backend = backend
         self.hostUsername = hostUsername
         self.agent = agent
         self.workspaceLabel = workspaceLabel
@@ -283,18 +294,14 @@ extension AgentStatus {
 }
 
 extension [ConsoleAgent] {
-    /// Pins always lead by recency. `sortByHost` controls each Host's remaining
-    /// Agents; a Host absent from it retains the legacy priority order.
-    /// Space order uses stable Host blocks even in the flat presentation.
+    /// Pins always lead by recency. Remaining Agents sort by status priority
+    /// across every Server Kind, then by Host, catalog Server order, and each
+    /// Server's listed snapshot order so equal-status rows stay stable.
     func consoleSorted(
-        sortByHost: [Host.ID: AgentPanelSort] = [:],
+        serverOrder: [Host.ID: Int] = [:],
         pinRank: (ConsoleAgent) -> Int? = { _ in nil }
     ) -> [ConsoleAgent] {
-        // Space order is meaningful only within a Host. If any Host uses it,
-        // compare Host identities before local policy; selecting a comparator
-        // from just one operand would violate transitivity across mixed Hosts.
-        let usesSpaceOrder = contains { sortByHost[$0.hostID] == .spaces }
-        return sorted { lhs, rhs in
+        sorted { lhs, rhs in
             let lhsRank = pinRank(lhs)
             let rhsRank = pinRank(rhs)
             switch (lhsRank, rhsRank) {
@@ -307,31 +314,19 @@ extension [ConsoleAgent] {
             case (nil, nil):
                 break
             }
-            if usesSpaceOrder && lhs.hostID != rhs.hostID {
-                if lhs.hostName != rhs.hostName { return lhs.hostName < rhs.hostName }
-                return lhs.hostID.uuidString < rhs.hostID.uuidString
-            }
-            let policy = sortByHost[lhs.hostID] ?? .priority
-            if !usesSpaceOrder || policy == .priority {
-                let lhsBucket = lhs.agent.status.consoleSortBucket
-                let rhsBucket = rhs.agent.status.consoleSortBucket
-                if lhsBucket != rhsBucket { return lhsBucket < rhsBucket }
-            }
+            let lhsBucket = lhs.agent.status.consoleSortBucket
+            let rhsBucket = rhs.agent.status.consoleSortBucket
+            if lhsBucket != rhsBucket { return lhsBucket < rhsBucket }
             if lhs.hostName != rhs.hostName { return lhs.hostName < rhs.hostName }
             if lhs.hostID != rhs.hostID {
+                let lhsServer = serverOrder[lhs.hostID] ?? Int.max
+                let rhsServer = serverOrder[rhs.hostID] ?? Int.max
+                if lhsServer != rhsServer { return lhsServer < rhsServer }
                 return lhs.hostID.uuidString < rhs.hostID.uuidString
             }
-            if sortByHost[lhs.hostID] != nil {
-                // State sequences are comparable only within their Host.
-                if policy == .priority {
-                    let lhsSequence = lhs.agent.stateChangeSeq ?? 0
-                    let rhsSequence = rhs.agent.stateChangeSeq ?? 0
-                    if lhsSequence != rhsSequence { return lhsSequence > rhsSequence }
-                }
-                let lhsOrder = lhs.snapshotOrder ?? Int.max
-                let rhsOrder = rhs.snapshotOrder ?? Int.max
-                if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
-            }
+            let lhsOrder = lhs.snapshotOrder ?? Int.max
+            let rhsOrder = rhs.snapshotOrder ?? Int.max
+            if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
             let lhsWorkspace = lhs.workspaceLabel ?? ""
             let rhsWorkspace = rhs.workspaceLabel ?? ""
             if lhsWorkspace != rhsWorkspace { return lhsWorkspace < rhsWorkspace }

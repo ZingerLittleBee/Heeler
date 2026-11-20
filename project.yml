@@ -293,6 +293,10 @@ targets:
       # Pairing Code v2 vectors (ADR 0021): Swift-only, the Node plugin emits v1.
       - path: plugin/test-vectors/pairing-code-v2.json
         buildPhase: resources
+      # Pairing Code v3 vectors (ADR 0057): machine codes, which `heeler-pair`
+      # encodes and only the app decodes.
+      - path: plugin/test-vectors/pairing-code-v3.json
+        buildPhase: resources
       # Shared notification envelope vectors (ADR 0008), same arrangement.
       - path: plugin/test-vectors/notification-payload-v1.json
         buildPhase: resources
@@ -340,6 +344,10 @@ targets:
       # Shared Host Helper version vector: the Helper the app bundles.
       - path: plugin/test-vectors/host-helper-version-v1.json
         buildPhase: resources
+      # Shared push token vector (#415): read by the plugin's and the Push
+      # Relay's Node tests. No Swift test reads it; every vector is bundled.
+      - path: plugin/test-vectors/push-token-v1.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -365,6 +373,8 @@ targets:
     dependencies:
       - target: Heeler
       - package: HeelerSSH
+      # Rex terminal streams are compared through Heeler's own emulator.
+      - package: GhosttyTerminal
 
 schemes:
   Heeler:

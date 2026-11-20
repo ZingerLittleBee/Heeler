@@ -285,19 +285,28 @@ struct ConsoleCheckoutTitle: Equatable, Sendable {
 }
 
 /// One Host section projected from the Host catalog and the Console's
-/// already-sorted Agent sequence. The section carries the inputs a header
-/// needs to present connection and Agent Inventory readiness honestly.
+/// already-sorted Agent sequence: a Host as the Hosts tab shows it, holding
+/// the Agents of every Server it has on (ADR 0047). The section carries the
+/// inputs a header needs to present connection and Agent Inventory
+/// readiness honestly.
 struct ConsoleHostSection: Identifiable, Equatable {
+    /// The first Server's record, which stands for the Host where one id
+    /// is asked for: the Hosts tab opens the Host from any of them.
     let hostID: Host.ID
-    let hostDisplayName: String
-    let connectionStatus: EventsSessionStatus?
-    let isAwaitingSnapshot: Bool
-    let statusPresentation: ConsoleHostStatusPresentation?
+    /// The Host's name alone, whichever of its Servers are listed.
+    let hostName: String
+    /// The Servers listed, in catalog order, `hostID`'s first.
+    let servers: [ConsoleHostServerState]
+    /// The Host's Agents across its Servers, in the Console's order.
     let agents: [ConsoleAgent]
     let isCollapsed: Bool
     let statusCounts: ConsoleHostAgentStatusCounts
 
+    var hostIDs: [Host.ID] { servers.map(\.hostID) }
     var id: Host.ID { hostID }
+    /// The Servers' conditions, in their order. Under a header that names
+    /// only the Host, a row of a Host with several Servers says which.
+    var issues: [ConsoleHostStatusPresentation] { servers.compactMap(\.issue) }
 }
 
 /// Active and attention statuses shown in a collapsed Host section. Core
@@ -395,8 +404,11 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
 @MainActor
 @Observable
 final class ConsoleListPresentationStore {
-    /// Hosts follow catalog order; Workspaces follow their first Agent in
-    /// the supplied priority order. Grouping never re-sorts Agents or pins.
+    /// Hosts follow the Hosts tab's order; within each Host, Workspaces across
+    /// its Servers follow their first Agent in the supplied priority order. A
+    /// Workspace is one Server's, so two of the same name on two Servers of a
+    /// Host are two sections, both under the Host's name. Grouping never
+    /// re-sorts Agents or pins.
     /// `savedStructures` holds the Workspace structure of each Host whose
     /// rows may be saved Chat entries, which report no checkout: its
     /// Workspaces had Agents at the last snapshot and count as Workspaces
@@ -409,101 +421,119 @@ final class ConsoleListPresentationStore {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
-        return sections(
-            hosts: hosts, agents: agents, filteredHostIDs: filteredHostIDs, searchQuery: searchQuery
-        ).flatMap { host in
-            let buckets = Dictionary(grouping: host.agents, by: \.agent.workspaceID)
-            var order: [String] = []
-            for agent in host.agents where !order.contains(agent.agent.workspaceID) {
-                order.append(agent.agent.workspaceID)
-            }
+        let searched = searchedAgents(agents, searchQuery: searchQuery)
+        let agentsByHost = Dictionary(grouping: searched, by: \.hostID)
+        let agentPositions = Dictionary(
+            searched.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first })
+        let groups = ConsoleHostSectionGroup.grouping(
+            hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) })
+        return groups.flatMap { group in
+            let serverTrees = group.servers.enumerated().flatMap { serverOffset, host
+                -> [(rank: Int, serverOffset: Int, treeOffset: Int, sections: [ConsoleWorkspaceSection])] in
+                let hostAgents = agentsByHost[host.id] ?? []
+                let buckets = Dictionary(grouping: hostAgents, by: \.agent.workspaceID)
+                var order: [String] = []
+                for agent in hostAgents where !order.contains(agent.agent.workspaceID) {
+                    order.append(agent.agent.workspaceID)
+                }
 
-            // Nesting is decided on every Agent of the Host, so a search
-            // that matches only a worktree still finds its main checkout.
-            // Workspaces exist here only through their Agents, or through
-            // the saved structure, whose Workspaces had Agents at the last
-            // snapshot: a main checkout with neither is not projected and
-            // cannot be a parent.
-            let everyAgent = agents.filter { $0.hostID == host.id }
-            let allBuckets = Dictionary(grouping: everyAgent, by: \.agent.workspaceID)
-            let saved = savedStructures[host.id] ?? []
-            let savedByID = Dictionary(saved.map { ($0.id, $0) }) { first, _ in first }
-            var allOrder: [String] = []
-            for agent in everyAgent where !allOrder.contains(agent.agent.workspaceID) {
-                allOrder.append(agent.agent.workspaceID)
-            }
-            for workspace in saved where !allOrder.contains(workspace.id) {
-                allOrder.append(workspace.id)
-            }
-            func checkout(_ workspaceID: String) -> RepositoryCheckout? {
-                allBuckets[workspaceID]?.compactMap(\.repositoryCheckout).first
-                    ?? savedByID[workspaceID]?.checkout
-            }
-            func mainCheckouts(_ repoKey: String, in ids: [String]) -> [String] {
-                ids.filter {
-                    let info = checkout($0)
-                    return info?.repoKey == repoKey && info?.isLinkedWorktree == false
+                // Nesting is decided on every Agent of the Host, so a search
+                // that matches only a worktree still finds its main checkout.
+                // Workspaces exist here only through their Agents, or through
+                // the saved structure, whose Workspaces had Agents at the last
+                // snapshot: a main checkout with neither is not projected and
+                // cannot be a parent.
+                let everyAgent = agents.filter { $0.hostID == host.id }
+                let allBuckets = Dictionary(grouping: everyAgent, by: \.agent.workspaceID)
+                let saved = savedStructures[host.id] ?? []
+                let savedByID = Dictionary(saved.map { ($0.id, $0) }) { first, _ in first }
+                var allOrder: [String] = []
+                for agent in everyAgent where !allOrder.contains(agent.agent.workspaceID) {
+                    allOrder.append(agent.agent.workspaceID)
                 }
-            }
-            func parent(of workspaceID: String) -> String? {
-                guard let info = checkout(workspaceID), info.isLinkedWorktree else { return nil }
-                return mainCheckouts(info.repoKey, in: order).first
-                    ?? mainCheckouts(info.repoKey, in: allOrder).first
-            }
-            var parentOf: [String: String] = [:]
-            for workspaceID in order {
-                if let parent = parent(of: workspaceID) { parentOf[workspaceID] = parent }
-            }
-            var childrenOf: [String: [String]] = [:]
-            for workspaceID in order {
-                if let parent = parentOf[workspaceID] { childrenOf[parent, default: []].append(workspaceID) }
-            }
-            // A saved worktree none of whose Agents is listed yet still makes
-            // its main checkout's card a repository's. It has no rows; a
-            // search, which lists only matches, leaves it out.
-            if !isSearching {
-                for workspace in saved where buckets[workspace.id] == nil {
-                    guard let parent = parent(of: workspace.id) else { continue }
-                    parentOf[workspace.id] = parent
-                    childrenOf[parent, default: []].append(workspace.id)
+                for workspace in saved where !allOrder.contains(workspace.id) {
+                    allOrder.append(workspace.id)
                 }
-            }
+                func checkout(_ workspaceID: String) -> RepositoryCheckout? {
+                    allBuckets[workspaceID]?.compactMap(\.repositoryCheckout).first
+                        ?? savedByID[workspaceID]?.checkout
+                }
+                func mainCheckouts(_ repoKey: String, in ids: [String]) -> [String] {
+                    ids.filter {
+                        let info = checkout($0)
+                        return info?.repoKey == repoKey && info?.isLinkedWorktree == false
+                    }
+                }
+                func parent(of workspaceID: String) -> String? {
+                    guard let info = checkout(workspaceID), info.isLinkedWorktree else { return nil }
+                    return mainCheckouts(info.repoKey, in: order).first
+                        ?? mainCheckouts(info.repoKey, in: allOrder).first
+                }
+                var parentOf: [String: String] = [:]
+                for workspaceID in order {
+                    if let parent = parent(of: workspaceID) { parentOf[workspaceID] = parent }
+                }
+                var childrenOf: [String: [String]] = [:]
+                for workspaceID in order {
+                    if let parent = parentOf[workspaceID] { childrenOf[parent, default: []].append(workspaceID) }
+                }
+                // A saved worktree none of whose Agents is listed yet still makes
+                // its main checkout's card a repository's. It has no rows; a
+                // search, which lists only matches, leaves it out.
+                if !isSearching {
+                    for workspace in saved where buckets[workspace.id] == nil {
+                        guard let parent = parent(of: workspace.id) else { continue }
+                        parentOf[workspace.id] = parent
+                        childrenOf[parent, default: []].append(workspace.id)
+                    }
+                }
 
-            func members(_ workspaceID: String) -> [ConsoleAgent] { buckets[workspaceID] ?? [] }
-            func section(_ workspaceID: String) -> ConsoleWorkspaceSection {
-                let label = ((allBuckets[workspaceID] ?? []).map(\.workspaceLabel) + [savedByID[workspaceID]?.label])
-                    .compactMap { $0 }
-                    .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                let id = ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: workspaceID)
-                let parentID = parentOf[workspaceID].map {
-                    ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: $0)
+                func members(_ workspaceID: String) -> [ConsoleAgent] { buckets[workspaceID] ?? [] }
+                func section(_ workspaceID: String) -> ConsoleWorkspaceSection {
+                    let label = ((allBuckets[workspaceID] ?? []).map(\.workspaceLabel) + [savedByID[workspaceID]?.label])
+                        .compactMap { $0 }
+                        .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    let id = ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: workspaceID)
+                    let parentID = parentOf[workspaceID].map {
+                        ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: $0)
+                    }
+                    var section = ConsoleWorkspaceSection(
+                        id: id, title: label ?? (workspaceID.isEmpty ? String(localized: "Unknown Workspace") : workspaceID),
+                        hostName: host.hostName, agents: members(workspaceID),
+                        isCollapsed: !isSearching && collapsedIDs.contains(id),
+                        parentID: parentID)
+                    if let info = checkout(workspaceID) {
+                        section.checkout = info
+                        // Every Agent of a Host shortens its paths alike.
+                        section.pathText = (allBuckets[workspaceID]?.first ?? everyAgent.first)?
+                            .displayPath(info.checkoutPath)
+                    }
+                    return section
                 }
-                var section = ConsoleWorkspaceSection(
-                    id: id, title: label ?? (workspaceID.isEmpty ? String(localized: "Unknown Workspace") : workspaceID),
-                    hostName: host.hostDisplayName, agents: members(workspaceID),
-                    isCollapsed: !isSearching && collapsedIDs.contains(id),
-                    parentID: parentID)
-                if let info = checkout(workspaceID) {
-                    section.checkout = info
-                    // Every Agent of a Host shortens its paths alike.
-                    section.pathText = (allBuckets[workspaceID]?.first ?? everyAgent.first)?
-                        .displayPath(info.checkoutPath)
-                }
-                return section
-            }
 
-            var emitted: Set<String> = []
-            var result: [ConsoleWorkspaceSection] = []
-            func emit(_ workspaceID: String) {
-                guard emitted.insert(workspaceID).inserted else { return }
-                result.append(section(workspaceID))
+                var emitted: Set<String> = []
+                var trees: [[ConsoleWorkspaceSection]] = []
+                for workspaceID in order {
+                    let top = parentOf[workspaceID] ?? workspaceID
+                    guard emitted.insert(top).inserted else { continue }
+                    var tree = [section(top)]
+                    for child in childrenOf[top] ?? [] where emitted.insert(child).inserted {
+                        tree.append(section(child))
+                    }
+                    trees.append(tree)
+                }
+                return trees.enumerated().map { treeOffset, tree in
+                    let rank = tree.lazy.flatMap(\.agents).compactMap { agentPositions[$0.id] }.min() ?? Int.max
+                    return (rank, serverOffset, treeOffset, tree)
+                }
             }
-            for workspaceID in order {
-                let top = parentOf[workspaceID] ?? workspaceID
-                emit(top)
-                for child in childrenOf[top] ?? [] { emit(child) }
+            if group.servers.count <= 1 {
+                return serverTrees.flatMap(\.sections)
             }
-            return result
+            return serverTrees
+                .sorted { ($0.rank, $0.serverOffset, $0.treeOffset) < ($1.rank, $1.serverOffset, $1.treeOffset) }
+                .flatMap(\.sections)
         }
     }
 
@@ -523,7 +553,9 @@ final class ConsoleListPresentationStore {
     private static let hostFilterDefaultsKey = "console-list.host-filter"
     private static let statusFilterDefaultsKey = "console-list.status-filter"
 
-    /// The Hosts both lists show; empty shows every Host.
+    /// The Hosts both lists show, held as the records of their Servers: a
+    /// record's id outlasts an edit of its Host, and any one of them selects
+    /// the whole Host (ADR 0047). Empty shows every Host.
     private(set) var hostFilter: Set<Host.ID>
 
     func setHostFilter(_ hostIDs: Set<Host.ID>) {
@@ -532,9 +564,9 @@ final class ConsoleListPresentationStore {
         persistHostFilter()
     }
 
-    func toggleHostFilter(_ hostID: Host.ID) {
-        if !hostFilter.insert(hostID).inserted { hostFilter.remove(hostID) }
-        persistHostFilter()
+    /// Selects `host` with every Server it has on, or drops it.
+    func toggleHostFilter(_ host: HostMachine) {
+        setHostFilter(host.toggled(in: hostFilter))
     }
 
     func clearHostFilter() {
@@ -543,10 +575,22 @@ final class ConsoleListPresentationStore {
         defaults.removeObject(forKey: Self.hostFilterDefaultsKey)
     }
 
-    /// Drops Hosts no longer in `hosts`, falling back to All Hosts when the
-    /// last selected Host leaves the catalog.
+    /// Settles the filter on `hosts`, the records of the Servers that are on.
+    /// A selected Host holds every one of its Servers, so a Server turned on
+    /// later shows too, and a selection saved when the filter listed each
+    /// Server selects that Server's Host. A Host with no Server left drops
+    /// out; the last one falls back to All Hosts. So does a filter with one
+    /// Host left to list, which the filter no longer offers: it would show
+    /// what All Hosts shows while reading as filtered, with nothing to clear
+    /// it, and would hide a Host added later.
     func pruneHostFilter(keeping hosts: [Host]) {
-        setHostFilter(hostFilter.intersection(hosts.map(\.id)))
+        let machines = HostMachine.grouped(hosts)
+        guard machines.count > 1 else {
+            clearHostFilter()
+            return
+        }
+        let filter = hostFilter
+        setHostFilter(Set(machines.filter { $0.isSelected(by: filter) }.flatMap(\.servers).map(\.id)))
     }
 
     private func persistHostFilter() {
@@ -605,10 +649,16 @@ final class ConsoleListPresentationStore {
         defaults.set(mode.rawValue, forKey: Self.modeDefaultsKey)
     }
 
-    func isCollapsed(_ hostID: Host.ID) -> Bool {
-        collapsedHostIDs.contains(hostID)
+    /// Whether the Host whose Servers have the records `hostIDs` is folded:
+    /// any of them is, as the Host filter reads a Host (ADR 0047). A Host
+    /// folded while the list showed a section for each Server stays folded
+    /// if any of them was.
+    func isCollapsed(_ hostIDs: [Host.ID]) -> Bool {
+        hostIDs.contains(where: collapsedHostIDs.contains)
     }
 
+    /// Folds one record's section, as a build that listed a section for
+    /// each Server saved it.
     func setCollapsed(_ collapsed: Bool, for hostID: Host.ID) {
         let changed: Bool
         if collapsed {
@@ -620,8 +670,16 @@ final class ConsoleListPresentationStore {
         persistCollapsedHostIDs()
     }
 
-    func toggleCollapsed(_ hostID: Host.ID) {
-        setCollapsed(!isCollapsed(hostID), for: hostID)
+    /// Unfolds the Host of `hostIDs` by dropping every one of them, or folds
+    /// it by holding them all, so it stays folded while any Server is on and
+    /// a build that lists each Server folds them all.
+    func toggleCollapsed(_ hostIDs: [Host.ID]) {
+        if isCollapsed(hostIDs) {
+            collapsedHostIDs.subtract(hostIDs)
+        } else {
+            collapsedHostIDs.formUnion(hostIDs)
+        }
+        persistCollapsedHostIDs()
     }
 
     /// Convenience contract for the Console UI. Reading these observable
@@ -660,9 +718,10 @@ final class ConsoleListPresentationStore {
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
     }
 
-    /// Projects one section per catalog Host, in catalog order. `agents` is
-    /// already sorted by ConsoleStore; filtering it in-place keeps
-    /// that exact relative order within every Host section.
+    /// Projects one section per Host, by its name, in the Hosts tab's order,
+    /// holding the Servers it has on that `hosts` lists (ADR 0047). `agents`
+    /// is already sorted by ConsoleStore; filtering it in-place keeps that
+    /// exact relative order across every Server of the Host.
     func sections(
         hosts: [Host],
         agents: [ConsoleAgent],
@@ -674,47 +733,66 @@ final class ConsoleListPresentationStore {
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
-        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let searchedAgents = agents.filter {
-            (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
-        }
         // A status filter narrows like a query: only matches, never folded away.
-        let isNarrowed = !trimmedQuery.isEmpty || !statusFilter.isEmpty
-        let agentsByHost = Dictionary(grouping: searchedAgents, by: \.hostID)
-        var projectedHostIDs: Set<Host.ID> = []
+        let isNarrowed = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !statusFilter.isEmpty
+        let searched = searchedAgents(agents, searchQuery: searchQuery)
+        let agentsByHost = Dictionary(grouping: searched, by: \.hostID)
+        let visible = hosts.filter { filteredHostIDs.isEmpty || filteredHostIDs.contains($0.id) }
 
-        return hosts.compactMap { host in
-            guard filteredHostIDs.isEmpty || filteredHostIDs.contains(host.id) else { return nil }
-            guard projectedHostIDs.insert(host.id).inserted else { return nil }
-
-            let hostAgents = agentsByHost[host.id] ?? []
-            let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
-            let statusPresentation: ConsoleHostStatusPresentation? =
-                if let statusPresentations {
-                    statusPresentations[host.id]
-                } else {
-                    ConsoleHostStatusPresentation(
-                        host: host,
-                        status: hostStatuses[host.id],
-                        standingFailure: hostStandingFailures[host.id],
-                        isAwaitingSnapshot: isAwaitingSnapshot,
-                        syncError: hostSyncErrors[host.id])
-                }
+        return ConsoleHostSectionGroup.grouping(visible).compactMap { group in
+            guard let first = group.servers.first else { return nil }
+            let servers = group.servers.map { host in
+                let isAwaitingSnapshot = hostsAwaitingSnapshot.contains(host.id)
+                let issue: ConsoleHostStatusPresentation? =
+                    if let statusPresentations {
+                        statusPresentations[host.id]
+                    } else {
+                        ConsoleHostStatusPresentation(
+                            host: host,
+                            status: hostStatuses[host.id],
+                            standingFailure: hostStandingFailures[host.id],
+                            isAwaitingSnapshot: isAwaitingSnapshot,
+                            syncError: hostSyncErrors[host.id])
+                    }
+                return ConsoleHostServerState(
+                    hostID: host.id, connectionStatus: hostStatuses[host.id],
+                    isAwaitingSnapshot: isAwaitingSnapshot, issue: issue)
+            }
+            let hostAgents: [ConsoleAgent]
+            if group.servers.count == 1 {
+                hostAgents = agentsByHost[first.id] ?? []
+            } else {
+                let serverIDs = Set(group.servers.map(\.id))
+                hostAgents = searched.filter { serverIDs.contains($0.hostID) }
+            }
             // While searching, a section without a match leaves the list
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a
-            // query every catalog Host stays visible, including empty ones.
-            if isNarrowed && hostAgents.isEmpty { return nil }
+            // query a Host with no Agents stays visible while it has
+            // something to say or could start one, and otherwise would be a
+            // bare header.
+            if hostAgents.isEmpty
+                && (isNarrowed || !group.keepsEmptySection(servers, listsTerminals: false))
+            {
+                return nil
+            }
             return ConsoleHostSection(
-                hostID: host.id,
-                hostDisplayName: host.displayName,
-                connectionStatus: hostStatuses[host.id],
-                isAwaitingSnapshot: isAwaitingSnapshot,
-                statusPresentation: statusPresentation,
+                hostID: first.id,
+                hostName: group.name,
+                servers: servers,
                 agents: hostAgents,
                 // A match is never hidden behind a collapsed Host.
-                isCollapsed: !isNarrowed && isCollapsed(host.id),
+                isCollapsed: !isNarrowed && isCollapsed(group.servers.map(\.id)),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
+        }
+    }
+
+    /// `agents` that the search and the status filter keep, in order.
+    private func searchedAgents(_ agents: [ConsoleAgent], searchQuery: String) -> [ConsoleAgent] {
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return agents.filter {
+            (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
         }
     }
 
@@ -722,5 +800,22 @@ final class ConsoleListPresentationStore {
         defaults.set(
             collapsedHostIDs.map(\.uuidString).sorted(),
             forKey: Self.collapsedHostsDefaultsKey)
+    }
+}
+
+/// How the Console's Host filter, a set of record ids, reads a Host: by the
+/// Host, never by one of its Servers (ADR 0047).
+extension HostMachine {
+    /// Whether `filter` holds a record of any of this Host's Servers.
+    func isSelected(by filter: Set<Host.ID>) -> Bool {
+        servers.contains { filter.contains($0.id) }
+    }
+
+    /// `filter` with this Host dropped when it is selected, or else added with
+    /// every Server it has on.
+    func toggled(in filter: Set<Host.ID>) -> Set<Host.ID> {
+        isSelected(by: filter)
+            ? filter.subtracting(members.map(\.id))
+            : filter.union(servers.map(\.id))
     }
 }

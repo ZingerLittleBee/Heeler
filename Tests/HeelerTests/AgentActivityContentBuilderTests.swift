@@ -18,17 +18,17 @@ struct AgentActivityContentBuilderTests {
             agent: Agent(terminalID: "terminal", kind: "claude", title: "task", status: .working,
                          workspaceID: "workspace", tabID: "tab", paneID: "w1:p1", cwd: "/work/heeler",
                          revision: 1, tokens: ["branch": "**literal**"]),
-            workspaceLabel: "Heeler", repositoryCheckout: nil)
+            workspaceLabel: "Heeler", repositoryCheckout: nil, backend: .core)
         let layout = AgentRowLayout(rows: [
             [.init(.workspace, bold: true), .init(.custom("branch"), fg: HexColor("#abc"))],
-            [.init(.host, dim: true)], [.init(.directory), .init(.path)],
+            [.init(.host, dim: true), .init(.backend)], [.init(.directory), .init(.path)],
         ])
         let content = try #require(AgentActivityContentBuilder.make(
             agents: [row], hostName: "Studio Mac", key: key, layout: layout))
         let details = try opened(content)
         #expect(details.agents.first?.rows == [
             [.init(text: "Heeler", bold: true), .init(text: " · "), .init(text: "**literal**", fg: "#abc")],
-            [.init(text: "Studio Mac", dim: true)],
+            [.init(text: "Studio Mac", dim: true), .init(text: " · "), .init(text: "core")],
             [.init(text: "heeler"), .init(text: " · "), .init(text: "/work/heeler")],
         ])
         let wire = String(decoding: try JSONEncoder().encode(content), as: UTF8.self)

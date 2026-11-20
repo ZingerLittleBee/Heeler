@@ -92,14 +92,35 @@ final class PinnedAgentsStore {
         revision += 1
     }
 
-    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core and
-    /// tmux Hosts call this: their addresses and pane ids never return once gone.
+    /// Carries a pin to the id its pane has after a move to another
+    /// Workspace, keeping its place in the recency order. Without it the pin
+    /// would stay on the id the pane left, and the moved Agent would lose it.
+    func movePin(hostID: Host.ID, from paneID: String, to movedPaneID: String) {
+        guard paneID != movedPaneID,
+            let index = entries.firstIndex(where: { $0.hostID == hostID && $0.paneID == paneID })
+        else { return }
+        let moved = Entry(hostID: hostID, paneID: movedPaneID)
+        entries[index] = moved
+        // A pin left on the new id by an earlier pane would now be a second one.
+        var isKept = false
+        entries.removeAll { entry in
+            guard entry == moved else { return false }
+            defer { isKept = true }
+            return isKept
+        }
+        rebuildRanks()
+        persist()
+        revision += 1
+    }
+
+    /// Drops this Host's pins on panes outside `paneIDs`. Only herdr-core, tmux
+    /// and Rex Hosts call this: their addresses and pane ids never return once gone.
     func retainPins(hostID: Host.ID, paneIDs: Set<String>) {
         drop { $0.hostID == hostID && !paneIDs.contains($0.paneID) }
     }
 
-    /// Drops all of this Host's pins. Only herdr-core and tmux Hosts call this:
-    /// another core's addresses, or another tmux server's pane ids, are not these.
+    /// Drops all of this Host's pins. Only herdr-core, tmux and Rex Hosts call
+    /// this: another core's addresses, or another server's pane ids, are not these.
     func removePins(hostID: Host.ID) {
         drop { $0.hostID == hostID }
     }

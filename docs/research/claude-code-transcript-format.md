@@ -418,6 +418,49 @@ fixture captures them yet.
   UUID, for example `wf_2d6c7df2-dc3`; a task id is a kind prefix (`a` local
   agent, `w` local workflow, `b` local bash, `t` in-process teammate) and
   8 base36 characters (2.1.292 `TE`).
+- **Background command.** A Bash call left running in the background has
+  `toolUseResult.backgroundTaskId`, a `b` task id, beside its `stdout`,
+  `stderr` and `interrupted` (2.1.322 to 2.1.327, 240 launches in 18 local
+  transcripts). Most are asked for with `input.run_in_background`; a call
+  that outran its timeout carries `timedOutAfterMs` too, and one moved there
+  so a waiting message could be delivered `backgroundedToDeliverMessage`.
+  The 2.1.327 binary also names `backgroundedByUser`,
+  `backgroundedByTurnAbort` and `backgroundedForAgentReport`, not observed.
+  The result's text ends `Output is being written to:
+  <tmp>/claude-<uid>/<project>/<session>/tasks/<task id>.output`, a file the
+  command appends to and the program keeps after it ends; the directory
+  holds nothing else. The record carries no flag that tells a server from a
+  command that will end. It ends with a notification whose summary is
+  `Background command "<description>" completed (exit code 0)`, `… failed
+  with exit code <n>` (`failed`) or `… was stopped` (`killed`). A `TaskStop`
+  on it answers `toolUseResult{task_id, task_type: "local_bash", command,
+  message}` and no notification follows (10 of 10). After the process
+  exits and the session is resumed, a command that was still running gets
+  `Background shell command didn't finish before the previous session ended`
+  with `stopped` (seen once). `agents_killed` reports background agents
+  terminated (SDK schema text, 2.1.327) and `turn_duration` counts only
+  agents and Workflows, so neither says anything of a command.
+- **Monitor.** The `Monitor` call's result is `toolUseResult{taskId,
+  timeoutMs, persistent}`, a `b` task id again: a Monitor over a command is
+  a `local_bash` task (a `TaskStop` on one says so), while the id table
+  gives `m` to an MCP Monitor and `s` to a WebSocket one (2.1.327 binary).
+  Each batch of lines its source writes is a `<task-notification>` with
+  only `<task-id>`, `<summary>` (`Monitor event: "<description>"`) and
+  `<event>`: no `<status>` and no `<tool-use-id>`. A source that exits ends
+  it with an ordinary notification, `Monitor "<description>" script failed
+  (exit 3)` with `failed` in a 2.1.327 probe, and `… stream ended` or `…
+  ended without producing output` in the binary. Reaching `timeoutMs` ends
+  it with one more event and no status: `[Monitor expired after 20s with 1
+  event delivered. Re-arm it if you still need the watch.]`, stamped at the
+  deadline. The binary's other closing notes start the same way: `[Monitor
+  timed out …]`, `[Monitor stopped — too much output …]` and `[Monitor
+  stopped]`, the last two beside a `stopped` notification.
+- **Session registry.** `<config dir>/sessions/<pid>.json` holds `sessionId`
+  and a `status` the program rewrites as it changes: `busy` during a turn,
+  `idle` after it, and `shell` in place of `idle` while any `local_bash`
+  task still runs (2.1.327 binary: `status === "idle" && hasRunningShell`;
+  a session idle with one running command read `shell`). Chat does not read
+  it for this.
 - **End.** Each piece of work ends with a `<task-notification>` whose
   `<tool-use-id>` names the launching call and whose `<task-id>` is the
   agent id or task id. `<status>` is `completed`, `failed`, `killed` or
@@ -469,7 +512,7 @@ only at position 0 of the trimmed text; a prompt that mentions
 | Compaction | `compact_boundary`, then attachments, then an `isCompactSummary` user record | Manual or automatic (`compactMetadata.trigger`); the summary is model context. Not verified in a capture. |
 | Plan mode | The EnterPlanMode result, a `plan_mode` attachment and `permission-mode: plan` (`probe2-transcript.jsonl:59-65`); ExitPlanMode with `input{plan, planFilePath}`; a decline with feedback (`:81`); an approval `User has approved your plan…## Approved Plan:` with the note, then `plan_mode_exit` (`:86-87`) | The approved plan is `toolUseResult.plan` or the plan file |
 | AskUserQuestion | Results `The user answered: …`, `Your questions have been answered: …` or `The user did not answer the questions.`; Esc gives the `lC` decline | The answers, per question |
-| Background task done | A user `<task-notification>` with `task-id`, `tool-use-id`, `output-file`, `status`, `summary`, `note`, `result` and `usage`, `promptSource: "system"` and `origin.kind: "task-notification"`, after a `queue-operation` (`probe2-transcript.jsonl:130-132`) | Finishes the Agent call it names |
+| Background task done | A user `<task-notification>` with `task-id`, `tool-use-id`, `output-file`, `status`, `summary`, `note`, `result` and `usage`, `promptSource: "system"` and `origin.kind: "task-notification"`, after a `queue-operation` (`probe2-transcript.jsonl:130-132`). A background command's has only `task-id`, `tool-use-id`, `output-file`, `status` and `summary`; a Monitor's event has `task-id`, `summary` and `event` | Finishes the Agent, Workflow, background command or Monitor call it names; a Monitor's event ends nothing unless it is the closing note |
 | Interrupt | A marker record (SDK `MI`: the text starts with a marker, or every block is text or an error result starting with one) | The turn was stopped |
 | API error | `isApiErrorMessage` | An error notice |
 | Reasoning | A `thinking` block and `thinkingDurationMs` (`probe2-transcript.jsonl:106`) | The text may be empty. 2.1.301 records some narration between calls as a signed thinking block of 2 ms (2.1.291 as unsigned ones of 1-23 ms), which the terminal draws as text; real thinking took 647 ms at the shortest in the probes and 2.1.301 records it without text. Chat shows thinking with text under 200 ms, or with no duration, as the model's text |
@@ -498,7 +541,10 @@ How the 2.1.291 CLI turns a submitted prompt into a record
    for prompts with more text around the placeholder), and a meta
    user record follows it, after however many attachments the prompt
    carried (one in the live capture, nine or more on a session's first
-   prompt in local transcripts), with one `[Image: source: <path>]`
+   prompt in local transcripts), with one `[Image: source: <path>]` (or
+   `[Image: source: <path>, original <W>x<H>, displayed at <w>x<h>. Multiply
+   coordinates by <f> to map to original image.]` when resized, or
+   `[Image source: <path>]` when dimensions are absent; 2.1.325)
    text block per image. A sent path compares with the record once each
    placeholder is replaced by its source. The paste is read a line at a
    time (2.1.319, its paste handler and live pastes on 2026-11-10): a line
@@ -508,9 +554,11 @@ How the 2.1.291 CLI turns a submitted prompt into a record
    come first, followed at once by the remaining lines that are not blank,
    joined by line breaks: `/tmp/a.png \nwhat` and `what\n/tmp/a.png` both
    become `[Image #1]what`. A queued paste's enqueue `content` is the submitted
-   text, so it keeps the bare placeholder; Chat matches a send of one path
-   to a placeholder-only prompt that names no source, or to the one whose
-   delivery names that path (not observed live). Flag
+   text, so it keeps the bare placeholder, as does a mid-turn `queued_command`
+   attachment (`getQueuedCommandAttachments` in 2.1.325 writes no source meta
+   record); Chat matches a send's pasted image paths to its queued or mid-turn
+   placeholder prompt and carries those paths onto the bubble so `[Image #N]`
+   remains previewable. Flag
    `tengu_virtual_pancake` (off by default) wraps pastes in
    `<pasted_content id="abcd">…</pasted_content id="abcd">`.
 4. While the agent is busy, the prompt is queued after `trim()`: a

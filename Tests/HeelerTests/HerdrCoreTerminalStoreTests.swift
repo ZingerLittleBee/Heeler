@@ -1104,7 +1104,8 @@ struct HerdrCoreTerminalStoreTests {
     ) async throws -> (Fixture, CoreDetailWindow, Departure) {
         let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")] + others)
         await fixture.console.resolveHostPlatform(fixture.host.id)
-        #expect(fixture.console.hostPlatforms[fixture.host.id] != nil)
+        // The automatic lookup may still be in flight when this call returns.
+        try await Self.until("the platform") { fixture.console.hostPlatforms[fixture.host.id] != nil }
         let terminal = try #require(fixture.console.terminals.first { !$0.isAgent })
         let departure = Departure()
         let screen = try await fixture.showShellWithKeyboardUp(
@@ -1277,6 +1278,8 @@ struct HerdrCoreTerminalStoreTests {
         let fixture = try await Fixture(
             terminals: [Self.cursorAgentRecord(address: "t1"), Self.agentRecord(address: "t2")])
         await fixture.console.resolveHostPlatform(fixture.host.id)
+        // The automatic lookup may still be in flight when this call returns.
+        try await Self.until("the platform") { fixture.console.hostPlatforms[fixture.host.id] != nil }
         let agent = try #require(fixture.console.agents.first { $0.agent.kind == "cursor" })
         let other = try #require(fixture.console.agents.first { $0.agent.kind == "claude" })
         #expect(fixture.console.chatProgram(for: agent) == nil)
@@ -2156,12 +2159,12 @@ struct HerdrCoreTerminalStoreTests {
     /// The header's More, which starts folded, and the Composer's, whose Add has a
     /// button of its own.
     private static let coreAgentMenus: Set<[String]> = [
-        ["Terminals", "Changes", "Expand"],
+        ["Terminals", "Changes", "Files", "Hand Off", "Expand"],
         ["Back to Console", "Show Chat", "Open Terminal", "Changes", "New Agent", "Skills", "Snippets", "Close Agent"],
     ]
     /// Direct Input has no Add of its own: its More carries Add's three items.
     private static let coreDirectInputMenus: Set<[String]> = [
-        ["Terminals", "Changes", "Expand"],
+        ["Terminals", "Changes", "Files", "Hand Off", "Expand"],
         [
             "Back to Console", "Add Image", "Paste Image", "Add File", "Show Chat", "Open Terminal", "Changes",
             "New Agent", "Skills", "Snippets", "Close Agent",
@@ -3046,7 +3049,9 @@ struct HerdrCoreTerminalStoreTests {
         try await Self.until("the terminal's menu") { screen.offers("More") }
 
         let menus = try await HostedMenu.items(labeled: "More", in: screen.window)
-        #expect(menus == [["Terminals", "Expand"], ["Back to Console", "Close Terminal"]], "\(menus)")
+        #expect(
+            menus == [["Terminals", "Expand"], ["Enter Password…", "Back to Console", "Close Terminal"]],
+            "\(menus)")
 
         try await HostedMenu.select("Terminals", labeled: "More", in: screen.window)
         try await Self.until("the drawer") { screen.offers("Hide Workspace terminals") }

@@ -72,7 +72,7 @@ struct LaunchPresetEditor: View {
                     .accessibilityIdentifier("preset.name")
                 Picker("Harness", selection: $draft.kind) {
                     ForEach(SupportedAgentKind.allCases) { kind in
-                        Text(kind.displayName).tag(kind)
+                        AgentKindMenuLabel(kind.displayName, kind: kind).tag(kind)
                     }
                 }
                 .onChange(of: draft.kind) {

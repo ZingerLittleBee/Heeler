@@ -27,6 +27,36 @@ struct ChatWorkflowProgress: Equatable, Sendable {
     var started: Int { agents.count }
 }
 
+/// Live Host signs of one listed Background Work item outside the main
+/// transcript, such as Antigravity CLI's background-task strip, `/tasks`
+/// panel, task log, subagent transcript, or Claude Code's workflow run file.
+struct ChatBackgroundWorkEvidence: Equatable, Sendable {
+    /// When the Host last showed the work still running or writing.
+    var lastSeenAt: Date?
+    /// A terminal state observed on the Host before the main transcript
+    /// recorded its end.
+    var endedState: ChatBackgroundWorkItem.State?
+    /// When the Host observed `endedState`.
+    var endedAt: Date?
+    /// `latestPromptOffset` when `endedState` was observed, so a subsequent
+    /// user prompt clears evidence-retired work just like `endOffset`.
+    var endPromptOffset: UInt64?
+
+    /// Combines another live source's evidence with this one, keeping the
+    /// newest activity timestamp and preserving an already-known terminal
+    /// state unless only `other` has one.
+    func merging(_ other: ChatBackgroundWorkEvidence) -> ChatBackgroundWorkEvidence {
+        var merged = self
+        merged.lastSeenAt = [lastSeenAt, other.lastSeenAt].compactMap(\.self).max()
+        if merged.endedState == nil, let otherEnded = other.endedState {
+            merged.endedState = otherEnded
+            merged.endedAt = other.endedAt
+            merged.endPromptOffset = other.endPromptOffset
+        }
+        return merged
+    }
+}
+
 /// The Background Work Chat lists above its Composer (ADR 0024): the
 /// transcript's Subagents, Workflows and background commands, each Workflow
 /// with its journal's progress, running work first. Built afresh after every
@@ -40,8 +70,8 @@ struct ChatBackgroundWork: Equatable, Sendable {
         /// program may have stopped it without saying.
         var isStale = false
         /// The newest sign of the work, on the Host's clock: its launch, a
-        /// status check in the transcript, or a Workflow's latest journal
-        /// write.
+        /// status check in the transcript, a Workflow's latest journal
+        /// write, or live Host task/subagent evidence.
         var lastActivity: Date?
 
         var id: String { item.id }
@@ -67,13 +97,37 @@ struct ChatBackgroundWork: Equatable, Sendable {
     init() {}
 
     init(
-        transcript: ChatTranscript, progress: [String: ChatWorkflowProgress], isLive: Bool, now: Date,
+        transcript: ChatTranscript, progress: [String: ChatWorkflowProgress],
+        evidence: [String: ChatBackgroundWorkEvidence] = [:], isLive: Bool, now: Date,
         staleness: Staleness = Staleness()
     ) {
         self.isLive = isLive
-        let rows = transcript.listedBackgroundWork.map { item in
+        let prompt = transcript.latestPromptOffset ?? 0
+        let rows = transcript.listedBackgroundWork.compactMap { rawItem -> Row? in
+            var item = rawItem
+            let itemEvidence = evidence[item.id]
+            if item.state == .running, let itemEvidence, let endedState = itemEvidence.endedState {
+                let latestStart = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
+                let postdatesStart: Bool =
+                    switch (latestStart, itemEvidence.endedAt) {
+                    case (let start?, let endedAt?): endedAt >= start
+                    default: true
+                    }
+                if postdatesStart {
+                    if let endPrompt = itemEvidence.endPromptOffset,
+                        prompt > endPrompt,
+                        prompt > rawItem.launchOffset
+                    {
+                        return nil
+                    }
+                    item.state = endedState
+                    item.endedAt = item.endedAt ?? itemEvidence.endedAt
+                }
+            }
             var row = Row(item: item, progress: progress[item.id])
-            row.lastActivity = [item.launchedAt, item.lastActivityAt, row.progress?.updatedAt].compactMap(\.self).max()
+            row.lastActivity = [
+                item.launchedAt, item.lastActivityAt, row.progress?.updatedAt, itemEvidence?.lastSeenAt,
+            ].compactMap(\.self).max()
             if item.state == .running, let lastActivity = row.lastActivity {
                 let limit = item.kind == .workflow ? staleness.workflowQuiet : staleness.subagentRun
                 row.isStale = now.timeIntervalSince(lastActivity) > limit
@@ -82,6 +136,30 @@ struct ChatBackgroundWork: Equatable, Sendable {
         }
         // Running first; each part keeps launch order, so rows never jump.
         self.rows = rows.filter(\.isRunning) + rows.filter { !$0.isRunning }
+    }
+
+    /// Whether any listed item has not reached a terminal state yet.
+    var hasUnfinished: Bool {
+        rows.contains(where: \.isRunning)
+    }
+
+    /// Whether finished Background Work stays visible in the floating strip
+    /// over the Composer: while a live connected foreground turn is still
+    /// running, so items finishing mid-turn stay visible until the turn
+    /// concludes, then hiding once both the foreground turn and all
+    /// Background Work have ended.
+    func showsFinishedInStrip(
+        agentStatus: AgentStatus, isHostConnected: Bool, turns: [ChatTurn]
+    ) -> Bool {
+        guard isHostConnected, isLive else { return false }
+        switch agentStatus {
+        case .working, .blocked:
+            return true
+        case .idle, .done, .error:
+            return false
+        default:
+            return turns.last.map { $0.ending == nil } ?? false
+        }
     }
 
     /// Whether a live read shows work running, which keeps Chat reading at

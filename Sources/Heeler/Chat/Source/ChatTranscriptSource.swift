@@ -12,6 +12,8 @@ protocol ChatTranscriptSource: Sendable {
     /// What identifies the conversation for the cache: a file's first bytes,
     /// or the session a store names.
     var head: Data? { get }
+    /// The trailing bytes just before `readOffset`, when backed by a file.
+    var savedTailAnchor: Data? { get }
     /// How far the conversation has been read.
     var readOffset: UInt64 { get }
     /// Whether the last look saw records it did not read yet.
@@ -44,6 +46,10 @@ protocol ChatTranscriptSource: Sendable {
     /// Throws `ChatToolOutputFailure.tooLong` for a line found too long to
     /// read only once it is asked for.
     func line(at reference: ChatOutputReference, files: ChatHostFiles) async throws -> ChatLine?
+}
+
+extension ChatTranscriptSource {
+    var savedTailAnchor: Data? { nil }
 }
 
 /// Thrown by a source whose conversation cannot be read, for a reason Chat

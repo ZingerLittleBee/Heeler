@@ -42,10 +42,17 @@ struct HostOnboardingDependencies: Sendable {
     /// Add Host's detection found a native Windows machine behind this Host, which
     /// its first connection may never reach to say.
     var noteWindowsCore: @MainActor @Sendable (Host.ID) -> Void = { _ in }
+    /// A Pairing Code was scanned for a Host in the catalog again, so a record
+    /// whose Console stopped on a failure should try once more.
+    var retryFailedHost: @MainActor @Sendable (Host.ID) -> Void = { _ in }
     /// The kernel a herdr-core Host's locator last found, nil before any has.
     var coreKernel: @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     /// A tmux Host's checks resolved its paths again, for the catalog to keep.
     var noteTmuxPaths: @MainActor @Sendable (Host.ID, TmuxPaths) -> Void = { _, _ in }
+    /// A Server's page read its plugin, or changed it, for Updates to follow.
+    var notePlugin: @MainActor @Sendable (Host.ID, HeelerPluginStatus) -> Void = { _, _ in }
+    /// A Rex Host's checks looked its socket up, for the catalog to keep.
+    var noteRexSocket: @MainActor @Sendable (Host.ID, RexSocket) -> Void = { _, _ in }
 }
 
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
@@ -122,6 +129,8 @@ final class HostOnboardingStore {
     @ObservationIgnored private var currentRun = UUID()
     @ObservationIgnored private let hostHelperDidChange: @MainActor () -> Void
     @ObservationIgnored private let noteTmuxPaths: @MainActor (Host.ID, TmuxPaths) -> Void
+    @ObservationIgnored private let notePlugin: @MainActor (Host.ID, HeelerPluginStatus) -> Void
+    @ObservationIgnored private let noteRexSocket: @MainActor (Host.ID, RexSocket) -> Void
     @ObservationIgnored private let hostHelperHealthGap: @Sendable () async throws -> Void
     @ObservationIgnored private let harnessEdits: HarnessConfigEditStore?
     /// A Mac's second health read, which outlives the run that began it and owns
@@ -142,9 +151,13 @@ final class HostOnboardingStore {
             try await Task.sleep(for: HostHelperLaunchAgent.healthGap)
         },
         harnessEdits: HarnessConfigEditStore? = nil,
-        noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in }
+        noteTmuxPaths: @escaping @MainActor (Host.ID, TmuxPaths) -> Void = { _, _ in },
+        notePlugin: @escaping @MainActor (Host.ID, HeelerPluginStatus) -> Void = { _, _ in },
+        noteRexSocket: @escaping @MainActor (Host.ID, RexSocket) -> Void = { _, _ in }
     ) {
         self.noteTmuxPaths = noteTmuxPaths
+        self.notePlugin = notePlugin
+        self.noteRexSocket = noteRexSocket
         self.hostHelperHealthGap = hostHelperHealthGap
         self.harnessEdits = harnessEdits
         self.coreHolderRestart = coreHolderRestart
@@ -275,6 +288,9 @@ final class HostOnboardingStore {
         case .tmux:
             await performTmuxChecks(settings: settings)
             return
+        case .rex:
+            await performRexChecks(settings: settings)
+            return
         case .herdrTUI:
             break
         }
@@ -314,7 +330,10 @@ final class HostOnboardingStore {
                         // run still waits for this read (bounded by the request
                         // timeout), and its failure never fails the preflight.
                         let plugin = await HeelerPluginStatus.read(over: transport)
-                        if !Task.isCancelled { pluginStatus = plugin }
+                        if !Task.isCancelled {
+                            pluginStatus = plugin
+                            notePlugin(host.id, plugin)
+                        }
                     }
                 } catch {
                     if !Task.isCancelled {
@@ -428,6 +447,28 @@ final class HostOnboardingStore {
                 await confirmation()
                 try? await transport.close()
             }
+        } catch {
+            guard !Task.isCancelled else { return }
+            captureHostKeyReplacement(error)
+            report = failureReport(error)
+        }
+    }
+
+    /// A Rex Host's checks reach its server's socket and say hello, then close
+    /// with a close frame, which changes nothing on the server (ADR 0049). A
+    /// Host that stores no socket has it looked up again, and the catalog keeps
+    /// what was found. They never run `rex` or start a server.
+    private func performRexChecks(settings: SSHTransportSettings) async {
+        pluginStatus = .unsupportedServerKind
+        do {
+            let transport = try await connector.connectRex(settings: settings)
+            if let found = transport.foundSocket, host.rexSocket == nil {
+                host.rexSocket = found
+                noteRexSocket(host.id, found)
+            }
+            await transport.close()
+            guard !Task.isCancelled else { return }
+            report = .allPassed
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
@@ -611,142 +652,21 @@ final class HostOnboardingStore {
         pluginAction = failure.map(PluginActionState.failed) ?? .idle
     }
 
-    /// The action over a connection of its own, like the preflight's: the
-    /// Console's redials after a timeout and would run a step twice.
+    /// The action over a connection of its own, which `HeelerPluginActionRunner`
+    /// dials. A plugin that could not be read back keeps the last status in
+    /// place, and so does a refusal, so the sheet keeps the action it explains.
     private func performPluginAction(
         _ action: HeelerPluginPresentation.Notice.Action
     ) async -> HeelerPluginActionFailure? {
-        let resolved: SSHCredentials
-        do {
-            resolved = try credentials.credentials(for: host)
-        } catch {
-            return HeelerPluginActionFailure(
-                message: String(localized: "Could not load this Host's credentials. (\(String(describing: error)))"))
-        }
-        // The preflight already settled the Host key, so a key that still
-        // needs trusting is declined rather than asked about mid-change.
-        let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
-        let settings = SSHTransportSettings(
-            host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
-        let transport: any Transport
-        do {
-            transport = try await connector.connect(settings: settings)
-        } catch {
-            return HeelerPluginActionFailure(
-                message: String(localized: "Heeler could not connect to the Host, so nothing changed."),
-                detail: (error as? TransportError)?.presentation.message ?? "\(error)")
-        }
-        var steps = action.steps
-        var skippedInstall: HeelerPluginActionFailure?
-        if steps.contains(.install) {
-            switch await installClearance(over: transport) {
-            case .clear:
-                break
-            case .nothingNewer(let reason):
-                // The action's other steps still apply.
-                steps.removeAll { $0 == .install }
-                skippedInstall = reason
-            case .refused(let reason):
-                try? await transport.close()
-                return reason
-            }
-            if steps.isEmpty {
-                try? await transport.close()
-                return skippedInstall
-            }
-        }
-        var stepError: (any Error)?
-        for step in steps {
-            do {
-                try await transport.runHeelerPluginStep(step)
-            } catch {
-                stepError = error
-                break
-            }
-        }
-        // herdr's registry is the answer either way: a step that timed out
-        // may still have finished, and two devices may update at once.
-        let status = await HeelerPluginStatus.read(over: transport)
-        try? await transport.close()
-        switch status {
-        case .installed, .notInstalled:
+        let outcome = await HeelerPluginActionRunner(
+            host: host, connector: connector, knownHosts: knownHosts, credentials: credentials,
+            overlays: overlays
+        ).run(action)
+        if let status = outcome.readBack {
             pluginStatus = status
-        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
-            // An unreadable plugin keeps the last status in place. A step
-            // whose connection dropped may have finished all the same.
-            guard let stepError else {
-                return HeelerPluginActionFailure(
-                    message: String(localized: "The change finished, but the plugin could not be read back. Run the checks again."))
-            }
-            if let error = stepError as? TransportError, error != .timedOut {
-                return HeelerPluginActionFailure(
-                    message: String(localized: "The connection ended during the change, which may still finish on the Host. Run the checks again."),
-                    detail: error.presentation.message)
-            }
-            return HeelerPluginActionFailure(stepError)
+            notePlugin(host.id, status)
         }
-        guard pluginPresentation.notice != nil else { return nil }
-        if let stepError { return HeelerPluginActionFailure(stepError) }
-        if let skippedInstall { return skippedInstall }
-        let bundled = HeelerPluginCompatibility.bundled
-        if let version = pluginStatus.confirmedVersion, version < bundled {
-            return HeelerPluginActionFailure(
-                message: String(localized: "herdr installed plugin \(String(describing: version)), the newest published, but this app expects \(String(describing: bundled))."))
-        }
-        return HeelerPluginActionFailure(
-            message: String(localized: "The change finished, but the plugin still needs the attention described above."))
-    }
-
-    /// Whether an action's install may run. herdr installs whatever the
-    /// plugin branch holds, and an app built ahead of the branch, or a Host
-    /// installed from elsewhere, can have a newer plugin than that. The
-    /// branch only moves forward (ADR 0026), so the version read here is the
-    /// least herdr installs. The Host's plugin is reread rather than taken
-    /// from the checks, since another device may have changed it; a refusal
-    /// leaves the status alone, so the sheet keeps the action it explains.
-    private enum InstallClearance {
-        case clear
-        /// The Host's plugin is newer than the branch.
-        case nothingNewer(HeelerPluginActionFailure)
-        case refused(HeelerPluginActionFailure)
-    }
-
-    private func installClearance(over transport: any Transport) async -> InstallClearance {
-        let installed: PluginVersion
-        switch await HeelerPluginStatus.read(over: transport) {
-        case .notInstalled:
-            return .clear
-        case .installed(let installation):
-            guard !installation.isLegacyID, installation.isReplaceableByInstall,
-                let version = installation.parsedVersion
-            else {
-                return .refused(HeelerPluginActionFailure(
-                    message: String(localized: "The plugin on the Host changed since the checks, so nothing changed. Run the checks again.")))
-            }
-            installed = version
-        case .checking, .unsupportedPlatform, .unsupportedServerKind, .unavailable:
-            return .refused(HeelerPluginActionFailure(
-                message: String(localized: "Heeler could not read the Host's plugin before changing it, so nothing changed. Run the checks again.")))
-        }
-        let published: PluginVersion
-        do {
-            published = try await transport.readPluginBranchVersion()
-        } catch {
-            let detail =
-                switch error {
-                case let error as PluginBranchVersionError: error.output.isEmpty ? nil : error.output
-                case let error as TransportError: error.presentation.message
-                default: "\(error)"
-                }
-            return .refused(HeelerPluginActionFailure(
-                message: String(localized: "Heeler could not check which plugin version the Host would install, so nothing changed. Check that the Host can reach github.com."),
-                detail: detail))
-        }
-        guard published >= installed else {
-            return .nothingNewer(HeelerPluginActionFailure(
-                message: String(localized: "The Host has plugin \(String(describing: installed)), newer than the published \(String(describing: published)), so Heeler did not update it.")))
-        }
-        return .clear
+        return outcome.failure
     }
 
     /// The user's verdict on the pending fingerprint.

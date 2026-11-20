@@ -214,9 +214,10 @@ HERDR-PAIR:<version>:<base64url(JSON, no padding)>
 ```
 
 - `HERDR-PAIR` is a literal prefix; anything else is rejected (`bad_prefix`).
-- `<version>` is a decimal integer. This document specifies versions `1` and
-  `2` ([Pairing Code v2](#pairing-code-v2-herdr-endpoint)); any other value
-  is rejected (`unsupported_version`).
+- `<version>` is a decimal integer. This document specifies versions `1`,
+  `2` ([Pairing Code v2](#pairing-code-v2-herdr-endpoint)) and `3`
+  ([Pairing Code v3](#pairing-code-v3-machine-code)); any other value is
+  rejected (`unsupported_version`).
 - The body is the payload JSON, UTF-8, encoded as unpadded base64url
   (RFC 4648 `-`/`_` alphabet). Invalid base64url or JSON is rejected
   (`bad_encoding`).
@@ -374,6 +375,51 @@ user's own herdr. The phone keeps the launcher's path, so after moving herdr
 or changing the environment it starts with, opening the popup once rewrites
 the launcher in place.
 
+## Pairing Code v3 (machine code)
+
+Version 3 is the code `heeler-pair` shows on a machine without herdr, such as
+one whose Servers are herdr-core or tmux (ADR 0057). Its payload is a version
+1 payload, with the same fields, rules and canonical encoding. `sock` and
+`herdr` are not fields of it, so a machine code never has a Herdr endpoint.
+
+The version carries the one thing that differs: where the code was shown. A
+v1 code comes from the popup inside a running Herdr TUI, and the app lists
+that server on Add Host's last step whatever its look finds. A v3 code says
+nothing of what the machine runs, so the app lists only what it finds. An app
+that predates v3 rejects it with `unsupported_version` and asks for an update,
+where a v1 code from the command would have saved a Herdr TUI Host for a
+machine that may run no herdr.
+
+`encodePairingCode` emits v3 for a payload with `machine: true`, and refuses
+one that also names an endpoint. Like v2, this plugin's decoder does not read
+it; the app's does.
+
+### `heeler-pair`
+
+```sh
+npx -y heeler-pair@latest [--port <port>] [--address <address>]...
+```
+
+The command is this plugin's pairing screens and Enrollment entrypoint behind
+`src/pair-cli.js`, with no herdr around them:
+
+- `--port` and `--address` stand in for `pair.json`'s `ssh_port` and
+  `addresses`. There is no launcher.
+- Ceremony state lives in `$XDG_STATE_HOME/heeler/pairing` (default
+  `~/.local/state/heeler/pairing`), created `0700`.
+- The forced command names the Node that ran the command and
+  `src/pair-accept.js` where npm unpacked the package, which only have to
+  outlive the code's two minutes.
+- It runs on macOS and Linux with Node 20 or newer.
+
+`pair-cli/package.json` is the npm package's manifest: its `files` list names
+the modules the command loads, and `test/pair-cli-package.test.js` holds that
+list to the entry's import closure and its dependency ranges to this plugin's.
+The package has its own version, so releasing it does not change
+`PLUGIN_VERSION` or make the app ask Hosts to update the plugin. Release it
+with `make pair-cli` ([releasing guide](../docs/guides/releasing.md#publishing-heeler-pair)).
+`pair-cli/` never reaches the `plugin` branch.
+
 ## Bootstrap Key lifecycle
 
 Confirming the address checklist mints an ephemeral Ed25519 **Bootstrap Key**.
@@ -437,6 +483,8 @@ these map to the "parse" step of the pairing failure taxonomy).
 `test-vectors/pairing-code-v2.json` has the same shape plus each endpoint's
 `socketPath` and `herdrPath`. The Swift tests decode it; the Node tests encode
 its canonical codes and reject its invalid ones.
+`test-vectors/pairing-code-v3.json` has the v1 shape under version 3: the
+Swift tests decode it and the Node tests encode its canonical codes.
 
 ## Notification envelope (v1)
 
@@ -539,7 +587,7 @@ herdr session; removing an entry revokes that device for that session.
 | `notify.blocked` | boolean | Send a push when an Agent becomes Blocked. |
 | `notify.done`    | boolean | Send a push when an Agent reaches Done. A missing flag means do not send (fail closed). |
 | `live_activity`  | object  | Optional per-device Live Activity registration. Present while the app is showing this Host's activity. See [Activity hook](#activity-hook). |
-| `live_activity.token` | string | The per-activity APNs push token, lowercase hex. Distinct from the alert `token`. |
+| `live_activity.token` | string | The per-activity APNs push token, 16 to 1024 lowercase hex characters, the shape the Push Relay accepts (`test-vectors/push-token-v1.json`). An entry whose token is anything else gets no Live Activity updates. Distinct from the alert `token`. |
 | `live_activity.started_at` | string | ISO 8601 timestamp the app wrote when it started (or rotated) the activity. Ignored by the hook; preserved on rewrite. |
 | `live_activity.pinned_pane_ids` | string[] | Optional. Pane ids the device has pinned, most-recently-pinned first. Reorders Live Activity rows; does not change eligibility or counts. Missing, null, non-array, or any non-string entry is ignored (treated as empty). |
 
@@ -666,9 +714,21 @@ the app's update notice installs from that branch. See
   once the Host runs 0.9.0, and older apps keep the section when they rewrite
   the file.
 
+### Updating to 0.10.0
+
+- Plugin 0.10.0 adds [Antigravity CLI (`agy`) Usage](#usage): local Token Usage
+  from `transcript_full.jsonl`, per-Host Usage Limits (on by default, disabled
+  with `--no-agy-limits`) via `agy -p "/usage" --output-format json` (`agy`
+  1.1.11 or newer, and `usage-agy-limits` in herdr's macOS GUI session), and
+  `programs.agy` Accounts.
+- Because Antigravity CLI signs in once per Host, added Antigravity Accounts
+  report their own Token Usage while reporting Usage Limits on the Default
+  Account (`singleSignIn`).
+
 ## Usage
 
-Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts.
+Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts, and
+plugin 0.10.0 (and Host Helper 0.5.8) adds Antigravity CLI (`agy`).
 Open the Host's Usage section in Heeler, then **View Usage Details** for
 today, 7-day and 30-day Token Usage, a daily chart, per-model totals and the
 top 10 working directories. Usage Limits show the account's windows and
@@ -699,6 +759,12 @@ use, so the plugin's `usage-claude-limits` action reads the limits in
 herdr's session. Start herdr from a terminal on the Mac, not over SSH.
 Current terms remain a pre-release check in the
 [design's open questions](../docs/design/agent-usage.md#open-questions).
+
+**Codex limits** is on by default per Host on the device, with a toggle in
+Usage Limits to turn it off (`--no-codex-limits`, Host Helper 0.5.9). Turning
+it off hides Codex plan windows across Usage and widgets, skips spawning
+`codex app-server` on updated Helpers and plugins, and keeps Codex Token Usage
+counted.
 
 **Claude Code Accounts** (plugin 0.8.0) keep subscriptions apart when one
 Host runs several, each from its own config directory (for example an Agent

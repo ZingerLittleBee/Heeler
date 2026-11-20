@@ -12,6 +12,8 @@ import { codexFiles, codexLines, ArchiveUnavailableError } from "./codex-files.j
 import { createCodexState, consumeCodexLine, finishCodexRead, codexTotalSignature } from "./codex-scanner.js";
 import { readCodexLimits, codexRolloutLimits, codexLimitsWithFallback, codexAccountRuntime, codexLimitsEntries, nextCodexRead } from "./codex-limits.js";
 import { readClaudeLimits, cacheClaudeLimits, claudeVersion, accountRuntime, claudeLimitsEntries, nextClaudeRead } from "./claude-limits.js";
+import { agyFiles, agyDirectories, consumeAgyLine } from "./agy-scanner.js";
+import { readAgyLimits, cacheAgyLimits, agyVersion, nextAgyRead } from "./agy-limits.js";
 import { readClaudeAccounts, readProgramAccounts } from "./accounts.js";
 import { homeCandidates } from "./account-suggestions.js";
 
@@ -24,8 +26,10 @@ const cacheWrite = write => {
 };
 /** Transcripts are append-only, so the first timestamped line is the earliest. */
 function noteFirstRecord(state, line) {
-  if (Number.isFinite(state.firstAt) || typeof line?.timestamp !== "string") return;
-  const timestamp = Date.parse(line.timestamp);
+  if (Number.isFinite(state.firstAt)) return;
+  const raw = typeof line?.timestamp === "string" ? line.timestamp : typeof line?.created_at === "string" ? line.created_at : null;
+  if (!raw) return;
+  const timestamp = Date.parse(raw);
   if (Number.isFinite(timestamp)) state.firstAt = timestamp;
 }
 const runFailure = error => error instanceof LockLostError || error instanceof CacheWriteError;
@@ -42,8 +46,19 @@ function lastWritten(directory) {
  * `--accounts` the Account file when that sits elsewhere. `readClaudeLimitsElsewhere`,
  * when given, reads an Account's limits in a session that can; null asks to read in place.
  */
-export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) {
-  const { values } = parseArgs({ options: { config: { type: "string" }, accounts: { type: "string" }, "lock-token": { type: "string" }, "claude-limits": { type: "boolean", default: false } } });
+export async function runUsageWorker({ readClaudeLimitsElsewhere = null, readAgyLimitsElsewhere = null } = {}) {
+  const { values } = parseArgs({
+    options: {
+      config: { type: "string" },
+      accounts: { type: "string" },
+      "lock-token": { type: "string" },
+      "claude-limits": { type: "boolean", default: false },
+      "no-codex-limits": { type: "boolean", default: false },
+      "no-agy-limits": { type: "boolean", default: false },
+    },
+  });
+  const codexLimitsEnabled = !values["no-codex-limits"];
+  const agyLimitsEnabled = !values["no-agy-limits"];
   try { setPriority(10); } catch { /* Lower priority is best effort on the Host. */ }
   const runtime = readUsageRuntime(values.config);
   if (!runtime) return;
@@ -83,16 +98,21 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
     const codexAccounts = readProgramAccounts(values.accounts ?? values.config, runtime, "codex").filter(account => account.state === "ok");
     const codexCounted = new Set(codexAccounts.map(account => account.id));
     const addedCodexAccounts = codexAccounts.filter(account => !account.isDefault);
+    const agyAccounts = readProgramAccounts(values.accounts ?? values.config, runtime, "agy").filter(account => account.state === "ok");
+    const agyCounted = new Set(agyAccounts.map(account => account.id));
     // The query suggests these as Accounts against the Account file it reads.
     const claudeCandidates = homeCandidates(runtime);
     const codexCandidates = homeCandidates(runtime, "codex");
+    const agyCandidates = homeCandidates(runtime, "agy");
     limits.claude = claudeLimitsEntries(limits.claude, accounts);
     limits.codexAccounts = codexLimitsEntries(limits.codexAccounts, addedCodexAccounts);
+    if (typeof limits.agy !== "object" || !limits.agy || Array.isArray(limits.agy)) limits.agy = undefined;
     // An Account no longer counted (removed, missing, a duplicate) leaves with
     // its files and records, without a rebuild; one that returns is read anew.
-    // Codex records without an Account are the Default Account's, from before Accounts.
+    // Codex and Antigravity records without an Account are the Default Account's.
     const leaving = record => record.program === "claude" ? !counted.has(record.account)
-      : record.program === "codex" && record.account !== undefined && !codexCounted.has(record.account);
+      : record.program === "codex" ? (record.account !== undefined && !codexCounted.has(record.account))
+      : record.program === "agy" && record.account !== undefined && !agyCounted.has(record.account);
     const previousFiles = Object.fromEntries(Object.entries(previous?.files || {}).filter(([, state]) => !leaving(state)));
     let left = false;
     for (const [key, record] of previous?.keys || []) {
@@ -109,15 +129,18 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
     const failedSources = new Set();
     const claudeReason = "Could not read the Claude Code Transcripts.";
     const codexReason = "Could not read the Codex Transcripts.";
+    const agyReason = "Could not read the Antigravity Transcripts.";
     let olderTranscripts = false;
     // One unreadable entry is skipped and counted; only a root that cannot be
     // listed hides its Account or program. Neither makes its known files look deleted.
-    // Codex's Default Account keeps its files unmarked, as before Accounts.
+    // Codex's and Antigravity's Default Accounts keep their files unmarked.
     for (const { source, program, account, list, reason } of [
       ...accounts.map(({ id, roots: accountRoots }) => ({ source: `claude:${id}`, program: "claude", account: id,
         list: () => claudeFiles(accountRoots, cutoff), reason: claudeReason })),
       ...codexAccounts.map(({ id, isDefault, roots: accountRoots }) => ({ source: `codex:${id}`, program: "codex",
         account: isDefault ? undefined : id, list: () => codexFiles(accountRoots, cutoff), reason: codexReason })),
+      ...agyAccounts.map(({ id, isDefault, roots: accountRoots }) => ({ source: `agy:${id}`, program: "agy",
+        account: isDefault ? undefined : id, list: () => agyFiles(accountRoots, cutoff), reason: agyReason })),
     ]) {
       let listing;
       try { listing = await list(); } catch { listing = { files: [], unreadable: [], rootFailed: true, older: false }; }
@@ -135,6 +158,7 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
     // A program's own error is for when none of its Accounts could be listed.
     if (accounts.every(({ id }) => failedSources.has(`claude:${id}`))) errors.claude = claudeReason;
     if (codexAccounts.every(({ id }) => failedSources.has(`codex:${id}`))) errors.codex = codexReason;
+    if (agyAccounts.every(({ id }) => failedSources.has(`agy:${id}`))) errors.agy = agyReason;
     const unlisted = (path, state) => failedSources.has(`${state.program}:${state.account ?? "default"}`)
       || unlistedPaths.some(unlisted => path === unlisted || path.startsWith(unlisted + sep));
     // A Transcript stays with the Account whose kept state holds it while that
@@ -161,18 +185,19 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
       // it keeps the previous run's scan state, coverage, age and Accounts,
       // so the next query restarts a worker that died mid-run.
       const scan = final ? { complete, coveredThrough: new Date(now).toISOString(), generatedAt: new Date().toISOString(),
-        countedAccounts: [...counted], countedCodexAccounts: [...codexCounted] }
+        countedAccounts: [...counted], countedCodexAccounts: [...codexCounted], countedAgyAccounts: [...agyCounted] }
         : { complete: !rebuilding && previousSnapshot?.complete === true, coveredThrough: previousSnapshot?.coveredThrough ?? null,
           generatedAt: previousSnapshot?.generatedAt ?? new Date().toISOString(), countedAccounts: previousSnapshot?.countedAccounts,
-          countedCodexAccounts: previousSnapshot?.countedCodexAccounts };
+          countedCodexAccounts: previousSnapshot?.countedCodexAccounts, countedAgyAccounts: previousSnapshot?.countedAgyAccounts };
       // Commit parser progress even when a rebuild is still resolving a burst.
       // The query keeps the old aggregates; the next worker resumes the new log.
-      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates, codexCandidates,
+      const progress = { ...scan, pricingVersion, breakdownsVersion: 1, buckets: [...buckets.values()], errors, claudeCandidates, codexCandidates, agyCandidates,
         // Each program's reading stays its Default Account's, for apps that ignore Accounts.
-        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report,
+        limitsVersion: 1, usageLimits: { codex: limits.codex?.report, claude: limits.claude.default?.report, agy: limits.agy?.report,
           claudeAccounts: Object.fromEntries(accounts.map(({ id }) => [id, limits.claude[id]?.report])),
           codexAccounts: Object.fromEntries(addedCodexAccounts.map(({ id }) => [id, limits.codexAccounts[id]?.report])) },
         nextLimitsAt: nextCodexRead(limits, addedCodexAccounts), nextClaudeLimitsAt: nextClaudeRead(limits.claude, accounts),
+        nextAgyLimitsAt: nextAgyRead(limits.agy),
         skippedArchives: Object.values(fileStates).filter(file => file.skipped).length,
         unreadableFiles: unlistedPaths.length + files.filter(file => fileStates[file.logicalPath || file.path]?.unreadable).length,
         // Coverage starts at the earliest record any remaining Transcript holds;
@@ -180,8 +205,9 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
         coveredSince: Object.values(fileStates).reduce((earliest, file) => Number.isFinite(file.firstAt) && (earliest === null || file.firstAt < earliest)
           ? file.firstAt : earliest, olderTranscripts ? cutoff : null) };
       cacheWrite(() => saveCheckpoint(directory, fileStates, log, preserveSnapshot && !scan.complete
-        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates, codexCandidates,
-          usageLimits: progress.usageLimits, nextLimitsAt: progress.nextLimitsAt, nextClaudeLimitsAt: progress.nextClaudeLimitsAt }
+        ? { ...previousSnapshot, complete: false, rebuilding: true, limitsVersion: 1, claudeCandidates, codexCandidates, agyCandidates,
+          usageLimits: progress.usageLimits, nextLimitsAt: progress.nextLimitsAt, nextClaudeLimitsAt: progress.nextClaudeLimitsAt,
+          nextAgyLimitsAt: progress.nextAgyLimitsAt }
         : { ...progress, rebuilding: false }));
       lastSnapshot = performance.now();
     };
@@ -229,12 +255,46 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
       }
       return parentTotals.get(key);
     };
+    const agyDirectoriesByAccount = new Map();
+    const agyDirectoriesFor = accountId => {
+      const key = accountId ?? "default";
+      if (!agyDirectoriesByAccount.has(key)) {
+        const entry = agyAccounts.find(({ id }) => id === key);
+        agyDirectoriesByAccount.set(key, entry ? agyDirectories(entry.roots, runtime.env) : new Map());
+      }
+      return agyDirectoriesByAccount.get(key);
+    };
     for (const file of files) {
       const logicalPath = file.logicalPath || file.path;
       const state = fileStates[logicalPath] ||= { dev: file.dev, ino: file.ino, size: file.size, mtimeMs: file.mtimeMs,
         program: file.program, ...(file.account ? { account: file.account } : {}), compressed: Boolean(file.compressed), offset: 0, finished: false,
         carry: file.program === "codex" ? createCodexState(logicalPath) : {} };
       if (state.finished && !state.carry.pending?.length) continue;
+      if (file.program === "agy") {
+        const conversationId = file.conversationId || file.path.split(sep).at(-4)?.toLowerCase() || file.path;
+        const directories = agyDirectoriesFor(file.account);
+        try {
+          if (!state.finished) for await (const { line, offset } of transcriptEntries(file.path, maintainHeartbeat, state.offset)) {
+            snapshotDue();
+            state.offset = offset;
+            noteFirstRecord(state, line);
+            const contribution = consumeAgyLine(state.carry, line, conversationId, file.account, cutoff, directories);
+            if (!contribution) continue;
+            const candidate = priceContribution(contribution);
+            if (keys.has(candidate.key)) continue;
+            keys.set(candidate.key, candidate);
+            changeBucket(buckets, candidate, 1);
+            appendKey(candidate);
+          }
+          state.finished = true;
+          state.unreadable = false;
+        } catch (error) {
+          if (runFailure(error)) throw error;
+          state.unreadable = true;
+        }
+        snapshotDue();
+        continue;
+      }
       if (file.program === "codex") {
         const carry = state.carry;
         const account = state.account;
@@ -329,14 +389,14 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
     snapshot(!pendingPrefix, true);
     // Reserve each program's cadence before starting it, so a worker that dies
     // mid-read still throttles the next one.
-    if (!limits.codex || !Number.isFinite(limits.codex.nextAllowedAt) || Date.now() >= limits.codex.nextAllowedAt) {
+    if (codexLimitsEnabled && (!limits.codex || !Number.isFinite(limits.codex.nextAllowedAt) || Date.now() >= limits.codex.nextAllowedAt)) {
       limits.codex = { ...limits.codex, nextAllowedAt: Date.now() + 60_000 };
       writeJSON(join(directory, "limits.json"), limits);
       limits.codex = { service: await readCodexLimits(runtime, directory), nextAllowedAt: Date.now() + 60_000 };
       heartbeat();
     }
     // An added Codex Account runs Codex with its own CODEX_HOME, on its own cadence.
-    for (const account of addedCodexAccounts) {
+    for (const account of codexLimitsEnabled ? addedCodexAccounts : []) {
       const entry = limits.codexAccounts[account.id];
       if (Number.isFinite(entry?.nextAllowedAt) && Date.now() < entry.nextAllowedAt) continue;
       limits.codexAccounts[account.id] = { ...entry, nextAllowedAt: Date.now() + 60_000 };
@@ -363,15 +423,28 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null } = {}) 
       limits.claude[account.id] = cacheClaudeLimits(limits.claude[account.id], reading);
       heartbeat();
     }
-    // Each Account falls back to the latest limits its own sessions recorded.
-    const fallback = accountID => Object.values(fileStates).filter(file => file.program === "codex" && file.account === accountID)
-      .map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
-      .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
-    // A reservation whose read never finished has no reading of its own.
-    const report = (entry, accountID) => codexLimitsWithFallback(entry.service || entry.report
-      || { state: "error", reason: "requestFailed" }, fallback(accountID));
-    limits.codex.report = report(limits.codex, undefined);
-    for (const { id } of addedCodexAccounts) limits.codexAccounts[id].report = report(limits.codexAccounts[id], id);
+    if (agyLimitsEnabled && (!limits.agy || !Number.isFinite(limits.agy.nextAllowedAt) || Date.now() >= limits.agy.nextAllowedAt)) {
+      limits.agy = { ...limits.agy, nextAllowedAt: Date.now() + 60_000 };
+      writeJSON(join(directory, "limits.json"), limits);
+      const agyVer = await agyVersion(runtime, directory, limits.agyVersion);
+      limits.agyVersion = agyVer ?? undefined;
+      const elsewhere = readAgyLimitsElsewhere ? await readAgyLimitsElsewhere(runtime, directory, agyVer?.version, {
+        wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
+      const reading = elsewhere ?? await readAgyLimits(runtime, directory, agyVer?.version);
+      limits.agy = cacheAgyLimits(limits.agy, reading);
+      heartbeat();
+    }
+    if (codexLimitsEnabled) {
+      // Each Account falls back to the latest limits its own sessions recorded.
+      const fallback = accountID => Object.values(fileStates).filter(file => file.program === "codex" && file.account === accountID)
+        .map(file => file.carry.latestLimits).filter(reading => reading?.windows?.length)
+        .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      // A reservation whose read never finished has no reading of its own.
+      const report = (entry, accountID) => codexLimitsWithFallback(entry.service || entry.report
+        || { state: "error", reason: "requestFailed" }, fallback(accountID));
+      limits.codex.report = report(limits.codex, undefined);
+      for (const { id } of addedCodexAccounts) limits.codexAccounts[id].report = report(limits.codexAccounts[id], id);
+    }
     writeJSON(join(directory, "limits.json"), limits);
     snapshot(!pendingPrefix, true);
     log.close();

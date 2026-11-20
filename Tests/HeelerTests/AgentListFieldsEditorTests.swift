@@ -115,7 +115,7 @@ struct AgentListFieldsEditorTests {
         await editor.syncFromPlugin(hostID)
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
-        #expect(editor.layout(for: hostID) == AgentRowLayout.heelerDefault.withHeelerRow([]))
+        #expect(editor.layout(for: hostID) == AgentRowLayout.consoleDefault.withHeelerRow([]))
 
         await transport.setSidebarLayout(pluginData)
         await editor.syncFromPlugin(hostID)
@@ -326,7 +326,7 @@ struct AgentListFieldsEditorTests {
 
         fetchState.value = .loaded(nil)
         await editor.syncFromPlugin(hostID)
-        #expect(editor.layout(for: hostID) == AgentRowLayout.heelerDefault.withHeelerRow([]))
+        #expect(editor.layout(for: hostID) == AgentRowLayout.consoleDefault.withHeelerRow([]))
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
 
@@ -452,9 +452,11 @@ struct AgentListFieldsInlineEditingTests {
         let editor = AgentListFieldsEditor(
             layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in .loaded(snapshot) })
 
-        for thirdRow: AgentRow in [[.init(.directory)], [.init(.host, dim: true)], []] {
-            if thirdRow != [.init(.directory)] {
-                #expect(editor.commit(hostID) { $0.rows[2] = thirdRow })
+        for thirdRow: AgentRow in [[], [.init(.directory)], [.init(.host, dim: true)]] {
+            if !thirdRow.isEmpty {
+                #expect(editor.commit(hostID) {
+                    $0.rows = Array(AgentRowSlot.slotRows($0.rows).prefix(AgentRowSlot.herdrRowCount)) + [thirdRow]
+                })
             }
             await editor.replaceWithPluginFields(hostID)
             let reloaded = AgentRowLayoutStore(defaults: defaults)
@@ -464,7 +466,7 @@ struct AgentListFieldsInlineEditingTests {
     }
 
     /// herdr has no right side, so Sync from plugin keeps every row's: a
-    /// Host following the list's places still does, and a chosen one stays.
+    /// Host following the default right sides still does, and a chosen one stays.
     @Test func syncKeepsEveryRowsRightSideAcrossReloads() async throws {
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -480,11 +482,11 @@ struct AgentListFieldsInlineEditingTests {
 
         #expect(AgentLayoutTokensEditing.add(
             .status, editor: editor, hostID: hostID, rowIndex: 0, side: .trailing))
-        let trailing: [AgentRow] = [[.init(.status)], [.init(.host)], [.init(.changes)]]
+        let trailing: [AgentRow] = [[.init(.host), .init(.status)], [.init(.changes)], []]
         #expect(layouts.hostLayouts[hostID]?.trailing == trailing)
         await editor.replaceWithPluginFields(hostID)
         let reloaded = AgentRowLayoutStore(defaults: defaults).resolvedLayout(for: hostID, pluginSnapshot: snapshot)
-        #expect(reloaded.rows == [[.init(.workspace)], [.init(.custom("branch"))], [.init(.directory)]])
+        #expect(reloaded.rows == [[.init(.workspace)], [.init(.custom("branch"))], []])
         #expect(reloaded.trailing == trailing)
     }
 
@@ -501,12 +503,12 @@ struct AgentListFieldsInlineEditingTests {
             layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in .loaded(snapshot) })
         await editor.replaceWithPluginFields(hostID)
         #expect(AgentLayoutTokensEditing.moveAcross(1, editor: editor, hostID: hostID, rowIndex: 1, from: .leading))
-        #expect(layouts.hostLayouts[hostID]?.trailing?[1] == [.init(.custom("branch")), .init(.host)])
+        #expect(layouts.hostLayouts[hostID]?.trailing?[1] == [.init(.custom("branch")), .init(.changes)])
 
         await editor.replaceWithPluginFields(hostID)
         let synced = try #require(layouts.hostLayouts[hostID])
         #expect(synced.rows[1] == [.init(.agent)])
-        #expect(synced.trailing?[1] == [.init(.custom("branch")), .init(.host)])
+        #expect(synced.trailing?[1] == [.init(.custom("branch")), .init(.changes)])
     }
 
     /// Apply to All Hosts saves one Host's fields, right sides included, as
@@ -574,8 +576,9 @@ struct AgentListFieldsInlineEditingTests {
         #expect(editor.layout(for: hostID) == .consoleDefault)
         #expect(
             AgentLayoutTokensEditing.availableBuiltins(
-                in: editor.layout(for: hostID).rows[2], from: AgentRowToken.heelerBuiltins)
-                == [.host, .status])
+                in: AgentLayoutTokensEditing.row(2, in: editor.layout(for: hostID).rows),
+                from: AgentRowToken.heelerBuiltins)
+                == [.host, .backend, .status, .directory, .path])
         #expect(defaults.data(forKey: "agent-row-layouts") == Data("not json".utf8))
     }
 
@@ -654,7 +657,7 @@ struct AgentListFieldsInlineEditingTests {
 
         await state.set(.loaded(nil))
         await editor.replaceWithPluginFields(hostID)
-        #expect(layouts.hostLayouts[hostID] == AgentRowLayout.heelerDefault.withHeelerRow([]))
+        #expect(layouts.hostLayouts[hostID] == AgentRowLayout.consoleDefault.withHeelerRow([]))
         #expect(editor.syncStates[hostID] == .filled(
             "This Host has no plugin fields snapshot, so Heeler's fallback fields were used."))
     }

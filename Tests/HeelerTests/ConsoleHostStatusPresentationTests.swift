@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 import Testing
 import UIKit
@@ -372,5 +373,170 @@ struct ConsoleHostIssueListHeightTests {
         let regular = try await Self.height(of: issues, width: 402, dynamicType: .large)
         let larger = try await Self.height(of: issues, width: 402, dynamicType: .accessibility3)
         #expect(larger > regular)
+    }
+}
+
+@Suite("Console host issue corner presentation", .serialized)
+struct ConsoleHostIssueCornerPresentationTests {
+    @MainActor
+    @Observable
+    fileprivate final class Harness {
+        var issues: [ConsoleHostStatusPresentation]
+        init(_ issues: [ConsoleHostStatusPresentation]) { self.issues = issues }
+    }
+
+    private struct HostView: View {
+        let harness: Harness
+        var body: some View {
+            ConsoleHostIssueCornerBadge(
+                issues: harness.issues,
+                onOpenHost: { _ in },
+                onShowAll: {},
+                autoCollapseDelay: .milliseconds(60)
+            )
+            .transaction { $0.disablesAnimations = true }
+            .environment(\.locale, Locale(identifier: "en_US"))
+        }
+    }
+
+    private let first = Host.fixture(name: "home-mini")
+    private let second = Host.fixture(name: "gpu-devbox")
+
+    private func issue(
+        _ host: Host,
+        _ status: EventsSessionStatus,
+        awaitingSnapshot: Bool = false,
+        syncError: String? = nil
+    ) throws -> ConsoleHostStatusPresentation {
+        try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: status, isAwaitingSnapshot: awaitingSnapshot,
+                syncError: syncError))
+    }
+
+    @Test func emptyIssuesProduceNoCornerPresentation() {
+        #expect(ConsoleHostIssueCornerPresentation(issues: []) == nil)
+    }
+
+    @Test func singleReconnectingHostAnimatesBarWithoutCollapsedBadge() throws {
+        let reconnecting = try issue(
+            first, .reconnecting(attempt: 2, delay: .seconds(2), failure: .timedOut))
+        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: [reconnecting]))
+
+        #expect(corner.expandedTitle == "home-mini")
+        #expect(corner.expandedStatus == "Reconnecting…")
+        #expect(corner.tone == .reconnecting)
+        #expect(corner.animatesBar)
+        #expect(corner.badgeText(isExpanded: true) == nil)
+        #expect(corner.badgeText(isExpanded: false) == nil)
+        #expect(corner.action == .openHost(first.id))
+        #expect(corner.accessibilityLabel == reconnecting.message)
+    }
+
+    @Test func singleFailedHostStopsBarAndShowsExclamationWhenCollapsed() throws {
+        let failed = try issue(first, .failed(.authenticationFailed))
+        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: [failed]))
+
+        #expect(corner.expandedTitle == "home-mini")
+        #expect(corner.expandedStatus == "Can't connect")
+        #expect(corner.tone == .unavailable)
+        #expect(!corner.animatesBar)
+        #expect(corner.badgeText(isExpanded: true) == nil)
+        #expect(corner.badgeText(isExpanded: false) == "!")
+        #expect(corner.action == .openHost(first.id))
+    }
+
+    @Test func multipleIssuesShowCountBadgeAndOpenSummary() throws {
+        let reconnecting = try issue(
+            first, .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut))
+        let secondReconnecting = try issue(
+            second, .reconnecting(attempt: 3, delay: .seconds(4), failure: .sshUnreachable(detail: "down")))
+        let bothReconnecting = try #require(
+            ConsoleHostIssueCornerPresentation(issues: [reconnecting, secondReconnecting]))
+        #expect(bothReconnecting.animatesBar)
+        #expect(bothReconnecting.badgeText(isExpanded: true) == "2")
+        #expect(bothReconnecting.badgeText(isExpanded: false) == "2")
+        #expect(bothReconnecting.action == .showAll)
+
+        let failed = try issue(second, .failed(.timedOut))
+        let mixed = try #require(
+            ConsoleHostIssueCornerPresentation(issues: [reconnecting, failed]))
+        #expect(mixed.tone == .unavailable)
+        #expect(!mixed.animatesBar)
+        #expect(mixed.badgeText(isExpanded: false) == "2")
+        #expect(mixed.action == .showAll)
+    }
+
+    @Test func quietInformationalHostTogglesExpandedWithoutOpeningSheet() throws {
+        let connecting = try issue(first, .connecting)
+        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: [connecting]))
+        #expect(corner.animatesBar)
+        #expect(corner.action == .toggleExpanded)
+        #expect(corner.accessibilityHint == nil)
+
+        let paused = try issue(first, .suspended)
+        let pausedCorner = try #require(ConsoleHostIssueCornerPresentation(issues: [paused]))
+        #expect(!pausedCorner.animatesBar)
+        #expect(pausedCorner.action == .toggleExpanded)
+    }
+
+    @MainActor
+    @Test func autoCollapsesAfterInitialAppearanceAndReExpandsOnEscalation() async throws {
+        let host = first
+        let reconnecting = try issue(
+            host, .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut))
+        let failed = try issue(host, .failed(.authenticationFailed))
+
+        let harness = Harness([reconnecting])
+        let controller = UIHostingController(rootView: HostView(harness: harness))
+        controller.safeAreaRegions = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 320, height: 120), rootViewController: controller
+        ) { _ in
+            controller.view.layoutIfNeeded()
+            let expandedWidth = controller.sizeThatFits(
+                in: CGSize(width: 320, height: 120)
+            ).width
+            #expect(expandedWidth > 60, "Initial mount starts expanded: \(expandedWidth)")
+
+            let collapseDeadline = ContinuousClock.now + .seconds(2)
+            var collapsedWidth = expandedWidth
+            while collapsedWidth > 50, ContinuousClock.now < collapseDeadline {
+                try await Task.sleep(for: .milliseconds(15))
+                controller.view.layoutIfNeeded()
+                collapsedWidth = controller.sizeThatFits(
+                    in: CGSize(width: 320, height: 120)
+                ).width
+            }
+            #expect(collapsedWidth <= 50, "Collapses into compact squircle tile: \(collapsedWidth)")
+
+            // Another retry on the same Host does not pop it back open.
+            harness.issues = [
+                try issue(
+                    host,
+                    .reconnecting(
+                        attempt: 2, delay: .seconds(2),
+                        failure: .sshUnreachable(detail: "still down")))
+            ]
+            try await Task.sleep(for: .milliseconds(30))
+            controller.view.layoutIfNeeded()
+            let retryWidth = controller.sizeThatFits(
+                in: CGSize(width: 320, height: 120)
+            ).width
+            #expect(retryWidth == collapsedWidth)
+
+            // Escalating to a standing failure expands again to announce it.
+            harness.issues = [failed]
+            let escalateDeadline = ContinuousClock.now + .seconds(1)
+            var reExpandedWidth = retryWidth
+            while reExpandedWidth <= 60, ContinuousClock.now < escalateDeadline {
+                try await Task.sleep(for: .milliseconds(15))
+                controller.view.layoutIfNeeded()
+                reExpandedWidth = controller.sizeThatFits(
+                    in: CGSize(width: 320, height: 120)
+                ).width
+            }
+            #expect(reExpandedWidth > 60, "Escalation re-expands: \(reExpandedWidth)")
+        }
     }
 }

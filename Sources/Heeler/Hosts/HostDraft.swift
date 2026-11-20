@@ -84,6 +84,8 @@ struct HostDraft: Equatable, Sendable {
     /// A tmux Host's resolved paths, carried through Edit unchanged. They stop
     /// counting once the socket name names another socket (ADR 0044).
     private(set) var tmuxPaths: TmuxPaths?
+    /// A Rex Host's socket, carried through Edit unchanged (ADR 0049).
+    private(set) var rexSocket: RexSocket?
     /// The Host's routes in order. A new Host starts with none and cannot
     /// be saved until Add Route gives it one; the forwarding properties
     /// below create the first route when set.
@@ -100,6 +102,7 @@ struct HostDraft: Equatable, Sendable {
         sessionName = host.sessionName
         herdrEndpoint = host.herdrEndpoint
         tmuxPaths = host.tmuxPaths
+        rexSocket = host.rexSocket
         routes = host.routes.map(HostRouteDraft.init(route:))
     }
 
@@ -212,6 +215,7 @@ struct HostDraft: Equatable, Sendable {
             sessionName: serverKind.storedSessionName(sessionName),
             herdrEndpoint: herdrEndpoint,
             tmuxPaths: tmuxPaths,
+            rexSocket: rexSocket,
             routes: routes)
     }
 

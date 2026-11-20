@@ -98,6 +98,7 @@ final actor ScriptedTransport: Transport {
     private var nextWorktreeAuthorizationGate: ScriptedTransportCallGate?
     private(set) var agentFocuses: [AgentTarget] = []
     private var focusFailure: TransportError?
+    private var nextFocusGate: ScriptedTransportCallGate?
     /// Every `agent.rename` / `workspace.rename` received, in order; the
     /// rename flows (#98) assert on the params they forwarded.
     private(set) var agentRenames: [AgentRenameParams] = []
@@ -325,6 +326,10 @@ final actor ScriptedTransport: Transport {
         focusFailure = failure
     }
 
+    func gateNextFocus(using gate: ScriptedTransportCallGate) {
+        nextFocusGate = gate
+    }
+
     func setRenameFailure(_ failure: TransportError?) {
         renameFailure = failure
     }
@@ -514,6 +519,8 @@ final actor ScriptedTransport: Transport {
     private var agentUsage: Result<AgentUsageReport, any Error> = .failure(AgentUsageError.invalidReport)
     private(set) var agentUsageReads = 0
     private(set) var agentUsageClaudeLimits: [Bool] = []
+    private(set) var agentUsageCodexLimits: [Bool] = []
+    private(set) var agentUsageAgyLimits: [Bool] = []
     private(set) var agentUsageTimeZones: [String] = []
     private(set) var agentUsagePluginRoots: [String] = []
     private var nextAgentUsageGate: ScriptedTransportCallGate?
@@ -527,10 +534,13 @@ final actor ScriptedTransport: Transport {
     }
 
     func readAgentUsage(
-        timeZone: String, claudeLimits: Bool, pluginRoot: String
+        timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+        agyLimits: Bool = true, pluginRoot: String
     ) async throws -> AgentUsageReport {
         agentUsageReads += 1
         agentUsageClaudeLimits.append(claudeLimits)
+        agentUsageCodexLimits.append(codexLimits)
+        agentUsageAgyLimits.append(agyLimits)
         agentUsageTimeZones.append(timeZone)
         agentUsagePluginRoots.append(pluginRoot)
         let result = agentUsage
@@ -754,6 +764,11 @@ final actor ScriptedTransport: Transport {
     }
 
     func focusAgent(_ target: AgentTarget) async throws {
+        if let gate = nextFocusGate {
+            nextFocusGate = nil
+            await gate.waitUntilOpen()
+            try Task.checkCancellation()
+        }
         agentFocuses.append(target)
         if let focusFailure { throw focusFailure }
     }

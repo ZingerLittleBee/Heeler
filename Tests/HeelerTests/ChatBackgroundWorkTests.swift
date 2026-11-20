@@ -274,4 +274,110 @@ struct ChatBackgroundWorkTests {
         let finished = ChatTranscript(backgroundWork: [Self.item("b", state: .completed, at: 20, endedAt: 30)])
         #expect(!ChatBackgroundWork(transcript: finished, progress: [:], isLive: true, now: Self.now).holdsActivePace)
     }
+
+    @Test func hostEvidenceKeepsLongRunningWorkFreshAndRetiresEndedWorkUnlessRevived() {
+        let staleness = ChatBackgroundWork.Staleness(workflowQuiet: 100, subagentRun: 200)
+        let longCommand = Self.item("agy:task:conv/task-3", kind: .command, launchedAgo: 14_100, at: 10)
+        var revived = Self.item("agy:subagent:sub-1", launchedAgo: 500, at: 20)
+        revived.lastActivityAt = Self.now.addingTimeInterval(-15)
+
+        let aliveEvidence = [
+            longCommand.id: ChatBackgroundWorkEvidence(lastSeenAt: Self.now.addingTimeInterval(-5)),
+            revived.id: ChatBackgroundWorkEvidence(
+                lastSeenAt: Self.now.addingTimeInterval(-100),
+                endedState: .completed,
+                endedAt: Self.now.addingTimeInterval(-90)),
+        ]
+        let alive = ChatBackgroundWork(
+            transcript: ChatTranscript(backgroundWork: [longCommand, revived]),
+            progress: [:], evidence: aliveEvidence, isLive: true, now: Self.now, staleness: staleness)
+        #expect(alive.rows.map(\.isRunning) == [true, true])
+        #expect(alive.rows.map(\.isStale) == [false, false])
+        #expect(alive.rows[0].lastActivity == Self.now.addingTimeInterval(-5))
+        #expect(alive.holdsActivePace)
+
+        let stoppedAt = Self.now.addingTimeInterval(-2)
+        let retired = ChatBackgroundWork(
+            transcript: ChatTranscript(
+                backgroundWork: [longCommand], latestPromptOffset: 5),
+            progress: [:],
+            evidence: [
+                longCommand.id: ChatBackgroundWorkEvidence(
+                    lastSeenAt: Self.now.addingTimeInterval(-5),
+                    endedState: .stopped,
+                    endedAt: stoppedAt,
+                    endPromptOffset: 5)
+            ],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(retired.rows.map(\.isRunning) == [false])
+        #expect(!retired.hasUnfinished)
+        #expect(retired.rows.first?.item.state == .stopped)
+        #expect(retired.rows.first?.item.endedAt == stoppedAt)
+        #expect(!retired.holdsActivePace)
+
+        // A later user prompt clears evidence-retired work just like `endOffset <= prompt`.
+        let afterNextPrompt = ChatBackgroundWork(
+            transcript: ChatTranscript(
+                backgroundWork: [longCommand], latestPromptOffset: 50),
+            progress: [:],
+            evidence: [
+                longCommand.id: ChatBackgroundWorkEvidence(
+                    lastSeenAt: Self.now.addingTimeInterval(-5),
+                    endedState: .stopped,
+                    endedAt: stoppedAt,
+                    endPromptOffset: 5)
+            ],
+            isLive: true, now: Self.now, staleness: staleness)
+        #expect(afterNextPrompt.rows.isEmpty)
+    }
+
+    @Test func turnPendingAllowancesRetireExcessCarriedWorkInLaunchOrder() {
+        let capEnd = ChatBackgroundWorkEnd(state: .stopped, offset: 80, endedAt: Self.now)
+        var transcript = ChatTranscript(
+            backgroundWorkEnds: ["notifiedLater": ChatBackgroundWorkEnd(state: .completed, offset: 95, endedAt: Self.now)],
+            backgroundWorkTurnCaps: [
+                ChatTurnPendingAllowance(kind: .workflow, carriedSlots: 2, end: capEnd)
+            ])
+        transcript.carryBackgroundWork(
+            [
+                Self.item("oldestDead", kind: .workflow, at: 10),
+                Self.item("notifiedLater", kind: .workflow, at: 20),
+                Self.item("stillRunning", kind: .workflow, at: 30),
+                Self.item("subagentUntouched", kind: .subagent, at: 15),
+            ],
+            launchedBefore: 60, latestPromptOffset: 5)
+
+        // `notifiedLater` was still running at 80 (notified at 95), taking 1 of the 2 slots;
+        // `stillRunning` (newest unended) takes the remaining slot, and `oldestDead` retires at 80.
+        #expect(
+            transcript.backgroundWork.map { ($0.id, $0.state, $0.endOffset) }
+                .map { "\($0.0):\($0.1):\($0.2.map(String.init) ?? "nil")" }
+                == [
+                    "oldestDead:stopped:80",
+                    "notifiedLater:completed:95",
+                    "stillRunning:running:nil",
+                    "subagentUntouched:running:nil",
+                ])
+    }
+
+    @Test func finishedWorkShowsInStripOnlyWhileForegroundTurnStillRuns() {
+        let finishedWork = ChatBackgroundWork(
+            transcript: ChatTranscript(
+                backgroundWork: [Self.item("done-wf", kind: .workflow, state: .completed, at: 10, endedAt: 40)],
+                latestPromptOffset: 5),
+            progress: [:], isLive: true, now: Self.now)
+        #expect(!finishedWork.hasUnfinished)
+
+        let openTurn = [ChatTurn(firstEntryID: ChatEntryID("u1"), ending: nil)]
+        let closedTurn = [ChatTurn(firstEntryID: ChatEntryID("u1"), ending: .completed)]
+
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .working, isHostConnected: true, turns: closedTurn))
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .blocked, isHostConnected: true, turns: closedTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .idle, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .done, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .error, isHostConnected: true, turns: openTurn))
+        #expect(finishedWork.showsFinishedInStrip(agentStatus: .unknown, isHostConnected: true, turns: openTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .unknown, isHostConnected: true, turns: closedTurn))
+        #expect(!finishedWork.showsFinishedInStrip(agentStatus: .working, isHostConnected: false, turns: openTurn))
+    }
 }

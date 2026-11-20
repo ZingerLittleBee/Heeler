@@ -45,6 +45,12 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
         "tmux:\(TmuxSocketName.normalized(socketName)):\(instanceID)"
     }
 
+    /// A Rex Host is one server, so its instance alone keeps its entries apart
+    /// from another run's.
+    static func rexScope(instanceID: String) -> String {
+        "rex:\(instanceID)"
+    }
+
     /// The document's file name: a digest, so no session name, path or id
     /// appears on disk.
     var storageName: String {
@@ -91,6 +97,25 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
     /// ones above its live window. Nil in documents saved before Chat
     /// recorded them.
     var turns: [ChatTurn]?
+    /// How the turn opened above the saved entries ended, when recorded.
+    var precedingTurnEnd: ChatTurnEnd?
+    /// The model, reasoning effort, and permission mode recorded in the
+    /// transcript when saved.
+    var model: String?
+    var effort: String?
+    var permissionMode: String?
+    /// The trailing bytes just before `coverageEnd`, used with `head` and file
+    /// size to confirm an unchanged transcript without re-downloading its body.
+    var tailAnchor: Data?
+    /// True when the live snapshot held transient state (waiting bubbles,
+    /// active permission requests, session continuation links, or unread tail
+    /// bytes) that requires reading the live tail on reopen.
+    var hadTransientState: Bool?
+    /// True when automatic older-history search already spent its budget inside
+    /// a turn for this saved window, so reopening unchanged entries waits for
+    /// an explicit user pull/tap instead of re-downloading the tail to search
+    /// again automatically.
+    var olderAwaitsUser: Bool?
     /// The app localization the entries' own words are in. Reducers word
     /// notices, tool rows and Background Work as they read, so a document
     /// saved under another language is discarded rather than shown beside
@@ -111,6 +136,9 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         coverageStart: UInt64, coverageEnd: UInt64, reachedStart: Bool, title: String?,
         entries: [ChatEntry], savedAt: Date, backgroundWork: [ChatBackgroundWorkItem]? = nil,
         latestPromptOffset: UInt64? = nil, turns: [ChatTurn]? = nil,
+        precedingTurnEnd: ChatTurnEnd? = nil, model: String? = nil, effort: String? = nil,
+        permissionMode: String? = nil, tailAnchor: Data? = nil, hadTransientState: Bool? = nil,
+        olderAwaitsUser: Bool? = nil,
         localization: String? = ChatCacheDocument.currentLocalization
     ) {
         formatVersion = Self.currentFormatVersion
@@ -127,6 +155,13 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
         self.backgroundWork = backgroundWork
         self.latestPromptOffset = latestPromptOffset
         self.turns = turns
+        self.precedingTurnEnd = precedingTurnEnd
+        self.model = model
+        self.effort = effort
+        self.permissionMode = permissionMode
+        self.tailAnchor = tailAnchor
+        self.hadTransientState = hadTransientState
+        self.olderAwaitsUser = olderAwaitsUser
         self.localization = localization
     }
 

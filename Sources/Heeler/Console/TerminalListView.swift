@@ -25,6 +25,7 @@ struct TerminalListView: View {
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
+    @State private var movePaneRequest: MovePaneRequest?
     @State private var closeFailure: String?
 
     /// Between Workspace cards; the header's own 44-point row already
@@ -50,6 +51,13 @@ struct TerminalListView: View {
             case .byHost: byHost
             }
         }
+        .modifier(
+            MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
+                // The Terminal beside the list has a new id in its new
+                // Workspace; the one it left would read as closed.
+                let left = ConsoleTerminal.ID(hostID: request.hostID, paneID: request.paneID)
+                if paneID != request.paneID, selection == .terminal(left) { selection = nil }
+            })
         .alert(pendingCloseScope.confirmationTitle, isPresented: isPresented($pendingClose)) {
             Button(pendingCloseScope.actionTitle, role: .destructive) {
                 confirmClose()
@@ -74,25 +82,17 @@ struct TerminalListView: View {
     private var byWorkspace: some View {
         let workspaces = projection.workspaces(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        // Host problems only bury a search's matches.
-        let issues =
-            searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? projection.issues(filteredHostIDs: filteredHostIDs) : []
-        if workspaces.isEmpty && issues.isEmpty {
+        let hasVisibleIssues =
+            workspaces.isEmpty
+            && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !projection.issues(filteredHostIDs: filteredHostIDs).isEmpty
+        if workspaces.isEmpty && !hasVisibleIssues {
             emptyState
+        } else if workspaces.isEmpty {
+            (isSidebarColumn ? Color.clear : Color(uiColor: .systemGroupedBackground))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(selection: $selection) {
-                if !issues.isEmpty {
-                    Section {
-                        // Off the cards, on the page: out to the cards'
-                        // edges, as the Workspace headers and the title.
-                        ConsoleHostIssueList(
-                            issues: issues, onOpenHost: onOpenHost,
-                            onShowAll: onShowHostIssues)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
-                }
                 ForEach(workspaces) { @Sendable workspace in
                     MainActorContent { workspaceSection(workspace, showsHost: true) }
                 }
@@ -111,21 +111,22 @@ struct TerminalListView: View {
     private var byHost: some View {
         let groups = projection.hostGroups(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issue == nil }) {
+        let hasWorkspaces = groups.contains { !$0.workspaces.isEmpty }
+        if !hasWorkspaces && groups.allSatisfy(\.issues.isEmpty) {
             emptyState
+        } else if !hasWorkspaces {
+            (isSidebarColumn ? Color.clear : Color(uiColor: .systemGroupedBackground))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             // A plain list, as in the Agents tab, so each Host's header pins
             // while its Workspaces scroll under it. Workspaces are rows of the
-            // Host's section, drawn as cards by `TerminalCardRow`.
+            // Host's section, drawn as cards by `TerminalCardRow`, while Host
+            // connection conditions float in the bottom-trailing corner.
             List(selection: $selection) {
                 ForEach(groups) { @Sendable group in
                     MainActorContent {
                         Section {
                             if !isFolded(group) {
-                                if let issue = group.issue {
-                                    ConsoleHostIssueRow(issue: issue, onOpenHost: onOpenHost)
-                                        .modifier(TerminalCardRow(isFirst: true, isLast: true))
-                                }
                                 ForEach(group.workspaces) { @Sendable workspace in
                                     MainActorContent { workspaceRows(workspace) }
                                 }
@@ -135,7 +136,7 @@ struct TerminalListView: View {
                                 if group.opensConnectionDetail {
                                     onOpenHost(group.hostID)
                                 } else {
-                                    toggle(group.hostID)
+                                    toggle(group.hostIDs)
                                 }
                             }
                         }
@@ -168,18 +169,24 @@ struct TerminalListView: View {
         .selectionDisabled()
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
+            // A Rex Host never offers New Terminal, so its last shell closes
+            // the card.
+            let endsInNewTerminal = console.capabilities(for: workspace.id.hostID).startsTerminals
             ForEach(Array(terminals.enumerated()), id: \.element.id) { @Sendable index, terminal in
                 MainActorContent {
+                    let edges = TerminalCardEdges.shell(
+                        at: index, of: terminals.count, endsInNewTerminal: endsInNewTerminal)
                     terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
                         .modifier(
                             TerminalCardRow(
-                                isFirst: index == 0, isLast: false,
+                                isFirst: edges.isFirst, isLast: edges.isLast,
                                 isSelected: isShownSelected(terminal)))
                 }
             }
-            if console.capabilities(for: workspace.id.hostID).startsTerminals {
+            if endsInNewTerminal {
+                let edges = TerminalCardEdges.newTerminal(afterShells: terminals.count)
                 newTerminalRow(workspace)
-                    .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
+                    .modifier(TerminalCardRow(isFirst: edges.isFirst, isLast: edges.isLast))
             }
         }
     }
@@ -282,6 +289,14 @@ struct TerminalListView: View {
                             UIPasteboard.general.string = terminal.cwd
                         }
                     }
+                    if capabilities(of: terminal).movesPanes {
+                        Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
+                            movePaneRequest = MovePaneRequest(terminal: terminal)
+                        }
+                    }
+                    if capabilities(of: terminal).copiesPaneID {
+                        CopyPaneIDButton(paneID: terminal.paneID)
+                    }
                 }
                 if capabilities(of: terminal).closeTab {
                     Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
@@ -357,9 +372,10 @@ struct TerminalListView: View {
         withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(id) }
     }
 
-    private func toggle(_ hostID: Host.ID) {
+    /// Folds or unfolds a Host, given its Servers' records.
+    private func toggle(_ hostIDs: [Host.ID]) {
         guard !isSearching else { return }
-        withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(hostID) }
+        withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(hostIDs) }
     }
 
     // MARK: Creating
@@ -641,6 +657,12 @@ private struct TerminalHostHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(group.readiness.nameEmphasis.color)
                     .lineLimit(1)
+                if group.readiness.tone != .connected {
+                    Text(group.readiness.text)
+                        .font(.footnote)
+                        .foregroundStyle(group.readiness.tone.tint)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
                     Text(TerminalCount.text(group.terminalCount))

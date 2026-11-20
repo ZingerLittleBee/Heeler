@@ -203,7 +203,7 @@ test("a worker that dies during the Codex limits read leaves the read throttled"
   assert.equal(report.programs.find(program => program.program === "codex").usageLimits.state, "error");
 });
 
-const cannotStart = Array(2).fill({ state: "error", reason: "The background refresh could not start." });
+const cannotStart = Array(3).fill({ state: "error", reason: "The background refresh could not start." });
 
 test("a cache directory the query cannot write serves a current report and fails a stale one", { skip: process.getuid?.() === 0 && "root ignores directory modes" }, async t => {
   const f = fixture(t);
@@ -233,7 +233,8 @@ test("a state directory the query cannot write fails the refresh before any cach
   assert.equal(report.refreshing, false);
   assert.deepEqual(report.programs.map(program => program.tokenUsage), cannotStart);
   // No run will read the limits, so they are not reported as being read.
-  assert.deepEqual(report.programs.map(program => program.usageLimits), [{ state: "disabled" }, { state: "error", reason: "requestFailed" }]);
+  assert.deepEqual(report.programs.map(program => program.usageLimits), [
+    { state: "disabled" }, { state: "error", reason: "requestFailed" }, { state: "error", reason: "requestFailed" }]);
   assert.deepEqual(readdirSync(usage), []);
 });
 
@@ -250,7 +251,7 @@ test("a full disk fails the refresh at once and leaves no empty lock behind", as
   }
   // Once space is free, the next query starts the refresh.
   assert.equal(f.query().refreshing, true);
-  assert.deepEqual((await f.finish()).programs.map(program => program.tokenUsage.state), ["noData", "noData"]);
+  assert.deepEqual((await f.finish()).programs.map(program => program.tokenUsage.state), ["noData", "noData", "noData"]);
 });
 
 test("a worker that keeps failing stops the refresh with an error until the back-off ends", async t => {
@@ -266,9 +267,10 @@ test("a worker that keeps failing stops the refresh with an error until the back
     await sleep(20);
   }
   assert.equal(report.refreshing, false);
-  assert.deepEqual(report.programs.map(program => program.tokenUsage.state), ["error", "error"]);
+  assert.deepEqual(report.programs.map(program => program.tokenUsage.state), ["error", "error", "error"]);
   // No run reads the limits during the back-off, so they are not shown as being read.
-  assert.deepEqual(report.programs.map(program => program.usageLimits), [{ state: "disabled" }, { state: "error", reason: "requestFailed" }]);
+  assert.deepEqual(report.programs.map(program => program.usageLimits), [
+    { state: "disabled" }, { state: "error", reason: "requestFailed" }, { state: "error", reason: "requestFailed" }]);
   const failure = JSON.parse(readFileSync(failurePath, "utf8"));
   assert.equal(failure.failures, 3);
   // Within the back-off no further worker starts.
@@ -281,7 +283,7 @@ test("a worker that keeps failing stops the refresh with an error until the back
   assert.equal(f.query().refreshing, true);
   report = await f.finish();
   assert.equal(existsSync(failurePath), false);
-  assert.deepEqual(report.programs.map(program => program.tokenUsage.state), ["noData", "noData"]);
+  assert.deepEqual(report.programs.map(program => program.tokenUsage.state), ["noData", "noData", "noData"]);
 });
 
 test("each abandoned worker lock counts as one failed refresh", t => {
