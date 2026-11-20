@@ -54,6 +54,10 @@ restore = re.search(r"(?m)^      - name: Restore app compilation cache\n(.*?)(?=
 if restore is None:
     raise SystemExit("Missing app compilation cache restore")
 require_line(restore.group(1), "if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}")
+# An archive of a build its deadline ended fills the next runner's disk.
+save = re.search(r"(?m)^      - name: Save app compilation cache\n(.*?)(?=^      - |\Z)", app_tests, re.DOTALL)
+if save is None or "steps.app-build.outputs.finished == 'true'" not in save.group(1):
+    raise SystemExit("The app compilation cache must be saved only after a finished build")
 names = {
     "app-tests": "App tests (${{ matrix.shard }})",
     "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",

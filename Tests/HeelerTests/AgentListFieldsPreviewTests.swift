@@ -131,17 +131,17 @@ struct AgentListFieldsPreviewTests {
                 workspaceLabel: "proj", repositoryCheckout: nil)
         }
         let agents = [
-            agent("claude", on: host), agent("pi", on: host), agent(" pi ", on: host),
+            agent("claude", on: host), agent("maki", on: host), agent(" maki ", on: host),
             agent("droid", on: other), agent("droid", on: other), agent("droid", on: other),
         ]
-        #expect(AgentListFieldsPreview.kind(onHost: host, among: agents) == "pi")
+        #expect(AgentListFieldsPreview.kind(onHost: host, among: agents) == "maki")
         #expect(AgentListFieldsPreview.kind(onHost: UUID(), among: agents) == "claude")
         // A tie goes to the earlier name, so the preview holds still.
         #expect(AgentListFieldsPreview.kind(onHost: host, among: Array(agents.prefix(2))) == "claude")
 
         let layout = AgentRowLayout(rows: [[.init(.workspace), .init(.agent)]])
-        #expect(AgentListFieldsPreview.presentation(layout: layout, hostName: "devbox", kind: "pi").headline
-            == "heeler · pi")
+        #expect(AgentListFieldsPreview.presentation(layout: layout, hostName: "devbox", kind: "maki").headline
+            == "heeler · maki")
         #expect(AgentListFieldsPreview.presentation(layout: layout, hostName: "devbox").headline == "heeler")
     }
 
