@@ -28,6 +28,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Restyle Chat's Blocked cards, Background Work, and the Antigravity CLI Swarm sheet as quiet lists. A Blocked card puts its decline beside one filled button and folds the answers that also save a rule or switch the permission mode under **More Options**, with the command, file, or diff it asks about in a black terminal block. Background Work is one strip above the Composer and a sheet of grouped sections, where a glyph tells each row's state in place of a coloured pill. The Swarm's **Board** is a feed without cards, and **Members**, **Overview**, and a worker's sub-conversation are grouped lists with the same glyphs and terminal blocks. (PR #794)
 - Open an Agent ready to type when a hardware keyboard is attached: the caret goes to the Composer, in the terminal and in Chat, and Direct Input takes its keys at once, so the first key reaches the Agent's terminal. Putting the keyboard away with the keyboard button or a pull keeps it away on the Agents you open after, until you raise it again or connect a keyboard. Without a hardware keyboard, and under a Blocked card, Agents open with nothing focused as before. (PR #784)
 - Default Agent List Fields to two rows (`terminal_title_stripped` on the left and `host` on the right on Row 1, `workspace` on the left and `changes` on the right on Row 2, and Row 3 empty) on `herdr-core`, `tmux`, and `Rex` Hosts and when a Herdr TUI Host has no plugin snapshot; Herdr TUI Hosts with a `sidebar.json` snapshot still follow herdr's first two rows, keeping Row 3 empty until configured and placing `host` on Row 1 and `changes` on Row 2 by default. (PR #779)
 - List each Host once by its Host name alone in **New Agent** and **New Terminal**, show a **Server** picker below **Host** only when the selected Host has more than one Server that can start the item, and remember the last selected Host and Server in **New Agent**. (PR #778)
@@ -53,6 +54,7 @@ Entries reference the pull request that made the change.
 - A Claude Code on a Rex Host that has finished its turn while a command it put in the background still runs reads Done or Idle, and Chat and the Composer offer Send. It read Working for as long as the command ran, with a Stop that did nothing. Stop still never ends that command; end it in the terminal. (PR #775)
 - A Rex Agent's detail restored when Heeler starts again shows Loading Agents… until the Host has said what its terminal runs, instead of Agent Gone for a moment before the Agent appears. (PR #775)
 - Read a part of a file on the Host without the Host sending up to 256 KiB more than was asked for. Chat's older history and its images, which read a part of a file away from its end, each pulled that much extra over the Host's connection: slower on a slow link, with the terminal's output waiting behind it. (PR #781)
+- Show **More Options** on **Add Host** in the app's language under Japanese, Simplified Chinese, and Traditional Chinese. It stayed in English. (PR #794)
 
 ## [0.1.20]
 

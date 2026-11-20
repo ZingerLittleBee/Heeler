@@ -2,10 +2,11 @@ import SwiftUI
 
 /// A Blocked Agent's dialog in the Composer's place (ADR 0024): the
 /// program's own choices as native buttons, answered with keys. Labels are
-/// the program's text. The first option leads, a decline reads as
-/// destructive, and an option that saves a rule or switches the permission
-/// mode says so. Nothing asks for confirmation and nothing can be undone,
-/// as in the terminal.
+/// the program's text. The first plain way to go on is the card's one
+/// filled button, with the decline beside it in the destructive color. The
+/// options that also save a rule or switch the permission mode fold under
+/// one row below, and say what they keep when shown. Nothing asks for
+/// confirmation and nothing can be undone, as in the terminal.
 struct BlockedCardView: View {
     let store: BlockedCardStore
     /// The tallest the card's content grows before it scrolls.
@@ -62,6 +63,8 @@ private struct BlockedDialogCard: View {
     let maxHeight: CGFloat
     @State private var text = ""
     @State private var isAddingNote = false
+    /// Whether the answers past the decision show (`moreAnswers`).
+    @State private var showsMoreAnswers = false
     @State private var selection: Set<Int>
     @State private var pinnedChoicesHeight: CGFloat = 0
     @FocusState private var isTextFocused: Bool
@@ -80,7 +83,7 @@ private struct BlockedDialogCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
+                symbol: dialog.symbol, title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
                 isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: scrollingMaxHeight) {
@@ -95,7 +98,11 @@ private struct BlockedDialogCard: View {
                         .foregroundStyle(.secondary)
                     }
                     content
-                    choices
+                    // A note takes the answers' place: its buttons send
+                    // the same answers with it.
+                    if !isAddingNote {
+                        choices
+                    }
                 }
                 .disabled(!isReady)
             }
@@ -110,8 +117,18 @@ private struct BlockedDialogCard: View {
                 .disabled(!isReady)
             BlockedCardFooter(
                 notice: store.notice, stopTitle: stopTitle, isReady: isReady, canStop: store.canStop,
-                stop: { perform(.dismiss) })
+                stop: { perform(.dismiss) },
+                asideTitle: chat?.label,
+                aside: {
+                    if let chat { perform(.choose(ordinal: chat.ordinal)) }
+                })
         }
+    }
+
+    /// Claude's `Chat about this`: no answer, a conversation instead. It
+    /// stands apart from the answers, as on a question form.
+    private var chat: DialogOption? {
+        dialog.options.first { $0.role == .chat }
     }
 
     /// A trust screen's answers stay below its scrolling text, in view on
@@ -149,12 +166,12 @@ private struct BlockedDialogCard: View {
             if let description = card.request?.detail ?? subject.commandDescription {
                 BlockedCardText(description)
             }
-            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? "")
+            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? "", isCommand: true)
         case .codexExec:
             if let reason = subject.reason {
                 BlockedCardText(reason)
             }
-            BlockedCodeBox(text: subject.command ?? card.request?.summary ?? "")
+            BlockedCodeBox(text: subject.command ?? card.request?.summary ?? "", isCommand: true)
         case .claudeFileEdit, .claudeFileCreate:
             BlockedCodeBox(text: card.request?.summary ?? subject.filePath ?? "")
             if !subject.changeLines.isEmpty {
@@ -194,17 +211,23 @@ private struct BlockedDialogCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .claudeQuestionReview, .ompQuestionReview:
-            ForEach(Array(subject.reviewAnswers.enumerated()), id: \.offset) { @Sendable _, pair in
-                MainActorContent {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: pair.question)
-                            .font(.subheadline.weight(.semibold))
-                        Text(verbatim: pair.answer)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            // Not on the answers' fill: these rows answer nothing.
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(subject.reviewAnswers.enumerated()), id: \.offset) { @Sendable index, pair in
+                    MainActorContent {
+                        if index > 0 {
+                            Divider()
+                        }
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(verbatim: pair.question)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text(verbatim: pair.answer)
+                        }
                     }
                 }
             }
+            .padding(.horizontal, 2)
         case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust:
             BlockedCodeBox(text: subject.workspacePath ?? "")
             // Codex's note on a folder below a repository's root, then the
@@ -225,7 +248,7 @@ private struct BlockedDialogCard: View {
                 BlockedCardText(reason)
             }
             if let command = subject.command {
-                BlockedCodeBox(text: card.request?.summary ?? command)
+                BlockedCodeBox(text: card.request?.summary ?? command, isCommand: true)
             }
             // The other rows OMP gives the tool, such as `Origin:`.
             let details = dialog.body.filter { !$0.hasPrefix("Command:") && !$0.hasPrefix("Reason:") }
@@ -248,7 +271,7 @@ private struct BlockedDialogCard: View {
             // The action and its target, then OpenCode's lines about it; a
             // command has only its `$` line, shown as the target instead.
             if let target = dialog.body.first ?? card.request?.summary ?? subject.command {
-                BlockedCodeBox(text: target)
+                BlockedCodeBox(text: target, isCommand: dialog.body.isEmpty && subject.command != nil)
             }
             let notes = subject.notes.filter { !dialog.body.isEmpty || !$0.hasPrefix("$ ") }
             ForEach(Array(notes.enumerated()), id: \.offset) { @Sendable item in
@@ -264,7 +287,7 @@ private struct BlockedDialogCard: View {
                 BlockedCardText(summary)
             }
             // What the screen shows; the call fills in only what it cut.
-            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
+            BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request), isCommand: true)
         case .agyFileEdit, .agyFileCreate:
             BlockedCodeBox(text: BlockedRequestMatch.agyRequest(on: dialog, call: card.request))
             let lines = BlockedRequestMatch.agyChanges(on: dialog, call: card.request)
@@ -286,7 +309,7 @@ private struct BlockedDialogCard: View {
             if let description = subject.commandDescription {
                 BlockedCardText(description)
             }
-            BlockedCodeBox(text: card.request?.summary ?? command)
+            BlockedCodeBox(text: card.request?.summary ?? command, isCommand: true)
         } else if let path = subject.filePath {
             BlockedCodeBox(text: card.request?.summary ?? path)
         } else if let description = dialog.body.first, !dialog.asksInTitle {
@@ -321,54 +344,42 @@ private struct BlockedDialogCard: View {
 
     /// Sends the checked answers, with `text` written in where given.
     private func selectionButton(writing text: String?) -> some View {
-        Button {
+        BlockedPrimaryButton(title: selectionTitle) {
             perform(.submitSelection(selection, text: text))
-        } label: {
-            Text(verbatim: selectionTitle)
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 28)
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 12))
         .disabled((selection.isEmpty && text == nil) || dialog.answersHeldByDraft)
     }
 
     @ViewBuilder
     private var choices: some View {
         if isMultiSelect {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(dialog.options.filter { $0.role == .answer }, id: \.ordinal) { @Sendable option in
-                    MainActorContent {
-                        BlockedToggleRow(
-                            label: option.label, detail: option.detail, isOn: selection.contains(option.ordinal)
-                        ) {
-                            selection.formSymmetricDifference([option.ordinal])
-                        }
-                    }
+            optionRows(dialog.options.filter { $0.role == .answer }) { option in
+                BlockedOptionRow(
+                    label: option.label, detail: option.detail, mark: .check(selection.contains(option.ordinal))
+                ) {
+                    selection.formSymmetricDifference([option.ordinal])
                 }
             }
             // With a field, Submit goes under it (`textEntry`).
             if writeInWithSelection == nil {
                 selectionButton(writing: nil)
             }
-            ForEach(dialog.options.filter { $0.role == .chat }, id: \.ordinal) { @Sendable option in
-                MainActorContent {
-                    BlockedOptionButton(option: option, emphasis: .plain) { perform(.choose(ordinal: option.ordinal)) }
-                }
-            }
         } else if !pinsChoices {
-            let buttons = dialog.options.filter { $0.role != .otherText && $0.role != .next }
-            // The first plain way to allow or go on leads. A question's
-            // answers stand level, and a choice that saves a rule or
-            // switches the mode never leads.
-            let lead = buttons.first { [.approve, .trust, .submit].contains($0.role) }?.ordinal
-            VStack(spacing: 8) {
-                ForEach(buttons, id: \.ordinal) { @Sendable option in
-                    MainActorContent {
-                        BlockedOptionButton(option: option, emphasis: emphasis(of: option, leads: option.ordinal == lead)) {
-                            perform(.choose(ordinal: option.ordinal))
-                        }
-                    }
+            let buttons = dialog.options.filter { ![.otherText, .next, .chat].contains($0.role) }
+            // The first plain way to allow or go on leads, wherever the
+            // program lists it, and the first decline stands beside it:
+            // the two make the card's decision. A question's answers stand
+            // level, and a choice that saves a rule or switches the mode
+            // never leads.
+            let lead = buttons.first { [.approve, .trust, .submit].contains($0.role) }
+            let decline = lead == nil ? nil : buttons.first { $0.role == .decline }
+            let rest = buttons.filter { $0.ordinal != lead?.ordinal && $0.ordinal != decline?.ordinal }
+            VStack(spacing: 10) {
+                if let lead {
+                    decision(going: [lead], leaving: decline.map { [$0] } ?? [])
+                    moreAnswers(rest)
+                } else {
+                    optionRows(rest, row: answerRow)
                 }
             }
             .disabled(dialog.answersHeldByDraft)
@@ -380,15 +391,9 @@ private struct BlockedDialogCard: View {
         }
         switch dialog.kind {
         case .codexAsyncCollapsed:
-            Button {
+            BlockedPrimaryButton(title: String(localized: "Answer Questions")) {
                 perform(.expandQuestions)
-            } label: {
-                Text("Answer Questions")
-                    .font(.body.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 28)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
         case .codexAsyncQuestion:
             Button("Skip Question") { perform(.skipQuestion) }
                 .font(.subheadline)
@@ -418,43 +423,127 @@ private struct BlockedDialogCard: View {
         }
     }
 
-    /// A trust screen's two short answers make one decision, so they share
-    /// a row of capsules whatever order the program lists them in: leaving
-    /// on the left at its label's width, trusting on the right filling the
-    /// rest. Labels too long for one row stack, trusting first. Keys follow
-    /// ordinals, not this order. Pinned below the text by `pinsChoices`.
+    /// A trust screen's answers, pinned below its text by `pinsChoices`.
     private var trustChoices: some View {
-        let trusting = dialog.options.filter { $0.role == .trust }
-        let leaving = dialog.options.filter { $0.role != .trust }
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                trustChoiceButtons(leaving + trusting, stacked: false)
-            }
-            VStack(spacing: 8) {
-                trustChoiceButtons(trusting + leaving, stacked: true)
-            }
-        }
+        decision(
+            going: dialog.options.filter { $0.role == .trust }, leaving: dialog.options.filter { $0.role != .trust }
+        )
         .disabled(dialog.answersHeldByDraft)
     }
 
-    private func trustChoiceButtons(_ options: [DialogOption], stacked: Bool) -> some View {
+    /// The answers that make a card's one decision share a row whatever
+    /// order the program lists them in: leaving on the left at its label's
+    /// width, going on filled on the right and taking the rest. Labels too
+    /// long for one row stack, going on first. Keys follow ordinals, not
+    /// this order.
+    private func decision(going: [DialogOption], leaving: [DialogOption]) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                decisionButtons(leaving + going, going: going, stacked: false)
+            }
+            // As tall as each other where one has a second line.
+            .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 8) {
+                decisionButtons(going + leaving, going: going, stacked: true)
+            }
+        }
+    }
+
+    private func decisionButtons(_ options: [DialogOption], going: [DialogOption], stacked: Bool) -> some View {
         ForEach(options, id: \.ordinal) { @Sendable option in
             MainActorContent {
-                BlockedTrustChoice(
-                    label: option.label, leads: option.role == .trust, fills: stacked || option.role == .trust
-                ) {
+                let goes = going.contains { $0.ordinal == option.ordinal }
+                Button {
                     perform(.choose(ordinal: option.ordinal))
+                } label: {
+                    VStack(spacing: 1) {
+                        Text(verbatim: option.label)
+                        if let detail = option.detail, !detail.isEmpty, detail != option.label {
+                            Text(verbatim: detail)
+                                .font(.caption)
+                                .opacity(0.8)
+                        }
+                    }
+                    .frame(maxWidth: stacked || goes ? .infinity : nil, maxHeight: stacked ? nil : .infinity)
+                    .padding(.horizontal, stacked || goes ? 0 : 4)
+                }
+                .buttonStyle(BlockedButtonStyle(tone: goes ? .filled : .destructive))
+            }
+        }
+    }
+
+    /// The answers past the decision, which allow and also save a rule or
+    /// switch the mode. They fold under one row until asked for: a card
+    /// opens on its decision, and each of these takes lines to say what it
+    /// keeps. Open, every one shows whole.
+    @ViewBuilder
+    private func moreAnswers(_ options: [DialogOption]) -> some View {
+        if !options.isEmpty {
+            BlockedOptionGroup {
+                Button {
+                    showsMoreAnswers.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(
+                            String(
+                                localized: "Dialog More Options", defaultValue: "More Options",
+                                comment: "Row on a Blocked card that shows the dialog's other answers, not more settings")
+                        )
+                        .font(.callout)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .rotationEffect(.degrees(showsMoreAnswers ? 180 : 0))
+                            .accessibilityHidden(true)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, BlockedCardStyle.rowInset)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(BlockedRowStyle())
+                .accessibilityValue(showsMoreAnswers ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                if showsMoreAnswers {
+                    ForEach(options, id: \.ordinal) { @Sendable option in
+                        MainActorContent {
+                            answerRow(option)
+                                .divided(true)
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func emphasis(of option: DialogOption, leads: Bool) -> BlockedOptionEmphasis {
+    private func answerRow(_ option: DialogOption) -> BlockedOptionRow {
+        BlockedOptionRow(label: option.label, detail: option.detail, emphasis: emphasis(of: option)) {
+            perform(.choose(ordinal: option.ordinal))
+        }
+    }
+
+    /// `options` as one list, or nothing for none.
+    @ViewBuilder
+    private func optionRows(
+        _ options: [DialogOption], row: @escaping @MainActor (DialogOption) -> BlockedOptionRow
+    ) -> some View {
+        if !options.isEmpty {
+            BlockedOptionGroup {
+                ForEach(Array(options.enumerated()), id: \.element.ordinal) { @Sendable index, option in
+                    MainActorContent {
+                        row(option)
+                            .divided(index > 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private func emphasis(of option: DialogOption) -> BlockedOptionEmphasis {
         switch option.role {
         case .decline, .exitProgram: .destructive
         case .approvePersistent: .caution(option.persistenceNote(program: dialog.program))
         case .approveModeSwitch: .caution(String(localized: "Switches the permission mode."))
-        default: leads ? .primary : .plain
+        default: .plain
         }
     }
 
@@ -476,7 +565,7 @@ private struct BlockedDialogCard: View {
             // say what the form's pages say. Claude's card keeps the row
             // label Claude draws.
             if writeInWithSelection != nil {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     BlockedTextField(
                         placeholder: String(localized: "Type your own answer"), text: $text, isFocused: $isTextFocused)
                     selectionButton(writing: hasText ? text : nil)
@@ -484,27 +573,28 @@ private struct BlockedDialogCard: View {
             } else if !isMultiSelect,
                 let field = dialog.options.first(where: { $0.role == .otherText && $0.input != nil })
             {
-                VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
                     BlockedTextField(
                         placeholder: dialog.kind == .agyQuestion
                             ? String(localized: "Type your own answer") : field.label,
                         text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(BlockedButtonStyle())
                         .disabled(!hasText)
                 }
             }
         case .codexQuestion:
             // `None of the above` answers as it is, or with notes.
             if let field = dialog.options.first(where: { $0.role == .otherText }) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     BlockedTextField(placeholder: String(localized: "Add details"), text: $text, isFocused: $isTextFocused)
                     Button {
                         perform(hasText ? .respond(ordinal: field.ordinal, text: text) : .choose(ordinal: field.ordinal))
                     } label: {
                         Text(verbatim: field.label)
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(BlockedButtonStyle())
                 }
             }
         default:
@@ -512,37 +602,45 @@ private struct BlockedDialogCard: View {
         }
     }
 
-    /// Claude's Tab on `Yes` or `No`: the answer with a note.
+    /// Claude's Tab on `Yes` or `No`: the answer with a note. While the
+    /// field is open its two buttons stand in for the answers, declining on
+    /// the left as on a trust screen.
     @ViewBuilder
     private var noteEntry: some View {
         if isAddingNote {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 10) {
                 BlockedTextField(
                     placeholder: String(
                         localized: "Tell \(dialog.program.chatName) what to do",
                         comment: "Placeholder of the note field on a permission card: the program's name"),
                     text: $text, isFocused: $isTextFocused)
                 HStack(spacing: 8) {
-                    if let allow = dialog.options.first(where: { $0.role == .approve }) {
-                        Button("Allow with Note") { perform(.amend(ordinal: allow.ordinal, note: text)) }
-                            .buttonStyle(.bordered)
-                            .disabled(!hasText)
-                    }
                     if let decline = dialog.options.first(where: { $0.role == .decline }) {
-                        Button("Decline with Note", role: .destructive) {
+                        Button {
                             perform(.amend(ordinal: decline.ordinal, note: text))
+                        } label: {
+                            Text("Decline with Note")
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(!hasText)
+                        .buttonStyle(BlockedButtonStyle(tone: .destructive))
                     }
-                    Spacer(minLength: 0)
-                    Button("Cancel") {
-                        isAddingNote = false
-                        text = ""
+                    if let allow = dialog.options.first(where: { $0.role == .approve }) {
+                        Button {
+                            perform(.amend(ordinal: allow.ordinal, note: text))
+                        } label: {
+                            Text("Allow with Note")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(BlockedButtonStyle(tone: .filled))
                     }
-                    .buttonStyle(.borderless)
+                }
+                .disabled(!hasText)
+                Button("Cancel") {
+                    isAddingNote = false
+                    text = ""
                 }
                 .font(.subheadline)
+                .buttonStyle(.borderless)
             }
         } else {
             Button {
@@ -561,17 +659,15 @@ private struct BlockedDialogCard: View {
     private func planFeedback(_ field: DialogOption) -> some View {
         let approvesWithNote = field.detail?.hasPrefix("shift+tab to approve") == true
         let approval = dialog.options.first { $0.role != .otherText }
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 10) {
             BlockedTextField(placeholder: field.label, text: $text, isFocused: $isTextFocused)
             HStack(spacing: 8) {
                 Button("Send Back") { perform(.respond(ordinal: field.ordinal, text: text)) }
-                    .buttonStyle(.bordered)
                 if approvesWithNote {
                     Button("Approve with Note") { perform(.approvePlan(note: text)) }
-                        .buttonStyle(.bordered)
                 }
             }
-            .font(.subheadline)
+            .buttonStyle(BlockedButtonStyle(isCompact: true))
             .disabled(!hasText)
             if approvesWithNote, let approval {
                 Text("Approve with Note picks “\(approval.label)”.")
@@ -625,14 +721,11 @@ private struct BlockedCollapsedBar: View {
                 }
             }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .font(.subheadline)
     }
 
     private var icon: some View {
-        Image(systemName: "hand.raised.fill")
-            .foregroundStyle(.orange)
-            .accessibilityHidden(true)
+        BlockedCardSymbol(name: dialog?.symbol ?? BlockedCardStyle.unknownSymbol)
     }
 
     private var title: some View {
@@ -646,9 +739,20 @@ private struct BlockedCollapsedBar: View {
             Button(dialog.stopTitle, role: .destructive) {
                 Task { await store.perform(.dismiss) }
             }
+            .buttonStyle(.borderless)
             .disabled(!store.canStop)
         }
-        Button("Show") { store.isCollapsed = false }
+        Button {
+            store.isCollapsed = false
+        } label: {
+            Label("Show", systemImage: "chevron.up")
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 36)
+                .background(ThemeVeil.control, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -750,6 +854,25 @@ private extension BlockedDialog {
 }
 
 extension BlockedDialog {
+    /// What the dialog asks about, as the symbol beside its title. A
+    /// program's one dialog for every tool goes by what it shows.
+    var symbol: String {
+        switch kind {
+        case .claudeBash, .codexExec, .agyCommand: "terminal"
+        case .claudeFileEdit, .claudeFileCreate, .codexPatch, .agyFileEdit, .agyFileCreate: "pencil"
+        case .claudeFileRead: "doc.text"
+        case .claudeFetch, .codexNetwork: "globe"
+        case .claudePlan: "list.bullet"
+        case .claudeQuestion, .claudeQuestionReview, .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion,
+            .ompQuestion, .ompQuestionReview, .grokQuestion, .openCodeQuestion, .agyQuestion:
+            "questionmark.circle"
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust: "folder"
+        case .grokCancelTurn, .grokFork: "arrow.triangle.branch"
+        case .ompApproval, .grokPermission, .openCodePermission:
+            subject.command != nil ? "terminal" : subject.filePath != nil ? "doc.text" : "hand.raised"
+        }
+    }
+
     /// What Stop does, for the folded card, a question form and an open
     /// card whose options don't send it: it quits Claude Code or Codex on
     /// the trust dialog (Codex without `--no-daemon` goes back to its Agent
@@ -773,51 +896,38 @@ extension BlockedDialog {
     }
 }
 
-/// A trust answer as a capsule, in Liquid Glass where the system has it:
-/// trusting prominent, the way out red on clear glass.
-private struct BlockedTrustChoice: View {
-    let label: String
-    let leads: Bool
-    /// Whether the capsule takes the row's spare width.
-    let fills: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(role: leads ? nil : .destructive, action: action) {
-            Text(verbatim: label)
-                .font(leads ? .body.weight(.semibold) : .body)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: fills ? .infinity : nil)
-                .padding(.horizontal, fills ? 0 : 6)
-        }
-        .modifier(BlockedTrustChoiceStyle(leads: leads))
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
-    }
-}
-
-private struct BlockedTrustChoiceStyle: ViewModifier {
-    let leads: Bool
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            if leads {
-                content.buttonStyle(.glassProminent)
-            } else {
-                // Glass ignores the destructive role's color.
-                content.buttonStyle(.glass).tint(.red)
-            }
-        } else if leads {
-            content.buttonStyle(.borderedProminent)
-        } else {
-            content.buttonStyle(.bordered)
-        }
-    }
-}
-
 // MARK: - Parts
 
+enum BlockedCardStyle {
+    /// Buttons, fields and the answers' list.
+    static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+    /// A list row's inset, and a field's.
+    static let rowInset: CGFloat = 14
+    /// For a dialog Heeler can't name.
+    static let unknownSymbol = "ellipsis.rectangle"
+    /// A row's line about what else choosing it does.
+    static let caution = Color(uiColor: AgentStatusPalette.yellowInk)
+}
+
+/// What a dialog asks about, in a column as wide for every glyph so titles
+/// line up. The column grows with the text, or a large glyph would reach
+/// the title beside it.
+private struct BlockedCardSymbol: View {
+    let name: String
+    @ScaledMetric(relativeTo: .body) private var width: CGFloat = 22
+
+    var body: some View {
+        Image(systemName: name)
+            .font(.body.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(width: width)
+            .accessibilityHidden(true)
+    }
+}
+
 struct BlockedCardHeader: View {
+    /// What the dialog asks about (`BlockedDialog.symbol`).
+    var symbol = BlockedCardStyle.unknownSymbol
     let title: String
     let detail: String?
     let isActing: Bool
@@ -827,33 +937,36 @@ struct BlockedCardHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "hand.raised.fill")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
+            BlockedCardSymbol(name: symbol)
             Text(verbatim: title)
                 .font(.headline)
                 .lineLimit(lineLimit)
                 .accessibilityAddTraits(.isHeader)
             if let detail {
                 Text(verbatim: detail)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
             if isActing {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel("Answering")
             }
+            Spacer(minLength: 8)
             Button(action: collapse) {
                 Image(systemName: "chevron.down")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .contentShape(.rect)
             }
-            .buttonStyle(.borderless)
+            // Plain, so the chevron stays gray rather than take the tint.
+            .buttonStyle(.plain)
             .accessibilityLabel("Minimize")
+            // A full touch target in a header one line tall, its chevron
+            // near the card's edge.
+            .padding(.vertical, -8)
+            .padding(.trailing, -12)
         }
     }
 }
@@ -881,11 +994,16 @@ struct BlockedCardFooter: View {
         if notice != nil || hasControls {
             VStack(alignment: .leading, spacing: 8) {
                 if let notice {
-                    Label(notice, systemImage: "exclamationmark.circle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("chat.blocked-card.notice")
+                    Label {
+                        Text(verbatim: notice)
+                            .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(BlockedCardStyle.caution)
+                    }
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("chat.blocked-card.notice")
                 }
                 if hasControls {
                     HStack(spacing: 16) {
@@ -919,130 +1037,175 @@ struct BlockedCardFooter: View {
     }
 }
 
-enum BlockedOptionEmphasis: Equatable {
-    case primary
-    case plain
-    case destructive
-    /// Secondary, with a line saying what else choosing it does.
-    case caution(String)
-}
-
-struct BlockedOptionButton: View {
-    let label: String
-    let detail: String?
-    let emphasis: BlockedOptionEmphasis
+/// The filled button that sends what a card holds. A card's lead answer is
+/// filled the same way, beside its decline, so a card fills one or the
+/// other.
+struct BlockedPrimaryButton: View {
+    let title: String
     let action: () -> Void
 
-    init(option: DialogOption, emphasis: BlockedOptionEmphasis, action: @escaping () -> Void) {
-        self.init(label: option.label, detail: option.detail, emphasis: emphasis, action: action)
-    }
-
-    init(label: String, detail: String? = nil, emphasis: BlockedOptionEmphasis, action: @escaping () -> Void) {
-        self.label = label
-        self.detail = detail
-        self.emphasis = emphasis
-        self.action = action
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button(action: action) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: label)
-                        .font(.body.weight(emphasis == .primary ? .semibold : .regular))
-                        .multilineTextAlignment(.leading)
-                    if let detail, !detail.isEmpty, detail != label {
-                        Text(verbatim: detail)
-                            .font(.caption)
-                            .opacity(0.75)
-                            .multilineTextAlignment(.leading)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-            }
-            .buttonStyle(BlockedOptionStyle(emphasis: emphasis))
-            if case .caution(let warning) = emphasis {
-                Label(warning, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(.leading, 4)
-            }
+        Button(action: action) {
+            Text(verbatim: title)
+                .frame(maxWidth: .infinity)
         }
+        .buttonStyle(BlockedButtonStyle(tone: .filled))
     }
 }
 
-/// Options stand apart from the gray boxes that quote the request: the
-/// lead option filled, a decline in red, the rest raised and outlined.
-private struct BlockedOptionStyle: ButtonStyle {
-    let emphasis: BlockedOptionEmphasis
+/// A card's buttons that stand by themselves: the filled one, and quiet
+/// ones on the fill the answers' list has.
+struct BlockedButtonStyle: ButtonStyle {
+    enum Tone {
+        case filled
+        case quiet
+        case destructive
+    }
+
+    var tone: Tone = .quiet
+    /// A smaller button, for a step beside a field rather than an answer.
+    var isCompact = false
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.themeColors) private var themeColors
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        return configuration.label
+        configuration.label
+            .font(isCompact ? .subheadline : tone == .filled ? .body.weight(.semibold) : .body)
+            .multilineTextAlignment(.center)
             .foregroundStyle(foreground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(fill, in: shape)
-            .overlay {
-                if isRaised { shape.strokeBorder(Color(uiColor: .separator), lineWidth: 0.5) }
-            }
-            .contentShape(shape)
+            .padding(.horizontal, BlockedCardStyle.rowInset)
+            .padding(.vertical, isCompact ? 6 : 10)
+            .frame(minHeight: isCompact ? 40 : 46)
+            .background(fill, in: BlockedCardStyle.shape)
+            .contentShape(BlockedCardStyle.shape)
             .opacity(configuration.isPressed ? 0.6 : isEnabled ? 1 : 0.45)
     }
 
-    private var isRaised: Bool {
-        switch emphasis {
-        case .plain, .caution: true
-        case .primary, .destructive: false
-        }
-    }
-
     private var foreground: Color {
-        switch emphasis {
-        case .primary: .white
+        switch tone {
+        case .filled: .white
+        case .quiet: .primary
         case .destructive: .red
-        case .plain, .caution: .primary
         }
     }
 
     private var fill: Color {
-        switch emphasis {
-        case .primary: .accentColor
-        case .destructive: .red.opacity(0.12)
-        case .plain, .caution: themeColors.raised
+        tone == .filled ? .accentColor : ThemeVeil.control
+    }
+}
+
+enum BlockedOptionEmphasis: Equatable {
+    case plain
+    case destructive
+    /// Plain, with a line saying what else choosing it does.
+    case caution(String)
+}
+
+/// A card's answers as the rows of one list: a question's, or the ones past
+/// a card's decision.
+struct BlockedOptionGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .background(ThemeVeil.control, in: BlockedCardStyle.shape)
+        .clipShape(BlockedCardStyle.shape)
+    }
+}
+
+/// One answer in a `BlockedOptionGroup`.
+struct BlockedOptionRow: View {
+    /// What a row that holds a choice shows before its label.
+    enum Mark: Equatable {
+        case none
+        /// One of several, where one answers.
+        case choice(Bool)
+        /// One of several, where any number answer.
+        case check(Bool)
+    }
+
+    let label: String
+    var detail: String? = nil
+    var emphasis: BlockedOptionEmphasis = .plain
+    var mark: Mark = .none
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: Self.markSpacing) {
+                markSymbol
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: label)
+                        .font(.callout.weight(isOn ? .semibold : .regular))
+                        .foregroundStyle(emphasis == .destructive ? Color.red : .primary)
+                    if let detail, !detail.isEmpty, detail != label {
+                        Text(verbatim: detail)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    if case .caution(let warning) = emphasis {
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(BlockedCardStyle.caution)
+                            .padding(.top, 1)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, BlockedCardStyle.rowInset)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(BlockedRowStyle())
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// The row under a line that starts where its label does; a list's
+    /// first row has none.
+    func divided(_ shows: Bool) -> some View {
+        overlay(alignment: .top) {
+            if shows {
+                Divider()
+                    .padding(.leading, BlockedCardStyle.rowInset + (mark == .none ? 0 : Self.markWidth + Self.markSpacing))
+            }
+        }
+    }
+
+    private static let markWidth: CGFloat = 22
+    private static let markSpacing: CGFloat = 12
+
+    private var isOn: Bool {
+        mark == .choice(true) || mark == .check(true)
+    }
+
+    @ViewBuilder
+    private var markSymbol: some View {
+        let name: String? = switch mark {
+        case .none: nil
+        case .choice(let isOn): isOn ? "checkmark.circle.fill" : "circle"
+        case .check(let isOn): isOn ? "checkmark.square.fill" : "square"
+        }
+        if let name {
+            Image(systemName: name)
+                .font(.title3)
+                .foregroundStyle(isOn ? Color.accentColor : Color(uiColor: .tertiaryLabel))
+                .frame(width: Self.markWidth)
+                .accessibilityHidden(true)
         }
     }
 }
 
-struct BlockedToggleRow: View {
-    let label: String
-    var detail: String? = nil
-    let isOn: Bool
-    let toggle: () -> Void
+private struct BlockedRowStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
 
-    var body: some View {
-        Button(action: toggle) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isOn ? Color.accentColor : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: label)
-                        .foregroundStyle(.primary)
-                    if let detail, !detail.isEmpty, detail != label {
-                        Text(verbatim: detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 6)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            // A shape, as a diff's tints are (`BlockedChangeBox`).
+            .background { Rectangle().fill(configuration.isPressed ? ThemeVeil.control : .clear) }
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }
 
@@ -1052,12 +1215,25 @@ struct BlockedTextField: View {
     var isFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        TextField(placeholder, text: $text)
-            .focused(isFocused)
-            .submitLabel(.done)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(placeholder, text: $text)
+                .focused(isFocused)
+                .submitLabel(.done)
+        }
+        .padding(.horizontal, BlockedCardStyle.rowInset)
+        .frame(minHeight: 46)
+        .background(ThemeVeil.control, in: BlockedCardStyle.shape)
+        .overlay {
+            if isFocused.wrappedValue {
+                BlockedCardStyle.shape.strokeBorder(Color.accentColor, lineWidth: 1.5)
+            }
+        }
+        // The whole row takes the tap, not only the text's line.
+        .contentShape(BlockedCardStyle.shape)
+        .onTapGesture { isFocused.wrappedValue = true }
     }
 }
 
@@ -1076,20 +1252,14 @@ struct BlockedCardText: View {
     }
 }
 
+/// What a card quotes from the terminal: a command behind the shell's `$`,
+/// or a path, an address or a folder as it is.
 struct BlockedCodeBox: View {
     let text: String
-    var lineLimit: Int? = 6
-    var isSmall = false
+    var isCommand = false
 
     var body: some View {
-        Text(verbatim: text)
-            .font(.system(isSmall ? .caption : .footnote, design: .monospaced))
-            .lineLimit(lineLimit)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
+        ChatTerminalText(text: text, isCommand: isCommand, lineLimit: 6)
     }
 }
 
@@ -1100,52 +1270,21 @@ private struct BlockedChangeBox: View {
     let marksChanges: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(lines.prefix(Self.lineLimit).enumerated()), id: \.offset) { @Sendable _, line in
-                MainActorContent {
-                    Text(verbatim: line)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .background(tint(of: line))
-                }
-            }
-            if lines.count > Self.lineLimit {
-                let more = lines.count - Self.lineLimit
-                Text(more == 1 ? String(localized: "\(more) more line") : String(localized: "\(more) more lines"))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-            }
-        }
-        .font(.system(.footnote, design: .monospaced))
-        .textSelection(.enabled)
-        .padding(.vertical, 10)
-        .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
-        .clipShape(.rect(cornerRadius: 12, style: .continuous))
-    }
-
-    private static let lineLimit = 40
-
-    private func tint(of line: String) -> Color {
-        guard marksChanges else { return .clear }
-        let mark = line.drop { $0 == " " || $0.isNumber }.first
-        switch mark {
-        case "+": return .green.opacity(0.18)
-        case "-": return .red.opacity(0.18)
-        default: return .clear
-        }
+        ChatTerminalChangeLines(lines: lines, marks: marksChanges ? .numbered : .none)
     }
 }
 
+/// A plan is prose, so it stays on the card's quiet fill rather than the
+/// terminal's black.
 private struct BlockedPlanBox: View {
     let text: String
 
     var body: some View {
         ChatMarkdownView(blocks: ChatMarkdown.blocks(from: text))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, BlockedCardStyle.rowInset)
+            .padding(.vertical, 12)
+            .background(ThemeVeil.control, in: BlockedCardStyle.shape)
     }
 }
 

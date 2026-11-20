@@ -1,11 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Chat's Background Work over the Composer (ADR 0024): up to three rows,
-/// running work first, then "+N more"; one line while the Composer is open
-/// or a Blocked card stands in its place. Every row opens the sheet that
-/// lists it all; nothing here stops work. Empty when there is nothing to
-/// list, so its height drops to zero.
+/// What runs beside the conversation, over the Composer: an Antigravity CLI
+/// Swarm's row when the Agent runs one, then Chat's Background Work
+/// (ADR 0024), up to three rows, running work first, then "+N more". Each
+/// is one line while the Composer is open or a Blocked card stands in its
+/// place. Every row opens its sheet; nothing here stops work. Empty when
+/// there is nothing to list, so its height drops to zero.
 struct ChatBackgroundWorkStrip: View {
     let work: ChatBackgroundWork
     let isHostConnected: Bool
@@ -15,24 +16,49 @@ struct ChatBackgroundWorkStrip: View {
     var showsFinishedWork = true
     /// Opens the sheet at a row's id, or at no row.
     let open: (String?) -> Void
+    /// The Agent's Swarm, which leads the strip.
+    var swarm: AgySwarmSnapshot? = nil
+    var openSwarm: () -> Void = {}
 
     @Environment(\.locale) private var locale
     @Environment(\.calendar) private var calendar
+    @Environment(\.themeColors) private var themeColors
 
-    private var showsStrip: Bool {
+    private var showsWork: Bool {
         !work.rows.isEmpty && (showsFinishedWork || work.hasUnfinished)
     }
 
     var body: some View {
-        if showsStrip {
-            // Only a running row's time moves, so only then does it tick.
-            if presentation(at: .now).ticks {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    content(presentation(at: context.date))
+        if swarm != nil || showsWork {
+            let shape = RoundedRectangle(cornerRadius: isCondensed ? 14 : 16, style: .continuous)
+            VStack(spacing: 0) {
+                if let swarm {
+                    ChatSwarmLiveBar(swarm: swarm, isCondensed: isCondensed, open: openSwarm)
                 }
-            } else {
-                content(presentation(at: .now))
+                if showsWork {
+                    // Only a running row's time moves, so only then does it tick.
+                    if presentation(at: .now).ticks {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            content(presentation(at: context.date))
+                        }
+                    } else {
+                        content(presentation(at: .now))
+                    }
+                }
             }
+            // Opaque in the theme's background, as the Composer's card is,
+            // so Chat scrolling under it stays out of the way, then veiled.
+            .background {
+                shape
+                    .fill(themeColors.background)
+                    .overlay { shape.fill(ThemeVeil.strip) }
+            }
+            .clipShape(shape)
+            // A row is a finger tall at least, and never squeezed to that.
+            .fixedSize(horizontal: false, vertical: true)
+            // The Composer card's inset, so the edges line up.
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
         }
     }
 
@@ -43,58 +69,38 @@ struct ChatBackgroundWorkStrip: View {
 
     @ViewBuilder
     private func content(_ presentation: ChatBackgroundWorkPresentation) -> some View {
-        Group {
-            if isCondensed, let summary = presentation.summary {
-                ChatBackgroundWorkSummaryLine(summary: summary, open: { open(nil) })
-            } else {
-                ChatBackgroundWorkRows(presentation: presentation, open: open)
-            }
+        if isCondensed, let summary = presentation.summary {
+            ChatBackgroundWorkSummaryLine(summary: summary, isLed: swarm != nil, open: { open(nil) })
+        } else {
+            ChatBackgroundWorkRows(presentation: presentation, isLed: swarm != nil, open: open)
         }
-        // The Composer card's inset, so the edges line up.
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
     }
 }
 
 enum ChatBackgroundWorkStyle {
-    /// Activity card silhouette shared by the strip and sheet cards.
-    static let card = RoundedRectangle(cornerRadius: 16, style: .continuous)
     static let hint = String(localized: "Shows all background work.")
+    /// How far a strip row stands in from the strip's edge.
+    static let rowInset: CGFloat = 14
+    /// Between a row's glyph and its text.
+    static let glyphSpacing: CGFloat = 10
+    /// A strip row's glyph column, before Dynamic Type scales it.
+    static let glyphColumn: CGFloat = 16
 }
 
-/// Shared Catppuccin Mocha/Latte tokens for Background Work activity cards,
-/// built on `AgentStatusPalette` so working/done/failed mean the same thing
-/// here as in the Console's Agent switcher.
+/// Catppuccin Mocha/Latte tokens for Background Work, built on
+/// `AgentStatusPalette` so working/done/failed mean the same thing here as
+/// in the Console's Agent switcher.
 enum ChatBackgroundWorkPalette {
-    private static let mauveWashUI = flavoured(mocha: 0xCBA6F7, latte: 0x8839EF)
-    private static let mauveInkUI = flavoured(mocha: 0xCBA6F7, latte: 0x6C22C7)
-    private static let blueWashUI = flavoured(mocha: 0x89B4FA, latte: 0x1E66F5)
-    private static let blueInkUI = flavoured(mocha: 0x89B4FA, latte: 0x1450C8)
+    private static let blueInkUI = UIColor { traits in
+        let rgb: UInt32 = traits.userInterfaceStyle == .dark ? 0x89B4FA : 0x1450C8
+        return UIColor(
+            red: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1)
+    }
 
     static let workflowTint = Color(uiColor: blueInkUI)
-
-    static let terminalBackground = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0, alpha: 0.34)
-                : UIColor.secondarySystemFill.withAlphaComponent(0.65)
-        })
-
-    static let terminalBorder = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 1, alpha: 0.08)
-                : UIColor(white: 0, alpha: 0.08)
-        })
-
-    static func statusWash(_ status: ChatBackgroundWorkPresentation.Status) -> Color {
-        switch status {
-        case .running: Color(uiColor: AgentStatusPalette.yellow).opacity(0.15)
-        case .completed: Color(uiColor: AgentStatusPalette.green).opacity(0.14)
-        case .failed: Color(uiColor: AgentStatusPalette.red).opacity(0.14)
-        case .stopped, .unconfirmed, .quiet: Color(uiColor: AgentStatusPalette.muted).opacity(0.16)
-        }
-    }
 
     static func statusInk(_ status: ChatBackgroundWorkPresentation.Status) -> Color {
         switch status {
@@ -104,112 +110,71 @@ enum ChatBackgroundWorkPalette {
         case .stopped, .unconfirmed, .quiet: Color(uiColor: AgentStatusPalette.mutedInk)
         }
     }
+}
 
-    static func cardBorder(_ status: ChatBackgroundWorkPresentation.Status) -> Color {
-        switch status {
-        case .running: Color(uiColor: AgentStatusPalette.yellow).opacity(0.32)
-        case .failed: Color(uiColor: AgentStatusPalette.red).opacity(0.30)
-        case .completed, .stopped, .unconfirmed, .quiet: Color(uiColor: .separator).opacity(0.34)
-        }
+/// A row of the strip over the Composer: a finger tall, and under a
+/// hairline that starts where its text does unless it leads the strip.
+struct ChatStripRow: ViewModifier {
+    let glyphColumn: CGFloat
+    let isDivided: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, ChatBackgroundWorkStyle.rowInset)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+            .chatRowDivider(
+                isDivided,
+                inset: ChatBackgroundWorkStyle.rowInset + glyphColumn + ChatBackgroundWorkStyle.glyphSpacing)
     }
+}
 
-    static func stripBorder(_ presentation: ChatBackgroundWorkPresentation) -> Color {
-        if presentation.hasRunning {
-            return Color(uiColor: AgentStatusPalette.yellow).opacity(0.34)
-        }
-        if presentation.hasFailed {
-            return Color(uiColor: AgentStatusPalette.red).opacity(0.28)
-        }
-        return Color.secondary.opacity(0.18)
-    }
-
-    static func kindWash(_ kind: ChatBackgroundWorkItem.Kind) -> Color {
-        switch kind {
-        case .command: Color(uiColor: AgentStatusPalette.muted).opacity(0.16)
-        case .subagent: Color(uiColor: mauveWashUI).opacity(0.14)
-        case .workflow: Color(uiColor: blueWashUI).opacity(0.14)
-        }
-    }
-
-    static func kindInk(_ kind: ChatBackgroundWorkItem.Kind) -> Color {
-        switch kind {
-        case .command: Color(uiColor: AgentStatusPalette.mutedInk)
-        case .subagent: Color(uiColor: mauveInkUI)
-        case .workflow: Color(uiColor: blueInkUI)
-        }
-    }
-
-    private static func flavoured(mocha: UInt32, latte: UInt32) -> UIColor {
-        UIColor { traits in
-            let rgb = traits.userInterfaceStyle == .dark ? mocha : latte
-            return UIColor(
-                red: CGFloat((rgb >> 16) & 0xFF) / 255,
-                green: CGFloat((rgb >> 8) & 0xFF) / 255,
-                blue: CGFloat(rgb & 0xFF) / 255,
-                alpha: 1)
-        }
+/// What ends a strip row that opens a sheet.
+struct ChatStripChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            .accessibilityHidden(true)
     }
 }
 
 private struct ChatBackgroundWorkRows: View {
     let presentation: ChatBackgroundWorkPresentation
+    /// Whether the Swarm's row stands over these.
+    let isLed: Bool
     let open: (String?) -> Void
 
-    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn: CGFloat = 18
+    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn = ChatBackgroundWorkStyle.glyphColumn
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if presentation.stripRows.count == 1, let only = presentation.stripRows.first {
-                Button { open(only.id) } label: {
-                    ChatBackgroundWorkSingleStripCard(row: only)
-                        .padding(.vertical, 8)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.highlight)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(only.accessibilityLabel)
-                .accessibilityHint(ChatBackgroundWorkStyle.hint)
-                .accessibilityAddTraits(only.status == .running ? [.isButton, .updatesFrequently] : .isButton)
-                .accessibilityIdentifier("chat.background-work.\(only.id)")
-            } else {
-                ForEach(Array(presentation.stripRows.enumerated()), id: \.element.id) { index, row in
-                    MainActorContent {
-                        if index > 0 {
-                            Divider()
-                                .opacity(0.45)
-                        }
-                        Button { open(row.id) } label: {
-                            ChatBackgroundWorkRowLabel(row: row, glyphColumn: glyphColumn)
-                                .padding(.vertical, 7)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .hoverEffect(.highlight)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(row.accessibilityLabel)
-                        .accessibilityHint(ChatBackgroundWorkStyle.hint)
-                        .accessibilityAddTraits(row.status == .running ? [.isButton, .updatesFrequently] : .isButton)
-                        .accessibilityIdentifier("chat.background-work.\(row.id)")
+            ForEach(Array(presentation.stripRows.enumerated()), id: \.element.id) { index, row in
+                MainActorContent {
+                    Button { open(row.id) } label: {
+                        ChatBackgroundWorkRowLabel(row: row, glyphColumn: glyphColumn)
+                            .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: isLed || index > 0))
                     }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(row.accessibilityLabel)
+                    .accessibilityHint(ChatBackgroundWorkStyle.hint)
+                    .accessibilityAddTraits(row.status == .running ? [.isButton, .updatesFrequently] : .isButton)
+                    .accessibilityIdentifier("chat.background-work.\(row.id)")
                 }
             }
             if presentation.overflow > 0 {
-                Divider()
-                    .opacity(0.45)
                 Button { open(nil) } label: {
                     HStack(spacing: 4) {
                         Text("+\(presentation.overflow) more")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.tint)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        ChatStripChevron()
                     }
-                    .padding(.leading, glyphColumn + 8)
-                    .padding(.vertical, 7)
-                    .contentShape(.rect)
+                    .padding(.leading, glyphColumn + ChatBackgroundWorkStyle.glyphSpacing)
+                    .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: true))
                 }
                 .buttonStyle(.plain)
                 .hoverEffect(.highlight)
@@ -218,123 +183,45 @@ private struct ChatBackgroundWorkRows: View {
                 .accessibilityIdentifier("chat.background-work.more")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 3)
-        .background {
-            ChatBackgroundWorkStyle.card
-                .fill(.regularMaterial)
-                .overlay {
-                    if presentation.hasRunning {
-                        ChatBackgroundWorkStyle.card.fill(
-                            LinearGradient(
-                                colors: [Color(uiColor: AgentStatusPalette.yellow).opacity(0.07), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom))
-                    }
-                }
-        }
-        .overlay {
-            ChatBackgroundWorkStyle.card
-                .stroke(ChatBackgroundWorkPalette.stripBorder(presentation), lineWidth: 1)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Background work")
         .accessibilityIdentifier("chat.background-work")
     }
 }
 
-/// Option 2's structured 2-tier strip card when a single background item is
-/// listed: status & kind pills with elapsed time on top, human summary below.
-private struct ChatBackgroundWorkSingleStripCard: View {
-    let row: ChatBackgroundWorkPresentation.Row
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .caption) private var barWidth: CGFloat = 36
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) {
-                        ChatBackgroundWorkStatusPill(status: row.status)
-                        ChatBackgroundWorkKindChip(kind: row.kind, label: row.kindBadge)
-                    }
-                    ChatBackgroundWorkStatusPill(status: row.status)
-                }
-                Spacer(minLength: 4)
-                trailingMeta
-            }
-            Text(verbatim: row.stripHeadline)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(row.status == .completed || row.status == .stopped ? .secondary : .primary)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-        }
-    }
-
-    private var trailingMeta: some View {
-        HStack(spacing: 6) {
-            if let fraction = row.fraction {
-                if row.status == .running {
-                    ProgressView(
-                        value: Double(min(fraction.done, fraction.total)),
-                        total: Double(max(fraction.total, 1)))
-                        .progressViewStyle(.linear)
-                        .tint(ChatBackgroundWorkPalette.workflowTint)
-                        .frame(width: barWidth)
-                }
-                Text(verbatim: "\(fraction.done)/\(fraction.total)")
-                    .foregroundStyle(.secondary)
-            }
-            if let time = row.time {
-                Text(verbatim: time)
-                    .fontWeight(row.status == .running ? .semibold : .medium)
-                    .foregroundStyle(
-                        row.status == .running ? ChatBackgroundWorkPalette.statusInk(.running) : .secondary)
-            } else if let note = row.shortNote {
-                Text(verbatim: note)
-                    .foregroundStyle(.secondary)
-            }
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-        }
-        .font(.caption.monospacedDigit())
-        .lineLimit(1)
-        .fixedSize()
-    }
-}
-
-/// One row in a multi-item strip: its state glyph, human-first headline, kind
-/// chip when room allows, and moving tabular time.
+/// One row of the strip: its state as a glyph, what it is, its kind when
+/// room allows, and its time, which moves in place.
 private struct ChatBackgroundWorkRowLabel: View {
     let row: ChatBackgroundWorkPresentation.Row
     let glyphColumn: CGFloat
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .caption) private var barWidth: CGFloat = 36
+    @ScaledMetric(relativeTo: .caption) private var barWidth: CGFloat = 30
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            ChatBackgroundWorkGlyph(status: row.status)
+        HStack(alignment: .center, spacing: ChatBackgroundWorkStyle.glyphSpacing) {
+            ChatBackgroundWorkGlyph(status: row.status, size: .regular)
                 .frame(width: glyphColumn)
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 3) {
                     title
-                    HStack(spacing: 6) {
-                        ChatBackgroundWorkKindChip(kind: row.kind, label: row.kindBadge)
+                    HStack(spacing: 8) {
+                        kind
                         meta
                     }
                 }
+                .padding(.vertical, 8)
                 Spacer(minLength: 0)
             } else {
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 6) {
+                    HStack(spacing: ChatBackgroundWorkStyle.glyphSpacing) {
                         title
-                        ChatBackgroundWorkKindChip(kind: row.kind, label: row.kindBadge)
+                        Spacer(minLength: 0)
+                        kind
                     }
                     title
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Spacer(minLength: 8)
                 meta
             }
         }
@@ -342,9 +229,16 @@ private struct ChatBackgroundWorkRowLabel: View {
 
     private var title: some View {
         Text(verbatim: row.stripHeadline)
-            .font(.subheadline.weight(.medium))
+            .font(.subheadline)
             .foregroundStyle(row.status == .completed || row.status == .stopped ? .secondary : .primary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    }
+
+    private var kind: some View {
+        Text(verbatim: row.stripKind)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 
     /// Never wraps and keeps its digits' width, so a tick can't move the
@@ -365,15 +259,15 @@ private struct ChatBackgroundWorkRowLabel: View {
             }
             if let time = row.time {
                 Text(verbatim: time)
-                    .fontWeight(row.status == .running ? .semibold : .regular)
                     .foregroundStyle(
                         row.status == .running ? ChatBackgroundWorkPalette.statusInk(.running) : .secondary)
             } else if let note = row.shortNote {
                 Text(verbatim: note)
-                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(row.status))
             }
         }
-        .font(.caption.monospacedDigit())
+        .font(.system(.caption, design: .monospaced))
         .lineLimit(1)
         .fixedSize()
     }
@@ -382,37 +276,25 @@ private struct ChatBackgroundWorkRowLabel: View {
 /// The rows condensed to one line, which opens the sheet.
 private struct ChatBackgroundWorkSummaryLine: View {
     let summary: ChatBackgroundWorkPresentation.Summary
+    /// Whether the Swarm's line stands over this one.
+    let isLed: Bool
     let open: () -> Void
 
-    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn: CGFloat = 18
-
-    private var borderColor: Color {
-        switch summary.status {
-        case .running: Color(uiColor: AgentStatusPalette.yellow).opacity(0.32)
-        case .failed: Color(uiColor: AgentStatusPalette.red).opacity(0.28)
-        default: Color.secondary.opacity(0.18)
-        }
-    }
+    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn = ChatBackgroundWorkStyle.glyphColumn
 
     var body: some View {
         Button(action: open) {
-            HStack(spacing: 8) {
-                ChatBackgroundWorkGlyph(status: summary.status)
+            HStack(spacing: ChatBackgroundWorkStyle.glyphSpacing) {
+                ChatBackgroundWorkGlyph(status: summary.status, size: .regular)
                     .frame(width: glyphColumn)
                 Text(verbatim: ChatBackgroundWorkPresentation.Row.singleLine(summary.text))
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(summary.status == .running ? .primary : .secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                ChatStripChevron()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: ChatBackgroundWorkStyle.card)
-            .overlay { ChatBackgroundWorkStyle.card.stroke(borderColor, lineWidth: 1) }
-            .contentShape(.rect)
+            .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: isLed))
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
@@ -422,67 +304,6 @@ private struct ChatBackgroundWorkSummaryLine: View {
         .accessibilityHint(ChatBackgroundWorkStyle.hint)
         .accessibilityAddTraits(summary.status == .running ? [.isButton, .updatesFrequently] : .isButton)
         .accessibilityIdentifier("chat.background-work.summary")
-    }
-}
-
-/// Capsule status badge in the top-left of an activity card (`Running`,
-/// `Done`, `Failed`, `Stopped`, `Not updating`).
-struct ChatBackgroundWorkStatusPill: View {
-    let status: ChatBackgroundWorkPresentation.Status
-
-    var body: some View {
-        HStack(spacing: 5) {
-            statusIcon
-            Text(verbatim: status.badgeLabel)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-        }
-        .foregroundStyle(ChatBackgroundWorkPalette.statusInk(status))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
-        .background(ChatBackgroundWorkPalette.statusWash(status), in: Capsule())
-        .fixedSize()
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        switch status {
-        case .running:
-            ChatBackgroundWorkSpinningArc(size: 11, lineWidth: 1.9)
-        case .unconfirmed, .quiet:
-            Image(systemName: "clock")
-                .font(.system(size: 9.5, weight: .semibold))
-        case .completed:
-            Image(systemName: "checkmark")
-                .font(.system(size: 9.5, weight: .bold))
-        case .failed:
-            Image(systemName: "xmark")
-                .font(.system(size: 9.5, weight: .bold))
-        case .stopped:
-            Image(systemName: "stop.fill")
-                .font(.system(size: 8.5, weight: .bold))
-        }
-    }
-}
-
-/// Compact semantic badge naming the background work's kind (`Command`,
-/// `Subagent · research`, `Workflow · Verify`).
-struct ChatBackgroundWorkKindChip: View {
-    let kind: ChatBackgroundWorkItem.Kind
-    let label: String
-
-    var body: some View {
-        Text(verbatim: label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(ChatBackgroundWorkPalette.kindInk(kind))
-            .lineLimit(1)
-            .padding(.horizontal, 6.5)
-            .padding(.vertical, 2.5)
-            .background(
-                ChatBackgroundWorkPalette.kindWash(kind),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .accessibilityHidden(true)
     }
 }
 
@@ -521,33 +342,59 @@ struct ChatBackgroundWorkSpinningArc: View {
     }
 }
 
-/// Compact status glyph for condensed lines, multi-row strips, and Workflow
-/// agent rows, painted in `AgentStatusPalette`.
+/// A piece of work's state as one glyph, in `AgentStatusPalette`: an arc
+/// that turns while it runs, then a tick, a cross, a stop, or a clock for
+/// work no read vouches for.
 struct ChatBackgroundWorkGlyph: View {
+    enum Size {
+        /// A Workflow's agent.
+        case small
+        /// A strip row.
+        case regular
+        /// A sheet row.
+        case large
+
+        var font: Font {
+            switch self {
+            case .small: .caption
+            case .regular: .subheadline
+            case .large: .callout
+            }
+        }
+
+        var arc: CGFloat {
+            switch self {
+            case .small: 13
+            case .regular: 15
+            case .large: 17
+            }
+        }
+    }
+
     let status: ChatBackgroundWorkPresentation.Status
+    var size: Size = .small
 
     var body: some View {
         Group {
             switch status {
             case .running:
-                ChatBackgroundWorkSpinningArc(size: 13, lineWidth: 2)
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
+                ChatBackgroundWorkSpinningArc(size: size.arc, lineWidth: 2)
+                    // Sits on the line as a symbol does, not on its foot.
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - size.arc * 0.16 }
             case .unconfirmed, .quiet:
                 Image(systemName: "clock")
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(status))
             case .completed:
                 Image(systemName: "checkmark")
                     .fontWeight(.bold)
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.completed))
             case .failed:
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+                Image(systemName: "xmark")
+                    .fontWeight(.bold)
             case .stopped:
                 Image(systemName: "stop.circle")
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.stopped))
             }
         }
-        .font(.caption)
+        .font(size.font)
+        .foregroundStyle(ChatBackgroundWorkPalette.statusInk(status))
         .accessibilityHidden(true)
     }
 }
