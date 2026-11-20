@@ -115,6 +115,14 @@ struct AgentKindMarkTests {
             })
         console.setHosts([host])
         defer { console.setHosts([]) }
+        // The form asks the Host for its Agents once, as it opens, and a Host
+        // still connecting answers that it is not connected.
+        await console.resume()
+        var connecting = PollBudget(.seconds(5))
+        while console.hostStatuses[host.id] != .connected, connecting.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(20))
+            connecting.charge()
+        }
 
         let controller = UIHostingController(
             rootView: StartAgentView(hosts: [host], console: console, onStarted: { _ in }))
