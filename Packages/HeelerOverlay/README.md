@@ -166,7 +166,7 @@ tokio-websockets, webpki-roots, rcgen…); ws/wss listeners stay refused.
 
 ## tailcat
 
-A tailcat tunnel (ADR 0048) reaches one machine, the one running
+A tailcat tunnel (ADR 0061) reaches one machine, the one running
 `tailcat serve`, through tailcat's own Go client. heeler-overlay-natives
 links it into CTailscale, which already carries the Tailscale data plane
 tailcat is built from, behind five calls: `heeler_tailcat_address_info`

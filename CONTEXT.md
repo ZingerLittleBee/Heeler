@@ -123,7 +123,7 @@ own, side by side; ZeroTier networks share one device identity. A tailcat
 tunnel is the one kind with a single peer, the machine running
 `tailcat serve`: its address is the whole configuration and the credential,
 and a Route names that machine by a label Heeler derives from the network
-(ADR 0048).
+(ADR 0061).
 _Avoid_: VPN, tunnel, tailnet (for the general term)
 
 **Config Server**:

@@ -34,7 +34,7 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
             server: String, machineID: UUID, hostname: String, requireEncryption: Bool = true)
         /// A tailcat tunnel to one `tailcat serve` machine. Nothing but its
         /// address defines it, and the address is a credential, so it lives
-        /// in the Keychain and no setting is left here (ADR 0048).
+        /// in the Keychain and no setting is left here (ADR 0061).
         case tailcat
     }
 
@@ -87,7 +87,7 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
     /// network's id, not from the tailcat address: each tunnel gets its own
     /// (host-key trust for a Jump Host is keyed by address), and replacing
     /// the address after the server's key changes leaves Routes as they are
-    /// (ADR 0048). Six digits keep the name and port 22 on one line of a
+    /// (ADR 0061). Six digits keep the name and port 22 on one line of a
     /// route row; saved Routes hold the name, so its form cannot change.
     static func tailcatServerName(for id: UUID) -> String {
         "\(id.uuidString.prefix(6).lowercased())\(tailcatServerSuffix)"

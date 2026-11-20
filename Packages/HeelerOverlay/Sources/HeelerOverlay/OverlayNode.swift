@@ -344,7 +344,7 @@ public struct TailcatConfiguration: Sendable, Equatable {
     public var address: String
     /// The only host a dial may name: the tunnel's server. A tailcat
     /// tunnel has no other destination, and the server has no address a
-    /// user could type, so the app gives it this name (see ADR 0048).
+    /// user could type, so the app gives it this name (see ADR 0061).
     public var serverName: String
 
     public init(address: String, serverName: String) {
