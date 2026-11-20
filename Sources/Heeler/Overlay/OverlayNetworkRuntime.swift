@@ -15,6 +15,7 @@ enum OverlayNodeSpec: Sendable, Equatable {
     case tailscale(TailscaleConfiguration)
     case zerotier(ZeroTierConfiguration)
     case easytier(EasyTierConfiguration)
+    case tailcat(TailcatConfiguration)
 }
 
 /// The app's running Overlay Network nodes (ADR 0021): at most one per
@@ -28,7 +29,8 @@ enum OverlayNodeSpec: Sendable, Equatable {
 /// `stop()` task per network that every replacement awaits, so an old and a
 /// new node never share a Tailscale state directory or the EasyTier instance
 /// keyed by the network's id. Every EasyTier network runs as an instance of
-/// its own, beside the others. Nodes are discarded on suspension and rebuilt lazily
+/// its own, beside the others, and so does every tailcat tunnel's client.
+/// Nodes are discarded on suspension and rebuilt lazily
 /// by the next dial, so this type never has to know how a backend treats a
 /// stopped node.
 actor OverlayNetworkRuntime {
@@ -145,6 +147,8 @@ actor OverlayNetworkRuntime {
             OverlayNodes.zerotier(configuration, identityGenerated: identityGenerated)
         case .easytier(let configuration):
             OverlayNodes.easytier(configuration)
+        case .tailcat(let configuration):
+            OverlayNodes.tailcat(configuration)
         }
     }
 
@@ -976,6 +980,13 @@ actor OverlayNetworkRuntime {
                         EasyTierConfigServer(url: url, machineID: machineID, requireEncryption: requireEncryption)),
                     hostname: hostname,
                     instanceKey: network.id.uuidString))
+        case .tailcat:
+            guard let address = try secret(OverlaySecretAccount.secret(for: network)) else {
+                throw misconfigured(String(localized: "The tailcat address is missing"))
+            }
+            return .tailcat(
+                TailcatConfiguration(
+                    address: address, serverName: OverlayNetwork.tailcatServerName(for: network.id)))
         }
     }
 

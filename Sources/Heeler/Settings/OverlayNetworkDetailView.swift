@@ -343,6 +343,10 @@ struct OverlayNetworkDetailView: View {
             if !addresses.isEmpty {
                 OverlayDeviceAddresses(label: Self.deviceLabel(details.hostname), addresses: addresses)
             }
+        case .tailcat:
+            // This device has no address in the tunnel; the server's is in
+            // its row below.
+            EmptyView()
         }
     }
 
@@ -421,6 +425,32 @@ struct OverlayNetworkDetailView: View {
                     }
                 }
             }
+        case .tailcat:
+            tailcatServerSection(peers, network: network)
+        }
+    }
+
+    /// A tailcat tunnel's one peer: the machine running `tailcat serve`,
+    /// named after the network so a Host added from it gets that name.
+    private func tailcatServerSection(_ peers: [OverlayPeer], network: OverlayNetwork) -> some View {
+        let name = network.name.trimmingCharacters(in: .whitespaces)
+        let servers = peers.map { peer in
+            var server = peer
+            server.name = name.isEmpty ? String(localized: "tailcat server") : name
+            return OverlayPeerCandidate(peer: server)
+        }
+        return Section {
+            ForEach(servers) { @Sendable candidate in
+                MainActorContent { machineRow(candidate) }
+            }
+        } header: {
+            if !servers.isEmpty {
+                Text("Server")
+            }
+        } footer: {
+            if !servers.isEmpty, hostStore != nil {
+                Text("The machine running tailcat serve. Tap it to add it as a Host, on a port tailcat serve exposes.")
+            }
         }
     }
 
@@ -473,7 +503,7 @@ struct OverlayNetworkDetailView: View {
                 Text(
                     String(localized: "Run EasyTier on your Mac with network name \(networkName) and the same secret. It appears here, ready to add as a Host."))
             }
-        case .zerotier, .easytierConfigServer:
+        case .zerotier, .easytierConfigServer, .tailcat:
             Text("No peers yet")
                 .foregroundStyle(.secondary)
         }

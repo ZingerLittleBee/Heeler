@@ -81,6 +81,7 @@ private final class FakeOverlayNode: OverlayNode, Sendable {
         case .tailscale: kind = .tailscale
         case .zerotier: kind = .zerotier
         case .easytier: kind = .easytier
+        case .tailcat: kind = .tailcat
         }
     }
 
@@ -2894,6 +2895,7 @@ private final class BlockingNodeFactory: Sendable {
                 case .tailscale: .tailscale
                 case .zerotier: .zerotier
                 case .easytier: .easytier
+                case .tailcat: .tailcat
                 }
             let node = BlockingOverlayNode(
                 kind: kind, hang: self.hang.withLock { $0 },
@@ -3070,5 +3072,174 @@ struct OverlayNetworkCancellationTests {
         await store.connect(tailnet.id)
         #expect(store.connectFailures[tailnet.id] == nil)
         #expect(store.statuses[tailnet.id] == .online(addresses: ["100.64.0.2"]))
+    }
+}
+
+/// A tailcat address made for tests: its keys were generated and thrown
+/// away, and no server ever held them.
+private let tailcatAddress =
+    "tcpGFwWCBkoZFXSg4dBEdu4fjp2tm_BpZE5eiKlg3c-8pmFAIjAmFrWCB8zkWp5aaTXSRcU06s9WMJGxXVKGSf_UnkJQQtykEJT2FxWCBHZRmok7n2yjBJAVp9f2iOZjW1bEKJ0KVcOtYcTSIEiWFpAQ"
+
+@Suite("Overlay Network tailcat")
+struct OverlayNetworkTailcatTests {
+    private let tunnel = OverlayNetwork(name: "Studio", settings: .tailcat)
+
+    @Test func theCatalogEntryHoldsNothingOfTheAddress() throws {
+        let data = try JSONEncoder().encode(tunnel)
+        let fields = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(fields.keys) == ["id", "name", "kind"])
+        #expect(fields["kind"] as? String == "tailcat")
+        #expect(try JSONDecoder().decode(OverlayNetwork.self, from: data) == tunnel)
+        #expect(tunnel.kind == .tailcat)
+        #expect(
+            OverlaySecretAccount.secret(for: tunnel)
+                == "overlay-tailcat-address-\(tunnel.id.uuidString)")
+    }
+
+    @Test func theServerIsNamedAfterTheNetworkNotItsAddress() throws {
+        let id = try #require(UUID(uuidString: "3F2A9C1E-0000-4000-8000-000000000001"))
+        let named = OverlayNetwork(id: id, name: "Studio", settings: .tailcat)
+        #expect(named.tailcatServerName == "3f2a9c.tailcat")
+        #expect(tailnet.tailcatServerName == nil)
+    }
+
+    @Test func theFormTakesOnlyATailcatAddress() throws {
+        var draft = OverlayNetworkDraft()
+        draft.kind = .tailcat
+        #expect(!draft.canSave(hasStoredSecret: false))
+        #expect(!draft.tailcatAddressIsInvalid)
+
+        draft.secret = "tskey-auth-not-a-tunnel"
+        #expect(draft.tailcatAddressIsInvalid)
+        #expect(!draft.canSave(hasStoredSecret: true))
+
+        draft.secret = "  \(tailcatAddress)\n"
+        #expect(draft.tailcatAddressInfo?.hasPresharedKey == true)
+        #expect(draft.canSave(hasStoredSecret: false))
+        #expect(draft.secretUpdate == tailcatAddress)
+        #expect(try #require(draft.makeNetwork(id: tunnel.id)).settings == .tailcat)
+    }
+
+    /// The field hides what was pasted, so the line `tailcat serve` prints
+    /// is taken whole.
+    @Test func aPastedLineOfTailcatServeGivesItsAddress() {
+        var draft = OverlayNetworkDraft()
+        draft.kind = .tailcat
+        draft.secret = "# 🐈 Server listening with saved key \"default\": \(tailcatAddress)\n"
+        #expect(draft.secretUpdate == tailcatAddress)
+        #expect(draft.canSave(hasStoredSecret: false))
+
+        draft.secret = "tcp is not an address"
+        #expect(draft.tailcatAddressIsInvalid)
+    }
+
+    @Test func editingKeepsTheStoredAddressUntilANewOneIsPasted() throws {
+        var draft = OverlayNetworkDraft(network: tunnel)
+        #expect(draft.kind == .tailcat)
+        #expect(draft.secret.isEmpty)
+        #expect(draft.canSave(hasStoredSecret: true))
+        #expect(!draft.canSave(hasStoredSecret: false))
+        draft.name = "Office"
+        #expect(try #require(draft.makeNetwork(id: tunnel.id)).name == "Office")
+    }
+
+    @Test func theNodeGetsTheStoredAddressAndTheNetworksServerName() async throws {
+        let secrets = VolatileSecretStore()
+        let account = try #require(OverlaySecretAccount.secret(for: tunnel))
+        try secrets.write(Data(tailcatAddress.utf8), account: account)
+        let factory = FakeNodeFactory()
+        let runtime = OverlayNetworkRuntime(
+            secrets: secrets, stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        runtime.publish([.init(network: tunnel, revision: 0)])
+
+        try await runtime.start(networkID: tunnel.id, timeout: .seconds(1))
+        #expect(
+            factory.built.first?.spec
+                == .tailcat(
+                    TailcatConfiguration(
+                        address: tailcatAddress,
+                        serverName: OverlayNetwork.tailcatServerName(for: tunnel.id))))
+    }
+
+    @Test func aTunnelWithoutItsAddressIsMisconfigured() async {
+        let factory = FakeNodeFactory()
+        let runtime = OverlayNetworkRuntime(
+            secrets: VolatileSecretStore(), stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        runtime.publish([.init(network: tunnel, revision: 0)])
+
+        await #expect(
+            throws: TransportError.overlayFailed(
+                network: "Studio", reason: .misconfigured("The tailcat address is missing"))
+        ) {
+            try await runtime.start(networkID: tunnel.id, timeout: .seconds(1))
+        }
+        #expect(factory.built.isEmpty)
+    }
+
+    @MainActor
+    @Test func aNewAddressReplacesTheClientAndLeavesTheServerName() async throws {
+        let suite = "overlay-network-store-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let runtime = OverlayNetworkRuntime(
+            secrets: secrets, stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(defaults: defaults, secrets: secrets, runtime: runtime)
+        try store.add(tunnel, secret: "tc-first")
+        await store.connect(tunnel.id)
+
+        try store.update(tunnel, secret: "tc-second")
+        await runtime.reconcile()
+        await store.connect(tunnel.id)
+
+        let serverName = OverlayNetwork.tailcatServerName(for: tunnel.id)
+        #expect(
+            factory.built.map(\.spec) == [
+                .tailcat(TailcatConfiguration(address: "tc-first", serverName: serverName)),
+                .tailcat(TailcatConfiguration(address: "tc-second", serverName: serverName)),
+            ])
+    }
+
+    @Test func theStatusLineSaysHowTheServerIsReached() {
+        let direct = OverlayPeer(id: "s", isOnline: true, isDirect: true, latency: .milliseconds(12))
+        let relayed = OverlayPeer(id: "s", isOnline: true, isDirect: false, latency: .milliseconds(130))
+        let silent = OverlayPeer(id: "s", isOnline: false)
+
+        #expect(OverlayStatusCopy.peerCount([direct], kind: .tailcat) == "Direct · 12 ms")
+        #expect(OverlayStatusCopy.shortPeerCount([relayed], kind: .tailcat) == "Relayed · 130 ms")
+        #expect(OverlayStatusCopy.peerCount([silent], kind: .tailcat) == "The server is not answering")
+        // Not yet answered: nothing to say beside "Connected".
+        #expect(OverlayStatusCopy.peerCount([], kind: .tailcat) == nil)
+        #expect(OverlayStatusCopy.shortPeerCount([], kind: .tailcat) == nil)
+    }
+
+    @MainActor
+    @Test func aConnectedRowSaysThePathInPlaceOfConnected() async throws {
+        let suite = "overlay-network-store-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let runtime = OverlayNetworkRuntime(
+            secrets: secrets, stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(defaults: defaults, secrets: secrets, runtime: runtime)
+        try store.add(tunnel, secret: "tc-first")
+        await store.connect(tunnel.id)
+
+        var headline = OverlayNetworkHeadline(network: tunnel, store: store)
+        #expect(headline.rowSummary == "Connected")
+
+        let node = try #require(factory.built.first)
+        node.state.withLock {
+            $0.details = OverlayNodeDetails(
+                peers: [OverlayPeer(id: "s", isOnline: true, isDirect: true, latency: .milliseconds(12))])
+        }
+        await store.refreshStatuses()
+
+        headline = OverlayNetworkHeadline(network: tunnel, store: store)
+        #expect(headline.title == "Connected")
+        #expect(headline.subtitle == "Direct · 12 ms")
+        #expect(headline.rowSummary == "Direct · 12 ms")
     }
 }

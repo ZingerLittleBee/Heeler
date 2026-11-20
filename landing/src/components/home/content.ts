@@ -53,7 +53,7 @@ export const backends = [
 /** Agents whose conversations Chat can read. */
 export const agents = ['Claude Code', 'Codex', 'Pi', 'Oh My Pi', 'Grok Build', 'OpenCode', 'Antigravity CLI'];
 
-export const overlays = ['Tailscale', 'ZeroTier', 'EasyTier'];
+export const overlays = ['Tailscale', 'ZeroTier', 'EasyTier', 'tailcat'];
 export const routes = ['Direct', 'Tailscale', 'Jump Host'];
 
 export const privacy = [

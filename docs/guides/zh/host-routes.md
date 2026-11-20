@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/host-routes.md at 4732ddb2 -->
+<!-- Translated from docs/guides/host-routes.md at 058d13ce -->
 # 通过多条路由访问 Host
 
 一台 Host 可以配置不止一条路由：在家时使用局域网地址，在外时使用 Overlay Network 或跳板机（Jump Host）。每次连接时，Heeler 都会尝试所有路由并采用最先连通 Host 的那一条，因此无需手动切换任何设置。
@@ -11,7 +11,7 @@
 4. 如需经过跳板机，请填写 **Jump Host**；否则留空。详情参见[通过跳板机远程访问](vps-jump-host-setup.md)。
 5. 在 **Network** 下选择该路由的通信方式：
    - **Direct**：当前 iPhone 或 iPad 可在自身网络上直接访问的地址，例如 Mac 的局域网地址或公网地址。
-   - 来自 **Settings > Overlay Networks** 的 Overlay Network（Tailscale、ZeroTier 或 EasyTier，添加网络后会显示在顶部）。对于 Tailscale 和 EasyTier，轻点 **Choose from Tailnet…** 或 **Choose from Network…** 并选择目标 Mac 即可自动填入地址；对于 ZeroTier，请手动输入 ZeroTier Central 中显示的 Mac 地址。配置方法参见 [Overlay Network 指南](overlay-networks.md)。
+   - 来自 **Settings > Overlay Networks** 的 Overlay Network（Tailscale、ZeroTier、EasyTier 或 tailcat，添加网络后会显示在顶部）。对于 Tailscale 和 EasyTier，轻点 **Choose from Tailnet…** 或 **Choose from Network…** 并选择目标 Mac 即可自动填入地址；对于 ZeroTier，请手动输入 ZeroTier Central 中显示的 Mac 地址；对于 tailcat 隧道，Heeler 会自动填入地址。配置方法参见 [Overlay Network 指南](overlay-networks.md)。
 6. 轻点右上角的 **Save**，然后在 Edit Host 页面再次轻点 **Save**。
 
 <a href="../images/hosts/add-route.png"><img src="../images/hosts/add-route.png" width="300" alt="New Route 表单，包含 Address 192.168.1.10、端口 22、Find on Local Network、可选的 Jump Host 字段，以及设为 Direct 的 Network"></a>

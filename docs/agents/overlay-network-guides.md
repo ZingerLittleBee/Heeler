@@ -18,6 +18,7 @@ The tutorials were written on **2026-10-09** against PR #426 at `eb52bf0c`. The 
 | ZeroTier | Controller-less IPv6 ad-hoc network, Simulator SSH, herdr, terminal, recovery | Central enrollment, custom Planet and Moons, private controller, overlapping IPv4 |
 | EasyTier | Network and encrypted Config Server, Simulator SSH, herdr, terminal, peer restart | Physical phone, eight-network limit, overlapping assignments, WSS failures |
 | Cloudflare Tunnel | Physical iPhone over cellular: connector **Healthy**, a **Tunnel CIDR** route, Cloudflare One Agent with Split Tunnels in **Include** mode, a **Direct** Host route, herdr inventory and a terminal, background recovery | The VPS appendix, Gateway network policies, a route wider than one `/32`, two Hosts on one phone, the iPad, Cloudflare One Agent release drift |
+| tailcat | Simulator through a real `tailcat serve` on the same Mac: the Add Network form, a **Direct** path, Host onboarding from the tunnel's server row, SSH host-key trust, herdr detection, a terminal, background recovery, recovery after `tailcat serve` restarts | Physical phone, cellular, a relayed-only path, servers other than v0.7.0 |
 
 Tailscale commands were checked against official documentation and **1.104.1** CLI help on **2026-10-09**. ZeroTier's guide was checked against Heeler's source and its linked official documentation on the same date.
 
@@ -89,9 +90,55 @@ Not covered:
 - Cloudflare One Agent releases: one device, and no version number recorded, so
   treat the guide as a 2026-10-23 snapshot of that app's UI.
 
+### tailcat guide (2026-11-15)
+
+The [tailcat guide](../guides/tailcat.md) was written with the feature, for
+issue #716 on base `4025213b`, before any release carried it. Its address is a
+credential: keep real addresses out of logs, reports, screenshots and this
+record.
+
+Checked on an iPhone 17e Simulator (iOS 26.5) against `tailcat serve` built
+from the **v0.7.0** source on the same Mac, serving the port of an isolated
+sshd and herdr:
+
+- `tailcat genkey --key=default --fixed-region` saves a key, after which
+  `tailcat serve` prints `Server listening with saved key "default"` and the
+  same address on every start. `tailcat genkey --delete --key=default` removes
+  the key, and `genkey` then makes a new one.
+- A tunnel added through the Add Network form, its address typed on the
+  software keyboard, connected: **Relayed** at first, **Direct** with a
+  round-trip time seconds later. **Add** on its server row opened the Host
+  form with the address and network filled in. **Connect** asked to trust the
+  sshd's fingerprint under the tunnel's `.tailcat` name, detected herdr, and
+  added the Host.
+- A terminal on that Host ran a command and printed its output. With Heeler
+  behind the Settings app, the log showed the tailcat node stopping 19 seconds
+  later; back in front, the same terminal ran another command with nothing
+  tapped. (The Simulator's Home button did not background the app when
+  pressed through `idb`; launching another app did.)
+- With `tailcat serve` stopped, the Host went to **Reconnecting…** about 70
+  seconds later, when the SSH keepalive gave up, and showed "The tailcat
+  server did not answer". Started again with the same saved key, it was
+  **Connected** within 10 seconds, with nothing tapped.
+- A Host whose route named another address stopped with "A tailcat tunnel only
+  reaches the machine running tailcat serve", and **Use the Tunnel's Address**
+  in its route repaired it.
+- Through the same tunnel, a port `tailcat serve` did not expose failed at the
+  dial deadline with "answered, but not on port".
+
+Not covered: a physical phone, cellular, a path that stays **Relayed**,
+pasting the address (the Simulator shares the Mac's clipboard, so it was
+typed), an install through Homebrew (its formula was at 0.7.0), and servers
+other than v0.7.0.
+
+iOS takes a name above a filled secure field for a sign-in form and offers to
+save the address as a password when the form closes. The form empties the
+field as it closes, which stopped the prompt on iOS 26.5; a one-time-code
+content type did not. Check for the prompt again on a new iOS release.
+
 ## Screenshots
 
-The guides' screenshots are unedited Add Network forms from build `137a4aa3`, except the EasyTier Config Server form, recaptured in `f5f35846` after its Server prompt and footer changed. All were captured on **2026-10-10** on an iPhone 17 Pro Simulator (iOS 26.5), in dark appearance at the default text size. Names, addresses, and the server URL are examples. Credentials are blank, and the Machine ID belongs to a disposable Simulator.
+The five Add Network form screenshots are unedited captures of the #716 candidate, taken on **2026-11-15** on an iPhone 17e Simulator (iOS 26.5) in dark appearance at the default text size, after tailcat joined the kind picker and its cards lost their descriptions. The Overlay Networks list and the Tailscale machines list are older captures from **2026-10-10** and show neither change. Names, addresses, and the server URL are examples. Credentials are blank, and the Machine ID belongs to a disposable Simulator.
 
 When labels or behavior change, update the tutorial and its screenshot together. Keep required fields in the text so the steps work without images.
 
@@ -105,4 +152,5 @@ When labels or behavior change, update the tutorial and its screenshot together.
   and [arbitrary TCP](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/cloudflared-authentication/arbitrary-tcp/) pages.
 - ZeroTier: [ZeroTierNetworkNode](../../Packages/HeelerOverlay/Sources/HeelerOverlay/ZeroTierNetworkNode.swift) and [ZeroTierRuntime](../../Packages/HeelerOverlay/Sources/HeelerOverlay/ZeroTierRuntime.swift). Recheck the guide's custom-root startup limitation when they change.
 - EasyTier: [configuration URL contract](../../Packages/HeelerOverlay/Sources/HeelerOverlay/OverlayNode.swift) and [overlay package documentation](../../Packages/HeelerOverlay/README.md).
+- tailcat: [guide](../guides/tailcat.md), [TailcatNode](../../Packages/HeelerOverlay/Sources/HeelerOverlay/TailcatNode.swift), the route form's tunnel address in [OverlayPeerChoice](../../Sources/Heeler/Hosts/OverlayPeerChoice.swift), [ADR 0061](../adr/0061-a-tailcat-tunnel-is-an-overlay-network-with-one-peer.md), and tailcat's [README](https://github.com/tailscale/tailcat/blob/main/README.md). Recheck the guide's commands when the natives release moves to another tailcat version.
 - Architecture and ownership: [ADR 0021](../adr/0021-in-process-overlay-networks.md) and [source map](navigation.md).

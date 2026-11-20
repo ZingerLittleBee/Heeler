@@ -1,5 +1,5 @@
 {
-  "originHash" : "ed3eaabe6c2cd51ce275c8d56aa832e2b5fe1a2dcbbca7017c0c49ace8a68858",
+  "originHash" : "bc9602b4a16aa09393f9e7dd1de001bfcfc3006af1757ee6ede95ea728fdc8d3",
   "pins" : [
     {
       "identity" : "displaylink",
@@ -13,10 +13,10 @@
     {
       "identity" : "heeler-overlay-natives",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Ylarod/heeler-overlay-natives.git",
+      "location" : "https://github.com/ZingerLittleBee/heeler-overlay-natives.git",
       "state" : {
-        "revision" : "6a2817fc02aeb552df251d9478753c22fd4738bb",
-        "version" : "1.0.3"
+        "revision" : "975582ad6611e286c3f49b8bc5191983fa7a29e3",
+        "version" : "1.1.0"
       }
     },
     {

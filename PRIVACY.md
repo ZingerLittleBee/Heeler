@@ -9,10 +9,10 @@ prompts, files, and live agent sessions do not pass through a service operated
 by Heeler's developer.
 
 Agent Notifications use the limited-purpose Push Relay described below.
-Optional Overlay Networks use the Tailscale, ZeroTier, or EasyTier services
-you choose, and optional Voice Input either turns speech into text on your
-device or sends recordings to the speech service you choose, as described
-below.
+Optional Overlay Networks use the Tailscale, ZeroTier, EasyTier, or tailcat
+services you choose, and optional Voice Input either turns speech into text
+on your device or sends recordings to the speech service you choose, as
+described below.
 
 ## Data stored on your device and Hosts
 
@@ -86,9 +86,10 @@ below.
   it, and that copy is no longer Heeler's to delete.
 
 - **Overlay Networks.** Network settings are stored locally. Tailscale auth
-  keys, EasyTier network secrets, and the device's ZeroTier identity are
-  stored in the Keychain. Tailscale's node state is stored in the app's
-  container, protected until first unlock and excluded from backups.
+  keys, EasyTier network secrets, tailcat addresses, and the device's
+  ZeroTier identity are stored in the Keychain. Tailscale's node state is
+  stored in the app's container, protected until first unlock and excluded
+  from backups.
   Deleting a network deletes its secrets and state; the ZeroTier identity
   goes with the last ZeroTier network.
 - **Voice Input.** The service you choose, On Device's language, and their
@@ -98,8 +99,8 @@ below.
 ## Overlay Networks
 
 Overlay Networks are optional. When you add a Tailscale, ZeroTier, or
-EasyTier network, Heeler runs that network's software inside the app to reach
-your Hosts. Heeler's developer operates none of these services. The
+EasyTier network, or a tailcat tunnel, Heeler runs that network's software
+inside the app to reach your Hosts. Heeler's developer operates none of these services. The
 providers, the servers you choose, and the third-party servers named below
 handle this data under their own privacy terms. SSH still encrypts everything
 between your device and your Host, so these services and any relays see
@@ -130,10 +131,20 @@ credentials.
   EasyTier also queries public STUN servers, EasyTier's own and third-party
   ones such as Xiaomi's, Bilibili's, Cloudflare's, and Twilio's, which learn
   the device's public IP address.
+- **tailcat.** A tailcat address holds everything needed to reach the machine
+  that printed it, so Heeler signs in to no service and registers this device
+  with none. For an address that names a relay region, Heeler fetches the
+  list of relays from `tailcat.dev`, which Tailscale operates, and connects
+  to a relay there; an address that names its own relay uses only that one.
+  The relay learns the device's IP address and the tunnel's public keys.
+  Traffic passes through the relay until a direct path works, or when none
+  does. tailcat uploads no logs.
 
 Deleting a network or signing out of Tailscale in Heeler does not remove the
 device from the provider. Remove it in the provider's admin console, or ask
-the server's operator.
+the server's operator. Deleting a tailcat tunnel removes its address from
+this device only: the address keeps working for anyone who has it until the
+machine's key is replaced.
 
 ## Voice Input
 

@@ -5,8 +5,9 @@
 #   scripts/use-overlay-natives-release.sh 1.0.0
 #
 # 1. Packages/HeelerOverlay/Package.swift: the dependency becomes
-#    .package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "<version>")
-#    (from the sibling-checkout path dependency or an earlier exact version).
+#    .package(url: "https://github.com/ZingerLittleBee/heeler-overlay-natives.git", exact: "<version>")
+#    (from the sibling-checkout path dependency or an earlier exact version,
+#    including one that names the repository's earlier owner).
 # 2. Downloads the release's Notices.zip, checks it against the release's
 #    SHA256SUMS, and copies its notices into Sources/Heeler/Resources/Notices.
 # 3. Resolves the packages, which records heeler-overlay-natives in
@@ -25,7 +26,7 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-repository=https://github.com/Ylarod/heeler-overlay-natives
+repository=https://github.com/ZingerLittleBee/heeler-overlay-natives
 manifest="$repo_root/Packages/HeelerOverlay/Package.swift"
 notices="$repo_root/Sources/Heeler/Resources/Notices"
 release="$repository/releases/download/v$version"
@@ -56,7 +57,7 @@ path, version = sys.argv[1], sys.argv[2]
 source = open(path, encoding="utf-8").read()
 dependency = re.compile(
     r'let nativesDependency: Package\.Dependency =\n\s*\.package\((?:path: "[^"]*"'
-    r'|url: "https://github\.com/Ylarod/heeler-overlay-natives\.git", exact: "[^"]*")\)\n')
+    r'|url: "https://github\.com/[^/"]+/heeler-overlay-natives\.git", exact: "[^"]*")\)\n')
 comment = re.compile(r'// TODO\(heeler-overlay-natives 1\.0\.0\):.*?// Always depend on an exact release; never on a branch or a range\.\n',
                      re.S)
 if not dependency.search(source):
@@ -67,7 +68,7 @@ source = comment.sub(
     source)
 source = dependency.sub(
     'let nativesDependency: Package.Dependency =\n'
-    f'    .package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "{version}")\n',
+    f'    .package(url: "https://github.com/ZingerLittleBee/heeler-overlay-natives.git", exact: "{version}")\n',
     source)
 open(path, "w", encoding="utf-8").write(source)
 PY

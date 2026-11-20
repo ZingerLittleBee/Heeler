@@ -18,6 +18,8 @@ struct OverlayNetworkFormView: View {
     @State private var saveError: String?
     @State private var isConfirmingNodeIDForget = false
     @State private var nodeIDForgetError: String?
+    /// The network is saved and the form is closing (see `secretField`).
+    @State private var isLeaving = false
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -100,7 +102,7 @@ struct OverlayNetworkFormView: View {
     }
 
     /// The network's name and what identifies it: the device name it
-    /// joins as, or ZeroTier's network ID.
+    /// joins as, ZeroTier's network ID, or a tailcat tunnel's address.
     private var identitySection: some View {
         Section {
             if let editing {
@@ -114,6 +116,11 @@ struct OverlayNetworkFormView: View {
                 OverlayFormField(
                     title: String(localized: "Network ID"), prompt: String(localized: "Required"), text: $draft.networkID,
                     isMonospaced: true)
+            case .tailcat:
+                // A tunnel is its address, and this device has no name in
+                // it. The row sits here so that what its footer says about
+                // a typed address stays above the keyboard.
+                secretField(String(localized: "Address"), prompt: String(localized: "Required"))
             }
         } header: {
             // EasyTier's source decides the sections below; a header keeps
@@ -133,6 +140,7 @@ struct OverlayNetworkFormView: View {
             case .tailscale: Text("How this device appears in your tailnet.")
             case .zerotier: Text("16 hex digits, from ZeroTier Central or your controller.")
             case .easytier: EmptyView()
+            case .tailcat: tailcatFooter
             }
         }
     }
@@ -188,6 +196,37 @@ struct OverlayNetworkFormView: View {
                 easyTierConfigServerSections
             } else {
                 easyTierNetworkSections
+            }
+        case .tailcat:
+            // The address is the whole configuration, in the first section.
+            EmptyView()
+        }
+    }
+
+    /// The field hides a tailcat address like any other secret, so the
+    /// footer says what was recognized in it.
+    private var tailcatFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if draft.tailcatAddressIsInvalid {
+                Text("This is not a tailcat address. Copy the whole address that tailcat serve prints, starting with tc.")
+                    .foregroundStyle(.red)
+            } else if let info = draft.tailcatAddressInfo {
+                if info.hasPresharedKey {
+                    Text("A tailcat address with a pre-shared key.")
+                } else {
+                    Label(
+                        "This address has no pre-shared key: whoever runs its relay could open the tunnel too.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(OverlayStatusTone.attention.textColor)
+                }
+            } else if hasStoredSecret {
+                Text("Paste a new address when the server's key changes. Hosts on this tunnel keep their routes.")
+            } else {
+                Text(
+                    "Run \(Text(verbatim: "tailcat serve 22").monospaced()) on the machine and paste the address it prints. Anyone who has it can reach that port, so Heeler keeps it in the Keychain.")
+                Text(
+                    "The address changes every time tailcat serve starts, unless the machine has a saved key: \(Text(verbatim: "tailcat genkey --key=default --fixed-region").monospaced()).")
             }
         }
     }
@@ -370,9 +409,9 @@ struct OverlayNetworkFormView: View {
         return ipv4.isEmpty ? "DHCP" : ipv4
     }
 
-    /// The kinds side by side, each with what joining it takes. A header,
-    /// not a row: a row clips to the section's larger corner radius, which
-    /// cuts the outer corners of the first and last card.
+    /// The kinds side by side, with what joining the chosen one takes. A
+    /// header, not a row: a row clips to the section's larger corner radius,
+    /// which cuts the outer corners of the first and last card.
     private var kindPicker: some View {
         Section {
         } header: {
@@ -385,15 +424,19 @@ struct OverlayNetworkFormView: View {
 
     private func secretField(_ title: String, prompt: String) -> some View {
         // No password content type: these are network secrets, not account
-        // passwords, and must not be offered to (or saved by) AutoFill.
+        // passwords, and must not be offered to (or saved by) AutoFill. A
+        // secure field under a name still reads to iOS as a sign-in form,
+        // whose password it offers to save when the form goes away with the
+        // field filled, so a saved form empties the field on its way out.
         LabeledContent {
             SecureField(
-                title, text: $draft.secret,
+                title, text: isLeaving ? .constant("") : $draft.secret,
                 prompt: Text(hasStoredSecret ? String(localized: "Blank keeps current") : prompt))
                 .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .accessibilityLabel("Network secret")
+                // The kind's own name for it: "Network secret", "tailcat address".
+                .accessibilityLabel(draft.kind.secretLabel ?? title)
         } label: {
             Text(title)
         }
@@ -413,6 +456,7 @@ struct OverlayNetworkFormView: View {
                 ?? String(localized: "The network or its secret could not be saved.")
             return
         }
+        isLeaving = true
         dismiss()
     }
 }
@@ -444,55 +488,85 @@ enum EasyTierConfigServerCopy {
     }
 }
 
-/// Add Network's kind choice: a card per kind, side by side (stacked at
-/// accessibility text sizes), each saying what joining it takes.
+/// Add Network's kind choice: a card per kind, side by side, and below them
+/// what joining the chosen one takes. The cards stay one row tall so that a
+/// form's first fields, and what their footer says about a typed value,
+/// stay above the keyboard. Larger text, which a card that narrow would
+/// have to shrink, takes two cards to a row, and accessibility sizes one.
 private struct OverlayKindPicker: View {
     @Binding var selection: OverlayKind
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var cardsPerRow: Int {
+        if dynamicTypeSize.isAccessibilitySize { return 1 }
+        return dynamicTypeSize > .large ? 2 : OverlayKind.allCases.count
+    }
+
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 10))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
-        layout {
-            ForEach(OverlayKind.allCases, id: \.self) { @Sendable kind in
-                MainActorContent { card(kind) }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
+                ForEach(Self.rows(of: cardsPerRow), id: \.self) { @Sendable row in
+                    MainActorContent {
+                        HStack(spacing: 8) {
+                            ForEach(row, id: \.self) { @Sendable kind in
+                                MainActorContent { card(kind) }
+                            }
+                        }
+                    }
+                }
             }
+            // Where a section's footer starts. Each card says it as its hint.
+            Text(Self.blurb(selection))
+                .font(.footnote)
+                .foregroundStyle(Color.secondary)
+                .padding(.horizontal, 16)
+                .accessibilityHidden(true)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Type")
     }
 
+    /// The kinds in rows of `count`.
+    static func rows(of count: Int) -> [[OverlayKind]] {
+        let kinds = OverlayKind.allCases
+        return stride(from: 0, to: kinds.count, by: count).map {
+            Array(kinds[$0..<min($0 + count, kinds.count)])
+        }
+    }
+
     private func card(_ kind: OverlayKind) -> some View {
         let isSelected = selection == kind
+        // A card with a row to itself has room for its name beside the glyph.
+        let layout = cardsPerRow == 1
+            ? AnyLayout(HStackLayout(spacing: 10))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
         return Button {
             selection = kind
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            layout {
                 OverlayKindGlyph(kind: kind)
                 Text(kind.displayName)
                     .font(.subheadline.weight(.semibold))
                     // Explicit colors: a section header dims its content.
                     .foregroundStyle(Color.primary)
-                Text(Self.blurb(kind))
-                    .font(.caption)
-                    .foregroundStyle(Color.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
             .background(
                 Color(.secondarySystemGroupedBackground),
-                in: .rect(cornerRadius: 20, style: .continuous)
+                in: .rect(cornerRadius: 18, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: isSelected ? 2 : 0)
             }
-            .contentShape(.rect(cornerRadius: 20, style: .continuous))
+            .contentShape(.rect(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityHint(Self.blurb(kind))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -501,6 +575,7 @@ private struct OverlayKindPicker: View {
         case .tailscale: String(localized: "Sign in with your account")
         case .zerotier: String(localized: "Join by network ID")
         case .easytier: String(localized: "Peers or a config server")
+        case .tailcat: String(localized: "One machine, by its address")
         }
     }
 }

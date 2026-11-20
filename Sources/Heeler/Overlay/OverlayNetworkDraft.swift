@@ -116,7 +116,22 @@ struct OverlayNetworkDraft: Equatable, Sendable {
             configServer = configServerURL ?? server
             self.machineID = machineID
             self.hostname = hostname
+        case .tailcat:
+            // Its one field is the address, a secret the form never shows.
+            break
         }
+    }
+
+    /// tailcat: what the typed address says about itself; nil while the
+    /// field is blank or holds something else.
+    var tailcatAddressInfo: TailcatAddressInfo? {
+        guard kind == .tailcat, let typed = secretUpdate else { return nil }
+        return TailcatAddress.info(typed)
+    }
+
+    /// tailcat: something is typed and it is not a tailcat address.
+    var tailcatAddressIsInvalid: Bool {
+        kind == .tailcat && secretUpdate != nil && tailcatAddressInfo == nil
     }
 
     /// The normalized config server URL, token included; nil until valid.
@@ -209,15 +224,23 @@ struct OverlayNetworkDraft: Equatable, Sendable {
                 && !peerList.isEmpty
                 && invalidPeers.isEmpty
                 && ipv4IsValid
+        case .tailcat:
+            // Nothing but the address, which `canSave` checks.
+            return true
         }
     }
 
     /// Form-level validity including the secret: an EasyTier network cannot
     /// join without one, so a new network (or one without a stored secret)
     /// requires it. A Tailscale auth key is optional — without one the node
-    /// asks for an interactive sign-in.
+    /// asks for an interactive sign-in. A tailcat tunnel is its address: a
+    /// typed one must be a tailcat address, and a blank field keeps the
+    /// stored one.
     func canSave(hasStoredSecret: Bool) -> Bool {
         guard isValid else { return false }
+        if kind == .tailcat {
+            return secretUpdate == nil ? hasStoredSecret : tailcatAddressInfo != nil
+        }
         guard kind == .easytier, secretUpdate == nil else { return true }
         // A stored secret of the other source is not this source's secret.
         return hasStoredSecret && (savedEasyTierSource ?? easyTierSource) == easyTierSource
@@ -251,6 +274,8 @@ struct OverlayNetworkDraft: Equatable, Sendable {
                         hostname: hostname,
                         requireEncryption: requireEncryption)
                 }
+            case .tailcat:
+                .tailcat
             }
         return OverlayNetwork(
             id: id, name: name.trimmingCharacters(in: .whitespaces), settings: settings)
@@ -263,6 +288,14 @@ struct OverlayNetworkDraft: Equatable, Sendable {
             return configServerURL
         }
         let trimmed = secret.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard !trimmed.isEmpty else { return nil }
+        return kind == .tailcat ? Self.tailcatAddress(in: trimmed) : trimmed
+    }
+
+    /// The address in what was pasted. `tailcat serve` prints it at the end
+    /// of a line of its own words, which is easily copied whole, and the
+    /// field hides what it holds.
+    static func tailcatAddress(in text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).last { $0.hasPrefix("tc") }.map(String.init) ?? text
     }
 }

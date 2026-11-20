@@ -187,7 +187,7 @@ repository root.
 ### Published guides
 
 `pairing`, `overlay-networks`, `tailscale`, `zerotier`, `easytier`,
-`cloudflare-tunnel`, `vps-jump-host-setup`, `vps-jump-host`, `herdr-core`,
+`tailcat`, `cloudflare-tunnel`, `vps-jump-host-setup`, `vps-jump-host`, `herdr-core`,
 `tmux`, `rex`, `host-routes`, `windows-setup`, `selinux`, `chat`,
 `chat-troubleshooting`, `voice-input`, and `usage`.
 Maintainer documents in `docs/guides/` (`releasing.md`,

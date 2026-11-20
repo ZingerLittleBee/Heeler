@@ -13,7 +13,7 @@
         "en": "Overlay networks",
         "zh": "Overlay Network"
       },
-      "guides": ["overlay-networks", "tailscale", "zerotier", "easytier"]
+      "guides": ["overlay-networks", "tailscale", "zerotier", "easytier", "tailcat"]
     },
     {
       "title": {
@@ -66,6 +66,7 @@
       "tailscale": "Tailscale",
       "zerotier": "ZeroTier",
       "easytier": "EasyTier",
+      "tailcat": "tailcat",
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "Set up a Jump Host",
       "vps-jump-host": "Jump Host in depth",
@@ -88,6 +89,7 @@
       "tailscale": "Tailscale",
       "zerotier": "ZeroTier",
       "easytier": "EasyTier",
+      "tailcat": "tailcat",
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "配置 Jump Host",
       "vps-jump-host": "Jump Host 详解",
@@ -111,6 +113,7 @@
     "tailscale": "Waypoints",
     "zerotier": "Orbit",
     "easytier": "Network",
+    "tailcat": "Cable",
     "cloudflare-tunnel": "Cloud",
     "vps-jump-host-setup": "ListChecks",
     "vps-jump-host": "ShieldCheck",

@@ -1,12 +1,12 @@
-<!-- Translated from docs/guides/overlay-networks.md at 7882049d -->
+<!-- Translated from docs/guides/overlay-networks.md at 058d13ce -->
 
 # 通过 Overlay Network 连接 Heeler
 
-当无法直接连接到运行 herdr 的 Mac 时（例如在蜂窝网络下），可以使用 Tailscale、ZeroTier 或 EasyTier 建立连接。本系列指南适用于运行 herdr 的 Mac 以及运行在 iPhone 或 iPad 上的 Heeler。
+当无法直接连接到运行 herdr 的 Mac 时（例如在蜂窝网络下），可以使用 Tailscale、ZeroTier、EasyTier 或 tailcat 建立连接。本系列指南适用于运行 herdr 的 Mac 以及运行在 iPhone 或 iPad 上的 Heeler。
 
 你需要使用包含 **Settings > Overlay Networks** 的 Heeler 版本。
 
-Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale、ZeroTier 或 EasyTier 应用，也无需配置系统 VPN。Mac 上需要安装对应服务商的客户端、开启“远程登录”（SSH）并运行 herdr。连接后仍按常规方式通过 SSH 登录 Mac。
+Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale、ZeroTier、EasyTier 或 tailcat 应用，也无需配置系统 VPN。Mac 上需要安装对应服务商的客户端、开启“远程登录”（SSH）并运行 herdr。连接后仍按常规方式通过 SSH 登录 Mac。
 
 ## 选择方案
 
@@ -18,6 +18,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | [不在 Mac 上配置 VPN 运行 Tailscale（进阶）](tailscale.md#不在-mac-上配置-vpn-运行-tailscale进阶) | Tailscale 账号与 Homebrew | 支持 |
 | [ZeroTier](zerotier.md) | ZeroTier Central 账号，以及 Mac 上的 ZeroTier One | 支持 |
 | [EasyTier](easytier.md) | 无需账号；在 Mac 终端中运行 EasyTier | 需要自建中继（如小型 VPS）或具备公网入口的 Mac（[配置方法](easytier.md#在局域网外连接-mac)） |
+| [tailcat](tailcat.md) | 无需账号；在 Mac 终端中运行 `tailcat serve`。只能连接这一台 Mac | 支持 |
 
 如果你是初次配置，建议从 Tailscale 开始。对于 Linux 或 Windows 主机，请先参考对应服务商的官方文档安装客户端，再按相同的 Heeler 步骤操作。Windows 主机还需完成 [Windows SSH 与 herdr 配置](windows-setup.md)。
 
@@ -36,6 +37,11 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | --- | --- |
 | <a href="../images/overlay-networks/easytier-manual-form.png"><img src="../images/overlay-networks/easytier-manual-form.png" width="260" alt="EasyTier Network 表单，包含网络名称、密钥和对端地址"></a> | <a href="../images/overlay-networks/easytier-config-server-form.png"><img src="../images/overlay-networks/easytier-config-server-form.png" width="260" alt="EasyTier Config Server 表单，包含服务器地址和本机 Machine ID"></a> |
 | 输入 Mac 的网络名称和密钥，并添加对端地址。[Network 模式配置](easytier.md#3-在-heeler-中添加网络) | 输入服务器地址，然后为该 Machine ID 分配网络。[Config Server 模式配置](easytier.md#2-注册-heeler-设备) |
+
+| tailcat |
+| --- |
+| <a href="../images/overlay-networks/tailcat-form.png"><img src="../images/overlay-networks/tailcat-form.png" width="260" alt="tailcat 表单，包含 Name 和空白的 Address 输入框"></a> |
+| 粘贴 `tailcat serve` 打印的地址，轻点 **Add and Connect**。[tailcat 配置步骤](tailcat.md#3-heeler添加隧道) |
 
 图中所示数值仅为示例。
 
@@ -67,7 +73,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 
 当 Mac 与 Heeler 已加入同一个 Overlay Network 后，从服务商指南回到这里继续操作。
 
-1. 打开 **Hosts** 并轻点 **+**。轻点 **More Options**，将 **Network** 设为你保存的 Overlay Network，填写 **Address** 和 **Port**，然后返回。对于 Tailscale 和 EasyTier，也可以直接在 Settings 中打开对应网络，轻点 Mac 旁的 **Add**，系统会自动填入地址和网络。（**Direct** 表示不使用 Overlay Network 直连。）
+1. 打开 **Hosts** 并轻点 **+**。轻点 **More Options**，将 **Network** 设为你保存的 Overlay Network，填写 **Address** 和 **Port**，然后返回。对于 Tailscale、EasyTier 和 tailcat，也可以直接在 Settings 中打开对应网络，轻点 Mac 旁的 **Add**，系统会自动填入地址和网络。（**Direct** 表示不使用 Overlay Network 直连。）
 2. 按下表填写 **User** 和登录方式，然后轻点 **Connect**。
 3. 仅在显示的指纹与 Mac 上的指纹一致时轻点 **Trust and Continue**。
 4. 保持勾选你想要的 Server，按需为 Host 命名，然后添加它。如果之后无法连接，请打开该 Host，轻点对应的 Server，按其检查项指出的问题排查后轻点 **Run Checks Again**。
@@ -86,7 +92,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | Authentication | 你在上面选择的登录方式 |
 | Name（最后一步） | 标识这台 Mac 的任意名称 |
 
-在 **More Options** 中填写地址时，Tailscale 支持 **Choose from Tailnet…**（保持选中 **IP Address**），EasyTier 支持 **Choose from Network…**。对于 ZeroTier，请从 ZeroTier Central 复制 Mac 的 IP 地址。
+在 **More Options** 中填写地址时，Tailscale 支持 **Choose from Tailnet…**（保持选中 **IP Address**），EasyTier 支持 **Choose from Network…**。对于 ZeroTier，请从 ZeroTier Central 复制 Mac 的 IP 地址。对于 tailcat 隧道，选择隧道后 Heeler 会自动填入地址；它是一个以 `.tailcat` 结尾的名字，不是 IP 地址。
 
 ## 验证连接
 

@@ -215,6 +215,55 @@ struct OverlayPeerChoiceTests {
         #expect(!OverlayPeerList.offersMachineNames(.easytier))
     }
 
+    @Test func aTailcatTunnelOffersNoPeerListAndFillsItsServerInstead() {
+        #expect(!OverlayPeerList.offersPeers(.tailcat))
+        let tunnel = OverlayNetwork(name: "Studio", settings: .tailcat)
+        let other = OverlayNetwork(name: "Lab", settings: .tailcat)
+        var route = HostRouteDraft()
+
+        route.followTailcatServer(of: tunnel)
+        #expect(route.address == tunnel.tailcatServerName)
+        #expect(route.dialsTailcatServer(of: tunnel))
+        #expect(!route.dialsTailcatServer(of: other))
+
+        // Another tunnel's name is replaced, and leaving tailcat takes it out.
+        route.followTailcatServer(of: other)
+        #expect(route.address == other.tailcatServerName)
+        route.followTailcatServer(of: OverlayNetwork(name: "ZT", settings: .zerotier(networkID: "8056c2e21c000001")))
+        #expect(route.address.isEmpty)
+    }
+
+    @Test func aTypedAddressIsKeptUntilTheUserTakesTheTunnels() {
+        let tunnel = OverlayNetwork(name: "Studio", settings: .tailcat)
+        var route = HostRouteDraft()
+        route.address = "10.0.0.5"
+
+        route.followTailcatServer(of: tunnel)
+        #expect(route.address == "10.0.0.5")
+        #expect(!route.dialsTailcatServer(of: tunnel))
+        route.followTailcatServer(of: nil)
+        #expect(route.address == "10.0.0.5")
+
+        route.useTailcatServer(of: tunnel)
+        #expect(route.address == tunnel.tailcatServerName)
+        route.address = " \(tunnel.tailcatServerName?.uppercased() ?? ""). "
+        #expect(route.dialsTailcatServer(of: tunnel))
+    }
+
+    @Test func withAJumpHostTheTailcatServerIsTheJumpHost() {
+        let tunnel = OverlayNetwork(name: "Studio", settings: .tailcat)
+        var route = HostRouteDraft()
+        route.address = "10.0.0.5"
+        route.jumpAddress = "bastion"
+
+        route.followTailcatServer(of: tunnel)
+        #expect(route.jumpAddress == "bastion")
+        route.useTailcatServer(of: tunnel)
+        #expect(route.jumpAddress == tunnel.tailcatServerName)
+        #expect(route.address == "10.0.0.5")
+        #expect(route.dialsTailcatServer(of: tunnel))
+    }
+
     @MainActor
     @Test func pickerModelLoadsSortedCandidatesOrKeepsTheFailure() async {
         let model = OverlayPeerPickerModel { startIfNeeded in
@@ -325,6 +374,7 @@ struct OverlayRuntimePeersTests {
                     case .tailscale: .tailscale
                     case .zerotier: .zerotier
                     case .easytier: .easytier
+                    case .tailcat: .tailcat
                     }
                 let node = PeerNode(kind: kind, state: state)
                 built.append(node)

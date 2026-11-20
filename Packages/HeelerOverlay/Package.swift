@@ -3,12 +3,12 @@
 import PackageDescription
 
 // The native libraries (CTailscale, CZeroTier, CEasyTier) are built and
-// published by https://github.com/Ylarod/heeler-overlay-natives (ADR 0021).
+// published by https://github.com/ZingerLittleBee/heeler-overlay-natives (ADR 0021).
 //
 // Upgrade with `scripts/use-overlay-natives-release.sh <version>` (repository
 // root). Always depend on an exact release; never on a branch or a range.
 let nativesDependency: Package.Dependency =
-    .package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "1.0.3")
+    .package(url: "https://github.com/ZingerLittleBee/heeler-overlay-natives.git", exact: "1.1.0")
 
 let package = Package(
     name: "HeelerOverlay",

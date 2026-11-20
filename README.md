@@ -65,7 +65,7 @@ Heeler is an independent, open-source agent console and **herdr mobile client** 
 - **Notifications and Live Activities**: an end-to-end encrypted push when an Agent goes Blocked or Done, and your Agents on the Lock Screen and Dynamic Island. The relay cannot read the content. [Privacy](PRIVACY.md)
 - **Usage**: Claude Code and Codex Usage Limits with their reset times, up to 30 days of Token Usage with its estimated API cost, and Home Screen and Lock Screen widgets. [Usage guide](https://docs.heeler.bybee.dev/usage)
 - **Composer**: draft with the full iOS keyboard or by voice, then Send once. The tools keyboard adds Agent control keys, Skills, and Snippets, and you can attach a photo or a file up to 64 MiB. [Voice Input guide](https://docs.heeler.bybee.dev/voice-input)
-- **Reach from anywhere**: Tailscale, ZeroTier, and EasyTier are built into the app, so the phone needs no VPN app. A Jump Host covers machines you cannot route to, and a Host can have several routes. [Overlay networks](https://docs.heeler.bybee.dev/overlay-networks) · [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup) · [Routes](https://docs.heeler.bybee.dev/host-routes)
+- **Reach from anywhere**: Tailscale, ZeroTier, EasyTier, and tailcat are built into the app, so the phone needs no VPN app. A Jump Host covers machines you cannot route to, and a Host can have several routes. [Overlay networks](https://docs.heeler.bybee.dev/overlay-networks) · [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup) · [Routes](https://docs.heeler.bybee.dev/host-routes)
 - **Also**: QR pairing, Worktrees, a Changes view of staged and unstaged files, 30 themes, and iPad with Magic Keyboard shortcuts, multiwindow, and drag and drop.
 
 ## Installation
@@ -95,7 +95,7 @@ Scan the code it shows and the machine is added as a Host, with its addresses, h
 
 **Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, herdr-core, each tmux server, and Rex. One Host can carry several of them. [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [Connect tmux](https://docs.heeler.bybee.dev/tmux) · [Connect Rex](https://docs.heeler.bybee.dev/rex) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
 
-**Away from home.** Reach the machine over a built-in [overlay network](https://docs.heeler.bybee.dev/overlay-networks) ([Tailscale](https://docs.heeler.bybee.dev/tailscale), [ZeroTier](https://docs.heeler.bybee.dev/zerotier), [EasyTier](https://docs.heeler.bybee.dev/easytier)), a [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup), or [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel), and give the Host [several routes](https://docs.heeler.bybee.dev/host-routes) so it works at home and away.
+**Away from home.** Reach the machine over a built-in [overlay network](https://docs.heeler.bybee.dev/overlay-networks) ([Tailscale](https://docs.heeler.bybee.dev/tailscale), [ZeroTier](https://docs.heeler.bybee.dev/zerotier), [EasyTier](https://docs.heeler.bybee.dev/easytier), [tailcat](https://docs.heeler.bybee.dev/tailcat)), a [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup), or [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel), and give the Host [several routes](https://docs.heeler.bybee.dev/host-routes) so it works at home and away.
 
 ## How it connects
 
