@@ -1,0 +1,19 @@
+{
+  "description": "Shared push token v1 test vector. The shape of an APNs token that the plugin's Live Activity registrations (plugin/src/delivery/registrations.js, mirrored into the Host Helper) and the Push Relay (relay/src/worker.js, for alerts and Live Activities) both accept: 16 to 1024 lowercase hex characters. Each case is `unit` repeated `count` times. `accepted` holds the two bounds and the lengths APNs has issued (64, 160 for a device token, 256 for a Live Activity on an iOS 27 Simulator); `rejected` holds what stays out. A change here changes both patterns together.",
+  "accepted": [
+    { "name": "the shortest token, 16 characters", "unit": "0123456789abcdef", "count": 1 },
+    { "name": "a 64-character token", "unit": "ab", "count": 32 },
+    { "name": "a 160-character device token", "unit": "0123456789abcdef", "count": 10 },
+    { "name": "a 256-character Live Activity token", "unit": "0123456789abcdef", "count": 16 },
+    { "name": "the longest token, 1024 characters", "unit": "0123456789abcdef", "count": 64 }
+  ],
+  "rejected": [
+    { "name": "an empty token", "unit": "", "count": 0 },
+    { "name": "a 15-character token", "unit": "a", "count": 15 },
+    { "name": "a 1025-character token", "unit": "a", "count": 1025 },
+    { "name": "uppercase hex", "unit": "AB", "count": 32 },
+    { "name": "letters past f", "unit": "zz", "count": 32 },
+    { "name": "hex with separators", "unit": "abcd-", "count": 13 },
+    { "name": "hex with a trailing newline", "unit": "0123456789abcdef\n", "count": 1 }
+  ]
+}
