@@ -206,11 +206,7 @@ struct ChatBackgroundWorkActivityCard: View {
                 }
             }
             if isExpandable {
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    .accessibilityHidden(true)
+                ChatSheetDisclosureChevron(isExpanded: isExpanded)
             }
         }
     }

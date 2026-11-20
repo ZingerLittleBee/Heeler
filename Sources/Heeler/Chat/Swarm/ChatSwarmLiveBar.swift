@@ -1,16 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Shared Catppuccin Mocha/Latte tokens for Antigravity CLI Swarm cards.
+/// Shared Catppuccin Mocha/Latte tokens for the Antigravity CLI Swarm.
 enum ChatSwarmPalette {
     private static let mauveWashUI = flavoured(mocha: 0xCBA6F7, latte: 0x8839EF)
     private static let mauveInkUI = flavoured(mocha: 0xCBA6F7, latte: 0x6C22C7)
-    private static let sapphireInkUI = flavoured(mocha: 0x74C7EC, latte: 0x209FB5)
 
     static let accentInk = Color(uiColor: mauveInkUI)
     static let accentWash = Color(uiColor: mauveWashUI).opacity(0.15)
-    static let coordinatorInk = Color(uiColor: sapphireInkUI)
-    static let coordinatorWash = Color(uiColor: sapphireInkUI).opacity(0.14)
 
     static func memberStatusInk(_ status: AgySwarmSnapshot.MemberStatus) -> Color {
         switch status {
@@ -18,15 +15,6 @@ enum ChatSwarmPalette {
         case .waiting: Color(uiColor: AgentStatusPalette.mutedInk)
         case .error: Color(uiColor: AgentStatusPalette.redInk)
         case .killed: Color(uiColor: AgentStatusPalette.mutedInk).opacity(0.75)
-        }
-    }
-
-    static func memberStatusWash(_ status: AgySwarmSnapshot.MemberStatus) -> Color {
-        switch status {
-        case .working: Color(uiColor: AgentStatusPalette.yellow).opacity(0.15)
-        case .waiting: Color(uiColor: AgentStatusPalette.muted).opacity(0.16)
-        case .error: Color(uiColor: AgentStatusPalette.red).opacity(0.15)
-        case .killed: Color(uiColor: AgentStatusPalette.muted).opacity(0.12)
         }
     }
 

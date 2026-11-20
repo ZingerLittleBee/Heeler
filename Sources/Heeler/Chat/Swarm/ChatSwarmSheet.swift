@@ -43,12 +43,16 @@ private struct ChatSwarmHeaderSummary: Equatable {
     }
 }
 
+/// Under the tabs: a dot for each worker and the counts, then what is
+/// wrong with the Swarm, in words at the trailing edge.
 private struct ChatSwarmHeaderStatusBar: View, Equatable {
     let summary: ChatSwarmHeaderSummary
 
     var body: some View {
         HStack(spacing: 8) {
             ChatSwarmStatusDots(statuses: summary.dotStatuses)
+                .grayscale(summary.isOffline ? 1 : 0)
+                .opacity(summary.isOffline ? 0.5 : 1)
 
             Text(
                 verbatim: headerSummaryText(
@@ -56,7 +60,7 @@ private struct ChatSwarmHeaderStatusBar: View, Equatable {
                     waiting: summary.waitingCount,
                     posts: summary.postCount)
             )
-            .font(.caption.monospacedDigit())
+            .font(.footnote.monospacedDigit())
             .foregroundStyle(.secondary)
             .lineLimit(1)
 
@@ -64,18 +68,16 @@ private struct ChatSwarmHeaderStatusBar: View, Equatable {
 
             if summary.isOffline {
                 Text("Offline")
-                    .font(.caption2.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.stopped))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(ChatBackgroundWorkPalette.statusWash(.stopped), in: Capsule())
             } else if summary.hasSystemAlerts {
-                Text("Needs attention")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(ChatBackgroundWorkPalette.statusWash(.failed), in: Capsule())
+                HStack(spacing: 5) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .accessibilityHidden(true)
+                    Text("Needs attention")
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
             }
         }
     }
@@ -94,7 +96,8 @@ private struct ChatSwarmHeaderStatusBar: View, Equatable {
 }
 
 /// Native 3-tab Swarm Sheet (`Board`, `Members`, `Overview`) plus pushed
-/// read-only Worker sub-conversation view.
+/// read-only Worker sub-conversation view. The Board is a feed, one post
+/// under the last; Members and Overview are grouped lists.
 struct ChatSwarmSheet: View {
     enum Tab: String, CaseIterable, Identifiable {
         case board
@@ -174,8 +177,11 @@ struct ChatSwarmSheet: View {
     }
 
     private func rootPage(swarm: AgySwarmSnapshot) -> some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 8) {
+        // The Board's channels stand with the tabs, over the one hairline
+        // the pages scroll under.
+        let showsChannels = selectedTab == .board && !swarm.channels.isEmpty
+        return VStack(spacing: 0) {
+            VStack(spacing: 10) {
                 Picker("Swarm Section", selection: $selectedTab) {
                     Text("Board").tag(Tab.board)
                     Text("Members").tag(Tab.members)
@@ -189,11 +195,13 @@ struct ChatSwarmSheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 6)
-            .padding(.bottom, 10)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .padding(.bottom, showsChannels ? 4 : 12)
+
+            if showsChannels {
+                channelFilterBar(channels: swarm.channels)
+            }
 
             Divider()
-                .opacity(0.45)
 
             switch selectedTab {
             case .board:
@@ -205,6 +213,11 @@ struct ChatSwarmSheet: View {
             }
         }
         .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    /// A section's title with how many rows it holds.
+    private func counted(_ title: String, _ count: Int) -> String {
+        "\(title) · \(count)"
     }
 
     // MARK: - Board Tab
@@ -225,12 +238,7 @@ struct ChatSwarmSheet: View {
             channel: selectedChannel,
             expandedBriefs: expandedBriefs)
 
-        return VStack(spacing: 0) {
-            if !swarm.channels.isEmpty {
-                channelFilterBar(channels: swarm.channels)
-                Divider().opacity(0.35)
-            }
-
+        return Group {
             if posts.isEmpty {
                 ScrollView {
                     ContentUnavailableView(
@@ -286,43 +294,42 @@ struct ChatSwarmSheet: View {
 
     private func channelFilterBar(channels: [AgySwarmSnapshot.Channel]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 channelChip(label: String(localized: "All"), value: nil, isArchived: false)
                 channelChip(label: "#main", value: AgySwarmParser.mainChannel, isArchived: false)
-                ForEach(channels) { ch in
-                    channelChip(label: "#\(ch.name)", value: ch.name, isArchived: ch.isArchived)
+                ForEach(channels) { @Sendable channel in
+                    MainActorContent {
+                        channelChip(label: "#\(channel.name)", value: channel.name, isArchived: channel.isArchived)
+                    }
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 7)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
+    /// The chosen channel stands on a neutral ground; the others are words.
     private func channelChip(label: String, value: String?, isArchived: Bool) -> some View {
         let isSelected = selectedChannel == value
+        let ink: Color = isSelected ? .primary : (isArchived ? Color(uiColor: .tertiaryLabel) : .secondary)
         return Button {
             disclosureSeq = nil
             selectedChannel = value
         } label: {
             Text(verbatim: label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(
-                    isSelected
-                        ? ChatSwarmPalette.accentInk
-                        : (isArchived ? Color(uiColor: .tertiaryLabel) : Color.secondary))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    isSelected ? ChatSwarmPalette.accentWash : Color.primary.opacity(0.06),
-                    in: Capsule())
-                .overlay {
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 30)
+                .background {
                     if isSelected {
-                        Capsule().stroke(ChatSwarmPalette.accentInk.opacity(0.35), lineWidth: 1)
+                        Capsule().fill(Color.primary.opacity(0.14))
                     }
                 }
+                .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func toggleBrief(_ seq: Int) {
@@ -373,110 +380,85 @@ struct ChatSwarmSheet: View {
         let killed = swarm.killedMembers
 
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
-                ForEach(coordinators) { coordinator in
-                    memberCardButton(coordinator)
+            VStack(alignment: .leading, spacing: 20) {
+                if !coordinators.isEmpty {
+                    ChatSheetSection {
+                        memberRows(coordinators)
+                    }
                 }
 
                 if !active.isEmpty {
-                    memberSection(
-                        title: String(localized: "Active"),
-                        count: active.count,
-                        highlightsCount: true,
-                        members: active)
+                    ChatSheetSection(title: counted(String(localized: "Active"), active.count)) {
+                        memberRows(active)
+                    }
                 }
 
                 if !waiting.isEmpty {
-                    memberSection(
-                        title: String(localized: "Waiting"),
-                        count: waiting.count,
-                        highlightsCount: false,
-                        members: waiting)
+                    ChatSheetSection(title: counted(String(localized: "Waiting"), waiting.count)) {
+                        memberRows(waiting)
+                    }
                 }
 
                 if !killed.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Button {
-                            withAnimation(.snappy(duration: 0.2)) {
-                                showsKilledMembers.toggle()
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text("Stopped")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-                                Text(verbatim: "\(killed.count)")
-                                    .font(.caption2.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.stopped))
-                                    .padding(.horizontal, 6.5)
-                                    .padding(.vertical, 1.5)
-                                    .background(ChatBackgroundWorkPalette.statusWash(.stopped), in: Capsule())
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .rotationEffect(.degrees(showsKilledMembers ? 90 : 0))
-                            }
-                            .padding(.horizontal, 4)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-
-                        if showsKilledMembers {
-                            ForEach(killed) { member in
-                                memberCardButton(member)
-                            }
-                        }
-                    }
+                    stoppedMembers(killed)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 16)
             .padding(.bottom, 22)
         }
     }
 
-    private func memberSection(
-        title: String, count: Int, highlightsCount: Bool, members: [AgySwarmSnapshot.Member]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text(verbatim: title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                Text(verbatim: "\(count)")
-                    .font(.caption2.weight(.bold).monospacedDigit())
-                    .foregroundStyle(
-                        highlightsCount
-                            ? ChatBackgroundWorkPalette.statusInk(.running)
-                            : ChatBackgroundWorkPalette.statusInk(.stopped))
-                    .padding(.horizontal, 6.5)
-                    .padding(.vertical, 1.5)
-                    .background(
-                        highlightsCount
-                            ? ChatBackgroundWorkPalette.statusWash(.running)
-                            : ChatBackgroundWorkPalette.statusWash(.stopped),
-                        in: Capsule())
-                Spacer(minLength: 0)
+    /// The members that were stopped, behind a row that opens them.
+    private func stoppedMembers(_ killed: [AgySwarmSnapshot.Member]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    showsKilledMembers.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(verbatim: counted(String(localized: "Stopped"), killed.count))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    ChatSheetDisclosureChevron(isExpanded: showsKilledMembers)
+                }
+                .padding(.leading, ChatSheetStyle.titleInset)
+                // Its chevron under the rows' own.
+                .padding(.trailing, ChatSheetStyle.rowInset)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 4)
+            .buttonStyle(.plain)
 
-            ForEach(members) { member in
-                memberCardButton(member)
+            if showsKilledMembers {
+                ChatSheetSection {
+                    memberRows(killed)
+                }
+            }
+        }
+        // Closer to the group over it than a titled section stands.
+        .padding(.top, -8)
+    }
+
+    private func memberRows(_ members: [AgySwarmSnapshot.Member]) -> some View {
+        ForEach(Array(members.enumerated()), id: \.element.id) { @Sendable index, member in
+            MainActorContent {
+                memberRow(member, isDivided: index > 0)
             }
         }
     }
 
     @ViewBuilder
-    private func memberCardButton(_ member: AgySwarmSnapshot.Member) -> some View {
+    private func memberRow(_ member: AgySwarmSnapshot.Member, isDivided: Bool) -> some View {
         let canOpenWorker = !member.isCoordinator && ConversationReference.canonicalUUID(member.conversationID) != nil
+        let row = ChatSwarmMemberRow(member: member, showsChevron: canOpenWorker, isDivided: isDivided)
         if member.isCoordinator {
             Button {
                 dismiss()
             } label: {
-                ChatSwarmMemberCard(member: member, showsChevron: false)
+                row
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("chat.swarm.member.\(member.name)")
@@ -484,12 +466,12 @@ struct ChatSwarmSheet: View {
             Button {
                 path.append(member.name)
             } label: {
-                ChatSwarmMemberCard(member: member, showsChevron: true)
+                row
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("chat.swarm.member.\(member.name)")
         } else {
-            ChatSwarmMemberCard(member: member, showsChevron: false)
+            row
                 .accessibilityIdentifier("chat.swarm.member.\(member.name)")
         }
     }
@@ -498,77 +480,67 @@ struct ChatSwarmSheet: View {
 
     private func overviewPage(swarm: AgySwarmSnapshot) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 if !swarm.systemAlerts.isEmpty {
-                    systemAlertsSection(swarm: swarm)
+                    systemAlertsSection(swarm.systemAlerts)
                 }
 
                 if let overview = swarm.overview {
-                    narratorOverviewSection(overview: overview)
+                    ChatSwarmNarratorOverview(overview: overview)
                 } else {
                     computedOverviewSection(swarm: swarm)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 16)
             .padding(.bottom, 22)
         }
     }
 
-    private func systemAlertsSection(swarm: AgySwarmSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeading(String(localized: "Attention"))
-
-            ForEach(swarm.systemAlerts) { alert in
-                let canOpen = ConversationReference.canonicalUUID(alert.conversationID) != nil
-                Button {
-                    if canOpen { path.append(alert.member) }
-                } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: alert.kind == .stuck ? "clock.badge.exclamationmark" : "exclamationmark.triangle.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                            .padding(.top, 2)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(verbatim: "@\(alert.member)")
-                                    .font(.subheadline.weight(.semibold))
-                                Text(verbatim: alertBadgeTitle(alert.kind))
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(ChatBackgroundWorkPalette.statusWash(.failed), in: Capsule())
-                            }
-                            Text(verbatim: alert.detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                        }
-
-                        Spacer(minLength: 4)
-
-                        if canOpen {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                .padding(.top, 4)
-                        }
-                    }
-                    .padding(12)
-                    .background(
-                        Color(uiColor: .secondarySystemGroupedBackground),
-                        in: ChatBackgroundWorkStyle.card)
-                    .overlay {
-                        ChatBackgroundWorkStyle.card
-                            .stroke(Color(uiColor: AgentStatusPalette.red).opacity(0.32), lineWidth: 1)
-                    }
-                    .contentShape(.rect)
+    private func systemAlertsSection(_ alerts: [AgySwarmSnapshot.SystemAlert]) -> some View {
+        ChatSheetSection(title: counted(String(localized: "Attention"), alerts.count)) {
+            ForEach(Array(alerts.enumerated()), id: \.element.id) { @Sendable index, alert in
+                MainActorContent {
+                    alertRow(alert, isDivided: index > 0)
                 }
-                .buttonStyle(.plain)
-                .disabled(!canOpen)
             }
+        }
+    }
+
+    /// What is wrong with a member, and the way to its sub-conversation
+    /// where it has one to show.
+    @ViewBuilder
+    private func alertRow(_ alert: AgySwarmSnapshot.SystemAlert, isDivided: Bool) -> some View {
+        let canOpen = ConversationReference.canonicalUUID(alert.conversationID) != nil
+        let ink = ChatBackgroundWorkPalette.statusInk(.failed)
+        let row = ChatSwarmGlyphRow(isDivided: isDivided, accessory: canOpen ? .opens : .none) {
+            Image(systemName: alert.kind == .stuck ? "clock.badge.exclamationmark" : "exclamationmark.triangle")
+                .foregroundStyle(ink)
+        } content: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: "@\(alert.member)")
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(verbatim: alertBadgeTitle(alert.kind))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(ink)
+                }
+                Text(verbatim: alert.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        if canOpen {
+            Button {
+                path.append(alert.member)
+            } label: {
+                row
+            }
+            .buttonStyle(.plain)
+        } else {
+            row
         }
     }
 
@@ -580,636 +552,199 @@ struct ChatSwarmSheet: View {
         }
     }
 
-    private func narratorOverviewSection(overview: AgySwarmSnapshot.NarratorOverview) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                if !overview.headline.isEmpty {
-                    Text(verbatim: overview.headline)
-                        .font(.body.weight(.semibold))
-                }
-                if let phase = overview.phase {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ProgressView(
-                            value: Double(phase.index),
-                            total: Double(max(1, phase.total)))
-                            .progressViewStyle(.linear)
-                            .tint(ChatSwarmPalette.accentInk)
-                        HStack {
-                            Text(verbatim: phase.label)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(verbatim: "\(phase.index)/\(phase.total)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if let seq = overview.asOfSeq, seq > 0 {
-                    Text("Updated at #\(seq)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-            .overlay {
-                ChatBackgroundWorkStyle.card
-                    .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
-            }
-
-            if !overview.attention.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeading(String(localized: "Decisions & Blockers"))
-                    ForEach(overview.attention) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(verbatim: item.title)
-                                .font(.subheadline.weight(.semibold))
-                            if !item.why.isEmpty {
-                                Text(verbatim: item.why)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-                        .overlay {
-                            ChatBackgroundWorkStyle.card
-                                .stroke(
-                                    item.severity == "high"
-                                        ? Color(uiColor: AgentStatusPalette.yellow).opacity(0.35)
-                                        : Color(uiColor: .separator).opacity(0.34),
-                                    lineWidth: 1)
-                        }
-                    }
-                }
-            }
-
-            if !overview.workstreams.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeading(String(localized: "Workstreams"))
-                    ForEach(overview.workstreams) { stream in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(verbatim: stream.title)
-                                    .font(.subheadline.weight(.semibold))
-                                Spacer(minLength: 4)
-                                Text(verbatim: stream.state)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 2)
-                                    .background(Color.primary.opacity(0.06), in: Capsule())
-                            }
-                            if !stream.owners.isEmpty {
-                                Text(verbatim: stream.owners.map { "@\($0)" }.joined(separator: "  "))
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(ChatSwarmPalette.accentInk)
-                            }
-                            if !stream.note.isEmpty {
-                                Text(verbatim: stream.note)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-                        .overlay {
-                            ChatBackgroundWorkStyle.card
-                                .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
-                        }
-                    }
-                }
-            }
-
-            if !overview.milestones.isEmpty {
-                bulletListCard(title: String(localized: "Milestones"), items: overview.milestones, icon: "checkmark.circle.fill", tint: ChatBackgroundWorkPalette.statusInk(.completed))
-            }
-
-            if !overview.risks.isEmpty {
-                bulletListCard(title: String(localized: "Risks"), items: overview.risks, icon: "exclamationmark.circle.fill", tint: ChatBackgroundWorkPalette.statusInk(.running))
-            }
-        }
-    }
-
-    private func bulletListCard(
-        title: String, items: [AgySwarmSnapshot.NarratorOverview.Milestone], icon: String, tint: Color
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeading(title)
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(items) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: icon)
-                            .font(.caption)
-                            .foregroundStyle(tint)
-                        Text(verbatim: item.text)
-                            .font(.footnote)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-            .overlay {
-                ChatBackgroundWorkStyle.card
-                    .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
-            }
-        }
-    }
-
+    /// What the board alone says of the Swarm, where no narrator has
+    /// written an overview: its counts, its channels and the posts that
+    /// report something.
     private func computedOverviewSection(swarm: AgySwarmSnapshot) -> some View {
-        let highlights = swarm.boardPosts.filter {
-            $0.isMarkedDone || $0.isMarkedStall || ($0.mentionsCoordinator && !$0.isBrief)
-        }.suffix(6)
+        let highlights = Array(
+            swarm.boardPosts.filter {
+                $0.isMarkedDone || $0.isMarkedStall || ($0.mentionsCoordinator && !$0.isBrief)
+            }.suffix(6))
         let workers = swarm.taskWorkers
         let activeCount = workers.count { $0.status == .working }
         let waitingCount = workers.count { $0.status == .waiting }
+        let channels = swarm.channels
 
-        return VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(verbatim: swarm.displayTitle)
-                    .font(.headline)
-
-                HStack(spacing: 12) {
-                    statTile(
-                        value: "\(activeCount)",
-                        label: String(localized: "Active"),
-                        tint: activeCount > 0 ? ChatBackgroundWorkPalette.statusInk(.running) : .primary)
-                    statTile(
-                        value: "\(waitingCount)",
-                        label: String(localized: "Waiting"),
-                        tint: .primary)
-                    statTile(
-                        value: "\(swarm.postCount)",
-                        label: String(localized: "Posts"),
-                        tint: ChatSwarmPalette.accentInk)
+        return VStack(alignment: .leading, spacing: 20) {
+            ChatSheetSection {
+                HStack(spacing: 0) {
+                    ChatSwarmStat(value: activeCount, label: String(localized: "Active"))
+                    Divider().padding(.vertical, 12)
+                    ChatSwarmStat(value: waitingCount, label: String(localized: "Waiting"))
+                    Divider().padding(.vertical, 12)
+                    ChatSwarmStat(value: swarm.postCount, label: String(localized: "Posts"))
                 }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-            .overlay {
-                ChatBackgroundWorkStyle.card
-                    .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !swarm.channels.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeading(String(localized: "Channels"))
-                    ForEach(swarm.channels) { channel in
-                        Button {
-                            selectedChannel = channel.name
-                            selectedTab = .board
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(verbatim: "#\(channel.name)")
-                                    .font(.subheadline.weight(.semibold).monospaced())
-                                    .foregroundStyle(ChatSwarmPalette.accentInk)
-                                if !channel.topic.isEmpty {
-                                    Text(verbatim: channel.topic)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 4)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                            }
-                            .padding(12)
-                            .background(
-                                Color(uiColor: .secondarySystemGroupedBackground),
-                                in: ChatBackgroundWorkStyle.card)
-                            .overlay {
-                                ChatBackgroundWorkStyle.card
-                                    .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
-                            }
+            if !channels.isEmpty {
+                ChatSheetSection(title: String(localized: "Channels")) {
+                    ForEach(Array(channels.enumerated()), id: \.element.id) { @Sendable index, channel in
+                        MainActorContent {
+                            channelRow(channel, isDivided: index > 0)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
 
             if !highlights.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeading(String(localized: "Key Updates"))
-                    ForEach(Array(highlights)) { post in
-                        Button {
-                            selectedChannel = nil
-                            pendingScrollSeq = post.seq
-                            selectedTab = .board
-                        } label: {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(verbatim: "#\(post.seq)")
-                                    .font(.caption.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(ChatSwarmPalette.accentInk)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack(spacing: 6) {
-                                        Text(verbatim: "@\(post.agent)")
-                                            .font(.caption.weight(.semibold))
-                                        if post.isMarkedDone {
-                                            Text("Done")
-                                                .font(.caption2.weight(.semibold))
-                                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.completed))
-                                        } else if post.isMarkedStall {
-                                            Text("Stall")
-                                                .font(.caption2.weight(.semibold))
-                                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                                        }
-                                    }
-                                    Text(verbatim: post.singleLinePreview)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer(minLength: 4)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                    .padding(.top, 2)
-                            }
-                            .padding(12)
-                            .background(
-                                Color(uiColor: .secondarySystemGroupedBackground),
-                                in: ChatBackgroundWorkStyle.card)
-                            .overlay {
-                                ChatBackgroundWorkStyle.card
-                                    .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
-                            }
+                ChatSheetSection(title: String(localized: "Key Updates")) {
+                    ForEach(Array(highlights.enumerated()), id: \.element.id) { @Sendable index, post in
+                        MainActorContent {
+                            updateRow(post, isDivided: index > 0)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
         }
     }
 
-    private func statTile(value: String, label: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: value)
-                .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(tint)
-            Text(verbatim: label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func sectionHeading(_ title: String) -> some View {
-        Text(verbatim: title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-            .padding(.horizontal, 4)
-    }
-}
-
-// MARK: - Board Message Card
-
-struct ChatSwarmBoardCard: View {
-    let row: ChatSwarmBoardRow
-    let toggleExpand: () -> Void
-    let jumpToSeq: (Int) -> Void
-
-    private var message: AgySwarmSnapshot.BoardMessage { row.message }
-
-    private var isCoordinator: Bool {
-        message.agent.caseInsensitiveCompare("coordinator") == .orderedSame
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 6) {
-                Text(verbatim: "#\(message.seq)")
-                    .font(.caption2.weight(.bold).monospacedDigit())
-                    .foregroundStyle(isCoordinator ? ChatSwarmPalette.coordinatorInk : ChatSwarmPalette.accentInk)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        isCoordinator ? ChatSwarmPalette.coordinatorWash : ChatSwarmPalette.accentWash,
-                        in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-
-                Text(verbatim: "@\(message.agent)")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(isCoordinator ? ChatSwarmPalette.coordinatorInk : .primary)
-
-                if let recipient = message.recipientSummary {
-                    Text(verbatim: "→ \(recipient)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 4)
-
-                if message.channel != AgySwarmParser.mainChannel {
-                    badge(text: "#\(message.channel)", ink: ChatSwarmPalette.accentInk, wash: ChatSwarmPalette.accentWash)
-                }
-                if message.isBrief {
-                    badge(
-                        text: String(localized: "Brief"),
-                        ink: ChatBackgroundWorkPalette.statusInk(.stopped),
-                        wash: ChatBackgroundWorkPalette.statusWash(.stopped))
-                } else if message.isMarkedDone {
-                    badge(
-                        text: String(localized: "Done"),
-                        ink: ChatBackgroundWorkPalette.statusInk(.completed),
-                        wash: ChatBackgroundWorkPalette.statusWash(.completed))
-                } else if message.isMarkedStall {
-                    badge(
-                        text: String(localized: "Stall"),
-                        ink: ChatBackgroundWorkPalette.statusInk(.failed),
-                        wash: ChatBackgroundWorkPalette.statusWash(.failed))
-                }
-
-                if let clock = message.displayTime {
-                    Text(verbatim: clock)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            if row.isCollapsedBrief {
-                Text(verbatim: message.text)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button(action: toggleExpand) {
-                    Text("Show full brief")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ChatSwarmPalette.accentInk)
-                }
-                .buttonStyle(.plain)
-            } else {
-                if let blocks = row.blocks {
-                    ChatMarkdownView(blocks: blocks)
-                        .font(.subheadline)
-                } else {
-                    Text(verbatim: message.text)
-                        .font(.body)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if message.shouldCollapseBrief {
-                    Button(action: toggleExpand) {
-                        Text("Show less")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(ChatSwarmPalette.accentInk)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            if !row.citedSeqs.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(row.citedSeqs, id: \.self) { seq in
-                        Button {
-                            jumpToSeq(seq)
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.turn.up.left")
-                                    .font(.system(size: 9, weight: .semibold))
-                                Text(verbatim: "#\(seq)")
-                                    .font(.caption2.weight(.semibold).monospacedDigit())
-                            }
-                            .foregroundStyle(ChatSwarmPalette.accentInk)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(ChatSwarmPalette.accentWash, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .padding(13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            ChatBackgroundWorkStyle.card
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .overlay {
-                    if row.isHighlighted {
-                        ChatBackgroundWorkStyle.card
-                            .fill(ChatSwarmPalette.accentWash)
-                    }
-                }
-        }
-        .overlay {
-            ChatBackgroundWorkStyle.card
-                .stroke(borderColor, lineWidth: row.isHighlighted ? 1.5 : 1)
-        }
-        .accessibilityIdentifier("chat.swarm.post.\(message.seq)")
-    }
-
-    private var borderColor: Color {
-        if row.isHighlighted {
-            return ChatSwarmPalette.accentInk
-        }
-        if message.isMarkedStall {
-            return Color(uiColor: AgentStatusPalette.red).opacity(0.30)
-        }
-        if isCoordinator {
-            return ChatSwarmPalette.coordinatorInk.opacity(0.28)
-        }
-        return Color(uiColor: .separator).opacity(0.34)
-    }
-
-    private func badge(text: String, ink: Color, wash: Color) -> some View {
-        Text(verbatim: text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(ink)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(wash, in: Capsule())
-    }
-}
-
-// MARK: - Member Card
-
-struct ChatSwarmMemberCard: View {
-    let member: AgySwarmSnapshot.Member
-    let showsChevron: Bool
-
-    private static let innerBox = RoundedRectangle(cornerRadius: 10, style: .continuous)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                ChatSwarmMemberStatusPill(status: member.status, isStuck: member.isStuck)
-
-                Text(verbatim: "@\(member.name)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(member.isKilled ? .secondary : .primary)
+    private func channelRow(_ channel: AgySwarmSnapshot.Channel, isDivided: Bool) -> some View {
+        Button {
+            selectedChannel = channel.name
+            selectedTab = .board
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Text(verbatim: "#\(channel.name)")
+                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                     .lineLimit(1)
-
-                if member.isCoordinator {
-                    roleBadge(String(localized: "Coordinator"), isCoordinator: true)
-                } else if member.isRoleWorker {
-                    roleBadge(member.role, isCoordinator: false)
-                } else if !member.workspaceMode.isEmpty, member.workspaceMode != "inherit" {
-                    roleBadge(member.workspaceMode, isCoordinator: false)
-                }
-
-                Spacer(minLength: 4)
-
-                if member.isCoordinator {
-                    Text("Main Chat")
-                        .font(.caption2.weight(.medium))
+                if !channel.topic.isEmpty {
+                    Text(verbatim: channel.topic)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
-                } else if showsChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                }
-            }
-
-            HStack(spacing: 8) {
-                if let model = member.displayModel {
-                    Text(verbatim: model)
                         .lineLimit(1)
-                    Text(verbatim: "·")
                 }
-                Text(verbatim: statsText)
-                    .monospacedDigit()
-                if !member.isCoordinator, !member.isKilled, member.unread > 0 {
-                    Text("+\(member.unread) unread")
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(ChatSwarmPalette.accentInk)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1.5)
-                        .background(ChatSwarmPalette.accentWash, in: Capsule())
-                }
+                Spacer(minLength: 4)
+                ChatStripChevron()
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if let failure = member.failure {
-                Text(verbatim: failure.detail)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(ChatBackgroundWorkPalette.statusWash(.failed), in: Self.innerBox)
-            } else if let activity = member.activity, !activity.isEmpty {
-                Text(verbatim: activity)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
-                    .overlay {
-                        Self.innerBox.stroke(ChatBackgroundWorkPalette.terminalBorder, lineWidth: 1)
-                    }
-            }
+            .padding(.horizontal, ChatSheetStyle.rowInset)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+            .chatRowDivider(isDivided, inset: ChatSheetStyle.rowInset)
         }
-        .padding(13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            ChatBackgroundWorkStyle.card
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .overlay {
-                    if member.status == .working {
-                        ChatBackgroundWorkStyle.card.fill(
-                            LinearGradient(
-                                colors: [Color(uiColor: AgentStatusPalette.yellow).opacity(0.06), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom))
+        .buttonStyle(.plain)
+    }
+
+    private func updateRow(_ post: AgySwarmSnapshot.BoardMessage, isDivided: Bool) -> some View {
+        Button {
+            selectedChannel = nil
+            pendingScrollSeq = post.seq
+            selectedTab = .board
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text(verbatim: "#\(post.seq)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(verbatim: "@\(post.agent)")
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        if post.isMarkedDone {
+                            ChatSwarmPostMark(isDone: true)
+                        } else if post.isMarkedStall {
+                            ChatSwarmPostMark(isDone: false)
+                        }
                     }
+                    Text(verbatim: post.singleLinePreview)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ChatStripChevron()
+            }
+            .padding(.horizontal, ChatSheetStyle.rowInset)
+            .padding(.vertical, 12)
+            .contentShape(.rect)
+            .chatRowDivider(isDivided, inset: ChatSheetStyle.rowInset)
         }
-        .overlay {
-            ChatBackgroundWorkStyle.card
-                .stroke(cardBorder, lineWidth: 1)
-        }
-        .contentShape(.rect)
-    }
-
-    private var statsText: String {
-        let stepsLabel = String(localized: "\(member.steps) steps")
-        let postsLabel = String(localized: "\(member.posts) posts")
-        return "\(stepsLabel) · \(postsLabel)"
-    }
-
-    private var cardBorder: Color {
-        switch member.status {
-        case .working:
-            return Color(uiColor: AgentStatusPalette.yellow).opacity(0.32)
-        case .error:
-            return Color(uiColor: AgentStatusPalette.red).opacity(0.32)
-        case .waiting, .killed:
-            return Color(uiColor: .separator).opacity(0.34)
-        }
-    }
-
-    private func roleBadge(_ text: String, isCoordinator: Bool) -> some View {
-        Text(verbatim: text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(isCoordinator ? ChatSwarmPalette.coordinatorInk : ChatSwarmPalette.accentInk)
-            .padding(.horizontal, 6.5)
-            .padding(.vertical, 2)
-            .background(
-                isCoordinator ? ChatSwarmPalette.coordinatorWash : ChatSwarmPalette.accentWash,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .buttonStyle(.plain)
     }
 }
 
-struct ChatSwarmMemberStatusPill: View {
-    let status: AgySwarmSnapshot.MemberStatus
-    var isStuck = false
+// MARK: - Shared Rows
 
-    var body: some View {
-        HStack(spacing: 5) {
-            icon
-            Text(verbatim: label)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-        }
-        .foregroundStyle(ink)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
-        .background(wash, in: Capsule())
-        .fixedSize()
-        .accessibilityHidden(true)
+/// A sheet row that leads with a glyph: the glyph in a column of its own,
+/// on the first line of the text beside it, and what a tap does at the
+/// trailing edge.
+private struct ChatSwarmGlyphRow<Glyph: View, Content: View>: View {
+    enum Accessory {
+        case none
+        /// The row opens something else.
+        case opens
+        /// The row opens in place.
+        case discloses(isExpanded: Bool)
     }
 
-    @ViewBuilder
-    private var icon: some View {
+    var isDivided = false
+    var accessory = Accessory.none
+    @ViewBuilder let glyph: Glyph
+    @ViewBuilder let content: Content
+
+    @ScaledMetric(relativeTo: .callout) private var glyphColumn: CGFloat = ChatSwarmSheetStyle.glyphColumn
+
+    var body: some View {
+        HStack(alignment: .center, spacing: ChatSheetStyle.glyphSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: ChatSheetStyle.glyphSpacing) {
+                glyph
+                    .font(.callout)
+                    .frame(width: glyphColumn)
+                    .accessibilityHidden(true)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            switch accessory {
+            case .none:
+                EmptyView()
+            case .opens:
+                ChatStripChevron()
+            case .discloses(let isExpanded):
+                ChatSheetDisclosureChevron(isExpanded: isExpanded)
+            }
+        }
+        .padding(.horizontal, ChatSheetStyle.rowInset)
+        .padding(.vertical, 12)
+        .contentShape(.rect)
+        .chatRowDivider(isDivided, inset: ChatSheetStyle.rowInset + glyphColumn + ChatSheetStyle.glyphSpacing)
+    }
+}
+
+private enum ChatSwarmSheetStyle {
+    /// A sheet row's glyph column, before Dynamic Type scales it.
+    static let glyphColumn: CGFloat = 18
+}
+
+/// What a member is doing, as one glyph.
+private struct ChatSwarmMemberGlyph: View {
+    let status: AgySwarmSnapshot.MemberStatus
+    let isStuck: Bool
+
+    var body: some View {
         if isStuck {
             Image(systemName: "clock.badge.exclamationmark")
-                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
         } else {
             switch status {
             case .working:
-                ChatBackgroundWorkSpinningArc(size: 11, lineWidth: 1.9)
+                ChatBackgroundWorkGlyph(status: .running, size: .large)
             case .waiting:
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 8.5, weight: .bold))
+                Image(systemName: "pause.circle")
+                    .foregroundStyle(ChatSwarmPalette.memberStatusInk(.waiting))
             case .error:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9.5, weight: .bold))
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(ChatSwarmPalette.memberStatusInk(.error))
             case .killed:
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 8.5, weight: .bold))
+                ChatBackgroundWorkGlyph(status: .stopped, size: .large)
             }
         }
     }
+}
 
-    private var label: String {
+extension AgySwarmSnapshot.Member {
+    /// What it is doing, as a word.
+    fileprivate var statusWord: String {
         if isStuck {
             return String(localized: "Stuck")
         }
@@ -1221,12 +756,484 @@ struct ChatSwarmMemberStatusPill: View {
         }
     }
 
-    private var ink: Color {
-        isStuck ? ChatBackgroundWorkPalette.statusInk(.failed) : ChatSwarmPalette.memberStatusInk(status)
+    /// Its model, where it names one, then how far it has got.
+    fileprivate var statsLine: String {
+        var parts = [String(localized: "\(steps) steps"), String(localized: "\(posts) posts")]
+        if let displayModel {
+            parts.insert(displayModel, at: 0)
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// What a post reports of its work: that it is done, or that it stalled.
+private struct ChatSwarmPostMark: View {
+    let isDone: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: isDone ? "checkmark" : "exclamationmark.triangle")
+                .accessibilityHidden(true)
+            if isDone {
+                Text("Done")
+            } else {
+                Text("Stall")
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(ChatBackgroundWorkPalette.statusInk(isDone ? .completed : .failed))
+        .fixedSize()
+    }
+}
+
+/// One of the counts that head the Overview where nothing narrates it.
+private struct ChatSwarmStat: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: "\(value)")
+                .font(.title2.weight(.semibold).monospacedDigit())
+            Text(verbatim: label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ChatSheetStyle.rowInset)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Board Post
+
+/// A post in the Board's feed: who posted it, to whom and when on one
+/// line, its text under that, and a hairline over it. Named a card for the
+/// list it is built in, which it was drawn as before.
+struct ChatSwarmBoardCard: View {
+    let row: ChatSwarmBoardRow
+    let toggleExpand: () -> Void
+    let jumpToSeq: (Int) -> Void
+
+    private var message: AgySwarmSnapshot.BoardMessage { row.message }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            heading
+
+            // Markdown is set in the body size, so the text that stands in
+            // for it is too.
+            if row.isCollapsedBrief {
+                Text(verbatim: message.text)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                disclosure(Text("Show full brief"))
+            } else {
+                if let blocks = row.blocks {
+                    ChatMarkdownView(blocks: blocks)
+                } else {
+                    Text(verbatim: message.text)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if message.shouldCollapseBrief {
+                    disclosure(Text("Show less"))
+                }
+            }
+
+            if !row.citedSeqs.isEmpty {
+                citations
+            }
+        }
+        // The list's own margin stands over the first post.
+        .padding(.top, row.isFirst ? 2 : 13)
+        .padding(.bottom, 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { highlight }
+        .overlay(alignment: .top) {
+            if !row.isFirst {
+                // From the text's edge to the list's.
+                Divider()
+                    .padding(.trailing, -16)
+            }
+        }
+        .accessibilityIdentifier("chat.swarm.post.\(message.seq)")
     }
 
-    private var wash: Color {
-        isStuck ? ChatBackgroundWorkPalette.statusWash(.failed) : ChatSwarmPalette.memberStatusWash(status)
+    private var heading: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Text(verbatim: "#\(message.seq)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Text(verbatim: "@\(message.agent)")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            if let route {
+                Text(verbatim: route)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            if message.isBrief {
+                Text("Brief")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            } else if message.isMarkedDone {
+                ChatSwarmPostMark(isDone: true)
+            } else if message.isMarkedStall {
+                ChatSwarmPostMark(isDone: false)
+            }
+
+            if let clock = message.displayTime {
+                Text(verbatim: clock)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
+        }
+    }
+
+    /// Whom the post is for, then its channel where that is not the main
+    /// one.
+    private var route: String? {
+        var parts: [String] = []
+        if let recipient = message.recipientSummary {
+            parts.append("→ \(recipient)")
+        }
+        if message.channel != AgySwarmParser.mainChannel {
+            parts.append("#\(message.channel)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// A text button under the post, tall enough to tap and drawn close.
+    private func disclosure(_ title: Text) -> some View {
+        Button(action: toggleExpand) {
+            title
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tint)
+                .frame(minHeight: 30)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, -4)
+        .padding(.bottom, -6)
+    }
+
+    /// The posts this one answers, each a jump to it.
+    private var citations: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.turn.up.left")
+                .font(.caption2.weight(.semibold))
+                .accessibilityHidden(true)
+            ForEach(row.citedSeqs, id: \.self) { @Sendable seq in
+                MainActorContent {
+                    citation(seq)
+                }
+            }
+        }
+        .foregroundStyle(.tint)
+        .padding(.top, -4)
+        .padding(.bottom, -6)
+    }
+
+    private func citation(_ seq: Int) -> some View {
+        Button {
+            jumpToSeq(seq)
+        } label: {
+            Text(verbatim: "#\(seq)")
+                .font(.system(.caption, design: .monospaced))
+                .padding(.horizontal, 5)
+                .frame(minHeight: 30)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The post a citation jumped to, on a wash that stands clear of the
+    /// hairlines. A shape, as a bare colour is not drawn square here
+    /// (iOS 27.0).
+    @ViewBuilder
+    private var highlight: some View {
+        if row.isHighlighted {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ChatSwarmPalette.accentWash)
+                .padding(.horizontal, -8)
+                .padding(.top, row.isFirst ? -6 : 5)
+                .padding(.bottom, 5)
+        }
+    }
+}
+
+// MARK: - Member Row
+
+/// A member in the Members tab: what it is doing as a glyph, its name and
+/// role, how far it has got, then the one line that says what it is on or
+/// what stopped it.
+private struct ChatSwarmMemberRow: View {
+    let member: AgySwarmSnapshot.Member
+    let showsChevron: Bool
+    let isDivided: Bool
+
+    var body: some View {
+        ChatSwarmGlyphRow(isDivided: isDivided, accessory: showsChevron ? .opens : .none) {
+            ChatSwarmMemberGlyph(status: member.status, isStuck: member.isStuck)
+        } content: {
+            VStack(alignment: .leading, spacing: 2) {
+                title
+                Text(verbatim: member.statsLine)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                note
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(member.statusWord)
+    }
+
+    private var title: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(verbatim: "@\(member.name)")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(member.isKilled ? .secondary : .primary)
+                .lineLimit(1)
+
+            if let role {
+                Text(verbatim: role)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if member.isCoordinator {
+                Text("Main Chat")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            } else if !member.isKilled, member.unread > 0 {
+                // What it has yet to read, in the tint.
+                Text("+\(member.unread) unread")
+                    .font(.footnote)
+                    .foregroundStyle(.tint)
+                    .fixedSize()
+            }
+        }
+    }
+
+    private var role: String? {
+        if member.isCoordinator {
+            return String(localized: "Coordinator")
+        }
+        if member.isRoleWorker, !member.role.isEmpty {
+            return member.role
+        }
+        if !member.workspaceMode.isEmpty, member.workspaceMode != "inherit" {
+            return member.workspaceMode
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private var note: some View {
+        if let failure = member.failure {
+            Text(verbatim: failure.detail)
+                .font(.footnote)
+                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        } else if member.isStuck {
+            Text("No transcript updates for over 10 minutes.")
+                .font(.footnote)
+                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+                .multilineTextAlignment(.leading)
+        } else if let activity = member.activity, !activity.isEmpty {
+            // A sentence about the step more often than a command.
+            Text(verbatim: activity)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+}
+
+// MARK: - Narrated Overview
+
+/// The Overview a narrator wrote: where the Swarm stands, what waits on a
+/// decision, each workstream, and what is behind and ahead.
+private struct ChatSwarmNarratorOverview: View {
+    let overview: AgySwarmSnapshot.NarratorOverview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if hasSummary {
+                summary
+            }
+            if !overview.attention.isEmpty {
+                decisions
+            }
+            if !overview.workstreams.isEmpty {
+                workstreams
+            }
+            if !overview.milestones.isEmpty {
+                points(String(localized: "Milestones"), overview.milestones, isRisk: false)
+            }
+            if !overview.risks.isEmpty {
+                points(String(localized: "Risks"), overview.risks, isRisk: true)
+            }
+        }
+    }
+
+    private var hasSummary: Bool {
+        !overview.headline.isEmpty || overview.phase != nil || (overview.asOfSeq ?? 0) > 0
+    }
+
+    private var summary: some View {
+        ChatSheetSection {
+            VStack(alignment: .leading, spacing: 10) {
+                if !overview.headline.isEmpty {
+                    Text(verbatim: overview.headline)
+                        .font(.headline)
+                }
+                if let phase = overview.phase {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(
+                            value: Double(phase.index),
+                            total: Double(max(1, phase.total)))
+                            .progressViewStyle(.linear)
+                            .tint(ChatSwarmPalette.accentInk)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(verbatim: phase.label)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                            Text(verbatim: "\(phase.index)/\(phase.total)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if let seq = overview.asOfSeq, seq > 0 {
+                    Text("Updated at #\(seq)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+        }
+    }
+
+    /// A decision that weighs on the Swarm leads with a warning; the rest
+    /// with a dot.
+    private var decisions: some View {
+        ChatSheetSection(title: String(localized: "Decisions & Blockers")) {
+            ForEach(Array(overview.attention.enumerated()), id: \.element.id) { @Sendable index, item in
+                MainActorContent {
+                    ChatSwarmGlyphRow(isDivided: index > 0) {
+                        if item.severity == "high" {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
+                        } else {
+                            Circle()
+                                .fill(ChatBackgroundWorkPalette.statusInk(.stopped))
+                                .frame(width: 6, height: 6)
+                                // Mid-height of the title's letters.
+                                .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
+                        }
+                    } content: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: item.title)
+                                .font(.callout)
+                            if !item.why.isEmpty {
+                                Text(verbatim: item.why)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var workstreams: some View {
+        ChatSheetSection(title: String(localized: "Workstreams")) {
+            ForEach(Array(overview.workstreams.enumerated()), id: \.element.id) { @Sendable index, stream in
+                MainActorContent {
+                    ChatSwarmWorkstreamRow(stream: stream, isDivided: index > 0)
+                }
+            }
+        }
+    }
+
+    private func points(
+        _ title: String, _ items: [AgySwarmSnapshot.NarratorOverview.Milestone], isRisk: Bool
+    ) -> some View {
+        ChatSheetSection(title: title) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { @Sendable index, item in
+                MainActorContent {
+                    ChatSwarmGlyphRow(isDivided: index > 0) {
+                        if isRisk {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
+                        } else {
+                            ChatBackgroundWorkGlyph(status: .completed, size: .large)
+                        }
+                    } content: {
+                        Text(verbatim: item.text)
+                            .font(.subheadline)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ChatSwarmWorkstreamRow: View {
+    let stream: AgySwarmSnapshot.NarratorOverview.Workstream
+    let isDivided: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: stream.title)
+                    .font(.callout)
+                Spacer(minLength: 4)
+                Text(verbatim: stream.state)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if !stream.owners.isEmpty {
+                Text(verbatim: stream.owners.map { "@\($0)" }.joined(separator: "  "))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(ChatSwarmPalette.accentInk)
+            }
+            if !stream.note.isEmpty {
+                Text(verbatim: stream.note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ChatSheetStyle.rowInset)
+        .padding(.vertical, 12)
+        .chatRowDivider(isDivided, inset: ChatSheetStyle.rowInset)
     }
 }
 
@@ -1322,9 +1329,9 @@ struct ChatSwarmWorkerDetailView: View {
     private func workerRowView(_ row: ChatSwarmWorkerRow) -> some View {
         switch row {
         case .header(let member):
-            workerHeaderCard(member: member)
+            workerHeader(member: member)
         case .assignment(let post, let isExpanded, let blocks):
-            assignmentCard(post: post, isExpanded: isExpanded, blocks: blocks)
+            assignmentRow(post: post, isExpanded: isExpanded, blocks: blocks)
         case .loading:
             HStack(spacing: 8) {
                 ProgressView()
@@ -1413,102 +1420,91 @@ struct ChatSwarmWorkerDetailView: View {
         }
     }
 
-    private func workerHeaderCard(member: AgySwarmSnapshot.Member) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                ChatSwarmMemberStatusPill(status: member.status, isStuck: member.isStuck)
-                if let model = member.displayModel {
-                    Text(verbatim: model)
-                        .font(.caption.weight(.medium))
+    /// What the worker is doing and how far it has got, over the note
+    /// that this page only reads.
+    private func workerHeader(member: AgySwarmSnapshot.Member) -> some View {
+        ChatSheetSection(
+            footer: String(
+                localized:
+                    "Read-only view of this worker's sub-conversation. Send messages in the main Chat to guide the coordinator.")
+        ) {
+            ChatSwarmGlyphRow {
+                ChatSwarmMemberGlyph(status: member.status, isStuck: member.isStuck)
+            } content: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: member.statusWord)
+                        .font(.callout)
+                    Text(verbatim: member.statsLine)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
-                Spacer(minLength: 4)
-                let stepsLabel = String(localized: "\(member.steps) steps")
-                let postsLabel = String(localized: "\(member.posts) posts")
-                Text(verbatim: "\(stepsLabel) · \(postsLabel)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
             }
-            Text("Read-only view of this worker's sub-conversation. Send messages in the main Chat to guide the coordinator.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-        .overlay {
-            ChatBackgroundWorkStyle.card
-                .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 1)
+            .accessibilityElement(children: .combine)
         }
     }
 
-    private func assignmentCard(
+    /// The brief that set the worker going: two lines of it, or all of it
+    /// once opened.
+    private func assignmentRow(
         post: AgySwarmSnapshot.BoardMessage,
         isExpanded: Bool,
         blocks: [ChatMarkdownBlock]?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        ChatSheetSection {
             Button {
                 disclosureItem = .assignment
                 isAssignmentExpanded.toggle()
             } label: {
-                HStack(spacing: 6) {
+                ChatSwarmGlyphRow(accessory: .discloses(isExpanded: isExpanded)) {
                     Image(systemName: "doc.text")
-                        .font(.caption.weight(.semibold))
                         .foregroundStyle(ChatSwarmPalette.accentInk)
-                    Text("Assignment (#\(post.seq))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ChatSwarmPalette.accentInk)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                } content: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Assignment (#\(post.seq))")
+                            .font(.callout)
+                        if !isExpanded {
+                            Text(verbatim: post.singleLinePreview)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
                 }
-                .contentShape(.rect)
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                if let blocks {
-                    ChatMarkdownView(blocks: blocks)
-                        .font(.footnote)
-                } else {
-                    Text(verbatim: post.text)
-                        .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if let blocks {
+                        ChatMarkdownView(blocks: blocks)
+                    } else {
+                        Text(verbatim: post.text)
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-            } else {
-                Text(verbatim: post.singleLinePreview)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                .padding(.horizontal, ChatSheetStyle.rowInset)
+                .padding(.bottom, 12)
             }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
-        .overlay {
-            ChatBackgroundWorkStyle.card
-                .stroke(ChatSwarmPalette.accentInk.opacity(0.28), lineWidth: 1)
         }
     }
 }
 
+/// One step of a worker's sub-conversation. What it said is prose on the
+/// page; a tool call is a row on a ground of its own, and opens onto what
+/// the call changed or printed.
 private struct ChatSwarmWorkerEntryView: View {
     let entry: ChatEntry
     let isExpanded: Bool
     let blocks: [ChatMarkdownBlock]?
     let toggle: () -> Void
 
-    private static let innerBox = RoundedRectangle(cornerRadius: 10, style: .continuous)
-
     var body: some View {
         switch entry.content {
         case .user(let message):
             Text(verbatim: message.displayText)
-                .font(.subheadline)
+                .font(.body)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(.fill.secondary, in: .rect(cornerRadius: 12, style: .continuous))
@@ -1516,77 +1512,41 @@ private struct ChatSwarmWorkerEntryView: View {
 
         case .reasoning(let reasoning):
             if !reasoning.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Button(action: toggle) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "brain")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text("Thinking")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        }
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-
-                    if isExpanded {
-                        if let blocks {
-                            ChatMarkdownView(blocks: blocks, isMuted: true)
-                                .font(.footnote)
-                        } else {
-                            Text(verbatim: reasoning.text)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 8)
-                .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.75), in: Self.innerBox)
+                thinking(reasoning.text)
             }
 
         case .tool(let tool):
-            toolCard(tool)
+            ChatSwarmWorkerToolRow(tool: tool, isExpanded: isExpanded, toggle: toggle)
 
         case .assistant(let message):
             Group {
                 if let blocks {
                     ChatMarkdownView(blocks: blocks)
-                        .font(.subheadline)
                 } else {
                     Text(verbatim: message.text)
                         .font(.body)
                 }
             }
-            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: ChatBackgroundWorkStyle.card)
 
         case .notice(let notice):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: notice.kind == .error ? "exclamationmark.triangle.fill" : "info.circle")
-                    .font(.caption)
+                Image(systemName: notice.kind == .error ? "exclamationmark.triangle" : "info.circle")
+                    .font(.footnote)
                     .foregroundStyle(
                         notice.kind == .error ? ChatBackgroundWorkPalette.statusInk(.failed) : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: notice.title)
-                        .font(.caption.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                     if let detail = notice.detail, !detail.isEmpty {
                         Text(verbatim: detail)
-                            .font(.caption2)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
         case .divider(let divider):
             if let detail = divider.detail, !detail.isEmpty {
@@ -1602,101 +1562,158 @@ private struct ChatSwarmWorkerEntryView: View {
         }
     }
 
-    private func toolCard(_ tool: ChatToolActivity) -> some View {
-        let canExpand = (tool.preview != nil && !(tool.preview?.text.isEmpty ?? true)) || tool.fileChanges != nil
-        return VStack(alignment: .leading, spacing: 6) {
-            Button {
-                if canExpand { toggle() }
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    toolStatusIcon(tool.status)
-                        .frame(width: 14)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: tool.title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(isExpanded ? 4 : 1)
-                            .multilineTextAlignment(.leading)
-                        if let subtitle = tool.subtitle, !subtitle.isEmpty {
-                            Text(verbatim: subtitle)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(isExpanded ? 4 : 1)
-                                .multilineTextAlignment(.leading)
-                        }
-                    }
-
-                    Spacer(minLength: 4)
-
-                    if let diff = tool.diff {
-                        HStack(spacing: 4) {
-                            Text(verbatim: "+\(diff.added)")
-                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.completed))
-                            Text(verbatim: "-\(diff.removed)")
-                                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
-                        }
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                    }
-
-                    if canExpand {
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    }
+    /// The worker's reasoning, behind one quiet line.
+    private func thinking(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button(action: toggle) {
+                HStack(spacing: 7) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Text("Thinking")
+                        .font(.footnote)
+                    Spacer(minLength: 0)
                 }
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 30)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .disabled(!canExpand)
 
             if isExpanded {
-                if let changes = tool.fileChanges, !changes.files.isEmpty {
-                    Text(verbatim: changes.copyText)
-                        .font(.caption2.monospaced())
+                if let blocks {
+                    ChatMarkdownView(blocks: blocks, isMuted: true)
+                } else {
+                    Text(verbatim: text)
+                        .font(.body)
                         .foregroundStyle(.secondary)
-                        .lineLimit(40)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
-                } else if let preview = tool.preview?.text, !preview.isEmpty {
-                    Text(verbatim: preview)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(30)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(ChatBackgroundWorkPalette.terminalBackground, in: Self.innerBox)
                 }
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Self.innerBox)
-        .overlay {
-            Self.innerBox.stroke(Color(uiColor: .separator).opacity(0.28), lineWidth: 1)
+    }
+}
+
+/// A tool call in a worker's sub-conversation: how it went as a glyph, its
+/// title over what it ran or touched, and, opened, the change or the
+/// output in the terminal's black.
+private struct ChatSwarmWorkerToolRow: View {
+    let tool: ChatToolActivity
+    let isExpanded: Bool
+    let toggle: () -> Void
+
+    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn: CGFloat = 16
+
+    private static let ground = RoundedRectangle(cornerRadius: 12, style: .continuous)
+
+    /// The files the call changed, where it changed any.
+    private var changes: ChatFileChanges? {
+        guard let changes = tool.fileChanges, !changes.files.isEmpty else { return nil }
+        return changes
+    }
+
+    private var output: String? {
+        guard let text = tool.preview?.text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    private var canExpand: Bool {
+        output != nil || changes != nil
+    }
+
+    /// The Antigravity CLI titles a call by its command, path or pattern
+    /// and puts its own sentence about the call under that.
+    private var titleIsCode: Bool {
+        switch tool.kind {
+        case .command, .fileEdit, .fileWrite, .fileRead, .search, .listing: true
+        default: false
         }
     }
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if canExpand {
+                Button(action: toggle) {
+                    heading
+                }
+                .buttonStyle(.plain)
+            } else {
+                heading
+            }
+
+            if isExpanded {
+                // The list's long press copies the row, so the text here
+                // is not selectable.
+                if let changes {
+                    ChatTerminalChangeLines(
+                        lines: changes.copyText.components(separatedBy: "\n"),
+                        marks: .leading, isSmall: true, cornerRadius: 8, isSelectable: false)
+                        .padding(.bottom, 6)
+                } else if let output {
+                    ChatTerminalText(text: output, isSmall: true, lineLimit: 30, cornerRadius: 8, isSelectable: false)
+                        .padding(.bottom, 6)
+                }
+            }
+        }
+        .padding(.horizontal, ChatSheetStyle.rowInset)
+        .padding(.vertical, 6)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Self.ground)
+    }
+
+    private var heading: some View {
+        HStack(alignment: .center, spacing: ChatSheetStyle.glyphSpacing) {
+            statusGlyph
+                .frame(width: glyphColumn)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: tool.title)
+                    .font(titleIsCode ? .system(.footnote, design: .monospaced) : .subheadline)
+                    .lineLimit(isExpanded ? 4 : 1)
+                    .multilineTextAlignment(.leading)
+                if let subtitle = tool.subtitle, !subtitle.isEmpty {
+                    Text(verbatim: subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(isExpanded ? 4 : 1)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let diff = tool.diff {
+                HStack(spacing: 4) {
+                    Text(verbatim: "+\(diff.added)")
+                        .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.completed))
+                    Text(verbatim: "-\(diff.removed)")
+                        .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+                }
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .fixedSize()
+            }
+
+            if canExpand {
+                ChatSheetDisclosureChevron(isExpanded: isExpanded)
+            }
+        }
+        .frame(minHeight: 32)
+        .contentShape(.rect)
+    }
+
     @ViewBuilder
-    private func toolStatusIcon(_ status: ChatToolActivity.Status) -> some View {
-        switch status {
+    private var statusGlyph: some View {
+        switch tool.status {
         case .running, .awaitingApproval:
-            ChatBackgroundWorkSpinningArc(size: 11, lineWidth: 1.8)
-                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
+            ChatBackgroundWorkGlyph(status: .running, size: .regular)
         case .succeeded, .started:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.completed))
+            ChatBackgroundWorkGlyph(status: .completed, size: .regular)
         case .failed, .declined:
-            Image(systemName: "xmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
+            ChatBackgroundWorkGlyph(status: .failed, size: .regular)
         case .interrupted, .notCompleted, .noResult, .chatInstead:
-            Image(systemName: "minus.circle")
-                .font(.caption2)
+            Image(systemName: "minus")
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
     }
 }

@@ -78,8 +78,6 @@ struct ChatBackgroundWorkStrip: View {
 }
 
 enum ChatBackgroundWorkStyle {
-    /// The silhouette of the Swarm sheet's cards.
-    static let card = RoundedRectangle(cornerRadius: 16, style: .continuous)
     static let hint = String(localized: "Shows all background work.")
     /// How far a strip row stands in from the strip's edge.
     static let rowInset: CGFloat = 14
@@ -103,29 +101,6 @@ enum ChatBackgroundWorkPalette {
     }
 
     static let workflowTint = Color(uiColor: blueInkUI)
-
-    static let terminalBackground = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0, alpha: 0.34)
-                : UIColor.secondarySystemFill.withAlphaComponent(0.65)
-        })
-
-    static let terminalBorder = Color(
-        uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 1, alpha: 0.08)
-                : UIColor(white: 0, alpha: 0.08)
-        })
-
-    static func statusWash(_ status: ChatBackgroundWorkPresentation.Status) -> Color {
-        switch status {
-        case .running: Color(uiColor: AgentStatusPalette.yellow).opacity(0.15)
-        case .completed: Color(uiColor: AgentStatusPalette.green).opacity(0.14)
-        case .failed: Color(uiColor: AgentStatusPalette.red).opacity(0.14)
-        case .stopped, .unconfirmed, .quiet: Color(uiColor: AgentStatusPalette.muted).opacity(0.16)
-        }
-    }
 
     static func statusInk(_ status: ChatBackgroundWorkPresentation.Status) -> Color {
         switch status {

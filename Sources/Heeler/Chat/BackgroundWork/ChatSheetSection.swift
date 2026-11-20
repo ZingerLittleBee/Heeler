@@ -1,22 +1,24 @@
 import SwiftUI
 import UIKit
 
-/// A titled group of rows on one of Chat's sheets, set out as a grouped
-/// list sets one out: the title, the rows on one rounded ground, and a
-/// footnote under them.
+/// A group of rows on one of Chat's sheets, set out as a grouped list sets
+/// one out: a title where it has one, the rows on one rounded ground, and
+/// a footnote under them.
 struct ChatSheetSection<Content: View>: View {
-    let title: String
+    var title: String? = nil
     var footer: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(verbatim: title)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, ChatSheetStyle.titleInset)
-                .padding(.bottom, 7)
-                .accessibilityAddTraits(.isHeader)
+            if let title {
+                Text(verbatim: title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, ChatSheetStyle.titleInset)
+                    .padding(.bottom, 7)
+                    .accessibilityAddTraits(.isHeader)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
@@ -41,6 +43,19 @@ enum ChatSheetStyle {
     static let glyphSpacing: CGFloat = 10
     /// A section's title and footnote, in line with its rows' glyphs.
     static let titleInset: CGFloat = 16
+}
+
+/// What ends a row that opens in place, turned over while it is open.
+struct ChatSheetDisclosureChevron: View {
+    let isExpanded: Bool
+
+    var body: some View {
+        Image(systemName: "chevron.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            .accessibilityHidden(true)
+    }
 }
 
 extension View {

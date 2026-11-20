@@ -60,26 +60,30 @@ struct ChatSwarmBoardRow: Sendable, Equatable {
     let isCollapsedBrief: Bool
     let isExpandedBrief: Bool
     let isHighlighted: Bool
+    /// The feed's first post, which no hairline stands over.
+    let isFirst: Bool
     let blocks: [ChatMarkdownBlock]?
 
     var seq: Int { message.seq }
 
+    /// A post is its heading line over its text, between two hairlines:
+    /// the row keeps only the list's margins from its text.
     var extent: ChatRowExtent {
-        let citeExtra: CGFloat = citedSeqs.isEmpty ? 0 : 30
+        let citeExtra: CGFloat = citedSeqs.isEmpty ? 0 : 25
         if isCollapsedBrief {
             return ChatRowExtent(
-                textBytes: min(message.text.utf8.count, 260),
-                blocks: 2,
-                chrome: 86 + citeExtra,
-                inset: 58)
+                textBytes: min(message.text.utf8.count, 200),
+                blocks: 1,
+                chrome: 77 + citeExtra,
+                inset: 32)
         }
         let blockCount = max(1, blocks?.count ?? (1 + message.text.utf8.count / 180))
-        let expandExtra: CGFloat = message.shouldCollapseBrief ? 24 : 0
+        let expandExtra: CGFloat = message.shouldCollapseBrief ? 25 : 0
         return ChatRowExtent(
             textBytes: message.text.utf8.count,
             blocks: blockCount,
-            chrome: 62 + citeExtra + expandExtra,
-            inset: 58)
+            chrome: 52 + citeExtra + expandExtra,
+            inset: 32)
     }
 }
 
@@ -95,7 +99,7 @@ final class ChatSwarmBoardModel {
         var isExpandedBrief: Bool
         var isHighlighted: Bool
         var hasBlocks: Bool
-        var topSpacing: CGFloat
+        var isFirst: Bool
     }
 
     private struct RowMemo {
@@ -184,13 +188,16 @@ final class ChatSwarmBoardModel {
             let isCollapsed = post.shouldCollapseBrief && !isExpanded
             let blocks = isCollapsed ? nil : parsedBlocks(for: post.seq, text: post.text)
             let cited = post.citedSeqs(in: knownSeqs)
-            let topSpacing: CGFloat = items.isEmpty ? 0 : 10
+            // A post draws its own hairline and the room around it, so
+            // the list sets nothing between two.
+            let isFirst = items.isEmpty
             let row = ChatSwarmBoardRow(
                 message: post,
                 citedSeqs: cited,
                 isCollapsedBrief: isCollapsed,
                 isExpandedBrief: isExpanded,
                 isHighlighted: highlightedSeq == post.seq,
+                isFirst: isFirst,
                 blocks: blocks)
             let source = RowSource(
                 message: post,
@@ -199,7 +206,7 @@ final class ChatSwarmBoardModel {
                 isExpandedBrief: isExpanded,
                 isHighlighted: highlightedSeq == post.seq,
                 hasBlocks: blocks != nil,
-                topSpacing: topSpacing)
+                isFirst: isFirst)
             let revision: Int
             if let old = rowMemos[post.seq], old.source == source {
                 revision = old.revision
@@ -213,7 +220,7 @@ final class ChatSwarmBoardModel {
                     id: post.seq,
                     payload: row,
                     revision: revision,
-                    topSpacing: topSpacing,
+                    topSpacing: 0,
                     seed: .assistant,
                     extent: row.extent,
                     copyText: post.text.isEmpty ? nil : post.text))
@@ -462,9 +469,9 @@ final class ChatSwarmWorkerModel {
                 ? ChatRowExtent(
                     textBytes: assignment.text.utf8.count,
                     blocks: max(1, blocks?.count ?? 2),
-                    chrome: 56,
-                    inset: 56)
-                : ChatRowExtent(textBytes: min(assignment.text.utf8.count, 180), blocks: 1, chrome: 56, inset: 56)
+                    chrome: 72,
+                    inset: 60)
+                : ChatRowExtent(textBytes: min(assignment.text.utf8.count, 140), blocks: 1, chrome: 60, inset: 88)
             append(
                 id: .assignment,
                 payload: .assignment(post: assignment, isExpanded: isAssignmentExpanded, blocks: blocks),
@@ -485,6 +492,9 @@ final class ChatSwarmWorkerModel {
                 extent: nil,
                 copyText: failureMessage)
         } else if let entries, !entries.isEmpty {
+            // A run of tool calls reads as one list, so its rows stand
+            // closer than a row does to prose.
+            var followsTool = false
             for (idx, entry) in entries.enumerated() {
                 guard Self.rendersEntry(entry) else { continue }
                 let isExpanded = expandedEntries.contains(entry.id)
@@ -506,8 +516,8 @@ final class ChatSwarmWorkerModel {
                     extent = ChatRowExtent(
                         textBytes: msg.text.utf8.count,
                         blocks: max(1, blocks?.count ?? (1 + msg.text.utf8.count / 180)),
-                        chrome: 28,
-                        inset: 56)
+                        chrome: 12,
+                        inset: 32)
                     copyText = msg.text
                 case .reasoning(let reasoning):
                     let key = "reasoning:\(entry.id.rawValue)"
@@ -518,8 +528,8 @@ final class ChatSwarmWorkerModel {
                         ? ChatRowExtent(
                             textBytes: reasoning.text.utf8.count,
                             blocks: max(1, blocks?.count ?? 2),
-                            chrome: 44,
-                            inset: 54)
+                            chrome: 46,
+                            inset: 32)
                         : nil
                     copyText = reasoning.text
                 case .tool(let tool):
@@ -543,13 +553,15 @@ final class ChatSwarmWorkerModel {
                     continue
                 }
 
+                let isTool = seed == .tool
                 append(
                     id: .entry(entry.id),
                     payload: .entry(entry, isExpanded: isExpanded, blocks: blocks),
-                    spacing: idx == 0 ? 14 : 10,
+                    spacing: idx == 0 ? 14 : (isTool && followsTool ? 6 : 10),
                     seed: seed,
                     extent: extent,
                     copyText: copyText?.isEmpty == true ? nil : copyText)
+                followsTool = isTool
             }
         } else {
             append(id: .statusNotice, payload: .empty, spacing: 14, seed: .assistant, extent: nil, copyText: nil)

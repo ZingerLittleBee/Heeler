@@ -1205,45 +1205,7 @@ private struct BlockedChangeBox: View {
     let marksChanges: Bool
 
     var body: some View {
-        ChatTerminalBlock {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(lines.prefix(Self.lineLimit).enumerated()), id: \.offset) { @Sendable _, line in
-                    MainActorContent {
-                        Text(verbatim: line)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            // A shape: in the card's scrolling part a bare
-                            // colour takes rounded ends from the Composer
-                            // card's corners (iOS 27.0).
-                            .background { Rectangle().fill(tint(of: line)) }
-                    }
-                }
-                if lines.count > Self.lineLimit {
-                    let more = lines.count - Self.lineLimit
-                    Text(more == 1 ? String(localized: "\(more) more line") : String(localized: "\(more) more lines"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 4)
-                }
-            }
-            .font(.system(.footnote, design: .monospaced))
-            .textSelection(.enabled)
-            .padding(.vertical, 10)
-        }
-    }
-
-    private static let lineLimit = 40
-
-    private func tint(of line: String) -> Color {
-        guard marksChanges else { return .clear }
-        let mark = line.drop { $0 == " " || $0.isNumber }.first
-        switch mark {
-        case "+": return .green.opacity(0.22)
-        case "-": return .red.opacity(0.24)
-        default: return .clear
-        }
+        ChatTerminalChangeLines(lines: lines, marks: marksChanges ? .numbered : .none)
     }
 }
 
