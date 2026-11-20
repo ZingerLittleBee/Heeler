@@ -11,10 +11,13 @@ Compose scripts live with their exports:
 | iPhone large display | `output/app-store/iphone-6.9/` | `compose_mockups.py` |
 | iPad 13-inch | `output/app-store/ipad-13/` | `compose_mockups.py` |
 | iPhone Duo, first image | `output/app-store/iphone-duo/` | `compose_mockups.py` |
-| Herdr desktop, second image of all three | `output/app-store/desktop/` | `compose_desktop.py` |
+| Servers, second image of all three | `output/app-store/servers/` | `compose_servers.py` |
 | Voice Input, third image of all three | `output/app-store/voice/` | `compose_voice.py` |
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
 | Listing text (`promo`, `keywords`, `description`) | `output/app-store/copy/` | `test-store-shots.py` |
+
+`output/app-store/backdrop.py` draws the graphite background of the iPhone and
+iPad images. The compose scripts need Pillow and NumPy.
 
 ## 1. Start the Agents
 
@@ -68,24 +71,28 @@ xcrun simctl io "$UDID" screenshot --display=primary-1 capture.png
 That gives 2853 x 2007 in landscape. XCUITest taps miss in this posture on
 Xcode 27, so click through the Device Hub window.
 
-### Herdr desktop
+### Servers
 
-The rig has no herdr-core, so this image needs a Linux machine running the
-Herdr desktop app, such as a throwaway VM. Copy the fixture repositories there,
-log Claude Code in, and add the machine to the seeded simulator as a herdr-core
-Host. Start each Agent from Heeler's New Agent with a New Workspace, so the
-desktop names its space. The image cuts the Hosts card and the Agents list
-filtered to that Host.
+This image needs one Host that runs Herdr TUI, herdr-core, tmux and Rex, which
+`store-shots.py up` does not build. Start an isolated backend
+(`scripts/isolated-herdr-backend.py --root DIR start`) and add the other three
+behind its sshd, which runs every command with `DIR/home` as `HOME`:
 
-The Hosts card shows `user@address`, so every Host gets a machine name
-(`studio-mac`, `build-server`, `linux-desktop`) on port 22 and the same user
-name. Route all three through a jump host on the Mac that maps each name to a
-local port: the rig's sshd, or a forward to the VM's sshd. A small asyncssh
-server that only accepts `direct-tcpip` is enough. A jump host on the VM sends
-the Herdr TUI Hosts across its network twice, and the card then shows
-latencies of several seconds. Agent rows shorten a path to `~` only under
-`/Users/<user>` or `/home/<user>`, so the VM account needs that user name and
-home.
+- tmux: link `tmux` into `DIR/bin`, start a server with `TMUX_TMPDIR` under
+  `DIR`, and export the same `TMUX_TMPDIR` from `DIR/force-command.sh`.
+- herdr-core: link the binary to `DIR/home/.local/bin/herdr-core` and start a
+  core with that `HOME`.
+- Rex: run `rex server run --listen "DIR/home/Library/Application Support/rex/server.sock"`
+  with a state directory under `DIR`.
+
+The Hosts row shows `user@address`, so give the sshd a machine name:
+`dns-sd -P "Studio Mac" _ssh._tcp local PORT studio-mac.local 127.0.0.1`
+answers `studio-mac.local` while it runs. Check that the sshd's port is free on
+every address before choosing it. Any port but 22 shows in the row.
+
+Add the Host through Add Manually, so the wizard finds all four Servers. The
+image cuts the Hosts list's row and the Host page's Servers section. The
+iPhone Duo image reuses the iPhone captures.
 
 ### Voice Input
 

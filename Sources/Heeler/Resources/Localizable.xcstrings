@@ -7571,46 +7571,46 @@
         }
       }
     },
-    "Add a machine that runs herdr to get started." : {
+    "Add a machine that runs herdr, tmux or Rex to get started." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "始めるには、herdr を実行しているマシンを追加してください。"
+            "value" : "始めるには、herdr、tmux、または Rex を実行しているマシンを追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加一台运行 herdr 的主机以开始使用。"
+            "value" : "添加一台运行 herdr、tmux 或 Rex 的主机以开始使用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr 的機器即可開始使用。"
+            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器即可開始使用。"
           }
         }
       }
     },
-    "Add a machine that runs herdr to see its Agents and Terminals here." : {
+    "Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
+            "value" : "herdr、tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加运行 herdr 的电脑，即可在此查看其 Agent 和终端。"
+            "value" : "添加运行 herdr、tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr 的機器，就能在這裡看到它的 Agent 與終端機。"
+            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
           }
         }
       }
@@ -27246,24 +27246,24 @@
         }
       }
     },
-    "Heeler connects over SSH to a machine that runs herdr." : {
+    "Heeler connects over SSH to a machine that runs herdr, tmux or Rex." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は herdr を実行するマシンへ SSH 経由で接続します。"
+            "value" : "Heeler は herdr、tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 通过 SSH 连接到运行 herdr 的机器。"
+            "value" : "Heeler 通过 SSH 连接到运行 herdr、tmux 或 Rex 的机器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 透過 SSH 連線到執行 herdr 的機器。"
+            "value" : "Heeler 透過 SSH 連線到執行 herdr、tmux 或 Rex 的機器。"
           }
         }
       }
