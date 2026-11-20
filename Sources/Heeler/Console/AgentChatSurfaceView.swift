@@ -2125,25 +2125,19 @@ private struct BackgroundWorkInset: View {
     let open: (String?) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let swarm = chat.agySwarm {
-                ChatSwarmLiveBar(
-                    swarm: swarm,
-                    isCondensed: isCondensed,
-                    open: openSwarm)
-            }
-            let work = chat.backgroundWork
-            let showsFinished = work.showsFinishedInStrip(
-                agentStatus: chat.agent.status,
-                isHostConnected: isHostConnected,
-                turns: chat.conversation.transcript.turns)
-            ChatBackgroundWorkStrip(
-                work: work,
-                isHostConnected: isHostConnected,
-                isCondensed: isCondensed,
-                showsFinishedWork: showsFinished,
-                open: open)
-        }
+        let work = chat.backgroundWork
+        let showsFinished = work.showsFinishedInStrip(
+            agentStatus: chat.agent.status,
+            isHostConnected: isHostConnected,
+            turns: chat.conversation.transcript.turns)
+        ChatBackgroundWorkStrip(
+            work: work,
+            isHostConnected: isHostConnected,
+            isCondensed: isCondensed,
+            showsFinishedWork: showsFinished,
+            open: open,
+            swarm: chat.agySwarm,
+            openSwarm: openSwarm)
     }
 }
 

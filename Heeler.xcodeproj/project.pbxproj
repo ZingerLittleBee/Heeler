@@ -436,6 +436,7 @@
 		541F71DBCA922E84DCA98D5E /* AgentNotificationRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F3B82DFAD293C0EE344804 /* AgentNotificationRouting.swift */; };
 		54221C0E608094FAA7BE67F7 /* VoiceInputOptionsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381543A2A8C2544C442B55E8 /* VoiceInputOptionsViewTests.swift */; };
 		547CAC0CD4BF2095D61C07E2 /* tmux-heeler-status-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 1765851A869BD4D35E29CF58 /* tmux-heeler-status-v1.json */; };
+		54888AFC62E07E5AEB509C2D /* ChatSheetSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4CB1E4F45E4974900F84B1 /* ChatSheetSection.swift */; };
 		5499FB2505705DE8A890ADFC /* GrokScreenBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E41202BE4EADE30655C31B6 /* GrokScreenBuilder.swift */; };
 		54D3A4F4FBF8F3F6C154BACE /* AppActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0B72AE2059C59D8A59C9B2A /* AppActivityCoordinator.swift */; };
 		551F48B64880888D0279A7C8 /* GrokStopGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1BD4B67D964A41744C324A5 /* GrokStopGuard.swift */; };
@@ -2006,6 +2007,7 @@
 		79A34555B0C84954607D37F5 /* ScriptedCoreHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedCoreHost.swift; sourceTree = "<group>"; };
 		79E03FBDF372AA6DB7BC7F62 /* TerminalBackspaceButtonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBackspaceButtonTests.swift; sourceTree = "<group>"; };
 		7A1F4269D0448FA8B3F5EE2D /* ChatImagePreviewReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImagePreviewReader.swift; sourceTree = "<group>"; };
+		7A4CB1E4F45E4974900F84B1 /* ChatSheetSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSheetSection.swift; sourceTree = "<group>"; };
 		7A8ED9AD5019F303932B0F9C /* ImageStagingE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStagingE2ETests.swift; sourceTree = "<group>"; };
 		7B0A5D6A13F3F940E50EDCFD /* DemoScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoScreenshotMode.swift; sourceTree = "<group>"; };
 		7B0CD085F5EC85BFB1DE381E /* BlockedCardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedCardStore.swift; sourceTree = "<group>"; };
@@ -3474,6 +3476,7 @@
 				D8662F9C006A78F4020F3ADF /* ChatBackgroundWorkPresentation.swift */,
 				D1CFC5340F002BEC8FA2D363 /* ChatBackgroundWorkSheet.swift */,
 				026E21425C5C32E24C53FCFE /* ChatBackgroundWorkStrip.swift */,
+				7A4CB1E4F45E4974900F84B1 /* ChatSheetSection.swift */,
 			);
 			path = BackgroundWork;
 			sourceTree = "<group>";
@@ -4945,6 +4948,7 @@
 				F68B599F159AD5082B919176 /* ChatRowView.swift in Sources */,
 				BE514EA5DE00BF97731E245E /* ChatSendRules.swift in Sources */,
 				7AE6192AFC124330E8A619E3 /* ChatSendWitness.swift in Sources */,
+				54888AFC62E07E5AEB509C2D /* ChatSheetSection.swift in Sources */,
 				91386D52E541ABB78FA4F39C /* ChatStopPlan.swift in Sources */,
 				529A33DD861882A86316682C /* ChatSwarmLiveBar.swift in Sources */,
 				9393659C506CE9BCD3F2A960 /* ChatSwarmSheet.swift in Sources */,

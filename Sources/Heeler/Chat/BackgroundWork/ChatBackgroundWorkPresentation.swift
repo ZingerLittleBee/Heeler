@@ -167,6 +167,15 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             !agents.isEmpty || hasMultiLineTerminalText
         }
 
+        /// The kind in the strip's room: a Workflow's phase says more
+        /// there than the word, a Subagent's type less.
+        var stripKind: String {
+            switch kind {
+            case .command, .workflow: caption
+            case .subagent: String(localized: "Subagent")
+            }
+        }
+
         var kindBadge: String {
             switch kind {
             case .command:

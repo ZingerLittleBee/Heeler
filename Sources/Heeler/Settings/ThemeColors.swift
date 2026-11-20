@@ -63,7 +63,8 @@ struct ThemeColors: Equatable, Sendable {
 enum ThemeVeil {
     /// A card on the page: the Composer, a sidebar card.
     static let card = Color.primary.opacity(0.04)
-    /// A strip on a card: the Composer's Agent strip.
+    /// A strip: the Composer's Agent strip, and the strip of work over the
+    /// Composer.
     static let strip = Color.primary.opacity(0.06)
     /// A control on a card: a Blocked card's answers and its fields.
     static let control = Color.primary.opacity(0.08)

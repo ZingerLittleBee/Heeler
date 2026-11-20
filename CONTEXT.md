@@ -606,7 +606,7 @@ once both the foreground turn and all Background Work have ended. Chat only
 shows it and stops none of it. A Subagent is one background agent; a Workflow is
 a script that runs many and is listed as one row with its agents done when its
 journal records them. An Antigravity CLI native **Swarm** (`brain/<id>/.system_generated/swarm`)
-shows in its own Swarm Live Bar above the Composer and opens a three-tab sheet
+leads that strip with a row of its own, the Swarm Live Bar, and opens a three-tab sheet
 (Board, Members and Overview) with read-only worker sub-conversation peeks.
 _Avoid_: background task, task list, jobs
 
