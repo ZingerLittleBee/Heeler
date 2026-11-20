@@ -40,7 +40,8 @@ struct HostConsoleLink {
             routeCount: machine.representative.routes.count,
             servers: machine.servers.map { record in
                 HostRoutesPresentation.Server(
-                    routes: record.routes, status: statuses[record.id], routeID: routeIDs[record.id])
+                    routes: record.routes, status: statuses[record.id], routeID: routeIDs[record.id],
+                    standingFailure: standingFailures[record.id])
             },
             isManualReconnectInFlight: machine.servers.contains { manualReconnects.contains($0.id) })
     }

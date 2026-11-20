@@ -82,11 +82,11 @@ tmux sockets on one machine, that is the common case, not the odd one.
   tab's order, holding its Servers' Agents in the Console's status-priority
   order (catalog Server order breaking ties) and its Servers' Terminal
   Workspaces one Server after another in catalog order, with the counts summed.
-  The heading reads as the Server that most needs the user, as the Hosts
-  tab's row does; the name stays at full strength while any Server is
-  reachable, and the heading opens a connection sheet only for a Host with
-  one Server on. Each Server's problem is a row under the heading, which names
-  the Server when the Host has more than one. A Workspace stays one Server's:
+  The heading reads as the Hosts tab's row does — connected while any Server
+  is connected, otherwise as the Server that most needs the user — and opens a
+  connection sheet only for a Host with one Server on. Each Server's problem is
+  a row under the heading, which names the Server when the Host has more than
+  one. A Workspace stays one Server's:
   two of one name on two Servers are two cards, both under the Host's name.
   Folding a Host is stored by record id, as the filter is: a Host is folded
   while any of its records is, and folding or unfolding it sets or clears them

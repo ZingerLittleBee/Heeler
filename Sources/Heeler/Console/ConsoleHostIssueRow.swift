@@ -335,15 +335,16 @@ extension EnvironmentValues {
     @Entry var consoleListShowsDisclosure = true
 }
 
-/// Bottom-trailing floating Host status tile for the Agents list's `.flat` and
-/// `.byWorkspace` presentations: expands briefly when a Host enters an issue
-/// state (or escalates to a failure), then settles into a compact squircle
-/// tile with a linear bottom status bar so it never collides with circular
-/// Agent Status Rings or displaces list rows.
+/// Bottom-trailing floating Host status tile for the Agents and Terminals
+/// lists: expands briefly when a Host enters an issue state (or escalates to a
+/// failure), then settles into a compact squircle tile with a linear bottom
+/// status bar so it never collides with circular Agent Status Rings or
+/// displaces list rows.
 struct ConsoleHostIssueCornerBadge: View {
     let issues: [ConsoleHostStatusPresentation]
     let onOpenHost: (Host.ID) -> Void
     let onShowAll: () -> Void
+    var accessibilityID: String
     var autoCollapseDelay: Duration = .seconds(3)
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
@@ -360,6 +361,7 @@ struct ConsoleHostIssueCornerBadge: View {
         issues: [ConsoleHostStatusPresentation],
         onOpenHost: @escaping (Host.ID) -> Void,
         onShowAll: @escaping () -> Void,
+        accessibilityID: String = "agents.hostIssues.badge",
         autoCollapseDelay: Duration = .seconds(3),
         sleep: @escaping @Sendable (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
@@ -368,6 +370,7 @@ struct ConsoleHostIssueCornerBadge: View {
         self.issues = issues
         self.onOpenHost = onOpenHost
         self.onShowAll = onShowAll
+        self.accessibilityID = accessibilityID
         self.autoCollapseDelay = autoCollapseDelay
         self.sleep = sleep
         _isExpanded = State(initialValue: !issues.isEmpty)
@@ -467,7 +470,7 @@ struct ConsoleHostIssueCornerBadge: View {
         .accessibilityLabel(current.accessibilityLabel)
         .accessibilityHint(current.accessibilityHint ?? "")
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("agents.hostIssues.badge")
+        .accessibilityIdentifier(accessibilityID)
     }
 
     private func expandedLabel(for current: ConsoleHostIssueCornerPresentation) -> some View {
