@@ -79,10 +79,15 @@ struct OverlayPeerCandidate: Identifiable, Equatable, Sendable {
 /// The peer list of the "Choose from …" sheet: which overlays offer one,
 /// which peers can be a Host, their order, and search.
 enum OverlayPeerList {
-    /// Whether peers of `kind` carry addresses a Host can dial. ZeroTier's
-    /// are physical paths across all of its networks.
+    /// Whether `kind` has a list of peers to choose a Host's address from.
+    /// ZeroTier's are physical paths across all of its networks, and a
+    /// tailcat tunnel has one peer, whose address the route form fills in
+    /// itself (`HostRouteDraft.followTailcatServer`).
     static func offersPeers(_ kind: OverlayKind) -> Bool {
-        kind != .zerotier
+        switch kind {
+        case .tailscale, .easytier: true
+        case .zerotier, .tailcat: false
+        }
     }
 
     /// Whether `kind`'s peers can also be addressed by machine name.
@@ -248,6 +253,50 @@ extension HostRouteDraft {
         case .jumpHost:
             jumpAddress = address
         }
+    }
+}
+
+extension HostRouteDraft {
+    /// Whether the first hop is the server of `network`'s tailcat tunnel,
+    /// the only address that tunnel carries.
+    func dialsTailcatServer(of network: OverlayNetwork) -> Bool {
+        guard let serverName = network.tailcatServerName else { return false }
+        return Self.tailcatName(overlayPeerAddress) == serverName
+    }
+
+    /// Points the first hop at the server of `network`'s tailcat tunnel;
+    /// nothing for a network of another kind.
+    mutating func useTailcatServer(of network: OverlayNetwork) {
+        guard let serverName = network.tailcatServerName else { return }
+        setOverlayPeerAddress(serverName)
+    }
+
+    /// Keeps the first hop in step with the route's network as it changes.
+    /// A tailcat tunnel reaches one machine, whose address nobody can
+    /// guess, so choosing one fills it in where no address is typed yet (or
+    /// another tunnel's is left), and leaving one takes its address back
+    /// out. An address the user typed is never replaced.
+    mutating func followTailcatServer(of network: OverlayNetwork?) {
+        let current = Self.tailcatName(overlayPeerAddress)
+        let isTailcatName = current.hasSuffix(OverlayNetwork.tailcatServerSuffix)
+        if let serverName = network?.tailcatServerName {
+            if current.isEmpty || isTailcatName { setOverlayPeerAddress(serverName) }
+        } else if isTailcatName {
+            setOverlayPeerAddress("")
+        }
+    }
+
+    private mutating func setOverlayPeerAddress(_ address: String) {
+        switch overlayPeerTarget {
+        case .host: self.address = address
+        case .jumpHost: jumpAddress = address
+        }
+    }
+
+    /// Lowercased, without surrounding blanks or a trailing dot.
+    private static func tailcatName(_ address: String) -> String {
+        let trimmed = address.trimmingCharacters(in: .whitespaces).lowercased()
+        return trimmed.hasSuffix(".") ? String(trimmed.dropLast()) : trimmed
     }
 }
 

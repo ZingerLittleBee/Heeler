@@ -7,6 +7,9 @@ public enum OverlayKind: String, Codable, Sendable, CaseIterable {
     case tailscale
     case zerotier
     case easytier
+    /// A tailcat tunnel: one `tailcat serve` machine, reached with the
+    /// address it prints. No network to join and no account.
+    case tailcat
 }
 
 /// A TCP stream to an overlay peer, surfaced as one connected OS descriptor
@@ -335,6 +338,48 @@ public struct EasyTierConfigServer: Sendable, Equatable {
     }
 }
 
+public struct TailcatConfiguration: Sendable, Equatable {
+    /// The server's tailcat address (`tc…`), as `tailcat serve` prints it.
+    /// A bearer credential: by default it holds the tunnel's pre-shared key.
+    public var address: String
+    /// The only host a dial may name: the tunnel's server. A tailcat
+    /// tunnel has no other destination, and the server has no address a
+    /// user could type, so the app gives it this name (see ADR 0061).
+    public var serverName: String
+
+    public init(address: String, serverName: String) {
+        self.address = address
+        self.serverName = serverName
+    }
+}
+
+/// What a tailcat address says about itself, read without the network.
+public struct TailcatAddressInfo: Sendable, Equatable {
+    /// Whether the address carries a pre-shared key. Without one, whoever
+    /// runs the relay could join the tunnel.
+    public var hasPresharedKey: Bool
+    /// The region of tailcat's public relay map the server registered in,
+    /// or nil when the address names its own relays.
+    public var regionID: Int?
+    /// Host names of the relays the address names itself.
+    public var relays: [String]
+
+    public init(hasPresharedKey: Bool, regionID: Int? = nil, relays: [String] = []) {
+        self.hasPresharedKey = hasPresharedKey
+        self.regionID = regionID
+        self.relays = relays
+    }
+}
+
+/// Address helpers that need no running node.
+public enum TailcatAddress {
+    /// Describes `address`, or nil when it is not a tailcat address a
+    /// client can use. Never touches the network.
+    public static func info(_ address: String) -> TailcatAddressInfo? {
+        LiveTailcatNative.addressInfo(address)
+    }
+}
+
 /// Builds the concrete nodes. The app keeps at most one node per configured
 /// overlay network and reuses it across Hosts and reconnects.
 public enum OverlayNodes {
@@ -356,5 +401,11 @@ public enum OverlayNodes {
     /// own: networks under different keys run side by side.
     public static func easytier(_ configuration: EasyTierConfiguration) -> any OverlayNode {
         EasyTierNode(configuration: configuration)
+    }
+
+    /// One client of one tailcat server. Clients are independent: tunnels
+    /// to different servers run side by side.
+    public static func tailcat(_ configuration: TailcatConfiguration) -> any OverlayNode {
+        TailcatNode(configuration: configuration)
     }
 }

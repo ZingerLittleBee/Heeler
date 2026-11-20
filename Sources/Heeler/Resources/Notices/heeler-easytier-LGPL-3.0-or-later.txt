@@ -18,6 +18,6 @@ GNU General Public License version 3 it supplements are reproduced in the
 EasyTier notice (EasyTier-LGPL-3.0.txt), together with where to obtain the
 corresponding source and how to install a modified build.
 
-Source: https://github.com/Ylarod/heeler-overlay-natives, directory
+Source: https://github.com/ZingerLittleBee/heeler-overlay-natives, directory
 native/easytier, at the release tag the CEasyTier build you received was
 published under.

@@ -65,7 +65,7 @@ Heeler 是 iPhone 和 iPad 上独立、开源的 Agent 控制台，也是一款 
 - **通知与实时活动**：Agent 进入 Blocked 或 Done 时收到端到端加密的推送，锁屏和灵动岛上实时显示 Agent。中继读不到内容。[隐私说明](PRIVACY.md)
 - **Usage**：Claude Code 与 Codex 的 Usage Limits 及重置时间，最多 30 天的 Token Usage 和估算 API 费用，以及主屏和锁屏小组件。[Usage 教程](https://docs.heeler.bybee.dev/zh/usage)
 - **Composer**：用完整的 iOS 键盘或语音起草，一次 Send 投递。工具键盘提供 Agent 控制键、Skills 和 Snippets，还可以附上照片或最大 64 MiB 的文件。[Voice Input 教程](https://docs.heeler.bybee.dev/zh/voice-input)
-- **随处可连**：内置 Tailscale、ZeroTier 和 EasyTier，手机无需安装 VPN 应用。不可直连的机器可以走跳板机，一台 Host 可以有多条路由。[Overlay Network](https://docs.heeler.bybee.dev/zh/overlay-networks) · [跳板机](https://docs.heeler.bybee.dev/zh/vps-jump-host-setup) · [多条路由](https://docs.heeler.bybee.dev/zh/host-routes)
+- **随处可连**：内置 Tailscale、ZeroTier、EasyTier 和 tailcat，手机无需安装 VPN 应用。不可直连的机器可以走跳板机，一台 Host 可以有多条路由。[Overlay Network](https://docs.heeler.bybee.dev/zh/overlay-networks) · [跳板机](https://docs.heeler.bybee.dev/zh/vps-jump-host-setup) · [多条路由](https://docs.heeler.bybee.dev/zh/host-routes)
 - **其他**：扫码配对、Worktrees、查看已暂存和未暂存文件的 Changes、30 个主题，以及支持 Magic Keyboard 快捷键、多窗口和拖放的 iPad 版。
 
 ## 安装
@@ -95,7 +95,7 @@ herdr plugin action invoke heeler.pair
 
 **或者输入地址。** 适用于所有后端。在 **Hosts** 中轻点 **+**，输入地址和 SSH 用户，Heeler 会列出这台机器上运行的 Herdr TUI、herdr-core、每个 tmux 服务器和 Rex。一个 Host 可以同时带其中的多个。[连接 herdr-core](https://docs.heeler.bybee.dev/zh/herdr-core) · [连接 tmux](https://docs.heeler.bybee.dev/zh/tmux) · [连接 Rex](https://docs.heeler.bybee.dev/zh/rex) · [Windows 配置](https://docs.heeler.bybee.dev/zh/windows-setup)
 
-**不在同一网络时。** 通过内置的 [Overlay Network](https://docs.heeler.bybee.dev/zh/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/zh/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zh/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/zh/easytier)）、[跳板机](https://docs.heeler.bybee.dev/zh/vps-jump-host-setup)或 [Cloudflare Tunnel](https://docs.heeler.bybee.dev/zh/cloudflare-tunnel) 连接，并给 Host 配置[多条路由](https://docs.heeler.bybee.dev/zh/host-routes)，在家和在外都能连上。
+**不在同一网络时。** 通过内置的 [Overlay Network](https://docs.heeler.bybee.dev/zh/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/zh/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zh/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/zh/easytier)、[tailcat](https://docs.heeler.bybee.dev/zh/tailcat)）、[跳板机](https://docs.heeler.bybee.dev/zh/vps-jump-host-setup)或 [Cloudflare Tunnel](https://docs.heeler.bybee.dev/zh/cloudflare-tunnel) 连接，并给 Host 配置[多条路由](https://docs.heeler.bybee.dev/zh/host-routes)，在家和在外都能连上。
 
 ## 连接原理
 

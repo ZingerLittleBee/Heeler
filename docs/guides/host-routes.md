@@ -10,7 +10,7 @@ A Host can have more than one route: its LAN address for when you are at home, a
 4. To go through a Jump Host, fill in **Jump Host**. Otherwise leave it blank. See [remote access through a Jump Host](vps-jump-host-setup.md).
 5. Under **Network**, choose how this route travels:
    - **Direct** for an address this iPhone or iPad can reach on its own network, such as the Mac's LAN address or a public address.
-   - An overlay network from **Settings > Overlay Networks** for Tailscale, ZeroTier, or EasyTier (shown at the top once you have added a network). For Tailscale and EasyTier, tap **Choose from Tailnet…** or **Choose from Network…** and pick the Mac to fill in its address; for ZeroTier, type the Mac's address from ZeroTier Central. See the [Overlay Network guides](overlay-networks.md) to set one up.
+   - An overlay network from **Settings > Overlay Networks** for Tailscale, ZeroTier, EasyTier, or tailcat (shown at the top once you have added a network). For Tailscale and EasyTier, tap **Choose from Tailnet…** or **Choose from Network…** and pick the Mac to fill in its address; for ZeroTier, type the Mac's address from ZeroTier Central; for a tailcat tunnel, Heeler fills in the address itself. See the [Overlay Network guides](overlay-networks.md) to set one up.
 6. Tap **Save** at the top right, then **Save** in Edit Host.
 
 <a href="images/hosts/add-route.png"><img src="images/hosts/add-route.png" width="300" alt="New Route form with Address 192.168.1.10, port 22, Find on Local Network, an optional Jump Host field, and Network set to Direct"></a>

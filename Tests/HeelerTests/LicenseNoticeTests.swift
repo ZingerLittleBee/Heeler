@@ -159,7 +159,7 @@ struct LicenseNoticeInventoryTests {
             let notice = try #require(byID[id], "missing overlay notice \(id)")
             if Self.builtByNatives.contains(id) {
                 #expect(
-                    notice.source?.contains("https://github.com/Ylarod/heeler-overlay-natives") == true,
+                    notice.source?.contains("https://github.com/ZingerLittleBee/heeler-overlay-natives") == true,
                     "\(id) should name heeler-overlay-natives as its source")
             }
             if compareWithNatives {
@@ -205,7 +205,7 @@ struct LicenseNoticeInventoryTests {
         #expect(easyTier.text.contains("TERMS AND CONDITIONS"))
         #expect(easyTier.text.contains("commit \(easyTier.version ?? "")"))
         #expect(easyTier.text.contains("Corresponding source."))
-        #expect(easyTier.text.contains("https://github.com/Ylarod/heeler-overlay-natives"))
+        #expect(easyTier.text.contains("https://github.com/ZingerLittleBee/heeler-overlay-natives"))
         #expect(easyTier.text.contains("Installation information (LGPL-3.0 section 4(e))"))
         for patch in [
             "0001-outbound-only-packet-proxy.patch", "0002-web-client-backend.patch",
@@ -274,7 +274,7 @@ struct LicenseNoticeInventoryTests {
         let resolved = Set(try loadPackageResolvedIdentities())
         if resolved.contains(Self.nativesPackage) {
             #expect(try loadOverlayManifest().contains(
-                #".package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "#))
+                #".package(url: "https://github.com/ZingerLittleBee/heeler-overlay-natives.git", exact: "#))
         }
         try assertCoverage(
             discovered: resolved.subtracting([Self.nativesPackage]),

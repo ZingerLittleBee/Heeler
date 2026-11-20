@@ -65,7 +65,7 @@ Heeler は、iPhone と iPad で使える独立したオープンソースのエ
 - **通知とライブアクティビティ**：Agent が Blocked または Done になるとエンドツーエンド暗号化されたプッシュ通知が届き、ロック画面と Dynamic Island に Agent が表示されます。リレーが内容を読むことはできません。[プライバシー](PRIVACY.md)
 - **Usage**：Claude Code と Codex の Usage Limits とリセット時刻、最大 30 日分の Token Usage と推定 API コスト、ホーム画面とロック画面のウィジェットを利用できます。[Usage ガイド](https://docs.heeler.bybee.dev/usage)
 - **Composer**：iOS の完全なキーボードまたは音声で下書きし、一度の Send で送信します。ツールキーボードには Agent の制御キー、Skills、Snippets があり、写真や 64 MiB までのファイルも添付できます。[Voice Input ガイド](https://docs.heeler.bybee.dev/voice-input)
-- **どこからでも接続**：Tailscale、ZeroTier、EasyTier をアプリに内蔵しているため、VPN アプリは必要ありません。直接到達できないマシンには Jump Host を使え、1 つの Host に複数のルートを設定できます。[Overlay Network](https://docs.heeler.bybee.dev/overlay-networks) · [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup) · [複数のルート](https://docs.heeler.bybee.dev/host-routes)
+- **どこからでも接続**：Tailscale、ZeroTier、EasyTier、tailcat をアプリに内蔵しているため、VPN アプリは必要ありません。直接到達できないマシンには Jump Host を使え、1 つの Host に複数のルートを設定できます。[Overlay Network](https://docs.heeler.bybee.dev/overlay-networks) · [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup) · [複数のルート](https://docs.heeler.bybee.dev/host-routes)
 - **そのほか**：QR ペアリング、Worktrees、ステージ済みと未ステージのファイルを確認できる Changes、30 種類のテーマ、Magic Keyboard のショートカット、マルチウィンドウ、ドラッグ＆ドロップに対応した iPad 版があります。
 
 ## インストール
@@ -95,7 +95,7 @@ herdr plugin action invoke heeler.pair
 
 **またはアドレスを入力する。** すべてのバックエンドで使えます。**Hosts** で **+** をタップし、アドレスと SSH ユーザーを入力すると、Heeler がそのマシンで実行中の Herdr TUI、herdr-core、各 tmux サーバー、Rex を一覧表示します。1 つの Host でこれらを複数同時に使えます。[herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) · [tmux に接続する](https://docs.heeler.bybee.dev/tmux) · [Rex に接続する](https://docs.heeler.bybee.dev/rex) · [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup)
 
-**外出先から接続する。** 内蔵の [Overlay Network](https://docs.heeler.bybee.dev/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/easytier)）、[Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup)、または [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel) を使い、Host に[複数のルート](https://docs.heeler.bybee.dev/host-routes)を設定すると、自宅でも外出先でも接続できます。
+**外出先から接続する。** 内蔵の [Overlay Network](https://docs.heeler.bybee.dev/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/easytier)、[tailcat](https://docs.heeler.bybee.dev/tailcat)）、[Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup)、または [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel) を使い、Host に[複数のルート](https://docs.heeler.bybee.dev/host-routes)を設定すると、自宅でも外出先でも接続できます。
 
 ## 接続のしくみ
 

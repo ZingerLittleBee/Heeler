@@ -2,10 +2,10 @@ import Foundation
 import HeelerOverlay
 
 /// A user-configured Overlay Network (CONTEXT.md): an in-process Tailscale,
-/// ZeroTier, or EasyTier node a Host's first hop can be dialled through
-/// (ADR 0021). Carries only non-secret settings; the auth key, network
-/// secret, and ZeroTier identity live in the Keychain under
-/// `OverlaySecretAccount`.
+/// ZeroTier, or EasyTier node, or a tailcat tunnel, a Host's first hop can
+/// be dialled through (ADRs 0021 and 0048). Carries only non-secret
+/// settings; the auth key, network secret, tailcat address, and ZeroTier
+/// identity live in the Keychain under `OverlaySecretAccount`.
 struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
     /// Each case's settings are exactly what that overlay needs besides its
     /// secret. The kind is the case; there is no separate `kind` to disagree.
@@ -32,6 +32,10 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
         /// (`EasyTierConfigServer.requireEncryption`); on unless turned off.
         case easytierConfigServer(
             server: String, machineID: UUID, hostname: String, requireEncryption: Bool = true)
+        /// A tailcat tunnel to one `tailcat serve` machine. Nothing but its
+        /// address defines it, and the address is a credential, so it lives
+        /// in the Keychain and no setting is left here (ADR 0061).
+        case tailcat
     }
 
     /// EasyTier network sources as persisted under `source`; an entry with
@@ -50,6 +54,7 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
         case .tailscale: .tailscale
         case .zerotier: .zerotier
         case .easytier, .easytierConfigServer: .easytier
+        case .tailcat: .tailcat
         }
     }
 
@@ -65,10 +70,32 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
         case .tailscale(let hostname, _), .easytier(_, _, let hostname, _),
             .easytierConfigServer(_, _, let hostname, _):
             hostname
-        case .zerotier:
+        case .zerotier, .tailcat:
             nil
         }
     }
+
+    /// The address a Route gives the server of this tailcat tunnel; nil for
+    /// other kinds.
+    var tailcatServerName: String? {
+        guard case .tailcat = settings else { return nil }
+        return Self.tailcatServerName(for: id)
+    }
+
+    /// A tailcat tunnel reaches one machine, which has no address a user
+    /// could type, so its Routes name it by this label. It comes from the
+    /// network's id, not from the tailcat address: each tunnel gets its own
+    /// (host-key trust for a Jump Host is keyed by address), and replacing
+    /// the address after the server's key changes leaves Routes as they are
+    /// (ADR 0061). Six digits keep the name and port 22 on one line of a
+    /// route row; saved Routes hold the name, so its form cannot change.
+    static func tailcatServerName(for id: UUID) -> String {
+        "\(id.uuidString.prefix(6).lowercased())\(tailcatServerSuffix)"
+    }
+
+    /// What every tailcat server name ends in. Not a domain anyone can
+    /// register, so no real machine is named this way.
+    static let tailcatServerSuffix = ".tailcat"
 
     /// The Tailscale coordination server this network signs in to; nil for
     /// Tailscale's own and for other kinds.
@@ -157,6 +184,8 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
                 peers: try container.decodeIfPresent([String].self, forKey: .peers) ?? [],
                 hostname: try container.decode(String.self, forKey: .hostname),
                 ipv4: try container.decodeIfPresent(String.self, forKey: .ipv4))
+        case .tailcat:
+            settings = .tailcat
         case nil:
             throw DecodingError.dataCorruptedError(
                 forKey: .kind, in: container,
@@ -190,6 +219,8 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
             try container.encode(machineID, forKey: .machineID)
             try container.encode(hostname, forKey: .hostname)
             try container.encode(requireEncryption, forKey: .requireEncryption)
+        case .tailcat:
+            break
         }
     }
 
@@ -309,6 +340,8 @@ extension OverlayKind {
         case .tailscale: "Tailscale"
         case .zerotier: "ZeroTier"
         case .easytier: "EasyTier"
+        // Lowercase, as its authors write it.
+        case .tailcat: "tailcat"
         }
     }
 
@@ -319,6 +352,7 @@ extension OverlayKind {
         case .tailscale: String(localized: "Auth key")
         case .zerotier: nil
         case .easytier: String(localized: "Network secret")
+        case .tailcat: String(localized: "tailcat address")
         }
     }
 }
@@ -332,11 +366,14 @@ enum OverlaySecretAccount {
     /// network secret. ZeroTier networks have none.
     /// A config-server network's secret is the server URL itself: its
     /// token is the account it registers to, as good as a password.
+    /// A tailcat tunnel's secret is its address, which by default holds
+    /// the tunnel's pre-shared key and is all a client needs to connect.
     static func secret(for network: OverlayNetwork) -> String? {
         switch network.settings {
         case .tailscale: "overlay-tailscale-authkey-\(network.id.uuidString)"
         case .easytier: "overlay-easytier-secret-\(network.id.uuidString)"
         case .easytierConfigServer: "overlay-easytier-configserver-\(network.id.uuidString)"
+        case .tailcat: "overlay-tailcat-address-\(network.id.uuidString)"
         case .zerotier: nil
         }
     }

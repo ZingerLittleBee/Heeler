@@ -28,7 +28,7 @@
       "id": "EasyTier",
       "displayName": "EasyTier",
       "version": "728ba94b5029240add6204eed591f22e4e039e6b",
-      "source": "https://github.com/Ylarod/heeler-overlay-natives (CEasyTier; EasyTier 2.7.0, commit 728ba94b5029240add6204eed591f22e4e039e6b, with Heeler's patches (outbound-only packet proxy, config-server backend, verified wss:// certificates), linked statically through heeler-easytier; corresponding source and installation information in the notice)",
+      "source": "https://github.com/ZingerLittleBee/heeler-overlay-natives (CEasyTier; EasyTier 2.7.0, commit 728ba94b5029240add6204eed591f22e4e039e6b, with Heeler's patches (outbound-only packet proxy, config-server backend, verified wss:// certificates), linked statically through heeler-easytier; corresponding source and installation information in the notice)",
       "spdx": "LGPL-3.0-only",
       "notice": "EasyTier-LGPL-3.0.txt"
     },
@@ -36,7 +36,7 @@
       "id": "EasyTier-Rust-crates",
       "displayName": "EasyTier Rust dependencies",
       "version": "2.7.0",
-      "source": "Rust crates linked into CEasyTier, including the Rust 1.95.0 standard library; list and licences in EasyTier-Rust-crates.txt from https://github.com/Ylarod/heeler-overlay-natives",
+      "source": "Rust crates linked into CEasyTier, including the Rust 1.95.0 standard library; list and licences in EasyTier-Rust-crates.txt from https://github.com/ZingerLittleBee/heeler-overlay-natives",
       "spdx": "0BSD AND Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND CDLA-Permissive-2.0 AND ISC AND MIT AND Unicode-3.0 AND Zlib",
       "notice": "EasyTier-Rust-crates.txt"
     },
@@ -60,7 +60,7 @@
       "id": "Go",
       "displayName": "Go standard library and runtime",
       "version": "go1.27.1",
-      "source": "https://go.dev (linked into CTailscale, https://github.com/Ylarod/heeler-overlay-natives)",
+      "source": "https://go.dev (linked into CTailscale, https://github.com/ZingerLittleBee/heeler-overlay-natives)",
       "spdx": "BSD-3-Clause",
       "notice": "Go-BSD-3-Clause.txt"
     },
@@ -140,7 +140,7 @@
       "id": "Tailscale-Go-modules",
       "displayName": "Tailscale Go dependencies",
       "version": "v1.104.1",
-      "source": "Go modules linked into CTailscale; list and licences in Tailscale-Go-modules.txt from https://github.com/Ylarod/heeler-overlay-natives",
+      "source": "Go modules linked into CTailscale; list and licences in Tailscale-Go-modules.txt from https://github.com/ZingerLittleBee/heeler-overlay-natives",
       "spdx": "Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND MIT",
       "notice": "Tailscale-Go-modules.txt"
     },
@@ -164,7 +164,7 @@
       "id": "heeler-easytier",
       "displayName": "heeler-easytier",
       "version": "0.1.0",
-      "source": "https://github.com/Ylarod/heeler-overlay-natives, directory native/easytier (Heeler's EasyTier wrapper inside CEasyTier)",
+      "source": "https://github.com/ZingerLittleBee/heeler-overlay-natives, directory native/easytier (Heeler's EasyTier wrapper inside CEasyTier)",
       "spdx": "LGPL-3.0-or-later",
       "notice": "heeler-easytier-LGPL-3.0-or-later.txt"
     },
@@ -212,7 +212,7 @@
       "id": "libtailscale",
       "displayName": "libtailscale",
       "version": "d1dc45d039edb7759ecbee6ba2aea0c4bca884b8",
-      "source": "https://github.com/Ylarod/heeler-overlay-natives (CTailscale; commit d1dc45d039edb7759ecbee6ba2aea0c4bca884b8)",
+      "source": "https://github.com/ZingerLittleBee/heeler-overlay-natives (CTailscale; commit d1dc45d039edb7759ecbee6ba2aea0c4bca884b8)",
       "spdx": "BSD-3-Clause",
       "notice": "libtailscale-BSD-3-Clause.txt"
     },
@@ -220,7 +220,7 @@
       "id": "libzt",
       "displayName": "libzt",
       "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
-      "source": "https://github.com/Ylarod/heeler-overlay-natives (CZeroTier; commit 7e5d0f99a2de81c45faa28e44289bcd19d933bf2; BUSL-1.1, Change Date 2026-01-01, now Apache-2.0)",
+      "source": "https://github.com/ZingerLittleBee/heeler-overlay-natives (CZeroTier; commit 7e5d0f99a2de81c45faa28e44289bcd19d933bf2; BUSL-1.1, Change Date 2026-01-01, now Apache-2.0)",
       "spdx": "Apache-2.0",
       "notice": "libzt-BUSL-1.1-Apache-2.0.txt"
     },
@@ -228,7 +228,7 @@
       "id": "ZeroTier-Heeler-modifications",
       "displayName": "Heeler modifications to libzt and ZeroTier One",
       "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
-      "source": "https://github.com/Ylarod/heeler-overlay-natives, patches/libzt and native/zerotier/heeler_zerotier.{cpp,h}",
+      "source": "https://github.com/ZingerLittleBee/heeler-overlay-natives, patches/libzt and native/zerotier/heeler_zerotier.{cpp,h}",
       "spdx": "Apache-2.0 AND BSD-3-Clause AND MIT AND MPL-2.0",
       "notice": "ZeroTier-Heeler-modifications.txt"
     },
