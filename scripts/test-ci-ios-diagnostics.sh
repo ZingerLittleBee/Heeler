@@ -46,19 +46,35 @@ if events(workflow) != {"schedule", "workflow_dispatch"}:
 require_line(workflow, "- cron: '17 20 * * *'")
 # A manual run must not cancel the scheduled run on the same ref.
 require_line(workflow, "group: ci-ios-full-${{ github.ref }}-${{ github.event_name }}")
-# Only a cold manual benchmark skips the compiler object cache.
-app_tests = job("app-tests")
-if "HEELER_CI_DISABLE_COMPILATION_CACHE" in app_tests:
-    raise SystemExit("App tests must not disable the compilation cache")
-restore = re.search(r"(?m)^      - name: Restore app compilation cache\n(.*?)(?=^      - |\Z)", app_tests, re.DOTALL)
+# One job compiles the app and its tests, with the fast build's command and no
+# Simulator. Only a cold manual benchmark skips the compiler object cache.
+app_build = job("app-build")
+if "HEELER_CI_DISABLE_COMPILATION_CACHE" in app_build:
+    raise SystemExit("The shared app build must not disable the compilation cache")
+require_line(app_build, '-- make build-ci-app 2>&1 | tee "$HEELER_CI_BUILD_EVIDENCE_DIR/build.log"')
+if re.search(r"\bmake test-ci-|\bsimctl\b|verify-ci-ios-evidence", app_build):
+    raise SystemExit("The shared app build must not boot a Simulator, run tests or claim evidence")
+restore = re.search(r"(?m)^      - name: Restore app compilation cache\n(.*?)(?=^      - |\Z)", app_build, re.DOTALL)
 if restore is None:
     raise SystemExit("Missing app compilation cache restore")
 require_line(restore.group(1), "if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}")
 # An archive of a build its deadline ended fills the next runner's disk.
-save = re.search(r"(?m)^      - name: Save app compilation cache\n(.*?)(?=^      - |\Z)", app_tests, re.DOTALL)
-if save is None or "steps.app-build.outputs.finished == 'true'" not in save.group(1):
+save = re.search(r"(?m)^      - name: Save app compilation cache\n(.*?)(?=^      - |\Z)", app_build, re.DOTALL)
+if save is None or "if: ${{ success() && " not in save.group(1):
     raise SystemExit("The app compilation cache must be saved only after a finished build")
+# The app workers wait for that build, test its products and compile nothing.
+app_tests = job("app-tests")
+require_line(app_tests, "needs: app-build")
+require_line(app_build, "make pack-ci-app-products")
+require_line(app_build, "name: ios-ci-app-products-${{ github.run_id }}")
+require_line(app_build, "path: .ci/app-products.tar.gz")
+require_line(app_tests, "name: ios-ci-app-products-${{ github.run_id }}")
+require_line(app_tests, "path: .ci/app-products")
+require_line(app_tests, "HEELER_CI_APP_PRODUCTS_ARCHIVE: ${{ github.workspace }}/.ci/app-products/app-products.tar.gz")
+if re.search(r"compilation|\bmake build-ci-|HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS", app_tests, re.IGNORECASE):
+    raise SystemExit("The app workers must not compile or carry a build deadline")
 names = {
+    "app-build": "App build (shared)",
     "app-tests": "App tests (${{ matrix.shard }})",
     "heelerssh-package-e2e": "HeelerSSH package E2E (iOS Simulator)",
     "build-test": "Build & test (iOS Simulator)",
@@ -69,7 +85,7 @@ for name, display in names.items():
     if name != "build-test" and re.search(r"(?m)^    if:", body):
         raise SystemExit(f"Full verification must not skip {name}")
 require_line(job("build-test"), "if: ${{ always() }}")
-require_line(job("build-test"), "needs: [app-tests, heelerssh-package-e2e]")
+require_line(job("build-test"), "needs: [app-build, app-tests, heelerssh-package-e2e]")
 
 # Full verification stays read-only, so only the listener may write.
 alert = workflows.joinpath("ci-full-alert.yml").read_text()
@@ -151,6 +167,12 @@ for target, scheme in [("build-ci-app", "Heeler"), ("build-ci-package", "HeelerS
         raise SystemExit(f"{target} must not need a booted Simulator destination")
     if "-arch" in tokens:
         raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
+# The app workers unpack exactly this: build-ci-app's Build/Products, whole.
+root = workflows.resolve().parents[1]
+pack = shlex.split(subprocess.check_output(
+    ["make", "--no-print-directory", "-n", "pack-ci-app-products"], cwd=root, text=True))
+if pack != ["tar", "-czf", f"{root}/.ci/app-products.tar.gz", "-C", f"{root}/.ci/app-derived", "Build/Products"]:
+    raise SystemExit("pack-ci-app-products must archive build-ci-app's Build/Products for the app workers")
 
 require_line(diagnostics, "workflow_dispatch:")
 if events(diagnostics) != {"workflow_dispatch"}:

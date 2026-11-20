@@ -86,10 +86,9 @@ jobs:
           printf 'checkout_sha=%s\nimage_version=%s\ntests_executed=0\n' \
             "$(git rev-parse HEAD)" "${ImageVersion:-unknown}" > .ci/build-evidence/run-settings.txt
       # Cache compiler objects, never DerivedData, products or test results.
-      # The generic destination produces different compiler commands than
-      # full verification's booted Simulator, so each lane keeps its own
-      # namespace: an exact hit from one lane must not stop the other from
-      # saving the objects it actually compiled.
+      # Full verification's shared build runs the same command and keeps a
+      # namespace of its own, so its cold and warm measurements never read
+      # what this build saved.
       - name: Restore compilation cache
         id: compilation-cache
         uses: actions/cache/restore@v4

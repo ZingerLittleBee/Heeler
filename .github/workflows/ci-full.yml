@@ -15,6 +15,9 @@
 # - The committed Heeler.xcodeproj (project + shared Heeler scheme)
 #   is the source of truth for CI. project.yml/xcodegen is a local convenience
 #   only; CI never regenerates the project.
+# - The app and its tests compile once, in app-build: alone on a runner and
+#   with no Simulator, the way the fast build compiles them. The app workers
+#   unpack that build's products and compile nothing (refs #704).
 # - The real-SSH suites are mandatory in this workflow. The test script provisions
 #   disposable high-port sshd instances that run unprivileged as the runner
 #   account, plus a Unix-socket fake herdr server, and asserts both the executed
@@ -68,14 +71,171 @@ permissions:
   actions: read
 
 jobs:
+  # One build for every app worker (refs #704). Each worker used to compile
+  # the same target on its own runner while its Simulator booted and its
+  # fixtures started. Those builds took from 17 minutes to more than 45 where
+  # the fast build takes about 16, and one slow runner out of three was enough
+  # to end the run at the build deadline. This job compiles alone with the
+  # fast build's command, and the workers unpack its products.
+  app-build:
+    name: App build (shared)
+    # Same runner and Xcode as the release archive (release.yml).
+    runs-on: xcode-27
+    # The job limit leaves setup, packing and the uploads room around the build.
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      HEELER_CI_BUILD_EVIDENCE_DIR: ${{ github.workspace }}/.ci/build-evidence
+      # Where `make build-ci-app` keeps the compiler's store.
+      HEELER_CI_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.ci/app-compilation-cache
+      # While every worker built for itself, 9 of 18 builds between 2026-11-12
+      # and 2026-11-19 were ended at a 30-minute deadline, and on 2026-11-20
+      # one of three passed 45 minutes. Leave room for runner variance without
+      # treating this safety deadline as a runtime target; cold and warm
+      # measurements use the same limit.
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '2700'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Cache dependency sources, never compiled test products or results.
+      # Cold benchmarks skip the entire action, including its post-run save.
+      - name: Cache SwiftPM checkouts
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            .ci/source-packages
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      # Binary supply-chain gate: artifact checksums, device and Simulator
+      # slices, and the algorithm policy (no OpenSSL legacy provider, no
+      # obsolete SSH methods) that ADR 0011 commits to. It guards what this
+      # job links into the products every app worker tests.
+      - name: Verify HeelerSSH native artifacts
+        run: make verify-ssh-artifacts
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Compute compilation cache key
+        id: cache-key
+        run: scripts/ci-compilation-cache-prefix.sh ios-full-cas-v1
+
+      # Only content-addressed compiler objects cross runs. Source changes
+      # remain eligible for reuse; the compiler validates their dependencies.
+      - name: Restore app compilation cache
+        id: compilation-cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
+          key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.cache-prefix }}
+
+      - name: Record cache and checkout identity
+        env:
+          CACHE_MODE: ${{ inputs.cache_mode || 'warm' }}
+          COMPILATION_CACHE_KEY: ${{ steps.compilation-cache.outputs.cache-matched-key }}
+          COMPILATION_CACHE_HIT: ${{ steps.compilation-cache.outputs.cache-hit }}
+        run: |
+          mkdir -p "$HEELER_CI_BUILD_EVIDENCE_DIR"
+          if [[ "$CACHE_MODE" == cold && ( -e .ci/source-packages || -e "$HEELER_CI_COMPILATION_CACHE_DIR" ) ]]; then
+            echo 'Cold run unexpectedly contains restored dependency sources or compiler CAS.' >&2
+            exit 1
+          fi
+          {
+            printf 'cache_mode=%s\n' "$CACHE_MODE"
+            printf 'checkout_sha=%s\nevent_sha=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA"
+            printf 'image_version=%s\n' "${ImageVersion:-unknown}"
+            printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
+            printf 'debug_symbols=disabled\n'
+            printf 'compilation_cache=enabled\ncompilation_cache_key=%s\ncompilation_cache_exact_hit=%s\n' "$COMPILATION_CACHE_KEY" "$COMPILATION_CACHE_HIT"
+            printf 'tests_executed=0\n'
+          } > "$HEELER_CI_BUILD_EVIDENCE_DIR/run-settings.txt"
+
+      # The deadline belongs to the script's own watchdog, which samples and
+      # reaps a build it ends. The step timeout would signal only the step
+      # shell, so it sits five minutes behind. This step never boots a
+      # Simulator or runs a test.
+      - name: Build app, extensions and tests without launching a Simulator
+        timeout-minutes: 50
+        run: |
+          set -o pipefail
+          python3 scripts/run-ci-background-build.py \
+            --timing-path "$HEELER_CI_BUILD_EVIDENCE_DIR/build.json" -- \
+            scripts/run-with-timeout.py \
+            --timeout-seconds "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS" \
+            --label 'Build for testing' \
+            --diagnostics-dir "$RUNNER_TEMP/heeler-ci-diagnostics-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/build" \
+            -- make build-ci-app 2>&1 | tee "$HEELER_CI_BUILD_EVIDENCE_DIR/build.log"
+
+      # tar keeps the symbolic links and executable bits inside the app that
+      # an artifact upload of the directory would drop.
+      - name: Pack the build products
+        run: |
+          make pack-ci-app-products
+          ls -l .ci/app-products.tar.gz
+
+      # Same-run products only: a worker downloads them by this run's id. They
+      # are kept three days, enough to rerun a failed worker; after that the
+      # download fails and the whole run has to start again.
+      - name: Upload the build products
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-app-products-${{ github.run_id }}
+          path: .ci/app-products.tar.gz
+          if-no-files-found: error
+          # The archive is already compressed.
+          compression-level: 0
+          retention-days: 3
+          overwrite: true
+
+      # A build its deadline ended leaves the compiler's store files at their
+      # mapped capacity, about 75 GiB of holes. The archive records the holes
+      # as data, and restoring it fills the next runner's disk before the
+      # build starts. A build that exits by itself trims them to what it
+      # wrote, so only a job whose build finished saves.
+      - name: Save app compilation cache
+        if: ${{ success() && steps.compilation-cache.outcome == 'success' && steps.compilation-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
+      - name: Upload build logs and timing (not test evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-app-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.HEELER_CI_BUILD_EVIDENCE_DIR }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-diagnostics-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heeler-ci-diagnostics-*
+          if-no-files-found: ignore
+          retention-days: 7
+
   app-tests:
     name: App tests (${{ matrix.shard }})
+    needs: app-build
     # Same runner and Xcode as the release archive (release.yml). The xcode-27
     # image carries an iPhone 17 on more than one iOS runtime, so every
     # Simulator lane pins the one that ships with Xcode 27.2.
     runs-on: xcode-27
     # The job limit leaves the setup and upload steps room around the test step.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 95 || (matrix.shard == 'ordinary' && 85 || 75) }}
+    timeout-minutes: ${{ inputs.layout == 'serial' && 60 || (matrix.shard == 'ordinary' && 45 || 40) }}
     strategy:
       fail-fast: false
       matrix:
@@ -84,18 +244,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       HEELER_CI_SIMULATOR_OS: '27.2'
       HEELER_CI_EVIDENCE_DIR: ${{ github.workspace }}/.ci/test-evidence/app-${{ matrix.shard }}
-      HEELER_CI_OVERLAP_BUILD: ${{ inputs.layout == 'serial' && '0' || '1' }}
-      # Each matrix job owns a separate runner, but compiler command paths must
-      # match across jobs/runs. Never restore DerivedData or test results.
+      # Each worker unpacks app-build's products at the path they were built
+      # at, and compiles nothing. Never restore test results.
       HEELER_CI_APP_DERIVED_DATA_PATH: ${{ github.workspace }}/.ci/app-derived
-      HEELER_CI_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.ci/app-compilation-cache
-      HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      # Hosted compilation outgrew 30 minutes as the sources did: between
-      # 2026-11-12 and 2026-11-19, 9 of 18 shard builds were ended at that
-      # deadline and the rest took 17 to 30 minutes. Leave room for runner
-      # variance without treating this safety deadline as a runtime target;
-      # cold and warm measurements use the same limit.
-      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '2700'
+      HEELER_CI_APP_PRODUCTS_ARCHIVE: ${{ github.workspace }}/.ci/app-products/app-products.tar.gz
       # The ordinary target grew from 5,030 to over 7,200 tests. Its one
       # complete-target call needs room for execution and Simulator startup;
       # the smaller fixture shards retain their 15-minute watchdog (refs #630).
@@ -145,7 +297,7 @@ jobs:
 
       # The tmux Host suite links the runner's own tmux into its fixture, which
       # owns its home and its tmux directories (scripts/fixtures/tmux-ssh.py).
-      # The test script stops before the build when there is none.
+      # The test script stops before its first test when there is none.
       - name: Install tmux for the tmux Host suite
         if: ${{ matrix.shard == 'transport' || matrix.shard == 'all' }}
         env:
@@ -158,54 +310,34 @@ jobs:
       - name: Test VPS SSH access scripts
         run: scripts/test-vps-ssh-access-scripts.sh
 
-      # Binary supply-chain gate: artifact checksums, device and Simulator
-      # slices, and the algorithm policy (no OpenSSL legacy provider, no
-      # obsolete SSH methods) that ADR 0011 commits to.
-      - name: Verify HeelerSSH native artifacts
-        run: make verify-ssh-artifacts
-
       # xcodebuild -version is enough to pin the image. Listing every
       # simulator runtime cold-starts CoreSimulator on the critical path
       # (~12–29s measured on macos-26); the gate's own simctl boot overlaps
-      # that work with the build instead.
+      # that work with its fixture preparation instead.
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Compute compilation cache key
-        id: cache-key
-        run: scripts/ci-compilation-cache-prefix.sh ios-full-cas-v1
-
-      # Only content-addressed compiler objects cross runs. Source changes
-      # remain eligible for reuse; the compiler validates their dependencies.
-      - name: Restore app compilation cache
-        id: compilation-cache
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_mode == 'warm' }}
-        uses: actions/cache/restore@v4
+      - name: Download the build products
+        uses: actions/download-artifact@v4
         with:
-          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
-          key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
-          restore-keys: |
-            ${{ steps.cache-key.outputs.cache-prefix }}
+          name: ios-ci-app-products-${{ github.run_id }}
+          path: .ci/app-products
 
       - name: Record cache and checkout identity
         env:
           CACHE_MODE: ${{ inputs.cache_mode || 'warm' }}
           APP_SHARD: ${{ matrix.shard }}
-          COMPILATION_CACHE_KEY: ${{ steps.compilation-cache.outputs.cache-matched-key }}
-          COMPILATION_CACHE_HIT: ${{ steps.compilation-cache.outputs.cache-hit }}
         run: |
           mkdir -p "$HEELER_CI_EVIDENCE_DIR"
-          if [[ "$CACHE_MODE" == cold && ( -e .ci/source-packages || -e "$HEELER_CI_COMPILATION_CACHE_DIR" ) ]]; then
-            echo 'Cold run unexpectedly contains restored dependency sources or compiler CAS.' >&2
+          if [[ "$CACHE_MODE" == cold && -e .ci/source-packages ]]; then
+            echo 'Cold run unexpectedly contains restored dependency sources.' >&2
             exit 1
           fi
           {
             printf 'cache_mode=%s\nshard=%s\n' "$CACHE_MODE" "$APP_SHARD"
             printf 'checkout_sha=%s\nevent_sha=%s\n' "$(git rev-parse HEAD)" "$GITHUB_SHA"
             printf 'image_version=%s\n' "${ImageVersion:-unknown}"
-            printf 'build_deadline_seconds=%s\n' "$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"
-            printf 'debug_symbols=disabled\n'
-            printf 'compilation_cache=enabled\ncompilation_cache_key=%s\ncompilation_cache_exact_hit=%s\n' "$COMPILATION_CACHE_KEY" "$COMPILATION_CACHE_HIT"
+            printf 'app_products=prebuilt\n'
             printf 'app_derived_data=%s\n' "$HEELER_CI_APP_DERIVED_DATA_PATH"
           } > "$HEELER_CI_EVIDENCE_DIR/run-settings.txt"
 
@@ -214,13 +346,15 @@ jobs:
       # for every test action. The app deployment target is iOS 18.
       #
       # A step timeout signals only the step shell, so the script's cleanup and
-      # failure diagnostics survive only when its own watchdogs fire first. The
-      # ordinary budget nests preparation (about 3 minutes), the 45-minute build
-      # deadline and its 25-minute test watchdog, plus sampling and cleanup.
-      # Fixture shards get 70 minutes; serial adds the passing fixture phases
-      # before the full target. The job limit reserves another 5 minutes for uploads.
-      - name: Build and test
-        timeout-minutes: ${{ inputs.layout == 'serial' && 90 || (matrix.shard == 'ordinary' && 80 || 70) }}
+      # failure diagnostics survive only when its own watchdogs fire first. No
+      # worker compiles, so the ordinary budget nests preparation and the
+      # Simulator's boot (about 5 minutes), its 25-minute test watchdog, and
+      # sampling and cleanup. Fixture shards get 35 minutes for their fixtures,
+      # the passing suites and one hung suite's 15-minute watchdog; serial adds
+      # the passing fixture phases before the full target. The job limit
+      # reserves another 5 minutes for the download and the uploads.
+      - name: Run app tests
+        timeout-minutes: ${{ inputs.layout == 'serial' && 55 || (matrix.shard == 'ordinary' && 40 || 35) }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something full verification may quietly run without.
@@ -233,31 +367,6 @@ jobs:
           python3 scripts/verify-ci-ios-evidence.py complete \
             --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
             --lane app --shard "$APP_SHARD" --sha "$GITHUB_SHA"
-
-      # A build its deadline ended leaves the compiler's store files at their
-      # mapped capacity, about 75 GiB of holes. The archive records the holes
-      # as data, and restoring it fills the next runner's disk before any
-      # shard builds. A build that exits by itself trims them to what it wrote.
-      - name: Check the build finished
-        id: app-build
-        if: ${{ !cancelled() && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
-        run: |
-          phases="$HEELER_CI_EVIDENCE_DIR/metrics/phases.tsv"
-          if [[ -f "$phases" ]] && awk -F '\t' \
-              '$1 == "xcode-Build-for-testing" && $3 == 0 { finished = 1 } END { exit !finished }' \
-              "$phases"; then
-            echo 'finished=true' >> "$GITHUB_OUTPUT"
-          fi
-
-      # All shards compile the same target. One writer avoids redundant uploads.
-      # A test failure does not invalidate compiler objects, and must not keep
-      # later attempts cold. Coverage evidence is never saved in this cache.
-      - name: Save app compilation cache
-        if: ${{ !cancelled() && steps.app-build.outputs.finished == 'true' && steps.compilation-cache.outcome == 'success' && steps.compilation-cache.outputs.cache-hit != 'true' && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}
-          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Upload app test evidence
         if: always()
@@ -362,18 +471,20 @@ jobs:
 
   build-test:
     name: Build & test (iOS Simulator)
-    needs: [app-tests, heelerssh-package-e2e]
+    needs: [app-build, app-tests, heelerssh-package-e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # A failed build skips the app workers, which reads here as app=skipped.
       - name: Require every worker to succeed
         env:
+          BUILD_RESULT: ${{ needs.app-build.result }}
           APP_RESULT: ${{ needs.app-tests.result }}
           PACKAGE_RESULT: ${{ needs.heelerssh-package-e2e.result }}
         run: |
-          if [[ "$APP_RESULT" != success || "$PACKAGE_RESULT" != success ]]; then
-            printf 'Worker failure: app=%s package=%s\n' "$APP_RESULT" "$PACKAGE_RESULT" >&2
+          if [[ "$BUILD_RESULT" != success || "$APP_RESULT" != success || "$PACKAGE_RESULT" != success ]]; then
+            printf 'Worker failure: build=%s app=%s package=%s\n' "$BUILD_RESULT" "$APP_RESULT" "$PACKAGE_RESULT" >&2
             exit 1
           fi
       - uses: actions/checkout@v5

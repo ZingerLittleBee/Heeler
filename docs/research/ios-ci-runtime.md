@@ -51,8 +51,8 @@ Evidence names include the run and worker, and a rerun replaces that worker's
 artifact. Partial reruns can retain successful same-run, same-SHA prerequisites;
 the aggregate still requires every worker's current result to succeed.
 
-The serial comparison retains the original test-call order on the same code and
-toolchain, with build/preparation overlap disabled. Both layouts explicitly
+The serial comparison retains the original test-call order on the same code,
+toolchain and shared build. Both layouts explicitly
 disable native compilation caching and use fresh DerivedData. Warm mode restores
 only dependency sources; cold mode skips both cache restore and save. These
 controls distinguish a first dependency-cold run from a compilation-cold run
@@ -64,7 +64,7 @@ This reduces crash file/line symbolication and LLDB variable information; the
 normal Swift Testing failure locations remain available. Local builds retain
 their default symbol settings. The hosted runs below used this policy, but
 none isolates its saving.
-Cold and warm app runs permit a 30-minute build deadline. Hosted compilation
+Cold and warm app runs share one build deadline, at first 30 minutes. Hosted compilation
 first reached the final embedded-binary validation stage at a 15-minute cutoff.
 By 2026-10-27 it also outgrew the 20-minute one: between 2026-10-27 and
 2026-10-29, passing app builds took 720-1150 s, and 13 of 16 failed app lanes
@@ -72,20 +72,30 @@ were killed at that deadline before any test ran. Swift sources and tests grew
 from about 206k to 260k lines between 2026-10-15 and 2026-10-29. By 2026-11-19
 they had reached about 480k lines and full verification's builds had outgrown
 that limit too: between 2026-11-12 and 2026-11-19, 9 of 18 shard builds were
-ended at 30 minutes and the rest took 17 to 30, so full verification now
-permits 45 minutes, with 70 for a fixture shard's step, 80 for the ordinary
-shard's and 5 more for each job. Each app test
-call has a 15-minute watchdog. The ordinary lane's full call passed all of its
-tests in 7.5-8.5 minutes, then hit the former 10-minute watchdog before
-xcodebuild exited. These are safety limits for runner variance, not performance
+ended at 30 minutes and the rest took 17 to 30, so the deadline went to 45
+minutes. On 2026-11-20 the three shard builds of
+[one run](https://github.com/ZingerLittleBee/Heeler/actions/runs/44668784959)
+took 21 minutes, 38 minutes and more than 45, each on its own runner beside a
+booting Simulator and its fixture setup. Full verification has since compiled
+once: an `app-build` job runs the fast build's `make build-ci-app` alone on a
+runner, with no Simulator, and keeps the 45-minute deadline (50 minutes for
+its step, 60 for the job). The app workers download its products as one
+archive and compile nothing. They still run `test-without-building` through
+the scheme, which reads `HEELER_SSH_E2E_REQUIRED` from the worker's
+environment when the tests start, so fixture workers get `1` and the ordinary
+worker `0` from a build that set neither. Each fixture test call has a
+15-minute watchdog and the ordinary lane's full call 25 minutes. That call
+once passed all of its tests in 7.5-8.5 minutes, then hit the former 10-minute
+watchdog before xcodebuild exited; in the run above it took 21 minutes for
+9,290 tests. These are safety limits for runner variance, not performance
 targets. The package lane keeps the script defaults (15-minute build, 10-minute
 test call). GitHub's step timeout signals only the step shell, so the runner's
-cleanup and diagnostics survive only when its own watchdogs fire first. The
-sharded app step therefore allows 55 minutes (60 for the job) and the package
-step 30 (36 for the job), enough for preparation, the build deadline, and a
-hung suite's watchdog with sampling and cleanup. The explicit serial comparison
-has a 60-minute step and 65-minute job safety limit, allowing its original
-sequential setup and four test calls to finish.
+cleanup and diagnostics survive only when its own watchdogs fire first. An app
+worker's step therefore allows 35 minutes for a fixture shard, 40 for the
+ordinary shard and 55 for the explicit serial comparison, each with 5 more for
+the job: enough for preparation, the Simulator's boot, the passing calls, and
+a hung call's watchdog with sampling and cleanup. The package step allows 30
+(36 for the job) for its own build deadline and test call.
 
 Local non-native checks use:
 

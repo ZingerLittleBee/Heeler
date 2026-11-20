@@ -99,6 +99,21 @@ case "$overlap_build" in
     0 | 1) ;;
     *) echo "HEELER_CI_OVERLAP_BUILD must be 0 or 1" >&2; exit 2 ;;
 esac
+# Full verification compiles the app and its tests once, in a job of its own,
+# and hands every app worker that build's products (refs #704). A worker given
+# the archive unpacks it where its own build would have left the products and
+# compiles nothing. Without one, a worker builds for itself as before.
+app_products_archive="${HEELER_CI_APP_PRODUCTS_ARCHIVE:-}"
+if [[ -n "$app_products_archive" ]]; then
+    if [[ "$ci_lane" != app ]]; then
+        echo "HEELER_CI_APP_PRODUCTS_ARCHIVE applies to the app lane only" >&2
+        exit 2
+    fi
+    if [[ "$app_products_archive" != /* || ! -f "$app_products_archive" ]]; then
+        echo "HEELER_CI_APP_PRODUCTS_ARCHIVE must be an absolute path to the products archive: $app_products_archive" >&2
+        exit 2
+    fi
+fi
 prepare_evidence_directory() {
     # Workflow settings are created before make; successful phase/completion
     # evidence and metrics must never be reused by a new worker attempt.
@@ -265,6 +280,8 @@ start_background_build() {
     local -a arguments=()
     local setting
     [[ "$overlap_build" == 1 ]] || return 0
+    # Prebuilt products leave this worker nothing to compile.
+    [[ -z "${app_products_archive:-}" ]] || return 0
     [[ -z "$background_build_pid" ]] || return 1
     if [[ "$ci_lane" == package ]]; then
         working_directory="$repo_root/Packages/HeelerSSH"
@@ -327,6 +344,26 @@ cancel_background_build() {
     kill -TERM "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
     background_build_pid=""
+}
+
+# Unpacks the shared build's products into this worker's DerivedData, where
+# test-without-building looks for them. The archive holds Build/Products as
+# `make pack-ci-app-products` wrote it.
+restore_app_products() {
+    local started=$SECONDS
+    local status=0
+    local test_bundle="$app_derived_data_path/Build/Products/Debug-iphonesimulator/Heeler.app/PlugIns/HeelerTests.xctest"
+    echo "==> Restoring prebuilt app products from $app_products_archive"
+    if ! mkdir -p "$app_derived_data_path" \
+        || ! tar -xzf "$app_products_archive" -C "$app_derived_data_path"; then
+        echo "Could not unpack the prebuilt app products" >&2
+        status=1
+    elif [[ ! -d "$test_bundle" ]]; then
+        echo "The prebuilt app products hold no HeelerTests bundle: $test_bundle" >&2
+        status=1
+    fi
+    record_phase app-products-restore "$started" "$status"
+    return "$status"
 }
 
 # The privileged password fixture, provisioned only when sudo -n works.
@@ -2576,20 +2613,25 @@ if [[ "$password_fixture_available" != "1" ]]; then
 fi
 echo "==> Preparation finished at t+${SECONDS}s for app/$ci_app_shard"
 start_preparation_work fixtures
-# Build once per worker, joining the owned build if preparation overlapped it.
+# Build once per worker, joining the owned build if preparation overlapped it,
+# unless full verification's shared build already compiled the products.
 # Keep the test manifest's gate flag explicit even before fixture setup.
 export HEELER_SSH_E2E_REQUIRED=1
 [[ "$ci_app_shard" != ordinary ]] || export HEELER_SSH_E2E_REQUIRED=0
-run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
-    "$fixture_dir/build-for-testing.log" \
-    build-for-testing \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -derivedDataPath "$app_derived_data_path" \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never
-# The simulator has been booting since before the build started; whatever
-# remains of its boot is all this wait costs.
+if [[ -n "$app_products_archive" ]]; then
+    restore_app_products
+else
+    run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
+        "$fixture_dir/build-for-testing.log" \
+        build-for-testing \
+        -project Heeler.xcodeproj \
+        -scheme Heeler \
+        -derivedDataPath "$app_derived_data_path" \
+        -destination "$simulator_destination" \
+        -collect-test-diagnostics never
+fi
+# The simulator has been booting since before the build or the restore
+# started; whatever remains of its boot is all this wait costs.
 boot_wait_started=$SECONDS
 xcrun simctl bootstatus "$simulator_udid" -b
 record_phase simulator-boot-wait "$boot_wait_started"
