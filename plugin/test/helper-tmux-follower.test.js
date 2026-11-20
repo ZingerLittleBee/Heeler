@@ -345,6 +345,67 @@ for (const row of rows) {
     assert.equal(latest[1].windowName, "fish");
   });
 
+  test("decodes panes when tmux 3.8 escapes braces, tabs and newlines and names no process for a dead pane", async () => {
+    const stubTmux = join(root, "tmux-38-stub");
+    writeFileSync(
+      stubTmux,
+      `#!${process.execPath}
+function quoteShell(text) {
+  let out = "";
+  for (const ch of text) {
+    if ("|&;<>(){}$\`\\\\\\"'*?[# =%\\n\\t".includes(ch)) out += "\\\\";
+    out += ch;
+  }
+  return out;
+}
+const rows = [
+  {
+    pid: "9001", start_time: "1700000000", session_id: "$0", window_id: "@0", window_index: "0",
+    pane_id: "%0", pane_pid: String(process.ppid), pane_dead: "0", pane_pipe: "0",
+    session_name: "work", window_name: "a\\tb\\nc {d}", pane_current_command: "sh",
+    pane_current_path: "/tmp", pane_tty: "", "@heeler-status": "",
+    "@heeler-session": JSON.stringify({ session: "s1", file: "/home/dev/.claude/projects/-w/s1.jsonl" }),
+    "@heeler-pipe": "", "@heeler-piped": "", "@heeler-attach": "",
+  },
+  {
+    pid: "9001", start_time: "1700000000", session_id: "$0", window_id: "@1", window_index: "1",
+    pane_id: "%1", pane_pid: "", pane_dead: "1", pane_pipe: "0",
+    session_name: "work", window_name: "gone", pane_current_command: "sh",
+    pane_current_path: "/tmp", pane_tty: "", "@heeler-status": "",
+    "@heeler-session": "", "@heeler-pipe": "", "@heeler-piped": "", "@heeler-attach": "",
+  },
+];
+const args = process.argv.slice(2);
+const fmt = args[args.length - 1];
+for (const row of rows) {
+  process.stdout.write(fmt.replace(/#\\{(q:)?([^}]+)\\}/g, (_, q, name) => (q ? quoteShell(row[name] ?? "") : (row[name] ?? ""))) + "\\n");
+}
+`,
+      { mode: 0o755 },
+    );
+
+    let latest = null;
+    const follower = followTmuxServer(
+      "work",
+      { executable: stubTmux, socket: join(root, "stub38.sock") },
+      {
+        pollIntervalMs: 25,
+        listener: {
+          panesUpdated: ({ panes }) => {
+            latest = panes;
+          },
+        },
+      },
+    );
+    cleanups.push(() => follower.stop());
+
+    await waitFor(() => latest?.length === 2, "both panes decoded from tmux 3.8 output", PATIENCE_MS);
+    assert.equal(latest[0].windowName, "a\tb\nc {d}");
+    assert.equal(JSON.parse(latest[0].agentSession).session, "s1");
+    assert.equal(latest[1].paneID, "%1");
+    assert.equal(latest[1].isDead, true);
+  });
+
   test("polls every 1 second on a fake clock only while a live Agent Pane reads blocked or a listener requests a shorter follow-up", async () => {
     const stateFile = join(root, "stub-state.json");
     const stubTmux = join(root, "tmux-clock-stub");

@@ -215,7 +215,7 @@
     },
     {
       "path": "tmux/follower.js",
-      "sha256": "e443d5bc29c787e12759d93f9c76f00d163db9c0ecc9dbeebb07339228117d87"
+      "sha256": "14cb2112ec6f3afdf476434749c3dfed44359c778cfbf317c43d5587291e15fc"
     },
     {
       "path": "tmux/foreground.js",
@@ -235,7 +235,7 @@
     },
     {
       "path": "tmux/quoted-format.js",
-      "sha256": "c1521205d9448609c1c7643875c28695184060a555bcb290ddf2b626059a1c5b"
+      "sha256": "e40fcf4fc47da1a00b4c5e1385bf88be2b17dbf3dff019f24728691d3889cbed"
     },
     {
       "path": "tmux/socket-name.js",

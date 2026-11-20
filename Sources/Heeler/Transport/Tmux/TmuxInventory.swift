@@ -21,6 +21,7 @@ struct TmuxInventory: Equatable, Sendable {
         var paneID: String
         var paneIndex: Int
         /// The process the pane started. Its terminal's foreground is asked of it.
+        /// Zero once the terminal has closed on tmux 3.8, which then names none.
         var processID: Int
         /// `pane_current_command`: the name of the process leading the pane's
         /// foreground process group, as tmux reads it.
