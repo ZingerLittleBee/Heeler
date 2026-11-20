@@ -55,6 +55,7 @@ Entries reference the pull request that made the change.
 - A Rex Agent's detail restored when Heeler starts again shows Loading Agents… until the Host has said what its terminal runs, instead of Agent Gone for a moment before the Agent appears. (PR #775)
 - Read a part of a file on the Host without the Host sending up to 256 KiB more than was asked for. Chat's older history and its images, which read a part of a file away from its end, each pulled that much extra over the Host's connection: slower on a slow link, with the terminal's output waiting behind it. (PR #781)
 - Show **More Options** on **Add Host** in the app's language under Japanese, Simplified Chinese, and Traditional Chinese. It stayed in English. (PR #794)
+- Show the hint under **More Options** on **Add Host** in the app's language under Japanese, Simplified Chinese, and Traditional Chinese: the route's port, the overlay network or Jump Host it goes through, and where to add one. It stayed in English. (PR #798)
 
 ## [0.1.20]
 
