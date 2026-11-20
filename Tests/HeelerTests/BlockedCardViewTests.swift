@@ -177,6 +177,42 @@ struct BlockedCardViewTests {
         }
     }
 
+    /// An answer that saves a rule or switches the permission mode can't be
+    /// undone, so a card opens with those folded under More Options and
+    /// shows them once that row is activated.
+    @Test func aCardOpensWithItsOtherAnswersFolded() async throws {
+        let stem = "claude-02-c1-bash-blocked"
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        let controller = UIHostingController(rootView: BlockedCardView(store: store, maxHeight: 600, openTerminal: {}))
+        controller.safeAreaRegions = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: Self.phoneWidth, height: 812), rootViewController: controller
+        ) { _ in
+            _ = try await Self.settledScrollView(in: controller)
+            let folded = "Yes, and switch to auto mode"
+            @MainActor func shows(_ prefix: String) -> Bool {
+                Self.labels(in: controller.view).contains { $0.hasPrefix(prefix) }
+            }
+            let decision = Self.labels(in: controller.view).filter { ["Yes", "No"].contains($0) }
+            #expect(Set(decision) == ["Yes", "No"])
+            #expect(!shows(folded))
+            let more = try #require(
+                Self.elements(in: controller.view).first { $0.accessibilityLabel == "More Options" })
+            #expect(more.accessibilityActivate())
+            for _ in 0..<40 where !shows(folded) {
+                try await Task.sleep(for: .milliseconds(50))
+                controller.view.layoutIfNeeded()
+            }
+            #expect(shows(folded))
+        }
+    }
+
     /// A flat cut reads as the card's end. Where an option runs past the
     /// scroll edge, it fades into the card instead, while the rest of it
     /// draws at full strength; the edge with nothing past it stays sharp,
