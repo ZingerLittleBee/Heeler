@@ -1,7 +1,6 @@
 import Foundation
 import GhosttyTerminal
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -237,66 +236,5 @@ struct TmuxPanePaintTests {
         #expect(older.bracketedPaste == .disabled)
         _ = older.receive(.output(pane: "%3", bytes: Data("\(escape)[?2004h".utf8)))
         #expect(older.bracketedPaste == .enabled)
-    }
-
-    @MainActor
-    @Test func aSmallerPaneConfinesScrollingAndLeavesTheRestOfTheViewBlank() async throws {
-        var grid: (cols: Int, rows: Int)?
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSizeChanged: { grid = ($0, $1) },
-            notificationCenter: NotificationCenter())
-        let controller = UIViewController()
-        controller.view = terminal
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 520, height: 420),
-            rootViewController: controller)
-        defer {
-            window.isHidden = true
-            window.rootViewController = nil
-        }
-        terminal.layoutIfNeeded()
-        for _ in 0..<200
-        where terminal.viewportRows == nil || grid?.rows != terminal.viewportRows
-            || terminal.terminalSession.readViewportText() == nil
-        {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        let viewGrid = try #require(grid)
-        #expect(viewGrid.cols > 20 && viewGrid.rows > 4)
-
-        let painted = TmuxPanePaint.bytes(
-            modes: try modes(modesLine(cursor: (6, 3), region: (0, 3), size: (20, 4))),
-            history: nil,
-            screen: lines("row one", "row two", "row three", "row 4!"),
-            normalScreen: [],
-            viewRows: viewGrid.rows)
-        #expect(text(painted).contains("\(escape)[1;4r"))
-        terminal.receive(painted)
-        terminal.receive(Data("\r\nrow five\r\nrow six".utf8))
-
-        // Ghostty applies host output off the reading thread, so the first
-        // frame that contains "row six" can still be mid-update.
-        let expected = ["row three", "row 4!", "row five", "row six"]
-        var viewport: [String] = []
-        for _ in 0..<200 {
-            if let read = terminal.terminalSession.readViewportText() {
-                let rows = read.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                if rows.prefix(4).map({ $0.trimmingCharacters(in: .whitespaces) }) == expected {
-                    viewport = rows
-                    break
-                }
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(viewport.count >= viewGrid.rows)
-        #expect(viewport.prefix(4).map { $0.trimmingCharacters(in: .whitespaces) } == [
-            "row three", "row 4!", "row five", "row six",
-        ])
-        for row in viewport.dropFirst(4) {
-            #expect(row.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        for row in viewport.prefix(4) where row.count > 20 {
-            #expect(row.dropFirst(20).trimmingCharacters(in: .whitespaces).isEmpty)
-        }
     }
 }

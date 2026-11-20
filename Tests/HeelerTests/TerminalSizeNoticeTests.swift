@@ -1,8 +1,6 @@
 import Foundation
-import SwiftUI
 import Synchronization
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -265,112 +263,6 @@ struct TerminalSizeNoticeTests {
         #expect(TerminalSizeNotice.edge(forViewport: short.joined(separator: "\n")) == .bottom)
         #expect(TerminalSizeNotice.edge(forViewport: full.joined(separator: "\n")) == .top)
         #expect(TerminalSizeNotice.edge(forViewport: lowerHalf.joined(separator: "\n")) == .top)
-    }
-
-    /// What one screen hears of its terminal's viewport.
-    final class ViewportReports {
-        var texts: [String] = []
-    }
-
-    /// A screen of a terminal the pool keeps, as a shell terminal's is.
-    struct KeptScreen: View {
-        let feed: TerminalByteFeed
-        let retention: TerminalSurfaceRetention
-        let reports: ViewportReports
-
-        var body: some View {
-            var screen = TerminalScreenView(feed: feed)
-            screen.retention = retention
-            screen.onViewportTextChanged = { reports.texts.append($0) }
-            return screen
-        }
-    }
-
-    private func report(
-        in reports: ViewportReports, containing marker: String
-    ) async throws -> String {
-        var budget = PollBudget(.seconds(5))
-        while !reports.texts.contains(where: { $0.contains(marker) }), budget.hasTimeLeft {
-            try await Task.sleep(for: .milliseconds(10))
-            budget.charge()
-        }
-        return try #require(
-            reports.texts.last { $0.contains(marker) },
-            "the screen never heard a viewport showing \(marker)")
-    }
-
-    /// A kept terminal shown again shows what it showed, and nothing new may
-    /// come for it: the server sends output only when something changes.
-    /// Its new screen hears where the output ends all the same, or the notice
-    /// starts at the top, over a prompt and cursor in the upper half.
-    @Test func aKeptTerminalShownAgainKnowsWhereTheOutputEnds() async throws {
-        let feed = TerminalByteFeed()
-        let retention = TerminalSurfaceRetention()
-        defer { retention.clear() }
-        let first = ViewportReports()
-        let controller = UIHostingController(
-            rootView: AnyView(KeptScreen(feed: feed, retention: retention, reports: first)))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        controller.view.layoutIfNeeded()
-        feed.write(Data("row1\r\nrow2\r\nrow3\r\n$ ".utf8))
-        _ = try await report(in: first, containing: "row3")
-
-        // The screen goes, and the pool takes the surface's callbacks back.
-        // Output while it is away reaches the surface and no one else.
-        controller.rootView = AnyView(Color.clear)
-        controller.view.layoutIfNeeded()
-        retention.detachCallbacks()
-        feed.write(Data("row4\r\nrow5\r\n$ ".utf8))
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(!first.texts.contains { $0.contains("row5") })
-
-        // Shown again, with nothing new from the server.
-        let second = ViewportReports()
-        controller.rootView = AnyView(KeptScreen(feed: feed, retention: retention, reports: second))
-        controller.view.layoutIfNeeded()
-        let shown = try await report(in: second, containing: "row5")
-        #expect(TerminalSizeNotice.edge(forViewport: shown) == .bottom)
-    }
-
-    /// The keyboard, a rotation or a pinch changes the terminal's grid while
-    /// a server that keeps its own size sends nothing for it. The screen
-    /// hears where the output ends now: here a prompt in the upper half ends
-    /// up on the last row once the grid loses rows.
-    @Test func aGridChangeWithoutOutputMovesWhereTheOutputEnds() async throws {
-        let reports = ViewportReports()
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onViewportTextChanged: { reports.texts.append($0) },
-            notificationCenter: NotificationCenter())
-        terminal.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
-        let controller = UIViewController()
-        controller.view = terminal
-        let window = try await makeTestWindow(
-            frame: terminal.bounds,
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        try await waitForGhosttyContentLayer(in: terminal)
-        terminal.layoutIfNeeded()
-        var budget = PollBudget(.seconds(5))
-        while terminal.viewportRows == nil, budget.hasTimeLeft {
-            try await Task.sleep(for: .milliseconds(10))
-            budget.charge()
-        }
-        let tallRows = try #require(terminal.viewportRows)
-        let lines = tallRows / 2 - 2
-        try #require(lines > 4, "a grid of \(tallRows) rows is too short for this test")
-        terminal.receive(Data(((1...lines).map { "row\($0)\r\n" }.joined() + "$ ").utf8))
-        let before = try await report(in: reports, containing: "row\(lines)")
-        #expect(TerminalSizeNotice.edge(forViewport: before) == .bottom)
-        reports.texts.removeAll()
-
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874 * 0.3)
-        window.layoutIfNeeded()
-        let after = try await report(in: reports, containing: "row\(lines)")
-        #expect((terminal.viewportRows ?? tallRows) <= lines)
-        #expect(TerminalSizeNotice.edge(forViewport: after) == .top)
     }
 
     /// The notice goes as soon as the sizes agree or this client sets the

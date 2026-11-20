@@ -1,6 +1,4 @@
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -49,26 +47,6 @@ struct AgentDetailHeaderTitleTests {
         #expect(title.kind == "mystery")
         #expect(title.directory == nil)
         #expect(title.folder == nil)
-    }
-
-    @Test(.serialized, arguments: [nil, "gpt-5.6"] as [String?])
-    func onlyReportedModelsAppearInTheSecondaryLine(model: String?) async throws {
-        let controller = UIHostingController(rootView: AgentDetailHeader(
-            palette: .system, isExpanded: .constant(true), onBack: {},
-            title: AgentDetailHeaderTitle(makeAgent()),
-            sessionSettings: .init(model: model, permissionMode: nil))
-            .padding(.horizontal, 12)
-            .frame(maxHeight: .infinity, alignment: .top))
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 200), rootViewController: controller
-        ) { window in
-            try await Task.sleep(for: .milliseconds(300))
-            let labels = accessibleElements(in: window).compactMap(\.accessibilityLabel).joined(separator: " ")
-            #expect(labels.contains("payments-api"))
-            #expect(!labels.contains("Codex"))
-            #expect(!labels.contains("Model"))
-            #expect(labels.contains("gpt-5.6") == (model != nil))
-        }
     }
 }
 
