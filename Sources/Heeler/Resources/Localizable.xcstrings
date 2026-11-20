@@ -41899,6 +41899,8 @@
         }
       }
     },
+    "Over an overlay network that no longer exists." : {},
+    "Over overlay network “%@”." : {},
     "Overlay Networks" : {
       "localizations" : {
         "ja" : {
