@@ -25,10 +25,11 @@ struct TransportErrorPresentation: Equatable, Sendable {
         return summary.asSentence
     }
 
-    /// `explanation` [+ " " + `recoverySuggestion`] — the whole presentation.
+    /// `explanation` [+ `recoverySuggestion`, as the next sentence] — the
+    /// whole presentation.
     var message: String {
         if let recoverySuggestion {
-            return "\(explanation) \(recoverySuggestion)"
+            return [explanation, recoverySuggestion].joinedAsSentences()
         }
         return explanation
     }

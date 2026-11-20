@@ -19,6 +19,13 @@ extension StringProtocol {
             ? String(self)
             : String(localized: "\(String(self)).", comment: "Closes a text as a sentence when it has no closing mark yet")
     }
+
+    /// Whether the text ends in a full-width mark ("。", "！"), which is drawn
+    /// with its own space after it. Read from the mark's Unicode name.
+    var endsInFullWidthMark: Bool {
+        guard let name = unicodeScalars.last?.properties.name else { return false }
+        return name.hasPrefix("IDEOGRAPHIC") || name.hasPrefix("FULLWIDTH")
+    }
 }
 
 extension Sequence where Element: StringProtocol {
@@ -29,5 +36,15 @@ extension Sequence where Element: StringProtocol {
             separator: String(
                 localized: ", ",
                 comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
+    }
+
+    /// Whole sentences in a row as one text: a space between two of them,
+    /// and none after a full-width mark. Each sentence decides for itself, so
+    /// one still in English keeps its space inside a Japanese text.
+    func joinedAsSentences() -> String {
+        reduce(into: "") { text, sentence in
+            if !text.isEmpty, !text.endsInFullWidthMark { text += " " }
+            text += sentence
+        }
     }
 }

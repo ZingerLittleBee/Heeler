@@ -758,7 +758,7 @@ struct AgentUsageDashboard: View {
         if !versions.isEmpty {
             parts.append(String(localized: "Price table: \(versions.sorted().joined(separator: ", "))."))
         }
-        return parts.joined(separator: " ")
+        return parts.joinedAsSentences()
     }
 
     // MARK: States

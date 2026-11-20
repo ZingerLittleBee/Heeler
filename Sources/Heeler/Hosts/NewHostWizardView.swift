@@ -217,7 +217,7 @@ struct NewHostWizardView: View {
         if parts.count == 1 {
             parts.append(String(localized: "Add a Jump Host or an overlay network under More Options."))
         }
-        return parts.joined(separator: " ")
+        return parts.joinedAsSentences()
     }
 
     // MARK: Trust

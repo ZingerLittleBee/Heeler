@@ -15,7 +15,9 @@ literal is decided in
      singular goes in that key's `en` plural variation (`one`: `%lld file`)
      rather than an `n == 1` branch in code.
    - Close a sentence with `asSentence`, test for a closing mark with
-     `endsSentence`, and join short phrases with `joinedAsPhrases()`
+     `endsSentence`, join short phrases with `joinedAsPhrases()`, and set
+     whole sentences side by side with `joinedAsSentences()`, which leaves
+     out the space after a full-width mark
      ([LocalizedPhrasing](../../Sources/Heeler/Support/LocalizedPhrasing.swift)).
      Durations, dates and numbers use Foundation format styles.
    - When one English word means two things, such as the Agent status Done
