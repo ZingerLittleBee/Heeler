@@ -307,6 +307,9 @@ struct AgentComposerView: View {
     @State private var isVoiceSetupPresented = false
     @State private var previewedImage: ComposerImagePreviewSheet.Item?
     @State private var isInputFocused = false
+    /// Until `onAppear` has settled where the keyboard goes; see
+    /// `inheritsPendingKeyboard`.
+    @State private var isOpening = true
     /// An explicit dismissal hides suggestions for the current trigger token;
     /// removing the token arms them again.
     @State private var isSuggestionsDismissed = false
@@ -404,10 +407,12 @@ struct AgentComposerView: View {
             }
         }
         .onAppear {
-            guard inheritsKeyboardHandoff,
-                  let selectedID = switcher.selectedID,
-                  keyboardHandoff.consume(selectedID)
-            else { return }
+            defer { isOpening = false }
+            guard inheritsKeyboardHandoff else { return }
+            // A handoff carries the keyboard up from the screen before. With
+            // none, a hardware keyboard still opens the Agent ready to type.
+            let inherits = switcher.selectedID.map { keyboardHandoff.consume($0) } ?? false
+            guard inherits || opensFocusedOnHardwareKeyboard else { return }
             setKeyboardPresentation(.system)
             isInputFocused = true
         }
@@ -430,6 +435,7 @@ struct AgentComposerView: View {
         }
         .onChange(of: isInputFocused) { _, isFocused in
             keyboardPresentationFollowsFocus(isFocused)
+            if isFocused { keyboardHandoff.keyboardCameUp() }
         }
         .onChange(of: store.draft) { _, _ in
             if commandMenu != nil {
@@ -903,11 +909,24 @@ struct AgentComposerView: View {
                 openVoiceInputSettings: { isVoiceSetupPresented = true }))
     }
 
-    /// A keyboard handed over by the screen this one replaces, read without
-    /// consuming it (`onAppear` does), so the first frame is already open.
+    /// A keyboard on its way as the Composer opens, so the first frame is
+    /// already open: one handed over by the screen this one replaces, read
+    /// without consuming it (`onAppear` does), or a hardware keyboard's.
     private var inheritsPendingKeyboard: Bool {
-        guard inheritsKeyboardHandoff, let selectedID = switcher.selectedID else { return false }
+        guard inheritsKeyboardHandoff else { return false }
+        if isOpening, opensFocusedOnHardwareKeyboard { return true }
+        guard let selectedID = switcher.selectedID else { return false }
         return keyboardHandoff.mode(for: selectedID) != nil
+    }
+
+    /// Whether a hardware keyboard puts the caret in the input as the
+    /// Composer opens (`TerminalKeyboardHandoff.opensFocused`). Not while a
+    /// responder handoff is settling the keyboard itself, and not under a
+    /// card or the recorder in the input's place, which have nothing to type
+    /// into.
+    private var opensFocusedOnHardwareKeyboard: Bool {
+        keyboardHandoff.opensFocused && keyboardHandoffID == nil
+            && inputReplacement == nil && liveVoiceRecorder == nil
     }
 
     /// The invocation token at the end of the draft, when this agent has
@@ -931,6 +950,7 @@ struct AgentComposerView: View {
     private func dismissOrPresentKeyboard() {
         if isKeyboardPresented {
             hideKeyboard()
+            keyboardHandoff.keyboardWasPutAway()
         } else {
             setKeyboardPresentation(.system)
             isInputFocused = true
@@ -947,6 +967,7 @@ struct AgentComposerView: View {
         guard isKeyboardPresented else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         hideKeyboard()
+        keyboardHandoff.keyboardWasPutAway()
     }
 
     private func switchKeyboard() {
