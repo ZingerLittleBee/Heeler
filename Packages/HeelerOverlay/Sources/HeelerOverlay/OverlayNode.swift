@@ -50,6 +50,11 @@ public enum OverlayError: Error, Sendable, Equatable {
     case cancelled
     /// The configuration is incomplete or malformed.
     case invalidConfiguration(String)
+    /// The dial names a host or port this network never reaches, whatever
+    /// its state: a name on ZeroTier, another machine through a tailcat
+    /// tunnel. The network's configuration is sound; the caller's address
+    /// is what has to change.
+    case invalidDestination(String)
 }
 
 /// One running overlay node. Implementations are safe to call from any task;

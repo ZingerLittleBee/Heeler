@@ -388,9 +388,10 @@ struct HostRouteRow: View {
             kind: HostRouteKind(
                 usesOverlay: route.overlayNetworkID != nil, usesJumpHost: route.usesJumpHost)
         ) {
-            Text(title)
+            Text(title.wrappingAtAddressSeparators)
                 .font(.body.monospaced())
                 .foregroundStyle(route.isValid ? Color.primary : Color.red)
+                .accessibilityLabel(title)
         } subtitle: {
             Text(subtitle)
         }
@@ -482,16 +483,36 @@ struct HostRouteLabel<Title: View, Subtitle: View, Trailing: View>: View {
                 .frame(width: iconSize, height: iconSize)
                 .background(kind.tint.opacity(0.14), in: .rect(cornerRadius: 8))
                 .accessibilityHidden(true)
+            // The text takes the row's free width itself: a spacer here
+            // would add the stack's spacing twice over and wrap an address
+            // that fits beside the tag.
             VStack(alignment: .leading, spacing: 2) {
                 title
                 subtitle
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+extension String {
+    /// This address for a route's row, where a tag narrows the line: it
+    /// wraps before a `.` or a `:` when it has to wrap, so a long address
+    /// keeps each label and its port whole. Display only; the zero-width
+    /// spaces stay out of anything read back or spoken.
+    var wrappingAtAddressSeparators: String {
+        var wrapping = ""
+        for character in self {
+            if (character == "." || character == ":"), !wrapping.isEmpty {
+                wrapping.append("\u{200B}")
+            }
+            wrapping.append(character)
+        }
+        return wrapping
     }
 }
 

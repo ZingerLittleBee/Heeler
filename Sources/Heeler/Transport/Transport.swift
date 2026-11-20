@@ -1242,13 +1242,14 @@ indirect enum TransportError: Error, Sendable, Equatable {
                 && failures.contains { $0.error.isRetryable }
         // A peer that is asleep, a slow node, or a device awaiting approval
         // can recover on its own; a missing network, a sign-in, a malformed
-        // setting, or a start failure that outlasted its retries needs the user.
+        // setting, an address the network never reaches, or a start failure
+        // that outlasted its retries needs the user.
         case .overlayFailed(_, let reason):
             switch reason {
             case .unreachable, .timedOut, .notReady:
                 true
-            case .notConfigured, .catalogUnreadable, .misconfigured, .loginRequired,
-                .signedOut, .startFailed:
+            case .notConfigured, .catalogUnreadable, .misconfigured, .invalidDestination,
+                .loginRequired, .signedOut, .startFailed:
                 false
             }
         }

@@ -1142,6 +1142,7 @@ struct OverlayNetworkRuntimeTests {
             (.startFailed("bad key"), .overlayFailed(network: "Home", reason: .notReady("bad key"))),
             (.timedOut, .overlayFailed(network: "Home", reason: .timedOut)),
             (.invalidConfiguration("x"), .overlayFailed(network: "Home", reason: .misconfigured("x"))),
+            (.invalidDestination("x"), .overlayFailed(network: "Home", reason: .invalidDestination("x"))),
             (.cancelled, .cancelled),
         ]
         for (nodeError, expected) in cases {
@@ -1218,8 +1219,8 @@ struct OverlayFailurePresentationTests {
         let login = try #require(URL(string: "https://login.tailscale.com/a/1"))
         let retryable: [OverlayFailure] = [.unreachable("refused"), .timedOut, .notReady("approval")]
         let stopping: [OverlayFailure] = [
-            .notConfigured, .catalogUnreadable, .misconfigured("x"), .loginRequired(login),
-            .startFailed("bad key"),
+            .notConfigured, .catalogUnreadable, .misconfigured("x"), .invalidDestination("x"),
+            .loginRequired(login), .startFailed("bad key"),
         ]
         for reason in retryable {
             #expect(TransportError.overlayFailed(network: "Home", reason: reason).isRetryable)
@@ -1246,6 +1247,22 @@ struct OverlayFailurePresentationTests {
 
         let timedOut = TransportError.overlayFailed(network: "Home", reason: .timedOut).presentation
         #expect(timedOut.recoverySuggestion == nil)
+    }
+
+    @Test func anAddressTheNetworkNeverReachesPointsAtTheRoute() {
+        let failure = TransportError.overlayFailed(
+            network: "Studio", reason: .invalidDestination("Use 3f2a9c.tailcat as the address."))
+        #expect(failure.presentation.summary == "Overlay network “Studio” cannot reach this address")
+        #expect(failure.presentation.detail == "Use 3f2a9c.tailcat as the address.")
+        #expect(failure.presentation.recoverySuggestion == "Change the address in the Host's route.")
+
+        let report = PreflightReport.failure(failure, authMethod: .deviceKey)
+        guard case .failed(let hint) = report[.connection] else {
+            Issue.record("Expected the connection check to fail")
+            return
+        }
+        #expect(hint.contains("Change the address in the Host's route"))
+        #expect(!hint.contains("Settings › Overlay Networks"))
     }
 
     @Test func preflightBlamesTheOverlayOnTheConnectionCheck() {

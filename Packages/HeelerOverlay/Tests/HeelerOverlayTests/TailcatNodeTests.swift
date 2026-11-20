@@ -56,7 +56,7 @@ struct TailcatNodeTests {
         let node = Self.node(native)
 
         await #expect(
-            throws: OverlayError.invalidConfiguration(
+            throws: OverlayError.invalidDestination(
                 "A tailcat tunnel only reaches the machine running tailcat serve. Use 3f2a9c.tailcat as the address.")
         ) {
             _ = try await node.dial(host: "192.168.1.5", port: 22, timeout: .seconds(5))

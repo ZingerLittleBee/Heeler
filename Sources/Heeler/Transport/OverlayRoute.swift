@@ -25,6 +25,10 @@ enum OverlayFailure: Sendable, Equatable {
     case catalogUnreadable
     /// The network's settings or stored secret are incomplete or malformed.
     case misconfigured(String)
+    /// The route names an address or port the network never reaches: a name
+    /// on ZeroTier, another machine through a tailcat tunnel. The network is
+    /// sound; the Host's route is what needs the edit.
+    case invalidDestination(String)
     /// Tailscale wants an interactive sign-in at this URL first.
     case loginRequired(URL)
     /// The user signed this device out of the Tailscale network; it stays
@@ -63,6 +67,8 @@ extension TransportError {
             self = .cancelled
         case .invalidConfiguration(let detail):
             self = .overlayFailed(network: network, reason: .misconfigured(detail))
+        case .invalidDestination(let detail):
+            self = .overlayFailed(network: network, reason: .invalidDestination(detail))
         }
     }
 

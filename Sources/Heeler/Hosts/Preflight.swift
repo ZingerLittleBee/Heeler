@@ -308,6 +308,8 @@ struct PreflightReport: Equatable, Sendable {
             String(localized: "Overlay network “\(network)” is not online yet. If it is waiting for approval, authorize this device in the network's admin console, then run the checks again. (\(detail))")
         case .misconfigured(let detail):
             String(localized: "Overlay network “\(network)” is misconfigured. Fix it in Settings › Overlay Networks. (\(detail))")
+        case .invalidDestination(let detail):
+            String(localized: "Overlay network “\(network)” cannot reach this address. Change the address in the Host's route, then run the checks again. (\(detail))")
         case .loginRequired:
             String(localized: "Overlay network “\(network)” needs sign-in. Open the sign-in link, then run the checks again.")
         case .signedOut:

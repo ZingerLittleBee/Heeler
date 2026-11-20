@@ -12849,6 +12849,28 @@
         }
       }
     },
+    "Change the address in the Host's route." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの経路でアドレスを変更してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机的线路中修改地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機的路由中修改位址。"
+          }
+        }
+      }
+    },
     "Changed %@" : {
       "localizations" : {
         "ja" : {
@@ -41950,6 +41972,8 @@
         }
       }
     },
+    "Over an overlay network that no longer exists." : {},
+    "Over overlay network “%@”." : {},
     "Overlay Networks" : {
       "localizations" : {
         "ja" : {
@@ -41990,6 +42014,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "覆蓋網路"
+          }
+        }
+      }
+    },
+    "Overlay network “%@” cannot reach this address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%@」ではこのアドレスに到達できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加网络“%@”无法访问此地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆蓋網路「%@」無法連線到此位址"
+          }
+        }
+      }
+    },
+    "Overlay network “%@” cannot reach this address. Change the address in the Host's route, then run the checks again. (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Overlay network “%1$@” cannot reach this address. Change the address in the Host's route, then run the checks again. (%2$@)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%1$@」ではこのアドレスに到達できません。ホストの経路でアドレスを変更してから、再チェックを実行してください。（%2$@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加网络“%1$@”无法访问此地址。请在主机的线路中修改地址，然后重新运行检查。（%2$@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆蓋網路「%1$@」無法連線到此位址。請在主機的路由中修改位址，然後重新執行檢查。（%2$@）"
           }
         }
       }
