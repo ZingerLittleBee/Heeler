@@ -82,25 +82,17 @@ struct TerminalListView: View {
     private var byWorkspace: some View {
         let workspaces = projection.workspaces(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        // Host problems only bury a search's matches.
-        let issues =
-            searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? projection.issues(filteredHostIDs: filteredHostIDs) : []
-        if workspaces.isEmpty && issues.isEmpty {
+        let hasVisibleIssues =
+            workspaces.isEmpty
+            && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !projection.issues(filteredHostIDs: filteredHostIDs).isEmpty
+        if workspaces.isEmpty && !hasVisibleIssues {
             emptyState
+        } else if workspaces.isEmpty {
+            (isSidebarColumn ? Color.clear : Color(uiColor: .systemGroupedBackground))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(selection: $selection) {
-                if !issues.isEmpty {
-                    Section {
-                        // Off the cards, on the page: out to the cards'
-                        // edges, as the Workspace headers and the title.
-                        ConsoleHostIssueList(
-                            issues: issues, onOpenHost: onOpenHost,
-                            onShowAll: onShowHostIssues)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
-                }
                 ForEach(workspaces) { @Sendable workspace in
                     MainActorContent { workspaceSection(workspace, showsHost: true) }
                 }
@@ -119,27 +111,22 @@ struct TerminalListView: View {
     private var byHost: some View {
         let groups = projection.hostGroups(
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        if groups.allSatisfy({ $0.workspaces.isEmpty && $0.issues.isEmpty }) {
+        let hasWorkspaces = groups.contains { !$0.workspaces.isEmpty }
+        if !hasWorkspaces && groups.allSatisfy(\.issues.isEmpty) {
             emptyState
+        } else if !hasWorkspaces {
+            (isSidebarColumn ? Color.clear : Color(uiColor: .systemGroupedBackground))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             // A plain list, as in the Agents tab, so each Host's header pins
             // while its Workspaces scroll under it. Workspaces are rows of the
-            // Host's section, drawn as cards by `TerminalCardRow`.
+            // Host's section, drawn as cards by `TerminalCardRow`, while Host
+            // connection conditions float in the bottom-trailing corner.
             List(selection: $selection) {
                 ForEach(groups) { @Sendable group in
                     MainActorContent {
-                        // The header names only the Host: a row for one of
-                        // several Servers says which.
-                        let namesServer = group.servers.count > 1
                         Section {
                             if !isFolded(group) {
-                                ForEach(group.issues) { @Sendable issue in
-                                    MainActorContent {
-                                        ConsoleHostIssueRow(
-                                            issue: issue, namesServer: namesServer, onOpenHost: onOpenHost)
-                                            .modifier(TerminalCardRow(isFirst: true, isLast: true))
-                                    }
-                                }
                                 ForEach(group.workspaces) { @Sendable workspace in
                                     MainActorContent { workspaceRows(workspace) }
                                 }
@@ -670,6 +657,12 @@ private struct TerminalHostHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(group.readiness.nameEmphasis.color)
                     .lineLimit(1)
+                if group.readiness.tone != .connected {
+                    Text(group.readiness.text)
+                        .font(.footnote)
+                        .foregroundStyle(group.readiness.tone.tint)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
                     Text(TerminalCount.text(group.terminalCount))

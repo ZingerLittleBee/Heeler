@@ -90,21 +90,36 @@ struct HostRoutesPresentationTests {
         }
     }
 
-    /// A Server that is missing or stopped is not the connection's failure.
+    /// A Server that is missing or stopped is not the connection's failure,
+    /// whether it stopped or retries in the background.
     @Test func aServersOwnFailureLeavesTheRoutesAlone() {
         let stopped = TransportError.socketNotFound(path: "/tmp/herdr.sock")
-        let beside = presentation([server(.failed(stopped)), server(.connected, reached: home)])
+        let rexNotRunning = EventsSessionStatus.reconnecting(
+            attempt: 4, delay: .seconds(8), failure: .rexServerNotRunning(socketPath: nil))
+        let retryingStopped = HostRoutesPresentation.Server(
+            routes: [home, away], status: .connecting, routeID: nil, standingFailure: stopped)
+
+        let beside = presentation([
+            server(.failed(stopped)),
+            server(rexNotRunning),
+            retryingStopped,
+            server(.connected, reached: home),
+        ])
         #expect(beside.inUse == 0)
+        #expect(!beside.isDialing)
         #expect(beside.failures.isEmpty)
 
-        let alone = presentation([server(.failed(stopped))])
-        #expect(alone.inUse == nil)
-        #expect(alone.failures.isEmpty)
-        guard case .note(let text) = alone.footer else {
-            Issue.record("a Server's own failure leaves the footer a note")
-            return
+        for single in [server(.failed(stopped)), server(rexNotRunning), retryingStopped] {
+            let alone = presentation([single])
+            #expect(alone.inUse == nil)
+            #expect(!alone.isDialing)
+            #expect(alone.failures.isEmpty)
+            guard case .note(let text) = alone.footer else {
+                Issue.record("a Server's own failure leaves the footer a note")
+                return
+            }
+            #expect(!text.hasPrefix("Not connected."))
         }
-        #expect(!text.hasPrefix("Not connected."))
     }
 
     /// One Server still dialing beside a connected one: the Host is
