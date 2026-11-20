@@ -178,7 +178,7 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
             request: WorktreeRemovalRequest(
                 id: request.id, identity: request.identity, toldRisk: risk),
             title: String(localized: "Remove \(workspaceLabel) worktree?"),
-            message: sentences.joined(separator: " "))
+            message: sentences.joinedAsSentences())
     }
 }
 

@@ -65,7 +65,7 @@ enum HandOffError: Error, Equatable {
             String(localized: "Heeler does not read this Agent's conversation, so there is nothing to hand off.")
         case .unavailable(let title, let explanation):
             // Chat's own words for it, as its empty state shows them.
-            "\(title.asSentence) \(explanation)"
+            [title.asSentence, explanation].joinedAsSentences()
         case .notRead:
             String(localized: "Heeler could not read this Agent's conversation in time. Open its Chat, then try again.")
         case .empty:

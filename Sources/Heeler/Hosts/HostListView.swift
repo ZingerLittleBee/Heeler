@@ -43,7 +43,7 @@ struct HostRemovalRequest: Equatable {
                 String(localized: "Its Agents, Terminals and notifications leave this device, and its Notification Key is deleted from the Keychain.")
             ]
             if leavesNotificationsBehind { sentences.append(unreachable) }
-            return sentences.joined(separator: " ")
+            return sentences.joinedAsSentences()
         }
         var sentences = [
             deletesNotificationKey
@@ -52,7 +52,7 @@ struct HostRemovalRequest: Equatable {
         ]
         if leavesNotificationsBehind { sentences.append(unreachable) }
         sentences.append(String(localized: "This cannot be undone."))
-        return sentences.joined(separator: " ")
+        return sentences.joinedAsSentences()
     }
 }
 
