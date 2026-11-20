@@ -847,8 +847,10 @@ final class AgentChatStore {
 
     /// Looks for the transcript again now, after a failure or an
     /// unavailable state the user may have fixed, such as a program shown
-    /// on its home screen that shows the conversation again.
+    /// on its home screen that shows the conversation again, or a Host
+    /// whose SSH server refused SFTP and now offers it.
     func retry() {
+        source.files.retrySFTP()
         needsAgentRefresh = true
         nextOpen = nil
         failedOpens = 0

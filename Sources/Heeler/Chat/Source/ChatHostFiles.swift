@@ -22,6 +22,10 @@ struct ChatHostFiles: Sendable {
     /// Account file: each is a config root the harness may file sessions
     /// under besides its default. Empty where the file names none.
     let accountDirectories: @Sendable (_ kind: SupportedAgentKind) async throws -> [String]
+    /// The user asked again after the Host's SSH server refused SFTP: Retry
+    /// in Chat, Check Again in Files. The next read then asks the Host,
+    /// which every read since the refusal has not (`HostSFTPRefusal`).
+    let retrySFTP: @MainActor @Sendable () -> Void
 
     init(
         status: @escaping @Sendable (_ path: String) async throws -> RemoteFileStatus?,
@@ -29,7 +33,8 @@ struct ChatHostFiles: Sendable {
         read: @escaping @Sendable (_ range: RemoteFileRange) async throws -> RemoteFileSlice,
         home: @escaping @Sendable () async throws -> String,
         queryOpenCode: (@Sendable (_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse)? = nil,
-        accountDirectories: @escaping @Sendable (_ kind: SupportedAgentKind) async throws -> [String] = { _ in [] }
+        accountDirectories: @escaping @Sendable (_ kind: SupportedAgentKind) async throws -> [String] = { _ in [] },
+        retrySFTP: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self.status = status
         self.list = list
@@ -37,6 +42,7 @@ struct ChatHostFiles: Sendable {
         self.home = home
         self.queryOpenCode = queryOpenCode
         self.accountDirectories = accountDirectories
+        self.retrySFTP = retrySFTP
     }
 
     /// Runs `search` on each root in turn until one returns a value. A root

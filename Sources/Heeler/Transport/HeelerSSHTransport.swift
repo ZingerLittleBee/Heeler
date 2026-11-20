@@ -390,9 +390,9 @@ actor HeelerSSHTransport: Transport {
     /// channel and its lease would stay spent until the Host disconnects.
     private var sessionFileClientIdleRelease: Task<Void, Never>?
     static let sessionFileClientIdleTimeout: Duration = .seconds(30)
-    /// Set once the Host refused the SFTP subsystem to a Chat operation, so
-    /// later ones fail fast instead of asking for a channel every poll.
-    private var hostFileSFTPUnavailable = false
+    /// The Host's refusal of the SFTP subsystem, which every SFTP open here
+    /// honors and records (`openSFTP`).
+    private let sftpRefusal: HostSFTPRefusal
     private var notificationTemporaryPaths: [UUID: String] = [:]
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -653,6 +653,7 @@ actor HeelerSSHTransport: Transport {
             SSHTransportSettings.defaultNotificationConfigDirCommand
         herdrLauncher = nil
         readsChatFilesOnWindows = false
+        sftpRefusal = HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -675,6 +676,7 @@ actor HeelerSSHTransport: Transport {
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
         readsChatFilesOnWindows = settings.serverKind == .herdrCore
+        sftpRefusal = settings.sftpRefusal ?? HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
 
@@ -954,6 +956,21 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// Opens an SFTP channel, unless the Host has refused one.
+    ///
+    /// A refusal usually costs the connection, so the Host is asked once: the
+    /// refusal then stands for every connection to the Host until the user
+    /// asks again (`HostSFTPRefusal`), and each open meanwhile fails as the
+    /// refused one did, without a request. `askingAgain` is for the one act
+    /// here that is the user asking: attaching a file.
+    private func openSFTP(askingAgain: Bool = false) async throws -> SSHSFTPClient {
+        let connection = connection
+        let timeout = requestTimeout
+        return try await sftpRefusal.asking(again: askingAgain) {
+            try await connection.openSFTP(timeout: timeout)
+        }
+    }
+
     private func sessionFileClientForReading() async throws -> SSHSFTPClient {
         if let sessionFileClient { return sessionFileClient }
         if let opening = sessionFileClientOpening {
@@ -966,7 +983,7 @@ actor HeelerSSHTransport: Transport {
             let lease = try await channelAdmission.acquire(.ordinarySession, priority: .interactive)
             let client: SSHSFTPClient
             do {
-                client = try await connection.openSFTP(timeout: requestTimeout)
+                client = try await openSFTP()
             } catch {
                 await lease.release()
                 throw error
@@ -1093,7 +1110,7 @@ actor HeelerSSHTransport: Transport {
         }
         _ = try await hostFileEnvironment()
         try await requireChatFileHost()
-        if hostFileSFTPUnavailable {
+        if sftpRefusal.stands {
             throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat needs SFTP on the Host"))
         }
         sessionFileClientIdleRelease?.cancel()
@@ -1136,9 +1153,6 @@ actor HeelerSSHTransport: Transport {
     /// The Chat error for a failed file operation, and whether the shared
     /// channel should go.
     private func mapHostFileError(_ error: any Error) async -> (TransportError, Bool) {
-        if error as? SSHError == .sftpUnavailable {
-            hostFileSFTPUnavailable = true
-        }
         if let failure = Self.hostFileFailure(for: error) {
             return (failure.error, failure.retiresChannel)
         }
@@ -1568,7 +1582,7 @@ actor HeelerSSHTransport: Transport {
     ) async throws -> Data? {
         let sftp: SSHSFTPClient
         do {
-            sftp = try await connection.openSFTP(timeout: requestTimeout)
+            sftp = try await openSFTP()
         } catch {
             try Self.notificationReadError(error)
         }
@@ -1605,7 +1619,7 @@ actor HeelerSSHTransport: Transport {
     ) async throws {
         let sftp: SSHSFTPClient
         do {
-            sftp = try await connection.openSFTP(timeout: requestTimeout)
+            sftp = try await openSFTP()
         } catch {
             try Self.notificationWriteError(error)
         }
@@ -1740,7 +1754,7 @@ actor HeelerSSHTransport: Transport {
     private func performHostTextFileReplace(
         path: String, expected: Data?, contents: Data?, operationID: UUID
     ) async throws {
-        let sftp = try await connection.openSFTP(timeout: requestTimeout)
+        let sftp = try await openSFTP()
         notificationFileClients[operationID] = sftp
         var temporaryPath: String?
         do {
@@ -1899,7 +1913,7 @@ actor HeelerSSHTransport: Transport {
 
     func readRemoteFileForTesting(at path: String) async throws -> Data? {
         try await channelAdmission.withChannel(.ordinarySession) {
-            let sftp = try await self.connection.openSFTP(timeout: self.requestTimeout)
+            let sftp = try await self.openSFTP()
             do {
                 let contents = try await sftp.readFileIfPresent(
                     at: path,
@@ -1925,7 +1939,7 @@ actor HeelerSSHTransport: Transport {
             throw TransportError.invalidDirectoryPath(path: path)
         }
         return try await channelAdmission.withChannel(.ordinarySession) {
-            let sftp = try await self.connection.openSFTP(timeout: self.requestTimeout)
+            let sftp = try await self.openSFTP()
             do {
                 let listing = try await sftp.listDirectories(
                     at: path,
@@ -2351,7 +2365,7 @@ actor HeelerSSHTransport: Transport {
     ) async throws -> String {
         let sftp: SSHSFTPClient
         do {
-            sftp = try await connection.openSFTP(timeout: requestTimeout)
+            sftp = try await openSFTP(askingAgain: true)
         } catch SSHError.sftpUnavailable {
             throw AttachmentStagingError.sftpUnavailable
         } catch {

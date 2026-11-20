@@ -92,6 +92,9 @@ struct SSHTransportSettings: Sendable {
     /// take the one route those connections hold instead of each racing for
     /// itself (ADR 0058). nil races every time.
     var routeLease: HostRouteLease? = nil
+    /// The catalog Host's answer about SFTP, which outlives this connection
+    /// (#596). nil keeps a refusal to the one connection.
+    var sftpRefusal: HostSFTPRefusal? = nil
     /// Which herdr socket to reach on the Host.
     var socket: HerdrSocketLocation
     /// Explicit server selection; no fallback from a refused legacy socket.

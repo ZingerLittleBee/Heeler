@@ -579,8 +579,12 @@ final class ConsoleStore {
 
     /// Reconnect on Host detail: the Host forgets its route and every Server
     /// that is on dials again, so the routes race once and the Servers settle
-    /// on the winner together (ADR 0058).
-    func reconnect(_ machine: HostMachine, leases: HostRouteLeases = .shared) async {
+    /// on the winner together (ADR 0058). It also forgets that its SSH
+    /// server refused SFTP, so the new connections ask once more (#596).
+    func reconnect(
+        _ machine: HostMachine, leases: HostRouteLeases = .shared, sftpRefusals: HostSFTPRefusals = .shared
+    ) async {
+        sftpRefusals.refusal(for: machine.id).forget()
         await leases.release(machine.id)
         for server in machine.servers {
             await retryHost(server.id)
@@ -1315,6 +1319,10 @@ final class ConsoleStore {
             accountDirectories: { [weak self] kind in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.cachedAccountDirectories(for: kind, on: hostID)
+            },
+            retrySFTP: { [weak self] in
+                guard let host = self?.projections[hostID]?.host else { return }
+                HostSFTPRefusals.shared.refusal(for: HostMachine.Connection(host)).forget()
             })
     }
 

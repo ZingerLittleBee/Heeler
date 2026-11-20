@@ -260,7 +260,7 @@ private struct HostFolderPage: View {
             } actions: {
                 // Asked for, never repeated on its own: each attempt costs
                 // the Host's connection (#596).
-                Button("Check Again") { folder.reload() }
+                Button("Check Again") { folder.checkAgain() }
                     .accessibilityIdentifier("host-files-check-again")
             }
         case .missing:

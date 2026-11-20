@@ -175,10 +175,17 @@ final class HostFolder {
         reload()
     }
 
-    /// Try Again and Check Again.
+    /// Try Again.
     func reload() {
         phase = .loading
         startReading()
+    }
+
+    /// Check Again, on a Host whose SSH server refused SFTP: this read asks
+    /// the Host, which costs its connection if it refuses once more (#596).
+    func checkAgain() {
+        files.retrySFTP()
+        reload()
     }
 
     /// A pull, which keeps the rows it is pulling until the answer lands.
@@ -487,7 +494,8 @@ extension ChatHostFiles {
             status: { path in try await Self.finished { try await status(path) } },
             list: { request in try await Self.finished { try await list(request) } },
             read: { range in try await Self.finished { try await read(range) } },
-            home: { try await Self.finished { try await home() } })
+            home: { try await Self.finished { try await home() } },
+            retrySFTP: retrySFTP)
     }
 
     private static func finished<Value: Sendable>(
