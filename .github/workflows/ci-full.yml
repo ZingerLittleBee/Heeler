@@ -75,7 +75,7 @@ jobs:
     # Simulator lane pins the one that ships with Xcode 27.2.
     runs-on: xcode-27
     # The job limit leaves the setup and upload steps room around the test step.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 80 || (matrix.shard == 'ordinary' && 70 || 60) }}
+    timeout-minutes: ${{ inputs.layout == 'serial' && 95 || (matrix.shard == 'ordinary' && 85 || 75) }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,10 +90,12 @@ jobs:
       HEELER_CI_APP_DERIVED_DATA_PATH: ${{ github.workspace }}/.ci/app-derived
       HEELER_CI_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.ci/app-compilation-cache
       HEELER_CI_DISABLE_DEBUG_SYMBOLS: '1'
-      # Hosted compilation can exceed 20 minutes even with restored sources.
-      # Leave room for runner variance without treating this safety deadline
-      # as a runtime target; cold and warm measurements use the same limit.
-      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '1800'
+      # Hosted compilation outgrew 30 minutes as the sources did: between
+      # 2026-11-12 and 2026-11-19, 9 of 18 shard builds were ended at that
+      # deadline and the rest took 17 to 30 minutes. Leave room for runner
+      # variance without treating this safety deadline as a runtime target;
+      # cold and warm measurements use the same limit.
+      HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '2700'
       # The ordinary target grew from 5,030 to over 7,200 tests. Its one
       # complete-target call needs room for execution and Simulator startup;
       # the smaller fixture shards retain their 15-minute watchdog (refs #630).
@@ -213,12 +215,12 @@ jobs:
       #
       # A step timeout signals only the step shell, so the script's cleanup and
       # failure diagnostics survive only when its own watchdogs fire first. The
-      # ordinary budget nests preparation (about 3 minutes), the 30-minute build
+      # ordinary budget nests preparation (about 3 minutes), the 45-minute build
       # deadline and its 25-minute test watchdog, plus sampling and cleanup.
-      # Fixture shards retain 55 minutes; serial adds the passing fixture phases
+      # Fixture shards get 70 minutes; serial adds the passing fixture phases
       # before the full target. The job limit reserves another 5 minutes for uploads.
       - name: Build and test
-        timeout-minutes: ${{ inputs.layout == 'serial' && 75 || (matrix.shard == 'ordinary' && 65 || 55) }}
+        timeout-minutes: ${{ inputs.layout == 'serial' && 90 || (matrix.shard == 'ordinary' && 80 || 70) }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something full verification may quietly run without.
@@ -232,11 +234,26 @@ jobs:
             --evidence-dir "$HEELER_CI_EVIDENCE_DIR" \
             --lane app --shard "$APP_SHARD" --sha "$GITHUB_SHA"
 
+      # A build its deadline ended leaves the compiler's store files at their
+      # mapped capacity, about 75 GiB of holes. The archive records the holes
+      # as data, and restoring it fills the next runner's disk before any
+      # shard builds. A build that exits by itself trims them to what it wrote.
+      - name: Check the build finished
+        id: app-build
+        if: ${{ !cancelled() && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
+        run: |
+          phases="$HEELER_CI_EVIDENCE_DIR/metrics/phases.tsv"
+          if [[ -f "$phases" ]] && awk -F '\t' \
+              '$1 == "xcode-Build-for-testing" && $3 == 0 { finished = 1 } END { exit !finished }' \
+              "$phases"; then
+            echo 'finished=true' >> "$GITHUB_OUTPUT"
+          fi
+
       # All shards compile the same target. One writer avoids redundant uploads.
       # A test failure does not invalidate compiler objects, and must not keep
       # later attempts cold. Coverage evidence is never saved in this cache.
       - name: Save app compilation cache
-        if: ${{ !cancelled() && steps.compilation-cache.outcome == 'success' && steps.compilation-cache.outputs.cache-hit != 'true' && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
+        if: ${{ !cancelled() && steps.app-build.outputs.finished == 'true' && steps.compilation-cache.outcome == 'success' && steps.compilation-cache.outputs.cache-hit != 'true' && (matrix.shard == 'ordinary' || matrix.shard == 'all') }}
         uses: actions/cache/save@v4
         with:
           path: ${{ env.HEELER_CI_COMPILATION_CACHE_DIR }}

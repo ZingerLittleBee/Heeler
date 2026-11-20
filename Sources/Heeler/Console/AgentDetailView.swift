@@ -604,7 +604,7 @@ struct AgentDetailView: View {
             notificationCenter: keyboardInset.notificationCenter,
             complete: completeDeparture))
         .onAppear {
-            mount.appear()
+            mount.appear(activity: activity, state: { focusViewingState }, onUpdate: { updateFocus() })
             // A detail mounted afresh covers nothing, whatever the last one
             // in this window left behind.
             sceneRouting?.agentCoverDidChange(agent: shellRoute == nil ? nil : agent.id)
@@ -1009,20 +1009,32 @@ final class AgentDetailMount {
     @ObservationIgnored private var currentState: (() -> AgentFocusCoordinator.ViewingState)?
     @ObservationIgnored private var currentOnUpdate: (() -> Void)?
 
+    /// Refreshes what a detail on stage observes from its latest body. The
+    /// closures capture the detail, whose state owns this mount, so they are
+    /// held only between `appear` and the exit: a detail that has left is
+    /// evaluated again while it is hidden, and must not take them back.
     func bind(
         activity: AppActivityCoordinator,
         state: @escaping () -> AgentFocusCoordinator.ViewingState,
         onUpdate: @escaping () -> Void
     ) {
+        guard hasAppeared else { return }
         self.activity = activity
         currentState = state
         currentOnUpdate = onUpdate
     }
 
-    func appear() {
+    func appear(
+        activity: AppActivityCoordinator,
+        state: @escaping () -> AgentFocusCoordinator.ViewingState,
+        onUpdate: @escaping () -> Void
+    ) {
         stageExit?.cancel()
         stageExit = nil
         pendingExit = nil
+        self.activity = activity
+        currentState = state
+        currentOnUpdate = onUpdate
         hasAppeared = true
         observationGeneration &+= 1
         track(generation: observationGeneration)
@@ -1058,6 +1070,11 @@ final class AgentDetailMount {
         stageExit = nil
         observationGeneration &+= 1
         hasAppeared = false
+        // Kept past the exit they and this mount hold each other, and with
+        // them the detail's hold on its retained terminal, for good.
+        activity = nil
+        currentState = nil
+        currentOnUpdate = nil
     }
 
     private func track(generation: UInt64) {
