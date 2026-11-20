@@ -96,7 +96,8 @@ END {
 }'
 
 # Five fields from `#{pid} #{q:pane_tty} #{q:@heeler-status} #{q:@heeler-ask} #{q:@heeler-session} .`,
-# unescaping `#{q:...}` (`format_quote_shell`) and tmux 3.4/3.5a `strvis` (`\$`, C escapes, `\ooo`).
+# unescaping `#{q:...}` (`format_quote_shell`, with the `{`, `}`, tab and newline tmux 3.8 added)
+# and tmux 3.4/3.5a `strvis` (`\$`, C escapes, `\ooo`).
 PANE_FIELDS='
 function qf(   r, b, c, d, k) {
   r = ""
@@ -116,7 +117,7 @@ function qf(   r, b, c, d, k) {
     }
     for (k = int(b / 2); k > 0; k--) r = r "\\"
     if (b % 2 == 0) continue
-    if (index("|&;<>()`\"\047*?[# =%", c)) { r = r c; p++; continue }
+    if (index("|&;<>(){}`\"\047*?[# =%\n\t", c)) { r = r c; p++; continue }
     if (c == "a") { r = r sprintf("%c", 7); p++; continue }
     if (c == "b") { r = r sprintf("%c", 8); p++; continue }
     if (c == "f") { r = r sprintf("%c", 12); p++; continue }

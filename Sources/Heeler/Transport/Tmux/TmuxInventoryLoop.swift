@@ -94,9 +94,10 @@ enum TmuxInventoryLoop {
     }
 
     /// POSIX awk helper `qf()` reading one `#{q:...}` + space field from `s` at
-    /// `u`..`e` into `v`, unescaping `format_quote_shell` and tmux 3.4/3.5a `strvis`.
+    /// `u`..`e` into `v`, unescaping `format_quote_shell` (with the `{`, `}`, tab
+    /// and newline tmux 3.8 added to it) and tmux 3.4/3.5a `strvis`.
     fileprivate static let awkQuotedFieldFunction =
-        #"function qf(r,b,c,d,k){r="";while(u<=e){b=0;while(u<=e&&substr(s,u,1)=="\\"){b++;u++}if(u>e)return 0;c=substr(s,u,1);if(b==0){if(c==" "){u++;v=r;return 1}if(index("|&;<>()$`\"\047*?[#=%",c))return 0;r=r c;u++;continue}if(c=="$"){for(k=int((b-1)/2);k>0;k--)r=r"\\";r=r"$";u++;continue}for(k=int(b/2);k>0;k--)r=r"\\";if(b%2==0)continue;if(index("|&;<>()`\"\047*?[# =%",c)){r=r c;u++;continue}if(c=="a"){r=r sprintf("%c",7);u++;continue}if(c=="b"){r=r sprintf("%c",8);u++;continue}if(c=="f"){r=r sprintf("%c",12);u++;continue}if(c=="r"){r=r sprintf("%c",13);u++;continue}if(c=="v"){r=r sprintf("%c",11);u++;continue}d=substr(s,u,3);if(d~/^[0-7][0-7][0-7]$/&&d!="000"){r=r sprintf("%c",substr(d,1,1)*64+substr(d,2,1)*8+substr(d,3,1));u+=3;continue}return 0}return 0}"#
+        #"function qf(r,b,c,d,k){r="";while(u<=e){b=0;while(u<=e&&substr(s,u,1)=="\\"){b++;u++}if(u>e)return 0;c=substr(s,u,1);if(b==0){if(c==" "){u++;v=r;return 1}if(index("|&;<>()$`\"\047*?[#=%",c))return 0;r=r c;u++;continue}if(c=="$"){for(k=int((b-1)/2);k>0;k--)r=r"\\";r=r"$";u++;continue}for(k=int(b/2);k>0;k--)r=r"\\";if(b%2==0)continue;if(index("|&;<>(){}`\"\047*?[# =%\n\t",c)){r=r c;u++;continue}if(c=="a"){r=r sprintf("%c",7);u++;continue}if(c=="b"){r=r sprintf("%c",8);u++;continue}if(c=="f"){r=r sprintf("%c",12);u++;continue}if(c=="r"){r=r sprintf("%c",13);u++;continue}if(c=="v"){r=r sprintf("%c",11);u++;continue}d=substr(s,u,3);if(d~/^[0-7][0-7][0-7]$/&&d!="000"){r=r sprintf("%c",substr(d,1,1)*64+substr(d,2,1)*8+substr(d,3,1));u+=3;continue}return 0}return 0}"#
 
     /// `w`: the loop. `g` holds what each pane ran when its arguments were last
     /// read, one `pane signature` line each, and awk walks the `#{q:...}` rows
@@ -123,7 +124,7 @@ enum TmuxInventoryLoop {
             #"while(p<=e){j=index(substr(s,p,512),"\n");if(!j)break"#,
             "h=substr(s,p,j-1);p+=j",
             #"if(split(h,f,"\t")!=\#(fixed))continue"#,
-            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
+            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/&&!(q==8&&f[8]==""))k=0"#,
             #"if(!k||f[3]!~/^\$[0-9]+$/||f[4]!~/^@[0-9]+$/||f[6]!~/^%[0-9]+$/)continue"#,
             "u=p;ok=1;for(q=1;q<=\(texts);q++){if(!qf()){ok=0;break}t[q]=v}",
             #"if(!ok||substr(s,u,2)!=".\n")continue"#,
@@ -133,7 +134,7 @@ enum TmuxInventoryLoop {
             #"gsub(/[^!-~]/,"?",c);gsub(/[^!-~]/,"?",x)"#,
             #"g=f[8]":"f[11]":"c":"x"#,
             #"print "S",f[6],g"#,
-            #"if(f[11]=="0"&&G[f[6]]!=g)print "R",f[6],f[8]}}"#,
+            #"if(f[11]=="0"&&f[8]!=""&&G[f[6]]!=g)print "R",f[6],f[8]}}"#,
             "')",
             #"g=$(printf '%s\n' "$r" | sed -n 's/^S //p')"#,
             #"printf '%s begin\n%s\n%s argv\n' "$n" "$c" "$n" || return 0"#,
@@ -460,8 +461,11 @@ enum TmuxInventoryLoop {
             }
             guard let pid = number(0), let startTime = number(1), let sessionID = Self.id(fields[2], sigil: "$"),
                 let windowID = Self.id(fields[3], sigil: "@"), let windowIndex = number(4),
-                let paneID = Self.id(fields[5], sigil: "%"), let paneIndex = number(6), let processID = number(7),
-                let width = number(8), let height = number(9), let dead = number(10), let pipe = number(11)
+                let paneID = Self.id(fields[5], sigil: "%"), let paneIndex = number(6),
+                let width = number(8), let height = number(9), let dead = number(10), let pipe = number(11),
+                // tmux 3.8 prints no `pane_pid` once a pane's terminal has closed,
+                // where earlier releases keep the one its process had.
+                let processID = number(7) ?? (fields[7].isEmpty ? 0 : nil)
             else { return nil }
             instance = TmuxServerInstance(pid: pid, startTime: startTime)
             self.sessionID = sessionID
@@ -559,11 +563,11 @@ enum TmuxPaneForeground: Equatable, Sendable {
             #"while(p<=e){j=index(substr(s,p,512),"\n");if(!j)break"#,
             "h=substr(s,p,j-1);p+=j",
             #"if(split(h,f,"\t")!=\#(fixed))continue"#,
-            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/)k=0"#,
+            #"k=1;for(q=1;q<=\#(fixed);q++)if(q!=3&&q!=4&&q!=6&&f[q]!~/^[0-9]+$/&&!(q==8&&f[8]==""))k=0"#,
             #"if(!k||f[3]!~/^\$[0-9]+$/||f[4]!~/^@[0-9]+$/||f[6]!~/^%[0-9]+$/)continue"#,
             "u=p;ok=1;for(q=1;q<=\(texts);q++)if(!qf()){ok=0;break}",
             #"if(!ok||substr(s,u,2)!=".\n")continue"#,
-            #"if(f[11]=="0")print f[6],f[8]"#,
+            #"if(f[11]=="0"&&f[8]!="")print f[6],f[8]"#,
             "break}}",
             "')",
             #"printf '%s server %s\n%s begin\n%s\n%s argv\n' "$n" "$i" "$n" "$c" "$n""#,
@@ -653,7 +657,9 @@ enum TmuxPaneForeground: Equatable, Sendable {
 }
 
 /// Decodes `#{q:...}` format fields printed by tmux 3.3 and later across both
-/// raw UTF-8 releases (3.3a, 3.6+) and `strvis` releases (3.4, 3.5a).
+/// raw UTF-8 releases (3.3a, 3.6+) and `strvis` releases (3.4, 3.5a). tmux 3.8
+/// also escapes `{`, `}`, a tab and a newline, which every earlier release
+/// prints bare, so both forms are read.
 enum TmuxQuotedField {
     enum RecordResult: Equatable, Sendable {
         case complete([String], nextOffset: Int)
@@ -662,7 +668,7 @@ enum TmuxQuotedField {
     }
 
     private static let shellQuotedNonSpace: Set<UInt8> = Set("|&;<>()$`\"'*?[#=%".utf8)
-    private static let shellQuotedEscaped: Set<UInt8> = Set("|&;<>()`\"'*?[# =%".utf8)
+    private static let shellQuotedEscaped: Set<UInt8> = Set("|&;<>(){}`\"'*?[# =%\n\t".utf8)
 
     private static func cEscapeByte(_ byte: UInt8) -> UInt8? {
         switch byte {
@@ -755,6 +761,11 @@ enum TmuxQuotedField {
                 if shellQuotedEscaped.contains(byte) {
                     bytes.append(byte)
                     cursor += 1
+                    if byte == UInt8(ascii: "\n"),
+                        isRejectedLine(in: buffer, at: cursor, rejectedLines: rejectedLines)
+                    {
+                        return .invalid
+                    }
                     continue
                 }
 
