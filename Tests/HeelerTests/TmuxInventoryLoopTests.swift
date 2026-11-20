@@ -201,6 +201,30 @@ struct TmuxInventoryLoopTests {
                 == .live(.init(instance: instance, pane: expectedPane, foregroundPID: 4501)))
     }
 
+    @Test func decodesTmux38EscapedBracesTabsAndNewlinesAndADeadPaneWithNoProcess() throws {
+        let panes: [TmuxInventory.Pane] = [
+            .make(
+                windowName: "a\tb\nc {d}",
+                command: "claude",
+                agentSession: "{\"session\":\"s1\",\"file\":\"/home/dev/.claude/projects/-w/s1.jsonl\"}",
+                chatPick: "{\"file\":\"/work/rollout.jsonl\"}"),
+            .make(window: 1, windowIndex: 1, windowName: "gone", pane: 1, processID: 0, isDead: true),
+        ]
+        let data = TmuxLoopText.snapshot(panes, instance: instance, tmux38Escaped: true)
+
+        for chunkSize in [1, 5, data.count] {
+            var reader = TmuxInventoryLoop.Reader(nonce: nonce)
+            var events: [TmuxInventoryLoop.Event] = []
+            var offset = data.startIndex
+            while offset < data.endIndex {
+                let next = min(offset + chunkSize, data.endIndex)
+                events += reader.read(data.subdata(in: offset..<next))
+                offset = next
+            }
+            #expect(events == [.inventory(TmuxInventory(instance: instance, panes: panes))])
+        }
+    }
+
     @Test func aRowOfAnotherServerIsLeftOutOfOneAnswer() throws {
         var text = Data("\(nonce) begin\n".utf8)
         text.append(TmuxLoopText.row(.make(), instance: instance))

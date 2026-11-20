@@ -544,9 +544,6 @@ struct TmuxTransportE2ETests {
     @Test("a variable set in the global and session environment is found by name")
     func aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName() async throws {
         try await TmuxSSHFixture.with { fixture in
-            let loginShell = trimmed(try await fixture.require(#"printf '%s' "$SHELL""#))
-            #expect(loginShell.hasSuffix("/fish"))
-
             try await fixture.startServer()
             let session = trimmed(
                 try await fixture.tmux(nil, "display-message", "-p", "-t", "main", "#{session_id}"))

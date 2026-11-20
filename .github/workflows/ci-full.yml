@@ -235,7 +235,7 @@ jobs:
     # Simulator lane pins the one that ships with Xcode 27.2.
     runs-on: xcode-27
     # The job limit leaves the setup and upload steps room around the test step.
-    timeout-minutes: ${{ inputs.layout == 'serial' && 60 || (matrix.shard == 'ordinary' && 45 || 40) }}
+    timeout-minutes: ${{ inputs.layout == 'serial' && 75 || (matrix.shard == 'ordinary' && 60 || 40) }}
     strategy:
       fail-fast: false
       matrix:
@@ -248,10 +248,12 @@ jobs:
       # at, and compiles nothing. Never restore test results.
       HEELER_CI_APP_DERIVED_DATA_PATH: ${{ github.workspace }}/.ci/app-derived
       HEELER_CI_APP_PRODUCTS_ARCHIVE: ${{ github.workspace }}/.ci/app-products/app-products.tar.gz
-      # The ordinary target grew from 5,030 to over 7,200 tests. Its one
-      # complete-target call needs room for execution and Simulator startup;
-      # the smaller fixture shards retain their 15-minute watchdog (refs #630).
-      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: ${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '1500' || '900' }}
+      # The ordinary target grew from 5,030 to 9,290 tests. Its one
+      # complete-target call needs room for execution and Simulator startup:
+      # on 2026-11-20 it took 1272 s and 1469 s against the 1500 s it had then
+      # (refs #704). The smaller fixture shards retain their 15-minute
+      # watchdog (refs #630).
+      HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: ${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '2400' || '900' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -348,13 +350,13 @@ jobs:
       # A step timeout signals only the step shell, so the script's cleanup and
       # failure diagnostics survive only when its own watchdogs fire first. No
       # worker compiles, so the ordinary budget nests preparation and the
-      # Simulator's boot (about 5 minutes), its 25-minute test watchdog, and
+      # Simulator's boot (about 5 minutes), its 40-minute test watchdog, and
       # sampling and cleanup. Fixture shards get 35 minutes for their fixtures,
       # the passing suites and one hung suite's 15-minute watchdog; serial adds
       # the passing fixture phases before the full target. The job limit
       # reserves another 5 minutes for the download and the uploads.
       - name: Run app tests
-        timeout-minutes: ${{ inputs.layout == 'serial' && 55 || (matrix.shard == 'ordinary' && 40 || 35) }}
+        timeout-minutes: ${{ inputs.layout == 'serial' && 70 || (matrix.shard == 'ordinary' && 55 || 35) }}
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
         # privileged part (the real-password sshd) a hard requirement here
         # rather than something full verification may quietly run without.

@@ -1,7 +1,8 @@
 // Reads `#{q:...}` format fields printed by tmux 3.3 and later.
 //
 // `format_quote_shell` (`#{q:...}`) prefixes every ASCII byte in
-// `|&;<>()$`\"'*?[# =%` with `\`. On tmux 3.4 and 3.5a, `cmdq_print` runs the
+// `|&;<>()$`\"'*?[# =%` with `\`, and from tmux 3.8 also `{`, `}`, TAB and LF,
+// which earlier releases print bare. On tmux 3.4 and 3.5a, `cmdq_print` runs the
 // formatted text through `utf8_stravisx(..., VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH)`,
 // turning control bytes other than TAB and LF into `\a`, `\b`, `\f`, `\r`, `\v`
 // or 4-byte octal `\ooo`, and on tmux 3.4 also turning `$` before `[A-Za-z_{]`
@@ -18,7 +19,7 @@ const SHELL_QUOTED_NON_SPACE = new Set(
   Buffer.from("|&;<>()$`\"'*?[#=%", "utf8"),
 );
 const SHELL_QUOTED_ESCAPED = new Set(
-  Buffer.from("|&;<>()`\"'*?[# =%", "utf8"),
+  Buffer.from("|&;<>(){}`\"'*?[# =%\n\t", "utf8"),
 );
 
 function cEscapeByte(code) {

@@ -84,15 +84,17 @@ archive and compile nothing. They still run `test-without-building` through
 the scheme, which reads `HEELER_SSH_E2E_REQUIRED` from the worker's
 environment when the tests start, so fixture workers get `1` and the ordinary
 worker `0` from a build that set neither. Each fixture test call has a
-15-minute watchdog and the ordinary lane's full call 25 minutes. That call
+15-minute watchdog and the ordinary lane's full call 40 minutes. That call
 once passed all of its tests in 7.5-8.5 minutes, then hit the former 10-minute
 watchdog before xcodebuild exited; in the run above it took 21 minutes for
-9,290 tests. These are safety limits for runner variance, not performance
-targets. The package lane keeps the script defaults (15-minute build, 10-minute
+9,290 tests, and in
+[the first run on the shared build](https://github.com/ZingerLittleBee/Heeler/actions/runs/44698237906)
+24.5, half a minute inside the 25 it had then. These are safety limits for
+runner variance, not performance targets. The package lane keeps the script defaults (15-minute build, 10-minute
 test call). GitHub's step timeout signals only the step shell, so the runner's
 cleanup and diagnostics survive only when its own watchdogs fire first. An app
-worker's step therefore allows 35 minutes for a fixture shard, 40 for the
-ordinary shard and 55 for the explicit serial comparison, each with 5 more for
+worker's step therefore allows 35 minutes for a fixture shard, 55 for the
+ordinary shard and 70 for the explicit serial comparison, each with 5 more for
 the job: enough for preparation, the Simulator's boot, the passing calls, and
 a hung call's watchdog with sampling and cleanup. The package step allows 30
 (36 for the job) for its own build deadline and test call.
