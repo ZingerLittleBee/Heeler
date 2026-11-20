@@ -112,16 +112,16 @@ awk '
     echo "the shared app build must run under its watchdog, with 50 minutes for the step and 60 for the job" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 60 || (matrix.shard == 'ordinary' && 45 || 40) }}" "$workflow")" == 1 ]] || {
-    echo "the iOS job must use 45 minutes for ordinary, 60 for serial and 40 otherwise" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 75 || (matrix.shard == 'ordinary' && 60 || 40) }}" "$workflow")" == 1 ]] || {
+    echo "the iOS job must use 60 minutes for ordinary, 75 for serial and 40 otherwise" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 55 || (matrix.shard == 'ordinary' && 40 || 35) }}" "$workflow")" == 1 ]] || {
-    echo "the Run app tests step must use 40 minutes for ordinary, 55 for serial and 35 otherwise" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 70 || (matrix.shard == 'ordinary' && 55 || 35) }}" "$workflow")" == 1 ]] || {
+    echo "the Run app tests step must use 55 minutes for ordinary, 70 for serial and 35 otherwise" >&2
     exit 1
 }
-[[ "$(grep -cF "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: \${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '1500' || '900' }}" "$workflow")" == 1 ]] || {
-    echo "the app test watchdog must use 1500 seconds for ordinary/all and 900 for fixture shards" >&2
+[[ "$(grep -cF "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: \${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '2400' || '900' }}" "$workflow")" == 1 ]] || {
+    echo "the app test watchdog must use 2400 seconds for ordinary/all and 900 for fixture shards" >&2
     exit 1
 }
 
