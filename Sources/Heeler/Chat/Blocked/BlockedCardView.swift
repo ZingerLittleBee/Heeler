@@ -661,11 +661,7 @@ private struct BlockedCollapsedBar: View {
     }
 
     private var icon: some View {
-        Image(systemName: dialog?.symbol ?? BlockedCardStyle.unknownSymbol)
-            .font(.body.weight(.medium))
-            .foregroundStyle(.secondary)
-            .frame(width: BlockedCardStyle.symbolWidth)
-            .accessibilityHidden(true)
+        BlockedCardSymbol(name: dialog?.symbol ?? BlockedCardStyle.unknownSymbol)
     }
 
     private var title: some View {
@@ -843,11 +839,26 @@ enum BlockedCardStyle {
     static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
     /// A list row's inset, and a field's.
     static let rowInset: CGFloat = 14
-    static let symbolWidth: CGFloat = 22
     /// For a dialog Heeler can't name.
     static let unknownSymbol = "ellipsis.rectangle"
     /// A row's line about what else choosing it does.
     static let caution = Color(uiColor: AgentStatusPalette.yellowInk)
+}
+
+/// What a dialog asks about, in a column as wide for every glyph so titles
+/// line up. The column grows with the text, or a large glyph would reach
+/// the title beside it.
+private struct BlockedCardSymbol: View {
+    let name: String
+    @ScaledMetric(relativeTo: .body) private var width: CGFloat = 22
+
+    var body: some View {
+        Image(systemName: name)
+            .font(.body.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(width: width)
+            .accessibilityHidden(true)
+    }
 }
 
 struct BlockedCardHeader: View {
@@ -862,11 +873,7 @@ struct BlockedCardHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Image(systemName: symbol)
-                .font(.body.weight(.medium))
-                .foregroundStyle(.secondary)
-                .frame(width: BlockedCardStyle.symbolWidth)
-                .accessibilityHidden(true)
+            BlockedCardSymbol(name: symbol)
             Text(verbatim: title)
                 .font(.headline)
                 .lineLimit(lineLimit)
