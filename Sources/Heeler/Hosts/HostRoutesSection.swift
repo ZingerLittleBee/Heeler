@@ -80,8 +80,9 @@ struct HostRoutesSection: View {
     private func row(_ index: Int, _ route: HostRoute) -> some View {
         let failure = presentation.failures[index]
         return HostRouteLabel(kind: HostRouteKind(route)) {
-            Text(route.endpointDescription)
+            Text(route.endpointDescription.wrappingAtAddressSeparators)
                 .font(.body.monospaced())
+                .accessibilityLabel(route.endpointDescription)
         } subtitle: {
             if let failure {
                 // Over the label's secondary: the reason is why it is red.
