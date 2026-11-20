@@ -279,10 +279,13 @@ struct RexChatTests {
     }
 
     /// Until the kernel is known and Claude Code's terminal reads as Rex
-    /// named it, a check could still answer differently.
+    /// named it, a check could still answer differently. Its status shows
+    /// before the other terminals' first reads answer, and each of those
+    /// moves its terminal's revision when it does, so they are waited for too.
     private func waitForClaude(_ rig: Rig) async throws {
         try await waitUntil("Claude Code's terminal") {
             rig.projection.kernel != nil && !rig.projection.isAwaitingSnapshot
+                && rig.projection.panesAwaitingForeground.isEmpty
                 && details(rig)?.processID == 4242 && details(rig)?.program == "claude"
                 && details(rig)?.status?.state != nil
         }
