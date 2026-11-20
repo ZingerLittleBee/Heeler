@@ -23,18 +23,20 @@ struct GenericDialogCard: View {
             // The options stay in view below the rows, which scroll.
             // The box holds still and its rows scroll inside it, so a long
             // excerpt keeps its corners.
-            BlockedScrollingContent(maxHeight: max(maxHeight - CGFloat(numbers.count) * 52, 96)) {
-                GenericExcerptView(texts: excerpt.displayLines ?? excerpt.rows.map(\.text))
+            ChatTerminalBlock {
+                BlockedScrollingContent(maxHeight: max(maxHeight - CGFloat(numbers.count) * 46, 96)) {
+                    GenericExcerptView(texts: excerpt.displayLines ?? excerpt.rows.map(\.text))
+                }
             }
-            .background(Color(uiColor: .tertiarySystemFill))
-            .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            // Heeler can't tell which answer goes on, so none leads.
             if !numbers.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(numbers, id: \.self) { @Sendable number in
+                BlockedOptionGroup {
+                    ForEach(Array(numbers.enumerated()), id: \.element) { @Sendable index, number in
                         MainActorContent {
-                            BlockedOptionButton(label: "\(number). \(excerpt.numbered[number] ?? "")", emphasis: .plain) {
+                            BlockedOptionRow(label: "\(number). \(excerpt.numbered[number] ?? "")") {
                                 Task { await store.press(number: number) }
                             }
+                            .divided(index > 0)
                         }
                     }
                 }

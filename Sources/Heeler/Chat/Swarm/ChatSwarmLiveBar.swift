@@ -1,30 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Shared Catppuccin Mocha/Latte tokens for Antigravity CLI Swarm cards.
+/// Shared Catppuccin Mocha/Latte tokens for the Antigravity CLI Swarm.
 enum ChatSwarmPalette {
     private static let mauveWashUI = flavoured(mocha: 0xCBA6F7, latte: 0x8839EF)
     private static let mauveInkUI = flavoured(mocha: 0xCBA6F7, latte: 0x6C22C7)
-    private static let sapphireInkUI = flavoured(mocha: 0x74C7EC, latte: 0x209FB5)
 
     static let accentInk = Color(uiColor: mauveInkUI)
     static let accentWash = Color(uiColor: mauveWashUI).opacity(0.15)
-    static let coordinatorInk = Color(uiColor: sapphireInkUI)
-    static let coordinatorWash = Color(uiColor: sapphireInkUI).opacity(0.14)
-
-    static func stripBorder(hasSystemAlerts: Bool, hasActiveWorkers: Bool) -> Color {
-        if hasSystemAlerts {
-            return Color(uiColor: AgentStatusPalette.red).opacity(0.34)
-        }
-        if hasActiveWorkers {
-            return Color(uiColor: AgentStatusPalette.yellow).opacity(0.34)
-        }
-        return Color(uiColor: mauveWashUI).opacity(0.28)
-    }
-
-    static func stripBorder(for swarm: AgySwarmSnapshot) -> Color {
-        stripBorder(hasSystemAlerts: swarm.hasSystemAlerts, hasActiveWorkers: swarm.hasActiveWorkers)
-    }
 
     static func memberStatusInk(_ status: AgySwarmSnapshot.MemberStatus) -> Color {
         switch status {
@@ -32,15 +15,6 @@ enum ChatSwarmPalette {
         case .waiting: Color(uiColor: AgentStatusPalette.mutedInk)
         case .error: Color(uiColor: AgentStatusPalette.redInk)
         case .killed: Color(uiColor: AgentStatusPalette.mutedInk).opacity(0.75)
-        }
-    }
-
-    static func memberStatusWash(_ status: AgySwarmSnapshot.MemberStatus) -> Color {
-        switch status {
-        case .working: Color(uiColor: AgentStatusPalette.yellow).opacity(0.15)
-        case .waiting: Color(uiColor: AgentStatusPalette.muted).opacity(0.16)
-        case .error: Color(uiColor: AgentStatusPalette.red).opacity(0.15)
-        case .killed: Color(uiColor: AgentStatusPalette.muted).opacity(0.12)
         }
     }
 
@@ -56,11 +30,12 @@ enum ChatSwarmPalette {
     }
 }
 
-/// Dedicated Swarm Live Bar floating above the Composer:
-/// - Resting: 2-row glass card showing Swarm title, member status dots, `#seq`
-///   post count, and a 1-line live board/activity ticker.
-/// - Condensed (keyboard up or Blocked card shown): 1-line summary bar.
-/// Tapping anywhere opens `ChatSwarmSheet`.
+/// The Swarm's row on the strip over the Composer
+/// (`ChatBackgroundWorkStrip`), which it leads:
+/// - Resting: its title, a dot for each worker and the `#seq` post count,
+///   over one line of the board's latest.
+/// - Condensed (keyboard up or Blocked card shown): one line.
+/// Tapping it opens `ChatSwarmSheet`.
 struct ChatSwarmLiveBar: View {
     fileprivate struct Summary: Equatable {
         let displayTitle: String
@@ -100,88 +75,20 @@ struct ChatSwarmLiveBar: View {
     }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn: CGFloat = 18
+    @ScaledMetric(relativeTo: .subheadline) private var glyphColumn = ChatBackgroundWorkStyle.glyphColumn
 
     private static let hint = String(localized: "Opens the swarm board and member status.")
 
-    private var borderColor: Color {
-        ChatSwarmPalette.stripBorder(
-            hasSystemAlerts: summary.hasSystemAlerts,
-            hasActiveWorkers: summary.hasActiveWorkers)
-    }
-
     var body: some View {
-        Group {
-            if isCondensed {
-                condensedBar
-            } else {
-                expandedBar
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-    }
-
-    private var expandedBar: some View {
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .center, spacing: 8) {
-                    leadingGlyph
-                        .frame(width: glyphColumn)
-
-                    Text(verbatim: summary.displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 6)
-
-                    trailingMeta
-                }
-
-                if let ticker = summary.tickerText {
-                    Text(verbatim: ticker)
-                        .font(.caption)
-                        .foregroundStyle(
-                            summary.hasSystemAlerts
-                                ? ChatBackgroundWorkPalette.statusInk(.failed)
-                                : .secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                        .padding(.leading, glyphColumn + 8)
+            Group {
+                if isCondensed {
+                    condensedLabel
+                } else {
+                    restingLabel
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background {
-                ChatBackgroundWorkStyle.card
-                    .fill(.regularMaterial)
-                    .overlay {
-                        if summary.hasSystemAlerts {
-                            ChatBackgroundWorkStyle.card.fill(
-                                LinearGradient(
-                                    colors: [Color(uiColor: AgentStatusPalette.red).opacity(0.08), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom))
-                        } else if summary.hasActiveWorkers {
-                            ChatBackgroundWorkStyle.card.fill(
-                                LinearGradient(
-                                    colors: [Color(uiColor: AgentStatusPalette.yellow).opacity(0.07), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom))
-                        } else {
-                            ChatBackgroundWorkStyle.card.fill(
-                                LinearGradient(
-                                    colors: [ChatSwarmPalette.accentWash.opacity(0.45), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom))
-                        }
-                    }
-            }
-            .overlay {
-                ChatBackgroundWorkStyle.card
-                    .stroke(borderColor, lineWidth: 1)
-            }
-            .contentShape(.rect)
+            .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: false))
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
@@ -191,80 +98,81 @@ struct ChatSwarmLiveBar: View {
         .accessibilityHint(Self.hint)
         .accessibilityAddTraits(summary.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
         .accessibilityAction(.default, open)
-        .accessibilityIdentifier("chat.swarm.bar")
+        .accessibilityIdentifier(isCondensed ? "chat.swarm.summary" : "chat.swarm.bar")
     }
 
-    private var condensedBar: some View {
-        Button(action: open) {
-            HStack(spacing: 8) {
+    private var restingLabel: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: ChatBackgroundWorkStyle.glyphSpacing) {
                 leadingGlyph
                     .frame(width: glyphColumn)
 
-                Text(verbatim: condensedSummaryText)
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(summary.hasActiveWorkers || summary.hasSystemAlerts ? .primary : .secondary)
+                Text(verbatim: summary.displayTitle)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !summary.dotStatuses.isEmpty {
-                    ChatSwarmStatusDots(statuses: summary.dotStatuses)
-                }
+                Spacer(minLength: 0)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                trailingMeta
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: ChatBackgroundWorkStyle.card)
-            .overlay {
-                ChatBackgroundWorkStyle.card
-                    .stroke(borderColor, lineWidth: 1)
+
+            if let ticker = summary.tickerText {
+                Text(verbatim: ticker)
+                    .font(.footnote)
+                    .foregroundStyle(
+                        summary.hasSystemAlerts
+                            ? ChatBackgroundWorkPalette.statusInk(.failed)
+                            : .secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .padding(.leading, glyphColumn + ChatBackgroundWorkStyle.glyphSpacing)
             }
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Swarm: \(summary.displayTitle)"))
-        .accessibilityValue(accessibilitySummary)
-        .accessibilityHint(Self.hint)
-        .accessibilityAddTraits(summary.hasActiveWorkers ? [.isButton, .updatesFrequently] : .isButton)
-        .accessibilityAction(.default, open)
-        .accessibilityIdentifier("chat.swarm.summary")
+        .padding(.vertical, 10)
+    }
+
+    private var condensedLabel: some View {
+        HStack(spacing: ChatBackgroundWorkStyle.glyphSpacing) {
+            leadingGlyph
+                .frame(width: glyphColumn)
+
+            Text(verbatim: condensedSummaryText)
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(summary.hasActiveWorkers || summary.hasSystemAlerts ? .primary : .secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            ChatSwarmStatusDots(statuses: summary.dotStatuses)
+
+            ChatStripChevron()
+        }
     }
 
     @ViewBuilder
     private var leadingGlyph: some View {
         if summary.hasSystemAlerts {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption.weight(.semibold))
+            Image(systemName: "exclamationmark.triangle")
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.failed))
                 .accessibilityHidden(true)
         } else if summary.hasActiveWorkers {
-            ChatBackgroundWorkSpinningArc(size: 13, lineWidth: 2)
-                .foregroundStyle(ChatBackgroundWorkPalette.statusInk(.running))
+            ChatBackgroundWorkGlyph(status: .running, size: .regular)
         } else {
             Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(ChatSwarmPalette.accentInk)
                 .accessibilityHidden(true)
         }
     }
 
     private var trailingMeta: some View {
-        HStack(spacing: 6) {
-            if !summary.dotStatuses.isEmpty {
-                ChatSwarmStatusDots(statuses: summary.dotStatuses)
-            }
+        HStack(spacing: 8) {
+            ChatSwarmStatusDots(statuses: summary.dotStatuses)
             if summary.postCount > 0 {
                 Text(verbatim: "#\(summary.postCount)")
-                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            ChatStripChevron()
         }
         .lineLimit(1)
         .fixedSize()
@@ -303,22 +211,8 @@ struct ChatSwarmLiveBar: View {
     }
 }
 
-/// Compact capsule showing each non-killed task worker as a status dot
-/// (`●` yellow = working, `●` red = error, `○` muted = waiting).
-struct ChatSwarmMemberDots: View {
-    let workers: [AgySwarmSnapshot.Member]
-
-    private var statuses: [AgySwarmSnapshot.MemberStatus] {
-        let nonKilled = workers.filter { !$0.isKilled }
-        let source = nonKilled.isEmpty ? workers : nonKilled
-        return source.map(\.status)
-    }
-
-    var body: some View {
-        ChatSwarmStatusDots(statuses: statuses)
-    }
-}
-
+/// A dot for each task worker still in the Swarm: filled yellow while it
+/// works, red on an error, a ring while it waits.
 struct ChatSwarmStatusDots: View, Equatable {
     let statuses: [AgySwarmSnapshot.MemberStatus]
 
@@ -332,13 +226,10 @@ struct ChatSwarmStatusDots: View, Equatable {
                 }
                 if overflow > 0 {
                     Text(verbatim: "+\(overflow)")
-                        .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                        .font(.caption2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 6.5)
-            .padding(.vertical, 3.5)
-            .background(Color.primary.opacity(0.06), in: Capsule())
             .accessibilityHidden(true)
         }
     }
@@ -349,19 +240,19 @@ struct ChatSwarmStatusDots: View, Equatable {
         case .working:
             Circle()
                 .fill(Color(uiColor: AgentStatusPalette.yellow))
-                .frame(width: 6.5, height: 6.5)
+                .frame(width: 7, height: 7)
         case .error:
             Circle()
                 .fill(Color(uiColor: AgentStatusPalette.red))
-                .frame(width: 6.5, height: 6.5)
+                .frame(width: 7, height: 7)
         case .waiting:
             Circle()
-                .strokeBorder(Color(uiColor: AgentStatusPalette.mutedInk).opacity(0.75), lineWidth: 1.4)
-                .frame(width: 6.5, height: 6.5)
+                .strokeBorder(Color(uiColor: AgentStatusPalette.mutedInk).opacity(0.75), lineWidth: 1.5)
+                .frame(width: 7, height: 7)
         case .killed:
             Circle()
                 .fill(Color(uiColor: AgentStatusPalette.muted).opacity(0.45))
-                .frame(width: 5.5, height: 5.5)
+                .frame(width: 6, height: 6)
         }
     }
 }

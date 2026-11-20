@@ -177,6 +177,42 @@ struct BlockedCardViewTests {
         }
     }
 
+    /// An answer that saves a rule or switches the permission mode can't be
+    /// undone, so a card opens with those folded under More Options and
+    /// shows them once that row is activated.
+    @Test func aCardOpensWithItsOtherAnswersFolded() async throws {
+        let stem = "claude-02-c1-bash-blocked"
+        let screen = try ScreenFixture.screen(stem)
+        let store = BlockedCardStore(
+            program: ScreenFixture.program(stem),
+            io: BlockedScreenIO(readScreen: { screen }, sendKeys: { _ in }, paste: { _ in }),
+            clock: ManualClock().clock)
+        store.update(activity: .blocked)
+        await store.refresh()
+        let controller = UIHostingController(rootView: BlockedCardView(store: store, maxHeight: 600, openTerminal: {}))
+        controller.safeAreaRegions = []
+        try await withTestWindow(
+            frame: CGRect(x: 0, y: 0, width: Self.phoneWidth, height: 812), rootViewController: controller
+        ) { _ in
+            _ = try await Self.settledScrollView(in: controller)
+            let folded = "Yes, and switch to auto mode"
+            @MainActor func shows(_ prefix: String) -> Bool {
+                Self.labels(in: controller.view).contains { $0.hasPrefix(prefix) }
+            }
+            let decision = Self.labels(in: controller.view).filter { ["Yes", "No"].contains($0) }
+            #expect(Set(decision) == ["Yes", "No"])
+            #expect(!shows(folded))
+            let more = try #require(
+                Self.elements(in: controller.view).first { $0.accessibilityLabel == "More Options" })
+            #expect(more.accessibilityActivate())
+            for _ in 0..<40 where !shows(folded) {
+                try await Task.sleep(for: .milliseconds(50))
+                controller.view.layoutIfNeeded()
+            }
+            #expect(shows(folded))
+        }
+    }
+
     /// A flat cut reads as the card's end. Where an option runs past the
     /// scroll edge, it fades into the card instead, while the rest of it
     /// draws at full strength; the edge with nothing past it stays sharp,
@@ -198,6 +234,12 @@ struct BlockedCardViewTests {
             try await withTestWindow(
                 frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
             ) { _ in
+                // The card opens on its decision, which fits. The options
+                // past it, once shown, are what run past the edge.
+                _ = try await Self.settledScrollView(in: controller)
+                let more = try #require(
+                    Self.elements(in: controller.view).first { $0.accessibilityLabel == "More Options" })
+                #expect(more.accessibilityActivate())
                 // The scroll bar flashes once the options run past the
                 // edge; a card that fits shows none.
                 let flashes = await Self.showsScrollIndicator(in: controller, within: .seconds(1.5))
@@ -225,22 +267,24 @@ struct BlockedCardViewTests {
                     }).accessibilityFrame
                 }
                 let viewport = { UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll) }
-                let decline = try answer("No, cancel")
+                let lastOption = "Yes, and always allow for commands"
+                let last = try answer(lastOption)
 
                 guard budget < 600 else {
                     try #require(range.upper <= range.lower + 1, "the card should fit at \(budget)")
-                    let last = try Self.contrast(render("fits"), band: decline.maxY - 6, across: decline)
-                    #expect(last > 0.06)
+                    let shown = try Self.contrast(render("fits"), band: last.maxY - 6, across: last)
+                    #expect(shown > 0.06)
                     return
                 }
                 try #require(range.upper > range.lower + 1, "the card should scroll at \(budget)")
 
-                // The decline crosses the bottom edge 4 pt above its own end,
-                // inside its padding, where only its red fill would draw.
-                try await move(to: scroll.contentOffset.y + decline.maxY - 4 - viewport().maxY)
-                var image = render("decline-cut")
-                var edge = try Self.contrast(image, band: viewport().maxY - 1, across: decline)
-                var inside = try Self.contrast(image, band: viewport().maxY - 31, across: decline)
+                // The last option crosses the bottom edge 4 pt above its own
+                // end, inside its padding, where only the list's fill would
+                // draw.
+                try await move(to: scroll.contentOffset.y + last.maxY - 4 - viewport().maxY)
+                var image = render("last-cut")
+                var edge = try Self.contrast(image, band: viewport().maxY - 1, across: last)
+                var inside = try Self.contrast(image, band: viewport().maxY - 31, across: last)
                 #expect(edge < 0.03)
                 #expect(inside > 0.06)
 
@@ -253,10 +297,11 @@ struct BlockedCardViewTests {
                 #expect(edge < 0.03)
                 #expect(inside > 0.06)
 
-                // At the end, nothing waits below: the decline shows whole.
+                // At the end, nothing waits below: the last option shows
+                // whole.
                 try await move(to: range.upper)
                 image = render("end")
-                let end = try answer("No, cancel")
+                let end = try answer(lastOption)
                 #expect(viewport().insetBy(dx: -1, dy: -1).contains(end), "\(end) in \(viewport())")
                 edge = try Self.contrast(image, band: end.maxY - 6, across: end)
                 #expect(edge > 0.06)
@@ -267,8 +312,9 @@ struct BlockedCardViewTests {
     /// In Chat the card is inserted into a window that already shows: by
     /// Show after Minimize, or by the first read while Blocked. Its scroll
     /// view's first layout already overflows, and the bar still flashes
-    /// once; a card that fits shows none.
-    @Test(arguments: [(true, CGFloat(290)), (true, 600), (false, 290), (false, 600)])
+    /// once; a card that fits shows none. A card opens on its command and
+    /// decision with its other options folded, which 120 pt can't hold.
+    @Test(arguments: [(true, CGFloat(120)), (true, 600), (false, 120), (false, 600)])
     func aCardShownInAnOpenWindowFlashesItsScrollBar(afterMinimize: Bool, budget: CGFloat) async throws {
         let screen = try ScreenFixture.screen("agy-30-perm-run-command-default-120x40")
         let store = BlockedCardStore(

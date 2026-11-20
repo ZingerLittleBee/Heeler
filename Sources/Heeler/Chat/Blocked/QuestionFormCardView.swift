@@ -40,7 +40,7 @@ struct QuestionFormCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                title: String(localized: "Question"), detail: detail,
+                symbol: card.dialog.symbol, title: String(localized: "Question"), detail: detail,
                 isActing: store.progress == .acting, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: maxHeight) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -81,30 +81,26 @@ struct QuestionFormCard: View {
         }
     }
 
-    @ViewBuilder
+    /// One list either way: check boxes where any number answer, else
+    /// marks that show which one does.
     private var options: some View {
-        if question.isMultiSelect {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(question.options.enumerated()), id: \.offset) { @Sendable index, option in
-                    MainActorContent {
-                        BlockedToggleRow(
-                            label: option.label, detail: option.detail, isOn: draft.isChecked(index)
+        BlockedOptionGroup {
+            ForEach(Array(question.options.enumerated()), id: \.offset) { @Sendable index, option in
+                MainActorContent {
+                    if question.isMultiSelect {
+                        BlockedOptionRow(
+                            label: option.label, detail: option.detail, mark: .check(draft.isChecked(index))
                         ) {
                             draft.toggle(index)
                         }
-                    }
-                }
-            }
-        } else {
-            VStack(spacing: 8) {
-                ForEach(Array(question.options.enumerated()), id: \.offset) { @Sendable index, option in
-                    MainActorContent {
-                        BlockedOptionButton(
-                            label: option.label, detail: option.detail,
-                            emphasis: draft.isChosen(index) ? .primary : .plain
+                        .divided(index > 0)
+                    } else {
+                        BlockedOptionRow(
+                            label: option.label, detail: option.detail, mark: .choice(draft.isChosen(index))
                         ) {
                             choose(index)
                         }
+                        .divided(index > 0)
                     }
                 }
             }
@@ -118,7 +114,7 @@ struct QuestionFormCard: View {
     }
 
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             // Antigravity CLI's multi-select page takes one too: its
             // `Write-in...` goes with the checks.
             if !question.isMultiSelect || form.writesInWithSelection {
@@ -131,19 +127,14 @@ struct QuestionFormCard: View {
                     Button {
                         go(to: page - 1)
                     } label: {
-                        Text("Back")
-                            .frame(minHeight: 28)
+                        Label("Back", systemImage: "chevron.backward")
                     }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.roundedRectangle(radius: 12))
+                    .buttonStyle(BlockedButtonStyle())
                 }
-                Button(action: advance) {
-                    Text(draft.isLastPage ? "Submit Answers" : "Next")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 28)
-                }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
+                BlockedPrimaryButton(
+                    title: draft.isLastPage ? String(localized: "Submit Answers") : String(localized: "Next"),
+                    action: advance
+                )
                 .disabled(draft.isLastPage ? draft.answers == nil : draft.answer(at: page) == nil)
             }
         }

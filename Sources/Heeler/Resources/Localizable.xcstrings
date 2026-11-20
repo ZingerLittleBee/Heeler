@@ -20738,6 +20738,36 @@
         }
       }
     },
+    "Dialog More Options" : {
+      "comment" : "Row on a Blocked card that shows the dialog's other answers, not more settings",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "More Options"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他の選択肢"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多選項"
+          }
+        }
+      }
+    },
     "Diff Layout" : {
       "localizations" : {
         "ja" : {
@@ -34864,7 +34894,28 @@
         }
       }
     },
-    "More Options" : {},
+    "More Options" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他のオプション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多選項"
+          }
+        }
+      }
+    },
     "Move Left" : {
       "localizations" : {
         "ja" : {
