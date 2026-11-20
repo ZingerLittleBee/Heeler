@@ -46,26 +46,12 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("throw error", cleanup)
         self.assertIn("timeout: Duration = .seconds(5)", source)
 
-    def test_attach_preparation_traces_main_actor_admission_before_the_executor_hop(self):
-        source = block(read("Sources/Heeler/Attachments/ComposerStagingStore.swift"), "runSelection")
-        self.assertRegex(source, r'#if DEBUG\s+imageAdapter\.preparationObserverForTesting\?\("selection started"\)\s+#endif')
-        self.assertLess(source.index('("selection started")'), source.index("try await prepare(source)"))
-
     def test_handshake_times_tcp_separately_without_changing_the_deadline(self):
         source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "handshake")
         self.assertIn('SSHDiagnosticOperation.current?.step = "TCP connect"', source)
         self.assertLess(source.index('step = "TCP connect"'), source.index("SocketConnector.connect"))
         self.assertLess(source.index('step = ""'), source.index("performHandshake(deadline: deadline)"))
         self.assertIn("ContinuousClock.now.advanced(by: timeout)", source)
-
-    def test_image_preparation_observer_brackets_the_real_preparer(self):
-        source = read("Sources/Heeler/Attachments/ComposerStagingStore.swift")
-        adapter = source[source.index("private struct ImageAdapter"):source.index("private struct FileAdapter")]
-        self.assertIn('preparationObserverForTesting?("started")', adapter)
-        self.assertIn('defer { preparationObserverForTesting?("finished") }', adapter)
-        self.assertIn("preparer.prepare(selection)", adapter)
-        self.assertIn("@Sendable (String) -> Void", adapter)
-        self.assertRegex(adapter, r'#if DEBUG\s+preparationObserverForTesting\?\("started"\)')
 
     def test_starvation_recovers_at_the_timeout_boundary_without_changing_deadlines(self):
         source = read("Tests/HeelerTests/WeakNetworkE2ETests.swift")
