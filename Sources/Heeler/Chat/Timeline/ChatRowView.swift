@@ -826,17 +826,19 @@ private struct ChatToolRow: View {
     }
 
     /// Commands, paths and patterns read as code. A command row with a
-    /// subtitle is titled by its description, and the command moves below.
+    /// subtitle is titled by its description, and the command moves below,
+    /// unless the program put its description there (`subtitleIsProse`).
     private var titleIsCode: Bool {
         switch tool.kind {
-        case .command: tool.subtitle?.isEmpty ?? true
+        case .command: tool.subtitleIsProse == true || (tool.subtitle?.isEmpty ?? true)
         case .fileEdit, .fileWrite, .fileRead, .search, .listing: true
         default: false
         }
     }
 
     private var subtitleIsCode: Bool {
-        switch tool.kind {
+        guard tool.subtitleIsProse != true else { return false }
+        return switch tool.kind {
         case .command, .fileEdit, .fileWrite, .fileRead, .search, .listing: true
         default: false
         }
