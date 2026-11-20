@@ -38,8 +38,10 @@ hop is dialled through a userspace node running inside the app.
 
 The native libraries (CTailscale, CZeroTier, CEasyTier) are built and
 published by their own repository,
-[Ylarod/heeler-overlay-natives](https://github.com/Ylarod/heeler-overlay-natives),
-as a Swift package of static XCFrameworks. That repository owns the pinned
+[ZingerLittleBee/heeler-overlay-natives](https://github.com/ZingerLittleBee/heeler-overlay-natives)
+(until November 2026 `Ylarod/heeler-overlay-natives`, an address that still
+redirects, so releases 1.0.0 to 1.0.3 keep resolving under it), as a Swift
+package of static XCFrameworks. That repository owns the pinned
 upstream sources (submodules), Heeler's patches and C glue, the build, its
 reproducibility and audit checks, and the licence notices; each release is a
 tag whose manifest downloads the zipped XCFrameworks by URL and SwiftPM

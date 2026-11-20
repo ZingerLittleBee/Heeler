@@ -13,7 +13,7 @@ that `HeelerSSH` then uses through `SSHExternalStream`. The public contract is
 | tailcat | tailcat's Go client, linked inside `CTailscale` | One client per tunnel: WireGuard over DERP relays to the one machine running `tailcat serve`, with no tailnet, account, or coordination server. The server's `tc…` address is the whole configuration and the credential. |
 
 The native libraries come from
-[heeler-overlay-natives](https://github.com/Ylarod/heeler-overlay-natives),
+[heeler-overlay-natives](https://github.com/ZingerLittleBee/heeler-overlay-natives),
 which builds them from pinned upstream sources with Heeler's patches and glue
 into static XCFrameworks and publishes them as a Swift package with the
 products `CTailscale`, `CZeroTier`, and `CEasyTier` (ADR 0021). That
@@ -28,7 +28,7 @@ connect).
 `exact` version, never a range or branch:
 
 ```swift
-.package(url: "https://github.com/Ylarod/heeler-overlay-natives.git", exact: "<version>")
+.package(url: "https://github.com/ZingerLittleBee/heeler-overlay-natives.git", exact: "<version>")
 ```
 
 Until its first release (1.0.0) is published, the manifest uses a path
@@ -211,7 +211,8 @@ controller is not linked), with prometheus-cpp-lite (MIT) and
 moodycamel::ConcurrentQueue (BSD-2-Clause); `ZeroTier-Heeler-modifications.txt`
 lists Heeler's patches and the files they change, and names the
 heeler-overlay-natives release tag as the source of the modified MPL files. libtailscale, Tailscale, and Go are BSD-3-Clause;
-the other Go modules are listed in `Tailscale-Go-modules.txt`. EasyTier is
+the other Go modules, tailcat (BSD-3-Clause) among them, are listed in
+`Tailscale-Go-modules.txt`. EasyTier is
 LGPL-3.0 and linked statically: `EasyTier-LGPL-3.0.txt` names the
 corresponding source (the heeler-overlay-natives release tag the CEasyTier
 binary was published under) and the installation information LGPL-3.0

@@ -5,12 +5,12 @@ Public License version 3; the full text follows, and then the GNU General
 Public License version 3 it supplements.
 
 Corresponding source. CEasyTier is built and published by
-https://github.com/Ylarod/heeler-overlay-natives; every published build is a
-release tag there (v<version>, the version Heeler's Package.resolved records
-for the heeler-overlay-natives package), and the CEasyTier.xcframework.zip
-attached to that release is the build you received. The tree at that tag,
-with its git submodules, holds everything needed to rebuild CEasyTier from
-source:
+https://github.com/ZingerLittleBee/heeler-overlay-natives; every published
+build is a release tag there (v<version>, the version Heeler's
+Package.resolved records for the heeler-overlay-natives package), and the
+CEasyTier.xcframework.zip attached to that release is the build you received.
+The tree at that tag, with its git submodules, holds everything needed to
+rebuild CEasyTier from source:
 - EasyTier: https://github.com/EasyTier/EasyTier at commit 728ba94b5029240add6204eed591f22e4e039e6b
   (git submodule upstream/EasyTier, pinned in sources.lock), with Heeler's
   modifications applied as patches:
