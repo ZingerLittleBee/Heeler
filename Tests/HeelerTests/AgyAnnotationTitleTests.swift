@@ -177,6 +177,8 @@ struct AgyAnnotationTitleTests {
         await store.resume()
         try await waitUntil("initial agy row") { !store.agents.isEmpty }
         await store.resolveHostPlatform(host.id)
+        // The automatic lookup may still be in flight when this call returns.
+        try await waitUntil("platform resolved") { store.hostPlatforms[host.id] != nil }
 
         // Initially no .pbtxt exists -> stays untitled, then Turn 1 writes .pbtxt -> retry picks it up.
         #expect(store.agents.first?.agent.title == "~/h/d/proj")
@@ -374,6 +376,8 @@ struct AgyAnnotationTitleTests {
         await store.resume()
         try await waitUntil("agent listed") { !store.agents.isEmpty }
         await store.resolveHostPlatform(host.id)
+        // The automatic lookup may still be in flight when this call returns.
+        try await waitUntil("platform resolved") { store.hostPlatforms[host.id] != nil }
 
         let listedAgent = try #require(store.agents.first)
         // Reconcile marks the conversation untitled, so `titleRenameStore(for:)` clears the path title (`""`).
