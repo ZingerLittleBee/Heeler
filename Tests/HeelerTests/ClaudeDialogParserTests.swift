@@ -495,6 +495,148 @@ struct ClaudeDialogParserTests {
         #expect(excerpt.reason == "The dialog's options are not numbered.")
         #expect(excerpt.numbered.isEmpty)
     }
+
+    @Test("A multiline quoted Bash dialog strips its quote bars and ignores countdown ticks (synthetic)")
+    func quotedBashWithAutoBlockCountdown() throws {
+        let first = ClaudeDialogRows.quotedBashScreen(countdown: "1:16")
+        let dialog = try #require(ClaudeDialogParser.parse(first).dialog)
+        #expect(dialog.kind == .claudeBash)
+        #expect(
+            dialog.subject.commandDescription
+                == "Run the workflow self-test and exercise the build-finished gate on sample phase files")
+        let expectedCommand =
+            "cd /Users/developer/worktree/Heeler/704 && make test-ci-diagnostic-controls 2>&1 | tail -6; echo "
+            + "\"make status=$?\"; T=$(mktemp -d /private/tmp/claude-501/-Users-developer-Documents-Heeler/"
+            + "89ec3b9a-6cd9-457b-813e-7916029e55da/scratchpad/gate.XXXX); rm -rf $T"
+        #expect(dialog.subject.command == expectedCommand)
+        #expect(
+            dialog.body == [
+                "Run the workflow self-test and exercise the build-finished gate on sample phase files",
+                expectedCommand,
+                "This shell -c script runs rm and could not be checked",
+                "⚠ Claude Code will automatically block this request, to avoid holding up an unattended session",
+                "Do you want to proceed?",
+            ])
+
+        for countdown in ["1:15", "0:59", "0:00"] {
+            let ticked = try #require(
+                ClaudeDialogParser.parse(ClaudeDialogRows.quotedBashScreen(countdown: countdown)).dialog,
+                "\(countdown)")
+            #expect(ticked == dialog, "\(countdown)")
+            #expect(ticked.fingerprint == dialog.fingerprint, "\(countdown)")
+        }
+        for countdown in ["about 2 minutes", "about 1 minute", "about 45 seconds", "about 1 second"] {
+            let ticked = try #require(
+                ClaudeDialogParser.parse(ClaudeDialogRows.quotedBashScreen(countdown: countdown)).dialog,
+                "\(countdown)")
+            #expect(ticked.body == dialog.body, "\(countdown)")
+            #expect(ticked.fingerprint == dialog.fingerprint, "\(countdown)")
+        }
+    }
+
+    @Test("Quoted Fetch and Read file dialogs strip their left quote bars (synthetic)")
+    func quotedFetchAndRead() throws {
+        let width = 52
+        let bar = " " + SGR.dim + "│" + SGR.reset + " "
+        let dashed = SGR.fg(80, 80, 80) + String(repeating: "╌", count: width) + SGR.reset
+        let fetchScreen = ScreenFixture.synthetic([
+            SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
+            " " + SGR.bold + SGR.claudeAccent + "Fetch" + SGR.reset,
+            bar + SGR.claudeInactive + "Claude wants to fetch content from" + SGR.reset,
+            bar + SGR.claudeInactive + "docs.example.com" + SGR.reset,
+            dashed,
+            bar + "url: https://docs.example.com/guides/getting-sta",
+            bar + "rted/installation",
+            bar + "prompt: Read the installation requirements and",
+            bar + "list the supported macOS versions",
+            dashed,
+            " Do you want to allow Claude to fetch this content?",
+            " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + "1. " + SGR.claudeAccent + "Yes" + SGR.reset,
+            "   " + SGR.claudeInactive + "2. " + SGR.reset + "No",
+        ])
+        let fetch = try #require(ClaudeDialogParser.parse(fetchScreen).dialog)
+        #expect(fetch.kind == .claudeFetch)
+        #expect(fetch.subject.host == "docs.example.com")
+        #expect(fetch.subject.url == "https://docs.example.com/guides/getting-started/installation")
+        #expect(fetch.subject.prompt == "Read the installation requirements and list the supported macOS versions")
+
+        let readScreen = ScreenFixture.synthetic([
+            SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
+            " " + SGR.bold + SGR.claudeAccent + "Read file" + SGR.reset,
+            dashed,
+            bar + "Read(/var/folders/zz/probe0placeholder0000000000",
+            bar + "0gn/T/heeler.XmwZZZ97/stage-39f04d1c/image.jpg)",
+            dashed,
+            " Do you want to proceed?",
+            " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + "1. " + SGR.claudeAccent + "Yes" + SGR.reset,
+            "   " + SGR.claudeInactive + "2. " + SGR.reset + "No",
+            "",
+            " " + SGR.claudeInactive + "Esc to cancel · Tab to amend" + SGR.reset,
+        ])
+        let read = try #require(ClaudeDialogParser.parse(readScreen).dialog)
+        #expect(read.kind == .claudeFileRead)
+        #expect(
+            read.subject.filePath
+                == "/var/folders/zz/probe0placeholder00000000000gn/T/heeler.XmwZZZ97/stage-39f04d1c/image.jpg")
+    }
+
+    @Test("An Edit file dialog keeps its diff lines separate from an auto-block countdown (synthetic)")
+    func editFileWithAutoBlockCountdown() throws {
+        let width = 58
+        let dashed = SGR.fg(80, 80, 80) + String(repeating: "╌", count: width) + SGR.reset
+        let warning = SGR.fg(229, 192, 123)
+        let screen = ScreenFixture.synthetic([
+            SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
+            " " + SGR.bold + SGR.claudeAccent + "Edit file" + SGR.reset,
+            " " + SGR.claudeInactive + "q.txt" + SGR.reset,
+            dashed,
+            " 1 -probe",
+            " 1 +probe2",
+            dashed,
+            " " + warning + "⚠ Claude Code will automatically block this request in" + SGR.reset,
+            " " + warning + "1:16, to avoid holding up an unattended session" + SGR.reset,
+            "",
+            " Do you want to make this edit to q.txt?",
+            " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + "1. " + SGR.claudeAccent + "Yes" + SGR.reset,
+            "   " + SGR.claudeInactive + "2. " + SGR.reset + "No",
+            "",
+            " " + SGR.claudeInactive + "Esc to cancel · Tab to amend" + SGR.reset,
+        ])
+        let dialog = try #require(ClaudeDialogParser.parse(screen).dialog)
+        #expect(dialog.kind == .claudeFileEdit)
+        #expect(dialog.subject.filePath == "q.txt")
+        #expect(dialog.subject.changeLines == ["1 -probe", "1 +probe2"])
+    }
+
+    @Test("A generic excerpt keeps its fingerprint when an auto-block countdown wraps differently across ticks (synthetic)")
+    func genericExcerptWithAutoBlockCountdown() throws {
+        let tenMinutes = ClaudeDialogRows.screen(
+            title: "Tool use",
+            body: [
+                "⚠ Claude Code will automatically",
+                "block this request in 10:00, to",
+                "avoid holding up an unattended",
+                "session",
+                "",
+            ],
+            options: ["Yes", "No"],
+            width: 38)
+        let nineFiftyNine = ClaudeDialogRows.screen(
+            title: "Tool use",
+            body: [
+                "⚠ Claude Code will automatically",
+                "block this request in 9:59, to avoid",
+                "holding up an unattended session",
+                "",
+            ],
+            options: ["Yes", "No"],
+            width: 38)
+        let first = try #require(ClaudeDialogParser.parse(tenMinutes).excerpt)
+        let second = try #require(ClaudeDialogParser.parse(nineFiftyNine).excerpt)
+        #expect(first.fingerprint == second.fingerprint)
+        #expect(first.rows.map(\.trimmedText).contains("block this request in 10:00, to"))
+        #expect(second.rows.map(\.trimmedText).contains("block this request in 9:59, to avoid"))
+    }
 }
 
 /// Synthetic Claude dialogs in the dark theme's colors, laid out like the
@@ -523,6 +665,70 @@ enum ClaudeDialogRows {
             }
         }
         rows += ["", SGR.reset + " " + SGR.claudeInactive + footer + SGR.reset]
+        return ScreenFixture.synthetic(rows)
+    }
+
+    /// A 58-column Claude Code 2.1.328 Bash dialog with `│ ` quote bars on its
+    /// wrapped description and command and a ticking unattended auto-block
+    /// warning, optionally in Tab-to-amend feedback mode.
+    static func quotedBashScreen(
+        countdown: String, focused: Int = 1, feedbackOrdinal: Int? = nil, feedbackText: String? = nil
+    ) -> ANSIScreen {
+        let width = 58
+        let bar = SGR.reset + " " + SGR.dim + "│" + SGR.reset + " "
+        let dashed = SGR.reset + SGR.fg(80, 80, 80) + String(repeating: "╌", count: width) + SGR.reset
+        let warning = SGR.fg(229, 192, 123)
+        let banner = "⚠ Claude Code will automatically block this request in \(countdown), to avoid holding up an unattended session"
+        var bannerLines: [String] = []
+        for word in banner.split(separator: " ") {
+            if let last = bannerLines.last, last.count + 1 + word.count <= width - 2 {
+                bannerLines[bannerLines.count - 1] = "\(last) \(word)"
+            } else {
+                bannerLines.append(String(word))
+            }
+        }
+        var rows = [
+            SGR.reset + SGR.claudeAccent + String(repeating: "─", count: width) + SGR.reset,
+            SGR.reset + " " + SGR.bold + SGR.claudeAccent + "Bash command" + SGR.reset,
+            bar + SGR.claudeInactive + "Run the workflow self-test and exercise the" + SGR.reset,
+            bar + SGR.claudeInactive + "build-finished gate on sample phase files" + SGR.reset,
+            dashed,
+            bar + "cd /Users/developer/worktree/Heeler/704 &&",
+            bar + "make test-ci-diagnostic-controls 2>&1 | tail -6; echo",
+            bar + "\"make status=$?\"; T=$(mktemp -d /private/tmp/claude-501",
+            bar + "/-Users-developer-Documents-Heeler/89ec3b9a-6cd9-457b-8",
+            bar + "13e-7916029e55da/scratchpad/gate.XXXX); rm -rf $T",
+            dashed,
+            " This shell -c script runs rm and could not be checked",
+        ]
+        rows += bannerLines.map { " " + warning + $0 + SGR.reset }
+        rows += [
+            "",
+            " Do you want to proceed?",
+        ]
+        for (index, label) in ["Yes", "No"].enumerated() {
+            let ordinal = index + 1
+            let number = "\(ordinal). "
+            if ordinal == focused, feedbackOrdinal == ordinal {
+                let placeholder = ordinal == 1 ? "and tell Claude what to do next" : "and tell Claude what to do differently"
+                let field: String
+                if let feedbackText {
+                    field = feedbackText + SGR.reverse + " " + SGR.reset
+                } else {
+                    field = SGR.reverse + String(placeholder.prefix(1)) + SGR.reset + SGR.dim + String(placeholder.dropFirst()) + SGR.reset
+                }
+                rows.append(
+                    SGR.reset + " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + number + SGR.claudeAccent
+                        + "\(label), " + SGR.reset + field)
+            } else if ordinal == focused {
+                rows.append(
+                    SGR.reset + " " + SGR.claudeAccent + "❯ " + SGR.claudeInactive + number + SGR.claudeAccent + label
+                        + SGR.reset)
+            } else {
+                rows.append(SGR.reset + "   " + SGR.claudeInactive + number + SGR.reset + label)
+            }
+        }
+        rows += ["", SGR.reset + " " + SGR.claudeInactive + "Esc to cancel · Tab to amend" + SGR.reset]
         return ScreenFixture.synthetic(rows)
     }
 }
