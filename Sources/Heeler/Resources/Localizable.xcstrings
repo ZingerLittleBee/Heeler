@@ -7614,7 +7614,28 @@
         }
       }
     },
-    "Add a Jump Host or an overlay network under More Options." : {},
+    "Add a Jump Host or an overlay network under More Options." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンプホストやオーバーレイネットワークは「その他のオプション」で追加できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在“更多选项”中添加跳板机或叠加网络。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在「更多選項」中加入跳板主機或覆蓋網路。"
+          }
+        }
+      }
+    },
     "Add a Note" : {
       "localizations" : {
         "ja" : {
@@ -41972,8 +41993,50 @@
         }
       }
     },
-    "Over an overlay network that no longer exists." : {},
-    "Over overlay network “%@”." : {},
+    "Over an overlay network that no longer exists." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用するオーバーレイネットワークはもう存在しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所用的叠加网络已不存在。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所用的覆蓋網路已不存在。"
+          }
+        }
+      }
+    },
+    "Over overlay network “%@”." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%@」経由で接続します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过叠加网络“%@”连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過覆蓋網路「%@」連線。"
+          }
+        }
+      }
+    },
     "Overlay Networks" : {
       "localizations" : {
         "ja" : {
@@ -43570,7 +43633,28 @@
         }
       }
     },
-    "Port %@." : {},
+    "Port %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート %@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠 %@。"
+          }
+        }
+      }
+    },
     "Possibly incomplete · %@" : {
       "comment" : "Changes freshness, then the read time",
       "localizations" : {
@@ -68226,7 +68310,28 @@
         }
       }
     },
-    "Through the Jump Host %@." : {},
+    "Through the Jump Host %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンプホスト %@ を経由します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经由跳板机 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經由跳板主機 %@。"
+          }
+        }
+      }
+    },
     "Timed out" : {
       "localizations" : {
         "ja" : {
