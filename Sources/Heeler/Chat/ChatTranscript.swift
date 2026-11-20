@@ -289,6 +289,10 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     var title: String
     /// Secondary text, such as the command under a Bash description.
     var subtitle: String?
+    /// Whether `subtitle` is the program's own sentence about the call,
+    /// under a title that is its command, path or pattern, as the
+    /// Antigravity CLI records them. Unset in a row saved before it was kept.
+    var subtitleIsProse: Bool?
     var status: Status
     /// The user's note: feedback with a decline, or a note added to an
     /// approval.
@@ -384,7 +388,8 @@ struct ChatToolActivity: Equatable, Codable, Sendable {
     // `preview`, `cardAnswer`, `outputRead` and `isNotUpdating` are
     // deliberately absent: decoding leaves them unset.
     private enum CodingKeys: String, CodingKey {
-        case kind, name, title, subtitle, status, note, diff, fileChanges, exitCode, questions, callID, output, subagentActivity, imagePath
+        case kind, name, title, subtitle, subtitleIsProse, status, note, diff, fileChanges, exitCode, questions, callID, output
+        case subagentActivity, imagePath
     }
 }
 
