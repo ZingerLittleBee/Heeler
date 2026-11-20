@@ -54,6 +54,11 @@ def login_shells() -> list[str]:
     return found
 
 
+def interactive_shells() -> list[str]:
+    """The shells whose own startup file an interactive, non-login start reads."""
+    return [path for path in (shutil.which(name) for name in ("bash", "zsh", "fish")) if path]
+
+
 class FixtureTestCase(unittest.TestCase):
     def setUp(self) -> None:
         # Short, for the socket paths below: a Unix socket path holds about 100 bytes.
@@ -86,6 +91,7 @@ class FixtureTestCase(unittest.TestCase):
         facts=None,
         root: Path | None = None,
         system_tmux: str | None = None,
+        login_shell: str | None = None,
     ) -> tuple[int, str]:
         facts = facts or (lambda _root, _state, through_login_shell: self.good_facts(through_login_shell))
         errors = io.StringIO()
@@ -96,7 +102,9 @@ class FixtureTestCase(unittest.TestCase):
              patch.object(FIXTURE, "system_tmux", return_value=system_tmux), \
              patch.object(FIXTURE.keys, "seed", return_value=bytes(32)), \
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
-            status = FIXTURE.main(["start", "--root", str(root or self.root), "--tmux", str(tmux)])
+            status = FIXTURE.main(
+                ["start", "--root", str(root or self.root), "--tmux", str(tmux)]
+                + (["--login-shell", login_shell] if login_shell else []))
         self.sshd, self.stopped = sshd, stopped
         return status, errors.getvalue()
 
@@ -210,6 +218,19 @@ class SessionEnvironmentTests(FixtureTestCase):
             with self.subTest(shell=shell):
                 self.assertEqual(self.session(FIXTURE.check_script(True), shell)["tmux"], str(stand_in))
 
+    def test_an_interactive_shell_runs_a_program_on_the_login_path(self) -> None:
+        # An Agent's launch (HerdrCoreShellLaunch.argv) asks the interactive
+        # shell, not the login one: bash reads only ~/.bashrc there.
+        stand_in = FIXTURE.first_directory(self.root) / "claude"
+        stand_in.write_text("#!/bin/sh\nprintf 'heeler-tmux-fixture-check ran %s\\n' \"$1\"\n")
+        stand_in.chmod(0o755)
+        for shell in interactive_shells():
+            with self.subTest(shell=shell):
+                launch = ("-ic 'exec $argv[2..]' fish" if shell.endswith("/fish")
+                          else "-ic 'exec \"$@\"' \"$SHELL\"")
+                command = f'"$SHELL" {launch} claude agent </dev/null 2>/dev/null'
+                self.assertEqual(self.session(command, shell).get("ran"), "agent")
+
 
 class StartTests(FixtureTestCase):
     def test_start_builds_a_home_and_tmux_directories_of_its_own(self) -> None:
@@ -225,9 +246,11 @@ class StartTests(FixtureTestCase):
             directory = FIXTURE.socket_directory(tmpdir)
             self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
             self.assertEqual(list(directory.iterdir()), [])
-        for file in (".profile", ".bash_profile", ".zshrc", ".config/fish/config.fish"):
+        for file in (".profile", ".bash_profile", ".bashrc", ".zshrc", ".config/fish/config.fish"):
             self.assertIn(str(FIXTURE.login_tmpdir(root)), (root / "home" / file).read_text())
         self.assertIn(f"TMUX_TMPDIR={FIXTURE.exec_tmpdir(root)}", (root / "force-command.sh").read_text())
+        # The account's own login shell, as sshd names it, unless one is asked for.
+        self.assertNotIn("SHELL=", (root / "force-command.sh").read_text())
 
         path = root / "tmux-test-config"
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
@@ -274,6 +297,19 @@ class StartTests(FixtureTestCase):
         self.assertEqual(status, 2)
         self.assertIn("/usr/bin/tmux", errors)
         prepare.assert_not_called()
+
+    def test_a_named_login_shell_is_the_one_every_session_reports(self) -> None:
+        tmux = self.fake_tmux()
+        status, errors = self.start(tmux, login_shell="bin/bash")
+        self.assertEqual(status, 2)
+        self.assertIn("--login-shell", errors)
+        self.assertEqual(self.start(tmux, login_shell="/bin/bash")[0], 0)
+        result = subprocess.run(
+            ["/bin/sh", str(self.root / "force-command.sh")],
+            env={"SSH_ORIGINAL_COMMAND": "printf '%s' \"$SHELL\"", "SHELL": "/bin/zsh",
+                 "HOME": "/nonexistent", "PATH": "/usr/bin:/bin"},
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        self.assertEqual((result.returncode, result.stdout), (0, "/bin/bash"))
 
     def test_start_refuses_a_missing_tmux_and_a_root_already_in_use(self) -> None:
         self.assertEqual(self.start(self.root / "no-such-tmux")[0], 2)

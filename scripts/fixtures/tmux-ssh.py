@@ -31,6 +31,10 @@ same path. `start` asks the account's login shell through the fixture's own
 sshd where `default` resolves, and refuses to run unless that is inside the
 root. `stop` ends only the servers on sockets in the two directories above,
 each by its `-S` path, and removes the root.
+
+A session's login shell is the account's own. `--login-shell /bin/bash` has
+every session report that one instead, to run the suite as an account with
+another shell would: a hosted macOS runner's is bash.
 """
 import argparse
 import base64
@@ -130,7 +134,11 @@ def login_path(root):
 
 
 def login_files(root):
-    """Each startup file an interactive login shell reads, by path under the home.
+    """Each startup file an interactive shell reads, by path under the home.
+
+    The app asks the login shell for tmux (`-lic`) and the interactive shell
+    for an Agent's program (`-ic`). bash reads `.bash_profile` for the first
+    and only `.bashrc` for the second; zsh and fish read one file for both.
 
     They set the PATH outright instead of adding to it, so a tmux the machine
     has elsewhere (Homebrew's, through /etc/paths.d) is never the one found.
@@ -143,6 +151,7 @@ def login_files(root):
     return {
         ".profile": posix,
         ".bash_profile": posix,
+        ".bashrc": posix,
         ".zshrc": posix,
         ".config/fish/config.fish": fish,
     }
@@ -156,12 +165,16 @@ def write_login_files(root):
         path.write_text(text)
 
 
-def force_command_script(root):
+def force_command_script(root, login_shell=None):
     """The isolated backend's ForceCommand, with a tmux directory of the exec's own.
 
     A probe whose login shell gave up reads the exec's environment. It must
     still name a directory in the root, never /tmp/tmux-<uid>.
+
+    `login_shell` stands in for the account's own: sshd names that one in
+    SHELL, which is all the app and a tmux server started here read of it.
     """
+    shell = [] if login_shell is None else [f"SHELL={shlex.quote(str(login_shell))}; export SHELL"]
     return "\n".join([
         "#!/bin/sh",
         "# ForceCommand for the tmux fixture's sshd: only the fixture's tmux is reachable.",
@@ -170,6 +183,7 @@ def force_command_script(root):
         f"HOME={shlex.quote(str(root / 'home'))}; export HOME",
         f"PATH={shlex.quote(backend.isolated_path(root))}; export PATH",
         f"TMUX_TMPDIR={shlex.quote(str(exec_tmpdir(root)))}; export TMUX_TMPDIR",
+        *shell,
         'if [ -n "$SSH_ORIGINAL_COMMAND" ]; then exec /bin/sh -c "$SSH_ORIGINAL_COMMAND"; fi',
         "exec /bin/sh",
         "",
@@ -335,6 +349,9 @@ def start_fixture(args, root):
     if (root / FIXTURE_MARKER).exists():
         raise backend.BackendError("a tmux fixture is already there; run stop successfully before reusing this root")
     version = tmux_version(str(source))
+    login_shell = args.login_shell and Path(args.login_shell)
+    if login_shell and not (login_shell.is_absolute() and login_shell.is_file() and os.access(login_shell, os.X_OK)):
+        raise backend.BackendError(f"--login-shell {login_shell} is not an absolute path to a shell")
     port = backend.choose_port(args.port, backend.SSH_PORT_RANGE, "SSH")
 
     backend.prepare_root(root)
@@ -355,7 +372,7 @@ def start_fixture(args, root):
         # sshd reads the ForceCommand's file for each session, and none has begun.
         force = root / "force-command.sh"
         replacement = root / "force-command.sh.new"
-        replacement.write_text(force_command_script(root))
+        replacement.write_text(force_command_script(root, login_shell or None))
         replacement.chmod(0o755)
         replacement.replace(force)
         refusal = resolution_refusal(
@@ -388,6 +405,8 @@ def main(argv=None):
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--tmux", default=shutil.which("tmux"),
                         help="the tmux the fixture account finds (default: tmux on PATH)")
+    parser.add_argument("--login-shell",
+                        help="the login shell a session reports in SHELL (default: the account's own)")
     parser.add_argument("--port", type=int)
     args = parser.parse_args(argv)
     root = args.root.resolve()

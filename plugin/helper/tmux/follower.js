@@ -93,7 +93,9 @@ function parseListedPanes(buffer) {
       !/^@\d+$/.test(windowID) ||
       !/^\d+$/.test(windowIndexText) ||
       !/^%\d+$/.test(paneID) ||
-      !/^\d+$/.test(panePidText) ||
+      // tmux 3.8 prints no `pane_pid` once a pane's terminal has closed,
+      // where earlier releases keep the one its process had.
+      !/^\d*$/.test(panePidText) ||
       !/^\d+$/.test(deadText) ||
       !/^\d+$/.test(pipeText)
     ) {

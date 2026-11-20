@@ -19,9 +19,10 @@ enum TmuxLoopText {
     }
 
     /// Quotes `value` as tmux's `#{q:...}` (`format_quote_shell`) does, plus
-    /// tmux 3.4's `utf8_stravisx` (`VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH`) when asked.
-    static func quoted(_ value: String, tmux34Escaped: Bool = false) -> String {
-        let shellSpecial = Set("|&;<>()$`\\\"'*?[# =%".utf8)
+    /// tmux 3.4's `utf8_stravisx` (`VIS_OCTAL|VIS_CSTYLE|VIS_NOSLASH`) when asked,
+    /// or with the braces, tab and newline tmux 3.8 escapes as well.
+    static func quoted(_ value: String, tmux34Escaped: Bool = false, tmux38Escaped: Bool = false) -> String {
+        let shellSpecial = Set("|&;<>()$`\\\"'*?[# =%".utf8).union(tmux38Escaped ? Set("{}\n\t".utf8) : [])
         var shellBytes = Data()
         for byte in value.utf8 {
             if shellSpecial.contains(byte) { shellBytes.append(UInt8(ascii: "\\")) }
@@ -69,18 +70,25 @@ enum TmuxLoopText {
     }
 
     /// One row: the line of ids and numbers, then the `#{q:...}` text fields.
-    static func row(_ pane: TmuxInventory.Pane, instance: TmuxServerInstance, tmux34Escaped: Bool = false) -> Data {
+    /// tmux 3.8 names no process for a dead pane.
+    static func row(
+        _ pane: TmuxInventory.Pane, instance: TmuxServerInstance, tmux34Escaped: Bool = false,
+        tmux38Escaped: Bool = false
+    ) -> Data {
         let texts = [
             pane.sessionName, pane.windowName, pane.command, pane.path, pane.status, pane.agentSession,
             pane.pipeMark, pane.attachMark, pane.worktree, pane.chatPick,
         ]
         let fixed: [String] = [
             String(instance.pid), String(instance.startTime), pane.sessionID, pane.windowID,
-            String(pane.windowIndex), pane.paneID, String(pane.paneIndex), String(pane.processID),
+            String(pane.windowIndex), pane.paneID, String(pane.paneIndex),
+            tmux38Escaped && pane.isDead ? "" : String(pane.processID),
             String(pane.width), String(pane.height), pane.isDead ? "1" : "0", pane.hasPipe ? "1" : "0",
         ]
         let header = fixed.joined(separator: "\t")
-        let body = texts.map { quoted($0, tmux34Escaped: tmux34Escaped) }.joined(separator: " ") + " .\n"
+        let body =
+            texts.map { quoted($0, tmux34Escaped: tmux34Escaped, tmux38Escaped: tmux38Escaped) }
+            .joined(separator: " ") + " .\n"
         return Data((header + "\n" + body).utf8)
     }
 
@@ -99,10 +107,12 @@ enum TmuxLoopText {
     static func snapshot(
         _ panes: [TmuxInventory.Pane], instance: TmuxServerInstance,
         arguments: [(pane: String, arguments: Arguments)] = [], nonce: String = nonce,
-        tmux34Escaped: Bool = false
+        tmux34Escaped: Bool = false, tmux38Escaped: Bool = false
     ) -> Data {
         var text = Data("\(nonce) begin\n".utf8)
-        for pane in panes { text.append(row(pane, instance: instance, tmux34Escaped: tmux34Escaped)) }
+        for pane in panes {
+            text.append(row(pane, instance: instance, tmux34Escaped: tmux34Escaped, tmux38Escaped: tmux38Escaped))
+        }
         // The shell's command substitution drops the newline that ends the last row.
         if !panes.isEmpty { text.removeLast() }
         text.append(Data("\n\(nonce) argv\n".utf8))
