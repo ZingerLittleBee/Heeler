@@ -145,6 +145,8 @@ struct HerdrCorePiChatTests {
             await store.resume()
             try await waitUntil("the first snapshot") { !self.store.hostsAwaitingSnapshot.contains(self.host.id) }
             await store.resolveHostPlatform(host.id)
+            // The automatic lookup may still be in flight when this call returns.
+            try await waitUntil("the platform") { self.store.hostPlatforms[self.host.id] != nil }
             try await waitUntil("the kernel") { self.store.hostCoreKernels[self.host.id] == "Linux" }
         }
 

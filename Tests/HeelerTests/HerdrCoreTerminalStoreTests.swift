@@ -1104,7 +1104,8 @@ struct HerdrCoreTerminalStoreTests {
     ) async throws -> (Fixture, CoreDetailWindow, Departure) {
         let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "/bin/bash")] + others)
         await fixture.console.resolveHostPlatform(fixture.host.id)
-        #expect(fixture.console.hostPlatforms[fixture.host.id] != nil)
+        // The automatic lookup may still be in flight when this call returns.
+        try await Self.until("the platform") { fixture.console.hostPlatforms[fixture.host.id] != nil }
         let terminal = try #require(fixture.console.terminals.first { !$0.isAgent })
         let departure = Departure()
         let screen = try await fixture.showShellWithKeyboardUp(
@@ -1277,6 +1278,8 @@ struct HerdrCoreTerminalStoreTests {
         let fixture = try await Fixture(
             terminals: [Self.cursorAgentRecord(address: "t1"), Self.agentRecord(address: "t2")])
         await fixture.console.resolveHostPlatform(fixture.host.id)
+        // The automatic lookup may still be in flight when this call returns.
+        try await Self.until("the platform") { fixture.console.hostPlatforms[fixture.host.id] != nil }
         let agent = try #require(fixture.console.agents.first { $0.agent.kind == "cursor" })
         let other = try #require(fixture.console.agents.first { $0.agent.kind == "claude" })
         #expect(fixture.console.chatProgram(for: agent) == nil)
