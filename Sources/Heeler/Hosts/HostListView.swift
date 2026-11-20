@@ -706,7 +706,7 @@ struct HostListView: View {
                     .fixedSize()
                 HostMachineRowContent(
                     presentation: entry.presentation, unseen: entry.unseen,
-                    updateTag: entry.updateTag, showsTrailing: !isRemoving)
+                    updateTag: entry.updateTag, showsTrailing: !isRemoving && stopped.isEmpty)
                 if isRemoving {
                     ProgressView()
                         .controlSize(.small)

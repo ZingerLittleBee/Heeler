@@ -26,11 +26,12 @@ struct HostReadiness: Equatable, Sendable {
 
     /// A Host's readiness from those of the Servers it has on, in catalog
     /// order, as the Hosts tab reads a Host (`HostMachineRowPresentation`):
-    /// the Server that most needs the user says it, one that cannot connect
-    /// before one still trying, then one out of sync, then a connected one,
-    /// and a paused one last; the first among equals. The name stays at full
-    /// strength while any Server is reachable, since what that Server lists
-    /// is live under it. Nil for no Servers.
+    /// while `servers` are connected (`readiness(servers:isEmpty:inventoryNoun:)`
+    /// narrows to connected Servers first), one out of sync or still loading
+    /// leads one that is ready; when none is connected, one that cannot connect
+    /// comes before one still trying, and a paused one last; the first among
+    /// equals. The name stays at full strength while any Server is reachable,
+    /// since what that Server lists is live under it. Nil for no Servers.
     static func combining(_ servers: [HostReadiness]) -> HostReadiness? {
         guard let lead = servers.min(by: { attentionRank($0.tone) < attentionRank($1.tone) })
         else { return nil }
@@ -175,7 +176,9 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     static func readiness(
         servers: [ConsoleHostServerState], isEmpty: Bool, inventoryNoun: String
     ) -> HostReadiness {
-        let each = servers.map {
+        let connected = servers.filter { $0.connectionStatus == .connected }
+        let relevant = connected.isEmpty ? servers : connected
+        let each = relevant.map {
             readiness(
                 connectionStatus: $0.connectionStatus, isAwaitingSnapshot: $0.isAwaitingSnapshot,
                 statusSeverity: $0.issue?.severity, isEmpty: isEmpty, inventoryNoun: inventoryNoun)

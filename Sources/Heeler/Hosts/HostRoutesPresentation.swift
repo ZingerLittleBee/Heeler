@@ -31,11 +31,17 @@ extension TransportError {
 }
 
 extension EventsSessionStatus {
-    /// The Console is dialing, or between automatic retries.
-    var isDialing: Bool {
+    /// The Console is dialing the Host, or between automatic retries of its
+    /// connection. A retry after a Server's own failure (`isServerFailure`)
+    /// already reached the Host.
+    func isDialingConnection(standingFailure: TransportError? = nil) -> Bool {
         switch self {
-        case .connecting, .reconnecting: true
-        case .connected, .failed, .suspended, .ended: false
+        case .connecting:
+            standingFailure?.isServerFailure != true
+        case .reconnecting(_, _, let failure):
+            !failure.isServerFailure
+        case .connected, .failed, .suspended, .ended:
+            false
         }
     }
 
@@ -79,7 +85,26 @@ struct HostRoutesPresentation: Equatable {
     struct Server: Equatable {
         let routes: [HostRoute]
         let status: EventsSessionStatus?
+        let standingFailure: TransportError?
         let routeID: HostRoute.ID?
+
+        init(
+            routes: [HostRoute], status: EventsSessionStatus?, routeID: HostRoute.ID?,
+            standingFailure: TransportError? = nil
+        ) {
+            self.routes = routes
+            self.status = status
+            self.standingFailure = standingFailure
+            self.routeID = routeID
+        }
+
+        fileprivate var isDialingConnection: Bool {
+            status?.isDialingConnection(standingFailure: standingFailure) == true
+        }
+
+        fileprivate var failure: TransportError? {
+            status?.failure ?? standingFailure
+        }
 
         fileprivate func index(of id: HostRoute.ID?) -> Int? {
             guard let id else { return nil }
@@ -124,7 +149,7 @@ struct HostRoutesPresentation: Equatable {
             footer = note.map(Footer.note) ?? .none
             return
         }
-        isDialing = servers.contains { $0.status?.isDialing == true }
+        isDialing = servers.contains(where: \.isDialingConnection)
         if let connected = servers.first(where: { $0.status == .connected }) {
             inUse = connected.index(of: connected.routeID)
             failures = [:]
@@ -133,13 +158,13 @@ struct HostRoutesPresentation: Equatable {
         }
         inUse = nil
         let stopped = servers.lazy.compactMap { server -> (Server, TransportError)? in
-            guard let failure = server.status?.failure, !failure.isServerFailure else { return nil }
+            guard let failure = server.failure, !failure.isServerFailure else { return nil }
             return (server, failure)
         }.first
         guard let (server, failure) = stopped else {
             failures = [:]
             // Nothing is dialing and nothing failed: the Servers were stopped.
-            let isIdle = !servers.isEmpty && !isDialing && servers.allSatisfy { $0.status?.failure == nil }
+            let isIdle = !servers.isEmpty && !isDialing && servers.allSatisfy { $0.failure == nil }
             if isIdle {
                 let notConnected = String(localized: "Not connected.")
                 footer = .note(note.map { "\(notConnected) \($0)" } ?? notConnected)

@@ -215,9 +215,10 @@ struct TerminalListProjectionTests {
         #expect(list.workspaces().map(\.hostName) == ["m3", "m3", "Build"])
     }
 
-    /// One Server failing reads on the Host's header, and its row under the
-    /// header names it; a Host with several Servers expands rather than open
-    /// one Server's connection sheet.
+    /// While another Server on the Host is connected, the Host's header stays
+    /// Connected and the failing Server's row under it names that Server; when
+    /// none is connected, the header reads Unavailable, and a Host with several
+    /// Servers still expands rather than open one Server's connection sheet.
     @MainActor @Test func aFailingServerShowsOnItsHostsGroup() throws {
         let (tui, tmux, _) = twoServerHosts()
         let alone = Host.fixture(name: "alone", address: "alone.example")
@@ -228,13 +229,23 @@ struct TerminalListProjectionTests {
             statuses: [tui.id: .connected, tmux.id: .failed(failure), alone.id: .failed(failure)]
         ).hostGroups()
         let m3 = try #require(groups.first)
-        #expect(m3.readiness.tone == .unavailable)
-        #expect(m3.readiness.text == "Unavailable")
+        #expect(m3.readiness.tone == .connected)
+        #expect(m3.readiness.text == "Connected")
         #expect(m3.readiness.nameEmphasis == .full)
         #expect(m3.issues.map(\.hostID) == [tmux.id])
         #expect(m3.issues.first?.message.hasPrefix("m3 · tmux: ") == true)
         #expect(m3.terminalCount == 1)
         #expect(groups.map(\.opensConnectionDetail) == [false, true])
+
+        let allFailing = projection(
+            hosts: [tui, tmux],
+            statuses: [tui.id: .failed(failure), tmux.id: .failed(failure)]
+        ).hostGroups()
+        let unreachable = try #require(allFailing.first)
+        #expect(unreachable.readiness.tone == .unavailable)
+        #expect(unreachable.readiness.text == "Unavailable")
+        #expect(unreachable.readiness.nameEmphasis == .dimmed)
+        #expect(!unreachable.opensConnectionDetail)
     }
 
     /// A Rex Host starts no terminal, so with nothing to list and nothing to

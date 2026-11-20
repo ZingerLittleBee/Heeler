@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// One Hosts list row (ADR 0047): a Host, read from the Servers that are on.
-/// The one that most needs the user decides where the row is filed and what
-/// it says; each keeps its own state color on its badge.
+/// One Hosts list row (ADR 0047, ADR 0058): a Host, read from the Servers that
+/// are on. While any Server is connected, the Host is connected; otherwise the
+/// Server that most needs the user decides where the row is filed and what it
+/// says. Each Server keeps its own state color on its badge.
 struct HostMachineRowPresentation: Equatable {
     /// A Server that is on.
     struct Server: Equatable, Identifiable {
@@ -55,24 +56,29 @@ struct HostMachineRowPresentation: Equatable {
     ) {
         name = machine.name
         let rows = machine.servers.map { record in
-            (
+            let status = statuses[record.id]
+            let standingFailure = standingFailures[record.id]
+            return (
                 record: record,
                 row: HostRowPresentation(
-                    host: record, status: statuses[record.id], standingFailure: standingFailures[record.id],
-                    latency: latencies[record.id], syncIssue: syncIssues[record.id], canRetry: canRetry)
+                    host: record, status: status, standingFailure: standingFailure,
+                    latency: latencies[record.id], syncIssue: syncIssues[record.id], canRetry: canRetry),
+                isServerFailure: (status?.failure ?? standingFailure)?.isServerFailure == true
             )
         }
-        servers = rows.map { record, row in
+        servers = rows.map { record, row, _ in
             Server(
                 id: record.id, label: record.serverKey?.badgeLabel ?? record.serverKind.badgeName,
                 tone: row.tone, offersRetry: row.offersRetry, isDialing: row.isDialing)
         }
-        // The first of the Servers in the group that comes first, one out of
-        // sync ahead of the healthy.
-        let lead = rows.map(\.row).min { lhs, rhs in
-            (lhs.group.rawValue, lhs.tone == .connected ? 1 : 0)
-                < (rhs.group.rawValue, rhs.tone == .connected ? 1 : 0)
-        }
+        // Any connected Server proves the Host is connected (ADR 0058), with
+        // one out of sync ahead of the healthy; when none is connected, a
+        // failure of the Host's connection leads one of a single Server.
+        let connectedRows = rows.filter { $0.row.group == .connected }
+        let lead = (connectedRows.isEmpty ? rows : connectedRows).min { lhs, rhs in
+            (lhs.row.group.rawValue, lhs.isServerFailure ? 1 : 0, lhs.row.tone == .connected ? 1 : 0)
+                < (rhs.row.group.rawValue, rhs.isServerFailure ? 1 : 0, rhs.row.tone == .connected ? 1 : 0)
+        }?.row
         guard let lead else {
             group = .notConnected
             tone = .paused
@@ -86,9 +92,7 @@ struct HostMachineRowPresentation: Equatable {
         isProblem = lead.isProblem
         if lead.group == .connected {
             detail = lead.tone == .connected ? machine.connectionSummary : lead.detail
-            let measured = rows.compactMap { record, row in
-                row.group == .connected ? latencies[record.id] : nil
-            }
+            let measured = connectedRows.compactMap { latencies[$0.record.id] }
             trailing = measured.min().map(HostLatencyFormatting.formatted) ?? lead.trailing
         } else {
             detail = lead.detail

@@ -1108,6 +1108,10 @@ struct ConsoleView: View {
                         onShowHostIssues: { isShowingHostIssues = true },
                         onNewTerminal: { isStartingTerminal = true })
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { terminalHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
                     focus: $focusedSearch, tab: .terminals,
@@ -1886,6 +1890,24 @@ struct ConsoleView: View {
         }
     }
 
+    @ViewBuilder
+    private var terminalHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: terminalPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleTerminalHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true },
+                accessibilityID: "terminals.hostIssues.badge"
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
+        }
+    }
+
     private func makeAgentRowKeys(
         for agents: [ConsoleAgent], pass: Int,
         qualifiers: [ConsoleAgent.ID: String], saved: [ConsoleAgent.ID: HostReadiness]
@@ -2198,20 +2220,11 @@ struct ConsoleView: View {
         ForEach(sections) { @Sendable section in
             MainActorContent {
                 // A Host with several Servers expands whatever one of them
-                // says: the others may have Agents to show, and each
-                // problem's row opens its own Server's sheet.
+                // says: the others may have Agents to show, while Host
+                // connection conditions float in the bottom-trailing corner.
                 let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
-                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
-                        // As in the Terminals tab: an expanded Host with a
-                        // condition says what it is before any Agents it lists.
-                        ForEach(section.issues) { @Sendable issue in
-                            MainActorContent {
-                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
-                                    .listRowSeparator(.hidden)
-                            }
-                        }
                         let keys = makeAgentRowKeys(
                             for: section.agents, pass: pass,
                             qualifiers: qualifiers, saved: saved)
@@ -2628,6 +2641,14 @@ struct ConsoleView: View {
         return filteredHostIssues
     }
 
+    private var visibleTerminalHostIssues: [ConsoleHostStatusPresentation] {
+        guard terminalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+            .issues(filteredHostIDs: hostFilter)
+    }
+
     /// Every Host problem under the Host filter, as the flat lists show
     /// them outside a search, and as their summary's sheet lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
@@ -2700,8 +2721,13 @@ struct ConsoleView: View {
     private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
         -> some View
     {
-        ConsoleHostIssuesSheet(
-            issues: filteredHostIssues,
+        let sheetIssues =
+            shownListTab == .terminals && currentTab == .terminals
+            ? terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+                .issues(filteredHostIDs: hostFilter)
+            : filteredHostIssues
+        return ConsoleHostIssuesSheet(
+            issues: sheetIssues,
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,
             onOpenHost: { id in

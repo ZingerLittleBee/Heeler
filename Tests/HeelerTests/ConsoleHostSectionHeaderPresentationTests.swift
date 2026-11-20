@@ -142,10 +142,11 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(header.accessibilityLabel.hasPrefix("studio, Sync issue"))
     }
 
-    /// A Host with two Servers on reads as the Hosts tab reads it: the Server
-    /// that most needs the user says the state, while the name stays at full
-    /// strength beside the other Server's live Agents.
-    @Test func aHostWithTwoServersReadsAsTheOneThatNeedsTheUser() throws {
+    /// A Host with two Servers on reads as the Hosts tab reads it: any
+    /// connected Server makes the Host header Connected (each other Server's
+    /// problem is its own row beneath), and only when none is connected does
+    /// the Server that most needs the user speak for the header.
+    @Test func aHostWithTwoServersReadsConnectedWhileAnyServerIsConnected() throws {
         let tmux = Host.fixture(name: "studio")
         let failure = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
         let failed = try #require(ConsoleHostStatusPresentation(host: host, status: .failed(failure), syncError: nil))
@@ -162,20 +163,23 @@ struct ConsoleHostSectionHeaderPresentationTests {
         let working = consoleAgent(paneID: "p1", status: .working)
 
         let both = header([failing, connected], agents: [working])
-        #expect(both.readiness.text == "Unavailable")
-        #expect(both.readiness.tone == .unavailable)
+        #expect(both.readiness.text == "Connected")
+        #expect(both.readiness.tone == .connected)
         #expect(both.readiness.nameEmphasis == .full)
-        #expect(both.accessibilityLabel.hasPrefix("studio, Unavailable"))
+        #expect(both.accessibilityLabel.hasPrefix("studio, Connected"))
 
         let reconnecting = ConsoleHostServerState(
             hostID: host.id, connectionStatus: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
             isAwaitingSnapshot: false, issue: nil)
-        let retrying = header([connected, reconnecting]).readiness
-        #expect(retrying.text == "Reconnecting…")
-        #expect(retrying.tone == .reconnecting)
+        let retrying = header([connected, reconnecting], agents: [working]).readiness
+        #expect(retrying.text == "Connected")
+        #expect(retrying.tone == .connected)
         #expect(retrying.nameEmphasis == .full)
-        // With no Server reachable, the name recedes as the lead Server's does.
-        #expect(header([failing, reconnecting]).readiness.nameEmphasis == .dimmed)
+        // With no Server reachable, the worst Server speaks and dims the name.
+        let noneConnected = header([failing, reconnecting]).readiness
+        #expect(noneConnected.text == "Unavailable")
+        #expect(noneConnected.tone == .unavailable)
+        #expect(noneConnected.nameEmphasis == .dimmed)
         // All connected reads Connected, and No Agents only when the whole
         // Host lists none.
         let alsoConnected = ConsoleHostServerState(
@@ -296,10 +300,12 @@ struct ConsoleListPresentationRoutingTests {
                 presentationMode: .grouped, projectedSectionCount: 0) == .noAgentsOnHost("studio"))
     }
 
-    @Test func hostIssuePlacementFollowsPresentationMode() {
-        #expect(ConsoleHostIssuePlacement(mode: .flat) == .floatingCorner)
-        #expect(ConsoleHostIssuePlacement(mode: .grouped) == .sectionHeaders)
-        #expect(ConsoleHostIssuePlacement(mode: .byWorkspace) == .floatingCorner)
+    @Test func hostIssuePlacementFloatsInEveryPresentationMode() {
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.flat) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.grouped) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: ConsoleListPresentationMode.byWorkspace) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: TerminalListPresentationMode.byWorkspace) == .floatingCorner)
+        #expect(ConsoleHostIssuePlacement(mode: TerminalListPresentationMode.byHost) == .floatingCorner)
     }
 
     @Test func presentationModeTitlesAreStableForTheSwitcher() {

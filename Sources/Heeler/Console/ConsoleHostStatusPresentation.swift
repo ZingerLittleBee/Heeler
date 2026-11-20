@@ -280,23 +280,21 @@ enum ConsoleAgentsSurface: Equatable {
     }
 }
 
-/// Where Host connection/readiness issues appear for an Agents list
-/// presentation mode.
-///
-/// Grouped mode moves those conditions into their Host's section, as the
-/// header's badge and, while expanded, a row. Flat and By Workspace modes
-/// float a compact corner status tile so Host recovery never pushes Agent rows.
+/// Where Host connection/readiness issues appear for Console list presentation
+/// modes: every Agents and Terminals presentation floats the compact corner
+/// status tile so Host recovery never pushes inventory rows down.
 enum ConsoleHostIssuePlacement: Equatable {
-    /// Flat and By Workspace lists: floating bottom-trailing tile over the list.
+    /// Floating bottom-trailing tile over the list.
     case floatingCorner
-    /// Grouped list: Host readiness lives in each Host's own section.
+    /// Inline rows under each Host's section header (unused once all modes float).
     case sectionHeaders
 
     init(mode: ConsoleListPresentationMode) {
-        switch mode {
-        case .flat, .byWorkspace: self = .floatingCorner
-        case .grouped: self = .sectionHeaders
-        }
+        self = .floatingCorner
+    }
+
+    init(mode: TerminalListPresentationMode) {
+        self = .floatingCorner
     }
 }
 

@@ -63,7 +63,8 @@ reaching the LAN, until the user pressed Reconnect.
   section marks the Route the Host's Servers hold In Use, or each Route
   Failed with its own reason when none reached the Host, and says a failure
   of the whole connection (the account, the host key) beneath them. Its
-  header carries the one action: Stop while a Server is dialling, otherwise
+  header carries the one action: Stop while a Server is dialling the
+  connection (not while one waits on its own stopped server), otherwise
   Reconnect, which forgets the Host's Route and dials every Server that is
   on, so the Routes race afresh.
   - Host detail's look at the Host serves the connection it shows. The
