@@ -40,7 +40,7 @@ value, or a `kind` field on an alert body, is `bad_kind`.
 
 | Field      | Type   | Required | Meaning |
 | ---------- | ------ | -------- | ------- |
-| `token`    | string | yes      | APNs device token, lowercase hex (16–200 chars). |
+| `token`    | string | yes      | APNs device token, lowercase hex (16–1024 chars). Apple fixes no length; `plugin/test-vectors/push-token-v1.json` holds this rule and the plugin's to the same cases. |
 | `env`      | string | yes      | `production` or `sandbox` — which APNs environment the token belongs to, per device entry in the registration file. |
 | `envelope` | string | yes      | The notification envelope (see `plugin/README.md`), forwarded verbatim. Opaque to the relay. |
 | `collapse` | string | no       | Opaque collapse key, ≤ 64 bytes; passed through as `apns-collapse-id` so a newer status replaces an older one. |

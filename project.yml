@@ -344,6 +344,10 @@ targets:
       # Shared Host Helper version vector: the Helper the app bundles.
       - path: plugin/test-vectors/host-helper-version-v1.json
         buildPhase: resources
+      # Shared push token vector (#415): read by the plugin's and the Push
+      # Relay's Node tests. No Swift test reads it; every vector is bundled.
+      - path: plugin/test-vectors/push-token-v1.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

@@ -33,8 +33,11 @@ const MAX_REQUEST_BYTES = 8192;
 // APNs caps apns-collapse-id at 64 bytes.
 const MAX_COLLAPSE_ID_BYTES = 64;
 // Lowercase hex per the registration file contract; bounded but not pinned
-// to 64 chars, since Apple says token length may change.
-const TOKEN_PATTERN = /^[0-9a-f]{16,200}$/;
+// to a length, since Apple says token length may change: device tokens are
+// 64 or 160 characters and an iOS 27 Simulator issues 256 for a Live Activity
+// (#415). The plugin's ACTIVITY_TOKEN_PATTERN is the same pattern, and
+// plugin/test-vectors/push-token-v1.json holds the two together.
+const TOKEN_PATTERN = /^[0-9a-f]{16,1024}$/;
 
 const DEFAULT_IP_LIMIT_PER_MIN = 120;
 const DEFAULT_TOKEN_LIMIT_PER_MIN = 60;

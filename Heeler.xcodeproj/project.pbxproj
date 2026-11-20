@@ -1081,6 +1081,7 @@
 		D45F628EB1389EA9C3698CEB /* ChatRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E84D48903B9E34AE65DEEAD /* ChatRow.swift */; };
 		D4834E9DD4C5FF62FC3C048D /* AgentControlKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6056108BDA8023BCEC2D7AA7 /* AgentControlKeyboard.swift */; };
 		D502F4B422F9E83DA1CD8573 /* PiTranscriptReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06454AF51B10EBA3B3B212DC /* PiTranscriptReducer.swift */; };
+		D5501375B32E48B3AC0C4CF3 /* push-token-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = B7E9A27C6D207D4887132159 /* push-token-v1.json */; };
 		D558CE8704443D60AE1CF725 /* GitProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57500F21E5ABB6A723B4235D /* GitProbeTests.swift */; };
 		D56C3F990EBCE9FDFDADFCCF /* ChatFollowLatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C202BFF1A0ABD443C22F8B6 /* ChatFollowLatchTests.swift */; };
 		D5750879A465E0B27C9B4431 /* TerminalAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07528112F1EC851708049E85 /* TerminalAttachTests.swift */; };
@@ -2313,6 +2314,7 @@
 		B738369540A3945A762C2B9C /* AgentKindMarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentKindMarkTests.swift; sourceTree = "<group>"; };
 		B75ABC195486D6E47B41C543 /* TmuxControlReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxControlReader.swift; sourceTree = "<group>"; };
 		B76EF39DE950E595EC33F4FC /* ClaudeCodeHooksSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeHooksSection.swift; sourceTree = "<group>"; };
+		B7E9A27C6D207D4887132159 /* push-token-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "push-token-v1.json"; sourceTree = "<group>"; };
 		B7F661B5D2153414B59FF899 /* ChatMarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkdownTests.swift; sourceTree = "<group>"; };
 		B7FD2219A8AED3A836669619 /* OpenCodeRecordSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeRecordSourceTests.swift; sourceTree = "<group>"; };
 		B850B34406603B1EC21E871A /* GenericDialogCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenericDialogCardView.swift; sourceTree = "<group>"; };
@@ -3971,6 +3973,7 @@
 				791A29C99001477839E4C3E5 /* pairing-code-v2.json */,
 				11E3F17F4D822B687D57A949 /* pairing-code-v3.json */,
 				CD3F97D0C9A6A0BC8FBEE6CD /* plugin-version-v1.json */,
+				B7E9A27C6D207D4887132159 /* push-token-v1.json */,
 				ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */,
 				1765851A869BD4D35E29CF58 /* tmux-heeler-status-v1.json */,
 				5A105E8E30AD352943FA5589 /* tmux-input-v1.json */,
@@ -4678,6 +4681,7 @@
 				1CCAA769DDCA71EC02D40707 /* pairing-code-v2.json in Resources */,
 				5C06E113984FF91B98C5DD17 /* pairing-code-v3.json in Resources */,
 				F271226A2892164D44593BD9 /* plugin-version-v1.json in Resources */,
+				D5501375B32E48B3AC0C4CF3 /* push-token-v1.json in Resources */,
 				9F495C6368D1C8754903D457 /* sidebar-layout-v1.json in Resources */,
 				547CAC0CD4BF2095D61C07E2 /* tmux-heeler-status-v1.json in Resources */,
 				72D15965666C4F2A4D6EEC3D /* tmux-input-v1.json in Resources */,

@@ -16,7 +16,10 @@ import { KEY_BYTES } from "../seal-envelope.js";
 
 const REGISTRATIONS_FILE = "notifications.json";
 const APNS_ENVIRONMENTS = new Set(["production", "sandbox"]);
-const ACTIVITY_TOKEN_PATTERN = /^[0-9a-f]{16,200}$/;
+// The Push Relay's TOKEN_PATTERN, which test-vectors/push-token-v1.json holds
+// the two to. Apple fixes no length: an iOS 27 Simulator issues 256 characters
+// for a Live Activity, and the request budget bounds what a long one costs.
+const ACTIVITY_TOKEN_PATTERN = /^[0-9a-f]{16,1024}$/;
 
 /**
  * The registration file's current contents, or null when it is absent, corrupt

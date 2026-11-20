@@ -5,8 +5,13 @@
 
 import { test, suite, before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { createRelay } from "../src/worker.js";
+
+const pushTokens = JSON.parse(
+  readFileSync(new URL("../../plugin/test-vectors/push-token-v1.json", import.meta.url), "utf8"),
+);
 
 const nowMs = 1_753_305_600_000;
 
@@ -228,9 +233,6 @@ suite("request validation", () => {
     ["non-JSON body", "not json {", "bad_json"],
     ["JSON scalar body", '"push"', "bad_json"],
     ["missing token", { ...goodBody, token: undefined }, "bad_token"],
-    ["uppercase hex token", { ...goodBody, token: "AB".repeat(32) }, "bad_token"],
-    ["non-hex token", { ...goodBody, token: "zz".repeat(32) }, "bad_token"],
-    ["too-short token", { ...goodBody, token: "abcd" }, "bad_token"],
     ["missing env", { ...goodBody, env: undefined }, "bad_env"],
     ["unknown env", { ...goodBody, env: "prod" }, "bad_env"],
     ["missing envelope", { ...goodBody, envelope: undefined }, "bad_envelope"],
@@ -368,12 +370,43 @@ const goodActivity = {
   envelope: activityEnvelope,
 };
 
+// The shape both endpoints hold a token to. The plugin holds its Live
+// Activity registrations to the same vector
+// (plugin/test/delivery-registrations.test.js).
+suite("push token shape", () => {
+  const bodies = [["an alert", goodBody], ["a Live Activity", goodActivity]];
+  const cases = (verdict) =>
+    pushTokens[verdict].flatMap(({ name, unit, count }) =>
+      bodies.map(([kind, body]) => [`${kind} with ${name}`, { ...body, token: unit.repeat(count) }]));
+
+  for (const [name, body] of cases("accepted")) {
+    test(`sends ${name} to APNs`, async (t) => {
+      const calls = stubApns(t);
+      freezeTime(t);
+      const res = await createRelay().fetch(pushRequest(body), baseEnv);
+      assert.equal(res.status, 200);
+      assert.equal(calls.length, 1);
+      assert.ok(calls[0].url.endsWith(`/3/device/${body.token}`));
+    });
+  }
+
+  for (const [name, body] of cases("rejected")) {
+    test(`rejects ${name} without calling APNs`, async (t) => {
+      const calls = stubApns(t);
+      freezeTime(t);
+      const res = await createRelay().fetch(pushRequest(body), baseEnv);
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "bad_token" });
+      assert.equal(calls.length, 0);
+    });
+  }
+});
+
 suite("live activity request validation", () => {
   const cases = [
     ["unknown kind", { ...goodActivity, kind: "foobar" }, "bad_kind"],
     ["kind on an alert body", { ...goodBody, kind: "alert" }, "bad_kind"],
     ["missing token", { ...goodActivity, token: undefined }, "bad_token"],
-    ["uppercase hex token", { ...goodActivity, token: "EF".repeat(32) }, "bad_token"],
     ["missing env", { ...goodActivity, env: undefined }, "bad_env"],
     ["unknown env", { ...goodActivity, env: "prod" }, "bad_env"],
     ["missing event", { ...goodActivity, event: undefined }, "bad_event"],
