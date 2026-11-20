@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/host-routes.md at 4732ddb2 -->
+<!-- Translated from docs/guides/host-routes.md at 058d13ce -->
 # 通过多条路由访问 Host
 
 一台 Host 可以配置不止一条路由：在家时使用局域网地址，在外时使用 Overlay Network 或跳板机（Jump Host）。每次连接时，Heeler 都会尝试所有路由并采用最先连通 Host 的那一条，因此无需手动切换任何设置。
