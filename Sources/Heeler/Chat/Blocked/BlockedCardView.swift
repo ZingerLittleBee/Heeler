@@ -3,10 +3,10 @@ import SwiftUI
 /// A Blocked Agent's dialog in the Composer's place (ADR 0024): the
 /// program's own choices as native buttons, answered with keys. Labels are
 /// the program's text. The first plain way to go on leads as the card's one
-/// filled button and the rest make a list under it, where a decline reads
-/// as destructive and an option that saves a rule or switches the
-/// permission mode says so. Nothing asks for confirmation and nothing can
-/// be undone, as in the terminal.
+/// filled answer and the rest make a list under it, each starting at the
+/// same edge, where a decline reads as destructive and an option that saves
+/// a rule or switches the permission mode says so. Nothing asks for
+/// confirmation and nothing can be undone, as in the terminal.
 struct BlockedCardView: View {
     let store: BlockedCardStore
     /// The tallest the card's content grows before it scrolls.
@@ -370,9 +370,12 @@ private struct BlockedDialogCard: View {
             // never leads.
             let lead = buttons.first { [.approve, .trust, .submit].contains($0.role) }
             VStack(spacing: 10) {
+                // A row as the rest are, so every answer starts at one edge.
                 if let lead {
-                    BlockedPrimaryButton(title: lead.label, detail: lead.detail) {
-                        perform(.choose(ordinal: lead.ordinal))
+                    BlockedOptionGroup {
+                        BlockedOptionRow(label: lead.label, detail: lead.detail, emphasis: .lead) {
+                            perform(.choose(ordinal: lead.ordinal))
+                        }
                     }
                 }
                 optionRows(buttons.filter { $0.ordinal != lead?.ordinal }) { option in
@@ -973,24 +976,17 @@ struct BlockedCardFooter: View {
     }
 }
 
-/// The one filled button a card has: its lead answer, or what sends what
-/// the card holds.
+/// The filled button that sends what a card holds. An answer that leads is
+/// a row instead (`BlockedOptionEmphasis.lead`), so a card fills one or the
+/// other.
 struct BlockedPrimaryButton: View {
     let title: String
-    var detail: String? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Text(verbatim: title)
-                if let detail, !detail.isEmpty, detail != title {
-                    Text(verbatim: detail)
-                        .font(.caption)
-                        .opacity(0.8)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            Text(verbatim: title)
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(BlockedButtonStyle(tone: .filled))
     }
@@ -1038,12 +1034,16 @@ struct BlockedButtonStyle: ButtonStyle {
 
 enum BlockedOptionEmphasis: Equatable {
     case plain
+    /// The card's lead answer, filled as its one button would be and in a
+    /// list of its own.
+    case lead
     case destructive
     /// Plain, with a line saying what else choosing it does.
     case caution(String)
 }
 
-/// A card's answers that don't lead, as the rows of one list.
+/// A card's answers as the rows of one list. The answer that leads stands
+/// above the rest in a list of its own.
 struct BlockedOptionGroup<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -1079,12 +1079,12 @@ struct BlockedOptionRow: View {
                 markSymbol
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: label)
-                        .font(.callout.weight(isOn ? .semibold : .regular))
-                        .foregroundStyle(emphasis == .destructive ? Color.red : .primary)
+                        .font(.callout.weight(isOn || leads ? .semibold : .regular))
+                        .foregroundStyle(leads ? Color.white : emphasis == .destructive ? .red : .primary)
                     if let detail, !detail.isEmpty, detail != label {
                         Text(verbatim: detail)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(leads ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
                     }
                     if case .caution(let warning) = emphasis {
                         Label(warning, systemImage: "exclamationmark.triangle.fill")
@@ -1098,12 +1098,14 @@ struct BlockedOptionRow: View {
             }
             .padding(.horizontal, BlockedCardStyle.rowInset)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: leads ? 46 : 44, alignment: .leading)
             .contentShape(.rect)
         }
-        .buttonStyle(BlockedRowStyle())
+        .buttonStyle(BlockedRowStyle(leads: leads))
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
+
+    private var leads: Bool { emphasis == .lead }
 
     /// The row under a line that starts where its label does; a list's
     /// first row has none.
@@ -1141,13 +1143,16 @@ struct BlockedOptionRow: View {
 }
 
 private struct BlockedRowStyle: ButtonStyle {
+    var leads = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             // A shape, as a diff's tints are (`BlockedChangeBox`).
-            .background { Rectangle().fill(configuration.isPressed ? ThemeVeil.control : .clear) }
-            .opacity(isEnabled ? 1 : 0.45)
+            .background {
+                Rectangle().fill(leads ? Color.accentColor : configuration.isPressed ? ThemeVeil.control : .clear)
+            }
+            .opacity(!isEnabled ? 0.45 : leads && configuration.isPressed ? 0.6 : 1)
     }
 }
 
