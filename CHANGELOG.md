@@ -51,6 +51,7 @@ Entries reference the pull request that made the change.
 - A Claude Code on a Rex Host that has finished its turn while a command it put in the background still runs reads Done or Idle, and Chat and the Composer offer Send. It read Working for as long as the command ran, with a Stop that did nothing. Stop still never ends that command; end it in the terminal. (PR #775)
 - A Rex Agent's detail restored when Heeler starts again shows Loading Agents… until the Host has said what its terminal runs, instead of Agent Gone for a moment before the Agent appears. (PR #775)
 - Read a part of a file on the Host without the Host sending up to 256 KiB more than was asked for. Chat's older history and its images, which read a part of a file away from its end, each pulled that much extra over the Host's connection: slower on a slow link, with the terminal's output waiting behind it. (PR #781)
+- Show **More Options** on **Add Host** in the app's language under Japanese, Simplified Chinese, and Traditional Chinese. It stayed in English. (PR #794)
 
 ## [0.1.20]
 

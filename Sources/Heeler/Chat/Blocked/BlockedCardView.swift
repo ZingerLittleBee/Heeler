@@ -484,8 +484,12 @@ private struct BlockedDialogCard: View {
                     showsMoreAnswers.toggle()
                 } label: {
                     HStack(spacing: 8) {
-                        Text("More Options")
-                            .font(.callout)
+                        Text(
+                            String(
+                                localized: "Dialog More Options", defaultValue: "More Options",
+                                comment: "Row on a Blocked card that shows the dialog's other answers, not more settings")
+                        )
+                        .font(.callout)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.down")
                             .font(.footnote.weight(.semibold))
