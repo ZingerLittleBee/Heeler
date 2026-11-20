@@ -94,12 +94,30 @@ wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebu
     echo "expected 6 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 95 || (matrix.shard == 'ordinary' && 85 || 75) }}" "$workflow")" == 1 ]] || {
-    echo "the iOS job must use 85 minutes for ordinary, 95 for serial and 75 otherwise" >&2
+# The app workers compile nothing: one shared build owns the build deadline,
+# and its step timeout sits behind the script's own watchdog.
+[[ "$(grep -cF "HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS: '2700'" "$workflow")" == 1 ]] || {
+    echo "the shared app build must keep its 2700-second deadline" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 90 || (matrix.shard == 'ordinary' && 80 || 70) }}" "$workflow")" == 1 ]] || {
-    echo "the Build and test step must use 80 minutes for ordinary, 90 for serial and 70 otherwise" >&2
+awk '
+    /^  app-build:$/ { inside = 1; next }
+    inside && /^  [[:alnum:]_-]+:/ { inside = 0 }
+    inside && /^    timeout-minutes: 60$/ { job = 1 }
+    inside && /^        timeout-minutes: 50$/ { step = 1 }
+    inside && /run-with-timeout.py/ { watchdog = 1 }
+    inside && /--timeout-seconds "\$HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS"/ { deadline = 1 }
+    END { exit (job && step && watchdog && deadline) ? 0 : 1 }
+' "$workflow" || {
+    echo "the shared app build must run under its watchdog, with 50 minutes for the step and 60 for the job" >&2
+    exit 1
+}
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 60 || (matrix.shard == 'ordinary' && 45 || 40) }}" "$workflow")" == 1 ]] || {
+    echo "the iOS job must use 45 minutes for ordinary, 60 for serial and 40 otherwise" >&2
+    exit 1
+}
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 55 || (matrix.shard == 'ordinary' && 40 || 35) }}" "$workflow")" == 1 ]] || {
+    echo "the Run app tests step must use 40 minutes for ordinary, 55 for serial and 35 otherwise" >&2
     exit 1
 }
 [[ "$(grep -cF "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: \${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '1500' || '900' }}" "$workflow")" == 1 ]] || {
@@ -201,16 +219,16 @@ if grep -E '^[[:space:]]*run_xcodebuild "HeelerSSH package' -A 12 "$gate_script"
     echo "package lane must not take the app SourcePackages cache path" >&2
     exit 1
 fi
-[[ "$(grep -cF 'Cache SwiftPM checkouts' "$workflow")" == 1 ]] || {
-    echo "the app job must cache SwiftPM checkouts" >&2
+[[ "$(grep -cF 'Cache SwiftPM checkouts' "$workflow")" == 2 ]] || {
+    echo "the shared app build and the app workers must cache SwiftPM checkouts" >&2
     exit 1
 }
 if grep -qE '^[[:space:]]+xcrun simctl list runtimes' "$workflow"; then
     echo "CI must not list simulator runtimes on the critical path" >&2
     exit 1
 fi
-[[ "$(grep -cF 'Show Xcode version' "$workflow")" == 2 ]] || {
-    echo "both macOS jobs must keep the lightweight Xcode version step" >&2
+[[ "$(grep -cF 'Show Xcode version' "$workflow")" == 3 ]] || {
+    echo "every macOS job must keep the lightweight Xcode version step" >&2
     exit 1
 }
 

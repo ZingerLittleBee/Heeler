@@ -67,6 +67,10 @@ build-ci-app: ## Compile the committed app, extensions and test bundle without r
 		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
 		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
 
+.PHONY: pack-ci-app-products
+pack-ci-app-products: ## Archive build-ci-app's products for full verification's app workers
+	tar -czf '$(CURDIR)/.ci/app-products.tar.gz' -C '$(CURDIR)/.ci/app-derived' Build/Products
+
 .PHONY: build-ci-package
 build-ci-package: ## Compile HeelerSSH and its tests without running tests or booting a Simulator
 	cd Packages/HeelerSSH && xcodebuild build-for-testing -scheme HeelerSSH \

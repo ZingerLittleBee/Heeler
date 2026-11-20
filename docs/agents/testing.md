@@ -38,7 +38,12 @@ Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
 UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
 daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
-layout and warm caches. The schedule takes effect only after the workflow is
+layout and warm caches. Its `app-build` job compiles the app and tests once
+with `make build-ci-app` and `make pack-ci-app-products`; the app workers
+download that archive, and `make test-ci-app` unpacks it instead of compiling
+when `HEELER_CI_APP_PRODUCTS_ARCHIVE` names it. Without the variable, as in a
+local run or the diagnostics workflow, a worker builds for itself.
+The schedule takes effect only after the workflow is
 merged into the default branch; GitHub may delay its start under load. PRs and
 pushes retain fast feedback without starting this full native workflow.
 A failed scheduled run opens or comments on the issue "Scheduled full iOS

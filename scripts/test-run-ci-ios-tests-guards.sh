@@ -57,7 +57,7 @@ trap 'rm -rf "$work"' EXIT
 expected_full_lane_total=864
 expected_full_lane_skips=95
 expected_capture_executed=769
-expected_cases=66
+expected_cases=70
 
 # The lanes run-ci-ios-tests.sh writes, in the order it writes them. The capture
 # is the concatenation of exactly these, so splitting it on the xcodebuild
@@ -103,6 +103,8 @@ extract_shipped_function run_suite
 extract_shipped_function dump_fixture_logs
 extract_shipped_function preserve_failure_diagnostics
 extract_shipped_function cancel_background_build
+extract_shipped_function start_background_build
+extract_shipped_function restore_app_products
 extract_shipped_function start_preparation_work
 extract_shipped_function record_phase
 extract_shipped_function cleanup
@@ -144,7 +146,7 @@ grep -qF 'Fixture Python: {sys.executable} (Python {sys.version.split()[0]})' "$
 fixture_python_calls=$(grep -cE '^device_key_seed=.*fixture_python|^"\$fixture_python" (scripts/fixtures/|-u -c)' "$gate_script")
 [[ "$fixture_python_calls" == 4 ]] \
     || die "gate has $fixture_python_calls selected Python fixture calls, expected 4"
-for worker_job in app-tests heelerssh-package-e2e; do
+for worker_job in app-build app-tests heelerssh-package-e2e; do
     awk -v job="$worker_job" '
         $0 == "  " job ":" { in_job = 1; next }
         in_job && /^  [[:alnum:]_-]+:/ { in_job = 0 }
@@ -1502,6 +1504,80 @@ awk '
     END { exit (early_count == 1 && late_count == 1 && early < preflight \
         && preflight < late) ? 0 : 1 }
 ' "$gate_script" || die "preparation work call sites must surround the password preflight"
+
+echo
+echo "== prebuilt app products replace the worker's own build =="
+# Full verification compiles once and hands every app worker the products.
+# The gate must take the archive in place of its own build, not beside it.
+awk '
+    /^if \[\[ -n "\$app_products_archive" \]\]; then$/ { branch = NR; restore = 0; other = 0; build = 0 }
+    branch && /^    restore_app_products$/ { restore = NR }
+    branch && /^else$/ && !other { other = NR }
+    other && /run_xcodebuild "Build for testing"/ && !build { build = NR }
+    END { exit (branch && restore == branch + 1 && other == restore + 1 \
+        && build == other + 1) ? 0 : 1 }
+' "$gate_script" || die "an app worker must restore prebuilt products in place of its own build"
+
+# Archives in the shape `make pack-ci-app-products` writes: Build/Products
+# with the hosted test bundle, an executable and a symbolic link.
+products_app="Build/Products/Debug-iphonesimulator/Heeler.app"
+mkdir -p "$work/products-complete/$products_app/PlugIns/HeelerTests.xctest" \
+    "$work/products-complete/$products_app/Frameworks/Lib.framework/Versions/A" \
+    "$work/products-no-bundle/$products_app"
+printf 'tests\n' > "$work/products-complete/$products_app/PlugIns/HeelerTests.xctest/HeelerTests"
+chmod 755 "$work/products-complete/$products_app/PlugIns/HeelerTests.xctest/HeelerTests"
+printf 'library\n' > "$work/products-complete/$products_app/Frameworks/Lib.framework/Versions/A/Lib"
+ln -s Versions/A/Lib "$work/products-complete/$products_app/Frameworks/Lib.framework/Lib"
+tar -czf "$work/products-complete.tar.gz" -C "$work/products-complete" Build/Products
+tar -czf "$work/products-no-bundle.tar.gz" -C "$work/products-no-bundle" Build/Products
+printf 'not an archive\n' > "$work/products-damaged.tar.gz"
+
+# The extracted functions consume these globals.
+# shellcheck disable=SC2034
+for products_case in complete no-bundle damaged; do
+    reason=""
+    if ! (
+        app_products_archive="$work/products-$products_case.tar.gz"
+        app_derived_data_path="$work/restored-$products_case"
+        phase_log="$work/restored-$products_case.phases.tsv"
+        expected_status=1
+        [[ "$products_case" != complete ]] || expected_status=0
+        status=0
+        restore_app_products >/dev/null 2>&1 || status=$?
+        [[ "$status" == "$expected_status" ]] || exit 1
+        grep -qE "^app-products-restore"$'\t'"[0-9]+"$'\t'"$expected_status\$" "$phase_log" || exit 1
+        [[ "$products_case" == complete ]] || exit 0
+        restored="$app_derived_data_path/$products_app"
+        [[ -x "$restored/PlugIns/HeelerTests.xctest/HeelerTests" ]] || exit 1
+        [[ -L "$restored/Frameworks/Lib.framework/Lib" ]] || exit 1
+        [[ "$(cat "$restored/Frameworks/Lib.framework/Lib")" == library ]]
+    ); then
+        reason="restoring a $products_case products archive gave the wrong result"
+    fi
+    record_case "prebuilt products restore reports a $products_case archive" "$reason" 0
+done
+
+reason=""
+# shellcheck disable=SC2034
+if ! (
+    ci_lane=app
+    ci_app_shard=session-weak
+    overlap_build=1
+    background_build_pid=""
+    app_products_archive="$work/products-complete.tar.gz"
+    # Anything the owned build would create lands under this directory.
+    repo_root="$work/no-owned-build"
+    fixture_dir="$repo_root"
+    source_packages_dir="$repo_root/source-packages"
+    app_derived_data_path="$repo_root/derived"
+    simulator_destination='platform=iOS Simulator,id=fake'
+    xcodebuild_build_timeout_seconds=1
+    start_background_build "Build for testing" || exit 1
+    [[ -z "$background_build_pid" && ! -e "$repo_root" ]]
+); then
+    reason="a worker with prebuilt products still started its own build"
+fi
+record_case "prebuilt products leave the worker's owned build unstarted" "$reason" 0
 
 echo
 # The point of the count: a harness that silently stops running cases would
