@@ -94,12 +94,12 @@ wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebu
     echo "expected 6 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 80 || (matrix.shard == 'ordinary' && 70 || 60) }}" "$workflow")" == 1 ]] || {
-    echo "the iOS job must use 70 minutes for ordinary, 80 for serial and 60 otherwise" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 95 || (matrix.shard == 'ordinary' && 85 || 75) }}" "$workflow")" == 1 ]] || {
+    echo "the iOS job must use 85 minutes for ordinary, 95 for serial and 75 otherwise" >&2
     exit 1
 }
-[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 75 || (matrix.shard == 'ordinary' && 65 || 55) }}" "$workflow")" == 1 ]] || {
-    echo "the Build and test step must use 65 minutes for ordinary, 75 for serial and 55 otherwise" >&2
+[[ "$(grep -cF "timeout-minutes: \${{ inputs.layout == 'serial' && 90 || (matrix.shard == 'ordinary' && 80 || 70) }}" "$workflow")" == 1 ]] || {
+    echo "the Build and test step must use 80 minutes for ordinary, 90 for serial and 70 otherwise" >&2
     exit 1
 }
 [[ "$(grep -cF "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: \${{ (matrix.shard == 'ordinary' || matrix.shard == 'all') && '1500' || '900' }}" "$workflow")" == 1 ]] || {

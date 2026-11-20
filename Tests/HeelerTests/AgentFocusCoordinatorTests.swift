@@ -202,7 +202,7 @@ struct AgentFocusCoordinatorTests {
         var updates = 0
         var exits = 0
 
-        mount.bind(
+        mount.appear(
             activity: activity,
             state: {
                 AgentFocusCoordinator.ViewingState(
@@ -216,7 +216,6 @@ struct AgentFocusCoordinatorTests {
                     showsShellTerminal: false)
             },
             onUpdate: { updates += 1 })
-        mount.appear()
         #expect(mount.hasAppeared)
 
         // Simulate iPhone's unpaired spurious onDisappear while the router still shows the detail.
@@ -244,23 +243,20 @@ struct AgentFocusCoordinatorTests {
         let activity = AppActivityCoordinator()
         var exits = 0
 
-        mount.bind(
-            activity: activity,
-            state: {
-                AgentFocusCoordinator.ViewingState(
-                    agentID: id,
-                    terminalID: "terminal-A",
-                    transportGeneration: 1,
-                    status: .done,
-                    isHostReady: true,
-                    isSceneActive: true,
-                    isOnStage: mount.hasAppeared && model.isVisible,
-                    showsShellTerminal: false)
-            },
-            onUpdate: {})
-        mount.appear()
+        let state = {
+            AgentFocusCoordinator.ViewingState(
+                agentID: id,
+                terminalID: "terminal-A",
+                transportGeneration: 1,
+                status: .done,
+                isHostReady: true,
+                isSceneActive: true,
+                isOnStage: mount.hasAppeared && model.isVisible,
+                showsShellTerminal: false)
+        }
+        mount.appear(activity: activity, state: state, onUpdate: {})
         mount.scheduleExit(isVisible: { model.isVisible }) { exits += 1 }
-        mount.appear()
+        mount.appear(activity: activity, state: state, onUpdate: {})
         model.isVisible = false
         try await Task.sleep(for: .milliseconds(30))
         #expect(mount.hasAppeared)

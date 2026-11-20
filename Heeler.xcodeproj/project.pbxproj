@@ -965,6 +965,7 @@
 		BFD46C3E11710F91B39D1186 /* ChangesFailureViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D52F3F413A577A7598C79CE /* ChangesFailureViewTests.swift */; };
 		BFE02F9C58F080B95770E878 /* WakeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C2343D5ED9436077682CD1 /* WakeCommandTests.swift */; };
 		BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */; };
+		C036ACAF6ECE6B2316799D04 /* HardwareKeyboardFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A31E09D5D5E19ED117C12A0 /* HardwareKeyboardFocusTests.swift */; };
 		C038D3091EC326076D76EDC8 /* QuestionFormCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E78BE586883E1F94B0BD70 /* QuestionFormCardView.swift */; };
 		C047391810B2F0E459C9D240 /* AgyBackgroundWorkFollower.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43F5BDDBA2ABA4400AA33E5 /* AgyBackgroundWorkFollower.swift */; };
 		C07DBBA6976DCE57F1608DC2 /* GrokPromptHistoryWitness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96773BDF5177E9327BB22C2 /* GrokPromptHistoryWitness.swift */; };
@@ -1508,6 +1509,7 @@
 		19AA712E963DE3A4F9799121 /* CodexDialogParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDialogParser.swift; sourceTree = "<group>"; };
 		19BD559AF84107DD92237507 /* GrokInputBoxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokInputBoxDetector.swift; sourceTree = "<group>"; };
 		19FF62E7BD9DC71E1172A472 /* TerminalTextSelectionPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextSelectionPresenter.swift; sourceTree = "<group>"; };
+		1A31E09D5D5E19ED117C12A0 /* HardwareKeyboardFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareKeyboardFocusTests.swift; sourceTree = "<group>"; };
 		1A3BD235B5209892137FCAF9 /* PhotosPickerImageSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosPickerImageSelection.swift; sourceTree = "<group>"; };
 		1A44408BB54B5BE039E49A39 /* PinnedPasteControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedPasteControl.swift; sourceTree = "<group>"; };
 		1A52D0FE0B8C158B226BFF86 /* AgySlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgySlashCommands.swift; sourceTree = "<group>"; };
@@ -2953,6 +2955,7 @@
 				6703B081C69091FC1C76D9D2 /* GrokTranscriptLocatorTests.swift */,
 				C4846F87A8E2B076D6F1F78F /* GrokTranscriptReducerTests.swift */,
 				D9F58F5D2E46C04C137D093F /* HangulInputTests.swift */,
+				1A31E09D5D5E19ED117C12A0 /* HardwareKeyboardFocusTests.swift */,
 				BCC2054BD2E630F945FF3954 /* HarnessConfigEditStoreTests.swift */,
 				FFE4F4F852F91D9F13D5931A /* HarnessConfigEditTests.swift */,
 				5A21D6C55AC8AB861C82B6FE /* HeelerPluginTests.swift */,
@@ -5697,6 +5700,7 @@
 				756E9AA79887E6B832522BF3 /* GrokTranscriptLocatorTests.swift in Sources */,
 				EF9F191FC6E1DF150EFAFC7A /* GrokTranscriptReducerTests.swift in Sources */,
 				DA0C29B6D3483150987A2BBC /* HangulInputTests.swift in Sources */,
+				C036ACAF6ECE6B2316799D04 /* HardwareKeyboardFocusTests.swift in Sources */,
 				F4975076A8772BBCF38F076B /* HarnessConfigEditStoreTests.swift in Sources */,
 				263F03BBED1309B9E435124D /* HarnessConfigEditTests.swift in Sources */,
 				2393D7D62AED94EB14D2C55E /* HeelerPluginTests.swift in Sources */,

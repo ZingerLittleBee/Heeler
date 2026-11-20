@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 import UIKit
 
@@ -56,6 +57,26 @@ struct TerminalAgentSwitcher {
     var onTogglePin: @MainActor (ConsoleAgent.ID) -> Void
 }
 
+/// Whether a hardware keyboard is attached right now.
+struct HardwareKeyboard {
+    let isConnected: @MainActor () -> Bool
+
+    /// None: every screen behaves as it does on touch.
+    static let absent = HardwareKeyboard { false }
+
+    /// The device's. `GCKeyboard.coalesced` is never nil on the Simulator,
+    /// whose software keyboard would then come up over every Agent that
+    /// opens, so there the `-simulatesHardwareKeyboard YES` launch argument
+    /// says one is attached.
+    static let system = HardwareKeyboard {
+        #if targetEnvironment(simulator)
+        UserDefaults.standard.bool(forKey: "simulatesHardwareKeyboard")
+        #else
+        GCKeyboard.coalesced != nil
+        #endif
+    }
+}
+
 /// Carries the user's "I am still typing" intent across the Agent surface
 /// teardown a switch forces. Deliberately not observable: arming it must not
 /// invalidate the SwiftUI view that is about to be replaced anyway, and the
@@ -64,6 +85,36 @@ struct TerminalAgentSwitcher {
 final class TerminalKeyboardHandoff {
     private var armedID: ConsoleAgent.ID?
     private var armedMode: TerminalKeyboardMode = .text
+    private let hardwareKeyboard: HardwareKeyboard
+    /// The user put the keyboard away; see `opensFocused`.
+    private var isKeptDown = false
+    /// Whether a sheet or an alert stands over the Agent's screen. Its owner
+    /// sets this; see `opensFocused`.
+    var isCovered: @MainActor () -> Bool = { false }
+
+    init(hardwareKeyboard: HardwareKeyboard = .absent) {
+        self.hardwareKeyboard = hardwareKeyboard
+    }
+
+    /// Whether an Agent that opens with no handoff takes the keyboard
+    /// anyway. With a hardware keyboard attached, focus brings up iPadOS's
+    /// shortcut bar and no software keyboard, so nothing covers the screen
+    /// and the first key typed should reach the Agent (#646). A keyboard the
+    /// user put away stays away until it comes up again or a keyboard
+    /// connects. An Agent's screen rebuilt under a sheet leaves the keys
+    /// with the sheet: no handoff says the user meant them for the Agent.
+    var opensFocused: Bool { !isKeptDown && hardwareKeyboard.isConnected() && !isCovered() }
+
+    /// The user hid the keyboard with its button or a pull, not a screen
+    /// putting it away on its own.
+    func keyboardWasPutAway() {
+        isKeptDown = true
+    }
+
+    /// The keyboard came up, or a hardware keyboard connected.
+    func keyboardCameUp() {
+        isKeptDown = false
+    }
 
     func arm(for id: ConsoleAgent.ID, mode: TerminalKeyboardMode = .text) {
         armedID = id

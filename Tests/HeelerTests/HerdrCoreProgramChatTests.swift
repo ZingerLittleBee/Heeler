@@ -313,7 +313,9 @@ struct HerdrCoreProgramChatTests {
 
         try await rig.waitUntil("the message") { chat.conversation.phase == .unavailable(.codexSharedDaemon) }
         #expect(await chat.confirmSessionBeforeSend() != nil)
-        #expect(await rig.files.reads.isEmpty)
+        // Codex's model list is read for the header whatever the conversation;
+        // nothing of a conversation is.
+        #expect(await rig.files.reads.allSatisfy { $0.path.hasSuffix("/models_cache.json") })
         chat.end()
         rig.store.setHosts([])
     }
@@ -683,7 +685,9 @@ struct HerdrCoreProgramChatTests {
 
         try await rig.waitUntil("the message") { chat.conversation.phase == .unavailable(.codexSharedDaemon) }
         #expect(await chat.confirmSessionBeforeSend() != nil)
-        #expect(await rig.files.reads.isEmpty)
+        // Codex's model list is read for the header whatever the conversation;
+        // nothing of a conversation is.
+        #expect(await rig.files.reads.allSatisfy { $0.path.hasSuffix("/models_cache.json") })
         chat.end()
         rig.store.setHosts([])
     }

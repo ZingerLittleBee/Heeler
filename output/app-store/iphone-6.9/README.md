@@ -1,15 +1,15 @@
 # Heeler iPhone App Store screenshots
 
 These exports preserve the exact application UI from the committed iPhone
-captures and add deterministic marketing copy over a generated background. The
-order follows the iPhone screens on the landing page.
+captures and add deterministic marketing copy over the landing page's graphite.
+The order follows the iPhone screens on the landing page.
 
 ## Exports
 
 | Order | Export | Source | Copy |
 | --- | --- | --- | --- |
 | 1 | `exports/01-every-agent-one-console.png` | `sources/console-iphone.png` | Every Agent. One Console. |
-| 2 | `exports/01a-herdr-desktop-too.png` | `../desktop/sources/iphone-*.png` | Herdr Desktop, Too. |
+| 2 | `exports/01a-herdr-tmux-rex.png` | `../servers/sources/iphone-*.png` | Herdr, tmux or Rex. |
 | 3 | `exports/01b-just-say-it.png` | `../voice/sources/iphone-*.png` | Just Say It. |
 | 4 | `exports/02-type-directly-stay-in-flow.png` | `sources/live-terminal-iphone.png` | Type Directly. Stay in Flow. |
 | 5 | `exports/03-every-reply-as-a-chat.png` | `sources/chat-iphone.png` | Every Reply. As a Chat. |
@@ -20,7 +20,7 @@ order follows the iPhone screens on the landing page.
 | 10 | `exports/09-your-agents-at-a-glance.png` | `docs/images/live-activity-iphone.png` | Your Agents. At a Glance. |
 
 All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
-`../desktop/compose_desktop.py` renders the Herdr desktop image (order 2) and
+`../servers/compose_servers.py` renders the Servers image (order 2) and
 `../voice/compose_voice.py` the Voice Input image (order 3); this directory's
 `compose_mockups.py` renders the rest. It reads a capture from `sources/` first
 and falls back to the README image of the same name in `docs/images/`.
@@ -28,14 +28,16 @@ The iPad set is `../ipad-13/`.
 
 ## Provenance
 
-The background was generated with OpenAI image generation as an abstract,
-text-free dark terminal texture. All UI, headlines, subheads, borders, masks,
-and sizing are composed locally by compose_mockups.py; the source screenshots
-are never redrawn by a generative model.
+`../backdrop.py` draws the background: the landing page's neutral graphite, a
+little lighter toward the top edge, with a faint light in each image's accent
+behind the top of the screenshot. It replaced a texture from OpenAI image
+generation in 0.1.21, so nothing in these exports comes from a generative
+model. All UI, headlines, subheads, borders, masks, and sizing are composed
+locally by compose_mockups.py.
 
 ## Regenerate
 
-Run from the repository root with Pillow installed:
+Run from the repository root with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/iphone-6.9/compose_mockups.py

@@ -173,6 +173,12 @@ struct RexChatRig {
         try await rig.waitUntil("the Agent listed") {
             !projection.isAwaitingSnapshot && projection.agentsByPane[RexChatRig.paneID] != nil
         }
+        // The Agent is listed as soon as its own reads answer, with other
+        // terminals' still on the link. A test that counts what it sends
+        // starts once the link is quiet.
+        try await rig.waitUntil("every terminal's first reads") {
+            projection.inventory?.sessions.flatMap(\.terminals).contains { $0.details.awaitsForeground } == false
+        }
         return rig
     }
 

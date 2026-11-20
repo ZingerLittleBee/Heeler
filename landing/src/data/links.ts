@@ -1,6 +1,6 @@
 // Outbound links shared by the header, the footer and the homepage.
 export const links = {
-  appStore: 'https://apps.apple.com/us/app/heeler-for-herdr/id6797263135',
+  appStore: 'https://apps.apple.com/us/app/id6797263135',
   testFlight: 'https://testflight.apple.com/join/aXSxRn4r',
   docs: 'https://docs.heeler.bybee.dev/',
   github: 'https://github.com/ZingerLittleBee/Heeler',

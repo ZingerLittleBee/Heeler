@@ -10,7 +10,6 @@ function backends() {
   const bus = q('.bk-bus', net);
   const runner = q('.bk-run', net);
   const tiles = all('.bk-t', net);
-  const live = all('.bk-t:not(.is-soon)', net).length;
   const marquee = q('.mq');
   const narrow = matchMedia('(max-width: 899px)');
   let cur = -1;
@@ -37,13 +36,11 @@ function backends() {
     animate(runner, [{ transform: `${along}0)`, opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.85 }, { transform: `${along}${d}px)`, opacity: 0 }], { duration: ms, easing: 'cubic-bezier(.5,0,.2,1)' });
     animate(q('.bk-dw b', tile), [{ transform: `${across}-101%)` }, { transform: `${across}101%)` }], { duration: 560, delay: ms * 0.78, easing: EXPO });
   }
-  // The line is solid up to the last backend you can use today and dashed on to Rex.
+  // The line ends at the last backend's branch.
   if ('ResizeObserver' in window) {
     new ResizeObserver(() => {
       const last = tiles[tiles.length - 1];
-      const lastLive = tiles[live - 1];
       if (last) bus.style.setProperty('--len', `${mid(last)}px`);
-      if (lastLive) bus.style.setProperty('--sol', `${mid(lastLive)}px`);
     }).observe(net);
   }
   tiles.forEach((tile, i) => {
@@ -60,7 +57,7 @@ function backends() {
       if (still) return show(0, true);
       (function tick() {
         if (my !== token) return;
-        if (!hover) show(cur + 1 < live ? cur + 1 : 0);
+        if (!hover) show(cur + 1 < tiles.length ? cur + 1 : 0);
         void wait(3600).then(tick);
       })();
     },

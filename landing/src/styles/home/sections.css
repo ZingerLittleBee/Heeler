@@ -37,10 +37,10 @@
 
   /* ------------------------------------------------------------ backends */
   .bk-net { position: relative; margin-top: clamp(48px, 6vw, 84px); padding-top: 62px; }
-  /* --len reaches the last tile, --sol the last one you can use today; the rest is dashed */
+  /* --len reaches the last tile */
   .bk-bus {
     position: absolute; left: 9px; top: 18px; width: var(--len, 60%); height: 1px;
-    background: linear-gradient(var(--ln), var(--ln)) 0 0 / var(--sol, 100%) 100% no-repeat, repeating-linear-gradient(90deg, var(--ln) 0 4px, transparent 4px 9px);
+    background: var(--ln);
   }
   .bk-ph {
     position: absolute; left: -9px; top: -16px; width: 19px; height: 33px; border-radius: 5.5px;
@@ -77,16 +77,6 @@
   .bk-nd {
     position: absolute; left: 50%; top: -3.5px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%;
     background: var(--tx); opacity: 0.28; transition: opacity 0.4s var(--ease-out), transform 0.7s var(--spring);
-  }
-  .bk-t.is-soon {
-    background: none;
-    &::before { box-shadow: none; border: 1.5px dashed var(--ln); transition: border-color 0.5s var(--ease-out); }
-    &::after { box-shadow: none; }
-    &.is-hi::before { border-color: oklch(0.5 0.008 264); }
-    .bk-dw::before { background: repeating-linear-gradient(var(--ln) 0 4px, transparent 4px 9px); }
-    .bk-nd { background: var(--bg); box-shadow: inset 0 0 0 1.5px oklch(0.46 0.008 264); opacity: 1; }
-    h3 { color: var(--t2); }
-    small { align-self: flex-start; padding: 5px 10px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--ln); letter-spacing: 0.1em; text-transform: uppercase; color: var(--t2); }
   }
   .mq {
     display: flex; align-items: baseline; gap: 28px; margin-top: clamp(40px, 5vw, 68px);
@@ -516,11 +506,8 @@
     .bk-ssh { left: 22px; top: -30px; padding: 0; }
     .bk-run { left: -1px; top: 0; width: 3px; height: 96px; background: linear-gradient(transparent, var(--tx)); }
     .bk-tiles { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-    .bk-bus { background: linear-gradient(var(--ln), var(--ln)) 0 0 / 100% var(--sol, 100%) no-repeat, repeating-linear-gradient(var(--ln) 0 4px, transparent 4px 9px); }
     /* the tile slides 7px right; its 29px wire stretches by the same 7 so it stays on the bus */
     .bk-t { min-height: 0; padding: 20px; &.is-hi { transform: translateX(7px); } &.is-hi .bk-dw { transform: scaleX(1.2414); } }
-    .bk-t.is-soon .bk-dw::before { background: repeating-linear-gradient(90deg, var(--ln) 0 4px, transparent 4px 9px); }
-    .bk-t.is-soon { flex-direction: row; align-items: center; justify-content: space-between; small { margin: 0; align-self: center; } }
     .bk-dw {
       left: -29px; top: 50%; bottom: auto; width: 29px; height: 3px; margin: -1.5px 0 0; transform-origin: 100% 50%;
       &::before { inset: 1px 0; }

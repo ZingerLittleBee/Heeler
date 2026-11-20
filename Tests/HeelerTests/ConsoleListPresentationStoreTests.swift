@@ -1121,7 +1121,7 @@ struct AgentCardPresentationTests {
         let agents = [
             programAgent(pane: "p1", kind: "claude"),
             programAgent(pane: "p2", kind: "codex"),
-            programAgent(pane: "p3", kind: "omp"),
+            programAgent(pane: "p3", kind: "droid"),
         ]
         let workspaceOnly = AgentRowLayout(rows: [[.init(.workspace)], [.init(.directory)]])
         func qualifiers(leadsWithMark: Bool) -> [String?] {
@@ -1132,8 +1132,8 @@ struct AgentCardPresentationTests {
             }
             return agents.map { found[$0.id] }
         }
-        #expect(qualifiers(leadsWithMark: false) == ["Claude", "Codex", "OMP"])
-        #expect(qualifiers(leadsWithMark: true) == [nil, nil, "OMP"])
+        #expect(qualifiers(leadsWithMark: false) == ["Claude", "Codex", "Droid"])
+        #expect(qualifiers(leadsWithMark: true) == [nil, nil, "Droid"])
     }
 
     /// A card that shows every other field elsewhere keeps the kind word as

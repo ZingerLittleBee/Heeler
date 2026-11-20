@@ -69,7 +69,12 @@ first reached the final embedded-binary validation stage at a 15-minute cutoff.
 By 2026-10-27 it also outgrew the 20-minute one: between 2026-10-27 and
 2026-10-29, passing app builds took 720-1150 s, and 13 of 16 failed app lanes
 were killed at that deadline before any test ran. Swift sources and tests grew
-from about 206k to 260k lines between 2026-10-15 and 2026-10-29. Each app test
+from about 206k to 260k lines between 2026-10-15 and 2026-10-29. By 2026-11-19
+they had reached about 480k lines and full verification's builds had outgrown
+that limit too: between 2026-11-12 and 2026-11-19, 9 of 18 shard builds were
+ended at 30 minutes and the rest took 17 to 30, so full verification now
+permits 45 minutes, with 70 for a fixture shard's step, 80 for the ordinary
+shard's and 5 more for each job. Each app test
 call has a 15-minute watchdog. The ordinary lane's full call passed all of its
 tests in 7.5-8.5 minutes, then hit the former 10-minute watchdog before
 xcodebuild exited. These are safety limits for runner variance, not performance

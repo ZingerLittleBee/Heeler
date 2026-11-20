@@ -300,7 +300,7 @@ struct ConsoleStoreTests {
         #expect(store.capabilities(for: tui.id) == HostCapabilities(
             startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
             composerSend: true, chat: true, tabNames: true, closeTab: true,
-            syncLayoutFromPlugin: true))
+            syncLayoutFromPlugin: true, copiesPaneID: true, movesPanes: true))
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
         // Nothing is known of this core Host's platform before its first attempt.
         #expect(store.capabilities(for: core.id) == HostCapabilities(

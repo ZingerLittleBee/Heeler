@@ -9,7 +9,7 @@ upload order, with the floating-window presentation first.
 | Order | Export | Focus |
 | --- | --- | --- |
 | 1 | `exports/01-fits-your-workspace.png` | A real floating Heeler window on iPad |
-| 2 | `exports/01a-herdr-desktop-too.png` | A herdr-core Host beside Herdr TUI Hosts, and its spaces in the sidebar |
+| 2 | `exports/01a-herdr-tmux-rex.png` | One Host's row and its four Servers: Herdr TUI, herdr-core, tmux and Rex |
 | 3 | `exports/01b-just-say-it.png` | Voice Input: the recording bar, then the transcribed draft |
 | 4 | `exports/02-every-agent-one-console.png` | Agent sidebar and a selected Claude Code conversation |
 | 5 | `exports/03-type-directly-stay-in-flow.png` | Direct Input with its shortcut row and the iOS keyboard |
@@ -18,9 +18,9 @@ upload order, with the floating-window presentation first.
 | 8 | `exports/06-skills-within-reach.png` | Skills in the Direct Input tools keyboard |
 | 9 | `exports/07-a-shell-when-you-need-one.png` | Terminals sidebar and a Shell Terminal in Keys mode |
 
-`../desktop/compose_desktop.py` renders the Herdr desktop export and
+`../servers/compose_servers.py` renders the Servers export and
 `../voice/compose_voice.py` the Voice Input export; their sources are in
-`../desktop/` and `../voice/`. `compose_mockups.py` renders the other seven,
+`../servers/` and `../voice/`. `compose_mockups.py` renders the other seven,
 and only those seven appear in `manifest.json`, `contact-sheet.jpg` and
 `index.html`. Neither the contact sheet nor the source captures belong in the
 upload set. The locally generated `../ipad-13-app-store.zip` contains only the
@@ -39,7 +39,8 @@ exports and is excluded from Git.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,
   rearrange, stretch, or replace any application content.
-- The generated background is shared with `../iphone-6.9/assets/background.png`.
+- `../backdrop.py` draws the background, as it does for iPhone: neutral graphite
+  with a faint light in each image's accent behind the top of the screenshot.
   Headlines, subheads, frame, and shadow are deterministic compositions adapted
   from the existing iPhone renderer and the approved iPad HTML preview.
 - Source and export SHA-256 values, copy, geometry, and format are recorded in
@@ -58,7 +59,7 @@ Connect upload or product-page preview was performed.
 
 ## Regenerate
 
-From the repository root, with Pillow installed:
+From the repository root, with Pillow and NumPy installed:
 
 ```sh
 python3 output/app-store/ipad-13/compose_mockups.py
