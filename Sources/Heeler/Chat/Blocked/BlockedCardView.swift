@@ -2,10 +2,10 @@ import SwiftUI
 
 /// A Blocked Agent's dialog in the Composer's place (ADR 0024): the
 /// program's own choices as native buttons, answered with keys. Labels are
-/// the program's text. The first plain way to go on leads as the card's one
-/// filled answer and the rest make a list under it, each starting at the
-/// same edge, where a decline reads as destructive and an option that saves
-/// a rule or switches the permission mode says so. Nothing asks for
+/// the program's text. The first plain way to go on is the card's one
+/// filled button, with the decline beside it in the destructive color. The
+/// options that also save a rule or switch the permission mode fold under
+/// one row below, and say what they keep when shown. Nothing asks for
 /// confirmation and nothing can be undone, as in the terminal.
 struct BlockedCardView: View {
     let store: BlockedCardStore
@@ -63,6 +63,8 @@ private struct BlockedDialogCard: View {
     let maxHeight: CGFloat
     @State private var text = ""
     @State private var isAddingNote = false
+    /// Whether the answers past the decision show (`moreAnswers`).
+    @State private var showsMoreAnswers = false
     @State private var selection: Set<Int>
     @State private var pinnedChoicesHeight: CGFloat = 0
     @FocusState private var isTextFocused: Bool
@@ -364,24 +366,20 @@ private struct BlockedDialogCard: View {
             }
         } else if !pinsChoices {
             let buttons = dialog.options.filter { ![.otherText, .next, .chat].contains($0.role) }
-            // The first plain way to allow or go on leads, above the rest
-            // wherever the program lists it. A question's answers stand
+            // The first plain way to allow or go on leads, wherever the
+            // program lists it, and the first decline stands beside it:
+            // the two make the card's decision. A question's answers stand
             // level, and a choice that saves a rule or switches the mode
             // never leads.
             let lead = buttons.first { [.approve, .trust, .submit].contains($0.role) }
+            let decline = lead == nil ? nil : buttons.first { $0.role == .decline }
+            let rest = buttons.filter { $0.ordinal != lead?.ordinal && $0.ordinal != decline?.ordinal }
             VStack(spacing: 10) {
-                // A row as the rest are, so every answer starts at one edge.
                 if let lead {
-                    BlockedOptionGroup {
-                        BlockedOptionRow(label: lead.label, detail: lead.detail, emphasis: .lead) {
-                            perform(.choose(ordinal: lead.ordinal))
-                        }
-                    }
-                }
-                optionRows(buttons.filter { $0.ordinal != lead?.ordinal }) { option in
-                    BlockedOptionRow(label: option.label, detail: option.detail, emphasis: emphasis(of: option)) {
-                        perform(.choose(ordinal: option.ordinal))
-                    }
+                    decision(going: [lead], leaving: decline.map { [$0] } ?? [])
+                    moreAnswers(rest)
+                } else {
+                    optionRows(rest, row: answerRow)
                 }
             }
             .disabled(dialog.answersHeldByDraft)
@@ -425,38 +423,97 @@ private struct BlockedDialogCard: View {
         }
     }
 
-    /// A trust screen's two short answers make one decision, so they share
-    /// a row whatever order the program lists them in: leaving on the left
-    /// at its label's width, trusting on the right filling the rest. Labels
-    /// too long for one row stack, trusting first. Keys follow ordinals,
-    /// not this order. Pinned below the text by `pinsChoices`.
+    /// A trust screen's answers, pinned below its text by `pinsChoices`.
     private var trustChoices: some View {
-        let trusting = dialog.options.filter { $0.role == .trust }
-        let leaving = dialog.options.filter { $0.role != .trust }
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                trustChoiceButtons(leaving + trusting, stacked: false)
-            }
-            VStack(spacing: 8) {
-                trustChoiceButtons(trusting + leaving, stacked: true)
-            }
-        }
+        decision(
+            going: dialog.options.filter { $0.role == .trust }, leaving: dialog.options.filter { $0.role != .trust }
+        )
         .disabled(dialog.answersHeldByDraft)
     }
 
-    private func trustChoiceButtons(_ options: [DialogOption], stacked: Bool) -> some View {
+    /// The answers that make a card's one decision share a row whatever
+    /// order the program lists them in: leaving on the left at its label's
+    /// width, going on filled on the right and taking the rest. Labels too
+    /// long for one row stack, going on first. Keys follow ordinals, not
+    /// this order.
+    private func decision(going: [DialogOption], leaving: [DialogOption]) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                decisionButtons(leaving + going, going: going, stacked: false)
+            }
+            // As tall as each other where one has a second line.
+            .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 8) {
+                decisionButtons(going + leaving, going: going, stacked: true)
+            }
+        }
+    }
+
+    private func decisionButtons(_ options: [DialogOption], going: [DialogOption], stacked: Bool) -> some View {
         ForEach(options, id: \.ordinal) { @Sendable option in
             MainActorContent {
-                let trusts = option.role == .trust
+                let goes = going.contains { $0.ordinal == option.ordinal }
                 Button {
                     perform(.choose(ordinal: option.ordinal))
                 } label: {
-                    Text(verbatim: option.label)
-                        .frame(maxWidth: stacked || trusts ? .infinity : nil)
-                        .padding(.horizontal, stacked || trusts ? 0 : 4)
+                    VStack(spacing: 1) {
+                        Text(verbatim: option.label)
+                        if let detail = option.detail, !detail.isEmpty, detail != option.label {
+                            Text(verbatim: detail)
+                                .font(.caption)
+                                .opacity(0.8)
+                        }
+                    }
+                    .frame(maxWidth: stacked || goes ? .infinity : nil, maxHeight: stacked ? nil : .infinity)
+                    .padding(.horizontal, stacked || goes ? 0 : 4)
                 }
-                .buttonStyle(BlockedButtonStyle(tone: trusts ? .filled : .destructive))
+                .buttonStyle(BlockedButtonStyle(tone: goes ? .filled : .destructive))
             }
+        }
+    }
+
+    /// The answers past the decision, which allow and also save a rule or
+    /// switch the mode. They fold under one row until asked for: a card
+    /// opens on its decision, and each of these takes lines to say what it
+    /// keeps. Open, every one shows whole.
+    @ViewBuilder
+    private func moreAnswers(_ options: [DialogOption]) -> some View {
+        if !options.isEmpty {
+            BlockedOptionGroup {
+                Button {
+                    showsMoreAnswers.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("More Options")
+                            .font(.callout)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .rotationEffect(.degrees(showsMoreAnswers ? 180 : 0))
+                            .accessibilityHidden(true)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, BlockedCardStyle.rowInset)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(BlockedRowStyle())
+                .accessibilityValue(showsMoreAnswers ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                if showsMoreAnswers {
+                    ForEach(options, id: \.ordinal) { @Sendable option in
+                        MainActorContent {
+                            answerRow(option)
+                                .divided(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func answerRow(_ option: DialogOption) -> BlockedOptionRow {
+        BlockedOptionRow(label: option.label, detail: option.detail, emphasis: emphasis(of: option)) {
+            perform(.choose(ordinal: option.ordinal))
         }
     }
 
@@ -976,8 +1033,8 @@ struct BlockedCardFooter: View {
     }
 }
 
-/// The filled button that sends what a card holds. An answer that leads is
-/// a row instead (`BlockedOptionEmphasis.lead`), so a card fills one or the
+/// The filled button that sends what a card holds. A card's lead answer is
+/// filled the same way, beside its decline, so a card fills one or the
 /// other.
 struct BlockedPrimaryButton: View {
     let title: String
@@ -1034,16 +1091,13 @@ struct BlockedButtonStyle: ButtonStyle {
 
 enum BlockedOptionEmphasis: Equatable {
     case plain
-    /// The card's lead answer, filled as its one button would be and in a
-    /// list of its own.
-    case lead
     case destructive
     /// Plain, with a line saying what else choosing it does.
     case caution(String)
 }
 
-/// A card's answers as the rows of one list. The answer that leads stands
-/// above the rest in a list of its own.
+/// A card's answers as the rows of one list: a question's, or the ones past
+/// a card's decision.
 struct BlockedOptionGroup<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -1079,12 +1133,12 @@ struct BlockedOptionRow: View {
                 markSymbol
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: label)
-                        .font(.callout.weight(isOn || leads ? .semibold : .regular))
-                        .foregroundStyle(leads ? Color.white : emphasis == .destructive ? .red : .primary)
+                        .font(.callout.weight(isOn ? .semibold : .regular))
+                        .foregroundStyle(emphasis == .destructive ? Color.red : .primary)
                     if let detail, !detail.isEmpty, detail != label {
                         Text(verbatim: detail)
                             .font(.footnote)
-                            .foregroundStyle(leads ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                            .foregroundStyle(.secondary)
                     }
                     if case .caution(let warning) = emphasis {
                         Label(warning, systemImage: "exclamationmark.triangle.fill")
@@ -1098,14 +1152,12 @@ struct BlockedOptionRow: View {
             }
             .padding(.horizontal, BlockedCardStyle.rowInset)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: leads ? 46 : 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(.rect)
         }
-        .buttonStyle(BlockedRowStyle(leads: leads))
+        .buttonStyle(BlockedRowStyle())
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
-
-    private var leads: Bool { emphasis == .lead }
 
     /// The row under a line that starts where its label does; a list's
     /// first row has none.
@@ -1143,16 +1195,13 @@ struct BlockedOptionRow: View {
 }
 
 private struct BlockedRowStyle: ButtonStyle {
-    var leads = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             // A shape, as a diff's tints are (`BlockedChangeBox`).
-            .background {
-                Rectangle().fill(leads ? Color.accentColor : configuration.isPressed ? ThemeVeil.control : .clear)
-            }
-            .opacity(!isEnabled ? 0.45 : leads && configuration.isPressed ? 0.6 : 1)
+            .background { Rectangle().fill(configuration.isPressed ? ThemeVeil.control : .clear) }
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }
 
