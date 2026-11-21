@@ -11,19 +11,44 @@ import Synchronization
 ///
 /// The block that opens right after the erase is held until it closes, so it
 /// goes out as one piece. The erase itself, and everything else, passes as it
-/// comes: what stays on screen while the block is on its way is whatever the
-/// program left there.
+/// comes.
 ///
 /// The reprint is not always the first block after the erase: on the resize
 /// that follows an attach, Antigravity CLI at times repaints its status line
 /// in a block of its own in between. So a block that opens right behind a
 /// held one is held as well.
+///
+/// That leaves the screen to what the program does ahead of its reprint, and
+/// Antigravity CLI erases it within moments of the resize. So once an attach
+/// has shown one reprint, its program is taken to answer a resize with
+/// another: everything that comes after a resize is held as well, and goes out
+/// with the reprint, so the screen keeps what it showed until the reprint is
+/// whole.
+///
+/// The link sets how long that takes, so each step has a wait of its own. What
+/// a resize brings may take `quiet` to begin, and from then the erase that
+/// begins a reprint has `resizeWait` to come: Antigravity CLI sends it about
+/// 150 ms after its first answer. The block's first frame then has `quiet`
+/// again, as each frame after it has. A resize whose output runs out of time
+/// lets go of what it held, and the program is no longer taken to reprint
+/// until it does again.
 struct HerdrCoreReprint {
+    typealias Instant = ContinuousClock.Instant
+
     /// What one read came to: the bytes that go out now, in order, and how
     /// many of the read's own bytes stay held.
     struct Step: Equatable {
         var passed: [Data] = []
         var held = 0
+    }
+
+    private enum Phase {
+        case passing
+        /// Everything since a resize, kept until `until` for a reprint to begin.
+        case resized(Data, until: Instant)
+        /// A block so far, behind what a resize held ahead of it. Its close is
+        /// looked for from `from`.
+        case block(Data, from: Int)
     }
 
     private static let blockOpen = Data("\u{1B}[?2026h".utf8)
@@ -34,76 +59,183 @@ struct HerdrCoreReprint {
     /// An opening cut across reads starts within this much of a read's end.
     private static let overlap = (openings.map(\.count).max() ?? 1) - 1
 
-    /// The block so far; nil while output passes as it comes.
-    private var block: Data?
+    private var phase = Phase.passing
     /// The end of what last passed, where an opening cut across reads begins.
     private var passedEnd = Data()
+    /// This attach has shown a reprint and no resize since has gone without one.
+    private var reprints = false
+    /// A resize went out while a reprint was held, so another reprint follows.
+    private var resizedInBlock = false
     private let limit: Int
+    private let quiet: Duration
+    private let resizeWait: Duration
 
-    init(limit: Int) {
+    init(limit: Int, quiet: Duration, resizeWait: Duration) {
         self.limit = limit
+        self.quiet = quiet
+        self.resizeWait = resizeWait
     }
 
-    var isHolding: Bool { block != nil }
+    var isHolding: Bool { heldCount > 0 }
 
-    /// Takes the next read. A block that closes in it goes out whole, and what
-    /// follows the close is looked at like any other output. A block that
-    /// outgrows `limit` goes out as it stands, and the rest of it passes.
-    mutating func receive(_ read: Data) -> Step {
+    /// A resize is going out, ahead of anything it brings.
+    mutating func resized(at now: Instant) {
+        guard reprints else { return }
+        switch phase {
+        case .passing:
+            phase = .resized(Data(), until: now + quiet)
+        case .resized(let held, let until):
+            // What is held already waits for an erase, and this resize may
+            // bring one of its own.
+            phase = .resized(held, until: held.isEmpty ? now + quiet : max(until, now + resizeWait))
+        case .block:
+            resizedInBlock = true
+        }
+    }
+
+    /// Takes the next read. A block that closes in it goes out whole, with what
+    /// a resize held ahead of it, and what follows the close is looked at like
+    /// any other output. What outgrows `limit` goes out as it stands, and the
+    /// rest of it passes.
+    mutating func receive(_ read: Data, at now: Instant) -> Step {
         var step = Step()
+        if case .resized(_, let until) = phase, now >= until { giveUp(into: &step) }
         var rest = read
         while !rest.isEmpty {
-            guard var held = block else {
-                let window = passedEnd + rest
-                let starts = Self.openings.compactMap { opening in
-                    window.range(of: opening).map { $0.upperBound - Self.blockOpen.count }
+            switch phase {
+            case .passing:
+                rest = pass(rest, into: &step)
+            case .resized(var held, var until):
+                phase = .passing
+                let scanFrom = max(0, held.count - Self.overlap)
+                // The erase is waited for from the resize's first output on.
+                if held.isEmpty { until = now + resizeWait }
+                held.append(rest)
+                rest = Data()
+                if let opening = Self.opening(in: held, from: scanFrom) {
+                    rest = Data(held[opening.upperBound...])
+                    held.removeSubrange(opening.upperBound...)
+                    phase = .block(held, from: held.count)
+                } else if held.count <= limit {
+                    // The erase comes in a frame of its own, ahead of the
+                    // block, whose first frame is a whole frame away.
+                    if Self.endsErased(held) { until = now + quiet }
+                    phase = .resized(held, until: until)
+                } else {
+                    hand(held, to: &step)
                 }
-                guard let start = starts.min() else {
-                    passedEnd = Data(window.suffix(Self.overlap))
-                    step.passed.append(rest)
-                    return step
+            case .block(var held, let from):
+                phase = .passing
+                held.append(rest)
+                rest = Data()
+                if let close = held.range(of: Self.blockClose, in: from..<held.count) {
+                    rest = Data(held[close.upperBound...])
+                    held.removeSubrange(close.upperBound...)
+                    hand(held, to: &step)
+                    // The erase stands for a block that opens right behind this one.
+                    passedEnd = Self.erase
+                    if resizedInBlock {
+                        resizedInBlock = false
+                        phase = .resized(Data(), until: now + quiet)
+                    }
+                } else if held.count <= limit {
+                    phase = .block(held, from: max(from, held.count - Self.blockClose.count + 1))
+                } else {
+                    resizedInBlock = false
+                    hand(held, to: &step)
                 }
-                // A block whose opening began in the last read is held from here:
-                // the surface already has the opening's first bytes and takes the
-                // rest with the block.
-                let cut = max(0, start - passedEnd.count)
-                if cut > 0 { step.passed.append(Data(rest.prefix(cut))) }
-                rest = Data(rest.dropFirst(cut))
-                passedEnd = Data()
-                block = Data()
-                continue
             }
-            block = nil
-            let searchFrom = max(0, held.count - Self.blockClose.count + 1)
-            held.append(rest)
-            guard let close = held.range(of: Self.blockClose, in: searchFrom..<held.count) else {
-                guard held.count <= limit else {
-                    passedEnd = Data(held.suffix(Self.overlap))
-                    step.passed.append(held)
-                    step.held = 0
-                    return step
-                }
-                step.held += rest.count
-                block = held
-                return step
-            }
-            rest = Data(held[close.upperBound...])
-            held.removeSubrange(close.upperBound...)
-            // The erase stands for a block that opens right behind this one.
-            passedEnd = Self.erase
-            step.passed.append(held)
-            step.held = 0
         }
+        // What is held is the end of the output so far, and this read is the
+        // last of it.
+        step.held = min(read.count, heldCount)
         return step
     }
 
-    /// Hands over what is held and lets output pass again: the block went
-    /// quiet, or the output ended.
-    mutating func release() -> Data? {
-        guard let held = block else { return nil }
-        block = nil
+    /// How long the next read may take before what is held is let go; nil
+    /// while nothing is held.
+    func patience(at now: Instant) -> Duration? {
+        switch phase {
+        case .passing: nil
+        case .resized(let held, let until): held.isEmpty ? nil : max(.zero, now.duration(to: until))
+        case .block: quiet
+        }
+    }
+
+    /// Hands over what is held and lets output pass again: the wait for the
+    /// next read ran out, or the output `ended`. A resize that has been given
+    /// more time since the wait began keeps what it holds.
+    mutating func release(at now: Instant, ended: Bool = false) -> Data? {
+        var step = Step()
+        switch phase {
+        case .passing:
+            return nil
+        case .resized(_, let until):
+            guard ended || now >= until else { return nil }
+            giveUp(into: &step)
+        case .block(let held, _):
+            phase = .passing
+            resizedInBlock = false
+            hand(held, to: &step)
+        }
+        return step.passed.first
+    }
+
+    private var heldCount: Int {
+        switch phase {
+        case .passing: 0
+        case .resized(let held, _): held.count
+        case .block(let held, _): held.count
+        }
+    }
+
+    /// Looks at output that nothing holds, and returns what a block that opens
+    /// in it takes: the bytes from the block's opening on. An opening that
+    /// began in the last read is held from where this one starts: the surface
+    /// already has the opening's first bytes and takes the rest with the block.
+    private mutating func pass(_ output: Data, into step: inout Step) -> Data {
+        let window = passedEnd + output
+        guard let opening = Self.opening(in: window, from: 0) else {
+            passedEnd = Data(window.suffix(Self.overlap))
+            step.passed.append(output)
+            return Data()
+        }
+        let cut = max(0, opening.upperBound - Self.blockOpen.count - passedEnd.count)
+        if cut > 0 { step.passed.append(Data(output.prefix(cut))) }
+        passedEnd = Data()
+        reprints = true
+        phase = .block(Data(), from: 0)
+        return Data(output.dropFirst(cut))
+    }
+
+    /// A resize's time ran out: what it held goes out, and the program that
+    /// reprinted is taken to be gone. A resize that brought nothing says
+    /// nothing about the program.
+    private mutating func giveUp(into step: inout Step) {
+        guard case .resized(let held, _) = phase else { return }
+        phase = .passing
+        guard !held.isEmpty else { return }
+        reprints = false
+        hand(held, to: &step)
+    }
+
+    private mutating func hand(_ held: Data, to step: inout Step) {
+        guard !held.isEmpty else { return }
         passedEnd = Data(held.suffix(Self.overlap))
-        return held
+        step.passed.append(held)
+    }
+
+    /// The first opening in `data`, which starts at 0, from `from` on.
+    private static func opening(in data: Data, from: Int) -> Range<Int>? {
+        openings.compactMap { data.range(of: $0, in: from..<data.count) }.min { $0.lowerBound < $1.lowerBound }
+    }
+
+    /// Whether `data` ends with the erase and as much of an opening as came
+    /// with it.
+    private static func endsErased(_ data: Data) -> Bool {
+        openings.contains { opening in
+            (erase.count..<opening.count).contains { $0 <= data.count && data.suffix($0) == opening.prefix($0) }
+        }
     }
 }
 
@@ -121,13 +253,20 @@ struct HerdrCoreReprint {
 /// A program that dies inside its block never closes it, and what its shell
 /// prints next would be held too. So a block that brings nothing for `quiet`
 /// is handed over as it stands, and output passes until the next reprint.
+///
+/// `resized()` says a resize is going out, which is when a program that
+/// reprinted before erases its screen: what follows is held with the reprint,
+/// and let go when none begins in time (`HerdrCoreReprint`).
 final class HerdrCoreReprintHold: Sendable {
     typealias Read = @Sendable () async throws -> Data?
     typealias Credit = @Sendable (Int) async -> Void
 
     /// Two seconds: a 16 KiB frame still arrives within it at 8 KB/s, so a slow
-    /// link alone does not end a hold.
+    /// link alone does not end a hold. A resize gets as long to be answered.
     static let quiet: Duration = .seconds(2)
+    /// One second, from a resize's first output to the erase: several times
+    /// what Antigravity CLI takes, for a link that stalls in between.
+    static let resizeWait: Duration = .seconds(1)
 
     private struct State {
         var reprint: HerdrCoreReprint
@@ -143,38 +282,43 @@ final class HerdrCoreReprintHold: Sendable {
     private let state: Mutex<State>
     private let read: Read
     private let credit: Credit
-    private let quiet: Duration
 
     /// `read` gives the attach's output after its first paint, and `credit`
     /// returns a held read's credit on arrival.
     init(
         limit: Int = HerdrCoreFrame.maximumPayload, quiet: Duration = HerdrCoreReprintHold.quiet,
+        resizeWait: Duration = HerdrCoreReprintHold.resizeWait,
         read: @escaping Read, credit: @escaping Credit
     ) {
-        state = Mutex(State(reprint: HerdrCoreReprint(limit: limit)))
+        state = Mutex(State(reprint: HerdrCoreReprint(limit: limit, quiet: quiet, resizeWait: resizeWait)))
         self.read = read
         self.credit = credit
-        self.quiet = quiet
+    }
+
+    /// A resize is about to be sent. Call it before the resize leaves, so
+    /// nothing the resize brings can arrive first.
+    func resized() {
+        state.withLock { $0.reprint.resized(at: .now) }
     }
 
     /// The next output: each read as it comes, and a reprint whole.
     func next() async throws -> Data? {
         while true {
-            let (output, ended, pending, holding) = state.withLock { state in
+            let (output, ended, pending, patience) = state.withLock { state in
                 (state.ready.isEmpty ? nil : state.ready.removeFirst(), state.ended, state.pending,
-                    state.reprint.isHolding)
+                    state.reprint.patience(at: .now))
             }
             if let output { return output }
             if ended { return nil }
             let chunk: Data?
-            if pending == nil, !holding {
+            if pending == nil, patience == nil {
                 chunk = try await read()
             } else {
-                // Only a held block is waited on with a limit, and a wait that
+                // Only what is held is waited on with a limit, and a wait that
                 // gives up must leave its read in flight for the next one.
                 let inFlight = pending ?? PendingRead(read)
                 state.withLock { $0.pending = inFlight }
-                guard let outcome = await inFlight.outcome(within: holding ? quiet : nil) else {
+                guard let outcome = await inFlight.outcome(within: patience) else {
                     release()
                     continue
                 }
@@ -183,11 +327,11 @@ final class HerdrCoreReprintHold: Sendable {
             }
             guard let chunk else {
                 state.withLock { $0.ended = true }
-                release()
+                release(ended: true)
                 continue
             }
             let held = state.withLock { state in
-                let step = state.reprint.receive(chunk)
+                let step = state.reprint.receive(chunk, at: .now)
                 state.ready.append(contentsOf: step.passed)
                 state.prepaid += step.held
                 return step.held
@@ -205,9 +349,9 @@ final class HerdrCoreReprintHold: Sendable {
         }
     }
 
-    private func release() {
+    private func release(ended: Bool = false) {
         state.withLock { state in
-            if let block = state.reprint.release(), !block.isEmpty { state.ready.append(block) }
+            if let held = state.reprint.release(at: .now, ended: ended) { state.ready.append(held) }
         }
     }
 }
