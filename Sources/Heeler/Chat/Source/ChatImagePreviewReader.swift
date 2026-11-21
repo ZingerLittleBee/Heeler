@@ -38,12 +38,34 @@ enum ChatImagePath {
     /// Whether the path names a file of an image type, for a record that
     /// says nothing else about what was read.
     static func hasImageExtension(_ path: String) -> Bool {
-        guard let dot = path.lastIndex(of: "."), !path[dot...].contains("/") else { return false }
-        return imageExtensions.contains(path[path.index(after: dot)...].lowercased())
+        guard let ext = pathExtension(of: path) else { return false }
+        return imageExtensions.contains(ext)
+    }
+
+    /// Whether the path names a video file that Heeler's player can open.
+    static func hasVideoExtension(_ path: String) -> Bool {
+        guard let ext = pathExtension(of: path) else { return false }
+        return videoExtensions.contains(ext)
+    }
+
+    static func hasMediaExtension(_ path: String) -> Bool {
+        hasImageExtension(path) || hasVideoExtension(path)
+    }
+
+    private static func pathExtension(of path: String) -> String? {
+        guard let dot = path.lastIndex(of: "."),
+            !path[dot...].contains("/"),
+            !path[dot...].contains("\\")
+        else { return nil }
+        return path[path.index(after: dot)...].lowercased()
     }
 
     private static let imageExtensions: Set<String> = [
         "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+    ]
+
+    private static let videoExtensions: Set<String> = [
+        "mp4", "m4v", "mov",
     ]
 }
 

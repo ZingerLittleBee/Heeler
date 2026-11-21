@@ -169,6 +169,68 @@ struct ChatImageLinkTests {
         #expect(LocalizationTables.table("Localizable", localization: "zh-Hans")?["Image #%@"] == "图片#%@")
         #expect(LocalizationTables.table("Localizable", localization: "zh-Hant")?["Image #%@"] == "圖片#%@")
         #expect(LocalizationTables.table("Localizable", localization: "ja")?["Image #%@"] == "画像#%@")
+        #expect(LocalizationTables.table("Localizable", localization: "zh-Hans")?["Video #%@"] == "视频#%@")
+        #expect(LocalizationTables.table("Localizable", localization: "zh-Hant")?["Video #%@"] == "影片#%@")
+        #expect(LocalizationTables.table("Localizable", localization: "ja")?["Video #%@"] == "動画#%@")
+    }
+
+    @Test func stagedVideoPathsShortenToNumberedVideoLabelsAlongsideImages() async {
+        let imagePath =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.Ud2jiH1T/stage-11111111/image.jpg"
+        let videoPath =
+            "/var/folders/rm/2k0dww5x7w145cb1qctpswr80000gn/T//heeler.YhDlgO2n/stage-019cf591/ScreenRecording_11-21-2026_19-14-51_1.mp4"
+        let windowsVideo = #"C:\Users\me\AppData\Local\herdr-core\work\files\t1\clip.mov"#
+        let imageLabel = ChatImageLink.stagedImageLabel(number: 1)
+        let videoLabel = ChatImageLink.stagedVideoLabel(number: 1)
+
+        let rawPrompt = "看录屏 \(imagePath) \(videoPath) "
+        let marked = ChatImageLink.marking(rawPrompt)
+        #expect(String(marked.characters) == "看录屏 \(imageLabel) \(videoLabel)")
+        let refs = ChatImageLink.references(in: marked)
+        #expect(
+            refs == [
+                ChatImageLink.Reference(path: imagePath, title: imageLabel),
+                ChatImageLink.Reference(path: videoPath, title: videoLabel),
+            ])
+        #expect(refs.map(\.mediaKind) == [.image, .video])
+
+        let winMarked = ChatImageLink.marking("Check \(windowsVideo) ")
+        #expect(String(winMarked.characters) == "Check \(videoLabel)")
+        #expect(ChatImageLink.references(in: winMarked).first?.mediaKind == .video)
+
+        // Non-staged video paths stay as written while still linking as videos.
+        let direct = ChatImageLink.marking("Recorded /tmp/demo.mov.")
+        #expect(String(direct.characters) == "Recorded /tmp/demo.mov.")
+        #expect(ChatImageLink.references(in: direct) == [ChatImageLink.Reference(path: "/tmp/demo.mov", title: nil)])
+        #expect(ChatImageLink.references(in: direct).first?.mediaKind == .video)
+
+        let entry = ChatEntry(id: ChatEntryID("user"), sourceOffset: 0, content: .user(ChatUserMessage(text: rawPrompt)))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [entry]))
+        #expect(rows.first?.messageImages == refs)
+        #expect(rows.first?.copyText == rawPrompt)
+    }
+
+    @Test func composerVideoAttachmentFormatsDurationAndNumbersIndependentlyFromImages() {
+        #expect(ComposerImageAttachment.formattedDuration(4.2) == "0:04")
+        #expect(ComposerImageAttachment.formattedDuration(75) == "1:15")
+        #expect(ComposerImageAttachment.formattedDuration(3661) == "1:01:01")
+
+        let image = ComposerImageAttachment(kind: .image, phase: .ready(path: "/tmp/stage/image.jpg"))
+        let video = ComposerImageAttachment(
+            kind: .video,
+            preview: ComposerImageAttachment.Preview(
+                fileURL: URL(fileURLWithPath: "/tmp/local.mp4"),
+                pixelWidth: 1170,
+                pixelHeight: 2532,
+                byteCount: 1_000_000,
+                thumbnail: nil,
+                durationSeconds: 4),
+            phase: .ready(path: "/tmp/stage/clip.mp4"))
+        let list = [image, video]
+        #expect(ComposerImageAttachment.displayNumber(for: image, in: list) == 1)
+        #expect(ComposerImageAttachment.displayNumber(for: video, in: list) == 1)
+        #expect(video.previewTitle(number: 1).contains("0:04"))
+        #expect(video.subtitle.contains("0:04"))
     }
 
     @Test func aSentImagesPlaceholdersOpenTheFilesItCameFrom() {

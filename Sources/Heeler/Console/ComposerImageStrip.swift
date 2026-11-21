@@ -71,15 +71,18 @@ struct ComposerImageStrip: View {
                             let indexed = Array(attachments.enumerated())
                             ForEach(indexed, id: \.element.id) { @Sendable entry in
                                 MainActorContent {
+                                    let displayNumber = ComposerImageAttachment.displayNumber(
+                                        for: entry.element, in: attachments)
                                     ComposerImagePill(
                                         attachment: entry.element,
-                                        index: entry.offset,
+                                        displayNumber: displayNumber,
                                         onPreview: {
                                             guard let preview = entry.element.preview else { return }
                                             onPreview(
                                                 ComposerImagePreviewSheet.Item(
                                                     id: entry.element.id,
-                                                    title: entry.element.previewTitle(at: entry.offset),
+                                                    kind: entry.element.kind,
+                                                    title: entry.element.previewTitle(number: displayNumber),
                                                     fileURL: preview.fileURL,
                                                     thumbnail: preview.thumbnail))
                                         },
@@ -147,13 +150,26 @@ private struct ComposerImagePill: View {
     private static let infoWidth: CGFloat = 112
 
     let attachment: ComposerImageAttachment
-    let index: Int
+    let displayNumber: Int
     let onPreview: () -> Void
     let onRetry: () -> Void
     let onRemove: () -> Void
 
     private var title: String {
-        ComposerImageAttachment.title(at: index)
+        ComposerImageAttachment.title(for: attachment.kind, number: displayNumber)
+    }
+
+    private var previewAccessibilityHint: String {
+        switch attachment.kind {
+        case .image:
+            String(
+                localized: "Opens a large preview of the image",
+                comment: "Accessibility hint on a Composer image pill.")
+        case .video:
+            String(
+                localized: "Plays a preview of the video",
+                comment: "Accessibility hint on a Composer video pill.")
+        }
     }
 
     private var isFailed: Bool {
@@ -232,10 +248,7 @@ private struct ComposerImagePill: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(title), \(attachment.subtitle)")
-            .accessibilityHint(
-                String(
-                    localized: "Opens a large preview of the image",
-                    comment: "Accessibility hint on a Composer image pill."))
+            .accessibilityHint(previewAccessibilityHint)
             .accessibilityIdentifier("composer.image-pill.preview")
         } else {
             HStack(spacing: 8) {
@@ -256,10 +269,7 @@ private struct ComposerImagePill: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
-            .accessibilityHint(
-                String(
-                    localized: "Opens a large preview of the image",
-                    comment: "Accessibility hint on a Composer image pill."))
+            .accessibilityHint(previewAccessibilityHint)
             .accessibilityIdentifier("composer.image-pill.preview")
         } else {
             thumbnailView
@@ -288,6 +298,17 @@ private struct ComposerImagePill: View {
                     .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
                     .clipShape(.rect(cornerRadius: Self.thumbnailCornerRadius, style: .continuous))
                     .opacity(uploadFraction != nil ? 0.8 : 1)
+                if attachment.kind == .video {
+                    Circle()
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: 16, height: 16)
+                        .overlay {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundStyle(.white)
+                                .offset(x: 0.5)
+                        }
+                }
             } else if case .preparing = attachment.phase {
                 ProgressView()
                     .controlSize(.mini)
@@ -295,7 +316,7 @@ private struct ComposerImagePill: View {
                 ProgressView()
                     .controlSize(.mini)
             } else {
-                Image(systemName: "photo")
+                Image(systemName: attachment.kind == .video ? "film" : "photo")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -383,9 +404,24 @@ private struct ComposerImagePill: View {
 struct ComposerImagePreviewSheet: UIViewControllerRepresentable {
     struct Item: Identifiable, Equatable, Sendable {
         let id: UUID
+        let kind: ComposerImageAttachment.MediaKind
         let title: String
         let fileURL: URL
         let thumbnail: UIImage?
+
+        init(
+            id: UUID,
+            kind: ComposerImageAttachment.MediaKind = .image,
+            title: String,
+            fileURL: URL,
+            thumbnail: UIImage?
+        ) {
+            self.id = id
+            self.kind = kind
+            self.title = title
+            self.fileURL = fileURL
+            self.thumbnail = thumbnail
+        }
     }
 
     let item: Item
@@ -407,4 +443,26 @@ struct ComposerImagePreviewSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+}
+
+/// Plays a local prepared video file directly in the system player when a
+/// Composer video pill is tapped, without reading back over SSH.
+struct ComposerVideoPreviewSheet: View {
+    let item: ComposerImagePreviewSheet.Item
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            HostFileMediaView(url: item.fileURL)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+                .navigationTitle(item.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
+        }
+    }
 }

@@ -82,6 +82,9 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
+    @State private var previewedVideo: HostFilePreview?
+    @State private var videoPreviewCopies = HostFileCopies()
+    @State private var videoPreviewPace = HostFilePace()
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -312,6 +315,10 @@ struct AgentChatSurfaceView: View {
             if let chat {
                 ChatCandidatePickerView(chat: chat, corePin: session.corePin)
             }
+        }
+        .fullScreenCover(item: $previewedVideo) { preview in
+            HostFilePreviewView(preview: preview)
+                .onDisappear { preview.discard() }
         }
         .sheet(item: $viewingSkill) { skill in
             SkillContentSheet(skill: skill) { [console, agent] in
@@ -1000,6 +1007,23 @@ struct AgentChatSurfaceView: View {
             loadImage: { [weak chat] path in
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
+            },
+            previewVideo: { [weak chat] path, title in
+                guard let chat else { return }
+                Task { @MainActor in
+                    let resolved = (try? await chat.resolveHostPath(path)) ?? path
+                    let name = RemoteHostPath.lastComponent(of: resolved)
+                    previewedVideo?.discard()
+                    previewedVideo = HostFilePreview(
+                        path: resolved,
+                        name: name.isEmpty ? "video.mp4" : name,
+                        displayTitle: title,
+                        size: nil,
+                        modified: nil,
+                        files: chat.hostFiles,
+                        copies: videoPreviewCopies,
+                        pace: videoPreviewPace)
+                }
             },
             thumbnails: chat?.thumbnails,
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 },

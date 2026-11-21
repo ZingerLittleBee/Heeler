@@ -43828,6 +43828,29 @@
         }
       }
     },
+    "Plays a preview of the video" : {
+      "comment" : "Accessibility hint on a Composer video pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画のプレビューを再生します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放视频预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放影片預覽"
+          }
+        }
+      }
+    },
     "Plays when the download finishes. The copy is removed when you close the preview." : {
       "localizations" : {
         "ja" : {
@@ -44617,6 +44640,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "預覽圖片"
+          }
+        }
+      }
+    },
+    "Preview Media" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メディアをプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览媒体"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預覽媒體"
+          }
+        }
+      }
+    },
+    "Preview Video" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画をプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預覽影片"
           }
         }
       }
@@ -72687,6 +72754,52 @@
         }
       }
     },
+    "Video #%@" : {
+      "comment" : "Short label shown in a sent Chat message bubble in place of a staged video's temporary Host path, numbered in order within the message (e.g. Video #1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画#%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频#%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片#%@"
+          }
+        }
+      }
+    },
+    "Video %@" : {
+      "comment" : "Title of an attached video pill in the Composer, numbered in order (e.g. Video 1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片 %@"
+          }
+        }
+      }
+    },
     "View" : {
       "localizations" : {
         "ja" : {
@@ -73357,6 +73470,28 @@
       }
     },
     "Waiting for tmux" : {},
+    "Waiting for video…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画を待機中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待视频…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待影片…"
+          }
+        }
+      }
+    },
     "Waiting to join" : {
       "comment" : "Overlay network status: waiting for an admin's approval or a config server's network assignment",
       "localizations" : {

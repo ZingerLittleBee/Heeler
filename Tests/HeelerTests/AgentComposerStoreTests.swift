@@ -1251,22 +1251,27 @@ struct AgentComposerStoreTests {
             inboxRoot: inboxDir)
         session.pasteClipboard(.file(selection))
 
-        try await waitUntil("pasted video should stage as a file", timeout: .seconds(5)) {
-            if case .completed(let outcome) = session.staging.state {
-                return outcome.medium == .file
-            }
-            return false
+        try await waitUntil("pasted video should stage as a video pill", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/RPReplay_Final.mp4"]
         }
 
         #expect(stagedImageCount.value == 0)
-        #expect(store.imageAttachments.isEmpty)
+        #expect(store.imageAttachments.count == 1)
+        #expect(store.imageAttachments.first?.kind == .video)
+        let previewURL = try #require(store.imageAttachments.first?.preview?.fileURL)
+        #expect(FileManager.default.fileExists(atPath: previewURL.path))
         let staged = recordedFiles.values
         #expect(staged.count == 1)
         #expect(staged.first?.fileExtension == "mp4")
         #expect(staged.first?.remoteFilename == "RPReplay_Final.mp4")
-        #expect(store.draft == "/tmp/heeler-stage/RPReplay_Final.mp4 ")
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/RPReplay_Final.mp4 ")
         let inboxRemnants = try? FileManager.default.contentsOfDirectory(at: inboxDir, includingPropertiesForKeys: nil)
         #expect(inboxRemnants?.isEmpty != false)
+
+        // Removing the video pill deletes the retained local file.
+        store.removeImageAttachment(id: try #require(store.imageAttachments.first?.id))
+        #expect(!FileManager.default.fileExists(atPath: previewURL.path))
     }
 
     @Test func unreadableClipboardVideoSurfacesClipboardErrorWithoutStagingImage() async throws {
@@ -1337,16 +1342,14 @@ struct AgentComposerStoreTests {
 
         store.acceptDrop([.text("check this"), droppedItem])
 
-        try await waitUntil("dropped video should stage as a file", timeout: .seconds(5)) {
-            if case .completed(let outcome) = session.staging.state {
-                return outcome.medium == .file
-            }
-            return false
+        try await waitUntil("dropped video should stage as a video pill", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/screen_recording.mov"]
         }
 
-        #expect(store.imageAttachments.isEmpty)
+        #expect(store.imageAttachments.map(\.kind) == [.video])
         #expect(recordedFiles.values.map(\.remoteFilename) == ["screen_recording.mov"])
-        #expect(store.draft == "check this /tmp/heeler-stage/screen_recording.mov ")
+        #expect(store.draft == "check this")
+        #expect(store.composedDraft == "check this /tmp/heeler-stage/screen_recording.mov ")
         #expect(!FileManager.default.fileExists(atPath: cleanupURL.path))
     }
 
@@ -1409,10 +1412,11 @@ struct AgentComposerStoreTests {
         store.acceptDrop([.image(jpeg, suggestedName: "frame.jpg"), droppedVideo])
 
         try await waitUntil("both dropped image and video should finish staging", timeout: .seconds(5)) {
-            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg"]
-                && store.draft == "/tmp/heeler-stage/clip.mp4 "
+            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg", "/tmp/heeler-stage/clip.mp4"]
         }
-        #expect(store.composedDraft == "/tmp/heeler-stage/clip.mp4 /tmp/heeler-stage/image.jpg ")
+        #expect(store.imageAttachments.map(\.kind) == [.image, .video])
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/image.jpg /tmp/heeler-stage/clip.mp4 ")
     }
 
     @Test func pickingVideosAndPhotosFromPhotosPickerStagesVideosAsFilesAndPhotosAsPills() async throws {
@@ -1447,23 +1451,27 @@ struct AgentComposerStoreTests {
         ])
 
         try await waitUntil("both picked videos should stage in order", timeout: .seconds(5)) {
-            recordedFiles.values == ["first_clip.mov", "second_clip.mp4"]
+            store.readyImagePaths == ["/tmp/heeler-stage/first_clip.mov", "/tmp/heeler-stage/second_clip.mp4"]
         }
-        #expect(store.imageAttachments.isEmpty)
-        #expect(store.draft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/second_clip.mp4 ")
+        #expect(recordedFiles.values == ["first_clip.mov", "second_clip.mp4"])
+        #expect(store.imageAttachments.map(\.kind) == [.video, .video])
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/second_clip.mp4 ")
 
-        // Next: mixed selection of one photo and one video.
-        store.replaceDraft(with: "")
+        // Remove the two video pills, then test mixed photo + video selection.
+        for attachment in store.imageAttachments {
+            store.removeImageAttachment(id: attachment.id)
+        }
         session.enqueuePickedMedia([
             .image(DataImageSelection(data: jpeg)),
             .file(URLFileSelection(url: firstVideo)),
         ])
 
         try await waitUntil("mixed photo and video selection should stage both", timeout: .seconds(5)) {
-            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg"]
-                && store.draft == "/tmp/heeler-stage/first_clip.mov "
+            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg", "/tmp/heeler-stage/first_clip.mov"]
         }
-        #expect(store.composedDraft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/image.jpg ")
+        #expect(store.imageAttachments.map(\.kind) == [.image, .video])
+        #expect(store.composedDraft == "/tmp/heeler-stage/image.jpg /tmp/heeler-stage/first_clip.mov ")
     }
 
     @Test func targetedHighlightIsStrongerThanIdle() {

@@ -718,14 +718,18 @@ final class AgentChatStore {
 
     // MARK: Requests
 
+    /// Host file access shared with the transcript loop, used by Chat media
+    /// previews (such as playing a staged video).
+    var hostFiles: ChatHostFiles { source.files }
+
     /// Preview reads use the same Host connection as the transcript;
     /// thumbnails come from ``thumbnails``. A path a message names may be
     /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: try await hostPath(ofImage: path), files: source.files)
+        try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
     }
 
-    private func hostPath(ofImage path: String) async throws -> String {
+    func resolveHostPath(_ path: String) async throws -> String {
         if path.hasPrefix("/") { return path }
         let home = path.hasPrefix("~/") ? try await source.files.home() : nil
         let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd

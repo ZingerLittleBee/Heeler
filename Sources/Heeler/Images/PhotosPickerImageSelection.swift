@@ -79,6 +79,7 @@ struct PhotosPickerVideoTransfer: Transferable, Sendable {
 /// `FilePreparer` finishes.
 struct PhotosPickerVideoSelection: FileSelection {
     let item: PhotosPickerItem
+    var isVideo: Bool { true }
 
     func materialize() async throws -> MaterializedFile {
         try Task.checkCancellation()
@@ -219,6 +220,7 @@ struct ClipboardVideoSelection: FileSelection {
     let content: Content
     let maximumByteCount: Int64
     let inboxRoot: URL
+    var isVideo: Bool { true }
 
     init(
         content: Content,

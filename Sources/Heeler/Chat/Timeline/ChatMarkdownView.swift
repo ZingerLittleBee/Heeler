@@ -163,7 +163,8 @@ struct ChatMarkdownView: View {
                 if !chunk.characters.isEmpty { pieces.append(Text(chunk)) }
                 chunk = AttributedString()
                 // A no-break space keeps the symbol on its path's line.
-                pieces.append(Text("\(Image(systemName: "photo"))\u{00A0}").foregroundStyle(.tint))
+                let symbol = ChatImageLink.mediaKind(for: path) == .video ? "film" : "photo"
+                pieces.append(Text("\(Image(systemName: symbol))\u{00A0}").foregroundStyle(.tint))
             }
             previousPath = path
             chunk.append(styled[run.range])

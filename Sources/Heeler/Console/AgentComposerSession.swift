@@ -93,26 +93,18 @@ final class AgentComposerSession {
         }
     }
 
-    /// Enqueues photos and videos picked from the Photos library: photos stage
-    /// as visual image pills and videos stage through the file pipeline.
+    /// Enqueues photos and videos picked from the Photos library in selection
+    /// order: photos and videos both appear as Composer pills above the input,
+    /// with photos staging through `ImagePreparer` and videos through `FilePreparer`.
     func enqueuePickedMedia(_ items: [PickedMedia]) {
         guard !items.isEmpty else { return }
-        var images: [any ImageSelection] = []
-        var files: [any FileSelection] = []
         for item in items {
             switch item {
-            case .image(let selection): images.append(selection)
-            case .file(let selection): files.append(selection)
+            case .image(let selection):
+                composer.enqueueImages([selection])
+            case .file(let selection):
+                composer.enqueueFile(selection)
             }
-        }
-        if !images.isEmpty {
-            composer.enqueueImages(images)
-        }
-        for file in files {
-            if images.isEmpty, staging.begin(.fileSelection(file)) != nil {
-                continue
-            }
-            composer.enqueueFile(file)
         }
     }
 
