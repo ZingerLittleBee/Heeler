@@ -538,7 +538,41 @@ struct AgyTranscriptReducerTests {
           "role": "\(role)",
           "type": "\(type)"
         }
+        The subagent will send you a message when it has completed its task or requires guidance. There is no need to poll for its response.
         """
+    }
+
+    @Test func launchedSubagentIDAndJsonArrayIgnoreTrailingProseAndStringDelimiters() {
+        let subID = "45c351e2-99bf-4af3-b070-72108ef40b51"
+        let withTrailingNote = """
+            Created the following subagent:
+            {
+              "conversationId":  "\(subID)",
+              "logAbsoluteUri":  "file:///tmp/{nested}\\"escaped\\"/transcript.jsonl",
+              "workspaceUris":  [
+                "file:///tmp/worktree"
+              ]
+            }
+            The subagent will send you a message when it has completed its task or requires guidance. There is no need to poll for its response.
+            """
+        #expect(AgyTranscriptReducer.launchedSubagentID(in: withTrailingNote) == subID)
+
+        let withoutTrailingNote = """
+            Created the following subagent:
+            {
+              "conversationId": "\(subID)"
+            }
+            """
+        #expect(AgyTranscriptReducer.launchedSubagentID(in: withoutTrailingNote) == subID)
+
+        let listWithTrailingNote = """
+            You have 1 active subagent(s):
+            [{"conversationId":"\(subID)","role":"Implementer [1]","state":"running"}]
+            Use send_message to follow up.
+            """
+        let listed = AgyTranscriptReducer.jsonArray(in: listWithTrailingNote)
+        #expect(listed.count == 1)
+        #expect(listed.first?["conversationId"]?.stringValue == subID)
     }
 
     /// A Subagent launched by `invoke_subagent` runs in Background Work

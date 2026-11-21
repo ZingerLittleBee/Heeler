@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 7
+    static let revision = 8
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -145,14 +145,16 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         let normalized = AgyToolCall.normalized(body)
         guard normalized.hasPrefix("Created the following subagent:"),
             let brace = normalized.firstIndex(of: "{"),
-            let data = normalized[brace...].data(using: .utf8),
+            let slice = balancedJSONSlice(
+                in: normalized, from: brace, open: UInt8(ascii: "{"), close: UInt8(ascii: "}")),
+            let data = slice.data(using: .utf8),
             let value = try? JSONDecoder().decode(JSONValue.self, from: data),
             let id = value["conversationId"]?.stringValue, !id.isEmpty
         else { return nil }
         return id
     }
 
-    /// The JSON array at the end of a `manage_subagents` or `manage_task` `list` result.
+    /// The JSON array in a `manage_subagents` or `manage_task` `list` result.
     static func jsonArray(in body: String) -> [JSONValue] {
         let normalized = AgyToolCall.normalized(body).trimmingCharacters(in: .whitespacesAndNewlines)
         let start: String.Index
@@ -163,10 +165,50 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         } else {
             return []
         }
-        guard let data = normalized[start...].data(using: .utf8),
+        guard let slice = balancedJSONSlice(
+            in: normalized, from: start, open: UInt8(ascii: "["), close: UInt8(ascii: "]")),
+            let data = slice.data(using: .utf8),
             case .array(let items) = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return [] }
         return items
+    }
+
+    /// Slices the balanced JSON object or array beginning at `start`, ignoring
+    /// delimiters inside string literals so trailing prose after the closing
+    /// brace/bracket does not prevent decoding.
+    private static func balancedJSONSlice(
+        in text: String, from start: String.Index, open: UInt8, close: UInt8
+    ) -> Substring? {
+        let utf8 = text.utf8
+        guard start < utf8.endIndex, utf8[start] == open else { return nil }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var index = start
+        while index < utf8.endIndex {
+            let byte = utf8[index]
+            let next = utf8.index(after: index)
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if byte == UInt8(ascii: "\\") {
+                    escaped = true
+                } else if byte == UInt8(ascii: "\"") {
+                    inString = false
+                }
+            } else if byte == UInt8(ascii: "\"") {
+                inString = true
+            } else if byte == open {
+                depth += 1
+            } else if byte == close {
+                depth -= 1
+                if depth == 0 {
+                    return text[start..<next]
+                }
+            }
+            index = next
+        }
+        return nil
     }
 
     // MARK: Projection
