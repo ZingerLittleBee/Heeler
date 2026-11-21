@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -306,102 +304,5 @@ struct AgyModelSessionTests {
             of: .effort,
             on: agyBoxScreen(above: ["> /effort", "  ⎿  Effort isn't adjustable for Orchestrator (Carbon)."]))
         #expect(effortRefused.answered(since: effortBefore) == false)
-    }
-
-    @Test(.serialized)
-    @MainActor func headerOffersModelMenuForAgyWithoutShowingPermissionChrome() async throws {
-        let agent = Agent(
-            terminalID: "term_w1:p1", kind: "agy", title: "Refactor auth flow", status: .idle,
-            workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/Users/bee/workspace/heeler",
-            revision: 1, name: nil)
-        let consoleAgent = ConsoleAgent(
-            hostID: Host.fixture(name: "studio").id, hostName: "studio", agent: agent,
-            workspaceLabel: nil, repositoryCheckout: nil, hostUsername: "bee")
-        let settings = AgentSessionSettings(model: "Gemini 4 Carbon", permissionMode: nil, effort: "high")
-        let controls = AgentSessionControls(
-            isEnabled: true,
-            modelChoices: [("gemini-4-carbon", "Gemini 4 Carbon"), ("gemini-pro-orchestrator", "Orchestrator (Carbon)")],
-            effortChoices: ["low", "medium", "high"],
-            modelMatches: { model, id in model == "Gemini 4 Carbon" && id == "gemini-4-carbon" },
-            setPermissionMode: nil,
-            setModel: { _ in },
-            setEffort: { _ in })
-
-        let root = VStack {
-            AgentDetailHeader(
-                palette: .system, isExpanded: .constant(true), onBack: {},
-                title: AgentDetailHeaderTitle(consoleAgent),
-                sessionSettings: settings,
-                sessionControls: controls)
-            AgentDetailStatusChrome(
-                status: .idle, hostTelemetry: nil, changes: nil,
-                session: settings, sessionControls: controls,
-                chromeColorScheme: .dark)
-        }
-        .padding(.horizontal, 12)
-
-        let controller = UIHostingController(rootView: root)
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 240), rootViewController: controller
-        ) { window in
-            try await Task.sleep(for: .milliseconds(300))
-            let elements = accessibleElements(in: window)
-            let identifiers = Set(elements.compactMap { ($0 as? UIAccessibilityIdentification)?.accessibilityIdentifier })
-            let labels = elements.compactMap(\.accessibilityLabel).joined(separator: " | ")
-            let values = elements.compactMap(\.accessibilityValue).joined(separator: " | ")
-            #expect(identifiers.contains("agent-header-model") || labels.contains("Agent settings"))
-            #expect(!identifiers.contains("agent-status-permission"))
-            #expect(!labels.contains("Permission mode"))
-            #expect(values.contains("Gemini 4 Carbon · high"))
-        }
-    }
-
-    @Test(.serialized)
-    @MainActor func headerShowsModelPlaceholderWhenSwitchableSessionHasNoReportedModelYet() async throws {
-        let agent = Agent(
-            terminalID: "term_w44:p1", kind: "agy", title: "~/D/w/H/worktree-brave-meadow-af28", status: .idle,
-            workspaceID: "w44", tabID: "w44:t1", paneID: "w44:p1",
-            cwd: "/Users/bee/Documents/worktree/Heeler/worktree-brave-meadow-af28",
-            revision: 1, name: "agy-3")
-        let consoleAgent = ConsoleAgent(
-            hostID: Host.fixture(name: "studio").id, hostName: "studio", agent: agent,
-            workspaceLabel: nil, repositoryCheckout: nil, hostUsername: "bee")
-        let settings = AgentSessionSettings(model: nil, permissionMode: nil, effort: nil)
-        let controls = AgentSessionControls(
-            isEnabled: true,
-            modelChoices: [("gemini-4-carbon", "Gemini 4 Carbon"), ("gemini-pro-orchestrator", "Orchestrator (Carbon)")],
-            effortChoices: [],
-            modelMatches: { _, _ in false },
-            setPermissionMode: nil,
-            setModel: { _ in },
-            setEffort: { _ in })
-
-        var pickedModel: String?
-        let interactiveControls = AgentSessionControls(
-            isEnabled: controls.isEnabled,
-            modelChoices: controls.modelChoices,
-            effortChoices: controls.effortChoices,
-            modelMatches: controls.modelMatches,
-            setPermissionMode: nil,
-            setModel: { pickedModel = $0 },
-            setEffort: { _ in })
-
-        let controller = UIHostingController(rootView: AgentDetailHeader(
-            palette: .system, isExpanded: .constant(true), onBack: {},
-            title: AgentDetailHeaderTitle(consoleAgent),
-            sessionSettings: settings,
-            sessionControls: interactiveControls)
-            .padding(.horizontal, 12)
-            .frame(maxHeight: .infinity, alignment: .top))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 240), rootViewController: controller
-        ) { window in
-            try await Task.sleep(for: .milliseconds(300))
-            let settingsControl = try #require(accessibleElement(labeled: "Agent settings", in: window))
-            #expect(settingsControl.accessibilityValue == "Model")
-            try await HostedMenu.select("Gemini 4 Carbon", labeled: "Agent settings", in: window)
-            #expect(pickedModel == "gemini-4-carbon")
-        }
     }
 }

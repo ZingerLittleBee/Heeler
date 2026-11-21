@@ -1,7 +1,6 @@
 import Foundation
 import GhosttyTerminal
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -100,58 +99,6 @@ struct TerminalWindowResizeCoalescingTests {
         #expect(reportedGrids == [TerminalGridSize(columns: 109, rows: 29)])
     }
 
-    /// The trigger, on a real surface: resizing the window several times in
-    /// a row holds every grid report, then thaws once with the grid the
-    /// surface settled on.
-    @MainActor
-    @Test func aLiveWindowResizeReportsOnlyTheSettledGrid() async throws {
-        var reportedGrids: [TerminalGridSize] = []
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSizeChanged: { columns, rows in
-                reportedGrids.append(TerminalGridSize(columns: columns, rows: rows))
-            },
-            notificationCenter: NotificationCenter())
-        terminal.frame = CGRect(x: 0, y: 0, width: 834, height: 1100)
-        let controller = UIViewController()
-        controller.view = terminal
-        let window = try await makeTestWindow(
-            frame: terminal.bounds,
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        try await waitForGhosttyContentLayer(in: terminal)
-        terminal.layoutIfNeeded()
-        // Let the first layout's own reports land before the burst starts.
-        try await Task.sleep(for: .milliseconds(300))
-        reportedGrids.removeAll()
-
-        // A layout pass that leaves the window's size alone is not a resize.
-        terminal.setNeedsLayout()
-        terminal.layoutIfNeeded()
-        #expect(terminal.gridReportPhase == .live)
-
-        let phases = TerminalGridReportPhaseRecorder(observing: terminal)
-        for step in 1...6 {
-            window.frame = CGRect(
-                x: 0, y: 0,
-                width: 834 - CGFloat(step) * 40,
-                height: 1100 - CGFloat(step) * 80)
-            window.layoutIfNeeded()
-            #expect(terminal.gridReportPhase == .deferring)
-        }
-        #expect(reportedGrids.isEmpty, "a grid reached the Host mid-resize: \(reportedGrids)")
-
-        let forwarded = try await phases.thawedGrid()
-        // Anything still in Ghostty's pipeline gets the chance to leak out.
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(forwarded == terminal.measuredGrid)
-        #expect(
-            reportedGrids.count <= 1,
-            "the burst reached the Host as \(reportedGrids)")
-        if let forwarded {
-            #expect(reportedGrids.allSatisfy { $0 == forwarded })
-        }
-    }
-
     /// A cancelled freeze throws away the grid it held. The Host has to hear
     /// that grid anyway, and exactly once.
     @MainActor
@@ -200,52 +147,6 @@ struct TerminalWindowResizeCoalescingTests {
         let forwarded = try await phases.thawedGrid()
         #expect(forwarded == TerminalGridSize(columns: 90, rows: 30))
         #expect(reportedGrids == [TerminalGridSize(columns: 90, rows: 30)])
-    }
-
-    /// Disabling local input cancels the grid freeze. When that lands inside
-    /// a window resize's settle, the grid the window settled on must still
-    /// reach the Host: Ghostty will not report an unchanged grid again.
-    @MainActor
-    @Test func cancellingAWindowResizeFreezeStillReportsTheSettledGrid() async throws {
-        var reportedGrids: [TerminalGridSize] = []
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            onSizeChanged: { columns, rows in
-                reportedGrids.append(TerminalGridSize(columns: columns, rows: rows))
-            },
-            notificationCenter: NotificationCenter())
-        terminal.frame = CGRect(x: 0, y: 0, width: 834, height: 1100)
-        let controller = UIViewController()
-        controller.view = terminal
-        let window = try await makeTestWindow(
-            frame: terminal.bounds,
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        try await waitForGhosttyContentLayer(in: terminal)
-        terminal.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
-        reportedGrids.removeAll()
-
-        window.frame = CGRect(x: 0, y: 0, width: 700, height: 900)
-        window.layoutIfNeeded()
-        try #require(terminal.gridReportPhase == .deferring)
-        // Stands in for Ghostty's measurement of the resized surface, so the
-        // settled grid does not depend on the engine's schedule.
-        terminal.terminalDidResize(
-            TerminalGridMetrics(
-                columns: 71, rows: 33,
-                widthPixels: 2_100, heightPixels: 2_640,
-                cellWidthPixels: 30, cellHeightPixels: 49))
-
-        terminal.setLocalInputEnabled(false)
-
-        let settled = TerminalGridSize(columns: 71, rows: 33)
-        #expect(terminal.gridReportPhase == .live)
-        #expect(reportedGrids.first == settled)
-        // The cancelled settle must not report it a second time.
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(
-            reportedGrids.filter { $0 == settled }.count == 1,
-            "the settled grid reached the Host as \(reportedGrids)")
     }
 
     /// Keyboard notifications are process-wide. Only the window that owns

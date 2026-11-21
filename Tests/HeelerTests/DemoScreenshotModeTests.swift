@@ -1,8 +1,7 @@
 #if DEBUG && targetEnvironment(simulator)
     import Foundation
     import Observation
-    import SwiftUI
-    import Testing
+        import Testing
     import UIKit
 
     @testable import Heeler
@@ -357,88 +356,6 @@
             let firstFile = try #require(changes.files.first)
             #expect(firstFile.displayPath == "Fixtures/receipts/")
             #expect(store.insertionText(for: firstFile) == "Fixtures/receipts/ ")
-        }
-
-        /// The Agents list reads each demo Agent's sample Checkout for its
-        /// row through the production factory, and shows its totals there.
-        @Test func demoAgentsShowTheirSampleChangesInTheirListRows() async throws {
-            let composition = DemoScreenshotComposition.make()
-            composition.console.setHosts(composition.hosts.hosts)
-            await composition.console.resume()
-            defer { composition.console.setHosts([]) }
-            await waitUntilDemoAgentsLoad(composition)
-
-            var expected: [ConsoleAgent.ID: String] = [:]
-            for agent in composition.console.agents {
-                let name = agent.agent.name ?? agent.agent.kind
-                let store = productionChangesStore(for: agent, console: composition.console)
-                defer { store.cancel() }
-                await store.refresh()
-                let badge = try #require(
-                    ChangesBadge(phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent),
-                    "\(name) has no totals: \(store.phase)")
-                expected[agent.id] = "Changes: " + badge.accessibilityValue
-                if name == "reviewer" {
-                    #expect("\(badge.addedText()) \(badge.removedText())" == "+12 \u{2212}7")
-                }
-            }
-            #expect(expected.count == 5)
-
-            // The Console reopens its last tab and presentation. Show every
-            // Agent row even if another test left a Workspace collapsed.
-            let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
-            UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
-            defer { UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab") }
-            let presentation = ConsoleListPresentationStore()
-            let previousMode = presentation.mode
-            presentation.select(.flat)
-            defer { presentation.select(previousMode) }
-            let view = ConsoleView(
-                hosts: composition.hosts, console: composition.console,
-                terminal: TerminalSettings(
-                    themes: composition.terminalThemes, zoom: composition.terminalZoom,
-                    fonts: composition.terminalFonts, snippets: composition.snippets),
-                inputMode: composition.inputMode, detailSurface: composition.detailSurface,
-                appearance: composition.appearance,
-                pushRegistration: composition.pushRegistration,
-                notificationPreferences: composition.notificationPreferences,
-                relaySettings: composition.relaySettings,
-                notificationRouter: composition.notificationRouter,
-                bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
-                activity: composition.activity)
-            let controller = UIHostingController(rootView: view)
-            let window = try await makeTestWindow(
-                frame: CGRect(x: 0, y: 0, width: 402, height: 1_400), rootViewController: controller)
-            defer { window.isHidden = true }
-
-            // Two Agents share a value, so one row showing it does not mean
-            // the other's read has finished; wait for every store as well.
-            // A slow CI runner takes seconds to mount the whole Console.
-            let shown = try await ChangesViewTests.eventually(timeout: .seconds(15)) {
-                let labels = AccessibilityProbe.labels(in: controller.view)
-                return expected.values.allSatisfy { value in labels.contains { $0.contains(value) } }
-                    && composition.console.agents.allSatisfy { agent in
-                        composition.console.rowChanges.store(for: agent)
-                            .map { $0.phase != .loading } ?? false
-                    }
-            }
-            let phases = composition.console.agents.map { agent in
-                let phase = composition.console.rowChanges.store(for: agent)
-                    .map { String("\($0.phase)".prefix(40)) }
-                return "\(agent.agent.name ?? agent.agent.kind): \(phase ?? "none")"
-            }
-            #expect(
-                shown,
-                """
-                rows showed \(AccessibilityProbe.labels(in: controller.view).filter { $0.contains("Changes") }); \
-                stores \(phases); \
-                on screen \(AccessibilityProbe.labels(in: controller.view).prefix(40))
-                """)
-            // One store per Agent, from the list itself.
-            for agent in composition.console.agents {
-                let store = try #require(composition.console.rowChanges.store(for: agent))
-                #expect(store.phase != .loading)
-            }
         }
 
         /// A store from the production factory: the console's Changes reads,

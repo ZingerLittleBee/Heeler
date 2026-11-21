@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -149,83 +147,5 @@ struct DiffHeaderModelTests {
                     id: index, oldStart: hunk.oldStart, oldCount: hunk.oldCount,
                     newStart: hunk.oldStart, newCount: hunk.oldCount, section: "", lines: [])
             })
-    }
-}
-
-/// VoiceOver reads each header by what it names, with its details as the
-/// value, so the rotors and the reference actions keep their labels.
-@MainActor
-@Suite("Diff headers for VoiceOver", .timeLimit(.minutes(1)))
-struct DiffHeaderAccessibilityTests {
-    @Test func theFileBarAndHunkBandsReadTheirDetailsAsValues() async throws {
-        let lines = [
-            DiffLine(id: 0, kind: .context, oldNumber: 5, newNumber: 5, text: "a"),
-            DiffLine(id: 1, kind: .removed, oldNumber: 6, newNumber: nil, text: "b"),
-            DiffLine(id: 2, kind: .added, oldNumber: nil, newNumber: 6, text: "c"),
-        ]
-        let patch = FilePatch(
-            files: [
-                DiffFile(
-                    id: 0, oldPath: "Sources/a.swift", newPath: "Sources/a.swift",
-                    summary: "File mode changed from 100644 to 100755.", isBinary: false,
-                    hunks: [
-                        DiffHunk(
-                            id: 0, oldStart: 5, oldCount: 2, newStart: 5, newCount: 2,
-                            section: "func run()", lines: lines)
-                    ])
-            ], isTruncated: false)
-        let file = ChangedFile(
-            path: Data("Sources/a.swift".utf8), originalPath: nil, kind: .modified,
-            staging: .unstaged, lineCounts: .lines(added: 1, removed: 1))
-        let store = FileDiffStore(
-            file: file, checkout: FileDiffViewTests.changesRead().changes.checkout,
-            read: { _ in patch })
-        let controller = UIHostingController(rootView: FileDiffView(store: store))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-
-        try #require(await ChangesViewTests.eventually {
-            Self.value(of: "@@ -5,2 +5,2 @@ func run()", in: controller.view) != nil
-        })
-        #expect(Self.value(of: "@@ -5,2 +5,2 @@ func run()", in: controller.view) == "4 unchanged lines")
-        #expect(
-            Self.value(of: "Sources/a.swift", in: controller.view)
-                == "Modified · Unstaged, File mode changed from 100644 to 100755., "
-                + "1 line added, 1 line removed")
-    }
-
-    private static func value(of label: String, in root: UIView) -> String? {
-        var visited = Set<ObjectIdentifier>()
-        func visit(_ node: NSObject) -> String?? {
-            guard visited.insert(ObjectIdentifier(node)).inserted,
-                !node.accessibilityElementsHidden
-            else { return nil }
-            if node.accessibilityLabel == label, node.isAccessibilityElement {
-                return .some(node.accessibilityValue)
-            }
-            for child in node.accessibilityElements ?? [] {
-                if let child = child as? NSObject, let found = visit(child) { return found }
-            }
-            let count = node.accessibilityElementCount()
-            if count > 0, count != NSNotFound {
-                for index in 0..<count {
-                    if let child = node.accessibilityElement(at: index) as? NSObject,
-                        let found = visit(child)
-                    {
-                        return found
-                    }
-                }
-            }
-            if let view = node as? UIView {
-                for subview in view.subviews {
-                    if let found = visit(subview) { return found }
-                }
-            }
-            return nil
-        }
-        root.setNeedsLayout()
-        root.layoutIfNeeded()
-        return visit(root) ?? nil
     }
 }

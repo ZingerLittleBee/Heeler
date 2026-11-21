@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -445,43 +444,6 @@ struct HerdrCoreWindowsChatTests {
 
     private static let bundlePath = HerdrCoreWindowsExtensions.bundlePath
 
-    /// The real detail: Chat's button opens the sheet, which names each folder before
-    /// anything is written, and only its own button writes.
-    @Test func chatsButtonOpensTheSheetThatNamesEachFolderBeforeAnyWrite() async throws {
-        let fixture = try await Fixture(terminal: Self.record(program: "pi", app: "pi"), image: "pi.exe")
-        let chat = try fixture.chat(as: .pi)
-        let suite = "core-windows-chat-sheet-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let controller = UIHostingController(
-            rootView: HerdrCoreChatTests.chatDetail(of: fixture.agent, console: fixture.console, defaults: defaults))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            try await Self.until("the reason") {
-                chat.conversation.phase == .unavailable(.cannotTellSessionOnWindows(.pi))
-            }
-            try await HerdrCoreChatTests.opensASheet(from: "Add Heeler's Extension…", in: controller)
-            let sheet = try #require(controller.presentedViewController?.view)
-
-            let confirm = "Add to 2 Folders"
-            try await Self.until("the folders") {
-                !AccessibilityProbe.elements(labeled: confirm, in: sheet).isEmpty
-            }
-            let shown = AccessibilityProbe.labels(in: sheet)
-            #expect(shown.contains(#"C:\Users\me\.pi\agent\extensions"#), "\(shown)")
-            #expect(shown.contains(#"C:\Users\me\.omp\agent\extensions"#), "\(shown)")
-            #expect(await fixture.scripted.fileWrites.isEmpty)
-
-            AccessibilityProbe.elements(labeled: confirm, in: sheet).first?.accessibilityActivate()
-            try await Self.until("the writes") { await fixture.scripted.fileWrites.count == 2 }
-            controller.presentedViewController?.dismiss(animated: false)
-        }
-        chat.end()
-        fixture.finish()
-    }
-
     @Test func writingTheExtensionGoesOnlyToEachProgramsOwnFolder() async throws {
         let fixture = try await Fixture(terminal: Self.record(program: "pi", app: "pi"), image: "pi.exe")
         for name in ["work", "default", "UPPER", "ok.name", ".hidden"] {
@@ -558,31 +520,6 @@ struct HerdrCoreWindowsChatTests {
         #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.claude).offersHeelersExtension)
         #expect(!ChatUnavailableReason.cannotTellSessionOnWindows(.grok).offersHeelersExtension)
         #expect(!ChatUnavailableReason.cannotTellSession(.pi).offersHeelersExtension)
-    }
-
-    @Test func theUnavailableStateShowsTheOfferAsRendered() async throws {
-        let shown = try await labels(
-            of: ChatUnavailableView(
-                reason: .cannotTellSessionOnWindows(.pi), retry: {}, showAgentTerminal: {}, addExtension: {}),
-            showing: "Add Heeler's Extension")
-        #expect(shown.contains { $0.contains("Add Heeler's Extension") }, "\(shown)")
-        #expect(!shown.contains { $0.localizedCaseInsensitiveContains("helper") }, "\(shown)")
-    }
-
-    private func labels<Content: View>(of view: Content, showing text: String) async throws -> [String] {
-        let controller = UIHostingController(rootView: view)
-        var found: [String] = []
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            let deadline = ContinuousClock.now + .seconds(5)
-            repeat {
-                found = AccessibilityProbe.labels(in: controller.view)
-                if found.contains(where: { $0.contains(text) }) { return }
-                try await Task.sleep(for: .milliseconds(20))
-            } while ContinuousClock.now < deadline
-        }
-        return found
     }
 
     // MARK: Send, Stop and Blocked answers

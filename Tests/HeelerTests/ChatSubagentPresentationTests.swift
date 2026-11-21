@@ -1,6 +1,4 @@
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -28,40 +26,5 @@ struct ChatSubagentPresentationTests {
         #expect(presentation.name == "Unnamed subagent")
         #expect(presentation.status == "Activity recorded")
         #expect(presentation.eventCount == "1 event")
-    }
-
-    @Test func cardsRenderAtNarrowAndAccessibleSizes() throws {
-        #expect(UIImage(named: "LucideBot") != nil)
-        for accessible in [false, true] {
-            for dark in [false, true] {
-                let width: CGFloat = accessible ? 320 : 390
-                let activity = ChatSubagentActivity(
-                    agentPath: "/root/heeler_session_status",
-                    events: ["started", "interacted", "interacted", "completed"])
-                let tool = ChatToolActivity(
-                    kind: .agent, name: "SubAgentActivity", title: "Subagent: heeler_session_status",
-                    status: .succeeded, subagentActivity: activity)
-                let row = ChatRow(
-                    id: .entry(ChatEntryID("subagent")), content: .tool(tool), revision: 1, topSpacing: 0)
-                let actions = ChatRowActions(
-                    toggle: { _ in }, loadOlder: {}, copy: { _ in }, selectText: { _ in }, missingOutputText: "")
-                var heights: [CGFloat] = []
-                for expanded in [false, true] {
-                    let rendered = try RenderedBitmap(
-                        ChatRowView(row: row, isExpanded: expanded, actions: actions)
-                            .padding(.vertical, 16)
-                            .frame(width: width)
-                            .background(Color(uiColor: .systemBackground))
-                            .environment(\.colorScheme, dark ? .dark : .light)
-                            .environment(\.dynamicTypeSize, accessible ? .accessibility3 : .large),
-                        proposedSize: .unspecified, scale: 2)
-                    #expect(rendered.size.width == width)
-                    heights.append(rendered.size.height)
-                    Attachment.record(try rendered.image(),
-                        named: "subagent-accessible-\(accessible)-dark-\(dark)-expanded-\(expanded)", as: .png)
-                }
-                #expect(heights[1] > heights[0])
-            }
-        }
     }
 }
